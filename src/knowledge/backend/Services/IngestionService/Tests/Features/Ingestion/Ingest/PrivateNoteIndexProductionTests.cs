@@ -235,7 +235,7 @@ public class PrivateNoteIndexProductionTests
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
         {
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
             return Task.CompletedTask;
@@ -245,7 +245,7 @@ public class PrivateNoteIndexProductionTests
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
         {
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
             return Task.CompletedTask;
@@ -260,7 +260,7 @@ public class PrivateNoteIndexProductionTests
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             LexicalWrites.Add(documentId);
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
@@ -271,7 +271,7 @@ public class PrivateNoteIndexProductionTests
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             LexicalWrites.Add(documentId);
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
@@ -285,7 +285,7 @@ public class PrivateNoteIndexProductionTests
         public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
             => Task.CompletedTask;
 
-        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
             IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)

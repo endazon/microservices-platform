@@ -382,10 +382,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
-            tags, updatedAt, sharedWith: sharedWith);
+            tags, updatedAt, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): 書く点の属性キーへキーワード索引を張る（張り済みなら RPC を出さない）。
         await EnsureAttributeKeywordIndexesAsync(collection, attributes.Keys, ct);
 
@@ -405,10 +405,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
-            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): チャンクの口と同じ。
         await EnsureAttributeKeywordIndexesAsync(collection, attributes.Keys, ct);
 
@@ -426,10 +426,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
-            tags, updatedAt, sharedWith: sharedWith);
+            tags, updatedAt, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): 語彙索引にも張る（検索は語彙索引でも facet する）。
         await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
@@ -443,10 +443,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
-            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): 語彙索引のチャンクの口と同じ。
         await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
@@ -465,10 +465,10 @@ public class QdrantIngestionVectorStore(
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildEmbeddingPendingPayload(BuildChunkPayload(documentId, title, text, chunkIndex,
-            markdownUri, attributes, tags, updatedAt, sharedWith: sharedWith), reason);
+            markdownUri, attributes, tags, updatedAt, sharedWith: sharedWith, sequence: sequence), reason);
         await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
         await client.UpsertAsync(_lexical, [BuildLexicalPoint(chunkId, payload)], cancellationToken: ct);
@@ -479,11 +479,11 @@ public class QdrantIngestionVectorStore(
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildEmbeddingPendingPayload(BuildChunkPayload(documentId, title, indexText,
             ChunkId.MetadataChunkIndex, markdownUri, attributes, tags, updatedAt, hasBody: false,
-            sharedWith: sharedWith), reason);
+            sharedWith: sharedWith, sequence: sequence), reason);
         await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
         await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
@@ -592,7 +592,8 @@ public class QdrantIngestionVectorStore(
             ListOf(payload, "tags"),
             updatedAt,
             sharedWith.Count == 0 ? null : sharedWith,
-            StringOf(payload, EmbeddingPendingReasonKey));
+            StringOf(payload, EmbeddingPendingReasonKey),
+            SequenceOf(payload));
 
         static string StringOf(IDictionary<string, Value> p, string key) =>
             p.TryGetValue(key, out var v) ? v.StringValue : "";
@@ -628,7 +629,8 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         bool hasBody = true,
-        List<string>? sharedWith = null)
+        List<string>? sharedWith = null,
+        long? sequence = null)
     {
         var payload = new Dictionary<string, Value>
         {
@@ -654,6 +656,11 @@ public class QdrantIngestionVectorStore(
         // 検索側（RetrievalService.QdrantVectorStore）の書き込み・復元と表現を揃えること。
         if (updatedAt is { } at)
             payload["updated_at"] = new Value { IntegerValue = at.ToUnixTimeMilliseconds() };
+
+        // FR-02, IADR-0638 決定 3 (#2150 / #2251): 版の発行の連番。旧版の点の後始末が、同じ時刻の新しい版の点を消さないために持つ。
+        // 連番の無い電文（旧形式）では書かない（読む側は「連番なし」＝時刻だけで比べる）。
+        if (sequence is { } seq)
+            payload[SequenceKey] = new Value { IntegerValue = seq };
 
         // FR-02: タグをペイロードに保持（検索結果の絞り込み・表示用）
         if (tags.Count > 0)
@@ -801,6 +808,9 @@ public class QdrantIngestionVectorStore(
     internal const string IndexVersionUpdatedAtKey = "updated_at";
     internal const string IndexVersionAccessKey = "access_fingerprint";
 
+    // FR-02, IADR-0638 決定 3 (#2150 / #2251): 版の印と点の両方が持つ、発行の連番のキー（無ければ連番なし）。
+    internal const string SequenceKey = "sequence";
+
     public async Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
     {
         try
@@ -840,7 +850,7 @@ public class QdrantIngestionVectorStore(
             [DocumentIdKey] = new Value { StringValue = documentId.ToString() },
             [IndexVersionUpdatedAtKey] = new Value { IntegerValue = version.UpdatedAtMs },
             [IndexVersionAccessKey] = new Value { StringValue = version.AccessFingerprint },
-        });
+        }.WithSequence(version.Sequence));
 
     // [[IADR-0595]] 決定 1: 版の印を読み戻す（純関数）。版の読めない点は null（印が無いのと同じに扱う —— 判定軸は「不明」になり、
     // 取り込みは旧版の点を先に消す側〔fail-closed〕へ倒れる）。
@@ -849,21 +859,21 @@ public class QdrantIngestionVectorStore(
         if (!payload.TryGetValue(IndexVersionUpdatedAtKey, out var at) || at.KindCase != Value.KindOneofCase.IntegerValue)
             return null;
         var access = payload.TryGetValue(IndexVersionAccessKey, out var a) ? a.StringValue : "";
-        return new DocumentIndexVersion(DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue), access);
+        return new DocumentIndexVersion(DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue), access, SequenceOf(payload));
     }
 
     // FR-02, FR-05, [[IADR-0595]] 決定 2 (#2101): 旧版の点を全コレクションから消す（`DeleteByDocumentFromAllAsync` と同じ巡り方）。
-    public async Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+    public async Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
         IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default)
     {
         foreach (var c in _collections)
-            await client.DeleteAsync(c.Name, BuildSupersededFilter(documentId, version, KeepIn(keep, c.Name)),
+            await client.DeleteAsync(c.Name, BuildSupersededFilter(documentId, version, sequence, KeepIn(keep, c.Name)),
                 cancellationToken: ct);
 
         // 語彙索引が無い（ブートストラップの失敗）なら消す点も無い（`DeleteByDocumentFromAllAsync` と同じ扱い）。
         try
         {
-            await client.DeleteAsync(_lexical, BuildSupersededFilter(documentId, version, KeepIn(keep, _lexical)),
+            await client.DeleteAsync(_lexical, BuildSupersededFilter(documentId, version, sequence, KeepIn(keep, _lexical)),
                 cancellationToken: ct);
         }
         catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
@@ -880,7 +890,9 @@ public class QdrantIngestionVectorStore(
     //   - 文書の点であること（`document_id`）
     //   - `updated_at` が `version` より**厳密に新しくない**こと（新しい版の点は残す。`updated_at` を持たない古い点は消す）
     //   - この取り込みで書いた点（`keep`）でないこと
-    internal static Filter BuildSupersededFilter(Guid documentId, DateTimeOffset version, IEnumerable<Guid> keep)
+    //   - ［IADR-0638 決定 3］同じ時刻でも、点と版の両方に連番があり、点の連番の方が大きければ残す（同じ時刻の新しい版の点）。
+    //     連番を持たない点（旧点）は時刻だけで比べる（同じ時刻なら消す。現行と同じ）。
+    internal static Filter BuildSupersededFilter(Guid documentId, DateTimeOffset version, long? sequence, IEnumerable<Guid> keep)
     {
         var filter = new Filter
         {
@@ -904,9 +916,51 @@ public class QdrantIngestionVectorStore(
             }
         };
 
+        if (sequence is { } seq)
+            filter.MustNot.Add(new Condition
+            {
+                Filter = new Filter
+                {
+                    Must =
+                    {
+                        new Condition
+                        {
+                            Field = new FieldCondition
+                            {
+                                Key = "updated_at",
+                                Range = new Qdrant.Client.Grpc.Range
+                                {
+                                    Gte = version.ToUnixTimeMilliseconds(),
+                                    Lte = version.ToUnixTimeMilliseconds(),
+                                }
+                            }
+                        },
+                        new Condition
+                        {
+                            Field = new FieldCondition { Key = SequenceKey, Range = new Qdrant.Client.Grpc.Range { Gt = seq } }
+                        },
+                    }
+                }
+            });
+
         var ids = keep.Select(id => new PointId { Uuid = id.ToString() }).ToList();
         if (ids.Count > 0)
             filter.MustNot.Add(new Condition { HasId = new HasIdCondition { HasId = { ids } } });
         return filter;
+    }
+
+    // IADR-0638 決定 3: ペイロードの連番（無い・整数でなければ null）。
+    internal static long? SequenceOf(IDictionary<string, Value> payload)
+        => payload.TryGetValue(SequenceKey, out var v) && v.KindCase == Value.KindOneofCase.IntegerValue ? v.IntegerValue : null;
+}
+
+internal static class SequencePayloadExtensions
+{
+    // 版の印のペイロードへ連番を足す（連番なしなら足さない）。
+    internal static Dictionary<string, Value> WithSequence(this Dictionary<string, Value> payload, long? sequence)
+    {
+        if (sequence is { } seq)
+            payload[QdrantIngestionVectorStore.SequenceKey] = new Value { IntegerValue = seq };
+        return payload;
     }
 }

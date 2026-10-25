@@ -769,7 +769,7 @@ file class RecordingVectorStore : IIngestionVectorStore
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Operations.Add("pending-upsert");
         PendingUpserts.Add(new PendingUpsertRecord(chunkId, documentId, text, chunkIndex, markdownUri,
@@ -781,7 +781,7 @@ file class RecordingVectorStore : IIngestionVectorStore
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Operations.Add("pending-metadata-upsert");
         PendingMetadataUpserts.Add(new PendingMetadataUpsertRecord(pointId, documentId, indexText, reason));
@@ -803,7 +803,7 @@ file class RecordingVectorStore : IIngestionVectorStore
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Upserts.Add(new UpsertRecord(collection, chunkId, documentId, title, text, chunkIndex,
             markdownUri, attributes, tags, updatedAt, sharedWith));
@@ -815,7 +815,7 @@ file class RecordingVectorStore : IIngestionVectorStore
         string title, string indexText, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         MetadataUpserts.Add(new MetadataUpsertRecord(collection, pointId, documentId, title,
             indexText, vector, markdownUri, attributes, tags, updatedAt, sharedWith));
@@ -834,7 +834,7 @@ file class RecordingVectorStore : IIngestionVectorStore
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Operations.Add("lexical-upsert");
         LexicalUpserts.Add(new UpsertRecord("(lexical)", chunkId, documentId, title, text, chunkIndex,
@@ -846,7 +846,7 @@ file class RecordingVectorStore : IIngestionVectorStore
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Operations.Add("lexical-metadata-upsert");
         LexicalMetadataUpserts.Add(new MetadataUpsertRecord("(lexical)", pointId, documentId, title,
@@ -861,7 +861,7 @@ file class RecordingVectorStore : IIngestionVectorStore
     public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
         => Task.CompletedTask;
 
-    public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+    public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
         IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
     public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)

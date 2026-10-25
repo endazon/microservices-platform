@@ -58,7 +58,7 @@ public interface IIngestionVectorStore
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default);
+        long? sequence = null, CancellationToken ct = default);
 
     // FR-02, FR-03, SC-02, ADR-0070 決定 4, #1193, [[IADR-0358]] 決定 1・2:
     // **本文を持たない文書を、メタデータだけで索引へ載せる（1 文書 1 点）。**
@@ -75,7 +75,7 @@ public interface IIngestionVectorStore
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default);
+        long? sequence = null, CancellationToken ct = default);
 
     // FR-02, FR-03, FR-05, ADR-0127 決定 1・2, [[IADR-0497]] 決定 1・3 (#1746):
     // **高機密文書（confidential・restricted・未指定・未知）のチャンクを語彙索引へ書く。ベクトルは持たない。**
@@ -90,7 +90,7 @@ public interface IIngestionVectorStore
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default);
+        long? sequence = null, CancellationToken ct = default);
 
     // FR-02, FR-03, ADR-0070 決定 4, ADR-0127 決定 1, [[IADR-0497]] 決定 3 (#1746):
     // 本文を持たない高機密文書の**メタデータ点**を語彙索引へ書く（`has_body = false`。1 文書 1 点）。
@@ -100,7 +100,7 @@ public interface IIngestionVectorStore
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default);
+        long? sequence = null, CancellationToken ct = default);
 
     // FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1・2 (#1908): **埋め込みが使えなかった public / internal のチャンクを、
     // 全文だけの点（埋め込み待ち）として語彙索引へ書く。** ペイロードは語彙索引のチャンクの口と同じ表現に
@@ -114,7 +114,7 @@ public interface IIngestionVectorStore
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         => throw new NotSupportedException("This vector store does not hold embedding-pending points");
 
     // FR-02, ADR-0070 決定 4, [[IADR-0536]] 決定 1 (#1908): 本文なしの public / internal 文書のメタデータ点の埋め込み待ち版
@@ -123,7 +123,7 @@ public interface IIngestionVectorStore
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         => throw new NotSupportedException("This vector store does not hold embedding-pending points");
 
     // FR-02, [[IADR-0536]] 決定 2 (#1908): 語彙索引の `embedding_pending` に真偽の索引を張る（冪等）。
@@ -175,7 +175,7 @@ public interface IIngestionVectorStore
     // 文書の点のうち `updated_at` が `version` 以下（または `updated_at` を持たない）で、かつ `keep` に無い点を消す。
     // `version` より**厳密に新しい**点は残す（並行して反映した新しい版を古い版の後始末で消さない）。
     // 既定実装は投げる（後始末の漏れを静かに通さない）。
-    Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, IReadOnlyCollection<IndexedPointRef> keep,
+    Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence, IReadOnlyCollection<IndexedPointRef> keep,
         CancellationToken ct = default)
         => throw new NotSupportedException("This vector store does not delete superseded points");
 }

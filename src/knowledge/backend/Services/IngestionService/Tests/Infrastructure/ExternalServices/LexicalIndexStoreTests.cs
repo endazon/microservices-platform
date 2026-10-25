@@ -64,7 +64,7 @@ public class LexicalIndexStoreTests
         await NewStore(invoker).UpsertLexicalChunkAsync(Guid.NewGuid(), documentId, "人事評価",
             "評価の手順 ABAC", 0, "storage://x.md",
             new Dictionary<string, string> { ["confidentiality"] = "restricted", ["department"] = "hr" },
-            ["評価"], DateTimeOffset.UtcNow, ["bob"], TestContext.Current.CancellationToken);
+            ["評価"], DateTimeOffset.UtcNow, ["bob"], ct: TestContext.Current.CancellationToken);
 
         var upsert = invoker.Upserts.Should().ContainSingle().Subject;
         upsert.CollectionName.Should().Be(Lexical);
@@ -192,7 +192,7 @@ public class LexicalIndexStoreTests
             "売上高 増収 EBITDA", 0, "storage://x.md",
             new Dictionary<string, string> { ["confidentiality"] = "internal", ["project"] = "ai-stock-trading" },
             ["決算"], DateTimeOffset.UtcNow, null, EmbeddingPendingReasons.Transient,
-            TestContext.Current.CancellationToken);
+            ct: TestContext.Current.CancellationToken);
 
         var upsert = invoker.Upserts.Should().ContainSingle().Subject;
         upsert.CollectionName.Should().Be(Lexical, "主（次元つき）へはベクトル無しの点を書けない");
@@ -228,7 +228,7 @@ public class LexicalIndexStoreTests
 
         await NewStore(invoker).UpsertEmbeddingPendingMetadataPointAsync(Guid.NewGuid(), Guid.NewGuid(), "題名",
             "題名 タグ", "storage://x.md", new Dictionary<string, string> { ["confidentiality"] = "public" }, ["タグ"],
-            null, null, EmbeddingPendingReasons.Rejected, TestContext.Current.CancellationToken);
+            null, null, EmbeddingPendingReasons.Rejected, ct: TestContext.Current.CancellationToken);
 
         var point = invoker.Upserts.Single().Points.Single();
         invoker.Upserts.Single().CollectionName.Should().Be(Lexical);

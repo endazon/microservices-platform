@@ -372,7 +372,7 @@ public class IngestionTimeoutTests
         public async Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
         {
             await HangIf(Hung.Upsert, ct);
             Upserts++;
@@ -381,7 +381,7 @@ public class IngestionTimeoutTests
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
             => HangIf(Hung.MetadataUpsert, ct);
 
         // #1746: 語彙索引の口。止まり方は本文チャンクの書き込みと同じ（Qdrant への 1 回の書き込み）。
@@ -389,7 +389,7 @@ public class IngestionTimeoutTests
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             await HangIf(Hung.Upsert, ct);
             Upserts++;
@@ -399,7 +399,7 @@ public class IngestionTimeoutTests
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
             => HangIf(Hung.MetadataUpsert, ct);
 
         // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
@@ -409,7 +409,7 @@ public class IngestionTimeoutTests
         public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
             => Task.CompletedTask;
 
-        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
             IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
@@ -447,20 +447,20 @@ public class IngestionTimeoutTests
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
             => throw new InvalidOperationException("埋め込みは使えないので主へは書かない");
 
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
             => throw new InvalidOperationException("本文のある文書はメタデータ点を書かない");
 
         public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
         {
             LexicalWrites++;
             clock.Advance(perWrite);
@@ -471,14 +471,14 @@ public class IngestionTimeoutTests
             string indexText, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
             => throw new InvalidOperationException("本文のある文書はメタデータ点を書かない");
 
         public Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
         {
             PendingWrites++;
             clock.Advance(perWrite);
@@ -492,7 +492,7 @@ public class IngestionTimeoutTests
         public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
             => Task.CompletedTask;
 
-        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
             IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;

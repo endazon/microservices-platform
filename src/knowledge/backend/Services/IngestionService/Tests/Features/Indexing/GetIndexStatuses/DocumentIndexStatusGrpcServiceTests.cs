@@ -174,22 +174,22 @@ public class DocumentIndexStatusGrpcServiceTests : IClassFixture<IntrospectionEn
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title, string text,
             int chunkIndex, float[] vector, string? markdownUri, Dictionary<string, string> attributes,
             List<string> tags, DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId, string title,
             string indexText, float[] vector, string? markdownUri, Dictionary<string, string> attributes,
             List<string> tags, DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title, string text,
             int chunkIndex, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
             string indexText, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) =>
             throw new NotSupportedException();
