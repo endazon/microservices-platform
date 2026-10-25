@@ -1,4 +1,4 @@
-// SC-15 / NFR-12 / ADR-0045 / IADR-0633（#2034 / E-54）: live-rw の**捕捉用 MTA（mailpit）を読む口**（読み取りだけ）。
+// SC-15 / NFR-12 / ADR-0045 / IADR-0634（#2034 / E-54）: live-rw の**捕捉用 MTA（mailpit）を読む口**（読み取りだけ）。
 //
 // - 🔴 mailpit の API はエッジへ出していない（中身はリセットリンク＝認証資格。`deploy/local/infra/mailpit.yaml`）。
 //   `scripts/check-password-reset-mail.js` と同じく、**Pod の中の loopback** を `kubectl exec … wget` で読む。

@@ -2,7 +2,7 @@
 title: 作業仕様書 — live-rw のリセット申請とアカウントコンソール（SC-15・SC-16・e2e-revocable。E-54）
 type: spec
 status: in-progress
-related_ids: [SC-15, SC-16, SC-13, NFR-12, NFR, ADR-0026, ADR-0045, IADR-0630, IADR-0632, IADR-0633]
+related_ids: [SC-15, SC-16, SC-13, NFR-12, NFR, ADR-0026, ADR-0045, IADR-0630, IADR-0632, IADR-0634]
 author: claude
 created: 2026-10-25
 updated: 2026-10-25
@@ -42,10 +42,10 @@ issue: "#2034"
 - 🟡 **網羅表 M-006 の「12 文字 3 種・直近 5 世代の文言」は範囲外にする**: 送信前のどの画面にも出ない。申請の画面とメールには無く、
   リンクの先の新パスワードの画面（Keycloak 26.7.4 の `keycloak.v2/login/login-update-password.ftl`）も送信前にはポリシーを出さない
   （画面内の検査は長さ・文字種の数の誤りを入力の後に出すだけで、3 種＝regexPattern と 5 世代＝passwordHistory はサーバーの検査で送信の後だけ）。
-  オーケストレーターの案（リンクを開き、送信せずに文言を確かめる）を調べた結果、文言に届かないので範囲外のままにした（IADR-0633 決定 2 の理由）。
+  オーケストレーターの案（リンクを開き、送信せずに文言を確かめる）を調べた結果、文言に届かないので範囲外のままにした（IADR-0634 決定 2 の理由）。
   ポリシーそのものは `check-realm-constraints.js`（SC-15 試験仕様の T-01〜T-04）が静的に、表示は T-15（手動）が持つ。網羅表 #2013 へ訂正を残した。
 
-## 判断（IADR-0633）
+## 判断（IADR-0634）
 
 1. **配置**: 新規 `e2e/live/account.rw.spec.ts` を `live-rw` に置く（`live-rw-revocation` は `live-rw` に依存するので、無効化はこの後。IADR-0632）。
    `live-rw` は同じ実行の `live-ro` に依存する（IADR-0630 決定 4）ので、auth-errors（誤りのログイン・ログアウト）とは並ばない。
@@ -58,7 +58,7 @@ issue: "#2034"
    context を引数で固定する（current-context に頼らない）。層 `rw` の門（`assertDisposableStack`）が使い捨てのスタックであることを先に確かめている。
    メールを消す操作はしない（スタックごと消える）。
 5. **存在秘匿の比べ方**: 非実在 → 実在の順に申請し、実在の 1 通が届いた後も静かな窓（10 秒）のあいだ件数を見続け、「前 ＋ 1」から
-   動かないこと・増えた 1 通が実在の宛先であることで非実在の 0 通を確かめる（届く順には頼らない。10 秒の根拠は IADR-0633 決定 5）。
+   動かないこと・増えた 1 通が実在の宛先であることで非実在の 0 通を確かめる（届く順には頼らない。10 秒の根拠は IADR-0634 決定 5）。
    画面の文言は `body` の innerText から、入れた利用者名を伏せて比べる。
 6. **M-007 は読み取り中心**: 個人情報は開いて見るだけ（保存しない）。書き込みは、**この試験が自分で作った**セッション B の個別サインアウトだけ
    （消えたことを確かめる）。終わりに A・B を Keycloak のログアウトで閉じる（判断 8）。
@@ -68,7 +68,7 @@ issue: "#2034"
 
 ## 変更するファイル
 
-- 新規 `e2e/live/account.rw.spec.ts`・`e2e/live/support/mailpit.ts`（kubectl 経由の読み取り）・IADR-0633
+- 新規 `e2e/live/account.rw.spec.ts`・`e2e/live/support/mailpit.ts`（kubectl 経由の読み取り）・IADR-0634
 - `e2e/live-opt-in.smoke.spec.ts`（L1: `account.rw.spec.ts` が `live-rw` に入り、`live-rw-revocation` に入らない）・`scripts/test-traceability-allowlist.json`（SC-15 を pending から外す。ratchet の要求）・`src/knip.jsonc`（`ignoreBinaries: kubectl`。OS の道具）・`docs/tests/E2E_STANDARDS.md`・`.ai-context/adr/README.md`
 
 ## 検証
