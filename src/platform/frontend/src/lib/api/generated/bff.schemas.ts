@@ -1058,8 +1058,10 @@ export interface ConversionRetryConflictDto {
  * FR-12, SC-07: 人手補正の 409 本文
  */
 export interface ConversionCorrectionConflictDto {
-  /** `figure_not_correctable` / `job_busy` / `body_unavailable` */
+  /** `figure_not_correctable` / `job_busy` / `body_unavailable` / `job_changed` */
   error: string;
+  /** `job_changed` のとき、読み直した現在のジョブ状態 */
+  status?: string | null;
 }
 
 /**

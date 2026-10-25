@@ -55,7 +55,7 @@ public class ConversionRetryRaceEndpointTests
             => inner.GetFigureAsync(jobId, figureId, ct);
         public Task<RawDocumentFetched?> GetSourceEventAsync(Guid id, CancellationToken ct = default)
             => inner.GetSourceEventAsync(id, ct);
-        public Task ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
+        public Task<CorrectionWrite> ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
             string markdownUri, CancellationToken ct = default)
             => inner.ApplyCorrectionAsync(jobId, figureId, language, code, markdownUri, ct);
     }

@@ -2081,7 +2081,8 @@ paths:
             補正できない。本文の `error` が理由を示す。
             **`figure_not_correctable`**（コード化済みの図。Phase 1 の対象外）／
             **`job_busy`**（`queued` / `processing`。同一ジョブの直列化。05_screens:319）／
-            **`body_unavailable`**（本文を読めない・図の埋め込みが見つからない。**補正は保存していない**）。
+            **`body_unavailable`**（本文を読めない・図の埋め込みが見つからない。**補正は保存していない**）／
+            **`job_changed`**（確かめた後にジョブの状態が変わった。同じ原本の再処理が始まった等。**補正は保存せず、再発行もしない**。`status` は読み直した現在の状態）。
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ConversionCorrectionConflictDto" }
@@ -5686,7 +5687,11 @@ components:
       properties:
         error:
           type: string
-          description: "`figure_not_correctable` / `job_busy` / `body_unavailable`"
+          description: "`figure_not_correctable` / `job_busy` / `body_unavailable` / `job_changed`"
+        status:
+          type: string
+          nullable: true
+          description: "`job_changed` のとき、読み直した現在のジョブ状態"
 
     # ── FR-09, SC-09: ABAC 管理（属性辞書・ポリシー）───
     AbacPolicyDto:

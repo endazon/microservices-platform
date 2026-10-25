@@ -10,6 +10,7 @@ using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -37,7 +38,7 @@ public class ConversionFigureCorrectionTests
     ];
 
     // 縮退した図 1 件を含む成功ジョブと、その本文を用意する。
-    private static async Task<Guid> SeedSucceededAsync(Factory factory)
+    private static async Task<Guid> SeedSucceededAsync(WebApplicationFactory<Program> factory)
     {
         var id = Guid.NewGuid();
         using var scope = factory.Services.CreateScope();
@@ -372,6 +373,153 @@ public class ConversionFigureCorrectionTests
             TestContext.Current.CancellationToken);
         job!.Status.Should().Be(ConversionJobStatus.Failed);
         job.HasCorrection.Should().BeTrue();
+    }
+
+    // 🔴 FR-12, UC-06, #2255: **補正の保存が、同じジョブの状態の変化と交差したとき。** 作業仕様書の規則 11 の表の P1〜P4 を写す。
+    // 補正の口は、最初にジョブを読んで busy でないことを確かめてから、本文の置換・保存・補正の記録へ進む。
+    // その間に同じ原本の再配送で再処理が始まる（processing）と、確かめた状態と書く時点の状態が食い違う。
+    // 窓 A（記録の読み → 保存の間）は並行トークンの照合で例外になり、捕まえなければ 500 になる。
+    // 窓 B（最初の確かめ → 記録の読みの間）は照合が通るので、確かめ直さなければ処理中のジョブへ黙って補正を書いて再発行する。
+    // どちらも 409 `job_changed`（status は読み直した現在の状態）にし、補正を記録せず、再発行もしない。
+
+    // 補正の記録の手前で、別のスコープの再処理の開始（processing）を割り込ませるストア（窓 B）。
+    // `beforeSave` が真なら、記録の読みの後・保存の直前に割り込む（窓 A）。他の操作は本物へ委ねる。
+    private sealed class ReprocessingStore(IServiceProvider services, bool beforeSave) : IConversionJobStore
+    {
+        private EfConversionJobStore Inner(Func<Task>? interrupt = null)
+        {
+            var options = services.GetRequiredService<Microsoft.EntityFrameworkCore.DbContextOptions<ConversionJobDbContext>>();
+            if (interrupt is null)
+                return new EfConversionJobStore(services.GetRequiredService<ConversionJobDbContext>());
+            var intercepted = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<ConversionJobDbContext>(options)
+                .AddInterceptors(new BeforeFirstSave(interrupt)).Options;
+            return new EfConversionJobStore(new ConversionJobDbContext(intercepted));
+        }
+
+        private async Task StartReprocessingAsync(Guid jobId, CancellationToken ct)
+        {
+            using var scope = services.GetRequiredService<IServiceScopeFactory>().CreateScope();
+            var other = new EfConversionJobStore(scope.ServiceProvider.GetRequiredService<ConversionJobDbContext>());
+            var source = await other.GetSourceEventAsync(jobId, ct);
+            await other.StartAsync(source!, ct);
+            (await other.GetAsync(jobId, ct))!.Status.Should().Be(ConversionJobStatus.Processing, "前提: 再処理が始まった");
+        }
+
+        public async Task<CorrectionWrite> ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
+            string markdownUri, CancellationToken ct = default)
+        {
+            if (beforeSave)
+                return await Inner(() => StartReprocessingAsync(jobId, ct))
+                    .ApplyCorrectionAsync(jobId, figureId, language, code, markdownUri, ct);
+            await StartReprocessingAsync(jobId, ct);
+            return await Inner().ApplyCorrectionAsync(jobId, figureId, language, code, markdownUri, ct);
+        }
+
+        public Task StartAsync(RawDocumentFetched ev, CancellationToken ct = default) => Inner().StartAsync(ev, ct);
+        public Task SucceedAsync(Guid id, Guid documentId, string markdownUri,
+            IReadOnlyList<NormalizedFigure>? figures = null, bool hasBody = true, CancellationToken ct = default)
+            => Inner().SucceedAsync(id, documentId, markdownUri, figures, hasBody, ct);
+        public Task FailAsync(Guid id, string error, bool deadLettered = false, CancellationToken ct = default)
+            => Inner().FailAsync(id, error, deadLettered, ct);
+        public Task<IReadOnlyList<ConversionJobDto>> ListAsync(string? status, CancellationToken ct = default)
+            => Inner().ListAsync(status, ct);
+        public Task<ConversionJobDto?> GetAsync(Guid id, CancellationToken ct = default) => Inner().GetAsync(id, ct);
+        public Task<RawDocumentFetched?> PrepareRetryAsync(Guid id, bool discardCorrections = false,
+            CancellationToken ct = default) => Inner().PrepareRetryAsync(id, discardCorrections, ct);
+        public Task<IReadOnlyList<ConversionFigureDto>?> ListFiguresAsync(Guid jobId, CancellationToken ct = default)
+            => Inner().ListFiguresAsync(jobId, ct);
+        public Task<ConversionFigureDto?> GetFigureAsync(Guid jobId, string figureId, CancellationToken ct = default)
+            => Inner().GetFigureAsync(jobId, figureId, ct);
+        public Task<RawDocumentFetched?> GetSourceEventAsync(Guid id, CancellationToken ct = default)
+            => Inner().GetSourceEventAsync(id, ct);
+    }
+
+    // 保存の直前に 1 度だけ割り込みを走らせる。
+    private sealed class BeforeFirstSave(Func<Task> interrupt) : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        private bool _done;
+
+        public override async ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (!_done)
+            {
+                _done = true;
+                await interrupt();
+            }
+            return result;
+        }
+    }
+
+    private static async Task AssertJobChangedAsync(WebApplicationFactory<Program> factory, Guid id, HttpResponseMessage resp)
+    {
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict, "交差した補正を 500 にも 200 にもしない（#2255）");
+        using var body = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        body.RootElement.GetProperty("error").GetString().Should().Be("job_changed");
+        body.RootElement.GetProperty("status").GetString().Should().Be(ConversionJobStatus.Processing,
+            "状態は読み直した現在の値（最初に確かめた succeeded ではない）");
+
+        var client = factory.CreateClient();
+        var figures = await client.GetFromJsonAsync<List<ConversionFigureDto>>($"/jobs/{id}/figures",
+            TestContext.Current.CancellationToken);
+        figures!.Should().NotContain(f => f.Corrected, "補正は記録しない");
+        var harness = factory.Services.GetRequiredService<MassTransit.Testing.ITestHarness>();
+        harness.Published.Select<DocumentNormalized>(TestContext.Current.CancellationToken)
+            .Should().BeEmpty("交差した補正は取り込みへ再発行しない");
+    }
+
+    [Fact]
+    public async Task P1_補正の記録の保存の直前に再処理が始まっても500にせず409_job_changedを返す()
+    {
+        using var baseFactory = new Factory();
+        using var factory = baseFactory.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IConversionJobStore>();
+            services.AddScoped<IConversionJobStore>(sp => new ReprocessingStore(sp, beforeSave: true));
+        }));
+        var id = await SeedSucceededAsync(factory);
+
+        var resp = await factory.CreateClient().PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
+
+        await AssertJobChangedAsync(factory, id, resp);
+    }
+
+    [Fact]
+    public async Task P2_確かめた後_記録の前に再処理が始まったら黙って書かず409_job_changedを返す()
+    {
+        using var baseFactory = new Factory();
+        using var factory = baseFactory.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IConversionJobStore>();
+            services.AddScoped<IConversionJobStore>(sp => new ReprocessingStore(sp, beforeSave: false));
+        }));
+        var id = await SeedSucceededAsync(factory);
+
+        var resp = await factory.CreateClient().PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
+
+        await AssertJobChangedAsync(factory, id, resp);
+    }
+
+    [Fact]
+    public async Task P4_最初から処理中のジョブへの補正は409_job_busyのまま()
+    {
+        using var factory = new Factory();
+        var id = await SeedSucceededAsync(factory);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
+            await store.StartAsync((await store.GetSourceEventAsync(id, TestContext.Current.CancellationToken))!,
+                TestContext.Current.CancellationToken);
+        }
+
+        var resp = await factory.CreateClient().PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("job_busy");
     }
 
     private sealed class Factory : WebApplicationFactory<Program>
