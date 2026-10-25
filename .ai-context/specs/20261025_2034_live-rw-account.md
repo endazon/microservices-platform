@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — live-rw のリセット申請とアカウントコンソール（SC-15・SC-16・e2e-revocable。E-54）
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-15, SC-16, SC-13, NFR-12, NFR, ADR-0026, ADR-0045, IADR-0630, IADR-0632, IADR-0634]
 author: claude
 created: 2026-10-25
@@ -20,16 +20,16 @@ issue: "#2034"
 
 ## 受け入れ基準（#2034 ＋ オーケストレーターの条件 2026-10-25）
 
-- [ ] M-006: e2e-revocable（実在）と、`e2e-<runId>-absent-r<retry>`（非実在）でリセットを申請すると、画面の文言が同一（申請者が入れた利用者名の再表示だけを伏せて比べる）。
+- [x] M-006: e2e-revocable（実在）と、`e2e-<runId>-absent-r<retry>`（非実在）でリセットを申請すると、画面の文言が同一（申請者が入れた利用者名の再表示だけを伏せて比べる）。
       文言はテーマの `emailSentMessage`（「メールを送信しました。…」）—— live-rw
-- [ ] M-006: 捕捉用 MTA（mailpit）に届くのは実在の側の 1 通だけ（非実在の側は 0 通）。宛先は e2e-revocable の登録アドレス、本文はリセットリンクと有効期限（realm の
+- [x] M-006: 捕捉用 MTA（mailpit）に届くのは実在の側の 1 通だけ（非実在の側は 0 通）。宛先は e2e-revocable の登録アドレス、本文はリセットリンクと有効期限（realm の
       `actionTokenGeneratedByUserLifespan` から導いた 30 分）だけで、他の URL と添付は無い —— live-rw
-- [ ] M-006: リセットリンクと鍵の値を記録しない（発行値として `E2E_ISSUED_SECRETS_FILE` へ記録し、成果物の走査の対象にする。trace・スクリーンショット・動画を切る）
-- [ ] M-007: e2e-revocable がアカウントコンソールの個人情報を開ける。利用者名は本人に編集不可、属性（`clearance` など）は本人に見えず編集できない。保存は押さない —— live-rw
-- [ ] M-007: デバイスの活動に、この試験が作った 2 つのセッションが出る。現在でない方を個別にサインアウトすると、その 1 つだけが消え、そのセッションの画面は
+- [x] M-006: リセットリンクと鍵の値を記録しない（発行値として `E2E_ISSUED_SECRETS_FILE` へ記録し、成果物の走査の対象にする。trace・スクリーンショット・動画を切る）
+- [x] M-007: e2e-revocable がアカウントコンソールの個人情報を開ける。利用者名は本人に編集不可、属性（`clearance` など）は本人に見えず編集できない。保存は押さない —— live-rw
+- [x] M-007: デバイスの活動に、この試験が作った 2 つのセッションが出る。現在でない方を個別にサインアウトすると、その 1 つだけが消え、そのセッションの画面は
       ログインへ倒れる。現在のセッションと他の役割（e2e-admin の BFF のセッション）は残る —— live-rw
-- [ ] 順序: `account.rw.spec.ts` は `live-rw` で流れ、`live-rw-revocation` より前・`live-ro`（auth-errors）より後（L1 で固定）
-- [ ] e2e-live で skip 0・失効 6・走査 0、sweep の dry-run で残骸 0・見ていない視点 0（settled の件数を報告）
+- [x] 順序: `account.rw.spec.ts` は `live-rw` で流れ、`live-rw-revocation` より前・`live-ro`（auth-errors）より後（L1 で固定）
+- [x] e2e-live で skip 0・失効 6・走査 0、sweep の dry-run で残骸 0・見ていない視点 0（settled の件数を報告）
 
 ## 網羅表・API・計画の突き合わせ（着手前）
 
@@ -78,4 +78,23 @@ issue: "#2034"
 - `tsc -p tsconfig.node.json` 0 件・eslint 0 件（警告 0）・prettier 緑。`check-knip --require` は既知の unlisted +1（手元に AST の submodule が無い）だけ。
 - 文書の検査（check-trace-blocks / check-doc-links / check-doc-updated / check-cross-repo-refs / check-plan-id-qualification / check-reading-budget /
   check-adr-numbering / check-test-traceability / gen-knowledge-graph --check）: 緑。
-- live: e2e-live（PR）の結果は PR に書く。
+- live（head e89a581c の e2e-live、run 40184060930、層 ro,rw。develop 6fdee29b を取り込み済み）: **55 passed・skip 0**（`check-e2e-skips`: 全 skip の project は無い）。
+  M-006・M-007 とも `[live-rw]` で緑、`[live-rw-revocation]` も緑。teardown が失効させたのは 6 役割。成果物 2 ファイルの走査で資格情報 12 個・発行値 8 個
+  （リセットリンク・鍵・認可コード）の値はどれも 0 件。sweep の dry-run は残骸 0 件・見ていない視点 0 件・後始末済み 2 件（datasources 1・mcp-clients 1）。
+
+## M-007 が赤だった経過と、前提として先に入れた修正（#2245 の作業仕様書が「#2241 で確認する」とした項目の結果）
+
+- 初めの e2e-live では、M-007 のアカウントコンソールが「Server responded with an invalid status.」で開けなかった。原因は 2 つの製品側の不具合で、
+  どちらも本 PR の外で先に直した（オーケストレーターの裁定 (c)）。
+  1. #2242 / PR #2243: BFF の鍵リングの Valkey 接続が初回の失敗を覚え、`/bff/auth/login` が全部 500 になる（live-setup の 6 役が落ちた回）。IADR-0633。
+  2. #2245 / PR #2246: エッジ越しの token の交換が CORS の `Invalid origin`（403・イベントなし）。`account-console` の `webOrigins: ["+"]`。IADR-0524 の追記。
+- **結果**: 両方を取り込んだ run 40184060930 で M-007 は緑（token の交換が通り、個人情報の応答が 200、B だけの個別サインアウト・B の画面がログインへ倒れる・
+  A と e2e-admin の BFF のセッションが残る、まで流れた）。#2245 の作業仕様書の未チェックの M-007 の項目は、この run で確認した。
+
+## 診断のコード（残す・外すの判断）
+
+- **残す**（最小限に整えた）: 4xx/5xx と届かなかった要求の**同期の**記録（OAuth の `error` を添える）、伏字化した `console.error`・`pageerror`
+  （URL の query・fragment と JWT の形を伏せ、300 文字で切る）、段の目印、誤りの画面（dialog）での早い失敗、例外の文言への集約、認可コードの発行値の記録。
+  理由: アカウントコンソールの初期化の失敗は誤りの画面 1 枚しか残さず、原因が画面から読めない（今回は 3 回の診断の push を要した）。次に壊れたとき 1 回で切り分けられる。
+  値は載せない（method・origin＋path・status・誤りの種類だけ）。添付は reporter が切り詰めるので、材料は例外の文言に入れる。
+- **外す**: fetch/xhr の応答を status によらず残す記録。調べのためだけの量で、失敗は同期の記録が拾う（今回の 403 を取りこぼした原因は非同期で積んでいたこと）。
