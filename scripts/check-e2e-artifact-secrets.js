@@ -18,8 +18,14 @@
  * fail-closed: 資格情報の値が 1 つも読めない・走査したファイルが 0 件・zip が壊れている、はいずれも exit 1。
  * 出力は**ファイルの場所と変数名だけ**（値は出さない）。
  *
+ * ［2026-10-25 / #2031 / IADR-0630 決定 6］**実行の中で発行された値**（SC-20 の端末トークン、E-54 の SC-22 の試験キーなど）も探す。
+ *   live の spec は発行の直後に `E2E_ISSUED_<種類>=<値>` の行を `E2E_ISSUED_SECRETS_FILE`（runner の一時領域・0600）へ追記する
+ *   （`e2e/live/support/issuedSecrets.ts`）。`--issued-file` でそのファイルを渡す。失効済みの値も同じに扱う（成果物に残れば赤）。
+ *   🔴 `--issued-file` を明示したのにファイルが無ければ exit 1（安全装置の入力が欠けたまま緑にしない）。globalSetup が実行の初めに
+ *   空のファイル（0600）を作るので、「何も発行しなかった」は空のファイル（0 個）で表れ、「記録先が無い」とは区別できる。行の形が違えば例外。
+ *
  * 使い方:
- *   node scripts/check-e2e-artifact-secrets.js --env-file <KEY=VALUE の行> --scan <dir> [--scan <dir> …]
+ *   node scripts/check-e2e-artifact-secrets.js --env-file <KEY=VALUE の行> [--issued-file <E2E_ISSUED_…=値 の行>] --scan <dir> [--scan <dir> …]
  *   node scripts/check-e2e-artifact-secrets.js --self-test
  */
 const fs = require('fs');
@@ -28,16 +34,19 @@ const zlib = require('zlib');
 const { base32Encode } = require('./lib/totp.js');
 
 const SECRET_NAME = /^E2E_[A-Z0-9_]+_(PASSWORD|TOTP_SECRET)$/;
+/** 実行の中で発行された値の名前（`e2e/live/support/issuedSecrets.ts` と同じ形）。 */
+const ISSUED_NAME = /^E2E_ISSUED_[A-Z0-9_]+$/;
 /** 短すぎる値は偶然の一致を拾う。資格情報は 20 文字以上（IADR-0570 の生成器）。 */
 const MIN_LENGTH = 12;
 const EMBEDDED_ZIP = /data:application\/zip;base64,([A-Za-z0-9+/=]+)/g;
 
 function parseArgs(argv) {
-  const a = { selfTest: false, envFile: null, scan: [] };
+  const a = { selfTest: false, envFile: null, issuedFile: null, scan: [] };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === '--self-test') a.selfTest = true;
     else if (t === '--env-file') a.envFile = argv[++i];
+    else if (t === '--issued-file') a.issuedFile = argv[++i];
     else if (t === '--scan') a.scan.push(argv[++i]);
     else throw new Error(`未知の引数: ${t}`);
   }
@@ -102,6 +111,34 @@ function readSecrets(text) {
   }
   if (out.length === 0) throw new Error('資格情報の値が 1 つも読めない（0 件の走査を緑にしない）');
   return out;
+}
+
+/**
+ * 実行の中で発行された値（`E2E_ISSUED_<種類>=<値>` の行）を読む（純関数）。空行は飛ばし、それ以外の形・短すぎる値は例外（値は出さない）。
+ * 同じ名前の行が複数あってよい（再試行・複数の端末）。名前に通し番号を付けて区別する。
+ */
+function readIssued(text) {
+  const out = [];
+  let n = 0;
+  for (const line of String(text).split(/\r?\n/)) {
+    if (line.trim() === '') continue;
+    n++;
+    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line);
+    if (!m || !ISSUED_NAME.test(m[1])) throw new Error(`発行値のファイルの ${n} 行目の形が違う（E2E_ISSUED_<種類>=<値>）`);
+    if (m[2].length < MIN_LENGTH) throw new Error(`${m[1]}（${n} 行目）: 値が ${MIN_LENGTH} 文字未満で、偶然の一致と見分けられない`);
+    const name = `${m[1]}#${n}`;
+    out.push({ name, value: m[2], forms: formsOf({ name, value: m[2] }) });
+  }
+  return out;
+}
+
+/** `--issued-file` を読む。指定したのにファイルが無ければ例外（0 個として黙って続けない）。指定が無ければ 0 個。 */
+function loadIssued(file) {
+  if (!file) return [];
+  if (!fs.existsSync(file)) {
+    throw new Error(`発行値のファイルが無い（${file}）。globalSetup が空のファイルを作るので、無いのは記録先が欠けた実行である`);
+  }
+  return readIssued(fs.readFileSync(file, 'utf8'));
 }
 
 /** zip の中身を返す（central directory を読む。無圧縮と deflate だけ。Playwright の zip はこの 2 つ）。 */
@@ -305,6 +342,37 @@ function selfTest() {
       run: () => { try { withDir((d) => fs.writeFileSync(path.join(d, 'x.zip'), Buffer.from([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]))); return 'no-throw'; } catch (e) { return e.message; } },
       expect: (m) => /zip/.test(m),
     },
+    {
+      name: '発行値（端末トークン）が成果物にあれば、名前と通し番号を返す（値は返さない）',
+      run: () => {
+        const tok = ['tok', 'selftest', 'Q1w2E3r4T5y6'].join('-');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-artifact-'));
+        try {
+          fs.writeFileSync(path.join(dir, 'error.md'), `token ${Buffer.from(`x${tok}`).toString('base64')} ${tok}`);
+          const r = scan([dir], [...readSecrets(env), ...readIssued(`\nE2E_ISSUED_DEVICE_TOKEN=${tok}\n`)]);
+          return { r, leaked: JSON.stringify(r).includes(tok) };
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+      },
+      expect: (v) => !v.leaked && v.r.hits.length >= 1 && v.r.hits.every((h) => h.name === 'E2E_ISSUED_DEVICE_TOKEN#1'),
+    },
+    {
+      name: '🔴 --issued-file を指定したのにファイルが無ければ例外、空のファイルは 0 個（記録先の欠けと「何も発行しなかった」を区別する）',
+      run: () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-issued-'));
+        try {
+          let missing;
+          try { loadIssued(path.join(dir, 'none.env')); missing = 'no-throw'; } catch (e) { missing = e.message; }
+          fs.writeFileSync(path.join(dir, 'empty.env'), '');
+          return { missing, empty: loadIssued(path.join(dir, 'empty.env')).length, unset: loadIssued(null).length };
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+      },
+      expect: (v) => /ファイルが無い/.test(v.missing) && v.empty === 0 && v.unset === 0,
+    },
+    {
+      name: '🔴 発行値のファイルの形が違えば例外（読めないものを「無い」としない）',
+      run: () => { try { readIssued('DEVICE_TOKEN=abcdefghijklmnop'); return 'no-throw'; } catch (e) { return e.message; } },
+      expect: (m) => /形が違う/.test(m),
+    },
   ];
   let failed = 0;
   for (const c of cases) {
@@ -322,21 +390,25 @@ function main(argv) {
   const args = parseArgs(argv.slice(2));
   if (args.selfTest) process.exit(selfTest());
   if (!args.envFile || args.scan.length === 0) {
-    process.stderr.write('usage: check-e2e-artifact-secrets.js --env-file <path> --scan <dir> [--scan <dir> …] | --self-test\n');
+    process.stderr.write('usage: check-e2e-artifact-secrets.js --env-file <path> [--issued-file <path>] --scan <dir> [--scan <dir> …] | --self-test\n');
     process.exit(2);
   }
-  const secrets = readSecrets(fs.readFileSync(args.envFile, 'utf8'));
+  const credentials = readSecrets(fs.readFileSync(args.envFile, 'utf8'));
+  const issued = loadIssued(args.issuedFile);
+  const secrets = [...credentials, ...issued];
   const r = scan(args.scan, secrets);
   if (r.files === 0) {
     process.stderr.write('✗ 走査したファイルが 0 件（成果物が無いのに「載っていない」としない）\n');
     process.exit(1);
   }
   if (r.hits.length) {
-    process.stderr.write(`✗ 成果物に試験アカウントの資格情報が載っている（${r.hits.length} 件。値は出さない）:\n`);
+    process.stderr.write(`✗ 成果物に試験アカウントの資格情報・発行値が載っている（${r.hits.length} 件。値は出さない）:\n`);
     for (const h of r.hits) process.stderr.write(`  - ${h.where}: ${h.name}（${h.how}）\n`);
     process.exit(1);
   }
-  process.stdout.write(`✓ 成果物 ${r.files} ファイル（中の zip を含む）に資格情報 ${secrets.length} 個の値は載っていない\n`);
+  process.stdout.write(
+    `✓ 成果物 ${r.files} ファイル（中の zip を含む）に資格情報 ${credentials.length} 個・発行値 ${issued.length} 個の値は載っていない\n`,
+  );
 }
 
 if (require.main === module) {
@@ -346,4 +418,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { readSecrets, middles, formsOf, unzip, findIn, scan, makeZip, selfTest };
+module.exports = { readSecrets, readIssued, loadIssued, middles, formsOf, unzip, findIn, scan, makeZip, selfTest };

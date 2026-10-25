@@ -118,7 +118,7 @@ const SWEEP_SCRIPT = fileURLToPath(
  */
 export function sweepArgs(cfg: LiveEnv): string[] | null {
   if (cfg.sweep === 'off') return null;
-  if (!cfg.sweepStack) throw new Error('E2E_SWEEP_STACK が無い（sweep の向け先は明示する）');
+  if (!cfg.stack) throw new Error('E2E_STACK が無い（sweep の向け先は明示する）');
   return [
     SWEEP_SCRIPT,
     '--live',
@@ -127,15 +127,21 @@ export function sweepArgs(cfg: LiveEnv): string[] | null {
     '--auth-dir',
     cfg.authDir,
     '--stack',
-    cfg.sweepStack,
+    cfg.stack,
     cfg.sweep === 'delete' ? '--delete' : '--dry-run',
   ];
 }
 
 /**
+ * sweep の視点の和集合（`scripts/e2e-live-sweep.js` の KINDS の viewers。個人資料は e2e-revocable を除く 5 役割、管理の種類は admin）。
+ * e2e-revocable はセッションが実行の中で失効するので視点に入れない（IADR-0630 決定 5）。L1 が sweep の宣言と一致することを見る。
+ */
+export const SWEEP_ROLES: readonly Role[] = ROLES.filter((role) => role !== 'revocable');
+
+/**
  * 残骸掃きを流す（失効の前に呼ぶ）。返り値は `'off'`（未指定）・`'skipped'`（要る state が欠けた）・`'ok'`・`'failed'`。
  * 🔴 **要る state が 1 つでも無ければ流さずに理由を 1 行出す**（setup がその役割で落ちた。setup の失敗に二次的な失敗を重ねない。
- * #2234 のレビュー）。要る state は sweep の視点の和集合 ＝ 6 役割すべて（個人資料は本人の一覧しか見えない。IADR-0629 決定 5）。
+ * #2234 のレビュー）。要る state は sweep の視点の和集合（SWEEP_ROLES）。
  */
 export function runSweep(
   cfg: LiveEnv,
@@ -154,7 +160,7 @@ export function runSweep(
   if (!args) return 'off';
   const exists = deps.exists ?? existsSync;
   const write = deps.write ?? ((line: string) => process.stdout.write(line));
-  const missing = ROLES.filter((role) => !exists(stateFile(cfg.authDir, role)));
+  const missing = SWEEP_ROLES.filter((role) => !exists(stateFile(cfg.authDir, role)));
   if (missing.length) {
     write(
       `[e2e-live] 残骸掃きを飛ばした（state が無い役割: ${missing.map((r) => `e2e-${r}`).join(', ')}。setup の失敗を先に見る）\n`,

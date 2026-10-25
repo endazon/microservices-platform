@@ -13645,7 +13645,7 @@ exit $RC
     // --- NFR / #2026 / IADR-0625: live E2E（e2e-live.yml）の門 ------------------------------------------------------
     for (const [file, names] of [
       ['check-e2e-skips.js', ['ある project の test がすべて skip なら赤', 'skip でない test が 0 件なら赤', 'test が 0 件のレポートは例外']],
-      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外']],
+      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外', '発行値（端末トークン）が成果物にあれば', '発行値のファイルの形が違えば例外', '--issued-file を指定したのにファイルが無ければ例外']],
     ]) {
       ok(`#2026: ${file} の自己試験が通る`, () => {
         const r = spawnA(process.execPath, [pathA.join(__dirname, file), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
@@ -13779,9 +13779,9 @@ exit $RC
       const listed = out.logs.filter((l) => /^ {2}- /.test(l)).map((l) => l.split(' ')[3]);
       assert.deepStrictEqual(new Set(listed), new Set([...E2E_IDS, 'c1']), '列挙が e2e- の一致と違う');
       assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件（消すには')), out.logs.join('\n'));
-      // 視点: 個人資料は 6 役割すべての一覧を取り（本人のものだけが見える）、他の種類は e2e-admin だけ。
-      assert.deepStrictEqual(out.calls.filter((c) => c.path === '/bff/private-notes').map((c) => c.role), sweepLib.ALL_ROLES);
-      assert.ok(out.logs.some((l) => l.includes('private-notes: 一致 3 件（一覧 5 件・視点: e2e-user, e2e-operator, e2e-admin, e2e-noaccess, e2e-revocable, e2e-trading-owner）')), out.logs.join('\n'));
+      // 視点: 個人資料は e2e-revocable を除く 5 役割の一覧を取り（本人のものだけが見える。IADR-0630 決定 5）、他の種類は e2e-admin だけ。
+      assert.deepStrictEqual(out.calls.filter((c) => c.path === '/bff/private-notes').map((c) => c.role), ['user', 'operator', 'admin', 'noaccess', 'trading-owner']);
+      assert.ok(out.logs.some((l) => l.includes('private-notes: 一致 3 件（一覧 5 件・視点: e2e-user, e2e-operator, e2e-admin, e2e-noaccess, e2e-trading-owner）')), out.logs.join('\n'));
       assert.ok(out.logs.some((l) => l.includes('documents: 一致 1 件（一覧 4 件・視点: e2e-admin）')), out.logs.join('\n'));
       // --dry-run を明示しても同じ。
       assert.deepStrictEqual(runSweep([...target, '--dry-run']).calls.map((c) => c.method).filter((m) => m !== 'GET'), []);
@@ -13827,13 +13827,13 @@ exit $RC
     });
 
     ok('#2030（#2234 レビュー）: 見ていない視点があれば「残骸 0」と言い切らない（dry-run は警告、--delete は exit 1）', () => {
-      // 1 役割のセッションが失効していた（e2e-revocable は失効の試験に使う）・state が無い。
-      const sc = { status: { 'GET /bff/private-notes@revocable': 401 }, missingState: ['trading-owner'] };
+      // 1 役割のセッションが失効していた・state が無い。
+      const sc = { status: { 'GET /bff/private-notes@noaccess': 401 }, missingState: ['trading-owner'] };
       const dry = runSweep(target, sc);
       assert.strictEqual(dry.code, 0, dry.logs.join('\n'));
       const text = dry.logs.join('\n');
-      assert.match(text, /見ていない視点: e2e-revocable, e2e-trading-owner/);
-      assert.match(text, /private-notes@e2e-revocable: セッションが無効（401）/);
+      assert.match(text, /見ていない視点: e2e-noaccess, e2e-trading-owner/);
+      assert.match(text, /private-notes@e2e-noaccess: セッションが無効（401）/);
       assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）/);
       assert.strictEqual(runSweep([...target, '--delete'], sc).code, 1, '消す実行で視点が欠けたのに exit 0');
       // 文書: 「所有者は自分の文書を読める」が無ければ admin の一覧は admin が作った文書を含まない → 文書の一覧を数えずに欠けとして出す。
@@ -13871,6 +13871,22 @@ exit $RC
       assert.deepStrictEqual(sweepLib.DISPOSABLE_STACKS, ['e2e-live'], '使い捨てのスタックの一覧が変わった（PoC を足していないか）');
     });
 
+    ok('#2031 / IADR-0630: 使い捨てのスタックの判定は lib/disposable-stack.js の 1 つだけで、sweep と同じ一覧を使い、CLI は一覧外を kubectl を読む前に exit 2', () => {
+      const lib = require('./lib/disposable-stack.js');
+      assert.strictEqual(sweepLib.DISPOSABLE_STACKS, lib.DISPOSABLE_STACKS, 'sweep が一覧を別に持っている');
+      assert.strictEqual(sweepLib.checkTarget, lib.checkTarget, 'sweep が判定を別に持っている');
+      assert.doesNotThrow(() => lib.checkTarget('e2e-live', () => 'k3d-e2e-live\n'));
+      assert.throws(() => lib.checkTarget('e2e-live', () => 'rancher-desktop'), /k3d-e2e-live でない（rancher-desktop）/);
+      assert.throws(() => lib.checkTarget('rancher-desktop', () => { throw new Error('読まないはず'); }), /使い捨てのスタックだけを受ける/);
+      for (const argv of [['--stack', 'poc'], ['--stack'], []]) {
+        const r = spawnS(process.execPath, [pathS.join(__dirname, 'lib', 'disposable-stack.js'), ...argv], { encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
+        assert.strictEqual(r.status, 2, `${argv.join(' ')}: ${r.stderr}`);
+      }
+      // 書き込みの向け先の門の 2 か所（sweep と live-rw の globalSetup）が同じ判定器を呼ぶ。
+      const readiness = fsS.readFileSync(pathS.join(__dirname, '..', 'src/platform/frontend/e2e/live/support/readiness.ts'), 'utf8');
+      assert.match(readiness, /scripts\/lib\/disposable-stack\.js/, 'live-rw の門が判定器を呼んでいない');
+    });
+
     ok('#2030: cookie は到達先のホストの生きているものだけを送り、無ければ例外', () => {
       const st = { cookies: [
         { name: 'a', value: '1', domain: 'localhost', expires: -1 },
@@ -13900,10 +13916,14 @@ exit $RC
 
     ok('#2030: e2e-live.yml は sweep を dry-run で、このジョブのスタックへ向けて流す（消さない）', () => {
       const wf = fsS.readFileSync(pathS.join(__dirname, '..', '.github', 'workflows', 'e2e-live.yml'), 'utf8');
-      assert.match(wf, /\n\s+E2E_SWEEP: dry-run\n\s+E2E_SWEEP_STACK: \$\{\{ env\.CLUSTER \}\}\n/);
+      assert.match(wf, /\n\s+E2E_SWEEP: dry-run\n(\s+#.*\n)*\s+E2E_STACK: \$\{\{ env\.CLUSTER \}\}\n/);
       assert.match(wf, /\n {2}CLUSTER: e2e-live\n/, 'スタックの名前が使い捨てのスタックの一覧と違う');
       assert.doesNotMatch(wf, /E2E_SWEEP: delete|--delete/, 'e2e-live.yml が消す指定をしている');
       assert.match(wf, /- "scripts\/e2e-live-sweep\.js"/, 'paths に sweep 本体が無い');
+      // #2031 / IADR-0630 決定 6: 実行の中で発行された値を記録する先を live の実行に渡し、成果物の走査がそれを探し、最後に消す。
+      assert.match(wf, /\n\s+E2E_ISSUED_SECRETS_FILE: \$\{\{ runner\.temp \}\}\/e2e-issued-secrets\.env\n/, 'live の実行に発行値の記録先を渡していない');
+      assert.match(wf, /--issued-file "\$RUNNER_TEMP\/e2e-issued-secrets\.env"/, '成果物の走査が発行値を探していない');
+      assert.match(wf, /rm -f "\$RUNNER_TEMP\/e2e-accounts\.env" "\$RUNNER_TEMP\/e2e-issued-secrets\.env"/, '発行値の記録を消していない');
     });
   }
 

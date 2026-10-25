@@ -15,8 +15,11 @@ import {
 import { nextPeriodOtp, otpFor, remainingSeconds, wrongOtpFor } from './live/support/totp';
 import { ja, jaPattern, parsePo } from './live/support/catalog';
 import { startFakeLiveStack } from './support/fakeLiveStack';
-import { revokeSessions, runSweep, sweepArgs } from './live/support/teardown';
-import { createCleanup } from './live/support/cleanup';
+import { revokeSessions, runSweep, sweepArgs, SWEEP_ROLES } from './live/support/teardown';
+import { createCleanup, creatorRole, e2eName } from './live/support/cleanup';
+import { assertDisposableStack, prepareIssuedSecretsFile } from './live/support/readiness';
+import { createRequire } from 'node:module';
+import { recordIssuedSecret } from './live/support/issuedSecrets';
 import { submitOtp, submitPassword } from './live/support/login';
 import { stateFile } from './live/support/env';
 
@@ -169,10 +172,13 @@ test('E2E_LIVE=1 なら live-setup が 6 役割のログインを持ち、既定
   expect(r.out).toMatch(/\[live-ro\] › auth-errors\.ro\.spec\.ts:/);
   expect(r.out).not.toMatch(/\[live-setup\] › [a-z-]+\.ro\.spec\.ts:/);
   expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').layers).toEqual(['ro']);
-  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw,ro' }, '/tmp/x').layers).toEqual([
-    'ro',
-    'rw',
-  ]);
+  expect(
+    parseLiveEnv({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw,ro', E2E_STACK: 'e2e-live' }, '/tmp/x').layers,
+  ).toEqual(['ro', 'rw']);
+  // rw は ro の後に流れる（同じ実行で ro を選んだとき。IADR-0630 決定 4）。
+  const both = runLive({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw', E2E_STACK: 'e2e-live' }, ['--list']);
+  expect(both.status, both.out).toBe(0);
+  expect(both.out).toMatch(/\[live-rw\] › private-notes\.rw\.spec\.ts:/);
 });
 
 test('前提（資格情報・Keycloak・BFF）が無ければ exit 2（前提未整備）で、test を 1 件も流さない', () => {
@@ -490,26 +496,26 @@ test('残す役割の state の権限を変えられなくても、他の 5 役�
   }
 });
 
-test('E2E_SWEEP は dry-run / delete だけを受け、E2E_LIVE=1 と E2E_SWEEP_STACK を要る（向け先を明示しなければ例外。#2030 / IADR-0629）', () => {
+test('E2E_SWEEP は dry-run / delete だけを受け、E2E_LIVE=1 と E2E_STACK を要る（向け先を明示しなければ例外。#2030 / IADR-0629）', () => {
   const base = parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x');
-  expect([base.sweep, base.sweepStack]).toEqual(['off', null]);
+  expect([base.sweep, base.stack]).toEqual(['off', null]);
   expect(sweepArgs(base)).toBeNull();
   for (const bad of ['1', 'true', 'DELETE', 'dryrun', 'off'])
     expect(() =>
-      parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: bad, E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/x'),
+      parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: bad, E2E_STACK: 'e2e-live' }, '/tmp/x'),
     ).toThrow(/E2E_SWEEP の値域外/);
-  expect(() =>
-    parseLiveEnv({ E2E_SWEEP: 'dry-run', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/x'),
-  ).toThrow(/E2E_LIVE=1 が無い/);
-  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'dry-run' }, '/tmp/x')).toThrow(
-    /E2E_SWEEP_STACK が無い/,
+  expect(() => parseLiveEnv({ E2E_SWEEP: 'dry-run', E2E_STACK: 'e2e-live' }, '/tmp/x')).toThrow(
+    /E2E_LIVE=1 が無い/,
   );
-  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/x')).toThrow(
-    /E2E_SWEEP が無い/,
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'dry-run' }, '/tmp/x')).toThrow(
+    /E2E_STACK が無い/,
+  );
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_STACK: 'e2e-live' }, '/tmp/x')).toThrow(
+    /E2E_SWEEP も層の rw も無い/,
   );
   // 既定は dry-run の引数（--delete を付けない）。向け先はすべて明示で渡す。
   const dry = sweepArgs(
-    parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'dry-run', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/auth'),
+    parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'dry-run', E2E_STACK: 'e2e-live' }, '/tmp/auth'),
   )!;
   expect(dry.slice(1)).toEqual([
     '--live',
@@ -523,7 +529,7 @@ test('E2E_SWEEP は dry-run / delete だけを受け、E2E_LIVE=1 と E2E_SWEEP_
   ]);
   expect(statSync(dry[0]).isFile(), `sweep の本体が無い: ${dry[0]}`).toBe(true);
   const del = sweepArgs(
-    parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'delete', E2E_SWEEP_STACK: 'e2e-live' }, '/tmp/auth'),
+    parseLiveEnv({ E2E_LIVE: '1', E2E_SWEEP: 'delete', E2E_STACK: 'e2e-live' }, '/tmp/auth'),
   )!;
   expect(del.at(-1)).toBe('--delete');
 });
@@ -542,7 +548,7 @@ test('後始末は積んだ逆順に /bff/* へ X-MSP-CSRF つきで送り、404
   const port = (server.address() as { port: number }).port;
   const request = await playwright.request.newContext({ baseURL: `http://127.0.0.1:${port}` });
   try {
-    const cleanup = createCleanup(request);
+    const cleanup = createCleanup(request, '/tmp/auth/user.json');
     // 名前が e2e- で始まらない・/bff/ 以外へ送る後始末は、積む時点で例外（sweep が拾えない・画面を経由させない）。
     expect(() => cleanup.track('doc-1', { method: 'DELETE', path: '/bff/documents/1' })).toThrow(
       /e2e- で始める/,
@@ -595,7 +601,7 @@ test('E2E_SWEEP があっても要る state（6 役割）が 1 つでも無け�
   const authDir = mkdtempSync(join(tmpdir(), 'e2e-sweep-skip-'));
   try {
     const cfg = parseLiveEnv(
-      { E2E_LIVE: '1', E2E_SWEEP: 'dry-run', E2E_SWEEP_STACK: 'e2e-live', E2E_AUTH_DIR: authDir },
+      { E2E_LIVE: '1', E2E_SWEEP: 'dry-run', E2E_STACK: 'e2e-live', E2E_AUTH_DIR: authDir },
       '/unused',
     );
     // setup が e2e-admin と e2e-noaccess で落ちた（その 2 役割の state が無い）。
@@ -621,5 +627,128 @@ test('E2E_SWEEP があっても要る state（6 役割）が 1 つでも無け�
     expect(spawned).toBe(1);
   } finally {
     rmSync(authDir, { recursive: true, force: true });
+  }
+});
+
+test('E2E_LAYER に rw があれば E2E_STACK を要り、globalSetup の門が使い捨てのスタックの判定器を呼び、違えば例外で止める（#2031 / IADR-0630）', () => {
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw' }, '/tmp/x')).toThrow(
+    /rw があるのに E2E_STACK が無い/,
+  );
+  const ro = parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x');
+  const rw = parseLiveEnv({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw', E2E_STACK: 'e2e-live' }, '/tmp/x');
+  expect(rw.stack).toBe('e2e-live');
+  const calls: string[][] = [];
+  // rw が無ければ判定器を呼ばない。
+  assertDisposableStack(ro, (args) => (calls.push(args), { status: 0, stderr: '' }));
+  expect(calls).toEqual([]);
+  // rw があれば `scripts/lib/disposable-stack.js --stack <stack>` を呼ぶ。exit 0 なら通す。
+  assertDisposableStack(rw, (args) => (calls.push(args), { status: 0, stderr: '' }));
+  expect(calls.map((a) => a.slice(1))).toEqual([['--stack', 'e2e-live']]);
+  expect(statSync(calls[0]![0]!).isFile(), `判定器が無い: ${calls[0]![0]}`).toBe(true);
+  // 違えば（PoC の context）例外で止める。理由を出す。
+  expect(() =>
+    assertDisposableStack(rw, () => ({
+      status: 2,
+      stderr:
+        '[disposable-stack] 止めた: kubectl の current-context が k3d-e2e-live でない（rancher-desktop）',
+    })),
+  ).toThrow(/使い捨てのスタックの中だけで流す。止めた: .*rancher-desktop/);
+  // 本物の判定器: 一覧に無いスタックは kubectl を読む前に exit 2。
+  const r = spawnSync(process.execPath, [calls[0]![0]!, '--stack', 'rancher-desktop'], {
+    encoding: 'utf8',
+  });
+  expect(r.status, r.stderr).toBe(2);
+  expect(r.stderr).toContain('使い捨てのスタックだけを受ける');
+});
+
+test('E2E_RUN_ID は英小文字と数字 4〜16 字だけを受け、名前は e2e-<runId>-<種類>-r<再試行> になる（IADR-0630 決定 3）', () => {
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_RUN_ID: 'mabc1234' }, '/tmp/x').runId).toBe('mabc1234');
+  for (const bad of ['ABC1', 'ab', 'a-b-c-d', 'x'.repeat(17), 'run id'])
+    expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_RUN_ID: bad }, '/tmp/x')).toThrow(
+      /E2E_RUN_ID の値域外/,
+    );
+  expect(e2eName('mabc1234', 'note', 0)).toBe('e2e-mabc1234-note-r0');
+  expect(e2eName('mabc1234', 'device', 1)).toBe('e2e-mabc1234-device-r1');
+  expect(() => e2eName(null, 'note', 0)).toThrow(/E2E_RUN_ID が無い/);
+  expect(() => e2eName('mabc1234', 'Note', 0)).toThrow(/英小文字/);
+});
+
+test('teardown が要る state の役割は sweep の視点の和集合と一致し、e2e-revocable の context では後始末の部品が実行時に例外で止める（IADR-0630 決定 5）', () => {
+  const sweep = createRequire(import.meta.url)('../../../../scripts/e2e-live-sweep.js') as {
+    KINDS: { viewers: string[] }[];
+  };
+  const union = [...new Set(sweep.KINDS.flatMap((k) => k.viewers))].sort();
+  expect([...SWEEP_ROLES].sort()).toEqual(union);
+  expect(SWEEP_ROLES).not.toContain('revocable');
+  // 作る側の門: storageState のファイル名から役割を引く。e2e-revocable・役割の分からない state では作らせない。
+  const request = {} as Parameters<typeof createCleanup>[0];
+  expect(creatorRole(stateFile('/tmp/auth', 'user'))).toBe('user');
+  expect(creatorRole(stateFile('/tmp/auth', 'trading-owner'))).toBe('trading-owner');
+  expect(() => createCleanup(request, stateFile('/tmp/auth', 'revocable'))).toThrow(
+    /e2e-revocable では作らない/,
+  );
+  expect(() => createCleanup(request, '/tmp/auth/someone.json')).toThrow(/役割が分からない/);
+  expect(() => createCleanup(request, undefined)).toThrow(/役割が分からない/);
+  expect(() => createCleanup(request, { cookies: [], origins: [] })).toThrow(/役割が分からない/);
+});
+
+test('発行された値（端末トークン）は 0600 のファイルへ記録され、偽の成果物に載れば走査が赤になる（値は出さない。IADR-0630 決定 6）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-issued-'));
+  try {
+    const sink = join(dir, 'issued.env');
+    const token = ['dev', 'tok', 'L1fixture', 'Zx9Yw8Vu7'].join('-');
+    // 記録先が無ければ何もしない（手元の実行）。名前・値の形が違えば例外（値は文言に入れない）。
+    recordIssuedSecret({ issuedSecretsFile: null }, 'E2E_ISSUED_DEVICE_TOKEN', token);
+    expect(() => recordIssuedSecret({ issuedSecretsFile: sink }, 'DEVICE_TOKEN', token)).toThrow(
+      /E2E_ISSUED_/,
+    );
+    expect(() =>
+      recordIssuedSecret({ issuedSecretsFile: sink }, 'E2E_ISSUED_DEVICE_TOKEN', `${token}\nx`),
+    ).toThrow(/記録できない値/);
+    // globalSetup が先に空のファイル（0600）を作る。2 回呼んでも中身を変えない。
+    prepareIssuedSecretsFile({ issuedSecretsFile: sink });
+    expect(statSync(sink).mode & 0o777).toBe(0o600);
+    expect(readFileSync(sink, 'utf8')).toBe('');
+    recordIssuedSecret({ issuedSecretsFile: sink }, 'E2E_ISSUED_DEVICE_TOKEN', token);
+    prepareIssuedSecretsFile({ issuedSecretsFile: sink });
+    expect(statSync(sink).mode & 0o777).toBe(0o600);
+    expect(readFileSync(sink, 'utf8')).toBe(`E2E_ISSUED_DEVICE_TOKEN=${token}\n`);
+
+    // 偽の成果物と、試験アカウントの資格情報の偽の値（走査器は資格情報が 1 つも無いと例外にする）。
+    const envFile = join(dir, 'accounts.env');
+    writeFileSync(envFile, `E2E_ADMIN_PASSWORD=${['Pw', 'L1fixture', 'Q1w2E3r4'].join('-')}\n`);
+    const scanWith = (content: string) => {
+      const target = mkdtempSync(join(dir, 'report-'));
+      writeFileSync(join(target, 'error-context.md'), content);
+      return spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL('../../../../scripts/check-e2e-artifact-secrets.js', import.meta.url),
+          ),
+          '--env-file',
+          envFile,
+          '--issued-file',
+          sink,
+          '--scan',
+          target,
+        ],
+        { encoding: 'utf8' },
+      );
+    };
+    const leaked = scanWith(`Error: expected row\n  - code "${token}"\n`);
+    expect(leaked.status, leaked.stderr).toBe(1);
+    expect(leaked.stderr).toContain('E2E_ISSUED_DEVICE_TOKEN#1');
+    expect(`${leaked.stdout}${leaked.stderr}`).not.toContain(token);
+    const clean = scanWith('Error: expected row\n');
+    expect(clean.status, clean.stderr).toBe(0);
+    expect(clean.stdout).toContain('発行値 1 個');
+    // 記録先が欠けた（指定したのにファイルが無い）なら赤（0 個として黙って続けない）。
+    rmSync(sink);
+    const lost = scanWith('Error: expected row\n');
+    expect(lost.status, lost.stderr).toBe(1);
+    expect(lost.stderr).toContain('発行値のファイルが無い');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

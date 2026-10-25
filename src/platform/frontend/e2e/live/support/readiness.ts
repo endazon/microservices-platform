@@ -8,6 +8,9 @@
 //
 // 🔴 満たさなければ **exit 2（前提未整備）**で終える。skip の緑（何も確かめていない）とも、失敗の赤（製品の不具合）とも
 // 区別する（`check-stack-ready.js --live` と同じ扱い）。全 project を skip にして緑にする形は採らない。
+import { spawnSync } from 'node:child_process';
+import { closeSync, existsSync, openSync, chmodSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { request } from '@playwright/test';
 import { missingCredentials, parseLiveEnv, REALM, type LiveEnv } from './env';
 
@@ -41,9 +44,49 @@ export async function readinessProblems(
   return problems;
 }
 
+/** 使い捨てのスタックの判定（sweep と同じ単一の実装。#2031 / IADR-0630 決定 1）。 */
+const DISPOSABLE_STACK_SCRIPT = fileURLToPath(
+  new URL('../../../../../../scripts/lib/disposable-stack.js', import.meta.url),
+);
+
+/**
+ * 🔴 **live-rw の門**（#2031 / IADR-0630）: 層に `rw` があれば、`E2E_STACK` が使い捨てのスタックで、kubectl の current-context が
+ * `k3d-<stack>` であることを確かめる。違えば**例外で止める**（前提未整備の exit 2 ではない —— 向け先の取り違えは製品の不具合でも
+ * 環境の未整備でもなく、流してはならない実行である）。`rw` が無ければ何もしない。`run` は試験が差し替える。
+ */
+export function assertDisposableStack(
+  cfg: LiveEnv,
+  run: (args: string[]) => { status: number | null; stderr: string } = (args) => {
+    const r = spawnSync(process.execPath, args, { encoding: 'utf8' });
+    return { status: r.status, stderr: r.stderr ?? r.error?.message ?? '' };
+  },
+): void {
+  if (!cfg.layers.includes('rw')) return;
+  if (!cfg.stack) throw new Error('E2E_LAYER に rw があるのに E2E_STACK が無い');
+  const r = run([DISPOSABLE_STACK_SCRIPT, '--stack', cfg.stack]);
+  if (r.status !== 0) {
+    throw new Error(
+      `[e2e-live] live-rw は使い捨てのスタックの中だけで流す。止めた: ${r.stderr.trim() || `exit ${r.status}`}`,
+    );
+  }
+}
+
+/**
+ * 発行値の記録先（`E2E_ISSUED_SECRETS_FILE`）を**実行の初めに空で作る**（0600。在れば中身を変えない）。成果物の走査は、指定した
+ * ファイルが無ければ赤にするので、「何も発行しなかった」（空）と「記録先が欠けた」（無い）を区別できる（#2237 のレビュー）。
+ */
+export function prepareIssuedSecretsFile(cfg: Pick<LiveEnv, 'issuedSecretsFile'>): void {
+  if (!cfg.issuedSecretsFile) return;
+  if (!existsSync(cfg.issuedSecretsFile)) closeSync(openSync(cfg.issuedSecretsFile, 'a', 0o600));
+  chmodSync(cfg.issuedSecretsFile, 0o600);
+}
+
 export default async function globalSetup(): Promise<void> {
   const cfg = parseLiveEnv(process.env, '');
   if (!cfg.live) return;
+  // 書き込みの向け先の門は、到達の確かめ（GET）より前に置く（取り違えた向け先へは何も送らない）。
+  assertDisposableStack(cfg);
+  prepareIssuedSecretsFile(cfg);
   // config はワーカーごとにも読み込まれるので、1 回だけ出す警告はここ（globalSetup は 1 回）に置く。
   if (cfg.insecureTls) {
     process.stdout.write(
