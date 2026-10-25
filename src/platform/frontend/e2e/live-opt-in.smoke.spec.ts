@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import {
   credentialNames,
+  credentialsOf,
   missingCredentials,
   OPTION_NAMES,
   parseLiveEnv,
@@ -800,4 +801,32 @@ test('e2e-revocable を失効させる試験は専用の project で、同じ実
   expect(r.out).toMatch(/\[live-rw-revocation\] › revocation\.rw\.spec\.ts:/);
   expect(r.out).not.toMatch(/\[live-rw\] › revocation\.rw\.spec\.ts:/);
   expect(liveProjects({ live: false, layers: ['ro'] })).toEqual([]);
+});
+
+test('資格情報が欠けていれば Keycloak へ送る前に例外で止め、文言は変数名だけ（値を出さない。#2239 のレビュー）', () => {
+  const pw = envName('REVOCABLE', 'PASSWORD');
+  const otp = envName('REVOCABLE', 'TOTP', 'SECRET');
+  const value = ['L1', 'fixture', 'value', 'Zx9'].join('-');
+  expect(credentialsOf('revocable', { [pw]: value, [otp]: value })).toEqual({
+    password: value,
+    totpSecret: value,
+  });
+  for (const env of [
+    {},
+    { [pw]: value },
+    { [pw]: '', [otp]: value },
+    { [pw]: '   ', [otp]: value },
+    { [pw]: '<set-me>', [otp]: value },
+  ]) {
+    let message = '';
+    try {
+      credentialsOf('revocable', env);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message, JSON.stringify(Object.keys(env))).toMatch(
+      /e2e-revocable の資格情報の環境変数が無い/,
+    );
+    expect(message).not.toContain(value);
+  }
 });

@@ -9,7 +9,7 @@
 import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { expect, test as setup, type Page, type TestInfo } from '@playwright/test';
-import { credentialNames, parseLiveEnv, ROLES, stateFile, type Role } from './support/env';
+import { credentialsOf, parseLiveEnv, ROLES, stateFile, type Role } from './support/env';
 import { freshOtp } from './support/totp';
 import { DEFAULT_AUTH_DIR } from './support/paths';
 import { originAndPath, stage as stageAt, submitOtp, submitPassword } from './support/login';
@@ -36,9 +36,8 @@ const stage = <T>(
 ): Promise<T> => stageAt(testInfo, page, cfg.kcUrl, name, run);
 
 async function logIn(page: Page, testInfo: TestInfo, role: Role): Promise<void> {
-  const names = credentialNames(role);
-  const password = process.env[names.password] ?? '';
-  const secret = process.env[names.totpSecret] ?? '';
+  // 欠けていれば Keycloak へ送る前に例外（空の値を誤入力として数えさせない）。
+  const { password, totpSecret: secret } = credentialsOf(role, process.env);
   const username = `e2e-${role}`;
 
   await stage(testInfo, page, 'ログイン画面', async (notes) => {

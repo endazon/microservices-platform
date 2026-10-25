@@ -10,7 +10,7 @@
 // - 🔴 **後始末は有効化**（決定 4）。afterEach が API で e2e-revocable の `enabled` を確かめ、偽なら有効化を送り、それでも戻らなければ赤にする。
 // - 書き込みは使い捨てのスタック（e2e-live.yml）の中だけ（層 `rw` の門。`support/readiness.ts` の assertDisposableStack）。
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
-import { credentialNames, parseLiveEnv, stateFile, type Role } from './support/env';
+import { credentialsOf, parseLiveEnv, stateFile, type Role } from './support/env';
 import { stage, submitOtp, submitPassword } from './support/login';
 import { DEFAULT_AUTH_DIR } from './support/paths';
 import { nextPeriodOtp } from './support/totp';
@@ -105,15 +105,16 @@ test(
     try {
       await test.step('e2e-revocable が別 context で新しくログインし、保護画面を開ける', () =>
         at('被験者のログイン', async () => {
-          const names = credentialNames(SUBJECT);
+          // 欠けていれば Keycloak へ送る前に例外（空の値を誤入力として数えさせない）。
+          const creds = credentialsOf(SUBJECT, process.env);
           await subject.goto('/my/notes');
           await expect(subject).toHaveURL(/\/login(\?|$)/);
           await subject.getByRole('button', { name: 'Keycloak でサインイン', exact: true }).click();
           await subject.waitForURL((url) => url.origin === cfg.kcUrl);
-          await submitPassword(subject, USERNAME, process.env[names.password] ?? '');
+          await submitPassword(subject, USERNAME, creds.password);
           await expect(subject.locator('#otp')).toBeVisible();
           // 次の周期を待つ（前の試験が同じ周期に使った 6 桁は 2 度通らない。誤りは送らない）。
-          const { code } = await nextPeriodOtp(process.env[names.totpSecret] ?? '');
+          const { code } = await nextPeriodOtp(creds.totpSecret);
           await submitOtp(subject, code);
           await subject.waitForURL(
             (url) => url.origin === cfg.edgeUrl && url.pathname === '/my/notes',

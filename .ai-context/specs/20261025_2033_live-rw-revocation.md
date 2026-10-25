@@ -66,7 +66,8 @@ issue: "#2033"
 ## 検証
 
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1199 passed（層 → project 名の対応表の読み先を `support/projects.ts` へ改めた）。
-- L1 `e2e/live-opt-in.smoke.spec.ts`: 28 passed（新規 1: `live-rw-revocation` の依存は `live-setup`・`live-ro`・`live-rw`、`live-rw` は失効の試験を流さない）。
+- L1 `e2e/live-opt-in.smoke.spec.ts`: 29 passed（新規 2: `live-rw-revocation` の依存は `live-setup`・`live-ro`・`live-rw`、`live-rw` は失効の試験を流さない／資格情報が欠けたら変数名だけの例外で止める）。
+- 資格情報の読み出しを `credentialsOf`（`support/env.ts`）へ寄せた: 3 ファイル 6 箇所（`auth.setup.ts`・`auth-errors.ro.spec.ts`・`revocation.rw.spec.ts` の `process.env[...] ?? ''`）。欠けていれば Keycloak へ送る前に止まる（#2239 のレビュー）。
 - `E2E_LIVE=1 E2E_LAYER=ro,rw E2E_STACK=e2e-live … --list`: 53 件（`[live-rw-revocation] › revocation.rw.spec.ts`）。
 - `tsc -p tsconfig.node.json` 0 件・eslint 0 件・prettier 緑。文書の検査は緑。
 - live: e2e-live（PR）の結果は PR に書く。

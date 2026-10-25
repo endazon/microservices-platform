@@ -16,7 +16,7 @@
 // - 作ったセッションはこの test の中でログアウトして失効させる（途中で落ちたら finally で失効させる）。
 import { randomBytes } from 'node:crypto';
 import { expect, request, test, type Page } from '@playwright/test';
-import { credentialNames, parseLiveEnv, type Role } from './support/env';
+import { credentialsOf, parseLiveEnv, type Role } from './support/env';
 import { stage, submitOtp, submitPassword } from './support/login';
 import { DEFAULT_AUTH_DIR } from './support/paths';
 import { nextPeriodOtp } from './support/totp';
@@ -70,9 +70,8 @@ test(
   { tag: ['@p1', '@live-ro'] },
   async ({ page }, testInfo) => {
     test.setTimeout(120_000);
-    const names = credentialNames(ROLE);
-    const password = process.env[names.password] ?? '';
-    const secret = process.env[names.totpSecret] ?? '';
+    // 欠けていれば Keycloak へ送る前に例外（空の値を誤入力として数えさせない）。
+    const { password, totpSecret: secret } = credentialsOf(ROLE, process.env);
     // 誤りの値は秘密ではない（乱数で、実の値と一致しない）。
     const wrongPassword = `wrong-${randomBytes(9).toString('base64url')}`;
     const absentUser = `e2e-absent-${randomBytes(6).toString('hex')}`;
