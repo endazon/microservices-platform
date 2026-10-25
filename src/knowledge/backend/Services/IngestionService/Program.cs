@@ -63,6 +63,8 @@ builder.Services.AddPlatformHealthChecks()
         tags: [HealthCheckExtensions.ReadyTag], timeout: TimeSpan.FromSeconds(5));
 
 // FR-02, ADR-0016: モデル別コレクション（既定は voyage/1024 だけ）の定義（起動時作成・残存防止削除に使用）。
+// 🔴 #2137: 既定（appsettings.json の Embedding:Collections）は検索サービスの appsettings.json にも同じ値を置く（検索が文書の削除の対象を
+// ここから導く。一致は Knowledge.IntegrationTests の EmbeddingCollectionsParityTests が固定する）。片方だけ変えない。
 // ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, [[IADR-0085]]: セルフホスト（ruri/768）は opt-in のときだけ足される。
 // 名前が空の定義（compose の `${…:-}` の既定）は捨てる（`DropUnnamed`）。
 builder.Services.Configure<EmbeddingCollectionsOptions>(

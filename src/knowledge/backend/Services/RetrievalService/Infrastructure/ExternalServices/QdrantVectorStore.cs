@@ -51,6 +51,26 @@ public class QdrantVectorStore(
         return names;
     }
 
+    // FR-06, ADR-0057 決定 1 (#2137): 取り込みが書くモデル別コレクションの構成キー（取り込みの `EmbeddingCollectionsOptions` と同じ
+    // `Embedding:Collections:<i>:Name`）。サービスを跨ぐので型では束ねない（語彙索引と同じ事情）。
+    internal const string WrittenCollectionsKey = "Embedding:Collections";
+
+    // FR-06, ADR-0057 決定 1 (#2137): **削除だけの対象**の名前。取り込みが書く集合のうち、検索が読む集合（主・束ねる追加・語彙索引）に
+    // 無いもの。名前が空の定義は捨てる（取り込みの `DropUnnamed` と同じ）。重複は 1 つにまとめる。順序は構成の順。
+    internal static IReadOnlyList<string> ResolveWrittenOnlyCollectionNames(
+        IConfiguration config, IReadOnlyCollection<string> read)
+    {
+        var names = new List<string>();
+        foreach (var child in config.GetSection(WrittenCollectionsKey).GetChildren())
+        {
+            var name = child["Name"]?.Trim();
+            if (string.IsNullOrEmpty(name) || read.Contains(name) || names.Contains(name))
+                continue;
+            names.Add(name);
+        }
+        return names;
+    }
+
     // FR-03, ADR-0127 決定 1・2, [[IADR-0497]] 決定 1・5 (#1746): **語彙索引**（ベクトルを持たないコレクション）の名前。
     // 🔴 **取り込み（`IngestionService.LexicalCollection`）と同じキー・同じ既定名**であること。サービスを跨ぐため
     // 型では束ねられない（`text` / `document_id` と同じ事情）。空・未設定は既定名へ倒す（無効化の口を持たない）。
