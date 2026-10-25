@@ -45,7 +45,7 @@ public class DocumentDeletedConsumer(
     {
         // 🔴 [[IADR-0596]] 決定 2: 古い削除（作り直した後に遅れて届いた削除）は適用しない。
         var mark = await db.SyncMarks.FirstOrDefaultAsync(m => m.DocumentId == ev.DocumentId, ct);
-        if (DocumentSyncOrdering.IsStaleDelete(mark, ev.DeletedAt))
+        if (DocumentSyncOrdering.IsStaleDelete(mark, ev.DeletedAt, ev.Sequence))
         {
             logger.LogInformation(
                 "Wiki delete {DocumentId}: skipped a deletion older than the applied version (deleted_at={DeletedAt:O}, applied_at={AppliedAt:O})",
@@ -66,7 +66,7 @@ public class DocumentDeletedConsumer(
             mark = DocumentSyncMark.For(ev.DocumentId);
             db.SyncMarks.Add(mark);
         }
-        mark.RecordDeleted(ev.DeletedAt);
+        mark.RecordDeleted(ev.DeletedAt, ev.Sequence);
 
         try
         {
@@ -77,7 +77,7 @@ public class DocumentDeletedConsumer(
             // [[IADR-0596]] 決定 3: より新しい版（作り直し）が先に保存されていれば、Wiki.js をその状態へ戻して ack する。
             // そうでなければ（相手が古い更新・同じ削除の並行）投げて再試行へ委ねる（次の試行で削除を保存し直す）。
             if (await WikiSyncOrdering.ReconcileIfOvertakenAsync(db, wikiJs, contentReader, calls, timeouts, writeGate,
-                    StepName, ev.DocumentId, m => DocumentSyncOrdering.IsStaleDelete(m, ev.DeletedAt), logger, ct))
+                    StepName, ev.DocumentId, m => DocumentSyncOrdering.IsStaleDelete(m, ev.DeletedAt, ev.Sequence), logger, ct))
                 return;
             throw;
         }

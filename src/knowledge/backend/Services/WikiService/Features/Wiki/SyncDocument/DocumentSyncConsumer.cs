@@ -83,7 +83,7 @@ public class DocumentSyncConsumer(
     {
         // 🔴 [[IADR-0596]] 決定 1・2 (#2102): 順序の門。どの分岐より前に置く（古いアーカイブ・古い撤去も新しい状態を崩す）。
         var mark = await db.SyncMarks.FirstOrDefaultAsync(m => m.DocumentId == ev.DocumentId, ct);
-        if (DocumentSyncOrdering.IsStaleUpdate(mark, ev.UpdatedAt))
+        if (DocumentSyncOrdering.IsStaleUpdate(mark, ev.UpdatedAt, ev.Sequence))
         {
             logger.LogInformation(
                 "Wiki sync {DocumentId}: skipped an update older than the applied version (updated_at={UpdatedAt:O}, applied_at={AppliedAt:O}, deleted={Deleted})",
@@ -266,7 +266,7 @@ public class DocumentSyncConsumer(
             mark = DocumentSyncMark.For(ev.DocumentId);
             db.SyncMarks.Add(mark);
         }
-        mark.RecordUpdated(ev.UpdatedAt);
+        mark.RecordUpdated(ev.UpdatedAt, ev.Sequence);
     }
 
     // `save` の戻り値は「保存した」か（slug の恒久的な衝突で保存しなかったら false。`SaveWithSlugFallbackAsync`）。
@@ -281,7 +281,7 @@ public class DocumentSyncConsumer(
         catch (DbUpdateException ex) when (WikiSyncOrdering.IsMarkConflict(ex))
         {
             if (await WikiSyncOrdering.ReconcileIfOvertakenAsync(db, wikiJs, contentReader, calls, timeouts, writeGate,
-                    StepName, ev.DocumentId, m => DocumentSyncOrdering.IsStaleUpdate(m, ev.UpdatedAt), logger, ct))
+                    StepName, ev.DocumentId, m => DocumentSyncOrdering.IsStaleUpdate(m, ev.UpdatedAt, ev.Sequence), logger, ct))
                 return false;
             throw;
         }
