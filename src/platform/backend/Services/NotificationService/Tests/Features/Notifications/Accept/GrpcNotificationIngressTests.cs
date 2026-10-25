@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Json;
 using AwesomeAssertions;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
@@ -122,31 +121,12 @@ public class GrpcNotificationIngressTests
         var onHttpPort = await http11.GetAsync(
             $"{_factory.HttpAddress}/health/live", TestContext.Current.CancellationToken);
         onHttpPort.StatusCode.Should().Be(HttpStatusCode.OK,
-            "gRPC リスナを足しても HTTP/1.1 のポート（REST・受け口・/health/*）は消えない");
+            "gRPC リスナを足しても HTTP/1.1 のポート（/health/*・REST の API）は消えない");
     }
 
-    // T-03: 🔴 **REST の無認証の受け口は残っている**（[[IADR-0419]] 決定 4）。
-    // gRPC 面へ `ServiceCaller` を掛けたことが、既存の呼び出し元を止めていないことの証明である。
-    [Fact]
-    public async Task The_rest_ingress_still_accepts_without_credentials()
-    {
-        var subject = NewSubject();
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-
-        var resp = await http.PostAsJsonAsync("/internal/notifications", new
-        {
-            subject,
-            kind = NotificationKinds.PrivateNotePurgeWeekly,
-            occurredAt = new DateTimeOffset(2026, 9, 9, 9, 0, 0, TimeSpan.Zero),
-            count = 3,
-            thresholdPercent = (int?)null,
-            deadline = (DateTimeOffset?)null,
-        }, TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Created,
-            "★ 並走中の正は REST であり、無認証のまま残す");
-        (await NotificationsAsync(subject)).Should().ContainSingle();
-    }
+    // T-03: ［2026-10-15 / #1902・[[IADR-0533]]］無認証の REST の受け口（`POST /internal/notifications`）は撤去した。
+    // 「gRPC 面へ `ServiceCaller` を掛けても既存の呼び出し元が止まらない」ことを示していた試験は役目を終えた
+    // （REST の呼び出し元は #1901 で撤去済み）。撤去したことは `NotificationIngressTests` が固定する。
 
     // T-04: 陰性対照。資格情報が無ければ `UNAUTHENTICATED`。
     [Fact]
@@ -275,34 +255,8 @@ public class GrpcNotificationIngressTests
             .Which.Deadline.Should().BeNull();
     }
 
-    // T-11: 🔴 **REST と gRPC は同じ事象を同じ 1 件に畳む**（＝同じ本体・同じ重複判定を通っている）。
-    // 時刻は `Timestamp` が UTC へ正規化するが、`DateTimeOffset` の比較は瞬間で行われるので
-    // オフセットの違いは畳みに影響しない。
-    [Fact]
-    public async Task Rest_and_grpc_fold_the_same_event_into_one()
-    {
-        var subject = NewSubject();
-        var at = new DateTimeOffset(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
-
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-        var rest = await http.PostAsJsonAsync("/internal/notifications", new
-        {
-            subject,
-            kind = NotificationKinds.SyncTokenExpiry,
-            occurredAt = at,
-            count = 2,
-            thresholdPercent = (int?)null,
-            deadline = (DateTimeOffset?)null,
-        }, TestContext.Current.CancellationToken);
-        rest.StatusCode.Should().Be(HttpStatusCode.Created, "★ 陽性対照 —— REST が先に 1 件作る");
-
-        var grpc = await PlainClient().AcceptAsync(
-            Request(subject, NotificationKinds.SyncTokenExpiry, at, count: 2),
-            headers: Bearer(ServiceToken()), cancellationToken: TestContext.Current.CancellationToken);
-
-        grpc.Duplicate.Should().BeTrue("輸送を替えても同じ事象は同じ 1 件である");
-        (await NotificationsAsync(subject)).Should().ContainSingle();
-    }
+    // T-11: ［2026-10-15 / #1902］「REST と gRPC が同じ事象を 1 件へ畳む」同値の対は外した ——
+    // REST の受け口を撤去したので対が作れない。畳みそのものは T-07 が gRPC 面で固定する。
 
     // T-12: 構造の門。gRPC サービス型が `ServiceCaller` ポリシーを宣言していること。
     [Fact]

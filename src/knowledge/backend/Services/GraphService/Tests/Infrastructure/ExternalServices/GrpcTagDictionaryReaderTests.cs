@@ -137,17 +137,17 @@ public class GrpcTagDictionaryReaderTests
             .Should().BeEquivalentTo(["経理"]);
     }
 
-    // 🔴 T-09 / T-10: **切替は構成の有無だけである**（登録関数を陽性・陰性の対で固定する。
+    // 🔴 T-09 / T-10: **宛先の有無で登録の形が変わる**（未設定は UNAVAILABLE の呼び出し器。[[IADR-0533]] 決定 2。登録関数を陽性・陰性の対で固定する。
     // DI の分岐は試験ホストからは観測できないので拡張メソッドを直接叩く）。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public void 宛先が未設定でも届かない宛先として登録する()
     {
+        // ［2026-10-10 / #1255］[[IADR-0533]] 決定 2: 未設定でも生成クライアントは登録され、呼び出しは UNAVAILABLE で失敗する
+        // （従前は何も登録せず、`Program.cs` が REST 実装へ倒していた。REST 実装は撤去した）。
         var services = new ServiceCollection()
             .AddTagDictionaryGrpcClient(new ConfigurationBuilder().Build());
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.TagDictionary.TagDictionaryClient),
-            "未設定なら何も登録しない（REST のまま）");
+        services.Should().ContainSingle(d => d.ServiceType == typeof(Pb.TagDictionary.TagDictionaryClient));
     }
 
     [Fact]

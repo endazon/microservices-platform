@@ -149,8 +149,52 @@ public class GrpcDocumentSearchTests
             "呼び出し元が解決したスコープを受ける口を開くと、到達できる誰もが任意の scope を主張できる");
 
         // 🔴 面に出さないもの（[[IADR-0401]] 決定 2）: 検索モード・並び順・総ヒット数・所要時間。
+        // ［2026-10-11 / #1871］[[IADR-0534]]: 縮退の印（`degraded` / `degraded_reasons`）を番号 2・3 で足した（追加のみ）。
         Pb.SearchResponse.Descriptor.Fields.InDeclarationOrder()
-            .Select(f => f.Name).Should().Equal(["results"]);
+            .Select(f => (f.Name, f.FieldNumber)).Should().Equal(
+                [("results", 1), ("degraded", 2), ("degraded_reasons", 3)]);
+    }
+
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): REST の符号はすべて gRPC の enum へ写る（写し忘れを落とす）。
+    // `UNSPECIFIED` へは写さない（送らない値）。enum の値の数も REST の語彙と一致する。
+    [Fact]
+    public void Every_rest_degraded_reason_has_a_grpc_enum_value()
+    {
+        var mapped = SearchDegradedReasons.All.Select(DocumentSearchGrpcService.ToProtoReason).ToList();
+
+        mapped.Should().OnlyHaveUniqueItems();
+        mapped.Should().NotContain(Pb.SearchDegradedReason.Unspecified);
+        mapped.Should().BeEquivalentTo(
+            Enum.GetValues<Pb.SearchDegradedReason>().Where(v => v != Pb.SearchDegradedReason.Unspecified));
+    }
+
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): ★ 埋め込みが空のとき gRPC 面も縮退の印を運ぶ（REST と同じ集合）。
+    // 陰性対照（埋め込みが得られる）と同じ器で対にする。
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task The_response_carries_the_degraded_flag_and_reasons(bool embeddingUnavailable)
+    {
+        var dept = $"deg-{Guid.NewGuid():N}"[..12];
+        _factory.Authoritative = OnlyDept(dept);
+        await SeedAsync(dept);
+        _factory.EmbeddingUnavailable = embeddingUnavailable;
+        try
+        {
+            var resp = await PlainClient().SearchAsync(
+                Request(), headers: Bearer(ServiceToken()),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            resp.Results.Should().ContainSingle("語彙検索だけでも結果は返る");
+            resp.Degraded.Should().Be(embeddingUnavailable);
+            resp.DegradedReasons.Should().Equal(embeddingUnavailable
+                ? [Pb.SearchDegradedReason.EmbedFailed]
+                : []);
+        }
+        finally
+        {
+            _factory.EmbeddingUnavailable = false;
+        }
     }
 
     // 🔴 T-06: **呼び出し先が自分で判定している**ことの直接の観測。

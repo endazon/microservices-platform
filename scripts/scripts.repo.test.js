@@ -594,12 +594,30 @@ module.exports = ({ ok, assert }) => {
         clients.some((c) => c.publicClient === false),
         'confidential client が 1 つも無い（走査が空振りしている）',
       );
+      // ［2026-10-15 / #1894 / [[IADR-0546]]］例外は Keycloak の組み込み `account` / `account-console` だけ。
+      // どの realm にも Keycloak が必ず作る（SC-16 のアカウントコンソール）ので、宣言しなくても稼働には在った。
+      // 宣言したのは、組み込みのままではスコープが付かず SC-16 が 401 になるためである（IADR-0429 は改定しない）。
+      // 足した口にならないことを形で固定する: platform-api の audience を持たない（＝BFF・各サービスの JWT 検証が
+      // aud で落とす）／fullScopeAllowed=false（利用者のレルムロールが載らない）／profile を既定に持つ（利用者名が載り、
+      // BearerCallerPolicy が人として拒否する＝無人の主体と読まれない）。
+      const BUILTIN_PUBLIC = ['account', 'account-console'];
       const pub = clients.filter((c) => c.publicClient === true).map((c) => c.clientId);
+      const extra = pub.filter((id) => !BUILTIN_PUBLIC.includes(id));
       assert.deepStrictEqual(
-        pub, [],
-        `public client が復活している: ${pub.join(', ')}。`
+        extra, [],
+        `public client が復活している: ${extra.join(', ')}。`
           + 'ブラウザが利用者トークンを取れる口になるので、足すなら IADR-0429 の改定が要る',
       );
+      for (const id of pub) {
+        const c = clients.find((x) => x.clientId === id);
+        const scopes = [...(c.defaultClientScopes || []), ...(c.optionalClientScopes || [])];
+        assert.ok(!scopes.includes('platform-api-audience'), `${id} が platform-api の audience を持つ（BFF の Bearer の口になる）`);
+        assert.ok(!(c.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-audience-mapper'),
+          `${id} に audience の写像が直付けされている（aud を足せる。#1864 と同型）`);
+        assert.strictEqual(c.fullScopeAllowed, false, `${id} の fullScopeAllowed が false でない（利用者の全ロールが載る）`);
+        assert.ok((c.defaultClientScopes || []).includes('profile'), `${id} が profile を既定に持たない（人のトークンが無人の主体と読まれる）`);
+        assert.strictEqual(c.serviceAccountsEnabled, false, `${id} にサービスアカウントがある`);
+      }
     });
 
     // 🔴 #1589（NFR-09, ADR-0032, IADR-0420, IADR-0429 決定 3）: BFF の Bearer 受理は
@@ -4253,6 +4271,199 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(ndcg.mergeDatasets([same, reordered]).runs.length, 2);
   });
 
+  // --- measure-search-ndcg（#1746 段 S3）: クエリごとの所要時間と、再順位付けの有効・無効の 2 構成の比較 ---
+  //
+  // FR-03, NFR-01, NFR-02, NFR-29, ADR-0127 決定 6, ADR-0129 決定 1, IADR-0498 決定 7:
+  // 段 S3 は再順位付けの有効・無効の 2 構成で nDCG@10 と遅延を測り、その値で計画が NFR-29 を定める。
+  // 構成は要求ごとに選べない（`Rerank__Enabled`）ので、収集は 2 回・組は名乗り（`rerank`）で取る。
+
+  // 🔴 後方互換: 所要時間・名乗り・縮退を持たない既存の dump のテキスト出力は、変更前と 1 文字も変わらない
+  // （変更前の develop 01c3dcc2 で同じ入力から採った出力を固定値にした）。
+  ok('nDCG（#1746 段 S3）: 既存の dump のテキスト出力は変更前と同一（後方互換）', () => {
+    const data = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'a', mode: 'hybrid', results: { q1: ['d3', 'd2', 'd1'], q2: ['x'] } },
+        { label: 'b', mode: 'keyword', results: { q1: ['d1', 'd2', 'd3'] } },
+      ],
+    };
+    const expected = [
+      '検索の関連性 nDCG@10 の実測（issue #336 / FR-02・FR-03・ADR-0016・ADR-0017（Superseded by ADR-0127・注記は #1746））',
+      '----------------------------------------------------------------------',
+      'qrels                 : 2 クエリ（指紋 76de8f566aa9f56f）',
+      '  ⚠ 正解ラベルが 1 件も無いクエリ: 1 件（平均から除外される）',
+      '',
+      '■ a / mode=hybrid',
+      '  nDCG@10 平均      : 1.0000（評価 1 クエリ）',
+      '  除外（正解ラベル無し）: q2',
+      '    1.0000  就業規則 休暇（上位 3 件中 当たり 3 / 正解 3）',
+      '',
+      '■ b / mode=keyword',
+      '  nDCG@10 平均      : 0.7900（評価 1 クエリ）',
+      '  ⚠ 収集されていないクエリ: q2',
+      '    0.7900  就業規則 休暇（上位 3 件中 当たり 3 / 正解 3）',
+      '',
+      '----------------------------------------------------------------------',
+      '比較（先頭の run が基準）',
+      '  1.0000  a / hybrid',
+      '  0.7900  b / keyword  差 -0.2100',
+      '----------------------------------------------------------------------',
+    ].join('\n');
+    const r = ndcg.summarize(data);
+    assert.strictEqual(ndcg.renderText(r), expected);
+    // JSON は項目が増えるだけ（既存の項目の値は変わらない）。
+    assert.strictEqual(r.runs[0].latency, null);
+    assert.strictEqual(r.runs[0].rerank, null);
+    assert.deepStrictEqual(r.runs[0].rerankFailed, []);
+    assert.deepStrictEqual(r.rerankComparison, { byMode: [], lexicalRerankVsHybrid: null });
+    assert.strictEqual('latencyMs' in r.runs[0].perQuery[0], false, '所要時間の無い dump のクエリに latencyMs が付いた');
+  });
+
+  // 百分位は最近順位法（ceil(p/100 × n) 番目）。🔴 補間すると観測していない値を p95 と呼ぶ（変異: Math.ceil → Math.floor で赤）。
+  ok('nDCG（#1746 段 S3）: 所要時間の統計は最近順位法の百分位（既知値）', () => {
+    const xs = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10, 20, …, 200
+    const s = ndcg.latencyStats([...xs].reverse());
+    assert.deepStrictEqual(s, { count: 20, meanMs: 105, p50Ms: 100, p95Ms: 190, maxMs: 200 });
+    // 標本が 20 未満なら p95 は最大と同じ（少ない標本の参考値であることの表れ）。
+    assert.strictEqual(ndcg.latencyStats([5, 1, 3]).p95Ms, 5);
+    assert.strictEqual(ndcg.latencyStats([5, 1, 3]).p50Ms, 3);
+    assert.strictEqual(ndcg.latencyStats([]), null);
+    assert.strictEqual(ndcg.latencyStats([7]).p95Ms, 7);
+  });
+
+  // 所要時間は**収集したすべてのクエリ**で数える（正解ラベルの無いクエリも遅延としては測れている）。
+  ok('nDCG（#1746 段 S3）: 所要時間はラベルの無いクエリも含めて数え、収集していないクエリは数えない', () => {
+    const run = {
+      label: 'rerank-on', mode: 'hybrid', rerank: true,
+      results: { q1: ['d3', 'd2', 'd1'], q2: ['x'] },
+      latencyMs: { q1: [100, 300, 200], q2: [400], q9: [9999] },
+    };
+    const r = ndcg.summarizeRun(NDCG_QRELS, run, 10);
+    assert.strictEqual(r.latency.count, 4, 'q2（ラベル無し）を数えていない、または qrels に無い q9 を数えた');
+    assert.strictEqual(r.latency.maxMs, 400);
+    assert.strictEqual(r.perQuery[0].latencyMs, 200, 'クエリの所要時間は中央値');
+    assert.strictEqual(r.rerank, true);
+    assert.match(ndcg.renderText(ndcg.summarize({ qrels: NDCG_QRELS, runs: [run] })),
+      /■ rerank-on \/ mode=hybrid \/ 再順位付け=有効\n[\s\S]*所要時間（ミリ秒）    : 平均 250\.0 \/ p50 200\.0 \/ p95 400\.0 \/ 最大 400\.0（4 回。参考値。p95 の正は k6）/);
+  });
+
+  // IADR-0498 決定 7: 有効の構成でも、期限切れ等で元の順に戻ったクエリは再順位付けの順位ではない。件数と ID を出す。
+  ok('nDCG（#1746 段 S3）: rerank-failed に戻ったクエリを件数と ID で報告する（平均からは外さない）', () => {
+    const run = {
+      label: 'rerank-on', mode: 'keyword', rerank: true,
+      results: { q1: ['d1', 'd2', 'd3'], q2: [] },
+      degraded: { q1: ['rerank-failed'], q2: ['embed-failed'] },
+    };
+    const r = ndcg.summarizeRun(NDCG_QRELS, run, 10);
+    assert.deepStrictEqual(r.rerankFailed, ['q1']);
+    assert.strictEqual(r.evaluated, 1, 'rerank-failed のクエリを平均から外した');
+    assert.strictEqual(ndcg.RERANK_FAILED, 'rerank-failed');
+    assert.match(ndcg.renderText(ndcg.summarize({ qrels: NDCG_QRELS, runs: [run] })),
+      /⚠ 再順位付けが元の順へ戻ったクエリ（rerank-failed）: 1 件（q1）/);
+  });
+
+  // 組は名乗り（rerank）で取る。名札の文字列からは推さない。差は「有効 − 無効」。
+  // ADR-0127 決定 6 の組（hybrid・無効 → keyword・有効）も出す。
+  ok('nDCG（#1746 段 S3）: 再順位付けの有効・無効をモードごとに組にし、nDCG と p95 の差を出す', () => {
+    const off = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'x', mode: 'keyword', rerank: false, results: { q1: ['d1', 'd2', 'd3'] }, latencyMs: { q1: [100] } },
+        { label: 'x', mode: 'hybrid', rerank: false, results: { q1: ['d2', 'd3', 'd1'] }, latencyMs: { q1: [150] } },
+        { label: 'x', mode: 'semantic', rerank: false, results: { q1: ['d3'] }, latencyMs: { q1: [120] } },
+      ],
+    };
+    const on = {
+      qrels: NDCG_QRELS,
+      runs: [
+        { label: 'y', mode: 'keyword', rerank: true, results: { q1: ['d3', 'd2', 'd1'] }, latencyMs: { q1: [1100] } },
+        { label: 'y', mode: 'hybrid', rerank: true, results: { q1: ['d3', 'd2', 'd1'] }, latencyMs: { q1: [1250] } },
+        // 名乗りの無い run は組に入らない。
+        { label: 'z', mode: 'hybrid', results: { q1: ['d1'] } },
+      ],
+    };
+    const r = ndcg.summarize(ndcg.mergeDatasets([off, on]));
+    const rc = r.rerankComparison;
+    assert.deepStrictEqual(rc.byMode.map((p) => p.mode), ['keyword', 'hybrid'], 'semantic（有効側が無い）を組にした');
+    const kw = rc.byMode[0];
+    assert.ok(Math.abs(kw.ndcgDelta - (1 - 0.7899980042460358)) < 1e-12, `差の符号・値が違う: ${kw.ndcgDelta}`);
+    assert.strictEqual(kw.p95DeltaMs, 1000);
+    assert.strictEqual(kw.off.label, 'x');
+    assert.strictEqual(kw.on.label, 'y');
+    const d6 = rc.lexicalRerankVsHybrid;
+    assert.strictEqual(d6.off.mode, 'hybrid');
+    assert.strictEqual(d6.on.mode, 'keyword');
+    assert.strictEqual(d6.p95DeltaMs, 950);
+    const hybridOff = r.runs.find((x) => x.mode === 'hybrid' && x.rerank === false).mean;
+    assert.ok(Math.abs(d6.ndcgDelta - (1 - hybridOff)) < 1e-12);
+    const text = ndcg.renderText(r);
+    assert.match(text, /再順位付けの比較（無効 → 有効。差は 有効 − 無効）/);
+    assert.match(text, /mode=keyword: nDCG 0\.7900 → 1\.0000（差 \+0\.2100） \/ p95 100\.0 → 1100\.0 ms（差 \+1000\.0）/);
+    assert.match(text, /hybrid・無効 → keyword・有効（全文のみ＋再順位付け 対 ハイブリッド）/);
+  });
+
+  ok('nDCG（#1746 段 S3）: NDCG_RERANK・NDCG_REPEAT の値域外は落とす', () => {
+    assert.strictEqual(ndcg.parseRerank(undefined), null);
+    assert.strictEqual(ndcg.parseRerank(''), null);
+    assert.strictEqual(ndcg.parseRerank('on'), true);
+    assert.strictEqual(ndcg.parseRerank('OFF'), false);
+    assert.strictEqual(ndcg.parseRerank('true'), true);
+    assert.throws(() => ndcg.parseRerank('yes'), /on \/ off/);
+    assert.strictEqual(ndcg.parseRepeat(undefined), 1);
+    assert.strictEqual(ndcg.parseRepeat('3'), 3);
+    assert.strictEqual(ndcg.parseRepeat(String(ndcg.MAX_REPEAT)), ndcg.MAX_REPEAT);
+    for (const bad of ['0', '-1', '1.5', 'x', String(ndcg.MAX_REPEAT + 1)]) {
+      assert.throws(() => ndcg.parseRepeat(bad), /1〜20 の整数/, `値域外 ${bad} を通した`);
+    }
+  });
+
+  // 収集（I/O）は fetch を差し替えた子プロセスで走らせる（試験の本体は同期）。
+  // 所要時間・縮退の理由・名乗り・繰り返しが dump に載り、順位は 1 回目を採ること。名乗りが無ければ rerank を書かない。
+  ok('nDCG（#1746 段 S3）: 収集は所要時間・縮退の理由・名乗りを dump に残し、繰り返しの順位は 1 回目を採る', () => {
+    const { spawnSync: spawnNdcg } = require('child_process');
+    const code = `
+      const n = require(${JSON.stringify(require.resolve('./measure-search-ndcg.js'))});
+      process.env.NDCG_TOKEN = 't';
+      let calls = 0;
+      globalThis.fetch = async (url, init) => {
+        calls += 1;
+        const body = JSON.parse(init.body);
+        const ids = calls === 1 ? ['d3', 'd2'] : ['d1'];
+        return { ok: true, status: 200, json: async () => ({ results: ids.map((documentId) => ({ documentId })),
+          degradedReasons: calls === 2 ? ['rerank-failed'] : [], mode: body.mode }) };
+      };
+      const qrels = { version: 1, queries: [{ id: 'q1', text: 'a', relevance: { d3: 1 } }] };
+      (async () => {
+        process.env.NDCG_MODES = 'keyword';
+        const withRerank = await n.collect(qrels, { k: 10, rerank: true, repeat: 3 });
+        process.env.NDCG_MODES = 'hybrid';
+        const plain = await n.collect(qrels, { k: 10 });
+        process.stdout.write(JSON.stringify({ calls, withRerank, plain }));
+      })();`;
+    const res = spawnNdcg(process.execPath, ['-e', code], { encoding: 'utf8' });
+    assert.strictEqual(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.strictEqual(out.calls, 4, '繰り返し 3 回 ＋ 1 回の要求になっていない');
+    const run = out.withRerank.runs[0];
+    assert.strictEqual(run.rerank, true);
+    assert.deepStrictEqual(run.results.q1, ['d3', 'd2'], '順位を 1 回目から採っていない');
+    assert.strictEqual(run.latencyMs.q1.length, 3);
+    assert.ok(run.latencyMs.q1.every((v) => typeof v === 'number' && v >= 0));
+    assert.deepStrictEqual(run.degraded, { q1: ['rerank-failed'] });
+    assert.strictEqual('rerank' in out.plain.runs[0], false, '名乗りが無いのに rerank を書いた');
+    assert.strictEqual(out.plain.runs[0].latencyMs.q1.length, 1);
+  });
+
+  // 手順書（docs/operations 配下）が計測器と k6 の 2 本を正しく指していること。
+  ok('nDCG（#1746 段 S3）: 段 S3 の計測手順書が在り、計測器・k6・名乗りの変数を指す', () => {
+    const doc = require('fs').readFileSync(require('path').join(__dirname, '..', 'docs', 'operations', 'search-rerank-s3-measurement-runbook.md'), 'utf8');
+    for (const s of ['scripts/measure-search-ndcg.js', 'perf/k6/search-load.js', 'perf/k6/rag-load.js',
+      'NDCG_RERANK', 'Rerank__Enabled', 'search_rerank_enabled', 'llm_purpose="rerank"']) {
+      assert.ok(doc.includes(s), `手順書に ${s} が無い`);
+    }
+    assert.ok(/<!-- trace:[\s\S]*ADR-0129[\s\S]*-->/.test(doc), 'trace ブロックに ADR-0129 が無い');
+  });
+
   ok('nDCG: 壊れた qrels は黙って受けない', () => {
     assert.ok(ndcg.validateQrels({ queries: [] }).length > 0, '空の queries を通している');
     assert.ok(
@@ -5344,15 +5555,16 @@ ${r.stderr}`);
         '既定値つき a は見逃してよいが、既定値なし b は required を要求しなければならない');
     });
 
-    // 到達性そのもの。実データで狙った 5 件に当たっていること（規則が「たまたま」効いていない側）。
+    // 到達性そのもの。実データで狙った 4 件に当たっていること（規則が「たまたま」効いていない側）。
     ok('check-openapi-dto-drift: 実データの要求側スキーマを取れる', () => {
       const fsB = require('fs');
       const drift = require('./check-openapi-dto-drift.js');
       const yaml = fsB.readFileSync(
         pathDrift.join(__dirname, '..', 'docs/api/openapi.yaml'), 'utf8');
       const { requestOnly } = drift.collectReachability(yaml);
+      // ［2026-10-15 / #1902］`EmbedApiRequest` は REST の `/embed` とともに openapi.yaml から外した。
       for (const n of ['SearchRequest', 'AnalysisTaskRequest', 'AnalysisDataRange',
-        'CompletionApiRequest', 'EmbedApiRequest']) {
+        'CompletionApiRequest']) {
         assert.ok(requestOnly.has(n), `${n} が要求側として取れていない`);
       }
       assert.ok(!requestOnly.has('ConversionJobDto'), 'ConversionJobDto は応答側である');
@@ -6854,6 +7066,154 @@ ${r.stderr}`);
     });
   }
 
+  // --- #2044: 警報の宛先（Alertmanager → 近接 MTA のメール受信先）--------------------------------
+  //
+  // NFR-21, ADR-0006, ADR-0045, ADR-0078 決定 2, IADR-0571: 経路B の Alertmanager の既定の route が
+  // **`default-null` ではなく近接 MTA 経由のメール受信先を向く**ことを固定する。宛先は Secret から起動時に描画され
+  // （空なら警告して default-null・不正なら起動しない。IADR-0571 決定 3）、**実値はリポジトリに無い**。
+  // 🔴 smarthost・差出人ドメイン・port は deploy/mail-relay/mail-relay.yaml から**導く**（書き写さない）。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const os = require('os');
+    const REPO = path.join(__dirname, '..');
+    const rd = (...p) => fs.readFileSync(path.join(REPO, ...p), 'utf8');
+    const AM_K8S = rd('deploy', 'local', 'observability', 'alertmanager.yaml');
+    const RELAY = rd('deploy', 'mail-relay', 'mail-relay.yaml');
+    const AM_COMPOSE = rd('deploy', 'alertmanager', 'alertmanager.yml');
+    const ES = rd('deploy', 'local', 'vault', 'eso', 'externalsecret-alertmanager-mail.yaml');
+    const docs = (text) => text.split(/^---\s*$/m);
+    const docOf = (text, kind, name) =>
+      docs(text).find((d) => new RegExp(`^kind: ${kind}\\s*$`, 'm').test(d) && new RegExp(`^  name: ${name}\\s*$`, 'm').test(d));
+    // ConfigMap の `<key>: |` ブロックを字下げ 4 を外して取り出す。
+    const cmKey = (key) => {
+      const m = new RegExp(`\\n  ${key.replace(/[.]/g, '\\.')}: \\|\\n((?:    .*\\n|\\s*\\n)*)`).exec(AM_K8S);
+      assert.ok(m, `ConfigMap alertmanager-config に ${key} が無い`);
+      return m[1].split('\n').map((l) => l.slice(4)).join('\n');
+    };
+    // 比較用: コメント行と空行を落とし、末尾の空白を落とす。
+    const norm = (t) => t.split('\n').filter((l) => l.trim() && !/^\s*#/.test(l)).map((l) => l.replace(/\s+$/, ''));
+    const routeReceiver = (t) => (/^route:\n(?:[ ].*\n)*?  receiver: (\S+)/m.exec(t) || [])[1];
+
+    const relaySvc = docOf(RELAY, 'Service', 'mail-relay');
+    const relayNs = (/^  namespace: (\S+)/m.exec(relaySvc) || [])[1];
+    const relayPort = (/name: smtp, port: (\d+)/.exec(relaySvc) || [])[1];
+    const senderDomain = (/ALLOWED_SENDER_DOMAINS, value: "([^"]+)"/.exec(RELAY) || [])[1];
+
+    ok('#2044: 前提 —— mail-relay の Service（名前・namespace・smtp の port）と差出人ドメインを読める', () => {
+      assert.ok(relaySvc && relayNs && relayPort && senderDomain, `読めない: ns=${relayNs} port=${relayPort} domain=${senderDomain}`);
+    });
+
+    ok('#2044: 宛先ありの設定は既定の route がメール受信先を向き（default-null ではない）、smarthost は mail-relay の Service から導かれる', () => {
+      const t = cmKey('alertmanager-mail.yml.tmpl');
+      const recv = routeReceiver(t);
+      assert.ok(recv && recv !== 'default-null', `既定の route の受信先が ${recv} である`);
+      const block = new RegExp(`- name: ${recv}\\n((?:[ ]{4,}.*\\n)+)`).exec(t);
+      assert.ok(block, `受信先 ${recv} の定義が無い`);
+      assert.match(block[1], /email_configs:/, '受信先にメールの設定が無い（null 受信先と同じ）');
+      assert.match(block[1], new RegExp(`smarthost: 'mail-relay\\.${relayNs}\\.svc\\.cluster\\.local:${relayPort}'`), 'smarthost が mail-relay の Service と一致しない');
+      assert.match(block[1], new RegExp(`from: '[^@']+@${senderDomain.replace(/[.]/g, '\\.')}'`), '差出人が近接 MTA の差出人の門を通らない');
+      assert.match(block[1], /require_tls: false/, 'require_tls を明示していない（既定 true では relay への投函が失敗する）');
+      // 宛先の実値をリポジトリに置かない —— `to` はプレースホルダだけ。
+      const tos = [...t.matchAll(/^\s*- to: '([^']*)'/gm)].map((x) => x[1]);
+      assert.deepStrictEqual(tos, ['__ALERT_MAIL_TO__'], `to にプレースホルダ以外が書かれている: ${tos}`);
+    });
+
+    ok('#2044: 宛先ありと宛先なしの設定は受信先以外が同じで、宛先なしは compose（default-null）と同内容', () => {
+      const off = norm(cmKey('alertmanager.yml'));
+      const on = norm(cmKey('alertmanager-mail.yml.tmpl'));
+      const strip = (ls) => {
+        const out = [];
+        let inRecv = false;
+        for (const l of ls) {
+          if (/^receivers:/.test(l)) { inRecv = true; continue; }
+          if (inRecv && /^\S/.test(l)) inRecv = false;
+          if (!inRecv && !/^  receiver: /.test(l)) out.push(l);
+        }
+        return out;
+      };
+      assert.deepStrictEqual(strip(on), strip(off), 'route の束ね・inhibit_rules が宛先の有無で食い違う');
+      assert.strictEqual(routeReceiver(cmKey('alertmanager.yml')), 'default-null');
+      assert.deepStrictEqual(off, norm(AM_COMPOSE), '経路B の宛先なしの設定が compose の alertmanager.yml と食い違う');
+    });
+
+    ok('#2044: Deployment は initContainer で Secret alertmanager-mail の to（optional）から描画し、本体は描画済みの設定を読む', () => {
+      const dep = docOf(AM_K8S, 'Deployment', 'alertmanager');
+      assert.ok(dep, 'Deployment alertmanager が無い');
+      assert.match(dep, /initContainers:\n\s+# [^\n]*\n(?:\s+#[^\n]*\n)*\s+- name: render-config/, 'initContainer render-config が無い');
+      assert.match(dep, /name: ALERT_MAIL_TO\n\s+valueFrom: \{ secretKeyRef: \{ name: alertmanager-mail, key: to, optional: true \} \}/,
+        '宛先を Secret alertmanager-mail の to（optional）から読んでいない');
+      assert.match(dep, /- name: config\n\s+emptyDir: \{\}/, '本体の設定（config）が描画済みの emptyDir でない（ConfigMap を直接読むと宛先が入らない）');
+      assert.match(dep, /secret\.reloader\.stakater\.com\/reload: "alertmanager-mail"/, 'Reloader の注釈が無い');
+      assert.match(ES, /target:\n\s+name: alertmanager-mail\n[\s\S]*- secretKey: to\n\s+remoteRef:\n\s+key: msp\/alertmanager-mail\n\s+property: to/, 'ExternalSecret が Secret alertmanager-mail の to を供給しない');
+    });
+
+    ok('#2044: Alertmanager → mail-relay の ingress を別宣言で開く（port は Service から導く）', () => {
+      const np = docOf(AM_K8S, 'NetworkPolicy', 'mail-relay-ingress-alertmanager');
+      assert.ok(np, 'NetworkPolicy mail-relay-ingress-alertmanager が無い');
+      assert.match(np, /^  podSelector: \{ matchLabels: \{ app: mail-relay \} \}/m);
+      assert.match(np, /podSelector: \{ matchLabels: \{ app: alertmanager \} \}/);
+      assert.match(np, new RegExp(`\\{ protocol: TCP, port: ${relayPort} \\}`));
+    });
+
+    // 描画スクリプトを実際に走らせる（amtool は CI に無いので true で代える。amtool の検査は配備時に効く）。
+    const render = (script, to) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'am2044-'));
+      try {
+        const src = path.join(dir, 'src');
+        const out = path.join(dir, 'out');
+        fs.mkdirSync(src);
+        fs.mkdirSync(out);
+        for (const k of ['alertmanager.yml', 'alertmanager-mail.yml.tmpl']) fs.writeFileSync(path.join(src, k), cmKey(k));
+        fs.writeFileSync(path.join(src, 'render.sh'), script);
+        const env = { PATH: process.env.PATH, RENDER_SRC: src, RENDER_OUT: out, AMTOOL: 'true' };
+        if (to !== undefined) env.ALERT_MAIL_TO = to;
+        const r = spawnSync('sh', [path.join(src, 'render.sh')], { encoding: 'utf8', env });
+        const f = path.join(out, 'alertmanager.yml');
+        return { code: r.status, err: r.stderr || '', conf: fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : null };
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const SCRIPT = cmKey('render.sh');
+    const INJECT = ["ops@example.com'\n    receiver: x", "a@x.example'}", 'a@x.example|b'];
+
+    ok('#2044: 描画 —— 宛先が無い・空なら警告して default-null（起動は止めない）', () => {
+      for (const to of [undefined, '', '  ']) {
+        const r = render(SCRIPT, to);
+        assert.strictEqual(r.code, 0, r.err);
+        assert.match(r.err, /WARNING/, `警告を出していない（to=${JSON.stringify(to)}）`);
+        assert.strictEqual(routeReceiver(r.conf), 'default-null');
+      }
+    });
+
+    ok('#2044: 描画 —— 宛先があれば受信先を有効にし、値をそのまま差し込む（カンマ区切り可・空白は落とす）', () => {
+      const r = render(SCRIPT, 'ops@example.com, oncall@example.org');
+      assert.strictEqual(r.code, 0, r.err);
+      assert.notStrictEqual(routeReceiver(r.conf), 'default-null');
+      assert.match(r.conf, /- to: 'ops@example\.com,oncall@example\.org'/);
+      assert.ok(!r.conf.includes('__ALERT_MAIL_TO__'), 'プレースホルダが残っている');
+    });
+
+    ok('#2044: 描画 —— 形の不正な宛先（YAML・sed への注入）は起動しない（exit 1・設定を書かない）', () => {
+      for (const to of INJECT) {
+        const r = render(SCRIPT, to);
+        assert.strictEqual(r.code, 1, `不正な宛先で起動した: ${JSON.stringify(to)}\n${r.err}`);
+        assert.strictEqual(r.conf, null, '不正な宛先で設定を書いた');
+      }
+    });
+
+    ok('#2044: 変異 —— 形の検査を外すと注入が設定に入る（上の試験が検出力を持つ）', () => {
+      const mutated = SCRIPT.replace(/if ! printf[^\n]*\n[\s\S]*?\n\s*fi\n/, '');
+      assert.notStrictEqual(mutated, SCRIPT, '変異を当てられない（検査の形が変わった）');
+      // 引用符を閉じる注入（改行・空白は描画が落とすので、引用符で YAML の構造を壊す形を使う）。
+      const r = render(mutated, INJECT[1]);
+      assert.strictEqual(r.code, 0, r.err);
+      assert.ok(r.conf.includes("'a@x.example'}'"), '検査を外しても注入が入らない —— 変異が効いていない');
+    });
+  }
+
   // --- #1246 の取りこぼし: Prometheus のアラートルールの経路 A/B パリティ ----------
   //
   // 経路 B の inline は compose の原本から**静かに遅れた**（#1246 の 2 件が 2 世代残った）。
@@ -8101,6 +8461,9 @@ ${r.stderr}`);
      * 外しても落ちる。ジョブ単位で `contents` を書かない（＝ none）形は `contents: 'none'` として比べる。
      */
     const JOB_SCOPES = {
+      // #2005: age の版のずれの専用 issue の起票・上書き（issues: write）。APKINDEX は認証なしの HTTP で読む
+      'age-apkindex-watch.yml:watch': { issues: 'write' },
+      'age-apkindex-watch.yml:report-failure': { actions: 'read', issues: 'write' },
       'backlog-audit.yml:audit': { issues: 'write', 'pull-requests': 'read' },
       'backlog-audit.yml:report-failure': { actions: 'read', issues: 'write' },
       'changelog.yml:changelog': { contents: 'write', 'pull-requests': 'write' },
@@ -8110,13 +8473,20 @@ ${r.stderr}`);
       'ci-latency-watch.yml:watch': { checks: 'read', 'pull-requests': 'read' },
       'ci-latency-watch.yml:report-failure': { actions: 'read', issues: 'write' },
       // actions: read は mcp__github_ci__* の導入条件と `gh run list`（ワークフローの注記）
-      'claude-code-review.yml:claude-review': { actions: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
+      // checks: read は判定のステップが同じ head の CI scripts-tests の check-run を読むため（IADR-0615 / #2184、IADR-0617 / #2206）
+      'claude-code-review.yml:claude-review': { actions: 'read', checks: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
+      // #2026 / IADR-0625: live E2E の日次・dispatch の失敗の起票（ci-failure-issue.yml の呼び出し。#1588 と同じ範囲）
+      'e2e-live.yml:report-failure': { actions: 'read', issues: 'write' },
+      // #2037 / IADR-0623: 直前の develop の実行の成果物を `gh run list` / `gh run download` で読む（actions: read）・
+      // 3 回連続 flaky の test の専用 issue を起票・追記する（issues: write）。develop への push だけで走る
+      'frontend.yml:e2e-flaky-issue': { actions: 'read', issues: 'write' },
       'integration-stack.yml:report-failure': { actions: 'read', issues: 'write' },
       // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行（actions: write）し、結果を issue へ書く（issues: write）
-      'integration-stack-rerun.yml:rerun': { actions: 'write', issues: 'write' },
+      // #1998: T-25 の p / W を検査器の注釈から読む（GET /check-runs/{id}/annotations → checks: read）
+      'integration-stack-rerun.yml:rerun': { actions: 'write', checks: 'read', issues: 'write' },
       'integration.yml:report-failure': { actions: 'read', issues: 'write' },
       'obsidian-plugin-release.yml:release': { contents: 'write' },
       'openapi.yml:openapi': { contents: 'write', 'pull-requests': 'write' },
@@ -8294,7 +8664,7 @@ ${r.stderr}`);
       return { issues, callers, need };
     };
 
-    ok('#1588: ci-failure-issue.yml の呼び出し側 6 本すべてが report ジョブの要求（actions: read を含む）を与える', () => {
+    ok('#1588: ci-failure-issue.yml の呼び出し側すべてが report ジョブの要求（actions: read を含む）を与える', () => {
       const files = realFiles();
       const { issues, callers, need } = reusableCallerIssues(files);
       assert.ok(callers >= 6, `呼び出し側を ${callers} 本しか読めない（走査が壊れている）`);
@@ -8512,6 +8882,12 @@ ${r.stderr}`);
           'gen-changelog.js',
           'gen-openapi-skeleton.js',
           'gen-knowledge-graph.js',
+          // SC-13〜16 / IADR-0532: Keycloak テーマの tokens.css を @platform/ui のトークンから**生成**する。引数なしで走らせると
+          // ファイルを書くので、検査器として spawn される母集合に入れてはならない（`--check` は CI の専用ステップが走らせる）。
+          'gen-keycloak-theme-tokens.js',
+          // #2024 / IADR-0570: 試験アカウントの資格情報の**生成器**（乱数の KV の JSON を標準出力へ書く。判定を返さない）。
+          // 標準出力が端末だと exit 2 で止まる。検査器として spawn される母集合に入れてはならない（試験は keycloak-realm-reconcile.test.js）。
+          'gen-e2e-accounts.js',
           'measure-abac-combinations.js',
           // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、
@@ -8535,12 +8911,26 @@ ${r.stderr}`);
           // #1762 / IADR-0503: DocumentUpdated の再発行の**駆動器**（稼働クラスタへ発行を起こす副作用を持ち、判定を返さない）。
           // 投入器と同じく検査器ではない。母集合に数えない。
           'republish-document-updated.js',
+          // #1931 項目 3 / IADR-0549: 本文の無い古い文書の一括アーカイブの**駆動器**（稼働クラスタの台帳を書き換える副作用を持ち、
+          // 判定を返さない）。再発行の駆動器と同じく検査器ではない。母集合に数えない。
+          'archive-bodyless-documents.js',
+          // #1973 / IADR-0556: AST が境界語つきで保存した文書から枠を剥がす一回限りの管理操作の**駆動器**（稼働クラスタの台帳を書き換える
+          // 副作用を持ち、判定を返さない）。一括アーカイブの駆動器と同じく検査器ではない。母集合に数えない。
+          'strip-untrusted-boundary.js',
+          // #1974 / IADR-0549（2026-10-17 追記）: AST の Quote の一括アーカイブの**駆動器**（台帳を書き換える副作用を持ち、判定を返さない）。
+          'archive-ast-quote-documents.js',
           // #1617 / 計画 ADR-0118 決定 4: T-25 の p の分布の**月次の集計器**。`measure-*` と同じく数字を出すだけで
           // 合否を返さない。走らせると GitHub の API を読みに行くので、検査器として spawn する母集合に入れない。
           't25-monthly-summary.js',
           // #1617 / 計画 ADR-0118 決定 2: T-25 だけの赤の run を 1 回だけ再実行し、issue へ書く**実行器**（副作用を持つ）。
           // 投入器と同じく検査器ではない。ワークフロー（integration-stack-rerun.yml）からだけ `--apply` で呼ぶ。
           't25-rerun-on-chance-red.js',
+          // #1935 / IADR-0543: 経路 B の Loki から時間範囲のログを書き出す**読み出し器**（判定を返さず、ファイルを書く）。
+          // 走らせると Loki（localhost の port-forward）を読みに行くので、検査器として spawn する母集合に入れない。
+          'export-loki-logs.js',
+          // #2030 / IADR-0629: live E2E の残骸掃きの**駆動器**（--delete で稼働の BFF へ削除を送る副作用を持ち、判定を返さない）。
+          // 駆動器と同じく検査器ではない。母集合に数えない（試験は #2030 節）。
+          'e2e-live-sweep.js',
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
@@ -8712,7 +9102,21 @@ ${r.stderr}`);
         //    （ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく issue の受け入れ基準 4（稼働の Keycloak での実測）と
         //    計画 ADR-0123 フォローアップ 3 の名指しに基づく新設である。** git を一切呼ばず kubectl を外部コマンドとして叩くため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-login-existence-disclosure.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 62, `検査器の母集合が 62 本から変わった（${scripts.length} 件）`);
+        // ★ #2005 / IADR-0568 で `check-age-apkindex.js`（platform-backup の Dockerfile が固定する age の版と、取得元の Alpine の
+        //    APKINDEX の版を突き合わせ、ずれたら専用 issue を起票する。日次の age-apkindex-watch.yml が走らせる）を新設したため 62 → 63。
+        //    **「同型の事故が 2 回」**（#1825・#2003）に基づく新設である。git を一切呼ばず、引数なしでは使い方を出して exit 2 する
+        //    （ネットワークにも触れない）ため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        // ★ #2037 / IADR-0623 で `check-e2e-flaky.js`（L1 E2E の Playwright の JSON レポートから flaky を数えて警告し、
+        //    develop で 3 回連続 flaky の test を専用 issue に起票する。frontend.yml の e2e / e2e-flaky-issue ジョブが走らせる）を
+        //    新設したため 63 → 64（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく基準書
+        //    （docs/tests/E2E_STANDARDS.md §10）と親 #2013 の分割案 E-73 の名指しに基づく新設である。** git を一切呼ばず、
+        //    引数なしでは使い方を出して exit 2 するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        // ★ #2026 / IADR-0625 で `check-e2e-skips.js`（live E2E の JSON レポートで全 skip の project を赤にする）と
+        //    `check-e2e-artifact-secrets.js`（live E2E の成果物を上げる前に、試験アカウントの資格情報の値の有無を zip の中まで走査する）を
+        //    新設したため 64 → 66。🔴 **「同型の事故が 2 回」ではなく基準書 §6・§11 と親 #2013 の分割案 E-32 の名指し**（前者）と、
+        //    IADR-0624 の実測（`fill` の値がレポートに出た）に基づく新設である（後者）。どちらも git を一切呼ばず、引数なしでは使い方を出して
+        //    exit 2 するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 66, `検査器の母集合が 66 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -8827,7 +9231,7 @@ ${r.stderr}`);
         // ★ #755: companion へ畳んだ際に短くした（規範は同じ）。
         '実在性は検査されない',
         '既存の無採番 `NFR` は遡及書き換えしない',
-        'NFR-01`〜`NFR-29',
+        'NFR-01`〜`NFR-30',
       ]) {
         assert.ok(t.includes(n), `既存の規範「${n}」が入口から消えた`);
       }
@@ -9312,7 +9716,7 @@ ${r.stderr}`);
     const HEADS = ['起点 ID の種別', 'コミットメッセージの機械チェック'];
     const NORMS = [
       'FR-01..22',                    // 現行レンジ（pin は資料再編 IADR-0228 で撤去）
-      'NFR-01`〜`NFR-29',             // NFR の採番
+      'NFR-01`〜`NFR-30',             // NFR の採番
       '`Proposed` でも ID としては実在する',
       '着手条件は FR 単位で読む',      // 塊の内側から畳んだ規範
       // 同上。旧規範「CI は計画 ADR の実在性を守っていない」は資料再編（IADR-0228）で
@@ -9954,7 +10358,7 @@ ${r.stderr}`);
   // --- NFR / #747: submodule の bump でフロント CI が起動すること -----------------
   //
   // ★ 起点 ID は**無採番の `NFR`** である（`.claude/rules/traceability.md` の例外 2）。
-  //   本件は CI の起動条件という**工程の統制**であり、計画側の非機能要件表（`NFR-01`〜`NFR-29`）に
+  //   本件は CI の起動条件という**工程の統制**であり、計画側の非機能要件表（`NFR-01`〜`NFR-30`）に
   //   当たる番号が無い。近い番号を無理に当てない。ワークフロー側のコメントと同じ ID を使う。
   //
   // ★ 「paths: の取りこぼしで検査が静かに素通りする」型は **3 件目**である。
@@ -10171,7 +10575,7 @@ ${r.stderr}`);
     // --- NFR / IADR-0214: ゲートが読むファイル ⊆ そのゲートを走らせる workflow の paths: -----
     //
     // ★ 起点 ID は**無採番の `NFR`**（上の #747 / #801 節と同じ理由。CI の起動条件という工程の
-    //   統制であり、計画側の非機能要件表〔`NFR-01`〜`NFR-29`〕に当たる番号が無い。IADR-0179 決定 1）。
+    //   統制であり、計画側の非機能要件表〔`NFR-01`〜`NFR-30`〕に当たる番号が無い。IADR-0179 決定 1）。
     //
     // ★ 「paths: の取りこぼしで検査が静かに素通りする」型は**着地日順に 5 件目**である。
     //     1 件目 = #562（`ce96eb81` / 2026-08-08。整形ゲートの設定が paths: に無かった）
@@ -10988,7 +11392,7 @@ ${r.stderr}`);
       const up = fs.readFileSync(path.join(REPO_IS, 'scripts/k8s-local-up.sh'), 'utf8');
       assert.match(
         up,
-        /^\s*K3S_IMAGE="\$\{K3S_IMAGE:-rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+\}"\s*$/m,
+        /^\s*K3S_IMAGE="\$\{K3S_IMAGE:-rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+@sha256:[0-9a-f]{64}\}"\s*$/m, // #1858: tag@digest
         'k8s-local-up.sh の K3S_IMAGE の既定が版で固定されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
           'ここは好みではなく検査の前提である',
       );
@@ -11303,6 +11707,69 @@ ${r.stderr}`);
   }
 
   //
+  // NFR / #1929 / IADR-0232（2026-10-17 追記）: 後段でしか走らない門の自己試験を PR でも走らせる。
+  //
+  // 🔴 自己試験は実データ（realm の宣言など）をラチェットとして読むので、門を触らない PR でも赤になり得る。
+  // 後段（integration-stack.yml / integration.yml。どちらも pull_request で起動しない）でしか走らないと、
+  // PR は緑のまま develop が赤になる（#1944 → develop の integration-stack が 5 本連続の赤）。
+  // 列挙は持たない。後段のワークフローが `--self-test` で呼ぶ検査器を走査し、ci.yml の static-checks に
+  // 同じ呼び出しが在ることを求める（後段に門を足したら、PR 側への配線を忘れた時点で赤になる）。
+  //
+  {
+    const REPO_PS = path.join(__dirname, '..');
+    const read = (p) => fs.readFileSync(path.join(REPO_PS, p), 'utf8').replace(/\r\n/g, '\n');
+    const POST_MERGE = ['.github/workflows/integration-stack.yml', '.github/workflows/integration.yml'];
+    const selfTestsOf = (text) =>
+      [...text.matchAll(/^\s+run: (node scripts\/[\w.-]+\.js --self-test)\s*$/gm)].map((m) => m[1]);
+    const staticChecksOf = (ciText) => {
+      const m = /\n {2}static-checks:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n)/.exec(`${ciText}\n  zzz:\n`);
+      assert.ok(m, 'ci.yml の static-checks ジョブを切り出せない');
+      return m[1];
+    };
+    const missingIn = (job, wanted) => wanted.filter((cmd) => {
+      const at = job.indexOf(`run: ${cmd}\n`);
+      if (at < 0) return true;
+      // `if: ${{ !cancelled() }}` が無いと、前段の失敗で黙って飛ばされる（static-checks の約束）。
+      const stepHead = job.lastIndexOf('      - name:', at);
+      return !/^ {8}if: \$\{\{ !cancelled\(\) \}\}$/m.test(job.slice(stepHead, at));
+    });
+
+    ok('#1929: 後段のワークフローは pull_request で起動しない（前倒しが要る前提が崩れていない）', () => {
+      for (const p of POST_MERGE) {
+        const on = /\non:\n([\s\S]*?)\n(?=[a-z])/.exec(read(p));
+        assert.ok(on, `${p} の on: を読めない`);
+        assert.doesNotMatch(on[1], /^\s+pull_request(_target)?:/m, `${p} が PR で起動するなら本節は不要（前提を見直す）`);
+      }
+    });
+
+    ok('#1929: 後段で --self-test を呼ぶ検査器は、すべて ci.yml の static-checks でも !cancelled() つきで呼ばれる', () => {
+      const wanted = [...new Set(POST_MERGE.flatMap((p) => selfTestsOf(read(p))))];
+      // 0 件走査を緑にしない（正規表現が壊れたら空振りする）。
+      assert.ok(wanted.length >= 5, `後段の自己試験を ${wanted.length} 件しか拾えていない（走査が壊れている）`);
+      const ci = read('.github/workflows/ci.yml');
+      const job = staticChecksOf(ci);
+      // check-coverage-floor.js は集約 build-and-test が呼ぶ（IADR-0232 2026-09 の追記 ③）。PR で走っていればよい。
+      const elsewhere = wanted.filter((c) => c.includes('check-coverage-floor.js') && ci.includes(`run: ${c}\n`));
+      const missing = missingIn(job, wanted.filter((c) => !elsewhere.includes(c)));
+      assert.deepStrictEqual(missing, [], `PR で走らない後段の自己試験がある: ${missing.join(' / ')}`);
+    });
+
+    ok('#1929 陰性対照: static-checks から 1 本外す・!cancelled() を外すと検出する', () => {
+      const wanted = ['node scripts/check-password-reset-mail.js --self-test'];
+      const job = staticChecksOf(read('.github/workflows/ci.yml'));
+      assert.deepStrictEqual(missingIn(job, wanted), [], '陽性対照が通らない');
+      const removed = job.replace(/run: node scripts\/check-password-reset-mail\.js --self-test\n/, 'run: true\n');
+      assert.deepStrictEqual(missingIn(removed, wanted), wanted, '呼び出しを外しても検出しない');
+      const noGuard = job.replace(
+        /( {8}if: \$\{\{ !cancelled\(\) \}\}\n)( {8}run: node scripts\/check-password-reset-mail\.js --self-test\n)/,
+        '$2',
+      );
+      assert.notStrictEqual(noGuard, job, '変異が当たっていない');
+      assert.deepStrictEqual(missingIn(noGuard, wanted), wanted, '!cancelled() を外しても検出しない');
+    });
+  }
+
+  //
   // NFR / #882 / IADR-0238: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
   //
   // **ここが check-xunit1051-ratchet.js の CI 呼び出し口である。** 新しい検査器を足しても
@@ -11419,10 +11886,18 @@ ${r.stderr}`);
       const seed = JSON.parse(fsSS.readFileSync(seeder.SEED_FILE, 'utf8'));
       assert.ok((seed.documents || []).length > 0, 'seed 文書が 0 件（走査が壊れている）');
       assert.deepStrictEqual(seeder.documentsMissingProbeTerm(seed), []);
+      // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed の静的の分岐は confidentiality だけを見る。
+      // 所有者・共有先の分岐は投入者〔abac-seeder〕の文書にしか一致しないので、負の対照には効かない。#1664）。
+      // 🔴 先頭は public のまま（verify-oidc-edge-flow.sh の日本語の門は documents[0] から語を採る）。
+      assert.strictEqual((seed.documents[0].attributes || {}).confidentiality, 'public', 'documents[0]: confidentiality');
+      // #2028 / IADR-0627: live-ro の ABAC の両側の対照に internal の 1 件を許す（それ以外の区分は置かない）。
+      // internal は clearance=internal 以上に見え、public だけの利用者（e2e-noaccess）と属性なし（poc-operator）には見えない。
+      assert.ok(
+        seed.documents.some((d) => (d.attributes || {}).confidentiality === 'internal'),
+        'internal の対照文書が無い（live-ro の ABAC の対照が成り立たない）',
+      );
       for (const d of seed.documents) {
-        // 正の対照と負の対照が同じ 1 件で成立する条件（abac-seed の静的の分岐は confidentiality だけを見る。
-        // 所有者・共有先の分岐は投入者〔abac-seeder〕の文書にしか一致しないので、負の対照には効かない。#1664）。
-        assert.strictEqual((d.attributes || {}).confidentiality, 'public', `${d.title}: confidentiality`);
+        assert.ok(['public', 'internal'].includes((d.attributes || {}).confidentiality), `${d.title}: confidentiality`);
         assert.ok(!('tags' in d), `${d.title}: tags を宣言してはいけない`);
         assert.ok(String(d.body || '').length > 0, `${d.title}: 本文が空`);
       }
@@ -11454,6 +11929,69 @@ ${r.stderr}`);
       assert.ok(m, `${flag} の加算値を読めない: ${line}`);
       return Number(m[1]);
     };
+
+    // FR-06, IADR-0537 (#1923): `GET /bff/documents` はページ（{ items, total, offset, limit }）で返る。
+    // 一覧の全件を見る段（14・15・S1）が、配列を前提に 1 回だけ GET していると、ページの形を「配列でない」と読み、
+    // 正の対照は空・負の対照は -1 になって integration-stack の門が落ちる（#1925 のマージ後に踏んだ形）。
+    ok('#1923: 一覧を読む段はページを辿る（GET /bff/documents を配列として 1 回で読まない）', () => {
+      assert.match(VERIFY, /^fetch_document_list\(\) \{$/m, 'ページを辿る関数が無い');
+      assert.match(VERIFY, /bff\/documents\?offset=\$offset&limit=100/, 'offset / limit で辿っていない');
+      assert.match(VERIFY, /Array\.isArray\(p\.items\)/, 'ページの形（items 配列）を確かめていない');
+      // セッションつきの GET を直に叩く箇所が残っていない（POST・無トークンの 401 確認は除く）。
+      const direct = VERIFY_LINES.filter((l, i) =>
+        /"\$EDGE_URL\/bff\/documents"\)/.test(l) && !/-d /.test(l)
+        && /-b "\$(SESSION|DENY)_JAR"/.test(VERIFY_LINES[i - 1] || '') && !/-X POST/.test(VERIFY_LINES[i - 1] || ''));
+      assert.deepStrictEqual(direct, [], `一覧を配列として直に読む箇所が残っている: ${direct.join(' / ')}`);
+      assert.strictEqual((VERIFY.match(/fetch_document_list "\$(SESSION|DENY)_JAR"/g) || []).length, 3,
+        '段 14・15・S1 の 3 か所がページを辿っていない');
+    });
+
+    // FR-06, IADR-0537 (#1923 / #1930 のレビュー): ページを辿る関数を**実際に動かして**、一部だけを「全件」として扱わないことを固定する。
+    // curl を偽物（PATH の先頭に置いた node スクリプト）へ差し替え、offset ごとに決めたページを返させる（ネットワークを使わない）。
+    {
+      const { spawnSync: spawnDL } = require('child_process');
+      const osDL = require('os');
+      const fnDL = VERIFY_LINES.slice(VERIFY_LINES.indexOf('DOC_LIST_CODE=""'));
+      const fnSrc = fnDL.slice(0, fnDL.indexOf('}') + 1).join('\n');
+      // n: 実在の件数 / total: 応答が名乗る総件数 / shape: 'page' か 'array'
+      const runDL = (n, total, shape) => {
+        const dir = fsSS.mkdtempSync(pathSS.join(osDL.tmpdir(), 'doclist-'));
+        const fake = pathSS.join(dir, 'curl');
+        fsSS.writeFileSync(fake, `#!${process.execPath}
+const a=process.argv.slice(2);const out=a[a.indexOf('-o')+1];const url=new URL(a[a.length-1]);
+const o=+url.searchParams.get('offset'),l=+url.searchParams.get('limit');
+const docs=Array.from({length:${n}},(_,i)=>({id:String(i)}));
+require('fs').writeFileSync(out, ${JSON.stringify(shape)}==='array' ? JSON.stringify(docs)
+  : JSON.stringify({items:docs.slice(o,o+l),total:${total},offset:o,limit:l}));
+process.stdout.write('200');
+`, { mode: 0o755 });
+        const out = pathSS.join(dir, 'out.json');
+        const r = spawnDL('bash', ['--noprofile', '--norc', '-c',
+          `CURL_K=''; CSRF_HDR='X: 1'; EDGE_URL=http://edge.invalid\n${fnSrc}\nfetch_document_list /dev/null "${out}"`],
+          { env: { ...process.env, PATH: `${dir}${pathSS.delimiter}${process.env.PATH}` }, encoding: 'utf8' });
+        const body = JSON.parse(fsSS.readFileSync(out, 'utf8'));
+        fsSS.rmSync(dir, { recursive: true, force: true });
+        return { body, stderr: r.stderr || '' };
+      };
+
+      ok('#1923: 一覧のページを total まで辿って items を 1 つの配列へ集める（250 件＝3 ページ・0 件）', () => {
+        assert.strictEqual(runDL(250, 250, 'page').body.length, 250);
+        assert.deepStrictEqual(runDL(0, 0, 'page').body, []);
+      });
+      ok('#1923: 上限 50 ページで total に届かなければ fail-closed（配列でない値・標準エラーに件数）', () => {
+        const r = runDL(6000, 6000, 'page');
+        assert.strictEqual(r.body, 'bad');
+        assert.match(r.stderr, /上限 50 ページで打ち切った（集めた 5000 件 \/ total 6000 件）/);
+      });
+      ok('#1923: 後続のページが空で total に届かなければ fail-closed（配列でない値・標準エラーに件数）', () => {
+        const r = runDL(150, 200, 'page');
+        assert.strictEqual(r.body, 'bad');
+        assert.match(r.stderr, /後続のページが空で total に届かない（集めた 150 件 \/ total 200 件）/);
+      });
+      ok('#1923: ページの形でない応答（旧い全件の配列）は fail-closed', () => {
+        assert.strictEqual(runDL(3, 3, 'array').body, 'bad');
+      });
+    }
 
     ok('#992 / #1124: TOTAL の加算値が各ブロックの実段数と一致する', () => {
       // 固定値（TOTAL=17 / TOTAL=11 の二択）へ戻すと、SEARCH_* を足した瞬間に門が誤発火する。
@@ -12781,6 +13319,701 @@ exit $RC
     });
   }
 
+  // --- #1991: 取り込みの総枠の使い切りの警報は、C# の計器名・属性名・総枠の呼び出し先から導いた式を 4 か所で見る -------
+  //
+  // 名前がずれると式は構文として正当なまま**永久に空ベクタ**になり、総枠を使い切っても鳴らない（#1110・#1111 と同型）。
+  // 警報が見る呼び出し先の集合は、デッドレターへ直行させる集合（EmbeddingBudgetDeadLetterPolicy.IsBudgetExhausted）と同じであること
+  // ——総枠を足してデッドレターへ送るようにしたのに警報へ足し忘れると、その総枠の使い切りだけが黙って残る（IADR-0567）。
+  {
+    const fsB = require('fs');
+    const pathB = require('path');
+    const ROOT_B = pathB.resolve(__dirname, '..');
+    const METRICS_CS_B = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/ConsumerTimeoutMetrics.cs';
+    const TIMEOUTS_CS_B = 'src/knowledge/backend/Services/IngestionService/Features/Ingestion/Ingest/IngestionTimeouts.cs';
+    const POLICY_CS_B = 'src/knowledge/backend/Services/IngestionService/Features/Ingestion/Ingest/EmbeddingBudgetDeadLetterPolicy.cs';
+    const RULE_FILES_B = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const readB = (rel) => fsB.readFileSync(pathB.join(ROOT_B, rel), 'utf8');
+    const ruleBodyB = (text, name) => {
+      const def = new RegExp(`(?:alert|title):\\s*${name}\\s*$`, 'm').exec(text);
+      if (!def) return null;
+      const rest = text.slice(def.index + def[0].length);
+      const next = /(?:- alert|title):\s*\w+\s*$/m.exec(rest);
+      return next ? rest.slice(0, next.index) : rest;
+    };
+    const constOfB = (rel, cs, name) => {
+      const m = new RegExp(`const string ${name}\\s*=\\s*"([^"]+)"`).exec(cs);
+      assert.ok(m, `${rel} に ${name} が見つからない（走査が壊れている）`);
+      return m[1];
+    };
+
+    ok('#1991: 取り込みの総枠の使い切りの警報が、C# の計器名と、デッドレターへ直行させる総枠の呼び出し先を 4 か所で見る（実データ）', () => {
+      const metrics = readB(METRICS_CS_B);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{timeout}` は注記で接尾辞にならず、カウンタには `_total` が付く。
+      const promName = `${constOfB(METRICS_CS_B, metrics, 'TimeoutCounterName').replace(/\./g, '_')}_total`;
+      assert.strictEqual(promName, 'messaging_consumer_timeout_total');
+      const targetTag = constOfB(METRICS_CS_B, metrics, 'TargetTag').replace(/\./g, '_');
+      assert.strictEqual(targetTag, 'messaging_timeout_target');
+
+      // デッドレターへ直行させる呼び出し先（IsBudgetExhausted が引く IngestionTimeouts の定数）を値へ解決する。
+      const policy = readB(POLICY_CS_B);
+      const body = /IsBudgetExhausted\([^)]*\)\s*=>([^;]+);/.exec(policy);
+      assert.ok(body, `${POLICY_CS_B} に IsBudgetExhausted の式が見つからない（走査が壊れている）`);
+      const timeouts = readB(TIMEOUTS_CS_B);
+      const targets = [...body[1].matchAll(/IngestionTimeouts\.(\w+)/g)].map((m) => constOfB(TIMEOUTS_CS_B, timeouts, m[1])).sort();
+      assert.deepStrictEqual(targets, ['embedding-budget', 'lexical-budget']);
+
+      for (const rel of RULE_FILES_B) {
+        const text = readB(rel);
+        const rule = ruleBodyB(text, 'IngestionBudgetExhausted');
+        assert.ok(rule, `${rel} に IngestionBudgetExhausted のルール定義が無い`);
+        // 式だけを見る（ルールの後ろに続く次の群の注記に引きずられない）。
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の IngestionBudgetExhausted の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        const expr = exprM[1];
+        assert.ok(expr.includes(`increase(${promName}{`), `${rel} の IngestionBudgetExhausted が increase(${promName}) を見ていない`);
+        assert.ok(!expr.includes('absent('), `${rel} の IngestionBudgetExhausted が absent() になっている（平常時は系列が無い）`);
+        const sel = new RegExp(`${targetTag}=~"([^"]+)"`).exec(expr);
+        assert.ok(sel, `${rel} の IngestionBudgetExhausted が ${targetTag} で絞っていない`);
+        assert.deepStrictEqual(sel[1].split('|').sort(), targets,
+          `${rel} の IngestionBudgetExhausted が見る呼び出し先が、デッドレターへ直行させる集合と違う`);
+        // 「1 件以上で鳴る」: Prometheus 版は式の `> 0`、Grafana 版は評価器の `gt 0`（式の `> 0` の後に残る値は前進量）。
+        assert.ok(/\)\s*>\s*0$/.test(expr), `${rel} の IngestionBudgetExhausted が「前進が 0 を超えたら」で鳴らない`);
+        assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の IngestionBudgetExhausted の for / severity が流儀（5m・warning）と違う`);
+        if (rel.includes('grafana')) {
+          assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の IngestionBudgetExhausted の評価器が gt 0 でない`);
+          assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の IngestionBudgetExhausted の noDataState が OK でない（平常時は系列が無い）`);
+        }
+      }
+    });
+  }
+
+  // --- #2043: デッドレター到達の警報は C# の計器名から導いた式を 4 か所で見て、Wolverine を載せる全サービスが共通既定を通す ----
+  //
+  // 名前がずれると式は構文として正当なまま**永久に空ベクタ**になり、デッドレターへ入っても鳴らない（#1110・#1991 と同型）。
+  // 計器は共通既定（UsePlatformMessagingDefaults）の 1 箇所でしか上がらない（ADR-0053 決定 3）ので、それを呼ばない
+  // サービスや OTLP へ出さないサービスのデッドレターだけが**黙って見えなくなる**（IADR-0592）。
+  {
+    const fsD = require('fs');
+    const pathD = require('path');
+    const ROOT_D = pathD.resolve(__dirname, '..');
+    const METRICS_CS_D = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/DeadLetterMetrics.cs';
+    const TIMEOUT_CS_D = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/ConsumerTimeoutMetrics.cs';
+    const OBS_CS_D = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/ObservabilityExtensions.cs';
+    const RULE_FILES_D = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const readD = (rel) => fsD.readFileSync(pathD.join(ROOT_D, rel), 'utf8');
+    const ruleBodyD = (text, name) => {
+      const def = new RegExp(`(?:alert|title):\\s*${name}\\s*$`, 'm').exec(text);
+      if (!def) return null;
+      const rest = text.slice(def.index + def[0].length);
+      const next = /(?:- alert|title):\s*\w+\s*$/m.exec(rest);
+      return next ? rest.slice(0, next.index) : rest;
+    };
+    const constOfD = (rel, cs, name) => {
+      const m = new RegExp(`const string ${name}\\s*=\\s*"([^"]+)"`).exec(cs);
+      assert.ok(m, `${rel} に ${name} が見つからない（走査が壊れている）`);
+      return m[1];
+    };
+
+    ok('#2043: デッドレター到達の警報 DeadLetterReached が、C# の計器名とタグ名から導いた式を 4 か所で見る（実データ）', () => {
+      const metrics = readD(METRICS_CS_D);
+      // OTel → prometheusremotewrite: `.` は `_` へ。単位 `{message}` は注記で接尾辞にならず、カウンタには `_total` が付く。
+      const promName = `${constOfD(METRICS_CS_D, metrics, 'DeadLetterCounterName').replace(/\./g, '_')}_total`;
+      assert.strictEqual(promName, 'messaging_dead_letter_total');
+      const typeTag = constOfD(METRICS_CS_D, metrics, 'MessageTypeTag').replace(/\./g, '_');
+      assert.strictEqual(typeTag, 'messaging_message_type');
+      const errorTag = constOfD(METRICS_CS_D, metrics, 'ErrorTypeTag').replace(/\./g, '_');
+      assert.strictEqual(errorTag, 'error_type');
+      // 通知のラベルに例外の型を残す（運用仕様書と注記が「通知のラベル error_type」を案内する）。集計で落とすと案内が嘘になる。
+      const by = `by (job, ${typeTag}, ${errorTag})`;
+      // Meter は受け口の時間切れと共有し、`AddPlatformObservability` がその名前で収集対象へ入れている。
+      assert.match(metrics, /MeterName\s*=\s*ConsumerTimeoutMetrics\.MeterName;/, 'DeadLetterMetrics の Meter が共通の Meter から外れた');
+      assert.ok(readD(TIMEOUT_CS_D).includes('MeterName = "microservices-platform.messaging"'));
+      assert.match(readD(OBS_CS_D), /\.AddMeter\(ConsumerTimeoutMetrics\.MeterName\)/, 'AddPlatformObservability が共通の Meter を収集していない');
+
+      for (const rel of RULE_FILES_D) {
+        const text = readD(rel);
+        const rule = ruleBodyD(text, 'DeadLetterReached');
+        assert.ok(rule, `${rel} に DeadLetterReached のルール定義が無い`);
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の DeadLetterReached の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        const expr = exprM[1];
+        assert.ok(expr.includes(`increase(${promName}[1h])`), `${rel} の DeadLetterReached が increase(${promName}[1h]) を見ていない`);
+        assert.ok(!expr.includes('absent('), `${rel} の DeadLetterReached が absent() になっている（平常時は系列が無い）`);
+        // 🔴 キュー名で絞らない（ADR-0053 決定 1）。queue ラベル・_error / _dlq の照合を持ち込んだら赤にする。
+        assert.ok(!/queue|_error|_dlq/.test(expr), `${rel} の DeadLetterReached がキュー名に依存している（ADR-0053 決定 1）`);
+        // 🔴 初回（系列が 1 で初めて現れる）は increase に現れない。系列ごとに「1 時間前に無かった系列は計器の値」を採る腕を
+        //   外したら赤にする（場面は deploy/prometheus/tests/messaging-dead-letter.test.yml が promtool で固定する）。
+        //   ［#2097・IADR-0593］腕は集計の**前**（系列ごと）に置く。集計の後で組を見る旧い形は、再起動で instance が替わった
+        //   新しい系列の 1 通目を落とす。
+        assert.strictEqual(expr,
+          `sum ${by} ((${promName} unless ${promName} offset 1h) or increase(${promName}[1h])) > 0`,
+          `${rel} の DeadLetterReached が「サービス・メッセージ型・例外の型ごとに、初回の腕つきの前進が 0 を超えたら」の形でない`);
+        assert.ok(/description:[^\n]*error_type/.test(rule), `${rel} の DeadLetterReached の description が例外の型を案内していない`);
+        assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の DeadLetterReached の for / severity が流儀（5m・warning）と違う`);
+        if (rel.includes('grafana')) {
+          assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の DeadLetterReached の評価器が gt 0 でない`);
+          assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の DeadLetterReached の noDataState が OK でない（平常時は系列が無い）`);
+        }
+        // キュー名に依存した旧案（コメントアウトの RabbitMqDeadLetter）を残さない —— 次に読む人が有効な選択肢と受け取る。
+        assert.ok(!/alert:\s*RabbitMqDeadLetter/.test(text), `${rel} にキュー名に依存した旧案 RabbitMqDeadLetter が（コメントアウトでも）残っている`);
+      }
+    });
+
+    ok('#2043: DeadLetterReached の初回の場面を promtool の単体試験が固定し、CI がそれを回す（実データ）', () => {
+      const test = readD('deploy/prometheus/tests/messaging-dead-letter.test.yml');
+      assert.match(test, /^\s+- \.\.\/alerts\.yml$/m, '試験が compose の alerts.yml を読んでいない');
+      assert.match(test, /values: '_x\d+ 1x\d+'/, '「系列が初めて 1 で現れる」場面が無い');
+      assert.match(test, /alertname: DeadLetterReached/);
+      const ci = readD('.github/workflows/ci.yml');
+      assert.match(ci, /promtool test rules deploy\/prometheus\/tests\/\*\.test\.yml/, 'CI が promtool の単体試験を回していない');
+      assert.match(ci, /PROMETHEUS_SHA256=[0-9a-f]{64}/, 'promtool の導入が checksum で突合されていない');
+      // 版は配備の Prometheus と同じ（解析器の版がずれると、通る式と配備で読まれる式が食い違い得る）。
+      const ver = /PROMETHEUS_VERSION=(\S+)/.exec(ci);
+      assert.ok(ver, 'CI に PROMETHEUS_VERSION が無い');
+      for (const rel of ['deploy/docker-compose.yml', 'deploy/local/observability/prometheus.yaml']) {
+        const img = /prom\/prometheus:v([0-9.]+)/.exec(readD(rel));
+        assert.ok(img, `${rel} に Prometheus のイメージが見つからない（走査が壊れている）`);
+        assert.strictEqual(img[1], ver[1], `${rel} の Prometheus の版と CI の promtool の版が違う`);
+      }
+    });
+
+    ok('#2043: Wolverine を載せる全サービスが共通既定（計器を含む）と OTLP への計装を通す（実データ）', () => {
+      const services = [];
+      for (const unit of ['src/platform/backend/Services', 'src/knowledge/backend/Services']) {
+        for (const name of fsD.readdirSync(pathD.join(ROOT_D, unit))) {
+          const rel = `${unit}/${name}/Program.cs`;
+          if (!fsD.existsSync(pathD.join(ROOT_D, rel))) continue;
+          const program = readD(rel);
+          if (!/\.UseWolverine\(/.test(program)) continue;
+          services.push(name);
+          assert.match(program, /\.UsePlatformMessagingDefaults\(\)/, `${rel} が UsePlatformMessagingDefaults を呼ばない（再試行・デッドレターの計器が載らない）`);
+          assert.match(program, /\.AddPlatformObservability\(/, `${rel} が AddPlatformObservability を呼ばない（計器が OTLP へ出ない）`);
+        }
+      }
+      // fail-closed: 走査が 0 件なら何も見ていない。
+      assert.ok(services.length >= 7, `Wolverine を載せるサービスが ${services.length} 件しか見つからない（走査が壊れている）: ${services.join(', ')}`);
+    });
+  }
+
+  // --- #2097: 「0 が正常」の警報（`increase(...) > 0`）は、計器の系列が初めて現れたときにも鳴る（IADR-0593） -------------
+  //
+  // OTel の累積カウンタは最初の Add で系列が立ち、最初の標本が 1 になる。`increase()` は窓に前の標本が無い系列を 0 とみなすので、
+  // `increase` だけの式は**最初の 1 件で鳴らない**（#2043 の AI レビューで見つかり、#2097 で既存の 3 本にも同じ穴があると実測）。
+  // 同型の 2 回目なので機械で止める: 4 か所のルールのうち `increase(` を含み閾値が外側の `> 0` の式は、どの `increase(SEL[W])` も
+  // `(SEL unless SEL offset W) or increase(SEL[W])` の形（系列ごとの初回の腕）で持つこと。新しく足した警報もここに掛かる。
+  {
+    const fsF = require('fs');
+    const pathF = require('path');
+    const ROOT_F = pathF.resolve(__dirname, '..');
+    const RULE_FILES_F = [
+      'deploy/prometheus/alerts.yml',
+      'deploy/local/observability/prometheus.yaml',
+      'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
+      'deploy/local/observability/grafana.yaml',
+    ];
+    const TEST_FILES_F = ['deploy/prometheus/tests/first-series-alerts.test.yml', 'deploy/prometheus/tests/messaging-dead-letter.test.yml'];
+    const EXPECTED_F = ['DeadLetterReached', 'DepartmentSyncNotCorrecting', 'IngestionBudgetExhausted', 'UnitDocumentsMissingProjectAttribute'];
+    const readF = (rel) => fsF.readFileSync(pathF.join(ROOT_F, rel), 'utf8');
+    // ルール名ごとの expr（1 行の引用符つき）を読む。コメント行は落とす。
+    const zeroNormalRules = (text) => {
+      const lines = text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      const out = new Map();
+      const re = /(?:- alert|title):\s*(\w+)\s*$/gm;
+      const defs = [...lines.matchAll(re)];
+      defs.forEach((d, i) => {
+        const body = lines.slice(d.index, i + 1 < defs.length ? defs[i + 1].index : undefined);
+        const m = /expr:\s*'([^']+)'/.exec(body);
+        if (!m) return;
+        const expr = m[1];
+        if (/(?:increase|rate)\(/.test(expr) && /\)\s*>\s*0$/.test(expr)) out.set(d[1], expr);
+      });
+      return out;
+    };
+    // `increase(SEL[W])` を括弧の釣り合いで取り出す（SEL はラベルの絞り込みを含む）。
+    const increases = (expr) => [...expr.matchAll(/increase\(([a-z_:][a-z0-9_:]*(?:\{[^}]*\})?)\[(\w+)\]\)/g)].map((m) => ({ sel: m[1], win: m[2] }));
+
+    ok('#2097: 「0 が正常」の警報は、どの increase にも系列ごとの初回の腕（unless ... offset）を持つ（4 か所・実データ）', () => {
+      for (const rel of RULE_FILES_F) {
+        const rules = zeroNormalRules(readF(rel));
+        // fail-closed: 既知の 4 本が拾えなければ走査が壊れている。増えた分は下の検査に掛かる。
+        for (const name of EXPECTED_F) assert.ok(rules.has(name), `${rel} の ${name} を「0 が正常」の式として拾えない（走査が壊れている）`);
+        for (const [name, expr] of rules) {
+          assert.ok(!/rate\(/.test(expr), `${rel} の ${name} は rate(...) > 0 である。初回の扱いを決めてから本検査を広げること（#2097）`);
+          const incs = increases(expr);
+          assert.ok(incs.length > 0, `${rel} の ${name} の increase を読めない（走査が壊れている）`);
+          for (const { sel, win } of incs) {
+            assert.ok(expr.includes(`(${sel} unless ${sel} offset ${win}) or increase(${sel}[${win}])`),
+              `${rel} の ${name} の increase(${sel}[${win}]) に初回の腕が無い（系列が初めて現れた最初の 1 件で鳴らない。IADR-0593）`);
+          }
+          // 内側に比較を置かない（`increase(...) > 0 or ...`）。閾値は外側の 1 つだけ（Grafana 版の検査器が読める形）。
+          assert.ok(!/>\s*0\s+or\b/.test(expr), `${rel} の ${name} が内側に比較を持つ（閾値は外側の > 0 だけにする）`);
+        }
+      }
+    });
+
+    ok('#2097: 「0 が正常」の警報の計器ごとに、系列が初めて 1 で現れる場面を promtool の単体試験が持つ（実データ）', () => {
+      const rules = zeroNormalRules(readF('deploy/prometheus/alerts.yml'));
+      const tests = TEST_FILES_F.map((rel) => ({ rel, text: readF(rel) }));
+      for (const { rel, text } of tests) assert.match(text, /^\s+- \.\.\/alerts\.yml$/m, `${rel} が compose の alerts.yml を読んでいない`);
+      for (const [name, expr] of rules) {
+        const file = tests.find((x) => x.text.includes(`alertname: ${name}\n`));
+        assert.ok(file, `${name} の promtool の単体試験が無い`);
+        for (const { sel } of increases(expr)) {
+          const metric = sel.replace(/\{.*$/, '');
+          const first = new RegExp(`series: '${metric}\\{[^']*\\}'\\n\\s+values: '_x\\d+ 1x\\d+'`);
+          assert.match(file.text, first, `${file.rel} に ${name} の ${metric} が初めて 1 で現れる場面が無い`);
+        }
+      }
+      assert.match(readF('.github/workflows/ci.yml'), /promtool test rules deploy\/prometheus\/tests\/\*\.test\.yml/, 'CI が promtool の単体試験を回していない');
+    });
+  }
+
+  // --- #2005: platform-backup の age の版と Alpine の APKINDEX の突合（IADR-0568） ---------------------------------------
+  //
+  // 監視は日次のワークフローでしか走らないので、自己試験（陽性対照・届かないときに起票しない・一致なら何もしない）を
+  // PR でも走らせる。ネットワークには触れない（自己試験は fetch と GitHub API を差し替える）。
+  {
+    const { spawnSync: spawnA } = require('child_process');
+    const fsA = require('fs');
+    const pathA = require('path');
+    const ROOT_A = pathA.resolve(__dirname, '..');
+
+    ok('#2005: check-age-apkindex.js の自己試験が通る（ずれで起票・一致で何もしない・届かなければ起票しない）', () => {
+      const r = spawnA(process.execPath, [pathA.join(__dirname, 'check-age-apkindex.js'), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /自己試験 \d+ 件すべて合格/);
+      for (const name of ['陽性対照（#2003 の形）', 'ネットワークに届かなければ unverified', 'ok / unverified / error では API を一度も呼ばない']) {
+        assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
+      }
+    });
+
+    ok('#2005: 日次のワークフローが --upsert-issue で走り、PR では走らない', () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/age-apkindex-watch.yml'), 'utf8');
+      assert.match(wf, /^\s+- cron: '\d+ \d+ \* \* \*'$/m, '日次の cron が無い');
+      assert.doesNotMatch(wf, /^\s+pull_request(_target)?:/m, 'PR で走らせない（外部の CDN の状態で PR を赤くしない）');
+      assert.match(wf, /run: node scripts\/check-age-apkindex\.js --self-test\n/);
+      assert.match(wf, /run: node scripts\/check-age-apkindex\.js --upsert-issue --out "\$RUNNER_TEMP\/age-apkindex\.json"\n/);
+    });
+
+    // --- NFR / #2037 / IADR-0623: L1 E2E の flaky 集計と、3 回連続の起票 ----------------------------------------
+    ok('#2037: check-e2e-flaky.js の自己試験が通る（flaky だけを数える・0 件は赤・3 回連続で起票・token 無しは赤）', () => {
+      const r = spawnA(process.execPath, [pathA.join(__dirname, 'check-e2e-flaky.js'), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /自己試験 \d+ 件すべて合格/);
+      for (const name of ['test が 0 件なら例外', '3 回連続で flaky なら再発', '連続でない', '再発が無ければ API を一度も呼ばない', 'token が無ければ例外']) {
+        assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
+      }
+    });
+
+    ok('#2037: frontend.yml が flaky を集計し、起票は develop への push の別ジョブだけで行う', () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/frontend.yml'), 'utf8');
+      const job = (name) => {
+        const m = new RegExp(`\\n  ${name}:\\n([\\s\\S]*?)(?=\\n  \\S|$)`).exec(wf);
+        assert.ok(m, `frontend.yml にジョブ ${name} が無い`);
+        return m[1];
+      };
+      const e2e = job('e2e');
+      assert.match(e2e, /--reporter html,github,json /, 'merge-reports が JSON を書かない（集計の入力が無い）');
+      assert.match(e2e, /node scripts\/check-e2e-flaky\.js\n\s+--report "\$RUNNER_TEMP\/e2e-results\.json"/);
+      assert.doesNotMatch(e2e, /issues: write/, 'PR でも走る e2e ジョブに issues: write を持たせない');
+      const issue = job('e2e-flaky-issue');
+      assert.match(issue, /if: \$\{\{ github\.event_name == 'push' && github\.ref == 'refs\/heads\/develop'/, '起票は develop への push だけ');
+      assert.match(issue, /issues: write/);
+      assert.match(issue, /--upsert-issue/);
+      // 要約の無い実行を飛ばさず目録に missing として書き、打ち切りは検査器（historyUntilGap）に任せる（PR #2222 の 🟡）。
+      assert.match(issue, /echo "\$num \$id missing" >> "\$HISTORY_DIR\/manifest\.tsv"/, '要約の無い実行を目録に書いていない（飛ばしている）');
+      assert.match(e2e, /steps\.tally\.outcome == 'success'/, '集計が失敗した実行の要約を上げている');
+      // 🔴 flaky を skip / 隔離で緑にする仕組みを持たない（IADR-0623）。
+      const code = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n'); // コメントの「skip しない」の説明は数えない
+      assert.doesNotMatch(code, /--grep-invert|test\.fixme|quarantine|--last-failed/i, 'frontend.yml が test を外して流している');
+      for (const event of ['push', 'pull_request']) {
+        const m = new RegExp(`^  ${event}:\\n[\\s\\S]*?^    paths:\\n([\\s\\S]*?)(?=^  [a-z_]+:|^[a-z])`, 'm').exec(wf);
+        assert.ok(m && m[1].includes('"scripts/check-e2e-flaky.js"'), `${event}.paths に検査器本体が無い`);
+      }
+    });
+
+    // --- NFR / #2026 / IADR-0625: live E2E（e2e-live.yml）の門 ------------------------------------------------------
+    for (const [file, names] of [
+      ['check-e2e-skips.js', ['ある project の test がすべて skip なら赤', 'skip でない test が 0 件なら赤', 'test が 0 件のレポートは例外']],
+      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外', '発行値（端末トークン）が成果物にあれば', '発行値のファイルの形が違えば例外', '--issued-file を指定したのにファイルが無ければ例外']],
+    ]) {
+      ok(`#2026: ${file} の自己試験が通る`, () => {
+        const r = spawnA(process.execPath, [pathA.join(__dirname, file), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+        for (const name of names) assert.ok(r.stdout.includes(name), `自己試験から「${name}」が消えた`);
+      });
+    }
+
+    ok('#2026: e2e-live.yml の層 → project 名の対応表が playwright.live.config.ts の project 名と一致する', () => {
+      // 対応表がずれると check-e2e-skips の --layers が実在しない project を指し、「層に spec が無い」の警告に紛れて全 skip を見逃す。
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      // #2033 / IADR-0632: 層の project の組み立ては config から support/projects.ts へ分けた。
+      const cfg = fsA.readFileSync(pathA.join(ROOT_A, 'src/platform/frontend/e2e/live/support/projects.ts'), 'utf8');
+      const mapSrc = /const m=\{([^}]*)\}/.exec(wf);
+      assert.ok(mapSrc, 'e2e-live.yml に層の対応表（const m={…}）が無い');
+      const map = Object.fromEntries([...mapSrc[1].matchAll(/(\w+):"([^"]+)"/g)].map((m) => [m[1], m[2]]));
+      const block = /const LAYER_PROJECTS[^=]*=\s*\{([\s\S]*?)\n\};/.exec(cfg);
+      assert.ok(block, 'e2e/live/support/projects.ts に LAYER_PROJECTS が無い');
+      const projects = Object.fromEntries([...block[1].matchAll(/\n  (\w+): \{\n    name: '([^']+)'/g)].map((m) => [m[1], m[2]]));
+      assert.strictEqual(Object.keys(projects).length, 4, `LAYER_PROJECTS を 4 層読めない（${JSON.stringify(projects)}）`);
+      assert.deepStrictEqual(map, projects, 'e2e-live.yml の層 → project 名の対応表が config とずれている');
+    });
+
+    ok('#2026: OTP の資格情報を宣言する利用者は requiredActions を明示し、CONFIGURE_TOTP を持たない', () => {
+      // realm の requiredActions で CONFIGURE_TOTP が defaultAction（新しい利用者すべてに付く）である。宣言に requiredActions が
+      // 無い利用者を Admin REST API（reconcile-realm.js）で作ると、OTP の資格情報を持ったまま「OTP の登録」の画面へ送られ、
+      // live の setup が全役割で止まる（#2026 の e2e-live の初回の実行で実測。6 役割とも /login-actions/required-action）。
+      const realm = JSON.parse(fsA.readFileSync(pathA.join(ROOT_A, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+      const def = (realm.requiredActions || []).find((x) => x.alias === 'CONFIGURE_TOTP');
+      assert.ok(def, 'realm に CONFIGURE_TOTP の必須アクションの宣言が無い（読み方が壊れている）');
+      const otpUsers = (realm.users || []).filter((u) => (u.credentials || []).some((c) => c.type === 'otp'));
+      assert.ok(otpUsers.length >= 6, `OTP の資格情報を宣言する利用者が ${otpUsers.length} 名（e2e-* の 6 名が読めない）`);
+      const bad = otpUsers
+        .filter((u) => !Array.isArray(u.requiredActions) || u.requiredActions.includes('CONFIGURE_TOTP'))
+        .map((u) => u.username);
+      assert.deepStrictEqual(bad, [], 'OTP を宣言しているのに requiredActions を明示していない（既定の CONFIGURE_TOTP が付く）');
+    });
+
+    ok('#2026: e2e-live.yml は秘密を使わず、成果物を走査してから上げ、全 skip と teardown の失敗を赤にする', () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      const code = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      // 🔴 リポジトリの secret を 1 つも使わない（pull_request・fork で走っても渡る秘密が無い）。
+      assert.doesNotMatch(code, /\$\{\{\s*secrets\./, 'e2e-live.yml が secrets を参照している');
+      assert.doesNotMatch(code, /pull_request_target/, 'pull_request_target は使わない');
+      // 起票は PR では走らない別ジョブだけ。
+      assert.match(code, /report-failure:\n\s+needs: \[e2e-live\]\n\s+if: always\(\) && github\.event_name != 'pull_request'/);
+      // 走査の門が上げる前にあり、上げるのは門が success のときだけ。
+      const scan = code.indexOf('node scripts/check-e2e-artifact-secrets.js');
+      const upload = code.indexOf('actions/upload-artifact@');
+      assert.ok(scan > 0 && upload > scan, '成果物の走査が upload より前に無い');
+      assert.match(code, /if: \$\{\{ !cancelled\(\) && steps\.artifact-scan\.outcome == 'success' \}\}\n\s+uses: actions\/upload-artifact@/);
+      assert.match(code, /node scripts\/check-e2e-skips\.js --report/);
+      // teardown の失敗（exit 1）を握り潰さない —— 実行のステップに continue-on-error や `|| true` を付けない。
+      const live = /- name: E2E live[\s\S]*?(?=\n      - name:)/.exec(code);
+      assert.ok(live, 'E2E live のステップが無い');
+      assert.doesNotMatch(live[0], /continue-on-error|\|\|\s*true/, 'live の実行の失敗（teardown の失効失敗を含む）を握り潰している');
+      // 証明書の検証を外さない。
+      assert.doesNotMatch(code, /E2E_INSECURE_TLS/, 'e2e-live.yml が証明書の検証を外している');
+    });
+
+    // NFR, #2244 / IADR-0635: pull_request.paths は試験される側（e2e-live が建てるイメージと配備物）まで覆い、
+    // イメージに入らない・e2e-live の旗では当たらない変更では起動しない。GitHub の paths の意味（後の行が前の行を上書きする・
+    // `!` は外す・`*` は `/` を越えない・`**` は越える）で、代表の変更を判定する。
+    const e2eLivePaths = () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      const block = /\n  pull_request:\n[\s\S]*?\n    paths:\n((?:\s+(?:#.*|- ".*")\n)+)/.exec(wf);
+      assert.ok(block, 'e2e-live.yml の pull_request.paths が読めない');
+      return [...block[1].matchAll(/- "(.*)"/g)].map((m) => m[1]);
+    };
+    // 🔴 簡易の再実装: `*` と `**` と `!` だけを扱う（`?`・`[]`・`{}` は扱わない）。これらを使うパターンを paths へ足すときは、先にここを広げる。
+    const globToRegExp = (glob) => new RegExp(`^${glob
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*\*\//g, '\u0000')
+      .replace(/\*\*/g, '\u0001')
+      .replace(/\*/g, '[^/]*')
+      .replace(/\u0000/g, '(?:.*/)?')
+      .replace(/\u0001/g, '.*')}$`);
+    const triggers = (patterns, files) => files.some((f) => {
+      let included = false;
+      for (const p of patterns) {
+        const neg = p.startsWith('!');
+        if (globToRegExp(neg ? p.slice(1) : p).test(f)) included = !neg;
+      }
+      return included;
+    });
+    ok('#2244: e2e-live は BFF・バックエンド・フロントエンド・配備物を変える PR で起動し、docs・試験だけ・旗の外の配備物では起動しない', () => {
+      const paths = e2eLivePaths();
+      const run = (f) => triggers(paths, [f]);
+      for (const f of [
+        'src/platform/backend/Bff/Platform.Bff/Foundation/Session/SessionStoreConnection.cs', // #2243 の形
+        'src/platform/backend/Services/AuthorizationService/Program.cs',
+        'src/knowledge/backend/Services/DocumentService/Program.cs',
+        'src/Directory.Packages.props',
+        'src/ai-stock-trading', // submodule の更新（AST のイメージを建てる）
+        'src/platform/frontend/src/app/Layout.tsx',
+        'src/knowledge/frontend/src/features/search/SearchPage.tsx',
+        'src/packages/ui/src/index.ts',
+        'src/pnpm-lock.yaml',
+        'deploy/bootstrap/sc22-secret-items.json',
+        'deploy/helm/microservices-platform/values.yaml',
+        'deploy/local/infra/valkey.yaml',
+        'deploy/local/values-local.yaml',
+        'deploy/keycloak/microservices-platform-realm.json',
+        'deploy/mail-relay/reset-floor.js',
+        'scripts/k8s-local-up.sh',
+        'scripts/lib/local-image-tag.sh',
+        'scripts/check-stack-ready.js',
+        '.github/workflows/e2e-live.yml',
+        'src/platform/frontend/e2e/live/account.rw.spec.ts', // 外したモックの E2E の中から戻す
+        'src/platform/frontend/e2e/support/axe.ts',
+      ]) assert.ok(run(f), `起動しない: ${f}`);
+      for (const f of [
+        'docs/tests/E2E_STANDARDS.md',
+        '.ai-context/specs/20261025_2244_e2e-live-paths-system-under-test.md',
+        'src/platform/backend/README.md',
+        'src/platform/backend/Bff/Platform.Bff.Tests/BffKeyRingConnectionRecoveryTests.cs',
+        'src/knowledge/backend/Services/DocumentService/Tests/DocumentServiceTests.cs',
+        'src/platform/frontend/src/app/Layout.test.tsx',
+        'src/platform/frontend/e2e/shell.spec.ts', // モックの E2E（frontend.yml が流す）
+        'deploy/local/vault/eso/bootstrap.sh',
+        'deploy/local/argocd/README.md',
+        'deploy/local/edge-istio/traefik-service-off.yaml',
+        'deploy/local/reloader/values.yaml',
+        'deploy/istio/istiod-values-local.yaml',
+        '.github/workflows/ci.yml',
+      ]) assert.ok(!run(f), `起動してしまう: ${f}`);
+      // 🔴 足す行の土台が実在する（改名で黙って覆いが外れない）。
+      for (const p of paths.filter((x) => !x.startsWith('!'))) {
+        const root = p.replace(/\/?\*\*.*$/, '');
+        assert.ok(fsA.existsSync(pathA.join(ROOT_A, root)), `paths の土台が無い: ${p}`);
+      }
+      // 外す行は足す行の後、live の試験の行は外す行の後（順序が効く）。
+      const firstNeg = paths.findIndex((x) => x.startsWith('!'));
+      const lastNeg = paths.length - 1 - [...paths].reverse().findIndex((x) => x.startsWith('!'));
+      assert.ok(firstNeg > 0 && paths.indexOf('src/platform/frontend/e2e/live/**') > lastNeg, 'paths の順序（足す → 外す → live の試験）が崩れた');
+    });
+  }
+
+  // --- NFR / #2030 / IADR-0629: live E2E の残骸掃き（e2e-live-sweep.js）—— 接頭辞 e2e- 以外を消さない ----------------
+  // 🔴 稼働の環境へは当たらない。fetch・kubectl の context・state の読み込みはすべて差し替える（子プロセスの中で main を呼ぶ）。
+  {
+    const sweepLib = require('./e2e-live-sweep.js');
+    const { spawnSync: spawnS } = require('child_process');
+    const fsS = require('fs');
+    const pathS = require('path');
+
+    /** 偽の BFF の上で main を走らせ、終了コード・送った要求・出力を返す。 */
+    const runSweep = (argv, scenario = {}) => {
+      const code = `
+        const s = require(${JSON.stringify(require.resolve('./e2e-live-sweep.js'))});
+        const sc = JSON.parse(process.env.SWEEP_SCENARIO);
+        const calls = []; const logs = [];
+        const data = {
+          '/bff/documents': { items: [
+            { id: 'd1', title: 'e2e-r1-doc' }, { id: 'd2', title: 'msp-searchseed-tanpopo 検索導線の検証用文書' },
+            { id: 'd3', title: 'E2E-r1-upper' }, { id: 'd4', title: 'xe2e-r1-doc' } ], total: 4 },
+          '/bff/admin/authz/policies': [ { id: 'p1', name: 'dev: public 取扱者は public を読める' }, { id: 'p2', name: 'e2e-r1-policy' },
+            { id: 'p3', name: null },
+            ...(sc.noOwnerPolicy ? [] : [{ id: 'p0', name: 'dev: 所有者は自分の文書を読める', action: 'read', isActive: true,
+              documentConditions: { owner: ['\${current_user}'] } }]) ],
+          '/bff/datasources': [ { id: 's1', name: 'e2e_r1-source', status: 'active' }, { id: 's2', name: 'e2e-r1-source', status: 'active' },
+            { id: 's3', name: 'e2e-r1-old-source', status: 'disabled' } ],
+          '/bff/admin/mcp-clients': [ { clientId: 'c1', displayName: 'e2e-r1-mcp', enabled: true }, { clientId: 'c2', displayName: 'prod-agent', enabled: true },
+            { clientId: 'c3', displayName: 'e2e-r1-old-mcp', enabled: false } ],
+          '/bff/tags': { tags: [ { id: 't1', name: 'e2e-r1-tag' }, { id: 't2', name: '営業' }, { id: 't3', name: 'e2e' } ] },
+        };
+        // 個人資料は本人のものだけが見える（役割ごとに違う一覧）。
+        const notes = {
+          user: [ { id: 'n1', title: 'e2e-r1-note', deleted: false }, { id: 'n2', title: 'e2e-r1-trash', deleted: true },
+                  { id: 'n3', title: '私のメモ', deleted: false }, { id: 'n4', title: ' e2e-r1-space', deleted: true } ],
+          operator: [ { id: 'o1', title: 'e2e-r1-op-note', deleted: false } ],
+        };
+        const fetch = async (url, init) => {
+          const u = new URL(url);
+          const role = String(init.headers.Cookie).replace('__Host-msp-session=', '');
+          const call = { method: init.method, path: u.pathname, role, csrf: init.headers['X-MSP-CSRF'] || null,
+            body: init.body ? JSON.parse(init.body) : null, cookie: init.headers.Cookie };
+          calls.push(call);
+          const key = init.method + ' ' + u.pathname;
+          const status = (sc.status || {})[key] || (sc.status || {})[key + '@' + role];
+          if (status) return { status, json: async () => ({}) };
+          if (init.method === 'GET' && u.pathname === '/bff/private-notes') return { status: 200, json: async () => ({ usage: {}, notes: notes[role] || [] }) };
+          if (init.method === 'GET') return { status: 200, json: async () => data[u.pathname] };
+          return { status: 204, json: async () => ({}) };
+        };
+        const states = Object.fromEntries(s.ALL_ROLES.map((r) => [r, { cookies: [ { name: '__Host-msp-session', value: r, domain: 'localhost', expires: -1 },
+          { name: 'other', value: 'X', domain: 'example.com', expires: -1 } ] }]));
+        s.main(${JSON.stringify(argv)}, {
+          fetch, log: (l) => logs.push(l), err: (l) => logs.push(l), env: {},
+          currentContext: () => { if (sc.context === 'throw') throw new Error('no ctx'); return sc.context || 'k3d-e2e-live'; },
+          readState: (role) => { if ((sc.missingState || []).includes(role)) throw new Error('e2e-' + role + ' の state が無い'); return states[role]; },
+        }).then((code) => process.stdout.write(JSON.stringify({ code, calls, logs })));`;
+      const r = spawnS(process.execPath, ['-e', code], { encoding: 'utf8', env: { ...process.env, SWEEP_SCENARIO: JSON.stringify(scenario) } });
+      assert.strictEqual(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout);
+    };
+    const target = ['--live', '--edge-url', 'https://localhost', '--auth-dir', '/nonexistent', '--stack', 'e2e-live'];
+    const E2E_IDS = new Set(['d1', 'n1', 'n2', 'o1', 'p2', 's2', 't1']);
+
+    ok('#2030: 接頭辞の判定は e2e- で始まる文字列だけ（大文字・前置き・区切り違い・文字列以外は一致しない）', () => {
+      for (const yes of ['e2e-', 'e2e-r1-doc', 'e2e-20261025-note']) assert.strictEqual(sweepLib.isSweepable(yes), true, yes);
+      for (const no of ['E2E-r1', 'E2e-r1', ' e2e-r1', 'xe2e-r1', 'e2e_r1', 'e2e', 'e2', '', 'dev: e2e-x', '試験 e2e-x', null, undefined, 1, {}, ['e2e-x']]) {
+        assert.strictEqual(sweepLib.isSweepable(no), false, JSON.stringify(no));
+      }
+    });
+
+    ok('#2030: 既定は dry-run で、GET だけを送り、e2e- の一致だけを列挙する', () => {
+      const out = runSweep(target);
+      assert.strictEqual(out.code, 0, out.logs.join('\n'));
+      assert.deepStrictEqual([...new Set(out.calls.map((c) => c.method))], ['GET'], 'dry-run が GET 以外を送った');
+      const listed = out.logs.filter((l) => /^ {2}- /.test(l)).map((l) => l.split(' ')[3]);
+      assert.deepStrictEqual(new Set(listed), new Set([...E2E_IDS, 'c1']), '列挙が e2e- の一致と違う');
+      assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件・後始末済み 2 件（残骸に数えない）（消すには')), out.logs.join('\n'));
+      // #2032 / IADR-0631: 削除の口が無い種類の無効化済み（データソース s3・MCP クライアント c3）は後始末済みで、残骸に数えない。
+      const settled = out.logs.filter((l) => /^ {2}= /.test(l)).map((l) => l.split(' ')[3]);
+      assert.deepStrictEqual(settled, ['s3', 'c3'], '無効化済みを後始末済みとして列挙していない');
+      assert.ok(out.logs.some((l) => l.includes('datasources: 一致 1 件・後始末済み 1 件（一覧 3 件')), out.logs.join('\n'));
+      // 視点: 個人資料は e2e-revocable を除く 5 役割の一覧を取り（本人のものだけが見える。IADR-0630 決定 5）、他の種類は e2e-admin だけ。
+      assert.deepStrictEqual(out.calls.filter((c) => c.path === '/bff/private-notes').map((c) => c.role), ['user', 'operator', 'admin', 'noaccess', 'trading-owner']);
+      assert.ok(out.logs.some((l) => l.includes('private-notes: 一致 3 件（一覧 5 件・視点: e2e-user, e2e-operator, e2e-admin, e2e-noaccess, e2e-trading-owner）')), out.logs.join('\n'));
+      assert.ok(out.logs.some((l) => l.includes('documents: 一致 1 件（一覧 4 件・視点: e2e-admin）')), out.logs.join('\n'));
+      // --dry-run を明示しても同じ。
+      assert.deepStrictEqual(runSweep([...target, '--dry-run']).calls.map((c) => c.method).filter((m) => m !== 'GET'), []);
+    });
+
+    ok('#2030: --delete でも、消す要求は e2e- で始まるものの ID にしか飛ばない（混ぜた一覧）', () => {
+      const out = runSweep([...target, '--delete']);
+      assert.strictEqual(out.code, 0, out.logs.join('\n'));
+      const writes = out.calls.filter((c) => c.method !== 'GET');
+      const ids = writes.map((c) => (c.body ? c.body.ids.join(',') : c.path.replace(/\/disable$/, '').split('/').pop()));
+      for (const id of ids) assert.ok(E2E_IDS.has(id) || id === 'c1', `e2e- でないもの（${id}）へ消す要求を送った`);
+      assert.ok(!ids.includes('s3') && !ids.includes('c3'), '後始末済み（無効化済み）へ消す要求を送った');
+      assert.deepStrictEqual(
+        writes.map((c) => `${c.method} ${c.path}${c.body ? ' ' + c.body.ids.join(',') : ''}`),
+        [
+          'DELETE /bff/documents/d1',
+          'DELETE /bff/private-notes/n1', 'POST /bff/private-notes/purge n1',
+          'POST /bff/private-notes/purge n2',
+          'DELETE /bff/private-notes/o1', 'POST /bff/private-notes/purge o1',
+          'DELETE /bff/admin/authz/policies/p2',
+          'DELETE /bff/datasources/s2',
+          'POST /bff/admin/mcp-clients/c1/disable',
+          'DELETE /bff/tags/t1',
+        ],
+        '消す要求の集合・順（タグは最後）が違う',
+      );
+      assert.ok(writes.every((c) => c.csrf === '1'), '状態変更に X-MSP-CSRF が無い');
+      // 個人資料は見えた本人で消し、他の種類は e2e-admin で消す。他ドメインの cookie は送らない。
+      assert.deepStrictEqual(writes.map((c) => c.role), ['admin', 'user', 'user', 'user', 'operator', 'operator', 'admin', 'admin', 'admin', 'admin']);
+      assert.ok(out.calls.every((c) => /^__Host-msp-session=[a-z-]+$/.test(c.cookie)), '到達先でない cookie を送った');
+      assert.ok(out.calls.filter((c) => !c.path.startsWith('/bff/private-notes')).every((c) => c.role === 'admin'), '管理の種類を admin 以外で読んだ');
+      // MCP クライアントは削除の口が無いので無効化を送る（IADR-0631 決定 1）。
+      assert.ok(out.logs.some((l) => l.includes('c1 e2e-r1-mcp（e2e-admin で消した）')), 'MCP クライアントを無効化していない');
+    });
+
+    ok('#2030: 消せないものがあっても残りを続けて exit 1、404 は消えた扱い', () => {
+      const failed = runSweep([...target, '--delete'], { status: { 'DELETE /bff/documents/d1': 500 } });
+      assert.strictEqual(failed.code, 1);
+      assert.ok(failed.calls.some((c) => c.method === 'DELETE' && c.path === '/bff/tags/t1'), '失敗の後の種類を飛ばした');
+      assert.ok(failed.logs.some((l) => l.includes('d1 e2e-r1-doc を消せない（DELETE /bff/documents/d1 が 500）')), failed.logs.join('\n'));
+      const gone = runSweep([...target, '--delete'], { status: { 'DELETE /bff/private-notes/n1': 404 } });
+      assert.strictEqual(gone.code, 0, gone.logs.join('\n'));
+      assert.ok(gone.calls.some((c) => c.method === 'POST' && c.body && c.body.ids[0] === 'n1'), '404 の後の完全削除を送っていない');
+      // 一覧が読めない種類があれば exit 1（0 件の緑にしない）。
+      assert.strictEqual(runSweep(target, { status: { 'GET /bff/tags': 403 } }).code, 1);
+    });
+
+    ok('#2030（#2234 レビュー）: 見ていない視点があれば「残骸 0」と言い切らない（dry-run は警告、--delete は exit 1）', () => {
+      // 1 役割のセッションが失効していた・state が無い。
+      const sc = { status: { 'GET /bff/private-notes@noaccess': 401 }, missingState: ['trading-owner'] };
+      const dry = runSweep(target, sc);
+      assert.strictEqual(dry.code, 0, dry.logs.join('\n'));
+      const text = dry.logs.join('\n');
+      assert.match(text, /見ていない視点: e2e-noaccess, e2e-trading-owner/);
+      assert.match(text, /private-notes@e2e-noaccess: セッションが無効（401）/);
+      assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）・後始末済み 2 件/);
+      assert.strictEqual(runSweep([...target, '--delete'], sc).code, 1, '消す実行で視点が欠けたのに exit 0');
+      // 文書: 「所有者は自分の文書を読める」が無ければ admin の一覧は admin が作った文書を含まない → 文書の一覧を数えずに欠けとして出す。
+      const noOwner = runSweep(target, { noOwnerPolicy: true });
+      const t2 = noOwner.logs.join('\n');
+      assert.match(t2, /documents: 一致 0 件（一覧 0 件・視点: なし／見ていない視点: e2e-admin）/);
+      assert.match(t2, /documents@e2e-admin: 「所有者は自分の文書を読める」の有効なポリシーが無い/);
+      assert.ok(!noOwner.calls.some((c) => c.path === '/bff/documents'), '前提が無いのに文書の一覧を数えた');
+      // 視点の和集合のもとが 6 役割（env.ts の ROLES と同じ）であること。
+      const roles = /export const ROLES = \[([\s\S]*?)\] as const/.exec(fsS.readFileSync(pathS.join(__dirname, '..', 'src/platform/frontend/e2e/live/support/env.ts'), 'utf8'));
+      assert.ok(roles, 'env.ts の ROLES を読めない');
+      assert.deepStrictEqual([...roles[1].matchAll(/'([^']+)'/g)].map((m) => m[1]), sweepLib.ALL_ROLES, 'sweep の役割が env.ts の ROLES とずれた');
+    });
+
+    ok('#2030: 向け先を明示しない・使い捨てのスタック以外・context が違うなら exit 2 で、要求を 1 つも送らない', () => {
+      const cases = [
+        [['--live', '--auth-dir', '/x', '--stack', 'e2e-live'], {}, '--edge-url が無い'],
+        [['--live', '--edge-url', 'https://localhost', '--stack', 'e2e-live'], {}, '--auth-dir が無い'],
+        [['--live', '--edge-url', 'https://localhost', '--auth-dir', '/x'], {}, '--stack が無い'],
+        [['--live', '--edge-url', 'https://localhost', '--auth-dir', '/x', '--stack', 'rancher-desktop'], {}, '使い捨てのスタックだけ'],
+        [['--live', '--edge-url', 'https://localhost', '--auth-dir', '/x', '--stack', 'poc'], {}, '使い捨てのスタックだけ'],
+        [target, { context: 'rancher-desktop' }, 'k3d-e2e-live でない（rancher-desktop）'],
+        [target, { context: 'k3d-e2e-live-2' }, 'k3d-e2e-live でない'],
+        [target, { context: 'throw' }, 'current-context を読めない'],
+        [[...target, '--dry-run', '--delete'], {}, '同時に指定できない'],
+        [[...target, '--force'], {}, '知らない引数'],
+        [['--live', '--edge-url', 'https://localhost/bff', '--auth-dir', '/x', '--stack', 'e2e-live'], {}, 'オリジンだけ'],
+      ];
+      for (const [argv, sc, why] of cases) {
+        const out = runSweep(argv, sc);
+        assert.strictEqual(out.code, 2, `${argv.join(' ')} が止まらない`);
+        assert.deepStrictEqual(out.calls, [], `${argv.join(' ')} が要求を送った`);
+        assert.ok(out.logs.join('\n').includes(why), `${argv.join(' ')}: 「${why}」と言わない\n${out.logs.join('\n')}`);
+      }
+      assert.deepStrictEqual(sweepLib.DISPOSABLE_STACKS, ['e2e-live'], '使い捨てのスタックの一覧が変わった（PoC を足していないか）');
+    });
+
+    ok('#2031 / IADR-0630: 使い捨てのスタックの判定は lib/disposable-stack.js の 1 つだけで、sweep と同じ一覧を使い、CLI は一覧外を kubectl を読む前に exit 2', () => {
+      const lib = require('./lib/disposable-stack.js');
+      assert.strictEqual(sweepLib.DISPOSABLE_STACKS, lib.DISPOSABLE_STACKS, 'sweep が一覧を別に持っている');
+      assert.strictEqual(sweepLib.checkTarget, lib.checkTarget, 'sweep が判定を別に持っている');
+      assert.doesNotThrow(() => lib.checkTarget('e2e-live', () => 'k3d-e2e-live\n'));
+      assert.throws(() => lib.checkTarget('e2e-live', () => 'rancher-desktop'), /k3d-e2e-live でない（rancher-desktop）/);
+      assert.throws(() => lib.checkTarget('rancher-desktop', () => { throw new Error('読まないはず'); }), /使い捨てのスタックだけを受ける/);
+      for (const argv of [['--stack', 'poc'], ['--stack'], []]) {
+        const r = spawnS(process.execPath, [pathS.join(__dirname, 'lib', 'disposable-stack.js'), ...argv], { encoding: 'utf8', env: { ...process.env, PATH: '/nonexistent' } });
+        assert.strictEqual(r.status, 2, `${argv.join(' ')}: ${r.stderr}`);
+      }
+      // 書き込みの向け先の門の 2 か所（sweep と live-rw の globalSetup）が同じ判定器を呼ぶ。
+      const readiness = fsS.readFileSync(pathS.join(__dirname, '..', 'src/platform/frontend/e2e/live/support/readiness.ts'), 'utf8');
+      assert.match(readiness, /scripts\/lib\/disposable-stack\.js/, 'live-rw の門が判定器を呼んでいない');
+    });
+
+    ok('#2030: cookie は到達先のホストの生きているものだけを送り、無ければ例外', () => {
+      const st = { cookies: [
+        { name: 'a', value: '1', domain: 'localhost', expires: -1 },
+        { name: 'b', value: '2', domain: '.localhost', expires: 2e9 },
+        { name: 'c', value: '3', domain: 'localhost', expires: 1 },
+        { name: 'd', value: '4', domain: 'keycloak.localhost', expires: -1 } ] };
+      assert.strictEqual(sweepLib.cookieHeader(st, 'https://localhost', 1e9), 'a=1; b=2');
+      assert.throws(() => sweepLib.cookieHeader({ cookies: [] }, 'https://localhost'), /cookie が無い/);
+    });
+
+    ok('#2030: seed（ABAC ポリシー・検索用文書・タグ辞書）の名前は e2e- で始まらない（sweep が seed を消さない）', () => {
+      const names = [];
+      const walk = (x) => {
+        if (Array.isArray(x)) x.forEach(walk);
+        else if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) {
+          if ((k === 'name' || k === 'title') && typeof v === 'string') names.push(v);
+          walk(v);
+        }
+        else if (typeof x === 'string') names.push(x); // タグ辞書は文字列の配列でありうる
+      };
+      for (const f of ['abac-seed/policies.json', 'search-seed/documents.json', 'tag-seed/tags.json']) {
+        walk(JSON.parse(fsS.readFileSync(pathS.join(__dirname, '..', 'deploy', 'local', f), 'utf8')));
+      }
+      assert.ok(names.length >= 10, `seed の名前を読めていない（${names.length} 件）`);
+      assert.deepStrictEqual(names.filter((n) => sweepLib.isSweepable(n)), [], 'seed に e2e- で始まる名前がある（sweep が消す）');
+    });
+
+    ok('#2030: e2e-live.yml は sweep を dry-run で、このジョブのスタックへ向けて流す（消さない）', () => {
+      const wf = fsS.readFileSync(pathS.join(__dirname, '..', '.github', 'workflows', 'e2e-live.yml'), 'utf8');
+      assert.match(wf, /\n\s+E2E_SWEEP: dry-run\n(\s+#.*\n)*\s+E2E_STACK: \$\{\{ env\.CLUSTER \}\}\n/);
+      assert.match(wf, /\n {2}CLUSTER: e2e-live\n/, 'スタックの名前が使い捨てのスタックの一覧と違う');
+      assert.doesNotMatch(wf, /E2E_SWEEP: delete|--delete/, 'e2e-live.yml が消す指定をしている');
+      assert.match(wf, /- "scripts\/e2e-live-sweep\.js"/, 'paths に sweep 本体が無い');
+      // #2031 / IADR-0630 決定 6: 実行の中で発行された値を記録する先を live の実行に渡し、成果物の走査がそれを探し、最後に消す。
+      assert.match(wf, /\n\s+E2E_ISSUED_SECRETS_FILE: \$\{\{ runner\.temp \}\}\/e2e-issued-secrets\.env\n/, 'live の実行に発行値の記録先を渡していない');
+      assert.match(wf, /--issued-file "\$RUNNER_TEMP\/e2e-issued-secrets\.env"/, '成果物の走査が発行値を探していない');
+      assert.match(wf, /rm -f "\$RUNNER_TEMP\/e2e-accounts\.env" "\$RUNNER_TEMP\/e2e-issued-secrets\.env"/, '発行値の記録を消していない');
+    });
+  }
+
   // --- #1550: 稼働クラスタへ当たる scripts は、明示の指定（--live か LIVE=1）が無ければ何もせずに終わる ------------
   //
   // 事故（2026-09-26）: ワークフローの `node scripts/...` の行をまとめて実行した作業エージェントが、稼働中の Keycloak へ
@@ -13079,6 +14312,13 @@ exit $RC
       const LOGIN_GATE = stepOf('🔴 Gate — ログイン経路の存在秘匿');
       // #1817: SC-12 の IdP への書き込みの門も「ほかの門」に入る（赤なら偶然の赤として再実行しない）。
       const MCP_GATE = stepOf('🔴 Gate — SC-12 の IdP への書き込み');
+      // IADR-0589: 外向き通信の既定拒否の門も「ほかの門」に入る。
+      const EGRESS_GATE = stepOf('🔴 Gate — 外向き通信の既定拒否');
+      // IADR-0590: メッシュの mTLS の門も「ほかの門」に入る。ISTIO が 1 でない比較実行でも skipped にしない
+      //   （t25-rerun-on-chance-red.js は「🔴 Gate」の手順すべての success を要求する）ので、if: は stack-ready だけに依る。
+      const MESH_GATE = stepOf('🔴 Gate — メッシュの mTLS が STRICT で効いている');
+      // IADR-0591: 基盤への接続の TLS の門も「ほかの門」に入る（ISTIO の有無によらず測る）。
+      const INFRA_TLS_GATE = stepOf('🔴 Gate — 基盤への接続が TLS で効いている');
       const CAND = stepOf(rerunScript.CANDIDATE_STEP);
       const DUMP = stepOf('Dump cluster state');
 
@@ -13086,8 +14326,13 @@ exit $RC
       assert.strictEqual(CAND.name, rerunScript.CANDIDATE_STEP, '手順名が CANDIDATE_STEP と違う（再実行の script が候補を見つけられない）');
       assert.strictEqual(RESET.id, 'reset-mail', 'パスワードリセットの門の id が reset-mail でない（出力を読めない）');
       assert.strictEqual(RESET.cond, null, `パスワードリセットの門に if: が付いた: ${RESET.cond}`);
-      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
+      for (const s of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, MESH_GATE, INFRA_TLS_GATE, LOGIN_GATE]) assert.ok(s.id, `${s.name} に id が無い`);
       assert.ok(MCP_GATE.at < LOGIN_GATE.at, 'SC-12 の書き込みの門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(EGRESS_GATE.at < LOGIN_GATE.at, '外向き通信の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(MESH_GATE.at < LOGIN_GATE.at, 'メッシュの mTLS の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(INFRA_TLS_GATE.at < LOGIN_GATE.at, '基盤の TLS の門がログイン経路の門の後にある（ログイン経路の門を最後に置く統制）');
+      assert.ok(!/ISTIO/.test(INFRA_TLS_GATE.cond || ''), `基盤の TLS の門の if: が ISTIO に依る: ${INFRA_TLS_GATE.cond}`);
+      assert.ok(!/ISTIO/.test(MESH_GATE.cond || ''), `メッシュの mTLS の門の if: が ISTIO に依る（比較実行で skipped になり、偶然の赤の確かめが走らない）: ${MESH_GATE.cond}`);
       assert.ok(CAND.at > LOGIN_GATE.at && CAND.at < DUMP.at, '「T-25 only red」がログイン経路の門の後・診断の前に無い（後段の結果を見られない）');
       assert.ok(CAND.cond, '「T-25 only red」に if: が無い（既定 success() では赤の run で走らない）');
       assert.ok(!/always\(\)/.test(CAND.cond), 'always() は取り消しでも走らせてしまう');
@@ -13104,7 +14349,8 @@ exit $RC
       };
       const allGreen = {
         [STACK.id]: 'success', [RESET.id]: 'failure', [SEED_ABAC.id]: 'success', [SEED_SEARCH.id]: 'success',
-        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [LOGIN_GATE.id]: 'success',
+        [ABAC_GATE.id]: 'success', [MCP_GATE.id]: 'success', [EGRESS_GATE.id]: 'success', [MESH_GATE.id]: 'success', [INFRA_TLS_GATE.id]: 'success',
+        [LOGIN_GATE.id]: 'success',
       };
       const onlyRed = { [RESET.id]: { t25_only_red: 'true', t25_p: '0.0094', t25_w: '713' } };
 
@@ -13115,7 +14361,7 @@ exit $RC
       // 場面 3: 出力が無い（検査器が古い・前提で落ちた）→ 走らない（fail-closed）
       assert.strictEqual(run({ outcomes: allGreen, outputs: {} }), false, '出力が無くても候補になる');
       // 場面 4: 🔴 ほかの門・投入のどれか 1 つが赤または飛ばされた → 走らない
-      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, LOGIN_GATE]) {
+      for (const other of [STACK, SEED_ABAC, SEED_SEARCH, ABAC_GATE, MCP_GATE, EGRESS_GATE, MESH_GATE, INFRA_TLS_GATE, LOGIN_GATE]) {
         for (const outcome of ['failure', 'skipped', 'cancelled']) {
           assert.strictEqual(run({ outcomes: { ...allGreen, [other.id]: outcome }, outputs: onlyRed }), false,
             `${other.name} が ${outcome} なのに候補になる（ほかの門の赤を偶然の赤として再実行する）`);
@@ -13471,6 +14717,11 @@ exit 0
       const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
       const set = new Set(['msp/llm-provider-credentials', 'msp/wikijs-sync', 'msp/keycloak-smtp', 'ai-stock-trading/app-secrets']);
       for (const m of src.matchAll(/^vkv_create_if_absent\s+(\S+)/gm)) set.add(m[1]);
+      // IADR-0573: ブローカのユーザーの KV は users.txt の 4 列目から作る（bootstrap.sh はループで作るので上の行の形に出ない）。
+      for (const l of fs1728.readFileSync(path1728.join(__dirname, '..', 'deploy', 'local', 'rabbitmq-setup', 'users.txt'), 'utf8').split('\n')) {
+        const c = l.trim().split(/\s+/);
+        if (l.trim() && !l.trim().startsWith('#') && c[3]) set.add(c[3]);
+      }
       return [...set];
     };
     const ES_LIST = [
@@ -13488,7 +14739,7 @@ exit 0
       'microservices-platform|bff-oidc|vault-backend|bff-oidc|msp/bff-oidc |',
     ].join('\n') + '\n';
 
-    const run1728 = ({ setup = () => {}, env = {}, bashArgs = [] } = {}) => {
+    const run1728 = ({ setup = () => {}, env = {}, bashArgs = [], script = BOOTSTRAP } = {}) => {
       const dir = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'iadr0494-'));
       try {
         const bin = path1728.join(dir, 'bin');
@@ -13502,14 +14753,24 @@ exit 0
         kv('msp/llm-provider-credentials', { 'voyage-api-key': '' });
         kv('ai-stock-trading/app-secrets', AUTH);
         kv('msp/keycloak-smtp', { host: 'mailpit.platform-infra.svc.cluster.local', port: '1025', starttls: 'false' });
+        // IADR-0573: ブローカのユーザーの KV は、移行後の世界では宣言の全ユーザーを持つ（値は試験の目印）。
+        {
+          const byKv = {};
+          for (const l of fs1728.readFileSync(path1728.join(__dirname, '..', 'deploy', 'local', 'rabbitmq-setup', 'users.txt'), 'utf8').split('\n')) {
+            const c = l.trim().split(/\s+/);
+            if (!l.trim() || l.trim().startsWith('#') || !c[3]) continue;
+            (byKv[c[3]] = byKv[c[3]] || {})[c[0]] = 'marker-0573';
+          }
+          for (const [p, props] of Object.entries(byKv)) kv(p, props);
+        }
         fs1728.writeFileSync(path1728.join(state, 'es-list'), ES_LIST);
         fs1728.writeFileSync(path1728.join(state, 'secret', 'ai-stock-trading_ast-secrets'), secretData([...Object.keys(AUTH), ...READER]));
         setup({ state, kv });
         const log = path1728.join(dir, 'calls.log');
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
-        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
-        const r = spawn1728('bash', [...bashArgs, BOOTSTRAP.split(path1728.sep).join('/')], {
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$|ALLOW_DEV_INFRA_CREDENTIALS$|KEYCLOAK_ADMIN_PASSWORD$|RABBITMQ_PASSWORD$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
+        const r = spawn1728('bash', [...bashArgs, script.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
           env: { ...baseEnv, PATH: `${bin}${path1728.delimiter}${process.env.PATH}`, STUB_STATE: state, STUB_LOG: log,
@@ -13524,7 +14785,11 @@ exit 0
         const stdinLog = `${log}.stdin`;
         const putStdin = Object.fromEntries((fs1728.existsSync(stdinLog) ? fs1728.readFileSync(stdinLog, 'utf8').split('\n').filter(Boolean) : [])
           .map((l) => [l.slice(0, l.indexOf(' ')), l.slice(l.indexOf(' ') + 1)]));
-        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv, putStdin };
+        // IADR-0572: 実行後の KV（パス → 「名前=値」の行）。patch の値（stdin）の行き先を試験が確かめる。
+        const kvDir = path1728.join(state, 'kv');
+        const kvAfter = Object.fromEntries(fs1728.readdirSync(kvDir).filter((f) => !f.includes('.'))
+          .map((f) => [f.split('__').join('/'), fs1728.readFileSync(path1728.join(kvDir, f), 'utf8')]));
+        return { ...r, calls: fs1728.readFileSync(log, 'utf8').split('\n').filter(Boolean), execArgv, putStdin, kvAfter };
       } finally {
         fs1728.rmSync(dir, { recursive: true, force: true });
       }
@@ -13563,6 +14828,38 @@ exit 0
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.ok(r.calls.includes('VAULT PUT msp/llm-provider-credentials'));
       assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/llm-provider-credentials']);
+    });
+
+    // NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのユーザーの種は乱数で、無いときだけ入れる。値は標準入力で渡す。
+    ok('IADR-0573: ブローカのユーザーの KV が無ければ、宣言の全ユーザーに互いに違う乱数を標準入力で入れる', () => {
+      const r = run1728({ setup: ({ state }) => {
+        fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq-users'));
+        fs1728.rmSync(path1728.join(state, 'kv', 'ai-stock-trading__rabbitmq-users'));
+      } });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      const values = [];
+      for (const kvPath of ['msp/rabbitmq-users', 'ai-stock-trading/rabbitmq-users']) {
+        assert.ok(r.calls.includes(`VAULT PUT ${kvPath}`), `${kvPath} を作っていない`);
+        const body = JSON.parse(r.putStdin[kvPath]);
+        const prefix = kvPath.startsWith('msp/') ? 'msp-' : 'ast-';
+        assert.ok(Object.keys(body).length >= 7 && Object.keys(body).every((k) => k.startsWith(prefix)), `${kvPath} のキーが違う: ${Object.keys(body)}`);
+        for (const v of Object.values(body)) { assert.ok(/^[0-9a-f]{48}$/.test(v), `乱数でない値がある（${kvPath}）`); values.push(v); }
+      }
+      assert.strictEqual(new Set(values).size, values.length, '同じ値を使い回している');
+      assert.strictEqual(values.length, 18, `ユーザーの数が宣言と違う: ${values.length}`);
+      for (const v of values) {
+        assert.ok(!r.execArgv.some((a) => a.includes(v)), '値が vault のコマンドの引数に載った');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+    });
+
+    ok('IADR-0573: ブローカのユーザーの KV が在れば、無いユーザーだけを足し、在る値は触らない', () => {
+      const r = run1728({ setup: ({ kv }) => kv('msp/rabbitmq-users', { 'msp-document': 'marker-0573' }) });
+      assert.strictEqual(r.status, 0, r.stderr + r.stdout);
+      const patched = r.calls.filter((c) => c.startsWith('VAULT PATCH msp/rabbitmq-users ')).map((c) => c.split(' ')[3]).sort();
+      assert.ok(patched.length === 6 && !patched.includes('msp-document'), `足したユーザーが違う: ${patched}`);
+      assert.ok(!r.calls.includes('VAULT PUT msp/rabbitmq-users'), '在る KV を put で置き換えた');
+      assert.ok(!r.calls.some((c) => c.startsWith('VAULT PATCH ai-stock-trading/rabbitmq-users')), '揃っている KV を書いた');
     });
 
     ok('#1764: 在る llm-provider-credentials に voyage-api-key が無ければ空で足し（ESO の同期を壊さない）、それを読む ExternalSecret に付ける', () => {
@@ -13692,8 +14989,9 @@ exit 0
       }
     });
 
-    ok('#1793: env が無いときは、従来どおり既定値を同じ形（stdin の JSON）で入れる', () => {
-      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')) });
+    // ［IADR-0574］基盤の資格情報（rabbitmq・keycloak-admin）の既定値は、使い捨ての開発環境の opt-in のときだけ入れる。
+    ok('#1793/IADR-0574: env が無く opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）のときは、既定値を同じ形（stdin の JSON）で入れる', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq')), env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
       assert.strictEqual(r.status, 0, r.stderr + r.stdout);
       assert.deepStrictEqual(JSON.parse(r.putStdin['msp/rabbitmq']), { username: 'guest', password: 'guest' });
     });
@@ -13847,21 +15145,64 @@ exit 0
     const vaultWrites1830 = (r) => r.calls.filter((c) => c.startsWith('VAULT '));
     const probe1830 = (c) => ['probe', '1830', c].join('-');
 
-    ok('#1830: dev ではない context で、無い管理用クライアントの KV を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+    // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
+    // app-secrets は kb-reader-auth-client-* を欠く（PoC の状態）ので、dev ではない context ではそのクライアントも名指される。
+    const { envNameOf: envNameOf0570 } = require('./lib/dev-client-secret-targets.js');
+    const READER_FILLED0570 = ({ kv }) => kv('ai-stock-trading/app-secrets', { ...AUTH, 'kb-reader-auth-client-id': 'ai-stock-trading-kb-reader',
+      'kb-reader-auth-client-secret': 'ai-stock-trading-kb-reader-dev-secret-change-me' });
+    const both0570 = (...fns) => (ctx) => { for (const f of fns) f(ctx); };
+
+    ok('#1830/IADR-0572: dev ではない context で、無い KV（app-secrets はキー）を env 未設定（dev の値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
       const r = run1728({ setup: dropKv1830(...Object.values(GUARDED1830), 'msp/llm-provider-credentials'), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.notStrictEqual(r.status, 0, '止まらなかった');
       assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
-      assert.ok(/止める: identity-admin, reset-gate, mcp-client-admin$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(/止める: ai-stock-trading-kb-reader, identity-admin, mcp-client-admin, reset-gate$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(/AI_STOCK_TRADING_KB_READER_CLIENT_SECRET/.test(r.stderr), 'AST のクライアントの env の名前を告げていない');
       assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
       assert.ok(!`${r.stdout}${r.stderr}`.includes('-dev-secret-change-me'), '値を出力した');
     });
 
     ok('#1830: 名指すのは無い KV だけ（在る KV は触らないので dev の値は入らない）', () => {
-      const r = run1728({ setup: dropKv1830(GUARDED1830['mcp-client-admin']), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      const r = run1728({ setup: both0570(dropKv1830(GUARDED1830['mcp-client-admin']), READER_FILLED0570), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.notStrictEqual(r.status, 0);
       assert.ok(/止める: mcp-client-admin$/m.test(r.stderr), `mcp-client-admin だけを名指していない:\n${r.stderr}`);
-      const present = run1728({ env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      const present = run1728({ setup: READER_FILLED0570, env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
       assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+    });
+
+    ok('IADR-0572: 当初の 3 つ以外（bff・east-west の *-service・synthetic-monitor）の無い KV も名指す', () => {
+      const extra = { bff: 'msp/bff-oidc', 'document-service': 'msp/document-service-token', 'synthetic-monitor': 'msp/synthetic-monitor-oidc' };
+      const r = run1728({ setup: both0570(dropKv1830(...Object.values(extra)), READER_FILLED0570), env: { STUB_KUBE_CONTEXT: 'prod-shared' } });
+      assert.notStrictEqual(r.status, 0, '止まらなかった（対象が広がっていない）');
+      assert.deepStrictEqual(vaultWrites1830(r), [], '止まる前に Vault へ書いた');
+      assert.ok(/止める: bff, document-service, synthetic-monitor$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      assert.ok(/BFF_OIDC_CLIENT_SECRET/.test(r.stderr), 'bff の env の名前（例外）を告げていない');
+      const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
+      for (const c of Object.keys(extra)) env[envNameOf0570(c)] = probe1830(c);
+      const given = run1728({ setup: both0570(dropKv1830(...Object.values(extra)), READER_FILLED0570), env });
+      assert.strictEqual(given.status, 0, given.stderr);
+      for (const [c, p] of Object.entries(extra)) assert.ok(given.putStdin[p].includes(probe1830(c)), `${p} が与えた値で作られていない`);
+    });
+
+    ok('IADR-0572: AST の機密クライアントは env を与えれば app-secrets の無いキーへその値で入れる（在るキーは触らない・値は stdin）', () => {
+      const env = { STUB_KUBE_CONTEXT: 'prod-shared', AI_STOCK_TRADING_KB_READER_CLIENT_SECRET: probe1830('kb-reader'),
+        AI_STOCK_TRADING_SVC_CLIENT_SECRET: probe1830('svc') };
+      const r = run1728({ env });
+      assert.strictEqual(r.status, 0, r.stderr);
+      const kv = r.kvAfter['ai-stock-trading/app-secrets'];
+      assert.ok(kv.includes(`kb-reader-auth-client-secret=${probe1830('kb-reader')}\n`), `無いキーへ env の値を入れていない:\n${kv}`);
+      assert.ok(kv.includes('service-auth-client-secret=dev-only-service-secret\n') && !kv.includes(probe1830('svc')), '在るキーを env で書き換えた（IADR-0485）');
+      assert.ok(!r.execArgv.some((c) => c.includes(probe1830('kb-reader'))), '値が sh -c の引数に載った');
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(probe1830('kb-reader')), '値が出力に出た');
+      // KV が無い（この実行で作る）ときは、seed の dev の値を env の値で上書きする
+      const created = run1728({ setup: dropKv1830('ai-stock-trading/app-secrets'), env: { ...env, AI_STOCK_TRADING_KB_WRITER_CLIENT_SECRET: probe1830('kb-writer'),
+        AI_STOCK_TRADING_LLM_CALLER_CLIENT_SECRET: probe1830('llm'), AI_STOCK_TRADING_OWNER_CLIENT_SECRET: probe1830('owner') } });
+      assert.strictEqual(created.status, 0, created.stderr);
+      const kv2 = created.kvAfter['ai-stock-trading/app-secrets'];
+      for (const [key, v] of [['service-auth-client-secret', 'svc'], ['kb-auth-client-secret', 'kb-writer'], ['kb-reader-auth-client-secret', 'kb-reader'],
+        ['llm-auth-client-secret', 'llm'], ['discord-owner-auth-client-secret', 'owner']]) {
+        assert.ok(kv2.includes(`${key}=${probe1830(v)}\n`), `作った KV の ${key} が env の値でない:\n${kv2}`);
+      }
     });
 
     ok('#1830 陽性対照: dev の context・dev 以外の値・上書きでは進み、無い KV を作る', () => {
@@ -13871,7 +15212,8 @@ exit 0
       for (const p of Object.values(GUARDED1830)) assert.ok(dev.calls.includes(`VAULT PUT ${p}`), `dev の context で ${p} を作っていない`);
       assert.ok(dev.putStdin['msp/reset-gate-oidc'].includes('reset-gate-dev-secret-change-me'), 'dev の context で dev の値を入れていない');
       const env = { STUB_KUBE_CONTEXT: 'prod-shared', IDENTITY_ADMIN_CLIENT_SECRET: probe1830('identity-admin'),
-        RESET_GATE_CLIENT_SECRET: probe1830('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: probe1830('mcp-client-admin') };
+        RESET_GATE_CLIENT_SECRET: probe1830('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: probe1830('mcp-client-admin'),
+        AI_STOCK_TRADING_KB_READER_CLIENT_SECRET: probe1830('kb-reader') };
       const given = run1728({ setup: drop, env });
       assert.strictEqual(given.status, 0, given.stderr);
       for (const [c, p] of Object.entries(GUARDED1830)) {
@@ -13881,6 +15223,88 @@ exit 0
       const over = run1728({ setup: drop, env: { STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' } });
       assert.strictEqual(over.status, 0, over.stderr);
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
+    });
+
+    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
+    // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0574 節）。ここは bootstrap.sh の実走で
+    // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
+    const probe0573 = (c) => ['probe', '0573', c].join('-');
+    ok('IADR-0574: 無い基盤の資格情報の KV を、明示の値なし（既定値）で作ろうとすると、Vault へ何も書かずに名指して止まる', () => {
+      const r = run1728({ setup: dropKv1830('msp/keycloak-admin', 'msp/rabbitmq') });
+      assert.notStrictEqual(r.status, 0, '止まらなかった');
+      assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
+      assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定を書いた');
+      assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD, RABBITMQ_PASSWORD$/m.test(r.stderr), `名指していない:\n${r.stderr}`);
+      // 開発用の値と同じ明示も止める
+      const dev = run1728({ setup: dropKv1830('msp/keycloak-admin'), env: { KEYCLOAK_ADMIN_PASSWORD: 'admin' } });
+      assert.notStrictEqual(dev.status, 0, '開発用の値の明示を通した');
+      assert.deepStrictEqual(vaultWrites1830(dev), []);
+    });
+
+    ok('IADR-0574: 在る KV は判定へ渡さない（触らないので既定値は入らない）。明示の値・opt-in では進み、無い KV を作る', () => {
+      const present = run1728({});
+      assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+      const drop = dropKv1830('msp/keycloak-admin', 'msp/rabbitmq');
+      const given = run1728({ setup: drop, env: { KEYCLOAK_ADMIN_PASSWORD: probe0573('kc'), RABBITMQ_PASSWORD: probe0573('mq') } });
+      assert.strictEqual(given.status, 0, given.stderr);
+      assert.ok(given.putStdin['msp/keycloak-admin'].includes(probe0573('kc')), 'keycloak-admin が与えた値で作られていない');
+      assert.ok(given.putStdin['msp/rabbitmq'].includes(probe0573('mq')), 'rabbitmq が与えた値で作られていない');
+      // IADR-0577: 全サービス共通の 1 組（msp/rabbitmq-app）は作らない（サービスは msp/rabbitmq-users の各自のユーザーで名乗る）。
+      assert.ok(!('msp/rabbitmq-app' in given.putStdin) && !given.calls.some((c) => c.includes('msp/rabbitmq-app')), '旧 msp/rabbitmq-app を作った');
+      assert.ok(!`${given.stdout}${given.stderr}`.includes(probe0573('kc')), '値が出力に出た');
+      const over = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: '1' } });
+      assert.strictEqual(over.status, 0, over.stderr);
+      assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1/.test(over.stderr), 'opt-in で警告しない');
+      assert.ok(over.calls.includes('VAULT PUT msp/keycloak-admin'), 'opt-in で作っていない');
+      const notOne = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: 'true' } });
+      assert.notStrictEqual(notOne.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
+    });
+
+    ok('IADR-0572 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
+      // 判定器・導出・述語・宣言を一時の木へ写し、宣言にだけクライアントを足す（本物のファイルは変えない）。
+      const tree = fs1728.mkdtempSync(path1728.join(os1728.tmpdir(), 'bootstrap-0570-'));
+      try {
+        for (const rel of ['deploy/local/vault/eso/bootstrap.sh', 'scripts/lib/dev-client-secret-guard.sh', 'scripts/lib/dev-client-secret-targets.js',
+          'deploy/local/keycloak-setup/reconcile-realm.js', 'scripts/lib/infra-credentials.sh']) {
+          fs1728.mkdirSync(path1728.dirname(path1728.join(tree, rel)), { recursive: true });
+          fs1728.copyFileSync(path1728.join(REPO1728, rel), path1728.join(tree, rel));
+        }
+        const realm = JSON.parse(fs1728.readFileSync(path1728.join(REPO1728, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+        realm.clients.push({ clientId: 'probe-new-sa', publicClient: false, serviceAccountsEnabled: true, secret: ['probe', 'new', 'sa', 'declared'].join('-') });
+        fs1728.mkdirSync(path1728.join(tree, 'deploy', 'keycloak'), { recursive: true });
+        fs1728.writeFileSync(path1728.join(tree, 'deploy', 'keycloak', 'microservices-platform-realm.json'), JSON.stringify(realm, null, 2));
+        const r = run1728({ script: path1728.join(tree, 'deploy', 'local', 'vault', 'eso', 'bootstrap.sh') });
+        assert.notStrictEqual(r.status, 0, '置き場の無いクライアントを黙って通した');
+        assert.ok(/probe-new-sa の Vault の置き場が決まっていない/.test(r.stderr), `名指していない:\n${r.stderr}`);
+        assert.deepStrictEqual(vaultWrites1830(r), [], '止まる前に Vault へ書いた');
+        assert.ok(!r.execArgv.some((c) => /vault (policy|write|auth)/.test(c)), '止まる前に Vault の設定へ進んだ（置き場の無いクライアントを飛ばして続けた）');
+        // 陽性対照: 写した木そのもの（足さない宣言）なら進む
+        fs1728.copyFileSync(path1728.join(REPO1728, 'deploy', 'keycloak', 'microservices-platform-realm.json'),
+          path1728.join(tree, 'deploy', 'keycloak', 'microservices-platform-realm.json'));
+        const ok0 = run1728({ script: path1728.join(tree, 'deploy', 'local', 'vault', 'eso', 'bootstrap.sh') });
+        assert.ok(!/の Vault の置き場が決まっていない/.test(ok0.stderr), `陽性対照で置き場の誤りが出た:\n${ok0.stderr}`);
+        assert.ok(ok0.calls.some((c) => c.startsWith('VAULT ')) || ok0.execArgv.some((c) => /vault auth/.test(c)), '陽性対照: 判定の後へ進んでいない');
+      } finally {
+        fs1728.rmSync(tree, { recursive: true, force: true });
+      }
+    });
+
+    ok('IADR-0572: bootstrap.sh が seed する client-secret の KV は、どれも宣言から導出した対象の置き場と一致する（置き場の表と seed が食い違わない）', () => {
+      const src = fs1728.readFileSync(BOOTSTRAP, 'utf8');
+      const fn = src.match(/^client_secret_kv_of\(\) \{\n[\s\S]*?\n\}\n/m);
+      assert.ok(fn, 'client_secret_kv_of の定義を読めない');
+      const { targetsOf } = require('./lib/dev-client-secret-targets.js');
+      const realm = JSON.parse(fs1728.readFileSync(path1728.join(REPO1728, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+      const clients = targetsOf(realm).map((t) => t.clientId);
+      const out = spawn1728('bash', ['-c', `${fn[0]}\nfor c in ${clients.join(' ')}; do printf '%s\\t' "$c"; client_secret_kv_of "$c" || printf 'UNKNOWN'; printf '\\n'; done`], { encoding: 'utf8' });
+      assert.strictEqual(out.status, 0, out.stderr);
+      const locs = Object.fromEntries(out.stdout.trim().split('\n').map((l) => l.split('\t')));
+      assert.deepStrictEqual(Object.keys(locs).sort(), clients.sort());
+      assert.ok(!Object.values(locs).includes('UNKNOWN'), `置き場の決まっていない対象がある: ${JSON.stringify(locs)}`);
+      const seeded = [...src.matchAll(/^vkv_create_if_absent\s+(msp\/\S+)\s+client-secret\s/gm)].map((m) => `${m[1]} client-secret`);
+      const tools = ['msp/wikijs-oidc', 'msp/grafana-oidc', 'msp/vault-oidc', 'msp/headlamp-oidc'].map((p) => `${p} client-secret`); // SA を持たない道具の OIDC
+      assert.deepStrictEqual(seeded.filter((x) => !tools.includes(x)).sort(), Object.values(locs).filter((v) => v.startsWith('msp/')).sort(),
+        'seed する client-secret の KV と置き場の表が食い違う');
     });
   }
 
@@ -14598,6 +16022,104 @@ exit 0
       assert.match(line, /累計 発行 7/);
     });
 
+    // --- #1931: --created-after（SeaweedFS 切り替え前の文書を飛ばす下限）--------------------------------------
+    // 口は createdAfter を持たないので、駆動器が開始カーソル（DocumentPageCursor: v1:<UtcTicks>:<Id の N 形式> の base64url）を合成する。
+    const decode1931 = (c) => Buffer.from(c, 'base64url').toString('utf8');
+
+    ok('#1931: --created-after だけ —— UTC へ寄せ、新規の状態は開始カーソルから始まり、確かめた位置も同じにする', () => {
+      const o = rp.parseArgs(['--live', '--created-after', '2026-09-27T09:00:00+09:00']);
+      assert.strictEqual(o.createdAfter, '2026-09-27T00:00:00.000Z', 'UTC へ寄せる');
+      assert.strictEqual(o.createdBefore, null);
+      const st = rp.newState(o, new Date('2026-10-15T12:00:00Z'));
+      assert.strictEqual(st.filters.createdAfter, '2026-09-27T00:00:00.000Z');
+      assert.strictEqual(st.filters.createdBefore, '2026-10-15T12:00:00.000Z', '上限は従前どおり開始時刻に固定する');
+      // .NET の ticks（0001-01-01 からの 100ns）: 1,790,467,200 秒 × 10^7 ＋ 621,355,968,000,000,000。Id は全零（after ≤ 作成時刻）。
+      assert.strictEqual(decode1931(st.cursor), `v1:639260640000000000:${'0'.repeat(32)}`);
+      assert.strictEqual(st.confirmedCursor, st.cursor, '止まって戻すときに先頭（null）へ戻らない');
+      assert.strictEqual(rp.rollbackToConfirmed(rp.applyPage(st, { nextCursor: 'c1', matched: 10, remaining: 4, published: 1 })).cursor, st.cursor);
+      assert.strictEqual(rp.stateProblem(st), null);
+      assert.ok(!/[=+/]/.test(st.cursor), 'base64url（パディングなし）');
+      assert.strictEqual(rp.startCursor(null), null);
+      assert.strictEqual(rp.newState(rp.parseArgs([]), new Date('2026-10-15T12:00:00Z')).cursor, null, '下限が無ければ従前どおり先頭から');
+    });
+
+    ok('#1931: 区間 —— after と before を両方渡せ、要求の本文に createdBefore と開始カーソルが載る', () => {
+      const o = rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z', '--created-before', '2026-10-01T00:00:00Z']);
+      assert.strictEqual(rp.intervalProblem(o), null);
+      const st = rp.newState(o, new Date('2026-10-15T00:00:00Z'));
+      assert.strictEqual(st.filters.createdBefore, '2026-10-01T00:00:00.000Z');
+      const body = rp.buildRequestBody(st.filters, { dryRun: false, limit: 10, cursor: st.cursor });
+      assert.deepStrictEqual(body, { dryRun: false, limit: 10, cursor: st.cursor, createdBefore: '2026-10-01T00:00:00.000Z' });
+      assert.ok(!('createdAfter' in body), '口は createdAfter を知らない（未知の項目を送らない）');
+    });
+
+    ok('#1931: after ≥ before・不正な日時・--resume との併用は止める。before 無指定は開始時刻と比べる', () => {
+      assert.throws(() => rp.parseArgs(['--created-after', '2026-10-02T00:00:00Z', '--created-before', '2026-10-01T00:00:00Z']), /より前でなければ/);
+      assert.throws(() => rp.parseArgs(['--created-after', '2026-10-01T00:00:00Z', '--created-before', '2026-10-01T00:00:00Z']), /区間が空/);
+      assert.throws(() => rp.parseArgs(['--created-after', 'last-month']), /--created-after は ISO 8601/);
+      assert.throws(() => rp.parseArgs(['--created-after']), /値がありません/);
+      assert.throws(() => rp.parseArgs(['--resume', '--created-after', '2026-09-27T00:00:00Z']), /状態ファイルの絞り込み/);
+      const future = rp.newState(rp.parseArgs(['--created-after', '2030-01-01T00:00:00Z']), new Date('2026-10-15T00:00:00Z'));
+      assert.match(rp.intervalProblem(future.filters), /区間が空/, '開始時刻より後の下限は空の区間');
+    });
+
+    ok('#1931: 状態ファイルの createdAfter が違えば同じ走査とみなさない（無指定と指定も違う）。旧い状態は下限なしと読む', () => {
+      const st = rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z'));
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--created-after', '2026-09-27T09:00:00+09:00'])), true, '同じ時刻は同じ走査');
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--created-after', '2026-09-28T00:00:00Z'])), false);
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs([])), false, '下限を外した新規の走査は別の走査');
+      const old = rp.newState(rp.parseArgs([]), new Date('2026-10-15T00:00:00Z'));
+      delete old.filters.createdAfter;
+      assert.strictEqual(rp.stateProblem(old), null, 'createdAfter を持たない旧い状態からも再開できる');
+      assert.strictEqual(rp.sameFilters(old, rp.parseArgs([])), true);
+      assert.strictEqual(rp.sameFilters(old, rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z'])), false);
+      assert.match(rp.stateProblem({ ...st, filters: { ...st.filters, createdAfter: 1 } }), /createdAfter/);
+    });
+
+    ok('#1961: --status は台帳の状態の完全一致で口へ渡り、状態ファイルの絞り込みに入る（無指定と指定は別の走査）', () => {
+      // FR-06, 計画 ADR-0141 決定 2, IADR-0551 決定 5: 配備前にアーカイブした文書を外す遡及の手段。
+      const o = rp.parseArgs(['--status', 'archived']);
+      const st = rp.newState(o, new Date('2026-10-16T00:00:00Z'));
+      assert.strictEqual(st.filters.status, 'archived');
+      assert.strictEqual(rp.stateProblem(st), null);
+      assert.deepStrictEqual(rp.buildRequestBody(st.filters, { dryRun: true }),
+        { dryRun: true, createdBefore: '2026-10-16T00:00:00.000Z', status: 'archived' });
+      assert.ok(!('status' in rp.buildRequestBody(rp.newState(rp.parseArgs([])).filters, { dryRun: true })), '陽性対照: 無指定は送らない');
+      // 状態ファイルとの突き合わせ: 無指定と指定は違う走査。status を持たない旧い状態は「状態を問わない」と読む。
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs(['--status', 'archived'])), true);
+      assert.strictEqual(rp.sameFilters(st, rp.parseArgs([])), false);
+      const old = { ...st, filters: { ...st.filters } };
+      delete old.filters.status;
+      assert.strictEqual(rp.stateProblem(old), null);
+      assert.strictEqual(rp.sameFilters(old, rp.parseArgs([])), true);
+      assert.match(rp.stateProblem({ ...st, filters: { ...st.filters, status: 'Archived' } }), /status/);
+      // 未知の状態は丸めず落とす。--resume では絞り込みを受けない。
+      assert.throws(() => rp.parseArgs(['--status', 'Archived']), /--status は/);
+      assert.throws(() => rp.parseArgs(['--status', 'active']), /--status は/);
+      assert.throws(() => rp.parseArgs(['--resume', '--status', 'archived']), /状態ファイルの絞り込み/);
+      assert.deepStrictEqual(rp.STATUSES, ['draft', 'normalized', 'published', 'archived'], '口の値域（RepublishSelection.Statuses）と同じ');
+      const text = rp.summarizeDryRun({ matched: 5803, remaining: 5803, withoutBody: 0, skippedByGate: 0, byConfidentiality: {} }, st.filters).join('\n');
+      assert.match(text, /状態 archived だけ: 取り込みは本文を読まずに全索引から外し/);
+    });
+
+    ok('#1931: dry-run の件数 —— 区間の件数と、createdAfter より前（対象外）の件数を出す。進捗の分母から対象外を引く', () => {
+      const f = rp.filtersOf(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']));
+      const text = rp.summarizeDryRun({ matched: 45571, remaining: 39768, withoutBody: 0, skippedByGate: 0, byConfidentiality: {} }, f).join('\n');
+      assert.match(text, /対象: 39768 件（createdAfter 2026-09-27T00:00:00\.000Z 以降。より前の 5803 件は対象外。下限なしの全件 45571 件）/);
+      // 最初のページ（開始カーソルから）の応答で対象外の件数を決め、以後の進捗は区間の中で数える。
+      let st = rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z'));
+      st = rp.applyPage(st, { nextCursor: 'c1', matched: 100, remaining: 60, selected: 10, published: 10 });
+      assert.strictEqual(st.excluded, 40);
+      assert.match(rp.formatProgress(st, { matched: 100, remaining: 60, selected: 10, published: 10, skippedByGate: 0, withoutBody: 0 }, 0),
+        /^\[page 1\] 10\/60（16\.7%）/);
+      st = rp.applyPage(st, { nextCursor: 'c2', matched: 100, remaining: 50, selected: 10, published: 10 });
+      assert.strictEqual(st.excluded, 40, '2 ページ目以降は変えない');
+      // 開始カーソルでない位置から最初に積んだ（excluded を持たない状態を途中から再開した）ときは決めない —— 進捗の分母は口の matched のまま。
+      const mid = { ...rp.newState(rp.parseArgs(['--created-after', '2026-09-27T00:00:00Z']), new Date('2026-10-15T00:00:00Z')), cursor: 'c5' };
+      assert.strictEqual(rp.applyPage(mid, { nextCursor: 'c6', matched: 100, remaining: 30, selected: 10 }).excluded, null, '途中の matched - remaining は対象外の件数ではない');
+      assert.strictEqual(rp.applyPage(rp.newState(rp.parseArgs([]), new Date()), { nextCursor: null, matched: 5, remaining: 5 }).excluded, null);
+    });
+
     // --- #1762 独立監査（R1・Y1・Y2・Y5）: 止まる条件・確かめた位置・再開・終わりの DLQ 確認 ---------------------
 
     ok('#1762 監査 Y2: DLQ の判定 —— カナリアは増加 0 だけを許し、それ以外は --max-dlq-growth まで許す（超えたら止まる）', () => {
@@ -14686,6 +16208,8 @@ exit 0
         fs1762.writeFileSync(path1762.join(bin, 'kubectl'), `#!${process.execPath}
 const fs = require('fs'); const f = process.env.SIM_FILE; const a = process.argv.slice(2);
 if (a[0] === 'cluster-info') process.exit(0);
+// IADR-0576: 投入器の client secret を稼働の Secret から読む（SIM_SEEDER_SECRET を与えたときだけ在る）
+if (a.includes('abac-seeder-oidc')) { if (!process.env.SIM_SEEDER_SECRET) process.exit(1); process.stdout.write(Buffer.from(process.env.SIM_SEEDER_SECRET).toString('base64')); process.exit(0); }
 if (!a.includes('list_queues')) process.exit(1);
 const s = JSON.parse(fs.readFileSync(f, 'utf8'));
 process.stdout.write('ingestion-service.DocumentUpdated\\t' + s.ingest + '\\nwolverine-dead-letter-queue\\t' + s.dlq + '\\n');
@@ -14699,10 +16223,16 @@ const [scriptPath, cfgPath, simFile] = process.argv.slice(2);
 const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
 fs.writeFileSync(simFile, JSON.stringify({ ingest: cfg.ingest || 0, dlq: 0, pendingFail: 0 }));
 const requests = []; let poison = new Set();
+const kcState = { enabled: false, calls: [], tokens: [] };
 const server = http.createServer((req, res) => {
   let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
     const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
-    if (req.url.includes('/token')) return send({ access_token: 't' });
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { const f = new URLSearchParams(b); kcState.tokens.push(f.get('client_id') + ':' + (f.get('client_secret') || '')); return send({ access_token: 't' }); }
     if (req.url !== '/documents/republish-updated') return send({});
     const body = JSON.parse(b); requests.push(body);
     const docs = cfg.docs; const start = body.cursor ? Number(body.cursor) : 0;
@@ -14716,16 +16246,20 @@ const server = http.createServer((req, res) => {
 });
 server.listen(0, '127.0.0.1', async () => {
   const url = 'http://127.0.0.1:' + server.address().port;
-  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1' });
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
+  if (cfg.noExplicitSecret) delete process.env.REPUBLISH_CLIENT_SECRET;
+  if (cfg.seederEnabled) kcState.enabled = true;
   const rp = require(scriptPath);
   const out = [];
   for (const run of cfg.runs) {
     poison = new Set(run.poison || []);
     if (run.purgeDlq) { const s = JSON.parse(fs.readFileSync(simFile, 'utf8')); s.dlq = 0; fs.writeFileSync(simFile, JSON.stringify(s)); }
     const before = requests.length;
+    kcState.calls.length = 0; kcState.tokens.length = 0;
     const code = await rp.main(run.argv);
-    out.push({ code, state: JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')),
-      requests: requests.slice(before).map((r) => ({ cursor: r.cursor ?? null, limit: r.limit, reason: r.reason, requestedBy: r.requestedBy })) });
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      requests: requests.slice(before).map((r) => ({ cursor: r.cursor ?? null, limit: r.limit, reason: r.reason, requestedBy: r.requestedBy })),
+      kc: { calls: [...kcState.calls], tokens: [...kcState.tokens], enabledAfter: kcState.enabled } });
   }
   server.close();
   process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
@@ -14741,7 +16275,8 @@ server.listen(0, '127.0.0.1', async () => {
         }));
         const env = { ...process.env, PATH: `${bin}${path1762.delimiter}${process.env.PATH}`, SIM_FILE: path1762.join(dir, 'sim.json'),
           NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
-        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE', 'ABAC_SEED_CLIENT_SECRET', 'SIM_SEEDER_SECRET']) delete env[k];
+        if (cfg.seederSecret) env.SIM_SEEDER_SECRET = cfg.seederSecret;
         const r = require('child_process').spawnSync(process.execPath,
           [harness, path1762.join(__dirname, 'republish-document-updated.js'), cfgPath, env.SIM_FILE],
           { encoding: 'utf8', env, timeout: 60000 });
@@ -14754,6 +16289,77 @@ server.listen(0, '127.0.0.1', async () => {
     };
     const docs1762 = ['d0', 'd1', 'd2', 'd3', 'd4'];
     const paging1762 = ['--canary', '1', '--page-size', '2', '--max-dlq-growth', '0'];
+
+    // --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）は既定で無効。運用スクリプトは実行の間だけ有効にし、
+    //     資格情報は稼働の Secret（OpenBao → ESO）から読む（realm の宣言の値へは落ちない＝secret を回した後も動く） ----------
+    ok('IADR-0576: 投入器の資格情報は 明示 ＞ 稼働の Secret の順で、どちらも無ければ realm の宣言の値へ落ちずに例外', () => {
+      const sess = require('./lib/abac-seeder-session.js');
+      const reads = [];
+      const read = (v) => (ns, name, key) => { reads.push(`${ns}/${name}/${key}`); return v; };
+      const val = (x) => ['probe', '0575', x].join('-');
+      assert.strictEqual(sess.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET', env: { REPUBLISH_CLIENT_SECRET: val('e') }, read: read(val('s')) }), val('e'));
+      assert.strictEqual(sess.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET', env: {}, read: read(val('s')) }), val('s'));
+      assert.deepStrictEqual(reads.slice(-1), ['platform-infra/abac-seeder-oidc/client-secret']);
+      assert.strictEqual(sess.resolveSeederSecret({ envName: 'SEARCH_SEED_CLIENT_SECRET', env: { ABAC_SEED_CLIENT_SECRET: val('a') }, read: read('') }), val('a'),
+        '投入器の共通の env（ABAC_SEED_CLIENT_SECRET）を受けない');
+      assert.throws(() => sess.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET', env: {}, read: read('') }), /realm の宣言の値へは落ちない/);
+      // 管理者の資格情報も 明示 ＞ Secret keycloak-admin
+      assert.deepStrictEqual(sess.resolveAdminCredentials({ env: {}, read: (ns, n, k) => `${n}:${k}` }), { user: 'keycloak-admin:username', password: 'keycloak-admin:password' });
+      assert.throws(() => sess.resolveAdminCredentials({ env: {}, read: () => '' }), /管理者の資格情報が無い/);
+    });
+
+    ok('IADR-0576: 一時の有効化は GET した表現を丸ごと PUT して enabled だけを変え、この実行が有効にしたものだけを戻す（--self-test）', () => {
+      const r = require('child_process').spawnSync(process.execPath, [path1762.join(__dirname, 'lib', 'abac-seeder-session.js'), '--self-test'],
+        { encoding: 'utf8', timeout: 30000, env: { ...process.env, LIVE: '' } });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.ok(/self-test OK/.test(r.stdout), r.stdout);
+    });
+
+    ok('IADR-0576: 投入器の主体は realm の宣言で既定無効。投入器・運用スクリプトは realm の宣言の secret を読まず、どれも一時の有効化と戻しを持つ', () => {
+      const realm = JSON.parse(fs1762.readFileSync(path1762.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+      assert.strictEqual(realm.clients.find((c) => c.clientId === 'abac-seeder').enabled, false, 'abac-seeder が既定で有効');
+      for (const f of ['republish-document-updated.js', 'lib/admin-page-driver.js', 'seed-abac-policies.js', 'seed-search-documents.js', 'seed-tag-dictionary.js']) {
+        const code = fs1762.readFileSync(path1762.join(__dirname, f), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+        assert.ok(!/clientSecretFromRealm\(/.test(code.replace(/function clientSecretFromRealm\(/, '')), `${f} が realm の宣言の secret を読む`);
+        assert.ok(/resolveSeederSecret\(/.test(code) && /ensureEnabled\(/.test(code) && /\.restore\(|restoreThenExit\(/.test(code), `${f} に一時の有効化・戻しが無い`);
+      }
+    });
+
+    ok('IADR-0576: 再発行の駆動器は、無効な投入器の主体を実行の間だけ有効にし、終わったら（成功でも失敗でも）無効へ戻す', () => {
+      // 1 回目は DLQ の増加で止まる（失敗）、2 回目は DLQ を空けて --resume で完了する（成功）。
+      const { runs } = runDriver1762({ docs: docs1762, runs: [{ argv: paging1762, poison: ['d1'] }, { argv: [...paging1762, '--resume'], purgeDlq: true }] });
+      for (const r of runs) {
+        assert.deepStrictEqual(r.kc.calls, ['PUT enabled=true', 'PUT enabled=false'], `有効化と戻しが対でない: ${JSON.stringify(r.kc.calls)}（exit ${r.code}）`);
+        assert.strictEqual(r.kc.enabledAfter, false, '終わった後も有効のまま');
+      }
+      assert.notStrictEqual(runs[0].code, 0, '前提: 1 回目は DLQ の増加で失敗して終わる');
+      assert.strictEqual(runs[1].code, 0, '前提: 2 回目は完了する');
+    });
+
+    ok('IADR-0576: 元から有効なら触らない（戻しもしない）', () => {
+      const { runs } = runDriver1762({ docs: docs1762, seederEnabled: true, runs: [{ argv: paging1762 }] });
+      assert.deepStrictEqual(runs[0].kc.calls, [], `元から有効なのに書いた: ${JSON.stringify(runs[0].kc.calls)}`);
+      assert.strictEqual(runs[0].kc.enabledAfter, true);
+    });
+
+    ok('IADR-0576: REPUBLISH_CLIENT_SECRET が無ければ稼働の Secret（abac-seeder-oidc）の値で名乗る（回した後の値。realm の宣言の値は使わない）', () => {
+      const rotated = ['rotated', '0575', 'seeder'].join('-');
+      const { runs, stdout, stderr } = runDriver1762({ docs: docs1762, noExplicitSecret: true, seederSecret: rotated, runs: [{ argv: paging1762 }] });
+      assert.strictEqual(runs[0].code, 0, stderr);
+      const seederTokens = runs[0].kc.tokens.filter((t) => t.startsWith('abac-seeder:')); // admin-cli（一時の有効化の管理者）を除く
+      assert.ok(seederTokens.length > 0 && seederTokens.every((t) => t === `abac-seeder:${rotated}`), `Secret の値で名乗っていない: ${seederTokens.length} 件`);
+      const declared = JSON.parse(fs1762.readFileSync(path1762.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'))
+        .clients.find((c) => c.clientId === 'abac-seeder').secret;
+      assert.ok(!runs[0].kc.tokens.some((t) => t.endsWith(`:${declared}`)), 'realm の宣言の値で名乗った');
+      assert.ok(!`${stdout.split('@@RESULT@@')[0]}${stderr}`.includes(rotated), '値を出力した'); // 試験器の結果の JSON（tokens を含む）は除く
+    });
+
+    ok('IADR-0576: 明示も Secret も無ければ、realm の宣言の値へ落ちずに止まり（非 0）、主体を有効にしない', () => {
+      const { runs } = runDriver1762({ docs: docs1762, noExplicitSecret: true, runs: [{ argv: paging1762 }] });
+      assert.strictEqual(runs[0].code, 2, '止まらなかった');
+      assert.deepStrictEqual(runs[0].kc.calls, [], '資格情報が無いのに主体を有効にした');
+      assert.deepStrictEqual(runs[0].kc.tokens.filter((t) => t.startsWith('abac-seeder:')), [], '投入器としてトークンを要求した');
+    });
 
     ok('#1762 監査 R1: DLQ で止まると確かめた位置へ戻して保存し、DLQ を purge してから再開しても取りこぼさない', () => {
       const { runs, stderr } = runDriver1762({
@@ -14819,6 +16425,485 @@ server.listen(0, '127.0.0.1', async () => {
   }
 
 
+  // --- #1931 項目 3 / IADR-0549: 本文の無い古い文書の一括アーカイブの駆動器 ---------------------------------
+  //
+  // 口（DocumentService）の挙動（対象の選び方・存在確認・冪等・ページの途中まで保存しない）は DocumentService.Tests が持つ。
+  // ここで固定するのは引数（--created-before 必須）・状態ファイル（再発行の状態を拒む）・dry-run の集計・
+  // カナリアと DLQ で止まって確かめた位置へ戻すこと・再開と再実行の冪等である。
+  {
+    const fs1931 = require('fs');
+    const os1931 = require('os');
+    const path1931 = require('path');
+    const ab = require('./archive-bodyless-documents.js');
+
+    ok('#1931 項目 3: 引数 — --created-before は必須（既定なし）・--resume では受けない・ページは口の上限 200 に丸める', () => {
+      assert.match(ab.preconditionProblem(ab.parseArgs(['--live', '--dry-run'])), /--created-before/);
+      assert.strictEqual(ab.preconditionProblem(ab.parseArgs(['--live', '--resume', '--reason', 'r'])), null, '再開は状態ファイルの期限を使う');
+      assert.throws(() => ab.parseArgs(['--live', '--resume', '--created-before', '2026-09-27T00:00:00Z']), /--resume/);
+      assert.throws(() => ab.parseArgs(['--live', '--resume', '--dry-run']), /--resume/);
+      assert.throws(() => ab.parseArgs(['--live', '--created-before', 'yesterday']), /ISO 8601/);
+      assert.throws(() => ab.parseArgs(['--live', '--created-before', '2026-09-27T00:00:00Z', '--bogus']), /知らない引数/);
+      const o = ab.parseArgs(['--live', '--created-before', '2026-09-27T09:00:00+09:00', '--page-size', '900', '--canary', '900']);
+      assert.strictEqual(o.createdBefore, '2026-09-27T00:00:00.000Z', 'UTC へ寄せる');
+      assert.deepStrictEqual([o.pageSize, o.canary], [200, 200]);
+      assert.strictEqual(o.maxDlqGrowth, 0, '既定は DLQ の増加を 1 件も許さない（アーカイブで下流が失敗する理由は無い）');
+      assert.strictEqual(ab.parseArgs(['--resume']).resume, true);
+      assert.strictEqual(ab.parseArgs(['--help']).help, true, '--help は他の必須を問わない');
+    });
+
+    ok('#1931 項目 3: アーカイブする実行（再開を含む）は --reason を必須にし、口へ createdBefore・操作者・理由を送る', () => {
+      const cb = ['--created-before', '2026-09-27T00:00:00Z'];
+      assert.match(ab.preconditionProblem(ab.parseArgs(['--live', ...cb])), /--reason/);
+      assert.match(ab.preconditionProblem(ab.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(ab.preconditionProblem(ab.parseArgs(['--live', '--dry-run', ...cb])), null);
+      assert.deepStrictEqual(
+        ab.buildRequestBody({ dryRun: false, createdBefore: 'T', limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' }),
+        { dryRun: false, createdBefore: 'T', limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' });
+    });
+
+    ok('#1931 項目 3: 状態ファイル — 再発行の駆動器の状態・版違い・期限の無い状態からは続けない', () => {
+      const s = ab.newState({ createdBefore: '2026-09-27T00:00:00.000Z' });
+      assert.strictEqual(ab.stateProblem(s), null);
+      const rp = require('./republish-document-updated.js');
+      assert.match(ab.stateProblem(rp.newState(rp.parseArgs(['--live']))), /種類/);
+      assert.match(ab.stateProblem({ ...s, version: 99 }), /版/);
+      assert.match(ab.stateProblem({ ...s, filters: {} }), /createdBefore/);
+    });
+
+    const runDriver1931 = (cfg) => {
+      const dir = fs1931.mkdtempSync(path1931.join(os1931.tmpdir(), 'ab1931-drv-'));
+      try {
+        const bin = path1931.join(dir, 'bin');
+        fs1931.mkdirSync(bin);
+        // キューの模型: アーカイブで取り込みのキューが増え、読むたびに 1 件ずつ減り、空になった時点で「毒」の数だけ DLQ が増える。
+        fs1931.writeFileSync(path1931.join(bin, 'kubectl'), `#!${process.execPath}
+const fs = require('fs'); const f = process.env.SIM_FILE; const a = process.argv.slice(2);
+if (a[0] === 'cluster-info') process.exit(0);
+if (!a.includes('list_queues')) process.exit(1);
+const s = JSON.parse(fs.readFileSync(f, 'utf8'));
+process.stdout.write('ingestion-service.DocumentUpdated\\t' + s.ingest + '\\nwiki-service.DocumentUpdated\\t0\\nwolverine-dead-letter-queue\\t' + s.dlq + '\\n');
+if (s.ingest > 0) { s.ingest--; if (s.ingest === 0) { s.dlq += s.pendingFail; s.pendingFail = 0; } }
+fs.writeFileSync(f, JSON.stringify(s));
+`, { mode: 0o755 });
+        // 口の模型: 文書は並び順の配列。カーソルは「最後に見た位置」。母集合は未アーカイブで、位置がカーソルより後ろのもの。
+        const harness = path1931.join(dir, 'harness.js');
+        fs1931.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath, simFile] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+fs.writeFileSync(simFile, JSON.stringify({ ingest: 0, dlq: 0, pendingFail: 0 }));
+const docs = cfg.docs.map((d, i) => ({ ...d, i, archived: false }));
+const requests = []; let poison = new Set();
+const kcState = { enabled: false, calls: [], tokens: [] };
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { kcState.tokens.push(new URLSearchParams(b).get('client_id')); return send({ access_token: 't' }); }
+    if (req.url !== '/documents/archive-bodyless') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const after = body.cursor ? Number(body.cursor) : -1;
+    const candidates = docs.filter((d) => !d.archived);
+    const keyed = candidates.filter((d) => d.i > after);
+    const page = keyed.slice(0, body.limit);
+    const missing = page.filter((d) => d.missing);
+    if (!body.dryRun) {
+      for (const d of missing) d.archived = true;
+      const sim = JSON.parse(fs.readFileSync(simFile, 'utf8'));
+      sim.ingest += missing.length; sim.pendingFail += missing.filter((d) => poison.has(d.id)).length;
+      fs.writeFileSync(simFile, JSON.stringify(sim));
+    }
+    send({ dryRun: body.dryRun, createdBefore: body.createdBefore, matched: candidates.length, remaining: keyed.length,
+      selected: page.length, bodyMissing: missing.length, bodyPresent: page.length - missing.length, skippedPrivateNote: 0,
+      archived: body.dryRun ? 0 : missing.length, alreadyArchived: docs.length - candidates.length, notStored: 0,
+      nextCursor: keyed.length > body.limit ? String(page[page.length - 1].i) : null });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
+  const ab = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    poison = new Set(run.poison || []);
+    if (run.removeState) fs.rmSync(cfg.stateFile, { force: true });
+    const before = requests.length;
+    const code = await ab.main(run.argv);
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      archived: docs.filter((d) => d.archived).map((d) => d.id),
+      requests: requests.slice(before).map((r) => ({ dryRun: r.dryRun, cursor: r.cursor ?? null, limit: r.limit, createdBefore: r.createdBefore, reason: r.reason ?? null })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1931.join(dir, 'state.json');
+        const cfgPath = path1931.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice'];
+        fs1931.writeFileSync(cfgPath, JSON.stringify({
+          ...cfg, stateFile, runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })),
+        }));
+        const env = { ...process.env, PATH: `${bin}${path1931.delimiter}${process.env.PATH}`, SIM_FILE: path1931.join(dir, 'sim.json'),
+          NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1931.join(__dirname, 'archive-bodyless-documents.js'), cfgPath, env.SIM_FILE],
+          { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout, stderr: r.stderr };
+      } finally {
+        fs1931.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    // 本文なし 5 件（m*）と本文あり 2 件（p*）を混ぜる。
+    const docs1931 = [
+      { id: 'm0', missing: true }, { id: 'p0', missing: false }, { id: 'm1', missing: true }, { id: 'm2', missing: true },
+      { id: 'p1', missing: false }, { id: 'm3', missing: true }, { id: 'm4', missing: true },
+    ];
+    const cb1931 = ['--created-before', '2026-09-27T00:00:00Z'];
+    const apply1931 = [...cb1931, '--reason', 'test', '--canary', '1', '--page-size', '2'];
+
+    ok('#1931 項目 3: dry-run は全ページを辿って内訳を集計し、何もアーカイブせず状態ファイルも作らない', () => {
+      const { runs, stdout } = runDriver1931({ docs: docs1931, runs: [{ argv: ['--dry-run', ...cb1931, '--page-size', '3'] }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.deepStrictEqual(runs[0].archived, []);
+      assert.strictEqual(runs[0].state, null);
+      assert.ok(runs[0].requests.every((q) => q.dryRun === true && q.createdBefore === '2026-09-27T00:00:00.000Z'));
+      assert.strictEqual(runs[0].requests.length, 3, '7 件を 3 件ずつ');
+      assert.match(stdout, /アーカイブの対象: 5 件/);
+      assert.match(stdout, /本文が在る（触らない）: 2 件/);
+    });
+
+    ok('#1931 項目 3: カナリアの後も DLQ を見て進み、本文なしだけを全部アーカイブして完了する', () => {
+      const { runs, stdout } = runDriver1931({ docs: docs1931, runs: [{ argv: apply1931 }] });
+      assert.strictEqual(runs[0].code, 0, stdout);
+      assert.deepStrictEqual(runs[0].archived.sort(), ['m0', 'm1', 'm2', 'm3', 'm4']);
+      assert.strictEqual(runs[0].requests[0].limit, 1, '最初のページはカナリア');
+      assert.ok(runs[0].requests.every((q) => q.dryRun === false && q.reason === 'test'));
+      assert.deepStrictEqual([runs[0].state.done, runs[0].state.confirmedDone, runs[0].state.totals.archived], [true, true, 5]);
+      assert.match(stdout, /完了: アーカイブ 5 件/);
+    });
+
+    ok('#1931 項目 3: DLQ が増えたら確かめた位置へ戻して止まり、再開と再実行は冪等（同じ文書を二度アーカイブしない）', () => {
+      const { runs, stderr } = runDriver1931({
+        docs: docs1931,
+        runs: [
+          { argv: apply1931, poison: ['m2'] },
+          { argv: ['--resume', '--reason', 'test', '--canary', '1', '--page-size', '2'] },
+          { argv: apply1931, removeState: true },
+        ],
+      });
+      const [first, resumed, again] = runs;
+      assert.strictEqual(first.code, 1, 'DLQ が増えたら止まる');
+      assert.match(stderr, /確かめた位置へ戻しました/);
+      assert.strictEqual(first.state.cursor, first.state.confirmedCursor);
+      assert.strictEqual(first.state.canaryPassed, false, '止まった後はカナリアからやり直す');
+      assert.strictEqual(resumed.code, 0);
+      assert.deepStrictEqual(resumed.archived.sort(), ['m0', 'm1', 'm2', 'm3', 'm4']);
+      assert.strictEqual(again.code, 0, '状態ファイルを消して流し直しても止まらない');
+      assert.deepStrictEqual(again.state.totals.archived, 0, '2 回目は 1 件もアーカイブしない');
+    });
+
+    ok('#1931 項目 3: 状態ファイルが残っているまま新規に流すと拒み、何も送らない', () => {
+      const { runs } = runDriver1931({ docs: docs1931, runs: [{ argv: [...apply1931, '--max-pages', '1'] }, { argv: apply1931 }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.strictEqual(runs[1].code, 1);
+      assert.strictEqual(runs[1].requests.length, 0);
+    });
+  }
+
+  // --- #1973 / IADR-0556: AST が境界語つきで保存した文書から枠を剥がす駆動器（本体は lib/admin-page-driver.js） ---------
+  //
+  // 口（DocumentService）の挙動（対象の選び方・枠の剥がし方・冪等・ページの途中まで書かない）は DocumentService.Tests が持つ。
+  // ここで固定するのは引数（--reason）・状態ファイル（一括アーカイブの状態を拒む）・dry-run が件数と ID を出して何も変えないこと・
+  // 失敗で確かめた位置へ戻して止まること・再開と再実行の冪等である。共有の本体を一括アーカイブと分けたことは #1931 の節が守る。
+  {
+    const fs1973 = require('fs');
+    const os1973 = require('os');
+    const path1973 = require('path');
+    const su = require('./strip-untrusted-boundary.js');
+
+    ok('#1973: 引数 — 書き換える実行（再開を含む）は --reason 必須・dry-run と --resume は同時に指定できない・知らない引数は落とす', () => {
+      assert.match(su.preconditionProblem(su.parseArgs(['--live'])), /--reason/);
+      assert.match(su.preconditionProblem(su.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(su.preconditionProblem(su.parseArgs(['--live', '--dry-run'])), null);
+      assert.strictEqual(su.preconditionProblem(su.parseArgs(['--live', '--reason', 'r'])), null);
+      assert.throws(() => su.parseArgs(['--live', '--resume', '--dry-run']), /--resume/);
+      assert.throws(() => su.parseArgs(['--live', '--created-before', '2026-09-27T00:00:00Z']), /知らない引数/);
+      assert.throws(() => su.parseArgs(['--live', '--reason']), /値がありません/);
+      const o = su.parseArgs(['--live', '--page-size', '900', '--canary', '900']);
+      assert.deepStrictEqual([o.pageSize, o.canary, o.maxDlqGrowth], [200, 200, 0]);
+      assert.strictEqual(su.parseArgs(['--help']).help, true);
+      assert.deepStrictEqual(su.buildRequestBody({ dryRun: false, limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' }),
+        { dryRun: false, limit: 20, cursor: 'c', requestedBy: 'alice', reason: 'r' });
+      assert.deepStrictEqual(su.PROFILE.buildRequestBody({ dryRun: true, filters: {}, limit: 5, cursor: null, requestedBy: null, reason: null }),
+        { dryRun: true, limit: 5 }, '絞り込みは口の側で固定なので送らない');
+    });
+
+    ok('#1973: 状態ファイル — 一括アーカイブ・再発行の状態・版違いからは続けない', () => {
+      const s = su.newState({});
+      assert.strictEqual(su.stateProblem(s), null);
+      const ab = require('./archive-bodyless-documents.js');
+      assert.match(su.stateProblem(ab.newState({ createdBefore: '2026-09-27T00:00:00.000Z' })), /種類/);
+      assert.match(ab.stateProblem(s), /種類/, '逆向きも拒む');
+      assert.match(su.stateProblem({ ...s, version: 99 }), /版/);
+      assert.match(su.stateProblem({ ...s, totals: {} }), /累計/);
+    });
+
+    const runDriver1973 = (cfg) => {
+      const dir = fs1973.mkdtempSync(path1973.join(os1973.tmpdir(), 'su1973-drv-'));
+      try {
+        // 口の模型: 文書は並び順の配列。枠のある文書は書き換えると枠が無くなる。カーソルは「最後に見た位置」（母集合は減らない）。
+        // `failAt` に当たる位置を含むページは 502 を返す（`failTimes` 回まで）。
+        const harness = path1973.join(dir, 'harness.js');
+        fs1973.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const docs = cfg.docs.map((d, i) => ({ ...d, i, strips: 0 }));
+const requests = []; let fail = { at: -1, times: 0 };
+const kcState = { enabled: false, calls: [], tokens: [] };
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { kcState.tokens.push(new URLSearchParams(b).get('client_id')); return send({ access_token: 't' }); }
+    if (req.url !== '/documents/strip-untrusted-boundary') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const after = body.cursor ? Number(body.cursor) : -1;
+    const keyed = docs.filter((d) => d.i > after);
+    const page = keyed.slice(0, body.limit);
+    if (fail.times > 0 && page.some((d) => d.i === fail.at)) { fail.times--; return send({ title: 'boom' }, 502); }
+    const wrapped = page.filter((d) => d.title || d.body);
+    const titleWrapped = wrapped.length;
+    if (!body.dryRun) for (const d of wrapped) { d.strips++; d.title = false; d.body = false; }
+    send({ dryRun: body.dryRun, selected: page.length, wrapped: wrapped.length,
+      titleWrapped, bodyWrapped: 0, bodyMissing: 0, notStored: 0, titleLeftWrapped: 0, bodyLeftWrapped: 0,
+      stripped: body.dryRun ? 0 : wrapped.length, items: wrapped.map((d) => ({ id: d.id, title: true, body: false })),
+      nextCursor: keyed.length > body.limit ? String(page[page.length - 1].i) : null });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
+  const su = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    fail = { at: run.failAt ?? -1, times: run.failTimes ?? 0 };
+    if (run.removeState) fs.rmSync(cfg.stateFile, { force: true });
+    const before = requests.length;
+    const code = await su.main(run.argv);
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      strips: Object.fromEntries(docs.map((d) => [d.id, d.strips])),
+      requests: requests.slice(before).map((r) => ({ dryRun: r.dryRun, cursor: r.cursor ?? null, limit: r.limit, reason: r.reason ?? null })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1973.join(dir, 'state.json');
+        const cfgPath = path1973.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice', '--no-queue-watch'];
+        fs1973.writeFileSync(cfgPath, JSON.stringify({
+          ...cfg, stateFile, runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })),
+        }));
+        const env = { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1973.join(__dirname, 'strip-untrusted-boundary.js'), cfgPath], { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout, stderr: r.stderr };
+      } finally {
+        fs1973.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    // 枠あり 4 件（w*）と枠なし 3 件（p*）を混ぜる。
+    const docs1973 = [
+      { id: 'w0', title: true }, { id: 'p0' }, { id: 'w1', title: true }, { id: 'w2', title: true },
+      { id: 'p1' }, { id: 'w3', title: true }, { id: 'p2' },
+    ];
+    const apply1973 = ['--reason', 'test', '--canary', '1', '--page-size', '2'];
+
+    ok('#1973: dry-run は全ページを辿って件数と対象の ID を出し、何も書き換えず状態ファイルも作らない', () => {
+      const { runs, stdout } = runDriver1973({ docs: docs1973, runs: [{ argv: ['--dry-run', '--page-size', '3'] }] });
+      assert.strictEqual(runs[0].code, 0, stdout);
+      assert.ok(Object.values(runs[0].strips).every((n) => n === 0));
+      assert.strictEqual(runs[0].state, null);
+      assert.strictEqual(runs[0].requests.length, 3, '7 件を 3 件ずつ');
+      assert.ok(runs[0].requests.every((q) => q.dryRun === true));
+      assert.match(stdout, /枠を剥がす対象: 4 件/);
+      for (const id of ['w0', 'w1', 'w2', 'w3']) assert.match(stdout, new RegExp(`^    ${id}（表題）$`, 'm'), `${id} の ID が並ぶ`);
+      assert.doesNotMatch(stdout, /^ {4}p\d/m, '枠の無い文書の ID は出さない');
+    });
+
+    ok('#1973: カナリアの後も進み、枠のある文書をちょうど 1 回ずつ剥がして完了し、流し直しても何も変えない', () => {
+      const { runs, stdout } = runDriver1973({ docs: docs1973, runs: [{ argv: apply1973 }, { argv: apply1973, removeState: true }] });
+      const [first, again] = runs;
+      assert.strictEqual(first.code, 0, stdout);
+      assert.deepStrictEqual(first.strips, { w0: 1, p0: 0, w1: 1, w2: 1, p1: 0, w3: 1, p2: 0 });
+      assert.strictEqual(first.requests[0].limit, 1, '最初のページはカナリア');
+      assert.ok(first.requests.every((q) => q.dryRun === false && q.reason === 'test'));
+      assert.deepStrictEqual([first.state.done, first.state.confirmedDone, first.state.totals.stripped], [true, true, 4]);
+      assert.match(stdout, /完了: 剥がした 4 件/);
+      assert.strictEqual(again.code, 0);
+      assert.strictEqual(again.state.totals.stripped, 0, '2 回目は 1 件も書き換えない');
+      assert.deepStrictEqual(again.strips, first.strips);
+    });
+
+    ok('#1973: 口が続けて失敗したら確かめた位置へ戻して止まり、--resume で残りを剥がす（同じ文書を二度剥がさない）', () => {
+      const { runs, stderr } = runDriver1973({
+        docs: docs1973,
+        runs: [
+          { argv: [...apply1973, '--max-consecutive-failures', '1'], failAt: 5, failTimes: 1 },
+          { argv: ['--resume', '--reason', 'test', '--page-size', '2'] },
+        ],
+      });
+      const [first, resumed] = runs;
+      assert.strictEqual(first.code, 1);
+      assert.match(stderr, /連続 1 回失敗したので止めます/);
+      assert.strictEqual(first.state.done, false);
+      assert.strictEqual(first.strips.w3, 0, '失敗したページは書き換えていない');
+      assert.strictEqual(resumed.code, 0);
+      assert.deepStrictEqual(resumed.strips, { w0: 1, p0: 0, w1: 1, w2: 1, p1: 0, w3: 1, p2: 0 });
+    });
+
+    ok('#1973: 状態ファイルが残っているまま新規に流すと拒み、何も送らない', () => {
+      const { runs } = runDriver1973({ docs: docs1973, runs: [{ argv: [...apply1973, '--max-pages', '1'] }, { argv: apply1973 }] });
+      assert.strictEqual(runs[0].code, 0);
+      assert.strictEqual(runs[1].code, 1);
+      assert.strictEqual(runs[1].requests.length, 0);
+    });
+  }
+
+  // --- #1974 / IADR-0549（2026-10-17 追記）: AST の Quote の一括アーカイブの駆動器（本体は lib/admin-page-driver.js） ---------
+  //
+  // 口の挙動（対象の選び方・冪等）は DocumentService.Tests が持つ。ここで固定するのは引数・状態ファイルの取り違え・dry-run が件数と ID を出して
+  // 何も変えないこと・カナリアからの本番がちょうど 1 回ずつアーカイブすること・再実行の冪等である（停止と再開は共有の本体で #1931・#1973 の節が守る）。
+  {
+    const fs1974 = require('fs');
+    const os1974 = require('os');
+    const path1974 = require('path');
+    const aq = require('./archive-ast-quote-documents.js');
+
+    ok('#1974: 引数と状態ファイル — アーカイブする実行は --reason 必須・知らない引数は落とす・他の駆動器の状態からは続けない', () => {
+      assert.match(aq.preconditionProblem(aq.parseArgs(['--live'])), /--reason/);
+      assert.match(aq.preconditionProblem(aq.parseArgs(['--live', '--resume'])), /--reason/);
+      assert.strictEqual(aq.preconditionProblem(aq.parseArgs(['--live', '--dry-run'])), null);
+      assert.throws(() => aq.parseArgs(['--live', '--resume', '--dry-run']), /--resume/);
+      assert.throws(() => aq.parseArgs(['--live', '--kind', 'News']), /知らない引数/, '条件は口の側で固定（引数で変えられない）');
+      assert.deepStrictEqual(aq.PROFILE.buildRequestBody({ dryRun: false, filters: {}, limit: 5, cursor: 'c', requestedBy: 'a', reason: 'r' }),
+        { dryRun: false, limit: 5, cursor: 'c', requestedBy: 'a', reason: 'r' });
+      const s = aq.newState({});
+      assert.strictEqual(aq.stateProblem(s), null);
+      assert.match(aq.stateProblem(require('./strip-untrusted-boundary.js').newState({})), /種類/);
+      assert.match(aq.stateProblem(require('./archive-bodyless-documents.js').newState({ createdBefore: '2026-09-27T00:00:00.000Z' })), /種類/);
+    });
+
+    const runDriver1974 = (cfg) => {
+      const dir = fs1974.mkdtempSync(path1974.join(os1974.tmpdir(), 'aq1974-drv-'));
+      try {
+        // 口の模型: 文書は並び順の配列。母集合は未アーカイブの Quote で、位置がカーソルより後ろのもの（アーカイブすると母集合から外れる）。
+        const harness = path1974.join(dir, 'harness.js');
+        fs1974.writeFileSync(harness, `
+const http = require('http'); const fs = require('fs');
+const [scriptPath, cfgPath] = process.argv.slice(2);
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const docs = cfg.docs.map((d, i) => ({ ...d, i, archives: 0 }));
+const requests = [];
+const kcState = { enabled: false, calls: [], tokens: [] };
+const server = http.createServer((req, res) => {
+  let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+    const send = (o) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
+    // IADR-0576: 投入器の主体の一時の有効化（Admin REST）。enabled を覚え、PUT を控える（kcCalls）。
+    if (req.url.startsWith('/admin/realms/')) {
+      if (req.method === 'PUT') { kcState.enabled = JSON.parse(b).enabled; kcState.calls.push('PUT enabled=' + kcState.enabled); res.writeHead(204); return res.end(); }
+      return send([{ id: 'c-seeder', clientId: 'abac-seeder', enabled: kcState.enabled, serviceAccountsEnabled: true }]);
+    }
+    if (req.url.includes('/token')) { kcState.tokens.push(new URLSearchParams(b).get('client_id')); return send({ access_token: 't' }); }
+    if (req.url !== '/documents/archive-ast-quotes') return send({});
+    const body = JSON.parse(b); requests.push(body);
+    const after = body.cursor ? Number(body.cursor) : -1;
+    const keyed = docs.filter((d) => d.quote && !d.archived && d.i > after);
+    const page = keyed.slice(0, body.limit);
+    if (!body.dryRun) for (const d of page) { d.archived = true; d.archives++; }
+    send({ dryRun: body.dryRun, selected: page.length, archived: body.dryRun ? 0 : page.length, ids: page.map((d) => d.id),
+      nextCursor: keyed.length > body.limit ? String(page[page.length - 1].i) : null });
+  });
+});
+server.listen(0, '127.0.0.1', async () => {
+  const url = 'http://127.0.0.1:' + server.address().port;
+  Object.assign(process.env, { REPUBLISH_DOCUMENT_URL: url, REPUBLISH_KC_URL: url, REPUBLISH_CLIENT_SECRET: 's', REPUBLISH_POLL_MS: '1', KC_ADMIN_USER: 'a', KC_ADMIN_PASSWORD: 'p' });
+  const aq = require(scriptPath);
+  const out = [];
+  for (const run of cfg.runs) {
+    if (run.removeState) fs.rmSync(cfg.stateFile, { force: true });
+    const before = requests.length;
+    const code = await aq.main(run.argv);
+    out.push({ code, state: fs.existsSync(cfg.stateFile) ? JSON.parse(fs.readFileSync(cfg.stateFile, 'utf8')) : null,
+      archives: Object.fromEntries(docs.map((d) => [d.id, d.archives])),
+      requests: requests.slice(before).map((r) => ({ dryRun: r.dryRun, limit: r.limit, reason: r.reason ?? null })) });
+  }
+  server.close();
+  process.stdout.write('\\n@@RESULT@@' + JSON.stringify(out));
+  process.exit(0);
+});
+`);
+        const stateFile = path1974.join(dir, 'state.json');
+        const cfgPath = path1974.join(dir, 'cfg.json');
+        const common = ['--live', '--state', stateFile, '--sleep-ms', '0', '--operator', 'alice', '--no-queue-watch'];
+        fs1974.writeFileSync(cfgPath, JSON.stringify({ ...cfg, stateFile, runs: cfg.runs.map((r) => ({ ...r, argv: [...common, ...r.argv] })) }));
+        const env = { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' };
+        for (const k of ['HTTP_PROXY', 'http_proxy', 'HTTPS_PROXY', 'https_proxy', 'LIVE']) delete env[k];
+        const r = require('child_process').spawnSync(process.execPath,
+          [harness, path1974.join(__dirname, 'archive-ast-quote-documents.js'), cfgPath], { encoding: 'utf8', env, timeout: 60000 });
+        const i = (r.stdout || '').indexOf('@@RESULT@@');
+        assert.ok(i >= 0, `駆動器の試験器が結果を出さなかった（exit ${r.status}）:\n${r.stdout}\n${r.stderr}`);
+        return { runs: JSON.parse(r.stdout.slice(i + '@@RESULT@@'.length)), stdout: r.stdout };
+      } finally {
+        fs1974.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const docs1974 = [
+      { id: 'q0', quote: true }, { id: 'n0' }, { id: 'q1', quote: true }, { id: 'q2', quote: true }, { id: 'n1' }, { id: 'q3', quote: true },
+    ];
+    const apply1974 = ['--reason', 'test', '--canary', '1', '--page-size', '2'];
+
+    ok('#1974: dry-run は件数と対象の ID を出し、何もアーカイブせず状態ファイルも作らない', () => {
+      const { runs, stdout } = runDriver1974({ docs: docs1974, runs: [{ argv: ['--dry-run', '--page-size', '3'] }] });
+      assert.strictEqual(runs[0].code, 0, stdout);
+      assert.ok(Object.values(runs[0].archives).every((n) => n === 0));
+      assert.strictEqual(runs[0].state, null);
+      assert.ok(runs[0].requests.every((q) => q.dryRun === true));
+      assert.match(stdout, /アーカイブの対象: 4 件/);
+      for (const id of ['q0', 'q1', 'q2', 'q3']) assert.match(stdout, new RegExp(`^    ${id}$`, 'm'));
+      assert.doesNotMatch(stdout, /^ {4}n\d/m);
+    });
+
+    ok('#1974: カナリアから本番を流すと Quote だけをちょうど 1 回ずつアーカイブして完了し、流し直しても何もしない', () => {
+      const { runs, stdout } = runDriver1974({ docs: docs1974, runs: [{ argv: apply1974 }, { argv: apply1974, removeState: true }] });
+      const [first, again] = runs;
+      assert.strictEqual(first.code, 0, stdout);
+      assert.deepStrictEqual(first.archives, { q0: 1, n0: 0, q1: 1, q2: 1, n1: 0, q3: 1 });
+      assert.strictEqual(first.requests[0].limit, 1, '最初のページはカナリア');
+      assert.ok(first.requests.every((q) => q.dryRun === false && q.reason === 'test'));
+      assert.match(stdout, /完了: アーカイブ 4 件/);
+      assert.strictEqual(again.code, 0);
+      assert.strictEqual(again.state.totals.archived, 0, '2 回目は 1 件もアーカイブしない');
+    });
+  }
+
   // --- check-integration-executed: integration.yml の「全 skip で緑」を区別する（NFR / #1788 / IADR-0507） ---
   //
   // 🔴 統合試験の門（IADR-0414）は依存を得られなければ skip する。門と本検査は対で 1 つの統制であり
@@ -14852,6 +16937,10 @@ server.listen(0, '127.0.0.1', async () => {
       const testCmd = yml.split('\n').filter((l) => l.includes('--collect:"XPlat Code Coverage"'));
       assert.strictEqual(testCmd.length, 1, 'テスト実行の行がちょうど 1 本ではない');
       assert.ok(!/--filter/.test(testCmd[0]), 'テスト実行に --filter が付いた');
+      // 🔴 NFR / #2060: ハングを timeout-minutes まで無出力で待たせない（ジョブごと cancelled になり、どの試験かも残らない）。
+      // testhost を止めて試験名とダンプを残し、残りのユニット・床・実走検査を走り切らせる。
+      assert.match(yml, /--logger trx --verbosity normal \\\n\s+--blame-hang-timeout \d+m --blame-hang-dump-type mini; then/, 'テスト実行に --blame-hang-timeout が無い（ハングでジョブが cancelled になる）');
+      assert.match(yml, /src\/\*\*\/TestResults\/\*\*\/\*\.dmp/, 'ハングのダンプを成果物に残していない');
       // テストが赤くても評価する（skip と失敗は独立した観測）。床の 3 step ＋ 本検査の 2 step。
       const guards = yml.split('\n').filter((l) => l.includes("if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}"));
       assert.ok(guards.length >= 5, `!cancelled() の条件つき step が ${guards.length} 本（setup-node・床 2・実走検査 2 の 5 本が要る）`);
@@ -15398,6 +17487,8 @@ server.listen(0, '127.0.0.1', async () => {
   // --- #1843 / 計画 ADR-0135 決定 2 / IADR-0519: Argo CD は版のタグの URL、k3s は既定で固定 ---------------
   // 🔴 **`stable` ブランチは取得のたびに中身が変わり得る**（タグですらない）。スクリプト・手順書・ワークフローのどれか 1 つでも
   // `stable` や別の版を書けば、「同じ手順で同じ版が入る」が崩れる。版の正は k8s-local-up.sh の ARGOCD_VERSION の既定。
+  // ［2026-10-15 / #1858・IADR-0547］既定は `pin_version ARGOCD_VERSION <版>`（違う値の env は拒否）。URL は kustomization
+  // （deploy/argocd/install）が持ち、起動器は -k で当てる。URL の版と既定の一致は下の #1858 の節も見る。
   {
     const fs = require('fs');
     const path = require('path');
@@ -15405,7 +17496,7 @@ server.listen(0, '127.0.0.1', async () => {
     const REPO = path.resolve(__dirname, '..');
     const up = fs.readFileSync(path.join(REPO, 'scripts/k8s-local-up.sh'), 'utf8');
     const ARGO_URL_RE = /argoproj\/argo-cd\/([^/\s"'`]+)\/manifests\/[A-Za-z0-9._-]*install\.yaml/g;
-    const argoDefault = (/^ARGOCD_VERSION="\$\{ARGOCD_VERSION:-([^}]*)\}"\s*$/m.exec(up) || [])[1];
+    const argoDefault = (/^pin_version ARGOCD_VERSION (\S+) /m.exec(up) || [])[1];
     /** 凍結記録（作業仕様書・superpowers）は当時の記述のまま残す（書き換えない）ので対象外。submodule は別リポジトリ。 */
     const argoRefs = () => {
       let out = '';
@@ -15427,24 +17518,34 @@ server.listen(0, '127.0.0.1', async () => {
     };
 
     ok('#1843: k8s-local-up.sh の ARGOCD_VERSION の既定は版のタグ（vX.Y.Z）', () => {
-      assert.ok(argoDefault, 'k8s-local-up.sh に ARGOCD_VERSION="${ARGOCD_VERSION:-<版>}" の行が無い');
+      assert.ok(argoDefault, 'k8s-local-up.sh に pin_version ARGOCD_VERSION <版> の行が無い');
       assert.match(argoDefault, /^v\d+\.\d+\.\d+$/, `ARGOCD_VERSION の既定が版のタグでない: ${argoDefault}`);
     });
 
-    ok('#1843: k8s-local-up.sh の install の URL は ARGOCD_VERSION を使う（版を直書きしない・stable を書かない）', () => {
+    ok('#1843・#1858: install の URL は kustomization の 1 か所だけ（起動器は URL を直接 apply しない）', () => {
       const lines = up.split('\n').filter((l) => !/^\s*#/.test(l) && /argo-cd\/[^/]+\/manifests\/install\.yaml/.test(l));
-      assert.strictEqual(lines.length, 1, `install の行が 1 本でない:\n${lines.join('\n')}`);
-      assert.ok(lines[0].includes('argo-cd/${ARGOCD_VERSION}/manifests/install.yaml'), `ARGOCD_VERSION を使っていない: ${lines[0]}`);
+      assert.deepStrictEqual(lines, [], `起動器が install.yaml の URL を直接持っている（digest の固定を経ない）:\n${lines.join('\n')}`);
+      const k = fs.readFileSync(path.join(REPO, 'deploy/argocd/install/kustomization.yaml'), 'utf8');
+      const urls = [...k.matchAll(ARGO_URL_RE)].map((m) => m[1]);
+      assert.deepStrictEqual(urls, [argoDefault], `kustomization の URL の版が既定（${argoDefault}）と違う: ${urls.join(', ')}`);
     });
 
     ok('#1843: リポジトリ内の Argo CD の install の URL はすべて既定と同じ版のタグ（stable・別の版を書かない）', () => {
       const refs = argoRefs();
-      // 陽性対照: 手順書（deploy/argocd・deploy/local/argocd・docs/how-to/deployment.md）の 3 か所は必ず拾う。
-      for (const f of ['deploy/argocd/README.md', 'deploy/local/argocd/README.md', 'docs/how-to/deployment.md']) {
-        assert.ok(refs.some((r) => r.where.startsWith(`${f}:`)), `${f} の Argo CD の URL を拾えていない（走査が壊れている）`);
-      }
+      // 陽性対照: kustomization（#1858 以後の URL の唯一の置き場）は必ず拾う。
+      assert.ok(refs.some((r) => r.where.startsWith('deploy/argocd/install/kustomization.yaml:')), 'kustomization の Argo CD の URL を拾えていない（走査が壊れている）');
       const bad = refs.filter((r) => r.ref !== '${ARGOCD_VERSION}' && r.ref !== argoDefault);
       assert.deepStrictEqual(bad, [], `既定（${argoDefault}）と違う版・ブランチの Argo CD の URL がある:\n${bad.map((r) => `${r.where} → ${r.ref}`).join('\n')}`);
+    });
+
+    // #1858 / IADR-0547: 手順書（deploy/argocd・deploy/local/argocd・docs/how-to/deployment.md）は URL を直接 apply せず、
+    // kustomization を -k で当てる（URL を直接 apply すると内側のイメージの digest の固定を経ない）。
+    ok('#1858: Argo CD の手順書 3 か所は kustomization（deploy/argocd/install）を -k で当てる', () => {
+      for (const f of ['deploy/argocd/README.md', 'deploy/local/argocd/README.md', 'docs/how-to/deployment.md']) {
+        const text = fs.readFileSync(path.join(REPO, f), 'utf8');
+        assert.ok(text.includes('kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install'), `${f} が kustomization を当てていない`);
+        assert.ok(!/manifests\/install\.yaml/.test(text), `${f} が install.yaml の URL を直接持っている（digest の固定を経ない）`);
+      }
     });
 
     ok('#1843: 変異 —— 手順書の URL を stable に戻すと拾う（検査の検出力）', () => {
@@ -15453,6 +17554,100 @@ server.listen(0, '127.0.0.1', async () => {
       const got = [...line.matchAll(ARGO_URL_RE)].map((m) => m[1]);
       assert.deepStrictEqual(got, ['stable']);
       assert.notStrictEqual(got[0], argoDefault);
+    });
+  }
+
+  // --- #1858 / 計画 ADR-0135 決定 2・ADR-0107 決定 3 / IADR-0547: scripts/ が入れる 6 製品の内側のイメージの digest -----------
+  // 🔴 **版（chart の --version・URL）と内側のイメージの tag@digest は対で決まる。** check-image-digests.js は digest の**形**と
+  // 同じ repo:tag の食い違いを見るが、「chart を 1.31 に上げたのに values の pilot は 1.30.4 のまま」は見ない。ここで突き合わせる。
+  // 判定は純関数（テキストを受ける）にし、変異（片側だけの更新）で赤になることも同じ関数で確かめる。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.resolve(__dirname, '..');
+    const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8').replace(/\r\n/g, '\n');
+    const DIGEST = '@sha256:[0-9a-f]{64}';
+    const pinned = (text, name) => (new RegExp(`^pin_version ${name} (\\S+) `, 'm').exec(text) || [])[1];
+    /** 版と固定の対を突き合わせ、食い違いを文で返す（空なら一致）。 */
+    const pairing = (t) => {
+      const bad = [];
+      const want = (cond, msg) => { if (!cond) bad.push(msg); };
+      // Istio: 起動器 2 本の版と values の 3 参照の tag。
+      const istio = pinned(t.up, 'ISTIO_VERSION');
+      want(istio && pinned(t.edge, 'ISTIO_VERSION') === istio, `ISTIO_VERSION が k8s-local-up.sh（${istio}）と istio-edge-up.sh で違う`);
+      const istioRefs = [...t.istiod.matchAll(new RegExp(`^\\s*image: registry\\.istio\\.io/release/(pilot|proxyv2):(\\S+?)(${DIGEST})?$`, 'gm'))];
+      want(istioRefs.length === 3, `istiod の values の pilot・proxy・proxy_init の参照が 3 つでない（${istioRefs.length}）`);
+      for (const m of istioRefs) want(m[2] === istio && m[3], `istiod の values の ${m[1]} が ${istio}@sha256 でない: ${m[2]}${m[3] || ''}`);
+      // ESO: chart と appVersion は同じ版（2.8.0 → v2.8.0。chart の Chart.yaml で実測）。3 参照とも。
+      const eso = pinned(t.up, 'ESO_CHART_VERSION');
+      const esoTags = [...t.eso.matchAll(new RegExp(`^\\s*tag: (\\S+?)(${DIGEST})?$`, 'gm'))];
+      want(esoTags.length === 3, `ESO の values の tag が 3 つでない（${esoTags.length}）`);
+      for (const m of esoTags) want(m[1] === `v${eso}` && m[2], `ESO の values の tag が v${eso}@sha256 でない: ${m[1]}${m[2] || ''}`);
+      // Reloader: chart と image の版は対応が外から引けないので、values が chart の版を名指しすること（版を上げたら values も触る）。
+      const rl = pinned(t.up, 'RELOADER_CHART_VERSION');
+      want(t.reloader.includes(`chart ${rl} `), `Reloader の values が chart の版（${rl}）を名指ししていない（chart だけ上げた）`);
+      want(new RegExp(`^\\s*tag: v\\d+\\.\\d+\\.\\d+${DIGEST}$`, 'm').test(t.reloader), 'Reloader の values の tag が tag@sha256 でない');
+      // cert-manager / Argo CD: kustomization の URL の版・起動器の版・images の newTag と digest。
+      const kust = (text, urlRe, version, mainImages) => {
+        const url = (urlRe.exec(text) || [])[1];
+        want(url === version, `kustomization の URL の版（${url}）が起動器の版（${version}）と違う`);
+        const items = [...text.matchAll(/^\s*- name: (\S+)\n\s*newTag: (\S+)\n\s*digest: (\S+)$/gm)];
+        for (const name of mainImages) {
+          const it = items.find((m) => m[1] === name);
+          want(it && it[2] === version, `${name} の newTag が ${version} でない: ${it ? it[2] : '(項目なし)'}`);
+        }
+        for (const m of items) want(new RegExp(`^${DIGEST.slice(1)}$`).test(m[3]), `${m[1]} の digest の形が違う: ${m[3]}`);
+        return items.length;
+      };
+      const cm = pinned(t.up, 'CERT_MANAGER_VERSION');
+      const cmN = kust(t.cm, /cert-manager\/releases\/download\/([^/\s]+)\/cert-manager\.yaml/, cm,
+        ['controller', 'webhook', 'cainjector'].map((c) => `quay.io/jetstack/cert-manager-${c}`));
+      want(cmN === 3, `cert-manager の images の項目（name・newTag・digest の 3 行）が 3 つでない（${cmN}）`);
+      const argo = pinned(t.up, 'ARGOCD_VERSION');
+      const argoN = kust(t.argo, /argoproj\/argo-cd\/([^/\s]+)\/manifests\/install\.yaml/, argo, ['quay.io/argoproj/argocd']);
+      want(argoN === 3, `Argo CD の images の項目（argocd・dex・redis）が 3 つでない（${argoN}）`);
+      return bad;
+    };
+    const texts = () => ({
+      up: read('scripts/k8s-local-up.sh'),
+      edge: read('scripts/istio-edge-up.sh'),
+      istiod: read('deploy/istio/istiod-values-local.yaml'),
+      eso: read('deploy/local/vault/eso/external-secrets-values.yaml'),
+      reloader: read('deploy/local/reloader/values.yaml'),
+      cm: read('deploy/local/edge/cert-manager/kustomization.yaml'),
+      argo: read('deploy/argocd/install/kustomization.yaml'),
+    });
+
+    ok('#1858: 6 製品の版と内側のイメージの tag@digest が対で揃っている', () => {
+      assert.deepStrictEqual(pairing(texts()), []);
+    });
+
+    ok('#1858: 変異 —— 片側だけの更新（版だけ・tag だけ・digest の欠落・項目の欠落）をすべて拾う', () => {
+      const D = 'sha256:' + 'f'.repeat(64);
+      const mutate = (key, from, to) => {
+        const t = texts();
+        assert.ok(from instanceof RegExp ? from.test(t[key]) : t[key].includes(from), `変異の起点が無い（${key}: ${from}）`);
+        t[key] = t[key].replace(from, to);
+        return pairing(t);
+      };
+      const cases = [
+        ['up', /^pin_version ISTIO_VERSION \S+ /m, 'pin_version ISTIO_VERSION 1.31.0 '], // chart だけ上げた
+        ['edge', /^pin_version ISTIO_VERSION \S+ /m, 'pin_version ISTIO_VERSION 1.30.5 '], // 起動器 1 本だけ
+        ['istiod', /pilot:1\.30\.4@/, 'pilot:1.30.5@'], // values の 1 参照だけ
+        ['istiod', /(proxyv2:1\.30\.4)@sha256:[0-9a-f]{64}/, '$1'], // digest の欠落
+        ['up', /^pin_version ESO_CHART_VERSION \S+ /m, 'pin_version ESO_CHART_VERSION 2.9.0 '],
+        ['eso', /tag: v2\.8\.0@/, 'tag: v2.8.1@'],
+        ['up', /^pin_version RELOADER_CHART_VERSION \S+ /m, 'pin_version RELOADER_CHART_VERSION 2.2.18 '],
+        ['reloader', /(tag: v1\.4\.22)@sha256:[0-9a-f]{64}/, '$1'],
+        ['up', /^pin_version CERT_MANAGER_VERSION \S+ /m, 'pin_version CERT_MANAGER_VERSION v1.21.2 '],
+        ['cm', /newTag: v1\.21\.1\n(\s*)digest: \S+\n(\s*- name: quay\.io\/jetstack\/cert-manager-cainjector)/, `newTag: v1.21.1\n$1digest: ${D}x\n$2`], // digest の形
+        ['cm', /\s*- name: quay\.io\/jetstack\/cert-manager-cainjector\n\s*newTag: \S+\n\s*digest: \S+/, ''], // 項目の欠落
+        ['up', /^pin_version ARGOCD_VERSION \S+ /m, 'pin_version ARGOCD_VERSION v3.5.5 '],
+        ['argo', /argo-cd\/v3\.5\.4\//, 'argo-cd/stable/'],
+        ['argo', /newTag: v3\.5\.4/, 'newTag: v3.5.3'],
+      ];
+      const silent = cases.filter(([key, from, to]) => mutate(key, from, to).length === 0).map(([key, from]) => `${key}: ${from}`);
+      assert.deepStrictEqual(silent, [], `変異を拾えなかった:\n${silent.join('\n')}`);
     });
   }
 
@@ -16072,4 +18267,993 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR, #1911, IADR-0232 決定 7: AI レビューの prompt の【検証の下限】節を固定する ---
+  // 5.5 系への切替後、レビューが下限の検証（scripts.test.js 全件・dotnet test・全ファイルの読了）を
+  // 自分で省くようになった（#1911 の点検）。節が黙って消える・要の語が抜ける・案内する helm が
+  // 許可から外れる、の 3 つを止める（文言の全文は固定しない）。
+  {
+    const fs1911 = require('fs');
+    const path1911 = require('path');
+    const wf1911 = fs1911.readFileSync(path1911.resolve(__dirname, '../.github/workflows/claude-code-review.yml'), 'utf8');
+    const floorProblems1911 = (text) => {
+      const start = text.indexOf('          prompt: |\n');
+      assert.ok(start >= 0, 'claude-code-review.yml から prompt: | を切り出せない（書式が変わったら本試験を直す）');
+      const prompt = text.slice(start);
+      const m = text.match(/^ +--allowedTools "([^"]+)"/m); // 行頭のもの（YAML コメント内の記法例を拾わない）
+      assert.ok(m, 'claude-code-review.yml に --allowedTools "…" が無い');
+      const tools = m[1].split(',');
+      const i = prompt.indexOf('【検証の下限・最重要】');
+      if (i < 0) return ['prompt に【検証の下限・最重要】節が無い'];
+      const j = prompt.indexOf('\n\n', i); // 節は次の空行で終わる
+      const block = prompt.slice(i, j < 0 ? undefined : j);
+      const problems = [];
+      for (const word of ['全部読む', 'scripts.test.js', "REQUIRE_REPO_TESTS:'1'", 'dotnet test', 'dotnet format', '--verify-no-changes',
+        'check-trace-blocks', 'helm lint', 'helm template', '時間配分', '差分が大きい', '/tmp/', 'ワークスペースへ書き込まない']) {
+        if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
+      }
+      for (const t of ['Bash(helm lint:*)', 'Bash(helm template:*)', 'Bash(node:*)', 'Bash(dotnet test:*)', 'Bash(dotnet format:*)', 'Bash(git fetch:*)']) {
+        if (!tools.includes(t)) problems.push(`【検証の下限】節が案内する ${t} が --allowedTools に無い`);
+      }
+      // 旧文言「時間が足りなければ『未検証（理由）』と書いて投稿」は下限を省く口実になった（#1911）
+      if (/時間が足りなければ/.test(prompt)) problems.push('prompt に旧文言「時間が足りなければ」が戻っている');
+      return problems;
+    };
+    ok('claude-code-review.yml[#1911]: prompt に【検証の下限】節があり、案内するコマンドが許可にある', () => {
+      assert.deepStrictEqual(floorProblems1911(wf1911), []);
+    });
+    ok('claude-code-review.yml[#1911]: 陰性対照（節を消す・helm lint の許可を外す・語を抜く・旧文言を戻す）はそれぞれ赤になる', () => {
+      assert.match(floorProblems1911(wf1911.replaceAll('【検証の下限・最重要】', '【削除】')).join('\n'), /節が無い/);
+      assert.match(floorProblems1911(wf1911.replace('Bash(helm lint:*),', '')).join('\n'), /helm lint:\*\) が --allowedTools に無い/);
+      assert.match(floorProblems1911(wf1911.replace('「時間配分」', '「」')).join('\n'), /時間配分/);
+      assert.match(floorProblems1911(wf1911.replace('【実行制約・最重要】', '【実行制約・最重要】時間が足りなければ')).join('\n'), /旧文言/);
+    });
+  }
+
+  // --- NFR, IADR-0538: 【検証の下限】と check-review-verdict.js の対を固定する ---
+  // 検査器は prompt が書かせる申告（「変更 N ファイル中 M ファイルを読んだ」・生成物 K・節）を読む。片方だけ変えると
+  // 恒久的な偽陽性か素通りになる。prompt の生成物の例が検査器の GENERATED_TOKENS に当たること、判定のステップが
+  // CHANGED_FILES を渡すことを固定する（文言の全文は固定しない）。
+  {
+    const fsRvf = require('fs');
+    const pathRvf = require('path');
+    const wfRvf = fsRvf.readFileSync(pathRvf.resolve(__dirname, '../.github/workflows/claude-code-review.yml'), 'utf8');
+    const { GENERATED_TOKENS } = require('./check-review-verdict.js');
+    const pairProblems = (text) => {
+      const problems = [];
+      const start = text.indexOf('          prompt: |\n');
+      assert.ok(start >= 0, 'claude-code-review.yml から prompt: | を切り出せない');
+      const i = text.indexOf('【検証の下限・最重要】', start);
+      if (i < 0) return ['prompt に【検証の下限・最重要】節が無い'];
+      const j = text.indexOf('\n\n', i);
+      const block = text.slice(i, j < 0 ? undefined : j);
+      for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと']) {
+        if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
+      }
+      for (const gen of ['pnpm-lock.yaml', 'messages.po', 'CHANGELOG.md', '*.Designer.cs', '*ModelSnapshot.cs', 'src/<unit>/frontend/src/lib/api/generated/']) {
+        if (!block.includes(gen)) problems.push(`【検証の下限】節の生成物の例に「${gen}」が無い`);
+        else if (!new RegExp(GENERATED_TOKENS.source).test(gen.replace('<unit>', 'platform') + 'x.ts')) problems.push(`生成物「${gen}」が検査器の GENERATED_TOKENS に当たらない`);
+      }
+      const k = text.indexOf('      - name: Check review verdict');
+      if (k < 0) return problems.concat(['ステップ「Check review verdict」が無い']);
+      const step = text.slice(k, text.indexOf('\n\n', k) < 0 ? undefined : text.indexOf('\n\n', k));
+      for (const word of ['if: always()', 'export CHANGED_FILES', 'git diff --name-only', 'node scripts/check-review-verdict.js "$EXECUTION_FILE"']) {
+        if (!step.includes(word)) problems.push(`ステップ「Check review verdict」に「${word}」が無い`);
+      }
+      // IADR-0615 (#2184): 代わりの根拠（作業ツリーと PR 版の差・同じ head の CI scripts-tests）を検査器へ渡す。
+      for (const word of ['export RESTORED_FILES', 'git diff --name-only HEAD', 'export SCRIPTS_TESTS_CONCLUSION', 'check_name=scripts-tests', '$HEAD_SHA']) {
+        if (!step.includes(word)) problems.push(`ステップ「Check review verdict」に「${word}」が無い`);
+      }
+      // IADR-0617 (#2206): check-run を待つ条件は作業ツリーの復元（RESTORED_FILES）に依らない。
+      // scripts/ か .github/ の差分の有無だけで待つ（条件に RESTORED_FILES を戻すと、復元なしの PR で値が空のまま渡る）。
+      const wait = step.indexOf('check_name=scripts-tests');
+      const cond = step.lastIndexOf('if [', wait);
+      if (wait >= 0 && cond >= 0 && /RESTORED_FILES/.test(step.slice(cond, step.indexOf('\n', cond)))) {
+        problems.push('ステップ「Check review verdict」の scripts-tests を待つ条件が RESTORED_FILES に依っている（IADR-0617）');
+      }
+      if (/\|\s*grep -q/.test(step)) problems.push('ステップ「Check review verdict」に「… | grep -q」がある（pipefail の下で SIGPIPE。#2202）');
+      if (!/\n {6}checks: read\n/.test(text)) problems.push('ジョブの permissions に checks: read が無い（check-run を読めない）');
+      return problems;
+    };
+    ok('claude-code-review.yml[IADR-0538]: 【検証の下限】の申告・生成物と check-review-verdict.js が対になっている', () => {
+      assert.deepStrictEqual(pairProblems(wfRvf), []);
+    });
+    ok('claude-code-review.yml[IADR-0538]: 陰性対照（CHANGED_FILES を外す・K の書式を消す・生成物の例を消す）はそれぞれ赤になる', () => {
+      assert.match(pairProblems(wfRvf.replace('          export CHANGED_FILES\n', '')).join('\n'), /CHANGED_FILES/);
+      assert.match(pairProblems(wfRvf.replaceAll('生成物 K ファイルを除外', '生成物を除外')).join('\n'), /生成物 K ファイルを除外/);
+      assert.match(pairProblems(wfRvf.replace('`pnpm-lock.yaml`・`CHANGELOG.md`・`docs/api', '`CHANGELOG.md`・`docs/api')).join('\n'), /pnpm-lock/);
+      // IADR-0615 (#2184): 代わりの根拠を渡す配線を外すと赤になる。
+      assert.match(pairProblems(wfRvf.replace('          export RESTORED_FILES\n', '')).join('\n'), /RESTORED_FILES/);
+      assert.match(pairProblems(wfRvf.replace('      checks: read\n', '')).join('\n'), /checks: read/);
+      // IADR-0617 (#2206): 待つ条件へ RESTORED_FILES を戻すと赤になる。
+      assert.match(
+        pairProblems(wfRvf.replace('if [ -n "$TOUCHES_SCRIPTS" ]; then', 'if [ -n "$RESTORED_FILES" ] && [ -n "$TOUCHES_SCRIPTS" ]; then')).join('\n'),
+        /RESTORED_FILES に依っている/
+      );
+    });
+
+    // IADR-0615 (#2184): MSP#2183 の 3 回目の実レビュー本文。レビュアーは scripts.test.js を前景で回したが、
+    // `.claude/` が統合ブランチ版へ戻された作業ツリーで落ち、「🔍 実行できなかったこと」に書いた（正直な申告）。
+    const reviewRvf = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2183-review3.txt'), 'utf8');
+    const changedRvf = ['.claude/rules/traceability.repo.md', 'docs/how-to/plan-id-range-history-annex.md', 'scripts/scripts.repo.test.js', 'scripts/check-planning-adr-range.js'];
+    const { findFloorViolations: floorRvf } = require('./check-review-verdict.js');
+    ok('check-review-verdict[IADR-0615]: MSP#2183 の実本文は、作業ツリーが PR 版と違い同じ head の scripts-tests が success なら下限を満たす', () => {
+      assert.deepStrictEqual(floorRvf(reviewRvf, changedRvf, { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0615]: ★陽性対照 —— 同じ本文でも scripts-tests が failure・結果なしなら赤', () => {
+      for (const evidence of [
+        { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: 'failure' },
+        { restoredFiles: ['.claude/rules/traceability.repo.md'], scriptsTestsConclusion: '' },
+        { restoredFiles: [], scriptsTestsConclusion: 'cancelled' },
+        {},
+      ]) {
+        const v = floorRvf(reviewRvf, changedRvf, evidence);
+        assert.strictEqual(v.length, 1, JSON.stringify(evidence));
+        assert.match(v[0], /scripts\.test\.js 全件/);
+      }
+    });
+
+    // IADR-0617 (#2206): MSP#2205 の 2 回目の実レビュー本文。scripts/ の差分は scripts/chunk-budget-baseline.json の数値だけで、
+    // レビュアーはこれを見落とし「scripts/ .github/ の差分は無いので scripts.test.js は走らせていない」と書いた。
+    // 作業ツリーの復元は無く、同じ head の CI scripts-tests は success だった（IADR-0615 の条件では赤のまま止まった）。
+    const review2205 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2205-review2.txt'), 'utf8');
+    const changed2205 = [
+      '.ai-context/specs/20261024_2201_theme-toggle-label-in-name.md',
+      'scripts/chunk-budget-baseline.json',
+      'src/platform/frontend/src/components/theme/ThemeToggle.test.tsx',
+      'src/platform/frontend/src/components/theme/ThemeToggle.tsx',
+      'src/platform/frontend/src/locales/en/messages.po',
+      'src/platform/frontend/src/locales/en/messages.ts',
+      'src/platform/frontend/src/locales/ja/messages.po',
+      'src/platform/frontend/src/locales/ja/messages.ts',
+    ];
+    ok('check-review-verdict[IADR-0617]: MSP#2205 の実本文は、復元が無くても同じ head の scripts-tests が success なら下限を満たす', () => {
+      assert.deepStrictEqual(floorRvf(review2205, changed2205, { restoredFiles: [], scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0617]: ★陽性対照 —— 同じ本文・復元なしで scripts-tests が success でなければ（failure・cancelled・timed_out・空・無し）赤', () => {
+      for (const evidence of [
+        { restoredFiles: [], scriptsTestsConclusion: 'failure' },
+        { restoredFiles: [], scriptsTestsConclusion: 'cancelled' },
+        { restoredFiles: [], scriptsTestsConclusion: 'timed_out' },
+        { restoredFiles: [], scriptsTestsConclusion: '' },
+        {},
+      ]) {
+        const v = floorRvf(review2205, changed2205, evidence);
+        assert.strictEqual(v.length, 1, JSON.stringify(evidence));
+        assert.match(v[0], /scripts\.test\.js 全件.*scripts-tests も success でない/);
+      }
+    });
+  }
+
+  // --- export-loki-logs: 経路 B の Loki から時間範囲のログを書き出す（NFR-18, ADR-0133, IADR-0543 / #1935） ---
+  //
+  // 🔴 **取りこぼしと重複を成功に見せないことがこの道具の値打ちである。** Loki は 1 応答を limit 件で切るので、
+  // 次のページを「前のページの最後の時刻」から含めて取り直し、同じ時刻で書いた行を落とす。同じ時刻に limit 件以上が
+  // 並ぶと先へ進めないので失敗にする。ページ送りは非同期なので子プロセスで回し、偽の Loki（limit・start を含み end を
+  // 含まない・同じ時刻の並びは固定の順）へ当てる。
+  {
+    const fsLx = require('fs');
+    const osLx = require('os');
+    const pathLx = require('path');
+    const { spawnSync: spawnLx } = require('child_process');
+    const SCRIPT_LX = pathLx.join(__dirname, 'export-loki-logs.js');
+    const lx = require(SCRIPT_LX);
+    // 偽の Loki。entries は [ns, job, line]。同じ時刻の行は job の降順で返す（並べ直しを呼び出し側に任せる形を試す）。
+    const FAKE_LOKI = `
+      const entries = JSON.parse(process.env.LX_ENTRIES);
+      const calls = [];
+      globalThis.__fake = async (url, init) => {
+        const u = new URL(url);
+        calls.push({ path: u.pathname, method: init.method, auth: (init.headers || {}).Authorization || null,
+          start: u.searchParams.get('start'), end: u.searchParams.get('end'), query: u.searchParams.get('query'),
+          limit: u.searchParams.get('limit'), direction: u.searchParams.get('direction') });
+        const json = (o, status = 200) => ({ ok: status < 400, status, text: async () => JSON.stringify(o) });
+        if (process.env.LX_STATUS) return { ok: false, status: Number(process.env.LX_STATUS), text: async () => 'no' };
+        const start = BigInt(u.searchParams.get('start') || 0), end = BigInt(u.searchParams.get('end') || u.searchParams.get('time'));
+        if (u.pathname === '/loki/api/v1/query') {
+          // #1969: 検算の件数（sum(count_over_time(q [Nms]))）は、実物の Loki 3.0.0 と同じく両端を含まない (T − r, T) を数える。
+          const m = /^sum\\(count_over_time\\(.*\\[(\\d+)ms\\]\\)\\)$/.exec(u.searchParams.get('query'));
+          if (m) {
+            const lo = end - BigInt(m[1]) * 1000000n - BigInt(process.env.LX_COUNT_SKEW || 0);
+            const n = entries.filter(([ns]) => BigInt(ns) > lo && BigInt(ns) < end).length;
+            return json({ status: 'success', data: { resultType: 'vector', result: n ? [{ metric: {}, value: [0, String(n)] }] : [] } });
+          }
+          const by = {}; for (const [, job] of entries) by[job] = (by[job] || 0) + 1;
+          return json({ status: 'success', data: { resultType: 'vector', result: Object.entries(by).map(([job, n]) => ({ metric: { job }, value: [0, String(n)] })) } });
+        }
+        const limit = Number(u.searchParams.get('limit'));
+        const dir = u.searchParams.get('direction');
+        let hit = entries.filter(([ns]) => BigInt(ns) >= start && BigInt(ns) < end)
+          .sort((a, b) => (BigInt(a[0]) === BigInt(b[0]) ? (a[1] < b[1] ? 1 : -1) : (BigInt(a[0]) < BigInt(b[0]) ? -1 : 1)));
+        // #1969: Loki 3.0.0 の query-frontend の誤りを模す。要求が分け目（LX_SPLIT ns の倍数）を跨ぐと、job b の分け目の直後
+        // （分け目の 1/4 の幅）の行が抜け、他の job のもっと後の行が limit 件に入る（実測の形）。跨がない要求は正しく返す。
+        if (process.env.LX_SPLIT) {
+          const split = BigInt(process.env.LX_SPLIT);
+          const boundary = (start / split + 1n) * split;
+          if (boundary < end) hit = hit.filter(([ns, job]) => !(job === 'b' && BigInt(ns) >= boundary && BigInt(ns) < boundary + split / 4n));
+        }
+        // #1969: 特定の行を常に返さない Loki（検算が取りこぼしを捕まえるかを試す）。
+        if (process.env.LX_DROP) hit = hit.filter(([ns, job]) => \`\${job}@\${ns}\` !== process.env.LX_DROP);
+        if (dir === 'backward') hit = hit.reverse();
+        hit = hit.slice(0, limit);
+        const streams = {};
+        for (const [ns, job, line] of hit) (streams[job] = streams[job] || { stream: { job }, values: [] }).values.push([String(ns), line]);
+        return json({ status: 'success', data: { resultType: 'streams', result: Object.values(streams) } });
+      };
+      globalThis.__calls = calls;`;
+    const runLx = (body, entries, env = {}) => {
+      const r = spawnLx(process.execPath, ['-e', `${FAKE_LOKI}\nconst lx = require(process.argv[1]);\n(async () => { ${body} })().catch((e) => { console.log(JSON.stringify({ error: e.message })); });`, SCRIPT_LX], {
+        encoding: 'utf8', timeout: 30000, env: { ...process.env, LX_ENTRIES: JSON.stringify(entries), ...env },
+      });
+      assert.strictEqual(r.status, 0, r.stderr);
+      return JSON.parse(r.stdout.trim().split('\n').pop());
+    };
+    // 3 つの job が 10 個の時刻に 1 行ずつ（各時刻に 3 行が並ぶ）。
+    const ENTRIES_LX = [];
+    for (let t = 0; t < 10; t += 1) for (const job of ['a', 'b', 'c']) ENTRIES_LX.push([String(1000 + t), job, `${job}-${t}`]);
+    const EXPORT_LX = (limit, tieLimit = 5000) => `
+      const got = [];
+      const r = await lx.exportRange(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 1000n, endNs: 2000n, limit: ${limit}, tieLimit: ${tieLimit}, token: 't' },
+        (e) => got.push(e.labels.job + '@' + e.ns + ':' + e.line));
+      console.log(JSON.stringify({ got, count: r.count, pages: r.pages, calls: globalThis.__calls }));`;
+
+    ok('#1935 export-loki-logs: ページの境目が同じ時刻の行の途中に来ても、ページ全体が同じ時刻でも、全行を 1 度ずつ書く（limit 4・5・3・2・1）', () => {
+      for (const limit of [4, 5, 3, 2, 1]) {
+        const r = runLx(EXPORT_LX(limit), ENTRIES_LX);
+        assert.strictEqual(r.error, undefined, r.error);
+        assert.strictEqual(r.count, 30, `limit ${limit}: ${r.count} 行`);
+        assert.strictEqual(new Set(r.got).size, 30, `limit ${limit}: 重複がある`);
+        assert.ok(r.pages > 1, `limit ${limit}: ページ送りを通っていない（陽性対照）`);
+        assert.ok(r.calls.every((c) => c.method === 'GET' && c.direction === 'forward' && c.auth === 'Bearer t'), JSON.stringify(r.calls[0]));
+      }
+    });
+
+    ok('#1935 export-loki-logs: 陰性対照 —— 境目の行を落とさない素朴なページ送りは、同じ固定で重複を出す（固定が境目を踏んでいる）', () => {
+      const r = runLx(`
+        let start = 1000n; const got = [];
+        for (;;) { const b = JSON.parse(await (await globalThis.__fake('http://x/loki/api/v1/query_range?start=' + start + '&end=2000&limit=4&direction=forward', { method: 'GET' })).text());
+          const e = lx.flattenStreams(b.data.result); e.forEach((x) => got.push(x.labels.job + x.ns)); if (e.length < 4) break; start = e[e.length - 1].ns; }
+        console.log(JSON.stringify({ n: got.length, uniq: new Set(got).size }));`, ENTRIES_LX);
+      assert.ok(r.n > r.uniq, `素朴なページ送りでも重複が出ない（固定が境目を踏んでいない）: ${JSON.stringify(r)}`);
+    });
+
+    ok('#1935 export-loki-logs: 同じ時刻の行が取り直しの上限でも切れるときは、黙って打ち切らず失敗にする', () => {
+      const r = runLx(EXPORT_LX(2, 3), ENTRIES_LX);
+      assert.match(r.error || '', /同じ時刻.*3 件以上の行があり先へ進めない/);
+      // 陽性対照: 上限が 1 件でも足りていれば通る（同じ時刻は 3 行）。
+      const okRun = runLx(EXPORT_LX(2, 4), ENTRIES_LX);
+      assert.strictEqual(okRun.count, 30, JSON.stringify(okRun.error));
+    });
+
+    ok('#1935 export-loki-logs: --summary は job ごとの件数と最古・最新を返し、401 / 403 は前段の判定として読める言葉にする', () => {
+      const s = runLx(`const r = await lx.summarize(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 1000n, endNs: 2000n, token: '' });
+        console.log(JSON.stringify({ perJob: r.perJob, oldest: String(r.oldest), newest: String(r.newest), auth: globalThis.__calls.map((c) => c.auth) }));`, ENTRIES_LX);
+      assert.deepStrictEqual(s.perJob.map((x) => [x.job, x.count]), [['a', 10], ['b', 10], ['c', 10]]);
+      assert.deepStrictEqual([s.oldest, s.newest], ['1000', '1009']);
+      assert.ok(s.auth.every((a) => a === null), 'トークンが無いのに Authorization を送っている');
+      for (const [status, re] of [[401, /LOKI_TOKEN が無いか違う/], [403, /writer のトークン/]]) {
+        const r = runLx(EXPORT_LX(4), ENTRIES_LX, { LX_STATUS: String(status) });
+        assert.match(r.error || '', re, `HTTP ${status}`);
+      }
+    });
+
+    ok('#1935 export-loki-logs: 時刻は時差つきだけを受け付け、JST の日付の境を UTC のナノ秒へ直す。引数の誤りは拒む', () => {
+      assert.strictEqual(lx.parseInstant('2026-10-14T00:00:00+09:00', '--from'), BigInt(Date.parse('2026-10-13T15:00:00Z')) * 1000000n);
+      assert.strictEqual(lx.formatNs(lx.parseInstant('2026-10-14T01:02:03.000000123Z', '--from')), '2026-10-14T01:02:03.000000123Z');
+      assert.throws(() => lx.parseInstant('2026-10-14T00:00:00', '--from'), /時差つき/);
+      const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00'];
+      assert.strictEqual(lx.parseArgs([...base, '--out', 'x.jsonl', '--limit', String(lx.MAX_LIMIT)]).limit, lx.MAX_LIMIT); // 上限は受け付ける
+      assert.throws(() => lx.parseArgs(base), /--out は必須/);
+      assert.ok(lx.parseArgs([...base, '--summary']).summary);
+      assert.throws(() => lx.parseArgs([...base, '--out', 'x', '--limit', String(lx.MAX_LIMIT + 1)]), /--limit/);
+      assert.throws(() => lx.parseArgs(['--from', base[3], '--to', base[1], '--out', 'x']), /--to は --from より後/);
+      assert.throws(() => lx.parseArgs([...base, '--out', 'x', '--token', 'abc']), /知らない引数/); // トークンを引数で受けない
+    });
+
+    // NFR-18, IADR-0553 (#1965): 既定の 1 ページは 1000 行。5000 では AST の長い行で 1 ページが querier → frontend の gRPC の
+    // 上限を超え、Loki の中で捨てられて毎回時間切れになった（PoC 実測）。数字そのものを固定する（MAX_LIMIT と比べない）。
+    ok('#1965 export-loki-logs: --limit を与えなければ 1 ページ 1000 行で要求する（上限 5000 は据え置き）', () => {
+      assert.strictEqual(lx.DEFAULT_LIMIT, 1000);
+      assert.strictEqual(lx.MAX_LIMIT, 5000);
+      const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00', '--out', 'x.jsonl'];
+      assert.strictEqual(lx.parseArgs(base).limit, 1000);
+      const r = runLx(`const o = lx.parseArgs(${JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T00:00:00.001Z', '--out', 'x', '--url', 'http://x'])});
+        const got = []; await lx.exportRange(globalThis.__fake, o, (e) => got.push(e));
+        console.log(JSON.stringify({ n: got.length, limits: globalThis.__calls.map((c) => c.limit) }));`, ENTRIES_LX);
+      assert.strictEqual(r.n, 30);
+      assert.deepStrictEqual([...new Set(r.limits)], ['1000']);
+      assert.match(fsLx.readFileSync(SCRIPT_LX, 'utf8'), /既定 \$\{DEFAULT_LIMIT\}/, '--help に既定の件数を出す');
+    });
+
+    // NFR-18, ADR-0133, IADR-0553 (#1965): Loki の gRPC の受信・送信の上限（既定 4 MiB）を compose と経路 B の両方で 16 MiB に上げ、
+    // 両者を揃えておく。片方だけ戻すと、その経路でだけ書き出しが時間切れに戻る。
+    ok('#1965 Loki の gRPC の上限: compose と経路 B の inline の両方で recv / send が 16 MiB（16777216）', () => {
+      const MIB16 = '16777216';
+      for (const rel of ['deploy/loki-config.yaml', 'deploy/local/observability/loki.yaml']) {
+        const text = fsLx.readFileSync(pathLx.join(__dirname, '..', rel), 'utf8');
+        for (const key of ['grpc_server_max_recv_msg_size', 'grpc_server_max_send_msg_size']) {
+          const m = new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, 'm').exec(text);
+          assert.ok(m, `${rel} に ${key} が無い（既定 4 MiB に戻る）`);
+          assert.strictEqual(m[1], MIB16, `${rel} の ${key}`);
+        }
+      }
+    });
+
+    ok('#1935 export-loki-logs: main は書き出したファイルを JSON Lines で残し、既に在る出力先は上書きしない', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T00:00:00.001Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        const body = `const c1 = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
+          const c2 = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
+          console.log(JSON.stringify({ c1, c2 }));`;
+        const r = runLx(body, ENTRIES_LX);
+        assert.deepStrictEqual([r.c1, r.c2], [0, 1]);
+        const lines = fsLx.readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        assert.strictEqual(lines.length, 30);
+        assert.deepStrictEqual(Object.keys(lines[0]), ['ts', 'ns', 'labels', 'line']);
+        assert.strictEqual(lines[0].ts, '1970-01-01T00:00:00.000001000Z'); // 行の時刻（1000 ns）はナノ秒のまま書く
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1935 export-loki-logs: 書き出しが途中で失敗したら、途中のファイルを <out>.partial へ改名し、不完全だと名指しして非 0 で終わる', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T00:00:00.001Z', '--out', out, '--limit', '4', '--url', 'http://x']);
+        // 2 ページ目で前段が 401 を返す（トークンを回した・port-forward の先が替わった等を模す）。
+        const body = `let n = 0; const inner = globalThis.__fake;
+          const flaky = async (u, i) => (++n >= 2 ? { ok: false, status: 401, text: async () => 'no' } : inner(u, i));
+          const errs = []; const w = process.stderr.write.bind(process.stderr); process.stderr.write = (x) => { errs.push(String(x)); return true; };
+          const code = await lx.main(${argv}, { LOKI_TOKEN: 'abc' }, flaky);
+          process.stderr.write = w;
+          console.log(JSON.stringify({ code, errs: errs.join('') }));`;
+        const r = runLx(body, ENTRIES_LX);
+        assert.strictEqual(r.code, 1);
+        assert.ok(!fsLx.existsSync(out), '完了した写しと同じ名前のファイルが残っている');
+        const partial = fsLx.readFileSync(`${out}.partial`, 'utf8').trim().split('\n');
+        assert.strictEqual(partial.length, 4, '1 ページ目の 4 行が .partial に残っていない');
+        assert.match(r.errs, /部分的なファイル .*o\.jsonl\.partial が残った（4 行。保全は不完全）/);
+        assert.match(r.errs, /HTTP 401/);
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // NFR-18 (#1969): Loki 3.0.0 は 1 要求が query-frontend の分け目（1h）を跨ぐと行を落とす（実測）。窓を UTC の 0 時からの
+    // 倍数に揃えて跨がせず、窓ごとに Loki の件数と突き合わせ、合わなければ非 0 で終わる。
+    const MIN_LX = 60n * 1000000000n;
+    // 3 つの job が 3 時間にわたり 5 分ごとに 1 行ずつ。a は 5 分の倍数ちょうど（正時・窓の始まりちょうどの行を含む）、b は 1 分後、c は 2 分後。
+    const SPREAD_LX = [];
+    for (let t = 0n; t < 180n; t += 5n) ['a', 'b', 'c'].forEach((job, i) => SPREAD_LX.push([String((t + BigInt(i)) * MIN_LX), job, `${job}-${t}`]));
+    const WINDOWS_LX = (windowMin, limit = 4, startMin = 0n) => `
+      const got = [];
+      const o = { url: 'http://x', query: '{job=~".+"}', startNs: ${startMin * MIN_LX}n, endNs: ${180n * MIN_LX}n, limit: ${limit}, token: 't', windowNs: ${BigInt(windowMin) * MIN_LX}n };
+      try {
+        const r = await lx.exportWindows(globalThis.__fake, o, (e) => got.push(e.labels.job + '@' + e.ns));
+        console.log(JSON.stringify({ n: got.length, uniq: new Set(got).size, windows: r.windows, calls: globalThis.__calls }));
+      } catch (e) { console.log(JSON.stringify({ error: e.message, n: got.length })); }`;
+
+    ok('#1969 export-loki-logs: 陽性対照 —— 分け目を跨ぐ要求で行を落とす Loki では、範囲を 1 本でページ送りすると黙って行が欠ける', () => {
+      const r = runLx(`const got = [];
+        await lx.exportRange(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 0n, endNs: ${180n * MIN_LX}n, limit: 8, token: 't' }, (e) => got.push(e));
+        console.log(JSON.stringify({ n: got.length }));`, SPREAD_LX, { LX_SPLIT: String(60n * MIN_LX) });
+      assert.ok(r.n < SPREAD_LX.length, `模した誤りが効いていない（${r.n} 行）`);
+      // 同じ Loki で、同じ範囲を分け目に揃えた窓で取れば欠けない（次の試験）。誤りを外せば 1 本のページ送りでも欠けない（固定の確認）。
+      const clean = runLx(`const got = [];
+        await lx.exportRange(globalThis.__fake, { url: 'http://x', query: '{job=~".+"}', startNs: 0n, endNs: ${180n * MIN_LX}n, limit: 8, token: 't' }, (e) => got.push(e));
+        console.log(JSON.stringify({ n: got.length }));`, SPREAD_LX);
+      assert.strictEqual(clean.n, SPREAD_LX.length);
+    });
+
+    ok('#1969 export-loki-logs: 窓を分け目に揃えて跨がせず、全行を 1 度ずつ書き、検算が合う（窓 10・60・1 分。要求は窓を跨がない）', () => {
+      // [窓の分, limit, 範囲の始まり（分）, 窓の数]。始まりが窓の倍数でないときも、2 つ目からの窓は倍数に揃う。
+      for (const [windowMin, limit, startMin, windows] of [[10, 4, 0n, 18], [10, 8, 0n, 18], [60, 8, 0n, 3], [1, 4, 0n, 180], [60, 8, 30n, 3], [10, 8, 25n, 16]]) {
+        const r = runLx(WINDOWS_LX(windowMin, limit, startMin), SPREAD_LX, { LX_SPLIT: String(60n * MIN_LX) });
+        const want = SPREAD_LX.filter(([ns]) => BigInt(ns) >= startMin * MIN_LX).length;
+        assert.strictEqual(r.error, undefined, `窓 ${windowMin} 分: ${r.error}`);
+        assert.strictEqual(r.n, want, `窓 ${windowMin} 分・始まり ${startMin} 分: ${r.n} 行`);
+        assert.strictEqual(r.uniq, want, `窓 ${windowMin} 分: 重複がある`);
+        assert.strictEqual(r.windows, windows, `窓 ${windowMin} 分・始まり ${startMin} 分: 窓の数`);
+        const w = BigInt(windowMin) * MIN_LX;
+        for (const c of r.calls.filter((x) => x.path.endsWith('query_range'))) {
+          const s = BigInt(c.start);
+          assert.ok(BigInt(c.end) <= (s / w + 1n) * w, `窓を跨ぐ要求がある: ${c.start}〜${c.end}`);
+        }
+        const counts = r.calls.filter((x) => x.path.endsWith('/query'));
+        assert.strictEqual(counts.length, windows, `窓ごとに 1 回数えていない: ${counts.length}`);
+        assert.ok(counts.slice(1).every((c) => c.query === `sum(count_over_time({job=~".+"} [${windowMin * 60000}ms]))`), counts[1] && counts[1].query);
+      }
+    });
+
+    ok('#1969 export-loki-logs: Loki が行を返さないと検算が合わず、合わない窓を名指しして失敗する（件数が多すぎる側も失敗）', () => {
+      // 36 分の行（job b）を返さない（30〜40 分の窓の途中）。
+      const drop = runLx(WINDOWS_LX(10), SPREAD_LX, { LX_DROP: `b@${36n * MIN_LX}` });
+      assert.match(drop.error || '', /検算が合わない（18 窓のうち 1 窓。書き出し 107 行 \/ Loki の件数 108 行）/);
+      assert.match(drop.error, /1970-01-01T00:30:00\.000000000Z 〜 1970-01-01T00:40:00\.000000000Z: 書き出し 5 行 \/ Loki の件数 6 行（差 -1）/);
+      assert.strictEqual(drop.n, 107, '合わない窓の後も書き続けていない');
+      // Loki の件数の側が多い（範囲の始まりより 1 分前まで数えた）—— 書き出しが少ないと読める形でも、多いと読める形でも成功にしない。
+      const skew = runLx(WINDOWS_LX(10), SPREAD_LX, { LX_COUNT_SKEW: String(MIN_LX + 1n) });
+      assert.match(skew.error || '', /検算が合わない/);
+    });
+
+    ok('#1969 export-loki-logs: main は検算が合わなければ書きかけを <out>.partial へ改名して非 0、合えば検算の一致を出す', () => {
+      const dir = fsLx.mkdtempSync(pathLx.join(osLx.tmpdir(), 'lx-'));
+      try {
+        const out = pathLx.join(dir, 'o.jsonl');
+        const argv = (o) => JSON.stringify(['--from', '1970-01-01T00:00:00Z', '--to', '1970-01-01T03:00:00Z', '--out', o, '--limit', '8', '--url', 'http://x']);
+        const body = (o) => `const errs = []; const outs = []; const w = process.stderr.write.bind(process.stderr); const w2 = process.stdout.write.bind(process.stdout);
+          process.stderr.write = (x) => { errs.push(String(x)); return true; }; process.stdout.write = (x) => { outs.push(String(x)); return true; };
+          const code = await lx.main(${argv(o)}, { LOKI_TOKEN: 'abc' }, globalThis.__fake);
+          process.stderr.write = w; process.stdout.write = w2;
+          console.log(JSON.stringify({ code, errs: errs.join(''), outs: outs.join('') }));`;
+        const bad = runLx(body(out), SPREAD_LX, { LX_DROP: `b@${36n * MIN_LX}` });
+        assert.strictEqual(bad.code, 1);
+        assert.ok(!fsLx.existsSync(out), '検算が合わないのに完了した写しの名前で残っている');
+        assert.strictEqual(fsLx.readFileSync(`${out}.partial`, 'utf8').trim().split('\n').length, 107);
+        assert.match(bad.errs, /保全は不完全/);
+        assert.match(bad.errs, /検算が合わない/);
+        const good = runLx(body(pathLx.join(dir, 'g.jsonl')), SPREAD_LX, { LX_SPLIT: String(60n * MIN_LX) });
+        assert.strictEqual(good.code, 0, good.errs);
+        assert.match(good.outs, /108 行・\d+ ページ・18 窓/);
+        assert.match(good.outs, /検算: 18 窓すべてで書き出しの行数と Loki の件数（count_over_time）が一致（10 分の窓）/);
+      } finally {
+        fsLx.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('#1969 export-loki-logs: --window は既定 10 分・1 時間の約数だけ。書き出しの --from / --to はミリ秒の単位まで（--summary は問わない）', () => {
+      const base = ['--from', '2026-10-14T00:00:00+09:00', '--to', '2026-10-15T00:00:00+09:00', '--out', 'x.jsonl'];
+      assert.strictEqual(lx.DEFAULT_WINDOW_MIN, 10);
+      assert.strictEqual(lx.parseArgs(base).windowNs, 10n * MIN_LX);
+      assert.strictEqual(lx.parseArgs([...base, '--window', '60']).windowNs, 60n * MIN_LX);
+      for (const bad of ['7', '0', '90', '2.5', 'x']) assert.throws(() => lx.parseArgs([...base, '--window', bad]), /--window は 1 時間の約数/, bad);
+      assert.throws(() => lx.parseArgs(['--from', '2026-10-14T00:00:00.0000001+09:00', '--to', base[3], '--out', 'x']), /--from はミリ秒の単位まで/);
+      assert.throws(() => lx.parseArgs(['--from', base[1], '--to', '2026-10-15T00:00:00.000001+09:00', '--out', 'x']), /--to はミリ秒の単位まで/);
+      assert.ok(lx.parseArgs(['--from', '2026-10-14T00:00:00.000001+09:00', '--to', base[3], '--summary']).summary);
+    });
+
+    ok('#1935 export-loki-logs: 呼ぶ道は前段（gate）の読み取りの列挙の内側だけ（運用の口・削除 API を呼ばない）', () => {
+      const gate = fsLx.readFileSync(pathLx.join(__dirname, '..', 'deploy', 'local', 'observability', 'observability-gate.yaml'), 'utf8');
+      const m = /loki\.Caddyfile:[\s\S]*?@reader \{[\s\S]*?method GET\s*\n\s*path ([^\n]+)/.exec(gate);
+      assert.ok(m, 'gate の Loki の @reader の path を読めない');
+      const allowed = m[1].trim().split(/\s+/).map((p) => new RegExp(`^${p.replace(/[.]/g, '\\.').replace(/\*/g, '[^/]+')}$`));
+      const src = fsLx.readFileSync(SCRIPT_LX, 'utf8');
+      const used = [...new Set([...src.matchAll(/'(\/loki\/api\/v1\/[a-z_/]+)'/g)].map((x) => x[1]))];
+      assert.ok(used.length >= 2, `スクリプトから道を拾えていない: ${used}`);
+      for (const p of used) assert.ok(allowed.some((re) => re.test(p)), `前段の読み取りの列挙の外の道を呼んでいる: ${p}`);
+      assert.ok(!/method:\s*'(POST|PUT|DELETE)'/.test(src), 'GET 以外の方法を使っている');
+    });
+  }
+
+
+  // --- NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーと到達の制限の一致 ---------------
+  //   単一情報源 deploy/local/rabbitmq-setup/users.txt を、(1) MSP の chart の messaging: true のサービス、(2) AST の chart の
+  //   Worker 全件（submodule が無ければ check-unit-service-ownership.js の既知の一覧）、(3) rabbitmq.yaml の NetworkPolicy の列挙、
+  //   (4) bootstrap.sh・reconcile-users.sh・ExternalSecret が読む KV と突き合わせる。
+  {
+    const fsR = require('fs');
+    const pathR = require('path');
+    const ROOT_R = pathR.join(__dirname, '..');
+    const readR = (rel) => fsR.readFileSync(pathR.join(ROOT_R, rel), 'utf8');
+    const rows = readR('deploy/local/rabbitmq-setup/users.txt').split('\n')
+      .map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\s+/));
+    const of = (ns) => rows.filter((r) => r[1] === ns);
+    const sorted = (a) => [...a].sort();
+
+    // MSP の chart: services 直下のブロックのうち messaging: true を持つもの。
+    const mspMessaging = () => {
+      const lines = readR('deploy/helm/microservices-platform/values.yaml').split('\n');
+      const out = [];
+      let inServices = false;
+      let cur = null;
+      for (const l of lines) {
+        if (/^services:\s*$/.test(l)) { inServices = true; continue; }
+        if (inServices && /^\S/.test(l)) { inServices = false; cur = null; }
+        if (!inServices) continue;
+        const m = /^  ([a-z0-9-]+):\s*$/.exec(l);
+        if (m) { cur = m[1]; continue; }
+        if (cur && /^    messaging:\s*true\b/.test(l)) out.push(cur);
+      }
+      return out;
+    };
+
+    // rabbitmq.yaml の NetworkPolicy: namespaceSelector ごとの values 列挙。
+    const policyApps = () => {
+      const y = readR('deploy/local/infra/rabbitmq.yaml');
+      const np = y.split(/^---$/m).find((d) => /kind: NetworkPolicy/.test(d) && /name: rabbitmq-ingress-clients/.test(d));
+      assert.ok(np, 'rabbitmq.yaml に NetworkPolicy rabbitmq-ingress-clients が無い');
+      const res = {};
+      const re = /kubernetes\.io\/metadata\.name: ([a-z0-9-]+) \}\s*\n\s*podSelector:\s*\n\s*matchExpressions:\s*\n\s*- key: app\s*\n\s*operator: In\s*\n\s*values:\s*\n((?:\s*- [a-z0-9-]+\s*\n)+)/g;
+      for (const m of np.matchAll(re)) res[m[1]] = m[2].split('\n').map((x) => x.trim().replace(/^- /, '')).filter(Boolean);
+      return { np, res };
+    };
+
+    ok('IADR-0573: users.txt の MSP 側は chart の messaging: true のサービスと 1 対 1（msp-<name> / <name>-service）', () => {
+      const want = mspMessaging();
+      assert.ok(want.length >= 7, `messaging: true を読めない（空振り）: ${want}`);
+      assert.deepStrictEqual(sorted(of('microservices-platform').map((r) => r[0])), sorted(want.map((n) => `msp-${n}`)));
+      for (const r of of('microservices-platform')) {
+        assert.strictEqual(r[2], `${r[0].replace(/^msp-/, '')}-service`, `${r[0]} の app ラベルが違う`);
+        assert.strictEqual(r[3], 'msp/rabbitmq-users', `${r[0]} の KV が違う`);
+      }
+    });
+
+    ok('IADR-0573: users.txt の AST 側は AST の chart の Worker 全件と 1 対 1（ast-<name> / <name>-service）', () => {
+      const { astOwnedServices } = require('./check-unit-service-ownership.js');
+      const owned = astOwnedServices();
+      assert.ok(owned.services.length >= 11, `AST の Worker を読めない（空振り）: ${owned.services}`);
+      assert.deepStrictEqual(sorted(of('ai-stock-trading').map((r) => r[0])), sorted(owned.services.map((n) => `ast-${n}`)),
+        `AST の Worker（${owned.source}）と users.txt が食い違う`);
+      for (const r of of('ai-stock-trading')) {
+        assert.strictEqual(r[2], `${r[0].replace(/^ast-/, '')}-service`, `${r[0]} の app ラベルが違う`);
+        assert.strictEqual(r[3], 'ai-stock-trading/rabbitmq-users', `${r[0]} の KV が違う`);
+      }
+      assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
+    });
+
+    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS の 3 経路（経路B・helm・compose）の整合。
+    ok('IADR-0591: compose のブローカの TLS 設定（deploy/rabbitmq/20-tls.conf）は経路B の ConfigMap rabbitmq-tls と同じ内容', () => {
+      const y = readR('deploy/local/infra/rabbitmq.yaml');
+      const m = /\n {2}20-tls\.conf: \|\n((?: {4}.*\n)+)/.exec(y);
+      assert.ok(m, 'rabbitmq.yaml の ConfigMap rabbitmq-tls に 20-tls.conf が無い');
+      const k8s = m[1].split('\n').map((l) => l.slice(4)).filter((l) => l.trim());
+      const compose = readR('deploy/rabbitmq/20-tls.conf').split('\n').filter((l) => l.trim() && !l.startsWith('#'));
+      assert.deepStrictEqual(compose, k8s);
+      assert.ok(k8s.includes('listeners.ssl.default = 5671'), 'TLS の受け口が無い（読めていない）');
+    });
+
+    ok('IADR-0591: compose の基盤のクライアントは検証つきの TLS で繋ぎ、CA をマウントする（AST のサービスは段 1 の平文）', () => {
+      const y = readR('deploy/docker-compose.yml');
+      const blocks = {};
+      let cur = null;
+      for (const l of y.split('\n')) {
+        const h = /^ {2}([a-z0-9-]+):\s*$/.exec(l);
+        if (h) { cur = h[1]; blocks[cur] = []; continue; }
+        if (/^\S/.test(l)) cur = null;
+        if (cur) blocks[cur].push(l);
+      }
+      const ast = ['configuration-service', 'risk-management-service', 'market-monitor-service'];
+      const tlsDb = ';SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt';
+      let dbClients = 0;
+      let mqClients = 0;
+      for (const [svc, lines] of Object.entries(blocks)) {
+        const text = lines.join('\n');
+        const db = /ConnectionStrings__DefaultConnection: (.*)$/m.exec(text);
+        const usesMq = /^\s+<<: \[.*\*rabbit-env(?![\w-])/m.test(text);
+        if (!db && !usesMq) continue;
+        if (ast.includes(svc)) {
+          assert.ok(!db || !db[1].includes('VerifyFull'), `${svc}: AST のサービスを段 1 で切り替えた（AST の移行は別の段）`);
+          assert.ok(!usesMq, `${svc}: AST のサービスが TLS のブローカ接続（*rabbit-env）を使う（*rabbit-env-ast-plain のはず）`);
+          continue;
+        }
+        if (db) { dbClients++; assert.ok(db[1].endsWith(tlsDb), `${svc}: DB の接続が VerifyFull ＋ 基盤の CA でない: ${db[1]}`); }
+        if (usesMq) mqClients++;
+        assert.match(text, /^ {4}volumes: \*infra-ca-volumes$/m, `${svc}: 基盤の CA をマウントしない`);
+      }
+      assert.ok(dbClients >= 10 && mqClients >= 7, `読めていない（DB ${dbClients} / MQ ${mqClients}）`);
+      assert.match(y, /^x-rabbit-env: &rabbit-env\n {2}RabbitMq__ConnectionString: amqps:\/\/\S+@rabbitmq:5671\n {2}SSL_CERT_DIR: \/etc\/ssl\/certs:\/etc\/platform-infra-ca$/m);
+    });
+
+    ok('IADR-0591: 配備の宣言に検証を緩める接続の形が無い（Trust Server Certificate・SSL Mode=Require/Prefer/Allow・sslmode=require 等）', () => {
+      const files = ['deploy/docker-compose.yml', 'deploy/local/values-local.yaml', 'deploy/helm/microservices-platform/values.yaml',
+        'deploy/helm/microservices-platform/templates/deployment.yaml'];
+      const weak = /Trust\s*Server\s*Certificate\s*=\s*true|SSL\s*Mode\s*=\s*(Require|Prefer|Allow)\b|sslmode=(require|prefer|allow)\b|verify_none/i;
+      for (const f of files) {
+        readR(f).split('\n').forEach((l, i) => {
+          if (/^\s*#/.test(l)) return;
+          assert.ok(!weak.test(l), `${f}:${i + 1}: 検証を緩める形: ${l.trim()}`);
+        });
+      }
+    });
+
+    ok('IADR-0591: 基盤のサービスはブローカへ UsePlatformRabbitMq で繋ぐ（素の UseRabbitMq(Uri) は amqps で名前の不一致を受け入れる）', () => {
+      const dir = 'src/knowledge/backend/Services';
+      const programs = fsR.readdirSync(pathR.join(ROOT_R, dir)).map((s) => `${dir}/${s}/Program.cs`).filter((p) => fsR.existsSync(pathR.join(ROOT_R, p)));
+      let users = 0;
+      for (const p of programs) {
+        const src = readR(p);
+        assert.ok(!/\.UseRabbitMq\s*\(/.test(src), `${p}: 素の UseRabbitMq を呼んでいる（UsePlatformRabbitMq を使う）`);
+        if (/\.UsePlatformRabbitMq\s*\(/.test(src)) users++;
+      }
+      assert.ok(users >= 7, `UsePlatformRabbitMq の呼び出しを読めない（${users} 件）`);
+    });
+
+    // IADR-0577（2026-10-22 追記）: ESO の無い経路で基盤の起動器が作る取引ユニットの消費側の Secret（名前）と、取引ユニットの
+    //   chart の既定（Secret 名・ユーザー名の接頭辞・Vault の KV）が一致すること。submodule が無い checkout では chart を読めないので、
+    //   起動器の宣言だけを見る（取得した checkout・手元では chart とも突き合わせる）。
+    ok('IADR-0577 追記: 起動器の ast-rabbitmq-users は取引ユニットの chart の credentialsSecretName / usernamePrefix / KV と一致する', () => {
+      const up = readR('scripts/k8s-local-up.sh');
+      const m = /^AST_RABBITMQ_USERS_SECRET="([a-z0-9-]+)"$/m.exec(up);
+      assert.ok(m, 'k8s-local-up.sh に AST_RABBITMQ_USERS_SECRET が無い');
+      assert.strictEqual(m[1], 'ast-rabbitmq-users');
+      assert.match(up, /^AST_NS="ai-stock-trading"$/m, 'k8s-local-up.sh の AST_NS が ai-stock-trading ではない');
+      const valuesRel = 'src/ai-stock-trading/deploy/helm/ai-stock-trading/values.yaml';
+      if (!fsR.existsSync(pathR.join(ROOT_R, valuesRel))) return; // submodule 未取得（CI の既定チェックアウト）
+      const v = readR(valuesRel);
+      assert.match(v, new RegExp(`^ {4}credentialsSecretName: ${m[1]}$`, 'm'), '取引ユニットの chart の Secret 名と起動器が食い違う');
+      assert.match(v, /^ {4}usernamePrefix: "ast-"$/m, '取引ユニットの chart のユーザー名の接頭辞が users.txt の ast- と違う');
+      assert.match(v, /^ {2}rabbitmqUsers:\s*\n {4}remoteKey: ai-stock-trading\/rabbitmq-users$/m, '取引ユニットの chart の KV が users.txt の 4 列目と違う');
+    });
+
+    ok('IADR-0573: rabbitmq.yaml の NetworkPolicy は users.txt の Pod だけを 5672 で許し、管理の口と egress を描かない', () => {
+      const { np, res } = policyApps();
+      for (const ns of ['microservices-platform', 'ai-stock-trading']) {
+        assert.ok(res[ns], `${ns} の列挙を読めない`);
+        assert.deepStrictEqual(sorted(res[ns]), sorted(of(ns).map((r) => r[2])), `${ns} の列挙が users.txt と違う`);
+      }
+      assert.deepStrictEqual(Object.keys(res).sort(), ['ai-stock-trading', 'microservices-platform'], '名前空間の列挙が 2 つでない');
+      assert.ok(/policyTypes: \[Ingress\]/.test(np), 'policyTypes が Ingress だけでない');
+      assert.ok(/port: 5672 \}/.test(np) && !/15672/.test(np.replace(/^#.*$/gm, '')), '5672 だけを許す形でない');
+      assert.ok(!/ipBlock|- \{\}|from: \[\]/.test(np), 'ipBlock・空の from（全許可）を描いている');
+    });
+
+    ok('IADR-0573: 種（bootstrap.sh）・写し（ExternalSecret）・合わせ（reconcile-users.sh）が同じ表と KV を読む', () => {
+      const boot = readR('deploy/local/vault/eso/bootstrap.sh');
+      assert.ok(boot.includes('deploy/local/rabbitmq-setup/users.txt'), 'bootstrap.sh が users.txt を読まない');
+      assert.ok(/rmq_random\(\) \{ od -An -N24 -tx1 \/dev\/urandom/.test(boot), '種が乱数でない');
+      const es = readR('deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml');
+      const kvs = [...new Set(rows.map((r) => r[3]))].sort();
+      assert.deepStrictEqual([...es.matchAll(/key: ([a-z0-9/-]+)/g)].map((m) => m[1]).sort(), kvs, 'ExternalSecret の KV が users.txt と違う');
+      assert.ok(/namespace: platform-infra/.test(es) && /creationPolicy: Owner/.test(es), 'ExternalSecret の置き場・所有が違う');
+      const rec = readR('deploy/local/rabbitmq-setup/reconcile-users.sh');
+      assert.ok(rec.includes('rabbitmq-setup/users.txt'), 'reconcile-users.sh が users.txt を読まない');
+      // パスワードは標準入力だけ（add_user / change_password / authenticate_user の引数はユーザー名で終わる）。
+      const pwCalls = [...rec.matchAll(/rmqctl(?:_stdin)? (add_user|change_password|authenticate_user) ([^\n]+)/g)];
+      assert.ok(pwCalls.length >= 3, `パスワードを渡す呼び出しを見つけられない（検査が空振りする）: ${pwCalls.length}`);
+      for (const m of pwCalls) {
+        assert.ok(/^"\$u"( >\/dev\/null.*)?$/.test(m[2].trim()), `パスワードを引数に載せている疑い: ${m[0]}`);
+      }
+      assert.ok(!/\bguest\b/.test(rec.replace(/^#.*$/gm, '')), 'reconcile-users.sh が既定のユーザーに触れている');
+    });
+  }
+
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0578: ワークフローの多層防御（入力の展開と AI 実装の起動者） ---------
+  //
+  //   1. 全ワークフローの run の本文に、外から与えられる値（github.event.* / inputs.* / github.head_ref /
+  //      github.ref / github.ref_name）の式を直接展開しない。値は env で渡す。
+  //   2. claude-coding.yml の job の if は、句ごとに「本文の書き手」の author_association を
+  //      OWNER / MEMBER / COLLABORATOR に絞る。
+  // YAML パーサは CI の scripts-tests に無いので行で読み、変異試験で読み取りの穴を塞ぐ。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+    const UNTRUSTED = /\$\{\{[^}]*\b(github\.event\.|inputs\.|github\.head_ref\b|github\.ref\b|github\.ref_name\b)/;
+
+    /** run の本文（1 行形とブロック形）の行を返す。[{ line, text }] */
+    const runLines = (yml) => {
+      const out = [];
+      const lines = yml.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const m = /^(\s*)(?:- )?run:\s*(.*)$/.exec(lines[i]);
+        if (!m) continue;
+        const keyIndent = m[1].length + (lines[i].trimStart().startsWith('- ') ? 2 : 0);
+        const rest = m[2];
+        if (!/^[|>][-+]?\s*$/.test(rest)) { out.push({ line: i + 1, text: rest }); continue; }
+        for (let j = i + 1; j < lines.length; j++) {
+          const l = lines[j];
+          if (l.trim() === '') continue;
+          if (l.length - l.trimStart().length <= keyIndent) break;
+          out.push({ line: j + 1, text: l });
+        }
+      }
+      return out;
+    };
+    const untrustedInRun = (yml) => runLines(yml).filter((r) => UNTRUSTED.test(r.text));
+
+    ok('GHSA-552h: run の本文に外から与えられる値の式を直接展開しない（全ワークフロー）', () => {
+      const files = fs.readdirSync(WF).filter((f) => f.endsWith('.yml'));
+      assert.ok(files.length >= 10, `ワークフローを読めていない: ${files.length}`);
+      let scanned = 0;
+      const bad = [];
+      for (const f of files) {
+        const yml = fs.readFileSync(path.join(WF, f), 'utf8');
+        scanned += runLines(yml).length;
+        for (const r of untrustedInRun(yml)) bad.push(`${f}:${r.line}: ${r.text.trim()}`);
+      }
+      assert.ok(scanned > 100, `run の行を読めていない（0 件走査の疑い）: ${scanned}`);
+      assert.deepStrictEqual(bad, [], `env で渡すこと:\n${bad.join('\n')}`);
+    });
+
+    ok('GHSA-552h: 変異試験 —— 1 行形・ブロック形の run へ式を戻すと検出し、env と with は対象外', () => {
+      const one = 'jobs:\n  a:\n    steps:\n      - name: x\n        run: node a.js --tag "${{ inputs.tag || github.ref }}"\n';
+      assert.strictEqual(untrustedInRun(one).length, 1, '1 行形を検出しない');
+      const blk = 'jobs:\n  a:\n    steps:\n      - run: |\n          echo ok\n          echo "${{ github.event.pull_request.title }}"\n      - name: y\n        with:\n          tag_name: ${{ inputs.tag }}\n';
+      assert.strictEqual(untrustedInRun(blk).length, 1, 'ブロック形を検出しない／with を誤検出する');
+      const safe = 'jobs:\n  a:\n    steps:\n      - name: x\n        env:\n          RELEASE_TAG: ${{ inputs.tag || github.ref }}\n        run: node a.js --tag "$RELEASE_TAG"\n      - run: echo "${{ matrix.unit }} ${{ github.sha }}"\n';
+      assert.strictEqual(untrustedInRun(safe).length, 0, 'env 経由・信頼できる文脈を誤検出する');
+      // 現物を戻した形でも落ちる（陽性対照）。
+      const rel = fs.readFileSync(path.join(WF, 'obsidian-plugin-release.yml'), 'utf8');
+      assert.ok(rel.includes('--tag "$RELEASE_TAG"'), 'リリースワークフローが env 経由でタグを渡していない');
+      const reverted = rel.replace('--tag "$RELEASE_TAG"', '--tag "${{ inputs.tag || github.ref }}"');
+      assert.strictEqual(untrustedInRun(reverted).length, 1, '現物へ戻した式を検出しない');
+    });
+
+    /** claude-coding.yml の claude ジョブの if の句（`(github.event_name == ...` で始まる行）。 */
+    const codingClauses = (yml) => {
+      const i = yml.indexOf('\n  claude:\n');
+      assert.ok(i >= 0, 'claude ジョブが見つからない');
+      const m = /\n    if: \|\n((?:      .*\n)+)/.exec(yml.slice(i));
+      assert.ok(m, 'claude ジョブの if（ブロック形）が見つからない');
+      return m[1].split('\n').map((l) => l.trim()).filter((l) => l.startsWith('(github.event_name =='));
+    };
+    const EXPECT_AUTHOR = {
+      issue_comment: 'github.event.comment.author_association',
+      pull_request_review_comment: 'github.event.comment.author_association',
+      pull_request_review: 'github.event.review.author_association',
+      issues: 'github.event.issue.author_association',
+    };
+    const TRUSTED = `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), `;
+    const codingViolations = (yml) => {
+      const clauses = codingClauses(yml);
+      const out = [];
+      const seen = new Set();
+      for (const c of clauses) {
+        const ev = /github\.event_name == '([a-z_]+)'/.exec(c)?.[1];
+        seen.add(ev);
+        if (!EXPECT_AUTHOR[ev]) { out.push(`想定外のイベント: ${ev}`); continue; }
+        if (!c.includes(`${TRUSTED}${EXPECT_AUTHOR[ev]})`)) out.push(`${ev}: 本文の書き手の判定が無い`);
+      }
+      for (const ev of Object.keys(EXPECT_AUTHOR)) if (!seen.has(ev)) out.push(`${ev} の句が無い`);
+      return out;
+    };
+
+    ok('GHSA-552h: claude-coding.yml は句ごとに本文の書き手を OWNER / MEMBER / COLLABORATOR に絞る', () => {
+      const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
+      assert.strictEqual(codingClauses(yml).length, 4, '句の数が 4 でない（読み取りの穴の疑い）');
+      assert.deepStrictEqual(codingViolations(yml), []);
+    });
+
+    ok('GHSA-552h: 変異試験 —— 1 句から書き手の判定を外す・判定の対象を取り違えると落ちる', () => {
+      const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
+      const drop = yml.replace(` && ${TRUSTED}github.event.review.author_association)`, '');
+      assert.notStrictEqual(drop, yml, '変異させる箇所が見つからない');
+      assert.deepStrictEqual(codingViolations(drop), ['pull_request_review: 本文の書き手の判定が無い']);
+      const swap = yml.replace(`${TRUSTED}github.event.issue.author_association)`, `${TRUSTED}github.event.sender.author_association)`);
+      assert.notStrictEqual(swap, yml, '変異させる箇所が見つからない');
+      assert.deepStrictEqual(codingViolations(swap), ['issues: 本文の書き手の判定が無い']);
+    });
+
+    ok('GHSA-552h: claude-coding.yml の許可ツールは最小化した形を保つ（find / awk / 広い node を持たない）', () => {
+      const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
+      const m = /--allowedTools "([^"]+)"/.exec(yml);
+      assert.ok(m, '許可ツール一覧を読めない');
+      const tools = m[1].split(',');
+      assert.ok(tools.length > 30, `許可ツール一覧を読めていない: ${tools.length}`);
+      for (const t of ['Bash(find:*)', 'Bash(awk:*)', 'Bash(node:*)']) assert.ok(!tools.includes(t), `${t} が戻っている`);
+      assert.ok(tools.includes('Bash(node scripts/:*)'), 'node の狭めた形が無い');
+      assert.ok(!tools.some((t) => /^Bash\((?:bash|sh|python3?|npx|curl|wget)(?::\*)?\)$/.test(t)), '汎用の実行系が許可されている');
+    });
+
+    ok('GHSA-552h: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
+      const os = require('os');
+      const { parityWarnings } = require('./check-ai-workflow-config.js');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-parity-'));
+      try {
+        const sp = path.join(work, 'settings.json');
+        const perFile = [{ file: 'claude-coding.yml', tools: ['Read', 'Bash(node scripts/:*)'] }];
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read', 'Bash(node:*)'] } }));
+        assert.deepStrictEqual(parityWarnings(perFile, sp), [], '広い形で覆われているのに警告する');
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read'] } }));
+        assert.strictEqual(parityWarnings(perFile, sp).length, 1, '覆われていないのに警告しない');
+        // 宣言外の狭めた形は覆われたと見なさない。
+        fs.writeFileSync(sp, JSON.stringify({ permissions: { allow: ['Read', 'Bash(dotnet:*)'] } }));
+        assert.strictEqual(parityWarnings([{ file: 'x.yml', tools: ['Bash(dotnet test:*)'] }], sp).length, 1, '宣言外を覆われたと見なしている');
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    });
+
+    // --- gen-changelog.js: git は引数の配列で呼び、参照名の形を確かめる ---
+    const { isSafeRef, filterSafeTags } = require('./gen-changelog.js');
+
+    ok('GHSA-552h: gen-changelog の参照名の判定（陽性 / 陰性の対）', () => {
+      for (const r of ['v1.2.3', 'obsidian-plugin-v0.2.0', 'release/2026-10', 'HEAD']) assert.ok(isSafeRef(r), `受け付けるはず: ${r}`);
+      for (const r of ['', '-x', 'v1 2', 'a..b', 'v1;x', 'v1$x', 'v1`x', 'v1|x', 'v1"x', 'v1(x)', '.v1', 'x'.repeat(201), undefined]) {
+        assert.ok(!isSafeRef(r), `外すはず: ${JSON.stringify(r)}`);
+      }
+      const origWrite = process.stderr.write;
+      let warned = '';
+      process.stderr.write = (s) => { warned += s; return true; };
+      try {
+        assert.deepStrictEqual(filterSafeTags(['v2', 'v1;x', 'v1']), ['v2', 'v1']);
+      } finally { process.stderr.write = origWrite; }
+      assert.match(warned, /受け付けない形のタグ/);
+    });
+
+    ok('GHSA-552h: gen-changelog は child_process をシェル経由で呼ばない（静的）', () => {
+      const src = fs.readFileSync(path.join(__dirname, 'gen-changelog.js'), 'utf8').replace(/^\s*(\/\/|\*).*$/gm, '');
+      assert.ok(!/\bexecSync\b|\bexec\(|shell:\s*true/.test(src), 'シェルを介す呼び出しが在る');
+      assert.ok(/execFileSync\('git', \[/.test(src), 'git を引数の配列で呼んでいない');
+    });
+
+    ok('GHSA-552h: gen-changelog の実走 —— 受け付けない形のタグを外し、他のタグの節は出す（一時リポジトリ）', () => {
+      const os = require('os');
+      const { spawnSync } = require('child_process');
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-'));
+      const g = (...a) => {
+        const r = spawnSync('git', a, { cwd: work, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `git ${a.join(' ')}: ${r.stderr}`);
+      };
+      try {
+        g('init', '-q');
+        g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'feat(NFR): 一つ目');
+        g('tag', 'v1.0.0');
+        g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'fix(NFR): 二つ目');
+        g('tag', 'v1.1.0;x');
+        g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'docs(NFR): 三つ目');
+        const r = spawnSync(process.execPath, [path.join(__dirname, 'gen-changelog.js')], { cwd: work, encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, r.stderr);
+        assert.match(r.stdout, /## v1\.0\.0/, '安全なタグの節が無い');
+        assert.ok(!r.stdout.includes('v1.1.0;x'), '受け付けない形のタグが節になっている');
+        assert.match(r.stdout, /## Unreleased[\s\S]*二つ目[\s\S]*三つ目|## Unreleased[\s\S]*三つ目[\s\S]*二つ目/, 'Unreleased が最新の安全なタグ以降を持たない');
+        assert.match(r.stderr, /受け付けない形のタグ/);
+      } finally {
+        fs.rmSync(work, { recursive: true, force: true });
+      }
+    });
+  }
+
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0581: Actions の SHA 固定と依存の自動更新 ----------------
+  //   1. 全ワークフローの外部の `uses:` は 40 桁の commit SHA で固定し、同じ行に版の注記（`# vX…`）を置く。
+  //   2. dependabot.yml は github-actions / nuget / npm を更新の対象にする。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+    const USES = /^\s*(?:-\s*)?uses:\s*['"]?([^'"\s]+)['"]?(.*)$/;
+    /** 外部の uses: で、SHA 固定＋版の注記の形でないもの。 */
+    const unpinned = (yml) => yml.split('\n').flatMap((l, i) => {
+      const m = USES.exec(l);
+      if (!m || m[1].startsWith('./') || m[1].startsWith('docker://')) return [];
+      if (/@[0-9a-f]{40}$/.test(m[1]) && /^\s+#\s*v\d/.test(m[2])) return [];
+      return [`${i + 1}: ${l.trim()}`];
+    });
+
+    ok('GHSA-552h: 外部の uses: は全ワークフローで commit SHA に固定し、版の注記を同じ行に置く', () => {
+      let n = 0;
+      const bad = [];
+      for (const f of fs.readdirSync(WF).filter((x) => x.endsWith('.yml'))) {
+        const yml = fs.readFileSync(path.join(WF, f), 'utf8');
+        n += yml.split('\n').filter((l) => USES.test(l)).length;
+        for (const b of unpinned(yml)) bad.push(`${f}:${b}`);
+      }
+      assert.ok(n > 50, `uses: を読めていない: ${n}`);
+      assert.deepStrictEqual(bad, [], `SHA 固定＋版の注記にすること:\n${bad.join('\n')}`);
+    });
+
+    ok('GHSA-552h: 変異試験 —— タグ指定・注記なし・短い SHA を検出し、ローカル参照は対象外', () => {
+      const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
+      assert.strictEqual(unpinned('      - uses: actions/checkout@v7\n').length, 1, 'タグ指定を検出しない');
+      assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha}\n`).length, 1, '注記なしを検出しない');
+      assert.strictEqual(unpinned('      - uses: actions/checkout@3d3c42e # v7.0.1\n').length, 1, '短い SHA を検出しない');
+      assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha} # v7.0.1\n        uses: ./.github/workflows/x.yml\n`).length, 0, '正しい形・ローカル参照を誤検出する');
+    });
+
+    ok('GHSA-552h: dependabot.yml は github-actions / nuget / npm を更新の対象にする', () => {
+      const y = fs.readFileSync(path.join(__dirname, '..', '.github/dependabot.yml'), 'utf8');
+      const eco = [...y.matchAll(/^\s*- package-ecosystem:\s*"([^"]+)"\s*\n\s*directory:\s*"([^"]+)"/gm)].map((m) => `${m[1]}:${m[2]}`);
+      for (const e of ['github-actions:/', 'nuget:/src', 'npm:/src']) assert.ok(eco.includes(e), `${e} が無い: ${eco.join(', ')}`);
+      assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/Directory.Packages.props')), 'nuget の単一情報源が /src に無い');
+      assert.ok(fs.existsSync(path.join(__dirname, '..', 'src/pnpm-lock.yaml')), 'npm のロックファイルが /src に無い');
+    });
+  }
+
+  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0584: イメージの走査と CodeQL の JavaScript / TypeScript ----------
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+    const read = (f) => fs.readFileSync(path.join(WF, f), 'utf8');
+
+    /** images.yml の build ジョブの Trivy の step（name から次の `- ` まで）。 */
+    const trivyStep = (yml) => {
+      const i = yml.indexOf('- name: Scan image (Trivy, report only)');
+      if (i < 0) return null;
+      const rest = yml.slice(i + 1);
+      const j = rest.search(/\n {6}- /);
+      return yml.slice(i, j < 0 ? undefined : i + 1 + j);
+    };
+    /** 報告だけの形（落とさない）であること。必須にするかはオーナーの裁定で決める。 */
+    const trivyViolations = (yml) => {
+      const s = trivyStep(yml);
+      if (!s) return ['Trivy の step が無い'];
+      const out = [];
+      if (!/uses: aquasecurity\/trivy-action@[0-9a-f]{40} # v/.test(s)) out.push('SHA 固定でない');
+      if (!/exit-code: "0"/.test(s)) out.push('exit-code が 0 でない（落とす形）');
+      if (!/continue-on-error: true/.test(s)) out.push('continue-on-error が無い');
+      if (!/severity: CRITICAL,HIGH/.test(s)) out.push('対象の深刻度が違う');
+      return out;
+    };
+
+    ok('GHSA-552h: images.yml は建てたイメージを Trivy で走査し、当面は報告だけで落とさない', () => {
+      const yml = read('images.yml');
+      assert.deepStrictEqual(trivyViolations(yml), []);
+      const build = yml.slice(yml.indexOf('\n  build:\n'), yml.indexOf('\n  build-local:\n'));
+      assert.ok(build.includes('Scan image (Trivy, report only)'), 'Trivy の step が build ジョブに無い');
+      assert.ok(build.indexOf('Build image') < build.indexOf('Scan image'), '建てる前に走査している');
+    });
+
+    ok('GHSA-552h: 変異試験 —— Trivy を落とす形にする・continue-on-error を外すと検出する', () => {
+      const yml = read('images.yml');
+      assert.deepStrictEqual(trivyViolations(yml.replace('exit-code: "0"', 'exit-code: "1"')), ['exit-code が 0 でない（落とす形）']);
+      assert.deepStrictEqual(trivyViolations(yml.replace(/\n\s*continue-on-error: true(?=\n\s*uses: aquasecurity)/, '')), ['continue-on-error が無い']);
+    });
+
+    ok('GHSA-552h: codeql.yml は csharp と javascript-typescript を解析し、JS/TS はビルドしない', () => {
+      const yml = read('codeql.yml');
+      assert.match(yml, /language: \["csharp", "javascript-typescript"\]/);
+      assert.match(yml, /build-mode: \$\{\{ \(github\.event_name == 'pull_request' \|\| matrix\.language != 'csharp'\) && 'none' \|\| 'manual' \}\}/);
+      // dotnet を使う step はすべて csharp の脚に限る。
+      const ifs = [...yml.matchAll(/if: github\.event_name != 'pull_request'(.*)$/gm)];
+      assert.ok(ifs.length >= 4, `step の条件を読めていない: ${ifs.length}`);
+      for (const m of ifs) assert.strictEqual(m[1], " && matrix.language == 'csharp'", `csharp に限らない step がある: ${m[0]}`);
+      const on = yml.slice(yml.indexOf('\non:'), yml.indexOf('\nconcurrency:'));
+      for (const g of ['"**/*.ts"', '"**/*.tsx"', '"**/*.js"']) assert.ok(on.includes(g), `PR の起動条件に ${g} が無い`);
+    });
+  }
+
+  // --- NFR / #2266 / IADR-0638: setup-dotnet の SDK は厳密な版で、全ワークフローで同じ値にする ---------------
+  //
+  //   "10.0.x" は install script を --channel で呼び、aka.ms 経由で dotnetorigin.blob.core.windows.net を引く。
+  //   そこが 409 を返して全 CI が止まった（2026-10-26）。厳密な版は別の配布元を引くので通る。
+  //   値は workflow をまたいで 1 か所に置けない（env は workflow ごと・global.json は 8.0.0 + rollForward）。
+  //   そこで各所に同じ値を書き、揃っていることと厳密であることをここで見る。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const WF = path.join(__dirname, '..', '.github/workflows');
+
+    // files: { name: content }。setup-dotnet の step ごとに dotnet-version を読み、違反の文を返す。
+    const dotnetVersionViolations = (files) => {
+      const out = [];
+      const values = [];
+      for (const [name, content] of Object.entries(files)) {
+        const lines = content.replace(/\r\n/g, '\n').split('\n');
+        lines.forEach((line, i) => {
+          if (!/^\s*-?\s*uses:\s*actions\/setup-dotnet@/.test(line)) return;
+          const keyIndent = line.indexOf('uses:'); // step のキーの桁（`- uses:` でも `- name:` の次の行でも同じ）
+          let version = null;
+          for (let j = i + 1; j < lines.length; j++) {
+            const l = lines[j];
+            if (l.trim() === '' || /^\s*#/.test(l)) continue;
+            if (l.search(/\S/) < keyIndent || /^\s*-\s/.test(l)) break; // 次の step・step の外
+            const m = /^\s*dotnet-version:\s*"?([^"\s#]+)"?/.exec(l);
+            if (m) version = m[1];
+            if (/^\s*global-json-file:/.test(l)) out.push(`${name}:${i + 1}: global-json-file を使っている（global.json は 8.0.0 + rollForward で版を決めない）`);
+          }
+          if (version === null) { out.push(`${name}:${i + 1}: dotnet-version が無い`); return; }
+          if (!/^\d+\.\d+\.\d+$/.test(version)) out.push(`${name}:${i + 1}: dotnet-version が厳密な版でない（${version}）`);
+          values.push(version);
+        });
+      }
+      if (new Set(values).size > 1) out.push(`dotnet-version が揃っていない: ${[...new Set(values)].join(' / ')}`);
+      return { out, count: values.length };
+    };
+
+    const readAll = () => Object.fromEntries(
+      fs.readdirSync(WF).filter((f) => /\.ya?ml$/.test(f)).map((f) => [f, fs.readFileSync(path.join(WF, f), 'utf8')]),
+    );
+
+    ok('NFR / #2266: setup-dotnet の dotnet-version は全ワークフローで同じ厳密な版である', () => {
+      const { out, count } = dotnetVersionViolations(readAll());
+      assert.deepStrictEqual(out, []);
+      assert.ok(count >= 11, `setup-dotnet を読めていない（検査が空振りする）: ${count}`);
+    });
+
+    ok('NFR / #2266: 変異試験 —— x 指定・値の不一致・版の欠落・global-json-file を検出する', () => {
+      const base = { 'a.yml': 'jobs:\n  j:\n    steps:\n      - uses: actions/setup-dotnet@abc # v6\n        with:\n          dotnet-version: "10.0.403"\n      - run: dotnet build\n' };
+      assert.deepStrictEqual(dotnetVersionViolations(base).out, []);
+      const wild = { 'a.yml': base['a.yml'].replace('10.0.403', '10.0.x') };
+      assert.ok(dotnetVersionViolations(wild).out.some((e) => e.includes('厳密な版でない')));
+      const split = { ...base, 'b.yml': base['a.yml'].replace('10.0.403', '10.0.404') };
+      assert.ok(dotnetVersionViolations(split).out.some((e) => e.includes('揃っていない')));
+      const missing = { 'a.yml': base['a.yml'].replace(/\n\s*dotnet-version:[^\n]*/, '') };
+      assert.ok(dotnetVersionViolations(missing).out.some((e) => e.includes('dotnet-version が無い')));
+      const gj = { 'a.yml': base['a.yml'].replace(/dotnet-version:[^\n]*/, 'global-json-file: global.json') };
+      assert.ok(dotnetVersionViolations(gj).out.some((e) => e.includes('global-json-file')));
+    });
+  }
 };

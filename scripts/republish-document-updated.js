@@ -10,13 +10,17 @@
  * 方式（IADR-0503）:
  *   - 発行は DocumentService の管理者だけの口 `POST /documents/republish-updated` が行う（通常の発行の門とアダプタを通る）。
  *     本スクリプトは**量の制御・進捗・中断と再開・DLQ の監視**だけを持つ。イベントを自分で組み立てない。
- *   - 認証は Keycloak の client_credentials（client `abac-seeder`。platform-admin を持つ）。資格情報の解決は
- *     `seed-abac-policies.js` の関数を再利用する（realm ファイルから引く作法を 2 か所へ写さない）。
+ *   - 認証は Keycloak の client_credentials（client `abac-seeder`。platform-admin を持つ）。
+ *     ［2026-10-22 / IADR-0576］資格情報は実行時に **明示（REPUBLISH_CLIENT_SECRET）＞ 稼働の Secret `platform-infra/abac-seeder-oidc`**
+ *     （OpenBao → ESO。ESO が無ければ起動器が作る）から読む（realm の宣言の値へは落ちない＝secret を回した後も動く）。
+ *     `abac-seeder` は既定で無効なので、**実行の間だけ有効にし、終わったら（中断を含む）無効へ戻す**（scripts/lib/abac-seeder-session.js。
+ *     切り替えは master realm の管理者＝KC_ADMIN_USER / KC_ADMIN_PASSWORD か Secret platform-infra/keycloak-admin）。
  *
  * 🔴 **稼働クラスタへ当たる。** `--live`（または LIVE=1）が無ければ何もせずに終わる（#1550）。
  * 🔴 **再発行の前に埋め込み先を確かめる。** public / internal の文書は埋め込み（既定は Voyage）へ進む。
- *    埋め込みが使えない構成で流すと、全件が再試行のあと DLQ（`wolverine-dead-letter-queue`）へ行くだけになる。
- *    これを止めるため、最初のページは小さく（カナリア）、取り込みのキューが空になるまで待って DLQ の増加を見る。
+ *    ［2026-10-14 / #1908・IADR-0536］埋め込みが使えない構成で流しても DLQ へは行かず、語彙索引へ全文だけの点（埋め込み待ち）として入る
+ *    （鍵の投入後に取り込みサービスが自動で埋め直す）。以前は全件が再試行のあと DLQ（`wolverine-dead-letter-queue`）へ行くだけだった。
+ *    最初のページを小さく（カナリア）し、取り込みのキューが空になるまで待って DLQ の増加を見るのは、他の失敗（本文の取得・Qdrant・輸送）を止めるためである。
  *
  * 実行方法:
  *   node scripts/republish-document-updated.js --help
@@ -24,11 +28,14 @@
  *   node scripts/republish-document-updated.js --live --operator alice --reason "Voyage へ切替後の再索引"   # 全件（カナリア → ページごと）
  *   node scripts/republish-document-updated.js --live --resume --operator alice --reason "DLQ の原因を直した"  # 状態ファイルから続ける
  *   node scripts/republish-document-updated.js --live --reason "internal だけ" --attr confidentiality=internal --page-size 20 --sleep-ms 5000
+ *   node scripts/republish-document-updated.js --live --operator alice --reason "切り替え後だけ" --created-after 2026-09-27T00:00:00Z   # #1931
+ *   node scripts/republish-document-updated.js --live --operator alice --reason "アーカイブ済みを外す（遡及）" --status archived   # #1961・IADR-0551
  *
  * 主な環境変数:
  *   REPUBLISH_DOCUMENT_URL / REPUBLISH_KC_URL（与えれば port-forward を張らない）
  *   REPUBLISH_NS（既定 microservices-platform）/ REPUBLISH_INFRA_NS（既定 platform-infra）
- *   REPUBLISH_REALM（既定 platform）/ REPUBLISH_CLIENT_ID（既定 abac-seeder）/ REPUBLISH_CLIENT_SECRET
+ *   REPUBLISH_REALM（既定 platform）/ REPUBLISH_CLIENT_ID（既定 abac-seeder）/ REPUBLISH_CLIENT_SECRET（無ければ Secret abac-seeder-oidc）
+ *   KC_ADMIN_USER / KC_ADMIN_PASSWORD（投入器の主体の一時の有効化。無ければ Secret keycloak-admin）
  *   REPUBLISH_INGEST_QUEUE（既定 ingestion-service.DocumentUpdated）/ REPUBLISH_DLQ（既定 wolverine-dead-letter-queue）
  *   REPUBLISH_POLL_MS（キューの待ちで読み直す間隔。既定 5000。試験が短くするためのもの）
  *
@@ -45,6 +52,8 @@
 const fs = require('fs');
 const { spawn, spawnSync } = require('child_process');
 const { requireLiveOptIn } = require('./lib/live-opt-in.js');
+// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体は既定で無効。実行の間だけ有効にし、資格情報は稼働の Secret から読む。
+const seeder = require('./lib/abac-seeder-session.js');
 
 const env = (k, d) => process.env[k] || d;
 const ROUTE = '/documents/republish-updated';
@@ -68,6 +77,9 @@ const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// FR-06, 計画 ADR-0141 決定 2, IADR-0551 決定 5 (#1961): `--status` が受ける値（口の `status` の値域と同じ。未知は口も 400）。
+const STATUSES = ['draft', 'normalized', 'published', 'archived'];
+
 const USAGE = `使い方: node scripts/republish-document-updated.js --live [オプション]
   --dry-run                     発行せず、件数・機密区分の内訳・本文なし・門で止まる件数を出す
   --resume                      状態ファイルから続ける（絞り込みは状態ファイルのものを使う）
@@ -84,6 +96,8 @@ const USAGE = `使い方: node scripts/republish-document-updated.js --live [オ
   --ids <id,id,...>             文書 ID で絞る（500 件まで）
   --attr <key=value>            属性の完全一致で絞る（繰り返し可・AND）
   --created-before <ISO8601>    この時刻より前に作られた文書だけ（既定は新規の走査の開始時刻）
+  --created-after <ISO8601>     この時刻以降に作られた文書だけ（--created-before と併せると after ≤ 作成時刻 < before の区間）
+  --status <status>             台帳の状態の完全一致で絞る（${STATUSES.join(' / ')}）。archived で流すと、配備前にアーカイブした文書が検索・グラフから外れる
   --operator <name>             操作者（口のログへ認証済みの主体と並べて残す。既定は環境変数 USER。${MAX_OPERATOR_LENGTH} 文字まで）
   --reason <text>               理由（発行する実行では必須。口のログへ残す。${MAX_REASON_LENGTH} 文字まで）`;
 
@@ -108,7 +122,7 @@ function parseArgs(argv) {
     canary: DEFAULTS.canary, drainTimeoutMs: DEFAULTS.drainTimeoutMs,
     maxQueueDepth: DEFAULTS.maxQueueDepth, maxDlqGrowth: DEFAULTS.maxDlqGrowth,
     maxConsecutiveFailures: DEFAULTS.maxConsecutiveFailures,
-    stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null,
+    stateFile: DEFAULTS.stateFile, ids: null, attributes: null, createdBefore: null, createdAfter: null, status: null,
     operator: null, reason: null,
   };
   const value = (i, name) => {
@@ -173,13 +187,32 @@ function parseArgs(argv) {
         i++;
         break;
       }
+      case '--created-after': {
+        // FR-02, #1931: 下限。口は createdAfter を持たないので、開始カーソルを合成して渡す（startCursor）。
+        const raw = value(i, a);
+        const t = Date.parse(raw);
+        if (Number.isNaN(t)) throw new Error(`--created-after は ISO 8601 の時刻で指定してください（${raw}）。`);
+        o.createdAfter = new Date(t).toISOString();
+        i++;
+        break;
+      }
+      case '--status': {
+        // FR-06, #1961: 台帳の状態の完全一致。口へそのまま渡す（未知の値はここで落とす。口も 400 にする）。
+        const raw = value(i, a);
+        if (!STATUSES.includes(raw)) throw new Error(`--status は ${STATUSES.join(' / ')} のいずれかで指定してください（${raw}）。`);
+        o.status = raw;
+        i++;
+        break;
+      }
       default:
         throw new Error(`知らない引数です: ${a}（--help を参照）`);
     }
   }
   if (o.resume && o.dryRun) throw new Error('--resume と --dry-run は同時に指定できません。');
-  if (o.resume && (o.ids || o.attributes || o.createdBefore))
+  if (o.resume && (o.ids || o.attributes || o.createdBefore || o.createdAfter || o.status))
     throw new Error('--resume では絞り込みを指定しません（状態ファイルの絞り込みを使う）。');
+  const interval = intervalProblem(o);
+  if (interval) throw new Error(interval);
   return o;
 }
 
@@ -198,7 +231,36 @@ function filtersOf(o) {
   const attributes = o.attributes
     ? Object.fromEntries(Object.keys(o.attributes).sort().map((k) => [k, o.attributes[k]]))
     : null;
-  return { ids: o.ids ? [...o.ids].sort() : null, attributes, createdBefore: o.createdBefore || null };
+  return {
+    ids: o.ids ? [...o.ids].sort() : null, attributes, createdBefore: o.createdBefore || null, createdAfter: o.createdAfter || null,
+    status: o.status || null,
+  };
+}
+
+/**
+ * FR-02, #1931: 区間（after ≤ 作成時刻 < before）が空でないか。違反を文字列で返す（null なら続けてよい）。
+ * before が無い（新規の走査の開始時刻に固定される前）なら見ない。
+ */
+function intervalProblem(f) {
+  if (!f.createdAfter || !f.createdBefore) return null;
+  if (Date.parse(f.createdAfter) >= Date.parse(f.createdBefore))
+    return `--created-after（${f.createdAfter}）は --created-before（${f.createdBefore}）より前でなければなりません（区間が空です）。`;
+  return null;
+}
+
+/**
+ * FR-02, #1931: `createdAfter` を口のカーソル（`DocumentPageCursor`。`v1:<UtcTicks>:<Id の N 形式>` の base64url）へ写す。
+ * 口は「(CreatedAt, Id) が厳密に後ろ」を選ぶので、Id を全零にすると CreatedAt = after の文書も選ばれる（after ≤ 作成時刻）。
+ * 口に createdAfter を足さずに（src/ に触らずに）下限を付けるための開始位置である。並びは古い順のまま変わらない。
+ * @param {string|null} createdAfter ISO 8601（UTC）
+ * @returns {string|null}
+ */
+function startCursor(createdAfter) {
+  if (!createdAfter) return null;
+  const ms = Date.parse(createdAfter);
+  // .NET の ticks（0001-01-01 からの 100ns）。ミリ秒 × 10,000 は 2^53 を超えるので BigInt で計算する。
+  const ticks = BigInt(ms) * 10000n + 621355968000000000n;
+  return Buffer.from(`v1:${ticks}:${'0'.repeat(32)}`, 'utf8').toString('base64url');
 }
 
 /** 新規の走査の状態。`createdBefore` を開始時刻に固定する（途中で作られた文書は作成の経路で発行済み）。 */
@@ -208,14 +270,17 @@ function newState(o, now = new Date()) {
     version: STATE_VERSION,
     startedAt: now.toISOString(),
     filters: { ...f, createdBefore: f.createdBefore || now.toISOString() },
-    cursor: null,
-    confirmedCursor: null,
+    // #1931: 下限があれば開始カーソルから始める。確かめた位置も同じにする（止まって戻すときに先頭へ戻らない）。
+    cursor: startCursor(f.createdAfter),
+    confirmedCursor: startCursor(f.createdAfter),
     confirmedDone: false,
     done: false,
     canaryPassed: false,
     dlqBaseline: null,
     totals: { pages: 0, published: 0, skippedByGate: 0, withoutBody: 0 },
     matched: null,
+    // #1931: createdAfter より前（対象外）の件数。最初のページの応答で決まる（進捗の分母から引く）。
+    excluded: null,
   };
 }
 
@@ -228,6 +293,12 @@ function stateProblem(state) {
   if (state.version !== STATE_VERSION) return `状態ファイルの版が違います（${state.version}。期待 ${STATE_VERSION}）。`;
   if (!state.filters || typeof state.filters.createdBefore !== 'string')
     return '状態ファイルに絞り込み（createdBefore）がありません。';
+  // #1931: createdAfter は後から足した。無い（旧い状態）は下限なしと読む。
+  if (state.filters.createdAfter != null && typeof state.filters.createdAfter !== 'string')
+    return '状態ファイルの絞り込み（createdAfter）が不正です。';
+  // #1961: status も後から足した。無い（旧い状態）は状態を問わないと読む。
+  if (state.filters.status != null && !STATUSES.includes(state.filters.status))
+    return '状態ファイルの絞り込み（status）が不正です。';
   if (state.cursor !== null && typeof state.cursor !== 'string') return '状態ファイルの cursor が不正です。';
   if (state.confirmedCursor !== null && typeof state.confirmedCursor !== 'string') return '状態ファイルの confirmedCursor が不正です。';
   if (typeof state.confirmedDone !== 'boolean') return '状態ファイルの confirmedDone が不正です。';
@@ -244,7 +315,11 @@ function sameFilters(state, o) {
   const s = state.filters || {};
   return JSON.stringify(f.ids) === JSON.stringify(s.ids ?? null)
     && JSON.stringify(f.attributes) === JSON.stringify(s.attributes ?? null)
-    && (f.createdBefore === null || f.createdBefore === s.createdBefore);
+    && (f.createdBefore === null || f.createdBefore === s.createdBefore)
+    // #1931: createdAfter には既定が無いので、無指定と指定は違う走査である（完全一致だけを同じとみなす）。
+    && f.createdAfter === (s.createdAfter ?? null)
+    // #1961: status も既定が無い（無指定は状態を問わない）。完全一致だけを同じ走査とみなす。
+    && f.status === (s.status ?? null);
 }
 
 function loadState(file, fsImpl = fs) {
@@ -269,14 +344,19 @@ function buildRequestBody(filters, { dryRun, limit, cursor, requestedBy, reason 
   if (filters.createdBefore) body.createdBefore = filters.createdBefore;
   if (filters.ids) body.ids = filters.ids;
   if (filters.attributes) body.attributes = filters.attributes;
+  if (filters.status) body.status = filters.status;
   return body;
 }
 
 /** 1 ページの応答を状態へ積む（新しい状態を返す。元は変えない）。confirmedCursor は動かさない（確かめるのは confirmChecked）。 */
 function applyPage(state, res) {
   const t = state.totals;
+  // #1931: 開始カーソルから呼んだ応答の matched - remaining が createdAfter より前（対象外）の件数。
+  const after = state.filters?.createdAfter;
+  const excluded = state.excluded ?? (after && state.cursor === startCursor(after) ? res.matched - res.remaining : null);
   return {
     ...state,
+    excluded,
     cursor: res.nextCursor ?? null,
     done: res.nextCursor == null,
     matched: res.matched,
@@ -383,24 +463,35 @@ function dlqGrowth(baseline, current) {
 }
 
 /** dry-run の要約（埋め込みへ進む件数＝ public ＋ internal。費用の見積もりの母数）。 */
-function summarizeDryRun(res) {
+function summarizeDryRun(res, filters = {}) {
   const by = res.byConfidentiality || {};
   const embedding = (by.public || 0) + (by.internal || 0);
   const lexicalOnly = (by.confidential || 0) + (by.restricted || 0);
+  // #1931: createdAfter は開始カーソルで付けるので、口の matched は下限の無い件数である。差が対象外。
+  const head = filters.createdAfter
+    ? `対象: ${res.remaining} 件（createdAfter ${filters.createdAfter} 以降。より前の ${res.matched - res.remaining} 件は対象外。下限なしの全件 ${res.matched} 件）`
+    : `対象: ${res.remaining} 件（絞り込みの全件 ${res.matched} 件）`;
   return [
-    `対象: ${res.remaining} 件（絞り込みの全件 ${res.matched} 件）`,
+    head,
     `  機密区分: public ${by.public || 0} / internal ${by.internal || 0} / confidential ${by.confidential || 0} / restricted（欠落・未知を含む） ${by.restricted || 0}`,
     `  埋め込みへ進む（public + internal）: ${embedding} 件 —— 1 チャンクにつき埋め込み 1 回（本文なしは題名などで 1 回）。費用はこの件数と本文の量から見積もる`,
     `  語彙索引だけ（埋め込まない）: ${lexicalOnly} 件`,
     `  本文の所在が無い（取り込みは何もしない。Wiki・グラフの同期だけ動く）: ${res.withoutBody} 件`,
     `  発行の門で止まる（露出の 3 トグルが OFF の個人資料）: ${res.skippedByGate} 件`,
+    // #1961 / IADR-0551: アーカイブ済みは取り込み・グラフが本文を読まずに外す（上の「埋め込みへ進む」は当たらない）。
+    ...(filters.status === 'archived'
+      ? ['  状態 archived だけ: 取り込みは本文を読まずに全索引から外し、グラフはノードを撤収する（埋め込みの費用はかからない）']
+      : filters.status ? [`  状態 ${filters.status} だけ`] : []),
   ];
 }
 
 function formatProgress(state, res, elapsedMs) {
-  const done = res.matched - res.remaining + res.selected;
-  const pct = res.matched > 0 ? ((100 * done) / res.matched).toFixed(1) : '100.0';
-  return `[page ${state.totals.pages}] ${done}/${res.matched}（${pct}%） 発行 ${res.published} / 門で止めた ${res.skippedByGate}`
+  // #1931: createdAfter より前（対象外）の件数は分母にも分子にも入れない。
+  const excluded = state.excluded || 0;
+  const total = res.matched - excluded;
+  const done = res.matched - res.remaining + res.selected - excluded;
+  const pct = total > 0 ? ((100 * done) / total).toFixed(1) : '100.0';
+  return `[page ${state.totals.pages}] ${done}/${total}（${pct}%） 発行 ${res.published} / 門で止めた ${res.skippedByGate}`
     + ` / 本文なし ${res.withoutBody} ・累計 発行 ${state.totals.published} ・${Math.round(elapsedMs / 1000)}s`;
 }
 
@@ -456,7 +547,16 @@ function readQueueDepths(infraNs) {
   return parseQueueDepths(r.stdout);
 }
 
+// NFR-18, IADR-0576: どの終わり方でも（正常・失敗・例外。入口からでも試験器からでも）、この実行が有効にした投入器の主体を無効へ戻す。
 async function main(argv) {
+  try {
+    return await mainInner(argv);
+  } finally {
+    await seeder.restore({ log, warn });
+  }
+}
+
+async function mainInner(argv) {
   let o;
   try {
     o = parseArgs(argv);
@@ -484,7 +584,8 @@ async function main(argv) {
   const POLL_MS = positiveInt('REPUBLISH_POLL_MS', env('REPUBLISH_POLL_MS', '5000'));
   const abacSeed = require('./seed-abac-policies.js');
   const CLIENT_ID = env('REPUBLISH_CLIENT_ID', abacSeed.CLIENT_ID);
-  const CLIENT_SECRET = process.env.REPUBLISH_CLIENT_SECRET || abacSeed.clientSecretFromRealm(CLIENT_ID) || '';
+  // IADR-0576: 明示（REPUBLISH_CLIENT_SECRET）＞ 稼働の Secret（platform-infra/abac-seeder-oidc）。realm の宣言の値へは落ちない。
+  let CLIENT_SECRET = '';
 
   const io = makeIo();
   process.on('exit', () => io.cleanup());
@@ -492,10 +593,10 @@ async function main(argv) {
   // 中断: 確かめていないページがあれば確かめた位置へ戻してから終わる（状態を読んだ後で onInterrupt を差し込む）。
   let onInterrupt = () => {};
   process.on('SIGINT', () => {
-    io.cleanup();
     try { onInterrupt(); } catch (e) { warn(`[republish-document-updated] 状態を戻せませんでした: ${e.message}`); }
     if (state) warn(`\n中断しました。状態は ${o.stateFile} に残っています。続けるには --resume。`);
-    process.exit(130);
+    // IADR-0576: 投入器の主体を無効へ戻してから（port-forward を残したまま）終わる。
+    seeder.restoreThenExit(130, { warn, before: () => io.cleanup() });
   });
 
   let documentUrl = env('REPUBLISH_DOCUMENT_URL', '');
@@ -520,6 +621,13 @@ async function main(argv) {
     return 2;
   }
   log(`接続先: document=${documentUrl} / keycloak=${kcUrl}`);
+  try {
+    CLIENT_SECRET = seeder.resolveSeederSecret({ envName: 'REPUBLISH_CLIENT_SECRET' });
+    await seeder.ensureEnabled({ kcUrl, realm: REALM, clientId: CLIENT_ID, log });
+  } catch (e) {
+    warn(`[republish-document-updated] ${e.message}`);
+    return 2;
+  }
 
   let token = null;
   let tokenAt = 0;
@@ -553,8 +661,14 @@ async function main(argv) {
 
   if (o.dryRun) {
     const f = filtersOf(o);
-    const res = await call(buildRequestBody(f, { dryRun: true, ...tags }));
-    for (const line of summarizeDryRun(res)) log(line);
+    const interval = intervalProblem({ ...f, createdBefore: f.createdBefore || new Date().toISOString() });
+    if (interval) {
+      warn(`[republish-document-updated] ${interval}`);
+      return 1;
+    }
+    // #1931: createdAfter は開始カーソルで付ける（口は remaining と内訳をカーソルより後ろについて数える）。
+    const res = await call(buildRequestBody(f, { dryRun: true, cursor: startCursor(f.createdAfter), ...tags }));
+    for (const line of summarizeDryRun(res, f)) log(line);
     log('--dry-run のため発行しません。');
     return 0;
   }
@@ -572,7 +686,7 @@ async function main(argv) {
       log(`状態ファイルは完了しています（累計 発行 ${state.totals.published} 件）。やり直すなら状態ファイルを消して新規に走らせてください。`);
       return 0;
     }
-    log(`再開します（開始 ${state.startedAt}・累計 発行 ${state.totals.published} 件・createdBefore ${state.filters.createdBefore}）。`);
+    log(`再開します（開始 ${state.startedAt}・累計 発行 ${state.totals.published} 件・createdBefore ${state.filters.createdBefore}・createdAfter ${state.filters.createdAfter ?? '(なし)'}）。`);
   } else {
     if (existing) {
       warn(`[republish-document-updated] 状態ファイルが既にあります（${o.stateFile}）。`
@@ -581,8 +695,13 @@ async function main(argv) {
       return 1;
     }
     state = newState(o);
+    const interval = intervalProblem(state.filters);
+    if (interval) {
+      warn(`[republish-document-updated] ${interval}`);
+      return 1;
+    }
     saveState(o.stateFile, state);
-    log(`新規の走査を始めます（createdBefore ${state.filters.createdBefore}・状態 ${o.stateFile}）。`);
+    log(`新規の走査を始めます（createdBefore ${state.filters.createdBefore}・createdAfter ${state.filters.createdAfter ?? '(なし)'}・状態 ${o.stateFile}）。`);
   }
 
   // 止まるとき（DLQ・待ちの超過・連続失敗・中断）は、確かめた位置へ戻して保存する（#1762 監査 R1）。
@@ -731,7 +850,7 @@ async function main(argv) {
   if (state.totals.published === 0) return 0;
   log('確かめ方: Qdrant の各コレクションの points_count が増えていること（読み取りだけ）:');
   log(`  kubectl -n ${INFRA_NS} run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \\`);
-  log('    \'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical knowledge_chunks_ruri_v3; do curl -s http://qdrant:6333/collections/$c; echo; done\'');
+  log('    \'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical; do curl -s http://qdrant:6333/collections/$c; echo; done\'');
   return 0;
 }
 
@@ -739,9 +858,12 @@ module.exports = {
   main,
   DEFAULTS,
   STATE_VERSION,
+  STATUSES,
   parseArgs,
   missingReason,
   filtersOf,
+  intervalProblem,
+  startCursor,
   newState,
   stateProblem,
   sameFilters,
@@ -761,9 +883,14 @@ module.exports = {
   rebaselineDlq,
   summarizeDryRun,
   formatProgress,
+  // #1931 項目 3 / IADR-0549: 本文の無い文書の一括アーカイブの駆動器（archive-bodyless-documents.js）が同じ I/O を使う。
+  makeIo,
+  waitReachable,
+  readQueueDepths,
 };
 
 if (require.main === module) {
+  // IADR-0576: 投入器の主体を無効へ戻すのは main の finally（中断は SIGINT の handler）。
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((e) => {

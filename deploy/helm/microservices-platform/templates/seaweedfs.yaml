@@ -39,11 +39,16 @@ spec:
       labels:
         app: seaweedfs
     spec:
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
+      # 外部のイメージなので利用者 ID とデータの所有者は変えない（seccomp・権限昇格なしまで）。
+      automountServiceAccountToken: false
+      {{- include "msp.podSecurityContext.thirdParty" . | nindent 6 }}
       containers:
         - name: seaweedfs
           # ADR-0106 決定 5 / ADR-0107 決定 3: digest で固定する（タグは読みやすさのために残す）。
           image: "{{ $s.registry }}/{{ $s.image }}:{{ $s.tag }}{{ if $s.digest }}@{{ $s.digest }}{{ end }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          {{- include "msp.containerSecurityContext.thirdParty" . | nindent 10 }}
           # IADR-0461 決定 10: 起動のたびに乱数の署名鍵（WEED_JWT_FILER_SIGNING_KEY）を作ってから
           # イメージの entrypoint へ渡す（entrypoint が `server` の先頭に `-dir=/data` を足す）。
           # 鍵が空だと S3 ゲートウェイの gRPC（18333）の管理用 RPC が認証なしで通る。鍵を使うのはこの
@@ -140,7 +145,7 @@ spec:
 {{- /* IADR-0461 決定 10 (#1499): SeaweedFS の Pod へ入ってよいのは同 Namespace からの TCP <port>（S3 HTTP）だけ。
        gRPC（18333）など他の口へは届かせない。networkpolicy.yaml の allow-intra-namespace は本 Pod を除外している
        （NetworkPolicy は許可の和なので、除外しないと同 Namespace の全ポートが開いたままになる）。
-       Egress は allow-intra-namespace と同じ（同 Namespace ＋ DNS）に揃える。 */}}
+       Egress は networkpolicy-egress.yaml（同 Namespace ＋ DNS）と同じに揃える。DNS の宛先は kube-dns の Pod だけ（NFR-18, IADR-0589）。 */}}
 {{- if .Values.networkPolicy.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -166,12 +171,6 @@ spec:
   egress:
     - to:
         - podSelector: {}
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
+    {{- include "msp.netpol.dnsEgressRule" . | nindent 4 }}
 {{- end }}
 {{- end }}

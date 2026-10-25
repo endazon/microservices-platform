@@ -12,7 +12,7 @@ namespace IngestionService.Tests.Infrastructure.ExternalServices;
 [Trait("TestKind", "Unit")]
 public class QdrantKeywordIndexHostedServiceTests
 {
-    // T-39: ブートストラップは全文索引に続けてキーワード索引を張る。
+    // T-39: ブートストラップは全文索引に続けてキーワード索引を張る（［2026-10-20 / #1993］続けて `document_id` の索引も）。
     [Fact]
     public async Task Bootstrap_EnsuresKeywordIndexesAfterFullTextIndexes()
     {
@@ -22,7 +22,7 @@ public class QdrantKeywordIndexHostedServiceTests
 
         await bootstrap.StartAsync(TestContext.Current.CancellationToken);
 
-        store.Calls.Should().Equal(["collections", "cjk", "keyword"]);
+        store.Calls.Should().Equal(["collections", "cjk", "keyword", "document-id"]);
     }
 
     // T-39: 発見の器は既存の点からの発見を呼ぶ。失敗はここで捕まえる（ホストを止めない）。
@@ -68,6 +68,13 @@ public class QdrantKeywordIndexHostedServiceTests
             return Task.CompletedTask;
         }
 
+        // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 索引の状態の照会が引く `document_id` の索引。
+        public Task EnsureDocumentIdIndexAsync(CancellationToken ct = default)
+        {
+            Calls.Add("document-id");
+            return Task.CompletedTask;
+        }
+
         public Task<int> EnsureKeywordIndexesForExistingPointsAsync(CancellationToken ct = default)
         {
             Calls.Add("discovery");
@@ -79,22 +86,22 @@ public class QdrantKeywordIndexHostedServiceTests
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title, string text,
             int chunkIndex, float[] vector, string? markdownUri, Dictionary<string, string> attributes,
             List<string> tags, DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId, string title,
             string indexText, float[] vector, string? markdownUri, Dictionary<string, string> attributes,
             List<string> tags, DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title, string text,
             int chunkIndex, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
             string indexText, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default) => throw new NotSupportedException();
+            long? sequence = null, CancellationToken ct = default) => throw new NotSupportedException();
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) =>
             throw new NotSupportedException();

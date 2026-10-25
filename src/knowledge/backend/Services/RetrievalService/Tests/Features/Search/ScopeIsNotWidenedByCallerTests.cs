@@ -155,26 +155,6 @@ public class ScopeIsNotWidenedByCallerTests
             .Results.Should().BeEmpty("引けなければ deny（fail-closed）");
     }
 
-    // 🔴 T-1339-d: **属性値照会にも同じ統制が要る。**
-    [Fact]
-    public async Task The_attribute_values_endpoint_is_governed_by_the_same_control()
-    {
-        await using var factory = new TestWebApplicationFactory();
-        factory.Authoritative = new AccessScopeResponse(
-            "u1", [new AttributeFilter("dept", ["sales"])], Granted: true);
-
-        await SeedAsync(factory,
-            Chunk("売上", new() { ["dept"] = "sales" }),
-            Chunk("人事", new() { ["dept"] = "hr" }));
-
-        var resp = await factory.CreateClient().PostAsJsonAsync("/search/attribute-values",
-            new AttributeValuesRequest("dept", new AccessScope([], GrantsAccess: true)),
-            TestContext.Current.CancellationToken);
-
-        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(
-            TestContext.Current.CancellationToken);
-
-        body!.Values.Should().NotContain("hr", "主張で候補が広がってはならない");
-        body.Values.Should().Contain("sales", "★ 陽性対照 —— 許可の中の値は候補に出る");
-    }
+    // 🔴 T-1339-d: 属性値照会にも同じ統制が要る。［2026-10-15 / #1902・[[IADR-0533]]］REST の受け口を撤去したので、
+    // 属性値照会の面は gRPC だけになった。「絞り込みは自分で引いた権限を広げない」は `GrpcAttributeValuesTests` T-07 が固定する。
 }

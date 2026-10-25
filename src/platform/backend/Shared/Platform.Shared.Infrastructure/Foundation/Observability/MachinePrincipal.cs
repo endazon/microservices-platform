@@ -2,7 +2,7 @@ using System.Security.Claims;
 
 namespace Platform.Shared.Infrastructure.Foundation.Observability;
 
-// FR-05, FR-09, SC-12, ADR-0036, ADR-0062, ADR-0085 決定 4, [[IADR-0420]] (#1233):
+// FR-05, FR-09, SC-12, NFR-09, ADR-0036, ADR-0062, ADR-0085 決定 4, [[IADR-0420]] (#1233), [[IADR-0606]]:
 // **「無人の主体（machine principal）か」の判定を基盤に 1 つだけ置く。**
 //
 // 計画 `ADR-0085` 決定 4 は「**ユニットの主体**が保存した文書のうち `project` を持たない件数」を
@@ -20,11 +20,19 @@ namespace Platform.Shared.Infrastructure.Foundation.Observability;
 // 塞ぐか、のどちらかに倒れる）。両者は同じフォルダに並べてあるだけである。
 //
 // ■ 判定規則（Keycloak の規約に閉じる。2 つの腕を持つ）
-//   腕 A: 利用者名が `service-account-` で始まる
+//   前提: クライアント識別のクレーム（`azp` / `client_id`）がある
+//         —— IdP がトークンを発行したクライアントを書く値であり、利用者が自分で変えられる属性ではない。
+//         Keycloak の access token には必ず付く。**無ければ無人とは読まない。**
+//   腕 A: 利用者名が `service-account-<そのクレームのクライアント識別子>` と**一致する**
 //         —— Keycloak は client credentials の主体へ `preferred_username = service-account-<clientId>`
 //         を発行する（`SyntheticTraffic` の注記が述べているのと同じ規約）。
-//   腕 B: 利用者名が**無く**、クライアント識別のクレーム（`azp` / `client_id`）がある
+//   腕 B: 利用者名が**無く**、クライアント識別のクレームがある
 //         —— `profile` スコープを持たない機械クライアントは `preferred_username` を発行しない。
+//
+// 🔴 ［GHSA-94cm-55g9-2967・[[IADR-0606]]］**腕 A を接頭辞だけで判定しない。** 利用者名は realm の
+//   利用者管理で付ける名前であり、IdP が発行元のクライアントとして書く `azp` とは出どころが違う。
+//   利用者名とクライアント識別のクレームの**両方が同じサービスアカウントを指す**ときだけ無人と読む
+//   （多層防御。realm の宣言の側は `check-realm-constraints.js` 検査 7 が人の利用者名の接頭辞を禁じている）。
 //
 // 🔴 **腕 B に「利用者名が無い」を必ず併記する。** `azp` は**人間のトークンにも必ず付く**
 //   （SPA の clientId が入る）。クライアント識別クレームの有無だけで判定すると
@@ -57,12 +65,18 @@ public static class MachinePrincipal
     {
         if (user?.Identity?.IsAuthenticated != true) return false;
 
-        var username = UsernameOf(user);
-        if (!string.IsNullOrWhiteSpace(username))
-            return username.StartsWith(ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase);
+        // 前提: IdP が発行元として書いたクライアント識別。利用者名からの復元（`ClientIdOf` の後段）は使わない。
+        var clientId = ClaimedClientIdOf(user);
+        if (clientId is null) return false;
 
-        // 利用者名が無い ＋ クライアント識別がある = `profile` を持たない機械クライアント。
-        return ClientIdOf(user) is not null;
+        var username = UsernameOf(user);
+
+        // 腕 B: 利用者名が無い ＋ クライアント識別がある = `profile` を持たない機械クライアント。
+        if (string.IsNullOrWhiteSpace(username)) return true;
+
+        // 腕 A: 利用者名がそのクライアントのサービスアカウント名と一致する。
+        // 大小を無視する（Keycloak は利用者名を小文字へ正規化するが、クライアント ID は大文字を含み得る）。
+        return string.Equals(username, ServiceAccountUsernamePrefix + clientId, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -77,11 +91,7 @@ public static class MachinePrincipal
     {
         if (user is null) return null;
 
-        foreach (var claimType in ClientIdClaimTypes)
-        {
-            var value = user.FindFirstValue(claimType);
-            if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
-        }
+        if (ClaimedClientIdOf(user) is { } claimed) return claimed;
 
         var username = UsernameOf(user);
         return username is not null
@@ -89,6 +99,18 @@ public static class MachinePrincipal
             && username.Length > ServiceAccountUsernamePrefix.Length
                 ? username[ServiceAccountUsernamePrefix.Length..]
                 : null;
+    }
+
+    // IdP が発行元のクライアントとして書いたクレームだけを読む（利用者名からは復元しない）。
+    private static string? ClaimedClientIdOf(ClaimsPrincipal user)
+    {
+        foreach (var claimType in ClientIdClaimTypes)
+        {
+            var value = user.FindFirstValue(claimType);
+            if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+        }
+
+        return null;
     }
 
     private static string? UsernameOf(ClaimsPrincipal user)

@@ -1,13 +1,17 @@
 # IADR-0066: ローカル k8s(k3d) dev 用 Helm values 上書き。
 # 適用: helm upgrade --install msp deploy/helm/microservices-platform \
-#         -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
+#         -n microservices-platform --create-namespace -f deploy/local/values-local.yaml \
+#         --set-string global.image.tag=<不変のタグ>
+#   （NFR-20 / IADR-0605 / #2132: 自製イメージのタグはここに書かない。scripts/k8s-local-up.sh が作業ツリーの git の sha で
+#    ビルドし、同じ値を渡す。タグが無いと chart の描画が落ちる。値は bash scripts/lib/local-image-tag.sh で確かめられる）
 #
 # 本番像（deploy/helm/microservices-platform/values.yaml）は不変。ここでは dev 差分のみ上書きする。
 
 global:
   image:
     # k3d へ import するローカルイメージの接頭辞（実レジストリではない。IfNotPresent で pull しない）。
-    # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞・タグで行う。
+    # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞で行う。タグ（global.image.tag）は起動器が --set-string で渡す
+    #   （IADR-0605。不変のタグが変われば Pod の template が変わるので、IfNotPresent のままで新しいイメージへ入れ替わる）。
     registry: k3d-local
     pullPolicy: IfNotPresent
   # #780 第2段 / IADR-0086 / IADR-0243: Keycloak の issuer をエッジ host（https://keycloak.localhost）へ
@@ -40,8 +44,69 @@ edge:
   enabled: false
 
 # metrics-server 依存の HPA と NetworkPolicy を dev では無効化（本番像は不変）。
+# NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: ただし egress の既定拒否は当てる（ingress の NetworkPolicy は無効のまま）。
+#   段 1（本変更）は**クラスタの外へ出ない Pod** だけ。基盤（platform-infra）への宛先は下の destinations で 1 件ずつ開ける。
+#   段 2 で足す（それまで egress は従前どおり制限なし）: bff-service（AST の名前空間・Valkey・Vault・API サーバ・opend）、
+#   llmgateway-service（LLM・埋め込みの提供元）、datasource-service（SaaS コネクタ・Vault）、wiki-js（エッジの issuer）、
+#   config-drift-postsync・embedding・synthetic-monitor。段の一覧の正は作業仕様書 20261022_j4qv_egress-default-deny。
+#   🔴 送り元（from）を足すときは、サービスの宣言（database / messaging / Qdrant の利用）と一緒にそろえる
+#      （scripts/helm-egress-network-policy.test.js が values の宣言と突き合わせる）。
 networkPolicy:
   enabled: false
+  egress:
+    enabled: true
+    workloads:
+      - aianalysis-service
+      - authorization-service
+      - conversion-service
+      - dashboard-service
+      - document-service
+      - feedback-service
+      - graph-service
+      - ingestion-service
+      - mcp-service
+      - notification-service
+      - retrieval-service
+      - wiki-service
+      - frontend-service
+      - seaweedfs
+      # 確かめ用の使い捨ての Pod（Service を持たない。統合スタックの門と運用の確認手順が `kubectl run --labels=app=egress-probe` で立てる）。
+      # 宛先の許可を 1 つも持たないので、名前解決と同じ名前空間だけに届くことを稼働のクラスタで測れる。
+      - egress-probe
+    # 基盤は platform-infra に居る（deploy/local/infra。名前は aliases の ExternalName で引く）。
+    destinations:
+      # サービス DB（services.<名>.database を持つもの）。
+      - name: postgres
+        namespace: platform-infra
+        podLabels: { app: postgres }
+        ports: [5432]
+        from: [authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, mcp-service, notification-service, wiki-service]
+      # ブローカ（services.<名>.messaging: true のもの。rabbitmq-ingress-clients と同じ集合）。
+      # NFR-16, IADR-0591: MSP のサービスは TLS の口（5671・global.messaging.tls.port）だけで繋ぐ。平文の 5672 は開けない
+      #   （global.messaging.tls.enabled=false へ切り戻すときは、ここも 5672 へ戻す）。
+      - name: rabbitmq
+        namespace: platform-infra
+        podLabels: { app: rabbitmq }
+        ports: [5671]
+        from: [conversion-service, document-service, graph-service, ingestion-service, retrieval-service, wiki-service]
+      # 認可サーバ（OIDC の metadata・JWKS・サービスの token・管理 API）。.NET のサービスすべて。
+      - name: keycloak
+        namespace: platform-infra
+        podLabels: { app: keycloak }
+        ports: [8080]
+        from: [aianalysis-service, authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, ingestion-service, mcp-service, notification-service, retrieval-service, wiki-service]
+      # テレメトリ（global.otel.endpoint の OTLP gRPC）。.NET のサービスすべて。
+      - name: otel-collector
+        namespace: platform-infra
+        podLabels: { app: otel-collector }
+        ports: [4317]
+        from: [aianalysis-service, authorization-service, conversion-service, dashboard-service, document-service, feedback-service, graph-service, ingestion-service, mcp-service, notification-service, retrieval-service, wiki-service]
+      # ベクトル索引（gRPC 6334・検索の health は REST 6333 の /healthz）。
+      - name: qdrant
+        namespace: platform-infra
+        podLabels: { app: qdrant }
+        ports: [6333, 6334]
+        from: [ingestion-service, retrieval-service]
 scaling:
   enabled: false
 
@@ -111,13 +176,25 @@ services:
   # DeviceTrustPersisted は PVC opend-persist を持つ配備構成の事実（配備構成から静的に決まる）。EgressStable は
   # ローカルが固定 NAT ではないため与えない（未設定＝供給なし）。本番 chart は触らない。
   # 🔴 #1389: ここは extraEnv ではなく **extraEnvAppend**。extraEnv だと Helm のリスト置換で本番既定の
-  # Services__* 23 件が消え、BFF の readiness（下流 4 サービスの URL 検査）が落ちる（integration-stack で実測）。
+  # Services__* 23 件が消え、BFF の下流 4 サービスへの経路が既定ポートへ外れる（当時は readiness の URL 検査が落ちて
+  # integration-stack で実測した。#2105 / IADR-0602 以後は readiness に下流を含めないので、症状は各画面の 502 になる）。
   bff:
+    # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: 共有シークレットを回したら Reloader が BFF を作り直す（env は起動時に 1 度だけ解決される）。
+    deploymentAnnotations:
+      secret.reloader.stakater.com/reload: "opend-auth-caller-secret"
     extraEnvAppend:
       - name: OpendAuth__BaseUrl
         value: "http://opend:8080"
       - name: OpendAuth__DeviceTrustPersisted
         value: "true"
+      # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: AST の OpenD 認証サイドカーへ名乗る共有シークレット（呼び出し元の検証）。
+      # Secret は ESO=1 で deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml が同期する（AST の chart と同じ Vault のキー）。
+      # optional: Secret が無くても BFF は起動する（上流を呼ばず、SC-04 に「接続資格が構成されていません」と示す）。
+      - name: OpendAuth__CallerSecret
+        secretKeyRef:
+          name: opend-auth-caller-secret
+          key: caller-secret
+          optional: true
     # SC-22, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先はローカルの dev Vault（VAULT=1）。
     # **VAULT=1 ESO=1 でなければ Vault も policy も無く、/admin/secrets は 503（接続できない）を出す** —— 静かに成功しない。
     # policy と role は deploy/local/vault/eso/bootstrap.sh が入れる（ESO=1 のとき）。
@@ -136,7 +213,7 @@ services:
       secret.reloader.stakater.com/reload: "wikijs-sync"
 
 # Issue #313, IADR-0078: SPA(frontend) を経路B(ローカル k8s / k3d) で配信する。image は
-# global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・タグで build/import）。
+# global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・同じ不変のタグで build/import。IADR-0605）。
 # 経路B は edge.enabled=false（Istio 未導入）のため SPA へのブラウザ到達は frontend-service の port-forward
 # で行う（deploy/local/README.md「SPA(/settings) 到達」）。OIDC issuer は base 既定 http://keycloak:8080/... の
 # ままにする（#284 手順A: hosts+port-forward で browser にも in-cluster 名 keycloak:8080 を解決させ、backend の

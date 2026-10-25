@@ -78,7 +78,7 @@ public class LinkEdgeSyncTests
         var consumer = new GraphDocumentSyncConsumer(
             db, new FixedClock(T0.AddDays(1)), reader, sync, new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-            NullLogger<GraphDocumentSyncConsumer>.Instance);
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader, probe);
     }
 

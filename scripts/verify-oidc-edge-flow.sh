@@ -114,7 +114,9 @@ else
     # 有効なまま残る（`-k` とは別物）。schannel 以外では未知オプションとして無視されないため、
     # 対応しているときだけ付ける。
     CURL_K="--cacert $CA_BUNDLE"
-    if curl --help all 2>/dev/null | grep -q -- '--ssl-revoke-best-effort'; then
+    # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+    #   コマンドの出力は -q を付けずに読み切らせ、変数の値は here-string で渡す（この後の同じ形も同じ）。
+    if curl --help all 2>/dev/null | grep -- '--ssl-revoke-best-effort' >/dev/null; then
       CURL_K="$CURL_K --ssl-revoke-best-effort"
     fi
     TLS_MODE="検証する（CA=$CA_BUNDLE）"
@@ -232,6 +234,42 @@ step() {
 # モードの組み合わせで後続の段番号が変わるため、後から足す段だけ動的に採る。
 next_step() { step "$((STEPS + 1))/$TOTAL" "$1"; }
 
+# FR-06, SC-05, IADR-0537 (#1923): `GET /bff/documents` は**ページ**（`{ items, total, offset, limit }`）で返る
+# （従前は全件の配列）。段 14・15・S1 は「一覧の全件」を見るので、ページを終端まで辿って items を 1 つの配列へ集める。
+# 引数: クッキー jar・出力ファイル。出力ファイルには全ページの items の配列を書く（下の判定はこれまでどおり配列を読む）。
+# - 非 200 で止まったら、その応答の本文をそのまま書く（判定は DOC_LIST_CODE を先に見る）。
+# - ページの形でなければ配列でない値（"bad"）を書く —— 配列の判定が -1 / 'bad' へ倒れる（fail-closed）。
+# 🔴 total は ABAC で絞った後の件数である（権限外の文書は数えない）。辿るのは total まで。上限 50 ページ（5,000 件）。
+# 🔴 **一部だけを「全件」として扱わない**（fail-closed）。上限に達しても total に届かない・後続のページが空で total に届かない
+#    のどちらも、集めた件数と total が合わないので、配列でない値（"bad"）を書き、理由を標準エラーへ出す。
+DOC_LIST_CODE=""
+fetch_document_list() {
+  local jar="$1" out="$2" page offset=0 total=0 pages=0 got=0 before
+  page=$(mktemp)
+  printf '[]' > "$out"
+  while :; do
+    DOC_LIST_CODE=$(curl -s $CURL_K -m 30 -o "$page" -w '%{http_code}' \
+      -b "$jar" -H "$CSRF_HDR" "$EDGE_URL/bff/documents?offset=$offset&limit=100")
+    if [ "$DOC_LIST_CODE" != "200" ]; then cp "$page" "$out"; rm -f "$page"; return; fi
+    # 出力: "<total> <集めた件数>"（ページの形でなければ "-1 -1"）。
+    read -r total got < <(node -e "const fs=require('fs');let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const p=JSON.parse(s);if(!p||!Array.isArray(p.items)||typeof p.total!=='number')return console.log('-1 -1');const acc=JSON.parse(fs.readFileSync(process.argv[1],'utf8')).concat(p.items);fs.writeFileSync(process.argv[1],JSON.stringify(acc));console.log(p.total+' '+acc.length)}catch{console.log('-1 -1')}})" "$out" < "$page")
+    if [ "$total" -lt 0 ] 2>/dev/null || [ -z "$total" ]; then printf '"bad"' > "$out"; break; fi
+    pages=$((pages + 1))
+    [ "$got" -ge "$total" ] && break
+    if [ "$pages" -gt 1 ] && [ "$got" = "$before" ]; then
+      printf 'WARN: 文書一覧の後続のページが空で total に届かない（集めた %s 件 / total %s 件）。一部を全件として扱わない\n' "$got" "$total" >&2
+      printf '"bad"' > "$out"; break
+    fi
+    if [ "$pages" -ge 50 ]; then
+      printf 'WARN: 文書一覧を上限 50 ページで打ち切った（集めた %s 件 / total %s 件）。一部を全件として扱わない\n' "$got" "$total" >&2
+      printf '"bad"' > "$out"; break
+    fi
+    before="$got"
+    offset=$((offset + 100))
+  done
+  rm -f "$page"
+}
+
 for cmd in curl node; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     printf 'ERROR: %s が必要です。\n' "$cmd" >&2
@@ -273,7 +311,7 @@ info "Keycloak: 到達（issuer=$ISSUER）"
 # ---- 1) SPA がエッジから配信されるか -------------------------------------------
 step "1/$TOTAL" "エッジから SPA を取得する"
 SPA=$(curl -s $CURL_K -m 10 "$EDGE_URL/")
-if printf '%s' "$SPA" | grep -qi '<!doctype html'; then
+if grep -qi '<!doctype html' <<<"$SPA"; then
   pass "SPA の HTML が返る"
 else
   fail "SPA の HTML が返らない"
@@ -379,7 +417,7 @@ acquire_session() {
   #   Location=…/login-actions/required-action?execution=CONFIGURE_TOTP&client_id=platform-spa
   # のまま「認可コードを取得できない」で落ちていた。**書いた分岐が死んでいることは、
   # 実行されるまで分からない。**
-  if [ -z "$code" ] && printf '%s' "$location" | grep -q '/login-actions/'; then
+  if [ -z "$code" ] && grep -q '/login-actions/' <<<"$location"; then
     local ra_hdr ra_loc
     ra_hdr=$(mktemp)
     curl -s $CURL_K -c "$jar" -b "$jar" -m 15 -o "$body" -D "$ra_hdr" "$location" >/dev/null
@@ -499,12 +537,12 @@ acquire_session() {
   if [ "$verbose" = "1" ]; then
     pass "BFF がセッション Cookie を発行した（status=$cb_status → ${cb_loc%%\?*}）"
     # ADR-0032 §決定: HttpOnly / Secure / SameSite=Lax。値は見ずに属性だけを見る。
-    if printf '%s' "$set_cookie" | grep -qi '; *httponly'; then
+    if grep -qi '; *httponly' <<<"$set_cookie"; then
       pass "セッション Cookie は HttpOnly"
     else
       fail "セッション Cookie に HttpOnly が無い（ADR-0032：スクリプトから読めるトークン相当の値になる）"
     fi
-    if printf '%s' "$set_cookie" | grep -qi '; *secure'; then
+    if grep -qi '; *secure' <<<"$set_cookie"; then
       pass "セッション Cookie は Secure"
     else
       fail "セッション Cookie に Secure が無い（ADR-0032）"
@@ -719,8 +757,8 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   # **これが本 issue の中心である。** 「200 ＋ 空リスト」を PASS にしない。
   step "14/$TOTAL" "許可のある利用者の一覧が非空であること（200 ＋ 空リストを PASS にしない）"
   body_file=$(mktemp)
-  code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
-    -b "$SESSION_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents")
+  fetch_document_list "$SESSION_JAR" "$body_file"
+  code="$DOC_LIST_CODE"
   count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
   # 🔴 #466: ここは `grep -c ... || printf '0'` だった（#982 由来）。**その形は恒久的に fail-open だった。**
   #    grep -c は無マッチでも stdout へ 0 を書きつつ **exit 1** を返す（実測）。exit が非 0 なので
@@ -750,8 +788,8 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
     fail "負の対照のセッションが無いため判定できない（段 12 を参照）"
   else
     body_file=$(mktemp)
-    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
-      -b "$DENY_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents")
+    fetch_document_list "$DENY_JAR" "$body_file"
+    code="$DOC_LIST_CODE"
     deny_count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
     if [ "$code" = "403" ]; then
       pass "GET /bff/documents（$DENY_USER）→ 403（RBAC で落ちている。ABAC の対照にはならない点に注意）"
@@ -845,8 +883,8 @@ if [ "$SEARCH_SEEDED" = "1" ]; then
     fail "検索の合言葉を解決できない（scripts/seed-search-documents.js --print-probe-term）。SEARCH_PROBE_TERM で明示してください"
   else
     body_file=$(mktemp)
-    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
-      -b "$SESSION_JAR" -H "$CSRF_HDR" "$EDGE_URL/bff/documents")
+    fetch_document_list "$SESSION_JAR" "$body_file"
+    code="$DOC_LIST_CODE"
     # 'missing'（一覧に無い）/ 'no-uri'（在るが markdownUri が空）/ 'ok'（在って参照を持つ）/ 'bad'（配列でない）
     seed_state=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);if(!Array.isArray(a))return console.log('bad');const t=process.argv[1];const d=a.find(x=>String(x.title??x.Title??'').includes(t));if(!d)return console.log('missing');const u=d.markdownUri??d.MarkdownUri??null;console.log(u?'ok':'no-uri')}catch{console.log('bad')}})" "$SEARCH_PROBE_TERM" < "$body_file")
     if [ "$code" = "000" ]; then
@@ -1078,7 +1116,7 @@ if [ "$SEARCH_HITS" = "1" ]; then
     info "readiness の本文を読めなかった（kubectl 不在・権限・イメージに wget 無し等）。判定は skip せず、"
     info "段 S4 の結果で代替する —— S4 が緑なら索引は在る。"
     pass "readiness 本文は取得できないが、全文側が実際にヒットしている（段 S4）ので索引は在る"
-  elif printf '%s' "$ready_body" | grep -qi 'Degraded'; then
+  elif grep -qi 'Degraded' <<<"$ready_body"; then
     fail "retrieval-service の /health/ready が Degraded（全文ペイロードインデックスが無い疑い。#1116）"
     info "本文: $(printf '%s' "$ready_body" | head -c 200)"
   else

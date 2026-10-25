@@ -10,7 +10,8 @@
     "build:analyze": "ANALYZE_BUNDLE=1 tsc -b && ANALYZE_BUNDLE=1 vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:live": "playwright test --config playwright.live.config.ts --pass-with-no-tests"
   },
   "dependencies": {
     "@lingui/core": "^6.6.0",
@@ -29,8 +30,8 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
-    "@faker-js/faker": "^9.2.0",
+    "@axe-core/playwright": "4.14.0",
+    "@faker-js/faker": "^10.6.0",
     "@lingui/babel-plugin-lingui-macro": "^6.6.0",
     "@playwright/test": "^1.47.2",
     "@tailwindcss/vite": "^4.0.0",

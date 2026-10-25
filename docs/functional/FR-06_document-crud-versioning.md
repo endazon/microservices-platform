@@ -3,15 +3,15 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-09-28
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-06, FR-08, UC-03, NFR-09, FR-19]
-adrs: [ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0050, ADR-0057, ADR-0122]
-iadrs: [IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475]
-specs: [20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint]
-issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
+ids: [FR-06, FR-08, UC-03, NFR-09, FR-19, FR-01]
+adrs: [ADR-0141, ADR-0119, ADR-0036, ADR-0056, ADR-0058, ADR-0054, ADR-0050, ADR-0057, ADR-0122, ADR-0027]
+iadrs: [IADR-0606, IADR-0598, IADR-0597, IADR-0596, IADR-0556, IADR-0551, IADR-0549, IADR-0476, IADR-0044, IADR-0075, IADR-0364, IADR-0455, IADR-0290, IADR-0296, IADR-0475, IADR-0533]
+specs: [20261023_ghsa-94cm_machine-principal-issuing-client, 20261023_2112_sc05-doc-scope-default, 20261023_2103_document-optimistic-concurrency, 20261023_2102_wiki-catalog-ordering, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20260928_issue-1679_putbody-owner-subject, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1614_document-read-authn-private-note, 20260828_issue-1011_version-body-contract, 20260828_issue-451_deletion-propagation-to-object-storage, 20260926_issue-1575_document-page-and-fingerprint, 20261015_1902_east-west-rest-residue]
+issues: [#2112, #2103, #2102, #2047, #1974, #1973, #1961, #1931, #1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, #1902, planning#473]
 -->
 
 # 機能仕様書: 文書CRUD・バージョン管理
@@ -35,7 +35,7 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | 作成: `title`（必須）, `originalUri`, `contentType`, `attributes`, `tags` / 更新: `title`（必須）, `attributes`, `tags`, `expectedVersion`（任意）, `changeNote`（任意） / メタデータ更新: `attributes`, `tags`, `expectedVersion`, `changeNote` / 正規化取込: `DocumentNormalized` イベント（`DocumentId`, `Title`, `MarkdownUri`, `Attributes`, `Tags`） |
-| 処理 | `Document.Create` で版 1 を記録 → 各更新（`Update` / `UpdateMetadata` / `ApplyNormalized` / `Publish`）が `Version++`・`UpdatedAt` 更新・スナップショット追記を内部で実行 → 更新後 `DocumentUpdated` を発行。`expectedVersion` 指定時は API 層で現在版と照合し不一致なら 409（lost update 防止）。正規化取込は `DocumentId` 一致で冪等 upsert。 |
+| 処理 | `Document.Create` で版 1 を記録 → 各更新（`Update` / `UpdateMetadata` / `ApplyNormalized` / `Publish`）が `Version++`・`UpdatedAt` 更新・スナップショット追記を内部で実行 → 更新後 `DocumentUpdated` を発行。`expectedVersion` 指定時は API 層で現在版と照合し不一致なら 409（lost update 防止）。照合と保存の間に別の更新が版を進めた場合も、保存が負けて 409 になる（版は並行トークン。下の制約）。正規化取込は `DocumentId` 一致で冪等 upsert。 |
 | 出力 | `DocumentDto`（`Id`, `Title`, `Status`, `MarkdownUri`, `Version`, `Attributes`, `Tags`, `CreatedAt`, `UpdatedAt`, `HasBody`, `SharedWith`, `ContentFingerprint`〔本文指紋。後述〕） / `DocumentPageDto`（`Items`, `NextCursor`） / `DocumentVersionDto`（`DocumentId`, `Version`, `Title`, `Status`, `Attributes`, `Tags`, `ChangeNote`, `CreatedAt`。**本文の参照は持たない** — #1011） / `DocumentUpdated` イベント |
 | 業務ルール | バージョン管理の射程は**版の作成・一覧・取得**まで（**復元は含まない**。利用者裁定 2026-08-23）。**版ごとの本文は保持せず、版応答は本文の参照を返さない**（本文のキーは文書 ID で固定・上書き。#1011）。タイトルは作成・更新で必須（空白は 400）。版履歴は append-only で過去版を書き換えない（スナップショットは後続更新の影響を受けない防御的コピー）。版一覧は新しい順（`Version` 降順）。`Status` は `draft`→`normalized`→`published` を取り、公開は `POST /publish` で行い版を追記する。属性（`Attributes`）は下流の ABAC 権限判定・検索フィルタで用いるメタデータ。 |
 
@@ -50,6 +50,10 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 | `PUT /documents/{id}` | タイトル・メタデータ更新（版追記・並行制御） | 200 / 400 / 404 / 409 |
 | `PATCH /documents/{id}/metadata` | 属性・タグのみ更新（版追記） | 200 / 404 / 409 |
 | `POST /documents/{id}/publish` | 公開（`status=published`・版追記） | 200 / 404 |
+| `POST /documents/{id}/archive` | アーカイブ（`status=archived`・版追記。管理者だけ）。見つかる面（検索・RAG・グラフ・Wiki・MCP の一覧）から外す（下記「アーカイブの効果」） | 200 / 404 |
+| `POST /documents/archive-bodyless` | 本文のオブジェクトが無い古い文書の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
+| `POST /documents/archive-ast-quotes` | 株取引ユニットの相場スナップショット（`kind = Quote`）の一括アーカイブ（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 |
+| `POST /documents/strip-untrusted-boundary` | 株取引ユニットが境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作。管理者だけ。下記） | 200 / 400 / 403 / 502 / 503 |
 | `GET /documents/{id}/versions` | 版履歴一覧（新しい順）。**認証を要する** | 200 `DocumentVersionDto[]` / 401 / 404 |
 | `GET /documents/{id}/versions/{version}` | 特定版取得。**認証を要する** | 200 / 401 / 404 |
 | `DELETE /documents/{id}` | 削除（版履歴も連動削除） | 204 / 404 |
@@ -59,7 +63,7 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 - **読み取りの 5 口（一覧・ページ・単一取得・版履歴一覧・特定版取得）はすべて認証を要する**（ロールは問わない）。
   トークンが無い・検証できない要求は 401。健全性の口（`/health/*`）は匿名のまま。east-west gRPC の読み取り面も同じ判定を通る。
 - **主体**は呼び出し元の資格情報である —— 文書閲覧の経路（BFF）が中継した利用者、または機械クライアント自身
-  （`service-account-` で始まる利用者名、または利用者名を持たずクライアント識別だけを持つトークン）。
+  （利用者名が発行元のクライアント識別〔`azp`〕のサービスアカウント名 `service-account-<クライアント>` と一致するトークン、または利用者名を持たずクライアント識別だけを持つトークン）。
   gRPC の面では要求の利用者文脈が主体になり、無ければ呼び出し元サービス自身になる。
 - **個人資料**（`doc_scope=private-note`。値の大文字小文字は問わない）は次の利用者にだけ返る。
   1. 所有者（`owner` 属性が利用者名と一致。本文の投入の所有者判定と同じ比較）
@@ -83,8 +87,8 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
   取得の直後に見るため、`doc_scope` の不変性（400）や並行制御（409）より先に 404 になる（個人資料の実在を応答から推せない）。
 - 個人資料を書き換える経路は所有者の経路だけである —— 個人資料の口（作成・ごみ箱・完全削除・露出）、Obsidian 同期、
   本文の投入（所有者の束縛）、共有台帳。所有権は台帳と属性の 2 か所にあり、管理の口の属性全置換で食い違わせない。
-- **タグの反映口（`POST /documents/{id}/tags`）**の「管理者なら書ける」分岐も、個人資料には及ばない（所有者だけが足せる。
-  拒否は 404）。組織文書には従前どおり管理者の分岐が効く。east-west gRPC のタグ反映面も同じ判定を通る。
+- **タグの反映口**（east-west gRPC `DocumentTagWrite/AddTag`。［2026-10-16］REST の `POST /documents/{id}/tags` は撤去）の
+  「管理者なら書ける」分岐も、個人資料には及ばない（所有者だけが足せる。拒否は `NOT_WRITABLE`）。組織文書には従前どおり管理者の分岐が効く。
 
 ### 機械クライアントの自分の文書と、所有者の不変性
 
@@ -104,6 +108,61 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
   （人の管理者でも所有者を移管できない。所有者の移管は決まっていない）。`owner` を**送らなければ現在の値が残り**、
   異なる値（空文字を含む）を送ると 400。所有者の無い文書へ所有者を付けることもできない。文書管理画面の編集は応答の属性を
   そのまま送り返すので、この規則に当たらない。
+- **一般の登録口（`POST /documents`）で `doc_scope` を送らなければ、サーバが `organization` を補う。** 作成後は付けられないため、
+  ここで付かなければ恒久的に欠落する。文書管理画面の登録フォームは機密区分しか送らないが、補完で組織文書として確定する。
+  明示の `organization` はそのまま通り、未知値・空文字・`private-note` は従前どおり 400（補完で上書きしない）。
+  補完の前に作られた `doc_scope` を持たない文書へは遡及しない。属性は全置換なので、その後の更新では
+  補われた `doc_scope` を同送する（文書管理画面の編集は応答の属性を送り返すので同送になる）。
+
+### 本文の無い古い文書の一括アーカイブ（`POST /documents/archive-bodyless`）
+
+- 2026-09-26 のオブジェクトストレージの切り替えより前に作られ、本文のオブジェクトが無い文書を、既存の状態 `archived` へ移す一回限りの管理操作（#1931）。
+  状態は新設しない。台帳と表題は残る。
+- 対象は `createdAt < createdBefore`（**必須**）かつ未アーカイブかつ本文の参照が `storage://` で、オブジェクトストレージへの存在確認（HEAD 相当。本文を読まない）が
+  **キーの欠落（NoSuchKey）**と答えた組織文書だけである。バケットが無い・時間切れ・5xx では「無い」と言わず、そのページを 1 件もアーカイブしない。
+- 本文が在る・期限以降・本文の参照が無い・個人資料・アーカイブ済みには触らない。2 回流しても 2 回目は何もしない。
+- アーカイブした文書は版を 1 つ進め（版の注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated` を出す。下流の扱いは単票と同じ（下記「アーカイブの効果」）。
+- 量の制御・カナリア・中断と再開は駆動スクリプト `scripts/archive-bodyless-documents.js` が持つ（運用仕様書の同名の節）。
+
+### 株取引ユニットの文書から境界語の枠を剥がす（`POST /documents/strip-untrusted-boundary`）
+
+- 株取引ユニットは 2026-10-16 まで、保存するニュースの表題と本文を `<<<UNTRUSTED_DATA` と `UNTRUSTED_DATA>>>` で囲んで保存していた。
+  その枠を台帳から剥がす一回限りの管理操作である（新しい保存は囲まれない）。
+- 対象は `project = ai-stock-trading` の、アーカイブ済みでない組織文書だけである（project は口の側で固定）。その中で表題か本文が枠の形
+  （先頭が開始の境界語・末尾が終了の境界語）の文書だけを書き換える。他の project・個人資料・アーカイブ済み・枠の無い文書には触らない。
+- 剥がすのは**先頭と末尾の枠と、その隣の改行 1 つだけ**で、枠が無くなるまで繰り返す。中身の途中の境界語・前後の空白は変えない。2 回流しても 2 回目は何も変えない。
+  剥がすと空になる表題・本文（枠だけの値）は剥がさない（数えて返す。空の本文を取り込み・Wiki 同期へ流さない）。
+- 本文は新しいキーへ書いて参照を付け替える（元のオブジェクトは上書きせず、前の版が指したまま残る）。状態・属性・タグは動かさず、版を 1 つ進める（版の注記は固定の文字列）。
+- 本文が読めない（キーの欠落以外の失敗）・書けないときは、そのページを 1 件も書き換えずに 502 を返す。キーの欠落は「本文なし」として表題だけを見る。
+- 書き換えた文書は単票の更新と同じ `DocumentUpdated` を出す。取り込みは索引を作り直し、Wiki 同期は表題と本文を書き直す（同じページ）。
+- dry-run は件数と対象の文書 ID（表題・本文のどちらか）だけを返す。量の制御・カナリア・中断と再開は駆動スクリプト `scripts/strip-untrusted-boundary.js` が持つ
+  （一括アーカイブと同じ本体。運用仕様書の同名の節）。
+
+### 株取引ユニットの相場スナップショットの一括アーカイブ（`POST /documents/archive-ast-quotes`）
+
+- 株取引ユニットが 2026-10-16 まで 5 分ごとに保存した相場のスナップショット（属性 `kind = Quote`）を、既存の状態 `archived` へ移す一回限りの管理操作である。
+  旧い文書が検索の候補を占め続けるのを止める（アーカイブした文書は検索・RAG の候補から外れる。下記「アーカイブの効果」）。消さない（台帳と本文は残る）。
+- 対象は `project = ai-stock-trading` かつ `kind = Quote`（大文字小文字を区別する完全一致）の、アーカイブ済みでない組織文書だけである（条件は口の側で固定）。
+  他の `kind`・他の project・個人資料・アーカイブ済みには触らない。本文は読まない。2 回流しても 2 回目は何もしない。
+- 遷移・下流への伝え方・ページ送り・必須の指定（`dryRun`・アーカイブは `reason`）は、本文の無い古い文書の一括アーカイブと同じである（版の注記は固定の文字列）。
+- dry-run は件数と対象の文書 ID だけを返す。量の制御・カナリア・中断と再開は駆動スクリプト `scripts/archive-ast-quote-documents.js` が持つ（運用仕様書の同名の節）。
+
+### アーカイブの効果
+
+- **アーカイブした文書は、検索（横断検索と MCP の検索ツール）・RAG・知識グラフ（AI 提案・クラスタ要約・MCP のグラフ系ツールを含む）・Wiki・MCP の文書一覧に載らない。**
+- **閲覧（文書詳細画面。`GET /documents/{id}`）と文書管理画面の一覧（状態の絞り込みの「アーカイブ済み」）には ABAC の範囲で残る。**
+  MCP の文書 ID を指定した取得は従前どおり（アーカイブ済みを返すかは未決。内容の ABAC の門が開くまでは経路ごと拒否される）。
+- 判定は**台帳の状態**（`status=archived`）で行う。文書管理画面が「アーカイブ済み」と出す値と同じである。
+  🔴 **ABAC の文書属性 `lifecycle` はアーカイブを表さない**（データソースの既定から入った値のまま残る）。ポリシーの `allowedLifecycles` ではアーカイブした文書を扱えない。
+- 下流の実体:
+  - 取り込みは `status=archived` の `DocumentUpdated` を受けると、本文を読まずに全索引（モデル別のコレクション・語彙索引）から当該文書の点を消す。
+    点を残して検索の出口で隠すことはしない。
+  - 知識グラフはノードを作らず、既存のノード・辺・共有タグの複製を撤収する。AI 提案の候補とクラスタはノードを母集合にするので、そこからも外れる。
+  - Wiki 同期はページを非公開化する（ページの実体は Wiki.js に残る）。
+  - MCP の文書一覧は、ABAC の判定の後・件数を数える前に落とす（件数にも入らない）。
+- アーカイブ済みの文書へのその後の更新（タグの付け替えなど）も `status=archived` のまま届くので、外れたままである。
+- **この効果より前にアーカイブした文書**は、再発行の口を状態で絞って流すと外れる（`POST /documents/republish-updated` の `status=archived`。
+  駆動スクリプトの `--status archived`。受け手は本文を読まないので埋め込みの費用はかからない。運用仕様書の一括アーカイブの節）。
 
 ### 本文指紋（`ContentFingerprint`）
 
@@ -127,6 +186,20 @@ issues: [#1679, #1616, #1575, #1629, #1614, #201, #1011, #1575, planning#473]
 - 絞り込みは台帳を読んだ後に行う（DB の負荷は `GET /documents` と同じ）。
 - **認証を要する**（ロールは問わない）。
 
+### 再正規化の順序（遅れて届いた・再配送された正規化イベント）
+
+正規化イベントは少なくとも 1 回届き、順序は保証されない（再配送・デッドレターからの再投入・変換の再実行）。カタログの受け口は次の 3 つの門で、古いイベントが台帳の新しい状態を崩さないようにする。
+
+| 門 | 台帳が持つ値 | 振る舞い |
+| --- | --- | --- |
+| 古い再正規化 | 最後に反映した正規化の時刻（`LastNormalizedAt`） | それより厳密に古い正規化は、本文を読まず・台帳を書かず・更新イベントも出さずに捨てる（正常終了）。同じ時刻の再配送は反映する。値を持たない文書（本欄の追加以前・取り込み経路以外）は判定しない |
+| アーカイブより前の再正規化 | アーカイブした時刻（`ArchivedAt`。戻したら消す。追加以前のアーカイブは更新時刻で読む） | 内容は反映し、状態はアーカイブのまま（下流へもアーカイブとして伝わる）。アーカイブより後の再正規化（データソースの再同期）は従来どおり `normalized` へ戻す |
+| 削除より前の再正規化 | 削除の事実（表 `DocumentDeletionMarks`。文書 ID と時刻だけ） | 台帳に行が無く、削除の時刻以前に作られた正規化は台帳へ作り直さずに捨てる。削除より後の再正規化（同じ原本は同じ文書 ID）は従来どおり作る |
+
+- 古さの判定は本文を読む前に行う。本文の URI は文書 ID 固定で再変換のたびに上書きされるため、古いイベントのまま本文を読むと新しい本文の指紋を古い題名・属性に付けてしまう。
+- 比較は保存の精度（マイクロ秒）に丸めて行う。削除の事実は題名・本文・属性の値を持たず、本文の復元には使えない。削除の口は下流へ伝える削除の時刻にも同じ値を使う。
+- 残る限界: 2 つの再正規化が同時に台帳を書く窓（楽観ロックの導入で閉じる）。正規化が作られた後・届く前に利用者が属性を編集すると、届いた正規化がその編集を上書きする（取り込みが属性の正本である前提。従前と同じ）。時刻は変換側と文書管理側の時計を比べる箇所がある（時計の差が再同期の間隔より大きいと誤る）。
+
 ## 処理フロー / 状態遷移
 
 ```mermaid
@@ -139,9 +212,15 @@ stateDiagram-v2
   draft --> published: POST /publish（版++）
   normalized --> published: POST /publish（版++）
   published --> published: PUT / PATCH metadata（版++）
+  draft --> archived: POST /archive（版++）
+  normalized --> archived: POST /archive・一括アーカイブ（版++）
+  published --> archived: POST /archive（版++）
+  archived --> normalized: アーカイブより後の再正規化（版++）
+  archived --> archived: アーカイブより前の再正規化（内容だけ。版++）
   draft --> [*]: DELETE
   normalized --> [*]: DELETE
   published --> [*]: DELETE
+  archived --> [*]: DELETE
 ```
 
 各遷移後に `DocumentUpdated` を発行し、取り込み・Wiki 同期へ連鎖する。
@@ -153,8 +232,10 @@ stateDiagram-v2
 | 作成・更新でタイトル空白 | 保存しない | 400 ValidationProblem（`title`: 「タイトルは必須です。」） |
 | 対象文書が存在しない | 更新・取得・削除を中断 | 404 NotFound |
 | `expectedVersion` が現在版と不一致 | 更新を拒否し lost update を防止 | 409 Conflict（`version_conflict`, `expectedVersion`, `currentVersion`） |
+| 照合の後・保存の前に別の更新が版を進めた（`expectedVersion` の有無を問わない。削除も同じ） | 保存を巻き戻し、黙って上書きしない（版の行も残さない・更新イベントも出さない） | 409 Conflict（同じ本文。`currentVersion` は読み直した現在版、`expectedVersion` は要求に無ければ null。その間に文書が消えていれば 404） |
 | 存在しない版番号の取得 | — | 404 NotFound |
 | `DocumentNormalized` 再配信（同一 `DocumentId`） | 冪等 upsert（重複登録しない） | 既存文書を更新し版追記 |
+| `DocumentNormalized` が反映済みより古い・削除より前（遅着・再配送） | 反映しない（本文を読まず、更新イベントも出さない） | 正常終了（§再正規化の順序） |
 
 ## 受け入れ基準
 
@@ -164,6 +245,7 @@ stateDiagram-v2
 - [x] `GET /documents/{id}/versions/{version}` が指定版を返し、存在しない版は 404。
 - [x] 過去版スナップショットは後続更新で書き換わらない（append-only）。
 - [x] `PUT` / `PATCH` に古い `expectedVersion` を付与すると 409 を返す。
+- [x] 同じ版を前提にした 2 つの `PUT`（または `PATCH`）が並行すると、一方だけが 200 になり他方は 409 になる。500 にも黙った上書きにもならない（実 PostgreSQL で確かめる）。
 - [x] `PATCH /metadata` はタイトルを変更せず属性・タグのみ更新する。
 - [x] 作成・更新・公開・正規化取込のいずれでも `DocumentUpdated` を発行する。
 - [x] タイトル空白の作成は 400 を返す。
@@ -186,11 +268,20 @@ stateDiagram-v2
 ## 未決事項
 
 - 版間の差分（diff）表示・特定版へのロールバック（復元）API は範囲外（後続タスク）。
+- **アーカイブ解除（`archived` から公開・正規化済みへ戻す操作）は製品の操作として持たない**（計画の裁定 2026-10-16）。
+  公開の口は `archived` からの公開を拒む（409）。戻し方は 2 つだけである: (a) データソースの再同期（データソース由来の文書に限る。状態は正規化済みへ戻り、
+  公開は別の操作。取り込み・グラフは通常の経路で載せ直す）、(b) 非常時に版の履歴から台帳の状態だけを SQL で戻す（運用の非常手段。下流は戻らない。
+  手順は運用仕様書の一括アーカイブの節）。文書管理画面で人が作成した文書と機械クライアントが作成した文書は (b) だけである。
+- 本文の投入（`PUT /documents/{id}/body`）はアーカイブ済みの文書の状態を正規化済みへ戻す（拒否しない）。その扱いは計画の判断待ちである。
 - 本文（Markdown 本体）は**オブジェクトストレージへ実保存され、DB は参照 URI だけを持つ**。
   削除は**その実体（過去の版が指していた本文と図表資産を含む）まで及ぶ**。
   🔴 ただし**資産の台帳は遡及付与しない**ため、台帳へ資産欄を足す以前に取り込まれた文書の
   図表資産は実体が残る。**「全部消える」とは読まないこと。**
-- 楽観的並行制御は API 層の `expectedVersion` 照合のみで、DB 行ロックは導入しない。
+- 楽観的並行制御は API 層の `expectedVersion` 照合と、保存時の版の突き合わせ（版を並行トークンにし、`UPDATE … WHERE` 版 = 読んだ版）の 2 段である。DB 行ロックは導入しない。
+  照合を通った後に追い越された保存は 409 を返す。版テーブルの一意索引違反（同じ番号の版の行）も同じ競合として 409 へ写す。
+  🔴 409 へ写すのは `PUT`・`PATCH …/metadata`・`DELETE`・個人資料の露出トグル（`PUT /private-notes/{id}/exposure`）の 4 口である。
+  削除が追い越されたときは本文の実体を先に消しているので、文書は勝った側の内容で本文の無いまま残り、削除をやり直せば完了する。
+  他の書き込み（公開・アーカイブ・取り込みの反映・タグの追加・Obsidian 同期等）は、追い越されると黙って上書きせずに失敗する（取り込みの反映は再試行で読み直す）が、409 へは写さない。
 - **呼び出し側の自然キー（外部 ID）での引き当て・upsert は持たない。** 文書の同一性は文書 ID ただ 1 つであり、当面は外部 ID を
   持たないと決まった（呼び出し側は `GET /documents/page` の属性の絞り込みで既存の写しを探す。重複の実害が観測されたら改めて起こす）。
 - 機械クライアントの自分の文書の更新・削除は上の「機械クライアントの自分の文書と、所有者の不変性」のとおり。

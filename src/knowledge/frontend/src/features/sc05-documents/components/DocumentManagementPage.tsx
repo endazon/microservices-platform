@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
 import {
@@ -16,15 +16,39 @@ import {
   Tag,
 } from '@platform/ui';
 import { QueryState } from '@foundation/ui/QueryState';
-import { i18n } from '@foundation/i18n';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
 import { CONFIDENTIALITY_KEY } from '../../../lib/abac';
 import { DocumentForm } from './DocumentForm';
 import type { DocumentFormValues } from './DocumentForm';
-import { useAdminDocuments, useDocumentActions } from '../api/useDocumentAdmin';
-import type { DocumentCommand } from '../api/useDocumentAdmin';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
+import {
+  DEFAULT_DOCUMENT_ORIGIN,
+  DEFAULT_DOCUMENT_PAGE_SIZE,
+  DEFAULT_DOCUMENT_SORT,
+  EMPTY_DOCUMENT_CONDITIONS,
+  hasConditions,
+  isFiltered,
+  useAdminDocuments,
+  useDocumentActions,
+} from '../api/useDocumentAdmin';
+import type {
+  DocumentCommand,
+  DocumentListConditions,
+  DocumentListRequest,
+  DocumentPageRequest,
+  DocumentSort,
+} from '../api/useDocumentAdmin';
+import { DocumentPagination } from './DocumentPagination';
+import { DocumentListToolbar } from './DocumentListToolbar';
+import { DocumentOriginTabs } from './DocumentOriginTabs';
+import { DocumentPreviewPanel } from './DocumentPreviewPanel';
+import { documentBodyView } from '../types/documentBody';
+import { documentIndexStatusView } from '../types/documentIndexStatus';
+import { documentSourceKey, linkableOriginalUri, sourceLabel } from '../types/documentSource';
+import type { DocumentOrigin } from '../types/documentSource';
 import { useTagOptions } from '../api/useTagOptions';
 import { canPublish, documentStatusView } from '../types/documentStatus';
 // SC-05, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -54,11 +78,13 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //       契約を足すのではなく**要素そのものが落ちた**ので、**出していないのが正しい**。
 //     - **タグ辞書 → 裁定 Q18 で照会口を管理系ロールへ開くと確定し、#634 / #640 で実装済み**。
 //       **本画面が補完へ載せる作業は未了**であり、そこが残りである。
-//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。
+//   ~~機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。~~（下の 2026-10-24 追記で解消）
 //   **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は 2026-08-05 の裁定
 //   （Q7・Q8・派生 Q30）で確定し、正は計画リポジトリ project-planning の docs/glossary.md
 //   （restricted＝**取扱制限**）。
 //   **写像の実装先は #541 であり、それまでは生値を出す。**
+//   ［2026-10-24 / #2019］写像を入れた。一覧・絞り込み・フォームの選択肢は表示名で出す（`@foundation/i18n` の
+//   `confidentialityLabel`。SC-02・SC-03 と共有）。送る値は契約の値のまま。
 
 /**
  * 409 の詳細（Problem 本文の errors / detail / title 由来）。
@@ -75,7 +101,43 @@ export function DocumentManagementPage() {
   const { t } = useLingui();
   const [editing, setEditing] = useState<DocumentDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const documents = useAdminDocuments();
+  // SC-05, FR-06, IADR-0537（#1923 段 1）: 一覧はページで引く（既定 50 件）。総件数は BFF が権限で絞った後の数。
+  // ［2026-10-15 / #1923 段 2・IADR-0545］並べ替え・表題の検索・状態の絞り込みも同じ要求に載せる。条件を変えたら先頭へ戻す。
+  // ［2026-10-17 / #1923・IADR-0561］タブ（既定は人の文書・報告書）とデータソース・機密区分・タグ・プロジェクト・保存日も同じ要求に載せる。
+  const [request, setRequest] = useState<DocumentListRequest>({
+    offset: 0,
+    limit: DEFAULT_DOCUMENT_PAGE_SIZE,
+    sort: DEFAULT_DOCUMENT_SORT,
+    origin: DEFAULT_DOCUMENT_ORIGIN,
+    ...EMPTY_DOCUMENT_CONDITIONS,
+  });
+  // #1923: 横のペインでプレビューしている文書（本文の先頭）。
+  // 🔴 持つのは ID だけで、描画のたびに**最新の一覧**から文書を引く —— 写しを持つと、編集・状態遷移の後も古い表題・状態のまま残り、
+  //   削除・絞り込みで一覧から消えた文書のペインも出たままになる。いまの一覧に無ければペインを出さない。
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const page: DocumentPageRequest = { offset: request.offset, limit: request.limit };
+  const setPage = (next: DocumentPageRequest) => setRequest((r) => ({ ...r, ...next }));
+  const filtered = isFiltered(request);
+  const conditioned = hasConditions(request);
+  const onQueryChange = useCallback((q: string) => setRequest((r) => ({ ...r, q, offset: 0 })), []);
+  const onSortChange = (sort: DocumentSort) => setRequest((r) => ({ ...r, sort, offset: 0 }));
+  const onConditionChange = (change: Partial<Omit<DocumentListConditions, 'q'>>) =>
+    setRequest((r) => ({ ...r, ...change, offset: 0 }));
+  const onOriginChange = (origin: DocumentOrigin) =>
+    setRequest((r) => ({ ...r, origin, offset: 0 }));
+  const onClear = () => setRequest((r) => ({ ...r, ...EMPTY_DOCUMENT_CONDITIONS, offset: 0 }));
+  const documents = useAdminDocuments(request);
+  const total = documents.data?.total;
+  const previewing = documents.data?.items.find((doc) => doc.id === previewId) ?? null;
+  // 削除などで総件数が減り、いまのページが末尾を越えたら末尾のページへ戻す（空のページを出したままにしない）。
+  // 前のページを保ったまま読む間（placeholder）は、その前のページの総件数で判断することになるが、誤って戻すことは無い ——
+  // 画面が要求する位置は常に「表示中の総件数より手前」（ページ送りの選択肢も、ここで戻す先の末尾のページも）なので、
+  // placeholder の総件数に対して `offset < total` が必ず成り立つ。placeholder を除く条件は置かない（到達しない分岐になる）。
+  useEffect(() => {
+    if (total === undefined || page.offset < total || page.offset === 0) return;
+    const lastOffset = Math.max(0, Math.ceil(total / page.limit) - 1) * page.limit;
+    setRequest((r) => ({ ...r, offset: lastOffset }));
+  }, [total, page.offset, page.limit]);
   // SC-05（#449）: タグの選択肢は辞書（`/bff/tags`）から引く。自由入力は許さない。
   const tagOptions = useTagOptions();
   const actions = useDocumentActions();
@@ -193,13 +255,37 @@ export function DocumentManagementPage() {
           </Alert>
         )}
 
+        {/* #1923・IADR-0561: 機械の収集と人の文書・報告書を分けるタブ（件数はデータソース別の件数から導く）。 */}
+        <DocumentOriginTabs
+          origin={request.origin}
+          sourceCounts={documents.data?.sourceCounts}
+          onChange={onOriginChange}
+        />
+
+        {/* #1923 段 2: 並べ替え・表題の検索・状態の絞り込み。取得の状態に関わらず出す（0 件でも条件を戻せるように）。
+            ［2026-10-17 / IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日を足した。 */}
+        <DocumentListToolbar
+          sort={request.sort}
+          conditions={request}
+          statusCounts={documents.data?.statusCounts}
+          sourceCounts={documents.data?.sourceCounts}
+          projectCounts={documents.data?.projectCounts}
+          unfilteredTotal={documents.data?.unfilteredTotal}
+          tagOptions={tagOptions.names}
+          onSortChange={onSortChange}
+          onConditionChange={onConditionChange}
+          onQueryChange={onQueryChange}
+          onClear={onClear}
+        />
+
         {/* 一覧の待ち・空・失敗は `QueryState` の 1 本に統一する（判定順は失敗 → 待ち → 空 → 本体）。
-         **取得前に表の器を描かない** —— 空の見出し行は「0 件」と読めてしまう。 */}
+         **取得前に表の器を描かない** —— 空の見出し行は「0 件」と読めてしまう。
+         「文書はまだありません。」は絞り込んでいないときだけである（絞り込みの結果の 0 件は下の本体で別の文言を出す）。 */}
         <QueryState
           query={documents}
           loadingLabel={t`文書を読み込み中…`}
           errorTitle={t`文書を取得できませんでした。`}
-          isEmpty={(data) => data.length === 0}
+          isEmpty={(data) => data.unfilteredTotal === 0}
           empty={
             <EmptyState
               title={t`文書はまだありません。`}
@@ -211,66 +297,129 @@ export function DocumentManagementPage() {
             />
           }
         >
-          {(rows) => (
-            <Table>
-              <TableCaption>
-                <Trans>文書の一覧</Trans>
-              </TableCaption>
-              <TableHead>
-                <TableRow>
-                  <TableHeaderCell>
-                    <Trans>タイトル</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>機密区分</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>版</Trans>
-                  </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>状態</Trans>
-                  </TableHeaderCell>
-                  {/* #629: 運用者には操作が 1 つも無いので、列ごと出さない
+          {(data) =>
+            data.total === 0 && !conditioned ? (
+              // #1923・IADR-0561: 帯の条件は無く、タブだけで 0 件（台帳には文書がある）。
+              <EmptyState
+                title={t`このタブの文書はありません。`}
+                description={t`ほかのタブに文書があります。`}
+                action={
+                  <Button type="button" size="sm" onClick={() => onOriginChange('')}>
+                    <Trans>すべての文書を表示</Trans>
+                  </Button>
+                }
+              />
+            ) : data.total === 0 ? (
+              <EmptyState
+                title={t`条件に一致する文書はありません。`}
+                description={t`検索語や状態を変えるか、条件を解除してください。`}
+                action={
+                  <Button type="button" size="sm" onClick={onClear}>
+                    <Trans>条件を解除</Trans>
+                  </Button>
+                }
+              />
+            ) : (
+              <>
+                <Table>
+                  <TableCaption>
+                    <Trans>文書の一覧</Trans>
+                  </TableCaption>
+                  <TableHead>
+                    <TableRow>
+                      <TableHeaderCell>
+                        <Trans>タイトル</Trans>
+                      </TableHeaderCell>
+                      {/* #1923・IADR-0561: データソース（取り込み元・収集の出典・確定報告書・手入力）。 */}
+                      <TableHeaderCell>
+                        <Trans>データソース</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>機密区分</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>状態</Trans>
+                      </TableHeaderCell>
+                      {/* #1923 段 2: 台帳で出せる本文の状態（索引の状態ではない。`types/documentBody.ts`）。 */}
+                      <TableHeaderCell>
+                        <Trans>本文</Trans>
+                      </TableHeaderCell>
+                      {/* #1993: 検索の索引の状態（索引済み・埋め込み待ち・未索引・不明）。BFF がページ分をまとめて取り込み側に引く。 */}
+                      <TableHeaderCell>
+                        <Trans>索引</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>タグ</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>更新日時</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>版</Trans>
+                      </TableHeaderCell>
+                      {/* #629: 運用者には操作が 1 つも無いので、列ごと出さない
                       （空の「操作」列が並ぶと、押せる何かがあるように読める）。 */}
-                  {canWrite && (
-                    <TableHeaderCell>
-                      <Trans>操作</Trans>
-                    </TableHeaderCell>
-                  )}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows.map((doc) => (
-                  <DocumentRow
-                    key={doc.id}
-                    doc={doc}
-                    busy={commandPending}
-                    canWrite={canWrite}
-                    onEdit={() => {
-                      beginOperation();
-                      setEditing(doc);
-                    }}
-                    onCommand={run}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          )}
+                      {canWrite && (
+                        <TableHeaderCell>
+                          <Trans>操作</Trans>
+                        </TableHeaderCell>
+                      )}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {data.items.map((doc) => (
+                      <DocumentRow
+                        key={doc.id}
+                        doc={doc}
+                        indexStatuses={data.indexStatuses}
+                        busy={commandPending}
+                        canWrite={canWrite}
+                        onEdit={() => {
+                          beginOperation();
+                          setEditing(doc);
+                        }}
+                        onCommand={run}
+                        onPreview={() => setPreviewId(doc.id)}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+                <DocumentPagination
+                  total={data.total}
+                  unfilteredTotal={filtered ? data.unfilteredTotal : undefined}
+                  offset={page.offset}
+                  limit={page.limit}
+                  busy={documents.isFetching}
+                  onChange={setPage}
+                />
+              </>
+            )
+          }
         </QueryState>
       </div>
 
-      {/* #629: 入力フォームそのものが登録・編集の口なので、運用者には出さない。 */}
-      {canWrite && (
+      {/* #629: 入力フォームそのものが登録・編集の口なので、運用者には出さない。
+          #1923: プレビューは閲覧なので運用者にも出す（フォームの上に置く）。 */}
+      {(canWrite || previewing) && (
         <div className="w-full min-w-0 lg:flex-1">
+          {previewing && (
+            <DocumentPreviewPanel
+              key={previewing.id}
+              doc={previewing}
+              onClose={() => setPreviewId(null)}
+            />
+          )}
           {/* 編集対象が変わったらフォームを作り直す（前の文書の入力値を持ち越さない）。 */}
-          <DocumentForm
-            key={editing?.id ?? 'new'}
-            editing={editing}
-            submitting={create.isPending || update.isPending}
-            tagOptions={tagOptions.names}
-            onSubmit={save}
-            onCancel={() => setEditing(null)}
-          />
+          {canWrite && (
+            <DocumentForm
+              key={editing?.id ?? 'new'}
+              editing={editing}
+              submitting={create.isPending || update.isPending}
+              tagOptions={tagOptions.names}
+              onSubmit={save}
+              onCancel={() => setEditing(null)}
+            />
+          )}
         </div>
       )}
     </section>
@@ -279,50 +428,126 @@ export function DocumentManagementPage() {
 
 function DocumentRow({
   doc,
+  indexStatuses,
   busy,
   canWrite,
   onEdit,
   onCommand,
+  onPreview,
 }: {
   doc: DocumentDto;
+  /** #1993: ページの文書の索引の状態（旧い応答では無い → 「不明」）。 */
+  indexStatuses: Readonly<Record<string, string>> | undefined;
   busy: boolean;
   canWrite: boolean;
   onEdit: () => void;
   onCommand: (id: string, kind: DocumentCommand, message: string) => void;
+  onPreview: () => void;
 }) {
   const { t } = useLingui();
   const confidentiality = doc.attributes?.[CONFIDENTIALITY_KEY];
   const statusView = documentStatusView(doc.status);
+  const bodyView = documentBodyView(doc);
+  const indexView = documentIndexStatusView(indexStatuses, doc.id);
+  // #1923・IADR-0561: 元の URL（ニュースの出典など）。`http(s)` だけをリンクにする。
+  const original = linkableOriginalUri(doc.originalUri);
+  const tags = doc.tags ?? [];
+  const moreTags = tags.length - 3;
+  const title = doc.title;
 
   return (
     <TableRow>
       <TableCell>
-        {/* 計画の遷移図 SC05 → SC03（詳細・版履歴）。 */}
+        {/* 計画の遷移図 SC05 → SC03（詳細・版履歴）。
+            #1923 段 2: 長い表題（ニュースの見出しなど）は 1 行で省略し、全文はホバー（`title`）で出す。
+            リンクの名前（読み上げ）は全文のままである（省略は見た目だけ）。 */}
         <Link
           to="/docs/$id"
           params={{ id: doc.id }}
-          className="font-medium text-brand hover:underline"
+          title={doc.title}
+          className="block max-w-[16rem] truncate font-medium text-brand hover:underline xl:max-w-[22rem]"
         >
           {doc.title}
         </Link>
+        {/* #1923・IADR-0561: 本文の先頭のプレビュー（横のペイン）と出典。どちらも閲覧なので運用者にも出す。 */}
+        <span className="mt-1 flex flex-nowrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            className="text-brand hover:underline"
+            aria-label={t`「${title}」をプレビュー`}
+            onClick={onPreview}
+          >
+            <Trans>プレビュー</Trans>
+          </button>
+          {original && (
+            <a
+              href={original}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand hover:underline"
+              aria-label={t`「${title}」の出典を開く`}
+            >
+              <Trans>出典 ↗</Trans>
+            </a>
+          )}
+        </span>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm">
+        {sourceLabel(documentSourceKey(doc), (descriptor) => i18n._(descriptor))}
       </TableCell>
       {/* hi-fi は機密区分を accent のチップで描く（`.tag-accent` 社内限 / `.tag-outline` 秘）。
-          値そのものは訳さない（lib/abac/confidentiality.ts 参照）。 */}
+          表示は用語集の表示名（`@foundation/i18n` の写像。SC-02・SC-03 と共有。#2019）。 */}
       <TableCell>
-        {confidentiality ? <Tag tone="accent">{confidentiality}</Tag> : <span aria-hidden>—</span>}
+        {confidentiality ? (
+          <Tag tone="accent">{confidentialityLabel(confidentiality, (d) => i18n._(d))}</Tag>
+        ) : (
+          <span aria-hidden>—</span>
+        )}
       </TableCell>
-      <TableCell>v{doc.version}</TableCell>
       {/* 公開ライフサイクル。INDEX 決定 21: 色だけで意味を持たせない —— `StatusBadge` が
           tone ごとの固定アイコンとテキストを型で強制する。 */}
       <TableCell>
-        <StatusBadge tone={statusView.tone}>
+        {/* 列幅が狭いときに 1 文字ずつ折り返さない（表は横にスクロールする）。 */}
+        <StatusBadge tone={statusView.tone} className="whitespace-nowrap">
           {typeof statusView.label === 'string' ? statusView.label : i18n._(statusView.label)}
         </StatusBadge>
       </TableCell>
+      <TableCell>
+        <StatusBadge tone={bodyView.tone} className="whitespace-nowrap">
+          {i18n._(bodyView.label)}
+        </StatusBadge>
+      </TableCell>
+      <TableCell>
+        <StatusBadge tone={indexView.tone} className="whitespace-nowrap">
+          {typeof indexView.label === 'string' ? indexView.label : i18n._(indexView.label)}
+        </StatusBadge>
+      </TableCell>
+      {/* #1923・IADR-0561: タグは 3 個まで出し、残りは件数で示す（行が縦に伸びないように）。 */}
+      <TableCell>
+        {tags.length === 0 ? (
+          <span aria-hidden>—</span>
+        ) : (
+          <span className="flex flex-nowrap gap-1" title={tags.join(', ')}>
+            {tags.slice(0, 3).map((tag) => (
+              <Tag key={tag}>{tag}</Tag>
+            ))}
+            {moreTags > 0 && (
+              <span className="whitespace-nowrap text-xs text-fg-muted">
+                <Trans>他 {moreTags} 件</Trans>
+              </span>
+            )}
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-sm text-fg-muted">
+        {formatDateTime(doc.updatedAt)}
+      </TableCell>
+      <TableCell>v{doc.version}</TableCell>
       {/* #629: 見出しと同じ条件で列ごと落とす（列数がずれると表が壊れる）。 */}
       {!canWrite ? null : (
         <TableCell>
-          <span className="flex flex-wrap gap-2">
+          {/* #1923 段 2: 操作は 1 行に並べる（折り返すと行が縦に伸びて一覧が読めない。列が溢れたら表が横にスクロールする）。 */}
+          <span className="flex flex-nowrap gap-2">
             <Button type="button" size="sm" onClick={onEdit}>
               <Trans>編集</Trans>
             </Button>

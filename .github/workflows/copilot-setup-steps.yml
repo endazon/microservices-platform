@@ -46,13 +46,13 @@ jobs:
       # git を使う。CI の PR 実行ではその振る舞いを確かめられないので変えない。トークンは contents: read
       # だけなので、残っても書き込みには使えない。
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ↓ 技術スタックに合わせて差し替える（既定は C#/.NET 例）
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
 
       - name: Restore dependencies
         run: |

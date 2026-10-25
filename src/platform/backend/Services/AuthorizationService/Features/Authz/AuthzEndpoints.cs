@@ -7,7 +7,6 @@ using AuthorizationService.Features.Authz.GetAttribute;
 using AuthorizationService.Features.Authz.GetPolicy;
 using AuthorizationService.Features.Authz.ListAttributes;
 using AuthorizationService.Features.Authz.ListPolicies;
-using AuthorizationService.Features.Authz.ResolveScope;
 using AuthorizationService.Features.Authz.SetPolicyActive;
 using AuthorizationService.Features.Authz.UpdateAttribute;
 using AuthorizationService.Features.Authz.UpdatePolicy;
@@ -29,24 +28,14 @@ public static class AuthzEndpoints
     {
         var g = app.MapGroup("/authz").WithTags("Authorization");
 
-        // FR-05, NFR-09, 計画 ADR-0088 決定 2, [[IADR-0379]] 決定 4, [[IADR-0413]] (#1333):
-        // 権限スコープ解決（検索・RAG の前に呼び出される）。
+        // FR-05, NFR-09, 計画 ADR-0088 決定 2, ADR-0089 決定 2, [[IADR-0413]] (#1333): `/authz` の**サービス面**。
+        // 🔴 **`ServiceCaller` を要求する**（利用者のトークンでは通さない。通すと confused deputy になる）。
         //
-        // 🔴 **`ServiceCaller` を要求する。gRPC 面と同じ 1 つのポリシーである。**
-        // 従前ここは**認可を 1 つも掛けていなかった**（「サービス間呼び出しのため管理者限定にしない」
-        // と書いてあったが、**管理者限定にしない**ことと**誰でも通す**ことは同じではない）。
-        // 🔴 **管理者限定にはしない** —— これはサービスが呼ぶ面であり、利用者のトークンでは通さない
-        // （通すと呼び出し先が「利用者が直接呼んだ」と区別できず confused deputy になる）。
-        //
-        // 🔴 **これは `ADR-0088` 決定 1（属性の引き直し）の着地の条件である。**
-        // 引き直しだけを入れて無認可のまま残すと、この端点は**今より危険になる** ——
-        // `user_id` を渡すだけで**その利用者の真の属性に基づく判定**が引け、
-        // **任意利用者の ABAC 属性のオラクル**になる（同 実測 6）。**2 つは同じ着地に含める。**
-        //
-        // 呼び出し元 4 つ（BFF / AiAnalysis / Graph / Wiki）は s2s の資格情報を
-        // **compose・helm・realm のいずれにも既に持っている**（作業仕様書 §実測 4）。
+        // ［2026-10-15 / #1902・[[IADR-0533]] 追記］権限スコープ解決の REST（`POST /authz/scope`）は撤去した ——
+        // 呼び出し元（BFF / AiAnalysis / Graph / Wiki / Retrieval / McpServer / DataSource）はすべて
+        // east-west gRPC（`AuthzScope/Resolve`。`ResolveScope/GrpcService.cs`）へ移っており、AST も叩いていない。
+        // 評価器（`AbacEvaluator.ResolveScope`）と属性の引き直し（`ScopeUserAttributeSource`）は gRPC 面が持つ。
         var services = g.MapGroup("").RequireAuthorization(PlatformAuthPolicies.ServiceCaller);
-        services.MapResolveScope();
         // 計画 ADR-0089 決定 2 / IADR-0413 追記: `/authz` の**サービス面はすべて**呼び出し元サービスの資格を要求する。
         // 文書属性の辞書整合バリデーションは副作用が無く返すのは可否だけだが、値域を総当たりで推測できる口であり、
         // 「小さいから素通しでよい」を面の既定にしない（同 ADR §理由）。呼び出し元は現時点で無い（abac-seed README）。
@@ -54,7 +43,7 @@ public static class AuthzEndpoints
 
         // ---- FR-09, UC-05: ABAC ポリシー・属性辞書管理（管理者のみ） ----
         // FR-09: 管理系 CRUD は管理者ロールを要求する。deny-by-default のポリシー削除・無効化を
-        // 匿名で実行できないようにする。/scope・/attributes/validate はサービス間呼び出し（上の `services`）で守る。
+        // 匿名で実行できないようにする。/attributes/validate はサービス間呼び出し（上の `services`）で守る。
         var admin = g.MapGroup("").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         admin.MapListPolicies();

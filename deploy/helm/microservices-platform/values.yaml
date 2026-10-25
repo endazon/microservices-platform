@@ -4,6 +4,15 @@
 global:
   image:
     registry: harbor.internal
+    # NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージ（下の services の全 Deployment と frontend）のタグ。**既定は空で、空なら描画が落ちる**
+    #   （`helm template` / `helm upgrade` が required で止まる。`latest` へ黙って倒さない）。配備する側（CD・人・scripts/k8s-local-up.sh）が
+    #   ビルドした版の不変のタグ（git の sha。ローカルは scripts/lib/local-image-tag.sh が作る）を `--set-string global.image.tag=<sha>` で渡す。
+    #   サービスごとの上書きは `services.<名>.tag` / `frontend.tag`（既定は書かない＝この値を使う）。
+    #   🔴 `--set` ではなく `--set-string` で渡す（数字だけの sha は数として読まれる。描画は文字列でない値を拒む）。`latest` も拒む。
+    #   ロールバックは前の sha を渡し直す（docs/operations/operations.md §イメージのタグの固定とロールバック）。
+    tag: ""
+    # IADR-0605: タグが不変（sha）なので IfNotPresent のままでよい —— タグが変われば Pod の template が変わり、新しいタグは
+    #   ノードに無いので取りに行く。経路B（k3d-local の擬似レジストリ）は取り込んだイメージを使うため Always にできない（IADR-0088）。
     pullPolicy: IfNotPresent
   otel:
     endpoint: http://otel-collector:4317
@@ -31,21 +40,41 @@ global:
     # DB パスワードを保持する Secret（key=password）。scripts/k8s-local-up.sh が dev 既定で作成する。
     existingSecret: postgres-app
     passwordKey: password
+    # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: DB への接続は TLS で、**サーバ証明書を検証する**
+    #   （`SSL Mode=VerifyFull` ＋ `Root Certificate` ＝ global.infraCa の CA だけを信頼し、host の名前も照合する）。
+    #   検証を緩める値（Require / Prefer / Trust Server Certificate）を与える口は持たない。false は平文（切り戻し専用）。
+    tls:
+      enabled: true
 
   # NFR, ADR-0003（Superseded by ADR-0027・注記は #580）, ADR-0027, #1022: メッセージブローカ
   # （RabbitMQ）の接続。**資格情報をイメージへ焼かない**（DB と同型・#1012 の global.db に倣う）。
   # 各サービスの `appsettings.json` は `RabbitMq:ConnectionString` を持たず（#1022 で撤去）、
   # 未注入なら起動時に落ちる（注入漏れが「既定の資格情報で接続成功」へ倒れない）。
-  # パスワードは Secret（existingSecret）から `$(RABBITMQ_PASSWORD)` で補間する（値を chart に書かない）。
-  # ⚠️ `user` はブローカ側の Secret `rabbitmq`（platform-infra ns・key=username）と**一致させること**。
-  #    ローカルは `k8s-local-up.sh` が env `RABBITMQ_USER` から両方を作る（既定 guest）。
+  # パスワードは Secret（credentialsSecretName）から `$(RABBITMQ_PASSWORD)` で補間する（値を chart に書かない）。
+  # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: サービスごとのユーザーで接続する（IADR-0573 の段 3）。
+  #   ユーザー名 = <usernamePrefix><services のキー>（例: msp-document）。パスワードは Secret の同名のキー。
+  #   一覧の単一情報源は deploy/local/rabbitmq-setup/users.txt（試験が messaging: true のサービスと突き合わせる）。
+  #   供給: ESO=1 は ExternalSecret msp-rabbitmq-users（KV msp/rabbitmq-users）、それ以外は k8s-local-up.sh が乱数で作る。
+  #   🔴 旧キー（user / existingSecret / passwordKey ＝全サービス共通の 1 組）は廃止。与えられたら描画で止める。
   messaging:
     host: rabbitmq
+    # 平文の口（tls.enabled=false の切り戻しのときだけ使う）。
     port: 5672
-    user: guest
-    # ブローカのパスワードを保持する Secret（key=password）。scripts/k8s-local-up.sh が dev 既定で作成する。
-    existingSecret: rabbitmq-app
-    passwordKey: password
+    credentialsSecretName: msp-rabbitmq-users
+    usernamePrefix: msp-
+    # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの接続は TLS（amqps・tls.port）で、サーバ証明書を検証する
+    #   （CA は global.infraCa を信頼ストアへ足す。host の名前の照合は共通ヘルパ UsePlatformRabbitMq が必ず行う）。
+    tls:
+      enabled: true
+      port: 5671
+
+  # NFR-16, IADR-0591: 基盤（DB・ブローカ）のサーバ証明書を発行した CA。ConfigMap（キー caKey）として各サービスの
+  #   名前空間に置く（公開してよい証明書だけ。経路B は scripts/k8s-local-up.sh が cert-manager の基盤の CA から写す）。
+  #   db.tls / messaging.tls のどちらかが有効なサービスは /etc/platform-infra-ca へ読み取り専用でマウントする（非 optional。
+  #   無ければ Pod は立たない＝検証の無い接続へ倒れない）。本番像は配備の側がこの ConfigMap を用意する。
+  infraCa:
+    configMap: platform-infra-ca
+    caKey: ca.crt
 
   # FR-06, FR-12, ADR-0014, ADR-0015（Superseded by ADR-0106）, IADR-0024, IADR-0461: S3 互換オブジェクト
   # ストレージ（SeaweedFS）接続。資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
@@ -57,6 +86,25 @@ global:
     accessKeyKey: accessKey
     secretKeyKey: secretKey
 
+  # NFR, IADR-0539 (#1927): .NET サービス（下の `services` が描く Deployment すべて）の GC の設定。**本番の既定**である。
+  # 値は AST のチャート（全 .NET サービスへ同じ 3 つ）と同じ。理由と釣り合いの判断は IADR-0539:
+  #   - gcServer "0": Workstation GC。CPU の limits が 500m / 1000m なので Server GC の並列（コアごとのヒープ）は効かない。
+  #   - conserveMemory "5": ヒープの断片化を詰める方向へ寄せる（0〜9。大きいほど詰める）。
+  #   - heapHardLimitPercent "0x3C": GC ヒープの上限を memory の limits の 60%（512Mi で ≈307Mi。.NET の既定は 75%）にし、
+  #     ネイティブの分（スレッド・JIT・Wolverine の実行時コード生成）の余地を limits の内側に残す。
+  # 🔴 **env の値は 16 進数として読まれる**（Microsoft Learn「Garbage collector config settings」
+  #   https://learn.microsoft.com/en-us/dotnet/core/runtime-config/garbage-collector の表:
+  #   「Environment variable | 0xn or n | n is interpreted as a hex value in either format」。HeapHardLimitPercent の例は 30% → 0x1E）。
+  #   `"60"` と書くと 0x60＝96% になり、上限の意味を失う（#1928 のレビューで判明）。2 桁以上の値は必ず `0x` を付けて書く。
+  #   gcServer "0"・conserveMemory "5" は 1 桁なので 10 進と同じ値になる。
+  # サービス単位の上書きは `services.<名>.dotnetGc`（鍵ごと）。**空文字の鍵は描かない**＝そのサービスだけ .NET の既定へ戻す退路。
+  # MALLOC_ARENA_MAX などの glibc の env は入れない（AST#811 の実測で保持の総量を減らさなかった。IADR-0539）。
+  # 🔴 同じ名前を extraEnv / extraEnvAppend に書かない（描画で落とす）。
+  dotnetGc:
+    gcServer: "0"
+    conserveMemory: "5"
+    heapHardLimitPercent: "0x3C"
+
 # ADR-0008: k3s 実行基盤 — 配備先 Namespace。
 # istio-injection: enabled により、この Namespace の Pod へサイドカーが自動注入される（段階2の前提）。
 namespace:
@@ -65,6 +113,20 @@ namespace:
   name: microservices-platform
   # Istio サイドカー自動注入ラベル。mesh.enabled=true のとき有効化する。
   istioInjection: true
+
+# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod のセキュリティ設定（多層防御・最小権限）。
+# 部品は templates/_pod-security.tpl。チャートが作る Pod は restricted の形（非 root・権限昇格なし・ケーパビリティなし・
+# seccomp RuntimeDefault）で描き、外部のイメージ（SeaweedFS・Wiki.js・TEI）は利用者 ID を変えずに付けられる分だけ付ける。
+podSecurity:
+  # Pod Security Admission の水準（Namespace のラベル。namespace.create のときチャートが貼る。経路B は k8s-local-up.sh が貼る）。
+  # 🔴 enforce はメッシュの注入が有効な Namespace では描かない —— 注入される istio-init が NET_ADMIN / NET_RAW を要し、
+  #   baseline を満たさないため（Istio CNI を入れない限り）。warn / audit はいつも描く（違反が見える）。
+  admission:
+    enforce: baseline
+    warn: restricted
+    audit: restricted
+  # .NET の aspnet イメージが用意する非特権ユーザー（APP_UID）。services の全 Deployment に使う。
+  dotnetRunAsUser: 1654
 
 # ADR-0005: サービスメッシュ（Istio / mTLS）— サービス間通信を STRICT mTLS で暗号化・相互認証する。
 # これをもって暫定運用（IADR-0017: ネットワーク分離を第一防御）を解消する（後継 IADR-0026）。
@@ -143,11 +205,54 @@ edge:
     enabled: false
     service: document-service
     port: 8080
+  # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0594 (#2045): 外部 AI エージェントの入口（エッジ host の /mcp）。
+  # 有効化すると /mcp（完全一致）と /mcp/ 配下が下記 Service へ **rewrite 無しで**流れる（公開パス ＝ MapMcp("/mcp") の契約パス）。
+  # 前置は templates/edge.yaml に直書きで knob にしない。**`prefix: /mcp` にはしない** —— Istio の prefix は文字列の前方一致で、
+  # 同じポートの管理 REST（/mcp-clients*）まで外へ出る。
+  #
+  # 🔴 **既定は false（opt-in）。** クライアント単位のレート制限（計画 11_mcp-server-integration §5）が未配備であり、
+  #    外部の新しい攻撃面を開けるかは運用者の明示の判断とする（IADR-0594 決定 4）。認証は MCP サーバーが行う
+  #    （/mcp は audience=mcp-server のトークンだけを通す。トークン無し・platform の audience は 401）。エッジは認証を緩めない。
+  # 同じ条件で templates/networkpolicy.yaml が gateway → mcp-service の穴を当該ポートに限って開け、templates/edge.yaml が
+  # AuthorizationPolicy（DENY）を置き、gateway の Namespace の主体からは /mcp・/mcp/* 以外（管理 REST・OpenAPI・自己申告・ヘルス）を落とす。
+  # 名前空間の中（BFF の管理 API の中継）・プローブは当たらない＝変わらない。
+  mcp:
+    enabled: false
+    service: mcp-service
+    port: 8080
 
 # IADR-0017 フォローアップ: ClusterIP + NetworkPolicy（デフォルト拒否）を実体化。
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
 networkPolicy:
   enabled: true
+  # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）の既定拒否（templates/networkpolicy-egress.yaml）。
+  # 描く条件は `enabled`（上）か `egress.enabled` のどちらか。上が true なら必ず描き、ここを false にすると描画で止める。
+  # 上が false の配備（経路B）は ingress を絞らないまま egress だけを当てられる（deploy/local/values-local.yaml）。
+  # 許すのは: DNS（dns の Pod の 53 番だけ）・同じ名前空間の Pod・mesh.enabled のとき istiod・destinations の宛先・
+  # サービス固有の 1 本（Vault・API サーバ・合成監視 → Keycloak。templates/networkpolicy.yaml ほか）。クラスタ外への許可は描かない。
+  egress:
+    enabled: true
+    # 既定拒否を当てる Pod の app ラベル。**空＝名前空間の全 Pod**（上の enabled=true ではこの形だけを受ける）。
+    # 経路B はここで段ごとに広げる（段 1 は外へ出ない Pod。IADR-0589）。
+    # 🔴 上の enabled=false でここが空のままなら描画で止まる（全 Pod へ黙って既定拒否を描かない）。egress も当てない配備は
+    #    `egress.enabled: false` を明示する。
+    workloads: []
+    # 名前解決の宛先（UDP / TCP 53）。CoreDNS は多くの配布で kube-system の `k8s-app: kube-dns`（k3s も同じ）。
+    # NodeLocal DNSCache 等で宛先が違う配備は上書きする。空は描画で止まる（全 Pod の 53 番へ倒さない）。
+    dns:
+      namespace: kube-system
+      podLabels:
+        k8s-app: kube-dns
+    # mesh.enabled のとき、サイドカー → istiod（構成と証明書）。istiod の chart の既定のラベルとポート。
+    istiod:
+      namespace: istio-system
+      podLabels:
+        app: istiod
+      port: 15012
+    # 別の名前空間の宛先。1 件 = { name, namespace, podLabels, ports, from（送り元の Pod の app ラベル） }。
+    # 本番像は基盤（DB・ブローカ・認可サーバ・collector）を同じ名前空間の名前で引くので空。基盤が別の名前空間に居る配備は
+    # ここに宣言する（宣言しなければ届かない＝fail-closed）。
+    destinations: []
   # NFR-09, ADR-0125 決定 4, IADR-0513 (#1756・#1811): 取引ユニット（AST）の名前空間からの ingress。**用途ごとに既定は閉じる。**
   # 有効にすると templates/networkpolicy.yaml が 1 用途 1 枚の NetworkPolicy を描く —— 行き先は services.<target> の Pod、
   # 送り元は「namespace（kubernetes.io/metadata.name）の Namespace かつ clients の Pod」（AND）、ポートは services.<target>.port（REST）だけ。
@@ -219,10 +324,14 @@ drift:
     # 起動待ちは --retry × --retry-delay だけが決める（180 秒。--max-time は 1 試行の上限であって
     # 総時間の上限ではない）。**この数字は実測から決めている** —— 根拠は同 template の注記（#1219）。
     image: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
+    # NFR, IADR-0583: curl イメージの curl_user（非 root）と主グループ curl_group。gid は uid と違う番号である
+    # （上の digest のイメージの /etc/passwd が `curl_user:x:100:101`。image を変えたら両方を確かめ直す）。
+    runAsUser: 100
+    runAsGroup: 101
 
 # NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。
 # metrics-server が必要（k3s は既定同梱）。対象はステートレスな要求処理サービス（下記 services リスト）。
-# 段階適用: まず要求処理系を minReplicas:2 + PDB とする。キュー駆動ワーカー（conversion/ingestion=worker:true）は
+# 段階適用: まず要求処理系を minReplicas:2 + PDB とする。キュー駆動ワーカー（conversion/ingestion）は
 # 競合コンシューマで水平化可能だが CPU HPA が不適なため対象外とし、負荷実測（#196）後に個別方針で順次追加する。
 # HPA 対象サービスは Deployment に静的 replicas を持たず HPA が所有する（deployment.yaml 参照）。
 scaling:
@@ -255,7 +364,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/document-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（catalog 段）をホストする — pipeline-config をマウントする。
@@ -273,10 +381,12 @@ services:
     # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0402 (#1255):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**読み取り 4 口だけ**（`knowledge.document.v1.DocumentRead`）で、書き込み・本文・共有は
-    # 出していない。呼び出し元は BFF の文書閲覧経路（`Services__DocumentServiceGrpc` を持つときだけ）。
+    # 出していない。呼び出し元は BFF の文書閲覧経路（`Services__DocumentServiceGrpc`）。
+    # ［2026-10-15 / #1905・IADR-0544］本文の読み取り（`GetDocumentContent`）を足した。BFF の SC-03 の本文は
+    # この面で受け取る —— 本文を読むのはこのサービス（上の objectStorage: true）であり、BFF へストレージを配線しない。
     # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
     # ［2026-09-26 追記 / #1515］このポートは MCP のツール申告の面（`platform.mcp.v1.McpToolDeclarations`）も受ける。
-    # 呼び出し元は mcp-server（`Mcp__GrpcServices__*` を持つときだけ）。
+    # 呼び出し元は mcp-server（`Mcp__Services__*`）。
     grpcPort: 8081
     # FR-22 / NFR-09 / NFR-16, ADR-0004 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0419 (#1255):
     # east-west gRPC の**呼び出し側**資格情報。realm の confidential client `document-service`
@@ -292,9 +402,8 @@ services:
       clientSecretKey: client-secret
     extraEnv:
       # FR-22 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0419 (#1255):
-      # east-west gRPC（h2c）の宛先。**これが在るときだけ**個人資料の通知の送出が gRPC 経路になる
-      # （無ければ REST `POST /internal/notifications` のまま。並走中の正は REST であり、
-      # 戻すのはこの 2 行を消すだけでよい）。
+      # east-west gRPC（h2c）の宛先。個人資料の通知の送出が gRPC 経路になる
+      # （無ければ常に UNAVAILABLE で送出は fail-open。REST `POST /internal/notifications` の並走は撤去した。IADR-0533）。
       # ポートは notification.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       # 🔴 利用者の JWT は面を通らない —— 3 契機はいずれも利用者文脈を持たない検知であり、
       # 宛先は本文の subject が運ぶ（判定の位置は動かない）。
@@ -318,14 +427,13 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/datasource-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
-    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    # 構成情報 API（BFF の Introspection__Services__*）。readiness は 8080 のまま。
     grpcPort: 8081
     # FR-01, IADR-0051: 実コネクタが取得した原本をオブジェクトストレージへ格納する（書き込み側）。未設定時は縮退。
     # 実 filesystem 同期は対象ファイル共有（SMB/NFS）を PVC 等でマウントする必要がある（ops 手順・operations.md）。
@@ -363,15 +471,11 @@ services:
       authMount: kubernetes
       namespace: platform-infra
       port: 8200
-    # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段。
-    # 🔴 **k8s の Service は 8080 で待つ。** コード既定も 8080 にしてあるが、
-    # **明示しておく**（先行 3 サービスは既定 `:5005` を extraEnv で上書きしており、
-    # ここだけ暗黙にすると「なぜこのサービスだけ書いていないのか」が読めなくなる）。
+    # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段は下の gRPC 宛先だけである
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # FR-05 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # 実在検証が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-05 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
+      # 実在検証が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは authorization.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
@@ -385,24 +489,22 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/conversion-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（convert 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
     # FR-12, ADR-0015（Superseded by ADR-0106）: 正規化本文・資産をオブジェクトストレージへ保管する（書き込み側）。
     objectStorage: true
-    # FR-15, IADR-0029 (#142): 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
-    # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
-    # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
+    # FR-15, IADR-0029 (#142): 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は下の grpcPort の gRPC 面で行う）。
+    # port を持つと Service が生成され BFF が到達できる。port を持つサービスには liveness / readiness が描かれる
+    # （［2026-10-23 / #2140］8080 の /health/live・/health/ready。readiness は自プロセスの必須依存だけを見る）。
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 フォローアップ 3 (#1537, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
-    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。面の ServiceCaller は
+    # 構成情報 API（BFF の Introspection__Services__*）。面の ServiceCaller は
     # 本サービスの認証（IADR-0465・#1520）が判定する。
     grpcPort: 8081
-    worker: true
     # FR-12 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `conversion-service`（service account ＋
     # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
@@ -410,15 +512,12 @@ services:
       clientId: conversion-service
       existingSecret: conversion-service-token
       clientSecretKey: client-secret
-    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
-    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
-    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
-    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
-      # FR-12 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # 図のコード化が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-12 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
+      # 図のコード化が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
@@ -430,23 +529,23 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/ingestion-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（ingest 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
     # FR-06: storage:// 本文をオブジェクトストレージから実取得する（読み取り側）。
     objectStorage: true
-    # FR-15, IADR-0029 (#142): 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
-    # port を持つと Service が生成され BFF が到達できる。worker=true は HTTP ヘルスプローブを抑止する
-    # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
+    # FR-15, IADR-0029 (#142): 最小 HTTP サーフェス（［2026-10-10 / #1517］従前の自己申告 /internal/introspection は撤去し、自己申告は下の grpcPort の gRPC 面で行う）。
+    # port を持つと Service が生成され BFF が到達できる。port を持つサービスには liveness / readiness が描かれる
+    # （［2026-10-23 / #2140］8080 の /health/live・/health/ready。readiness は自プロセスの必須依存だけを見る）。
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
-    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    # 構成情報 API（BFF の Introspection__Services__*）。readiness は 8080 のまま。
+    # ［2026-10-20 / #1993・IADR-0565］文書の索引の状態の面（knowledge.ingestion.v1.DocumentIndexStatus）も受ける
+    # （呼び出し元は BFF の文書管理の一覧の Services__IngestionServiceGrpc）。
     grpcPort: 8081
-    worker: true
     # FR-02 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `ingestion-service`（service account ＋
     # realm ロール platform-service のみ。ABAC ポリシーは持たない）。
@@ -454,15 +553,12 @@ services:
       clientId: ingestion-service
       existingSecret: ingestion-service-token
       clientSecretKey: client-secret
-    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
-    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
-    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
-    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
-      # FR-02 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # 埋め込みが gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-02 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。
+      # 埋め込みが gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
@@ -474,7 +570,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/retrieval-service
-    tag: latest
     # FR-14, IADR-0028 / #1016: パイプライン段（retrieval-delete 段）をホストする — pipeline-config をマウントする。
     pipelineSteps: true
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
@@ -484,9 +579,9 @@ services:
     # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。Service に name: grpc /
     # appProtocol: grpc として出る。**受け口として出す**のはこの PR が最初である
     # （従前は呼び出し元としてしか gRPC に関わっていなかった）。
-    # 呼び出し元は BFF の属性値照会（`Services__RetrievalServiceGrpc` を持つときだけ）。
+    # 呼び出し元は BFF の属性値照会（`Services__RetrievalServiceGrpc`）。
     # ［2026-09-26 追記 / #1515］このポートは MCP のツール申告の面（`platform.mcp.v1.McpToolDeclarations`）も受ける。
-    # 呼び出し元は mcp-server（`Mcp__GrpcServices__*` を持つときだけ）。
+    # 呼び出し元は mcp-server（`Mcp__Services__*`）。
     grpcPort: 8081
     # FR-03 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `retrieval-service`（service account ＋
@@ -495,20 +590,17 @@ services:
       clientId: retrieval-service
       existingSecret: retrieval-service-token
       clientSecretKey: client-secret
-    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
-    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
-    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
-    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先は下の gRPC 宛先だけである
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__LlmGateway` は読み手が無いので外した）。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（compose の `llm-gateway` とは違う）。
     extraEnv:
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
-      # FR-03 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # クエリ埋め込みが gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-03 / NFR-16, IADR-0397 (#1255): east-west gRPC（h2c）の宛先。
+      # クエリ埋め込みが gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
       # FR-04 / FR-05 / NFR-16, ADR-0034 決定 1, 計画 ADR-0086 決定 1・3, IADR-0410 (#1255):
-      # 二段検索の近傍展開の gRPC 宛先。**これが在るときだけ**近傍展開が gRPC 経路になる
-      # （無ければ REST のまま。並走中の正は REST）。資格情報は上の serviceToken を
+      # 二段検索の近傍展開の gRPC 宛先。近傍展開が gRPC 経路になる
+      # （無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。資格情報は上の serviceToken を
       # **そのまま使う**（1 サービス 1 主体）。ポートは graph.grpcPort と一致させること。
       # 🔴 利用者の JWT は面を通らない —— 利用者文脈（user_id / 属性 / action）を要求本文で運び、
       # GraphService が受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
@@ -517,11 +609,9 @@ services:
       # FR-05 / NFR-09, ADR-0004, ADR-0034 決定 1, IADR-0416 (#1339): ABAC 許可スコープの解決先。
       # 🔴 **本サービスが自分で引くようになった** —— 従前は呼び出し元が本文で送ってきた
       # `Scope` を信じており、到達できる相手が任意の scope を主張できた。
-      # コード既定は :5005（compose の旧ポート）なので、k8s では実 Service ポートへ上書きする。
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 同じ解決の gRPC 宛先。
-      # **これが在るときだけ** gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # ［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した。
+      # NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5 (#1339): 解決の gRPC 宛先。
+      # gRPC 経路で解決する（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
@@ -533,12 +623,11 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/aianalysis-service
-    tag: latest
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
-    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    # 構成情報 API（BFF の Introspection__Services__*）。readiness は 8080 のまま。
     grpcPort: 8081
     # FR-04 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `aianalysis-service`（service account ＋
@@ -547,37 +636,37 @@ services:
       clientId: aianalysis-service
       existingSecret: aianalysis-service-token
       clientSecretKey: client-secret
-    # FR-04, UC-01: 下流サービスの接続先（HTTP クライアント・readiness の UriHealthCheck）。
+    # FR-04, UC-01: 下流サービスの接続先（HTTP クライアント・依存の報告口 /health/dependencies の UriHealthCheck）。
+    # NFR-06 / IADR-0602 (#2105): 下流の疎通は readiness に入れない（下流の停止で本サービスを NotReady にしない）。
     # appsettings 既定はローカル用ポート（5003/5007）のため、k8s Service の実 DNS（:8080）へ上書きする。
     # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
     extraEnv:
-      # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
+      # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決は gRPC 宛先（下の `Services__AuthorizationServiceGrpc`）だけである
+      # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+      # 下の 2 つ（RetrievalService・LlmGateway）は依存の報告口 `/health/dependencies` が `/health/live` を読む（残す）。
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
       - name: Services__LlmGateway
         value: "http://llmgateway-service:8080"
-      # FR-04 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # テキスト生成（一括・逐次）が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-04 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
+      # テキスト生成（一括・逐次）が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
-      # FR-05 / NFR-16, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。**これが在るときだけ**
-      # スコープ解決が gRPC 経路になる（無ければ上の REST のまま）。資格情報は上の serviceToken を
+      # FR-05 / NFR-16, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。
+      # スコープ解決が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。資格情報は上の serviceToken を
       # **そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
       # FR-03 / FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / 計画 ADR-0086 決定 1 /
       # ADR-0087 決定 2 / ADR-0089 決定 1, IADR-0379, IADR-0410, IADR-0426 (#1255):
-      # RAG の検索の gRPC 宛先。**これが在るときだけ**検索が gRPC 経路になる（無ければ上の REST の
-      # まま。並走中の正は REST であり、戻すのはこの 1 行を消すだけでよい）。
+      # RAG の検索の gRPC 宛先。検索が gRPC 経路になる（無ければ常に
+      # UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは retrieval.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       # 🔴 **利用者の JWT は面を通らない** —— 利用者文脈（user_id / 属性 / action）を要求本文で運び、
       # RetrievalService が受け取った文脈で**自分で** ABAC を解決する（判定の位置は動かない）。
       # 🔴 **前提**: retrieval 側に Services__GraphServiceGrpc が在ること（上の retrieval.extraEnv）。
-      # 無いと二段検索の近傍展開が REST 実装のまま残り、転送できる利用者の資格情報が無いので
-      # **呼ばずに警告**する（グラフ再ランクが効かない）。
+      # 無いと二段検索の近傍展開は UNAVAILABLE で縮退する（グラフ再ランクが効かない）。
       - name: Services__RetrievalServiceGrpc
         value: "http://retrieval-service:8081"
     resources:
@@ -590,7 +679,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/authorization-service
-    tag: latest
     port: 8080
     # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC 用の h2c ポート
     # （TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。設定したサービスにだけ containerPort（名前 grpc）・
@@ -642,7 +730,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/wiki-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028: パイプライン段（wiki-sync / wiki-delete 段）をホストする — pipeline-config をマウントする。
@@ -651,7 +738,7 @@ services:
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
-    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    # 構成情報 API（BFF の Introspection__Services__*）。readiness は 8080 のまま。
     grpcPort: 8081
     # FR-06: storage:// 本文をオブジェクトストレージから実取得し Wiki.js へ push する（読み取り側）。
     objectStorage: true
@@ -665,11 +752,10 @@ services:
       existingSecret: wiki-service-token
       clientSecretKey: client-secret
     extraEnv:
-      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # FR-13 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # 閲覧のスコープ解決が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決は下の gRPC 宛先だけである
+      # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
+      # FR-13 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
+      # 閲覧のスコープ解決が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 🔴 未認証の短絡は輸送の手前にあるので、gRPC でも匿名では 1 度も呼ばない。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
@@ -687,7 +773,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/llm-gateway
-    tag: latest
     port: 8080
     # FR-02 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0397 (#1255):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -709,6 +794,8 @@ services:
     # FR-11, ADR-0010, IADR-0528 (#1872): Anthropic 呼び出しの期限は env Llm__AnthropicTimeoutSeconds（秒）で変えられる。
     #   chart は値を置かない（未設定＝既定 100 秒。数値でない・0 以下は既定へ倒れ warn を 1 行出す）。
     #   🔴 呼び出し側の期限はこの値より短く保つこと。延ばすなら下の extraEnv に足す（docs/operations/operations.md）。
+    # FR-11, IADR-0566 (#1997): 逐次（CompleteStream）のイベントの間の無通信の期限は env Llm__AnthropicStreamIdleTimeoutSeconds（秒）。
+    #   chart は値を置かない（未設定＝ Llm__AnthropicTimeoutSeconds と同じ値）。
     extraEnv:
       - name: Llm__ApiKey
         secretKeyRef:
@@ -716,7 +803,8 @@ services:
           key: anthropic-api-key
       # FR-02, ADR-0016, IADR-0504 (#1764): 埋め込み（ティアB・Voyage AI）の API キー。同じ Secret の voyage-api-key を読む。
       # 🔴 optional: true —— キーが Secret に無くても Pod は起動する（env を置かない＝鍵なし）。鍵なしの埋め込みは
-      #    一時障害（Retryable）として返り、取り込みは再試行の後 DLQ へ送る（索引に入らない。高機密文書は影響を受けない）。
+      #    一時障害（Retryable）として返り、取り込みは public / internal の文書を語彙索引へ全文だけの点（埋め込み待ち）として書き、
+      #    鍵の投入後に自動で埋め直す（IADR-0536 / #1908。以前は再試行の後 DLQ。高機密文書は影響を受けない）。
       #    既存の Secret（voyage-api-key を持たない）のまま upgrade しても LLM ゲートウェイを CreateContainerConfigError で
       #    止めないためである（テキスト生成まで巻き込まない）。値は Vault / ESO 側で用意し、ここには書かない。
       - name: Embedding__Voyage__ApiKey
@@ -735,7 +823,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/dashboard-service
-    tag: latest
     port: 8080
     # FR-10 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0408 (#1255):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
@@ -757,7 +844,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/graph-service
-    tag: latest
     # NFR, #1022: ブローカへ接続する。設定した分だけ RabbitMq__ConnectionString が描画される。
     messaging: true
     # FR-14, IADR-0028 / #1016: パイプライン段（graph-delete 段）をホストする — pipeline-config をマウントする。
@@ -773,7 +859,7 @@ services:
     # 書き込み・AI 提案・辺の型の管理は出していない。呼び出し元は RetrievalService の二段検索。
     # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
     # ［2026-09-26 追記 / #1515］このポートは MCP のツール申告の面（`platform.mcp.v1.McpToolDeclarations`）も受ける。
-    # 呼び出し元は mcp-server（`Mcp__GrpcServices__*` を持つときだけ）。
+    # 呼び出し元は mcp-server（`Mcp__Services__*`）。
     grpcPort: 8081
     # FR-18 / NFR-09, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC の
     # 呼び出し側資格情報。realm の confidential client `graph-service`（service account ＋
@@ -782,39 +868,31 @@ services:
       clientId: graph-service
       existingSecret: graph-service-token
       clientSecretKey: client-secret
-    # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
-    # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、**グラフが常に空になる**。
-    # 状態コードにも出ないため live で気付けない（#958 に同型 2 件の記録）。
+    # FR-17, FR-05, IADR-0089 (#342) / #958: ABAC スコープ解決先は gRPC 宛先（`Services__AuthorizationServiceGrpc`）だけである
+    # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。
     extraEnv:
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # FR-18, ADR-0010, IADR-0380 (#1244): AI 提案の生成が LLM ゲートウェイを呼ぶ。コード既定
-      # `http://llm-gateway:5010` は k8s に無い名前で、上書きが無いと生成が LLM の段で
-      # `Name or service not known` になり提案が 0 件のまま（#1244 の実測。aianalysis 等と同じ上書き）。
-      - name: Services__LlmGateway
-        value: "http://llmgateway-service:8080"
-      # FR-18 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # AI 提案の生成が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # （［2026-10-17 / #1255・IADR-0533 フォローアップ 2］クラスタ要約も gRPC へ移したので、REST の宛先 `Services__LlmGateway` は
+      # 読み手が無くなり外した。）
+      # FR-17 / FR-18 / NFR-16, IADR-0400 (#1255): east-west gRPC（h2c）の宛先。
+      # AI 提案の生成とクラスタ要約（既定 off）が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは llmgateway.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       - name: Services__LlmGatewayGrpc
         value: "http://llmgateway-service:8081"
-      # FR-17 / NFR-16, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。**これが在るときだけ**
-      # 探索のスコープ解決が gRPC 経路になる（無ければ上の REST のまま）。資格情報は上の
+      # FR-17 / NFR-16, IADR-0401 (#1255): ABAC スコープ解決の gRPC 宛先。
+      # 探索のスコープ解決が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。資格情報は上の
       # serviceToken を**そのまま使う**（1 サービス 1 主体。呼び出し先ごとに主体を割らない）。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
       # FR-10 / NFR-16, IADR-0408 (#1255): ナレッジ健全性の観測値の報告の gRPC 宛先。
-      # **これが在るときだけ**報告が gRPC 経路になる（無ければ REST のまま。並走中の正は REST）。
+      # 報告が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # 資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
       # ポートは dashboard.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
-      # 🔴 REST 側の宛先（`Services__DashboardService`）はコード既定
-      # `http://dashboard-service:8080` が chart の Service 名と一致するため上書きが無いが、
-      # gRPC は既定を持たない（未設定＝登録しない）のでここで完全修飾名を与える。
+      # 🔴 gRPC の宛先はコード既定を持たない（未設定＝常に UNAVAILABLE）ので、ここで完全修飾名を与える。
       - name: Services__DashboardServiceGrpc
         value: "http://dashboard-service:8081"
       # FR-18 / FR-05 / NFR-16, 計画 ADR-0086 決定 1・3, IADR-0410 (#1255): AI タグ提案の承認の
-      # 反映先の gRPC 宛先。**これが在るときだけ**反映が gRPC 経路になる（無ければ REST のまま。
-      # 並走中の正は REST）。資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
+      # 反映先の gRPC 宛先。反映が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
+      # REST の並走は撤去した。IADR-0533）。資格情報は上の serviceToken を**そのまま使う**（1 サービス 1 主体）。
       # ポートは document.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       # 🔴 承認者の利用者トークンは面を通らない —— 利用者文脈は要求本文で運び、
       # 後段（DocumentService）が受け取った文脈で自分の再判定を行う（判定の位置は動かない）。
@@ -844,14 +922,13 @@ services:
     # 同じ理由で scaling.services にも入れない（conversion / ingestion / graph と同じ扱い）。
     replicas: 1
     image: microservices-platform/notification-service
-    tag: latest
     port: 8080
     # FR-22 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0419 (#1255):
     # east-west gRPC の h2c ポート（TLS 無し HTTP/2 専用）。Service に name: grpc /
     # appProtocol: grpc として出る。面は**受け付け 1 口だけ**
     # （`platform.notification.v1.NotificationIngress`）で、閲覧・既読・削除は出していない
     # —— s2s の面から他人の通知を覗く経路を作らない（受け口は書き込み専用である）。
-    # 呼び出し元は DocumentService の通知の送出（`Services__NotificationServiceGrpc` を持つときだけ）。
+    # 呼び出し元は DocumentService の通知の送出（`Services__NotificationServiceGrpc`）。
     # **readiness は 8080 の /health/ready のまま** —— 1 プロセスが両ポートを起動時に bind する。
     grpcPort: 8081
     resources:
@@ -872,7 +949,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/mcp-service
-    tag: latest
     port: 8080
     # FR-16, FR-05, SC-12, ADR-0062 決定 3 (#1185): 無人アカウントへ渡す機密区分・タグが
     # 登録者の集合の部分集合かを判定するため、登録者の ABAC 属性と認可スコープをここから解決する。
@@ -889,29 +965,26 @@ services:
       existingSecret: mcp-server-token
       clientSecretKey: client-secret
     extraEnv:
-      - name: Services__AuthorizationService
-        value: "http://authorization-service:8080"
-      # FR-16 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # 登録者の属性解決が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # FR-16 / NFR-16, IADR-0401 (#1255): east-west gRPC（h2c）の宛先。
+      # 登録者の属性解決が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       - name: Services__AuthorizationServiceGrpc
         value: "http://authorization-service:8081"
-      # FR-16 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 5, IADR-0462（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
-      # ツール定義の自己申告の gRPC（h2c）の宛先。**宛先ごとの opt-in** —— ここに在る宛先だけが gRPC
-      # （platform.mcp.v1.McpToolDeclarations。上の serviceToken の s2s で呼ぶ）で集められ、無い宛先は REST のまま。
-      # REST の宛先（Mcp__Services__*）は values に無く、McpServer の appsettings.json の既定（:8080 の 3 宛先）が効いている。
-      # 並走中の正は REST であり、戻すのは該当行を消すだけでよい。ポートは各サービスの grpcPort と一致させること。
+      # FR-16 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0462（#1515, #1255 経路 ④-a）, IADR-0533 決定 3 (#1517):
+      # ツール定義の自己申告の宛先（gRPC・h2c）。ここに在る宛先が platform.mcp.v1.McpToolDeclarations（上の serviceToken の s2s）で
+      # 集められる。［2026-10-10 / #1517］REST の収集（GET /internal/mcp-tools）は撤去し、構成キーを Mcp__Services へ一本化した
+      # （値は gRPC の宛先。旧キー Mcp__GrpcServices が残っていると McpServer は起動を止める）。ポートは各サービスの grpcPort と一致させること。
       # ［2026-09-27 追記 / #1516, ADR-0117］ツールの実行（platform.mcp.v1.McpToolExecution）も**同じアドレス**へ送る
-      # （宛先は申告したサービス＋ツール名。申告の URL は使わない）。ここに無いサービスのツールは実行を拒否する（REST へは倒さない）。
+      # （宛先は申告したサービス＋ツール名。申告の URL は使わない）。ここに無いサービスのツールは実行を拒否する。
       # 実行の期限は McpServer の appsettings.json の Mcp:ToolExecutionTimeoutSeconds（既定 30 秒）。
       # ［#1611 段 2］受け口は document-service・retrieval-service・graph-service の 3 つとも持つ。受け口は本文の利用者文脈を
       # 上の serviceToken.clientId（mcp-server）が運んだときだけ信じる（各受け口の McpToolExecution の許可集合。既定 mcp-server）。
       # 🔴 document-service の受け口は、内容の ABAC の門（ContentAbac:Mode。既定 Off）が開くまで FAILED_PRECONDITION で拒否する
       # （MCP サーバーは実行できないとして結果を返さない）。文書のツールは一覧に出るが、門が開くまでは実質使えない。宛先はそのまま置く。
-      - name: Mcp__GrpcServices__document-service
+      - name: Mcp__Services__document-service
         value: "http://document-service:8081"
-      - name: Mcp__GrpcServices__retrieval-service
+      - name: Mcp__Services__retrieval-service
         value: "http://retrieval-service:8081"
-      - name: Mcp__GrpcServices__graph-service
+      - name: Mcp__Services__graph-service
         value: "http://graph-service:8081"
       # FR-16, SC-12, ADR-0123 決定 2・4, IADR-0516 (#1786 / #1817): SC-12 を IdP への入口にする書き込み口（Keycloak Admin REST）。
       # 無人の登録・属性の差し替えは、検証の後に機密クライアントとサービスアカウントの属性を Keycloak へ書いてから登録簿へ書く。
@@ -951,12 +1024,11 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/feedback-service
-    tag: latest
     port: 8080
     # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3, IADR-0462 (#1514, #1255 経路 ⑤):
     # east-west gRPC 用の h2c ポート（TLS 無し HTTP/2 専用。8080 の HTTP/1.1 はそのまま）。
     # 面は**自己申告の読み取り 1 口だけ**（platform.introspection.v1.ServiceIntrospection）。呼び出し元は
-    # 構成情報 API（BFF の Introspection__GrpcServices__* を持つときだけ）。readiness は 8080 のまま。
+    # 構成情報 API（BFF の Introspection__Services__*）。readiness は 8080 のまま。
     grpcPort: 8081
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -971,7 +1043,6 @@ services:
     enabled: false
     replicas: 1
     image: microservices-platform/configuration-service
-    tag: latest
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -988,7 +1059,6 @@ services:
     enabled: false
     replicas: 1
     image: microservices-platform/risk-management-service
-    tag: latest
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -1005,7 +1075,6 @@ services:
     enabled: false
     replicas: 1
     image: microservices-platform/market-monitor-service
-    tag: latest
     port: 8080
     resources:
       requests: { cpu: 100m, memory: 128Mi }
@@ -1015,7 +1084,6 @@ services:
     enabled: true
     replicas: 1
     image: microservices-platform/bff
-    tag: latest
     port: 8080
     # FR-15, IADR-0029, #146: BFF は段をホストしないが、ドリフト検出の突合基準として宣言（pipeline.json）を
     # 必要とする。pipelineDeclaration=true で pipeline-config ConfigMap をマウントし Pipeline__ConfigPath を注入する。
@@ -1088,83 +1156,43 @@ services:
       clientId: bff
       existingSecret: bff-oidc
       clientSecretKey: client-secret
-    # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
-    # ローカル実行用ポート（5001/5006）のため、k8s Service の実ポート（8080）を上書き注入する。
+    # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先（13 サービス）。
+    # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0462, IADR-0533 決定 3 (#1514, #1517):
+    # 値は自己申告の **gRPC（h2c）宛先**（資格情報は上の serviceToken ＝ `bff` の service account。利用者のトークンは載せない）。
+    # ［2026-10-10 / #1517］REST の収集（GET /internal/introspection・:8080）は撤去し、従前の 2 つのキー
+    # （REST の Introspection__Services と gRPC の Introspection__GrpcServices）を Introspection__Services へ一本化した。
+    # 🔴 旧キー Introspection__GrpcServices が 1 つでも残っていると BFF は起動を止める（上書き値の移し忘れを黙って通さない）。
+    # ポートは各サービスの grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
+    # 🔴 llm-gateway の Service 名は llmgateway-service。
     extraEnv:
       - name: Introspection__Services__document-service
-        value: "http://document-service:8080"
-      - name: Introspection__Services__wiki-service
-        value: "http://wiki-service:8080"
-      # FR-15, IADR-0029 フォローアップ 1 (#142): conversion/ingestion ワーカーの自己申告収集先。
-      # これで convert/ingest 段が Unverifiable でなくなり、適用漏れ検出が実効化する。
-      - name: Introspection__Services__conversion-service
-        value: "http://conversion-service:8080"
-      - name: Introspection__Services__ingestion-service
-        value: "http://ingestion-service:8080"
-      # FR-15, IADR-0029 フォローアップ 2 (#143): 全 HTTP サービスへ introspection を横展開したため
-      # 収集先へ追加。値は k8s Service の DNS 名（llm-gateway の Service 名は llmgateway-service）。
-      - name: Introspection__Services__retrieval-service
-        value: "http://retrieval-service:8080"
-      - name: Introspection__Services__aianalysis-service
-        value: "http://aianalysis-service:8080"
-      - name: Introspection__Services__authorization-service
-        value: "http://authorization-service:8080"
-      - name: Introspection__Services__dashboard-service
-        value: "http://dashboard-service:8080"
-      - name: Introspection__Services__datasource-service
-        value: "http://datasource-service:8080"
-      - name: Introspection__Services__feedback-service
-        value: "http://feedback-service:8080"
-      # FR-15/FR-17: グラフ同期・削除伝播の段を担う graph-service を収集先へ追加（宣言実効性テストが検出）。
-      - name: Introspection__Services__graph-service
-        value: "http://graph-service:8080"
-      - name: Introspection__Services__llm-gateway
-        value: "http://llmgateway-service:8080"
-      # FR-22, IADR-0288 決定 5 (#1025): NotificationService は段を持たないが
-      # AddPlatformIntrospection("notification-service", …) で**到達可能性を申告する**。
-      # 申告する側が居るのに収集側に無いと、その申告は永久に読まれない。
-      # 🔴 **下記の Services__* への上書きは不要である**（#600 で /bff/notifications* が入り BFF は
-      # 通知の下流を持つようになったが、named client のコード既定が既に :8080 のため上書きが要らない）。
-      # **readiness の UriHealthCheck へは足さない** —— 通知は Should であり、後段の不調で
-      # BFF 全体を not-ready にするのは fail-safe の後退である（IADR-0346 決定 6）。
-      - name: Introspection__Services__notification-service
-        value: "http://notification-service:8080"
-      # FR-15 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 4・5, IADR-0462 (#1514, #1255 経路 ⑤):
-      # 自己申告の **gRPC（h2c）宛先**。**ここに在る宛先だけ**が gRPC で収集され（資格情報は上の serviceToken ＝
-      # `bff` の service account。利用者のトークンは載せない）、無い宛先は上の Introspection__Services__* の
-      # REST のまま（並走中の正は REST。戻すのは該当行を消すだけでよい）。
-      # ポートは各サービスの grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
-      # 🔴 llm-gateway の Service 名は llmgateway-service（上の REST 宛先と同じ）。
-      # ［2026-09-26 / #1537］IADR-0462 フォローアップ 3: conversion-service も入れた（従前は保留）。
-      # 変換サービスが認証を持った（IADR-0465・#1520）ので、gRPC 面が呼び出し側サービスの資格情報を判定できる。
-      # 同時に services.conversion.grpcPort を足した。REST の行（上）は残す（並走中の正は REST）。
-      - name: Introspection__GrpcServices__document-service
         value: "http://document-service:8081"
-      - name: Introspection__GrpcServices__wiki-service
+      - name: Introspection__Services__wiki-service
         value: "http://wiki-service:8081"
-      - name: Introspection__GrpcServices__conversion-service
+      - name: Introspection__Services__conversion-service
         value: "http://conversion-service:8081"
-      - name: Introspection__GrpcServices__ingestion-service
+      - name: Introspection__Services__ingestion-service
         value: "http://ingestion-service:8081"
-      - name: Introspection__GrpcServices__retrieval-service
+      - name: Introspection__Services__retrieval-service
         value: "http://retrieval-service:8081"
-      - name: Introspection__GrpcServices__aianalysis-service
+      - name: Introspection__Services__aianalysis-service
         value: "http://aianalysis-service:8081"
-      - name: Introspection__GrpcServices__authorization-service
+      - name: Introspection__Services__authorization-service
         value: "http://authorization-service:8081"
-      - name: Introspection__GrpcServices__dashboard-service
+      - name: Introspection__Services__dashboard-service
         value: "http://dashboard-service:8081"
-      - name: Introspection__GrpcServices__datasource-service
+      - name: Introspection__Services__datasource-service
         value: "http://datasource-service:8081"
-      - name: Introspection__GrpcServices__feedback-service
+      - name: Introspection__Services__feedback-service
         value: "http://feedback-service:8081"
-      - name: Introspection__GrpcServices__graph-service
+      - name: Introspection__Services__graph-service
         value: "http://graph-service:8081"
-      - name: Introspection__GrpcServices__llm-gateway
+      - name: Introspection__Services__llm-gateway
         value: "http://llmgateway-service:8081"
-      - name: Introspection__GrpcServices__notification-service
+      - name: Introspection__Services__notification-service
         value: "http://notification-service:8081"
-      # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
+      # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・依存の報告口 /health/dependencies の UriHealthCheck）。
+      # NFR-06 / IADR-0602 (#2105): 下流 4 サービスの疎通は readiness に入れない（1 つの停止で全画面を 503 にしない）。
       # appsettings 既定はローカル用ポート（5001-5009）のため、k8s Service の実 DNS（:8080）へ上書きする。
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
@@ -1187,14 +1215,20 @@ services:
       - name: Services__DataSourceService
         value: "http://datasource-service:8080"
       # FR-06 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0402 (#1255): east-west gRPC（h2c）の宛先。
-      # **これが在るときだけ**文書の読み取り 4 箇所が gRPC 経路になる（無ければ上の REST のまま。
-      # 並走中の正は REST）。ポートは document.grpcPort と一致させること（Service の name: grpc /
+      # 文書の読み取り 4 箇所が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。
+      # REST の並走は撤去した。IADR-0533）。ポートは document.grpcPort と一致させること（Service の name: grpc /
       # appProtocol: grpc）。**書き込み経路は移らない** —— 利用者の資格情報を運ぶ必要がある。
       - name: Services__DocumentServiceGrpc
         value: "http://document-service:8081"
+      # FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0533 決定 1 (#1255 B-1):
+      # ABAC スコープ解決の gRPC（h2c）宛先。［2026-10-10］REST POST /authz/scope の並走を撤去したので**必須**になった
+      # （無ければ常に UNAVAILABLE で deny-by-default ＝ 検索・文書閲覧が空になる）。従前はチャート既定に無く、BFF は REST で解決していた。
+      # ポートは authorization.grpcPort と一致させること。
+      - name: Services__AuthorizationServiceGrpc
+        value: "http://authorization-service:8081"
       # FR-04 / FR-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075 / 計画 ADR-0086 決定 1,
-      # IADR-0410, IADR-0417 (#1255): east-west gRPC（h2c）の宛先。**これが在るときだけ**
-      # 権限内属性値の照会が gRPC 経路になる（無ければ上の REST のまま。並走中の正は REST）。
+      # IADR-0410, IADR-0417 (#1255): east-west gRPC（h2c）の宛先。
+      # 権限内属性値の照会が gRPC 経路になる（無ければ常に UNAVAILABLE で縮退する。REST の並走は撤去した。IADR-0533）。
       # ポートは retrieval.grpcPort と一致させること（Service の name: grpc / appProtocol: grpc）。
       # 🔴 **BFF の検索（`/search`）は移らない** —— [2026-09-11 / #1255] 近傍展開の文脈受け渡しは
       # IADR-0410 / IADR-0426 で解けた（AI 分析 → 検索は gRPC へ移った）が、**BFF は利用者の
@@ -1202,6 +1236,12 @@ services:
       # 🔴 利用者の JWT は面を通らず、利用者文脈は要求本文で運ぶ（判定の位置は動かない）。
       - name: Services__RetrievalServiceGrpc
         value: "http://retrieval-service:8081"
+      # FR-06 / SC-05 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379, IADR-0565 (#1993): east-west gRPC（h2c）の宛先。
+      # 文書管理の一覧の索引の状態（knowledge.ingestion.v1.DocumentIndexStatus）。無ければ常に UNAVAILABLE で
+      # 状態は「不明」へ縮退する（一覧は失敗しない）。ポートは ingestion.grpcPort と一致させること。
+      # 渡すのは ABAC を通った窓の中の文書の ID だけ（利用者の JWT は面を通らない）。
+      - name: Services__IngestionServiceGrpc
+        value: "http://ingestion-service:8081"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -1245,11 +1285,13 @@ seaweedfs:
 lexicalIndex:
   collection: knowledge_chunks_lexical
 
-# FR-03, FR-04, SC-02, ADR-0127 決定 3・4, IADR-0498 (#1746 段 S2): 検索結果の候補を Claude（用途 rerank・ティア B・ZDR）で
+# FR-03, FR-04, SC-02, ADR-0127 決定 3・4, IADR-0498 (#1746 段 S2): 検索結果の候補を Claude（用途 rerank・ティア B）で
 # 再順位付けする段。RAG 回答の候補と検索結果一覧（並び「関連度」・hybrid / keyword）の両方に効く。
 # deployment.yaml が retrieval へ Rerank__Enabled として描画する（appsettings.json の Rerank:Enabled と同じ既定）。
 # 🔴 既定は無効。有効にすると検索のたびに LLM の費用（用途 rerank）が生じ、restricted と機密区分が未指定・未知の
-# 本文がティア B（ZDR）へ出る（ADR-0127 決定 4 の受け入れたリスク）。費用の目安と手順は運用仕様書 §検索の再順位付け。
+# 本文がティア B（Claude）へ出る（ADR-0127 決定 4 の受け入れたリスク）。費用の目安と手順は運用仕様書 §検索の再順位付け。
+# 🔴 NFR-17, ADR-0140 決定 5, IADR-0552 (#1960): 用途 rerank の「ZDR 必須」はモデル単位の除外であり、組織の ZDR 契約を見ない。
+# Claude の組織の ZDR は未締結（期限付きで受け入れたリスク）で、送った本文は標準の保持（最長 30 日・米国）の下にある。
 searchRerank:
   enabled: false
 
@@ -1280,8 +1322,13 @@ embedding:
   # deployment.yaml が retrieval へ Qdrant__FusedCollections__0 として描画し、検索が主コレクション（voyage）と
   # **1 回の検索で束ねて**読む（順位で合成）。🔴 **有効化の前提**である —— 束ねないまま有効化すると
   # 「索引されるが検索されない」になる。値は LlmGateway の appsettings.json（selfhosted-ruri の Collection）と
-  # IngestionService の Embedding:Collections と一致していなければならない（scripts/k8s-local-up.test.js が固定する）。
+  # 一致していなければならない（scripts/k8s-local-up.test.js が固定する）。
+  # ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, IADR-0085: 取り込み（IngestionService）の Embedding:Collections は既定で
+  # voyage だけになった。enabled=true のとき deployment.yaml が取り込みへ Embedding__Collections__1__* として
+  # 本値と dimensions を描画する（無効の配備に空の Ruri のコレクションを作らない）。
   collection: knowledge_chunks_ruri_v3
+  # Ruri v3 の次元（LlmGateway の appsettings.json の selfhosted-ruri と同じ）。取り込みがコレクションを作る次元である。
+  dimensions: 768
   replicas: 1
   registry: ghcr.io
   image: huggingface/text-embeddings-inference
@@ -1377,7 +1424,8 @@ frontend:
   enabled: true
   replicas: 1
   image: microservices-platform/frontend
-  tag: latest
+  # NFR, IADR-0583: src/platform/frontend/Dockerfile の USER と同じ uid（非 root）。
+  runAsUser: 10001
   # Caddy 待受ポート（src/platform/frontend/Dockerfile の EXPOSE 8080 / Caddyfile の :8080）。
   # #1135 の nginx → Caddy 移送でも**ポートは変えていない**（compose の 3100:8080 と probe が依存する）。
   port: 8080
@@ -1439,6 +1487,8 @@ syntheticMonitor:
   clientId: synthetic-monitor
   # overlay（deploy/local/synthetic-monitor/synthetic-monitor.yaml）と同じ。外部依存ゼロ（Node 標準の fetch のみ）。
   image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+  # NFR, IADR-0583: node イメージの node ユーザー（非 root）。overlay と同じ値。
+  runAsUser: 1000
   # ADR-0079 決定 1 の確定値（秒）。**変えるなら deploy/prometheus/alerts.yml の RagLatencySeriesAbsent の lookback も見直すこと。**
   intervalSeconds: 60
   # 費用の出ない 2 経路のみ（AiAnalysisService が合成の要求では LLM を呼ばずに縮退する）。

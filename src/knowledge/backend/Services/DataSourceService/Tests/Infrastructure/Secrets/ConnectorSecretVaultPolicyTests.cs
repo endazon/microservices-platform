@@ -149,6 +149,20 @@ public sealed class ConnectorSecretVaultPolicyTests
         bffLine.Should().NotContain("datasource-connector-read");
     }
 
+    // NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: role は対象者（audience）を秘匿管理（vault）に限ったトークンだけを受け、
+    // 解決器は既定でその専用の projected token（helm が置くパス）で名乗る。k8s API 用の既定のトークンのパスへ戻すと落ちる。
+    [Fact]
+    public void ReaderRole_RequiresTheVaultAudience_AndTheResolverReadsTheDedicatedTokenByDefault()
+    {
+        var bootstrap = File.ReadAllText(BootstrapPath);
+        var roleLine = bootstrap.Split('\n').Single(l => l.Contains("auth/kubernetes/role/datasource-connector-reader", StringComparison.Ordinal));
+        roleLine.Should().Contain(" audience=vault ");
+
+        new VaultConnectorSecretOptions().ServiceAccountTokenPath.Should().Be("/var/run/secrets/vault/token")
+            .And.Be(VaultConnectorSecretOptions.DefaultServiceAccountTokenPath)
+            .And.NotContain("kubernetes.io/serviceaccount");
+    }
+
     // helm が作る SA の名前・role 名・既定の address（空＝Vault なし）が bootstrap と解決器の既定と一致する。
     [Fact]
     public void HelmValues_DeclareTheDedicatedServiceAccount_RoleAndEmptyAddressByDefault()

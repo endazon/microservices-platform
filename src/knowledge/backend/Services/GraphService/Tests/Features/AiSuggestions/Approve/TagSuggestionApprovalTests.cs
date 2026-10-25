@@ -19,7 +19,7 @@ namespace GraphService.Tests.Features.AiSuggestions.Approve;
 // 取り込み文書で成功する を陽性対照として持つ。
 //
 // 反映先（DocumentService）は `TestWebApplicationFactory.TagWriter`（記録スタブ）である。
-// 実 HTTP の写像は `HttpDocumentTagWriterTests`、後段そのものは DocumentService.Tests が見る。
+// 実アダプタの写像は `GrpcDocumentTagWriterTests`、後段そのものは DocumentService.Tests が見る。
 [Trait("TestKind", "Integration")]
 public class TagSuggestionApprovalTests : IClassFixture<TestWebApplicationFactory>
 {

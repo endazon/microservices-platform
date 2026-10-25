@@ -52,6 +52,8 @@ public class PrivateNoteIndexProductionTests
             ConsumerTimeoutsForTests.Calls(),
             ConsumerTimeoutsForTests.Timeouts,
             TimeProvider.System,
+            TestMeterFactory.NewEmbeddingPendingMetrics(),
+            TestMeterFactory.NewBodyMissingMetrics(),
             NullLogger<DocumentUpdatedConsumer>.Instance);
         return (consumer, index);
     }
@@ -233,7 +235,7 @@ public class PrivateNoteIndexProductionTests
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
         {
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
             return Task.CompletedTask;
@@ -243,7 +245,7 @@ public class PrivateNoteIndexProductionTests
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
             DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
+            long? sequence = null, CancellationToken ct = default)
         {
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
             return Task.CompletedTask;
@@ -258,7 +260,7 @@ public class PrivateNoteIndexProductionTests
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             LexicalWrites.Add(documentId);
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
@@ -269,12 +271,22 @@ public class PrivateNoteIndexProductionTests
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             LexicalWrites.Add(documentId);
             _chunks.Add(new IndexedChunk(documentId, attributes, sharedWith));
             return Task.CompletedTask;
         }
+
+        // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
+        public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+            => Task.FromResult<DocumentIndexVersion?>(null);
+
+        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
+            IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
         {

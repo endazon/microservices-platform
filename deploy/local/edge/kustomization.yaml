@@ -1,14 +1,20 @@
 # IADR-0091 (#356): 経路B ローカルエッジ集約（opt-in）。k8s-local-up.sh の LOCALEDGE=1 が適用する。
 # 常在 namespace（kube-system / microservices-platform / platform-infra）のリソースのみを集約する。
-# argocd-ingress.yaml は argocd namespace 依存のため本 kustomization に含めず、スクリプトが条件付きで apply する。
+#
+# 同じディレクトリに在っても、本 kustomization に含めないファイル（スクリプトが別に当てる）:
+#   - admin-ingress-infra.yaml   … 管理ツールの経路。ADMIN_EDGE=1 のときだけ当て、それ以外では消す（IADR-0586）。
+#   - admin-ingress-wiki.yaml    … 同上（IADR-0586）。
+#   - argocd-ingress.yaml        … 同上。加えて argocd namespace が在るときだけ扱う（IADR-0091 / IADR-0586）。
+#   当て外しの実体は scripts/lib/admin-edge.sh の admin_edge_traefik。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - traefik-entrypoint.yaml
   - platform-frontend-ingress.yaml
-  - admin-ingress-infra.yaml
+  # NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路 3 ファイルは含めない（冒頭の一覧）。
+  #   既定（ADMIN_EDGE 未指定・0）の admin(50000) は router が無く 404 を返す。
   # ［IADR-0461 決定 5 / #1499］MinIO Console の集約 route（admin-ingress-minio.yaml・IADR-0093）は撤去した。
-  # IADR-0095 (#353): Wiki.js（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
-  - admin-ingress-wiki.yaml
   # IADR-0227 (#780): Keycloak を websecure(443) の keycloak.localhost へ出す（platform-infra ns）。
   - keycloak-ingress.yaml
+  # NFR-18, IADR-0575 (GHSA-rh44-px44-p48q): Keycloak の管理面（/admin・/realms/master）だけはエッジで拒む（403）。
+  - keycloak-admin-deny.yaml

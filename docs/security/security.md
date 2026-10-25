@@ -3,15 +3,15 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-10-09
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
-ids: [SC-12, FR-16, FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
-adrs: [ADR-0131, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126, ADR-0134, ADR-0032, ADR-0133, ADR-0112, ADR-0132]
-iadrs: [IADR-0527, IADR-0524, IADR-0522, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498, IADR-0523, IADR-0526, IADR-0525]
-specs: [20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261009_1842_loki-tempo-front-auth, 20261009_1840_secret-store-openbao]
-issues: [#1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, #1845, #1846, #1842, #1840, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716, planning#750, planning#770]
+ids: [NFR-17, SC-12, FR-16, FR-06, FR-04, FR-17, FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, FR-19, FR-20, FR-22, NFR-11, NFR-18, SC-05, SC-10, SC-11, SC-17, SC-19, SC-20, SC-22, UC-07, UC-11, NFR-14, NFR-09]
+adrs: [ADR-0140, ADR-0131, ADR-0107, ADR-0123, ADR-0125, ADR-0124, ADR-0121, ADR-0086, ADR-0063, ADR-0119, ADR-0034, ADR-0054, ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016, ADR-0021, ADR-0026, ADR-0036, ADR-0037, ADR-0045, ADR-0057, ADR-0082, ADR-0095, ADR-0096, ADR-0106, ADR-0109, ADR-0092, ADR-0115, ADR-0088, ADR-0114, ADR-0084, ADR-0116, ADR-0127, ADR-0126, ADR-0134, ADR-0032, ADR-0133, ADR-0112, ADR-0132]
+iadrs: [IADR-0594, IADR-0591, IADR-0589, IADR-0587, IADR-0576, IADR-0575, IADR-0574, IADR-0572, IADR-0552, IADR-0527, IADR-0524, IADR-0522, IADR-0520, IADR-0518, IADR-0517, IADR-0516, IADR-0501, IADR-0500, IADR-0495, IADR-0493, IADR-0492, IADR-0486, IADR-0483, IADR-0481, IADR-0456, IADR-0410, IADR-0417, IADR-0413, IADR-0426, IADR-0476, IADR-0475, IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0197, IADR-0206, IADR-0216, IADR-0220, IADR-0294, IADR-0295, IADR-0301, IADR-0329, IADR-0338, IADR-0348, IADR-0352, IADR-0296, IADR-0401, IADR-0422, IADR-0428, IADR-0431, IADR-0433, IADR-0453, IADR-0454, IADR-0461, IADR-0465, IADR-0467, IADR-0473, IADR-0474, IADR-0364, IADR-0497, IADR-0498, IADR-0523, IADR-0526, IADR-0525, IADR-0550, IADR-0533]
+specs: [20261023_2045_edge-mcp-entry, 20261023_j4qv_infra-tls-stage1, 20261022_j4qv_egress-default-deny, 20261022_j4qv_compose-loopback-bind, 20261022_abac-seeder-disabled-by-default, 20261022_edge-block-keycloak-admin, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261016_1960_adr-0140-tier-b-residency-zdr, 20261014_1740_voyage-zero-retention-certification, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20261009_1841_disable-default-egress, 20261009_1783_dept-sync-poc-fix, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1817_sc12-provisioning-wiring, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261003_458_connector-secret-vault-reference, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_1472_audit-sync-action-extraction, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1616_machine-client-own-document-write, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260927_issue-1628_document-read-trusted-user-context-relay, 20260927_issue-1614_document-read-authn-private-note, 20260927_issue-1606_private-notes-sync-edge-authz, 20260926_issue-1575_document-page-and-fingerprint, 20260926_1520_conversion-service-auth, 20260925_1472_audit-failed-extraction, 20260915_issue-1467_sc22-audit-followups, 20260914_issue-1411_sc22-secret-injection-screen, 20260911_issue-1409_private-note-disposal-after-window, 20260911_issue-1392_departure-retention-anchor, 20260910_issue-1372_ast-s2s-clients-platform-realm, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_issue-336_multi-collection-rrf-fusion, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1532_sync-token-rejected-after-disable, 20260927_issue-1629_admin-write-private-note-scope, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20261006_1746_claude-rerank, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261009_1842_loki-tempo-front-auth, 20261009_1840_secret-store-openbao, 20261016_1867_chart-observability-front-guard, 20261015_1902_east-west-rest-residue]
+issues: [#2045, #1960, #1740, #1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #1683, #1615, #1665, #1610, #1616, #1636, #1635, #1628, #1629, #1609, #1614, #1606, #1575, #1573, #1520, #1499, #1472, #55, #100, #1392, #1409, #1411, #1467, #198, #336, #199, #201, #211, #212, #222, #271, #310, #438, #458, #628, #629, #1098, #1101, #1153, #1154, #1372, #1532, #1845, #1846, #1842, #1840, #1867, #1902, AST#18, AST#24, AST#727, planning#383, planning#672, planning#741, planning#700, AST#1078, planning#716, planning#750, planning#770, planning#795, planning#828]
 -->
 
 # セキュリティ仕様書
@@ -32,8 +32,8 @@ issues: [#1859, #1839, #1841, #1783, #1834, #1830, #1817, #1755, #1746, #1696, #
 - **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証。各サービスは `AddPlatformAuth` で JWT を検証する。
 - **認可（サービス内 RBAC）**: 属性・ポリシー管理の管理系エンドポイント（属性辞書・ABAC ポリシーの CRUD／有効無効切替／削除）は
   `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
-  `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
-  は本ポリシーの対象外（認証のみ）。
+  `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/attributes/validate` と権限スコープ解決（gRPC
+  `AuthzScope/Resolve`。［2026-10-16］REST の `POST /authz/scope` は撤去した）は本ポリシーの対象外（サービス呼び出し用のロールを要する）。
 - **運用者ロール**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
   構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で
   保護する。非権限（無認証を含む）には 404 で応答自体を秘匿する（構成情報 API の実装判断と、権限外は 404 とする存在秘匿）。
@@ -119,7 +119,7 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
 存在秘匿を代替できない（Wiki エンジンの計画 ADR も明記）。したがって ABAC は**本システムが単一の真実源**とし、
 **WikiService を Wiki.js の前段ゲートウェイ**として強制点を集約する。
 
-- **強制内容**: 利用者 JWT 属性（`clearance` / `department`）× `/authz/scope` から許可スコープを解決し、
+- **強制内容**: 利用者 JWT 属性（`clearance` / `department`）× 権限スコープ解決（east-west gRPC）から許可スコープを解決し、
   Wiki.js の閲覧要求に deny-by-default で適用する。一覧は権限内ページのみ、個別アクセスは**権限外／不存在とも
   404 相当で存在秘匿**する（権限外は 404 とする方針の意味論を継承。403 で存在を漏らさない）。判定は既存 `AbacPageFilter`
   （検索側 `InMemoryVectorStore.MatchesFilters` と同一意味論）を到達可否へ転用する。
@@ -145,8 +145,8 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
 
 ### サービス間（内部 API）の認証 — Istio STRICT mTLS を第一防御とする
 
-内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`・`/embed`、
-DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz/attributes/validate`）は
+内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`、
+DataSourceService `/datasources`、AuthorizationService `/authz/attributes/validate`。［2026-10-16］`/embed`・`/authz/scope` の REST は撤去した）は
 「サービス間呼び出しのため認証対象外」として無認証で提供されている。
 **［2026-09-27 追記］DocumentService の `/documents` の読み取りは認証を要するようになった**（上の「後段認可」の項。書き込みは従前から認証を要する）。
 これは **Istio mTLSを前提**にした
@@ -166,10 +166,20 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 - Kubernetes では ClusterIP + NetworkPolicy（デフォルト拒否）を維持する
   （`deploy/helm/microservices-platform/templates/networkpolicy.yaml`）。
+- **外向き通信（egress）も既定で拒否する**（`templates/networkpolicy-egress.yaml`。設定は `networkPolicy.egress`）。
+  許すのは名前解決（kube-dns の Pod の 53 番だけ）・同じ名前空間・メッシュ有効時の istiod・宣言した別の名前空間の宛先
+  （名前空間 × Pod ラベル × ポート。送り元の Pod を限る）と、サービス固有の 1 本（Vault・API サーバ・合成監視 → 認可サーバ）だけである。
+  クラスタの外への許可は描かない。本番像は名前空間の全 Pod に当てる。ローカル（経路 B）は ingress の NetworkPolicy を持たないまま egress だけを
+  段階的に当てる（段 1 はクラスタの外へ出ない Pod。残りの Pod とクラスタの外の宛先は後続の段）。宣言の欠けは描画で止まり、
+  描画の形と通信の可否は CI の静的な試験が、稼働のクラスタで強制されていることは統合スタックの門が測る。
 - `docker-compose.yml`（ローカル開発）は BFF=エッジのみ host 公開、他は `expose` を維持。
   回帰は `NetworkIsolationTests` で担保する。
+  - **［2026-10-22 追記］host 公開する口（エッジ・フロントと、開発便宜のインフラ）は、すべてループバック（`127.0.0.1`）に限る。**
+    同じ LAN の第三者から届かない状態を既定とする（経路 B のエッジが loopback に固定しているのと同じ扱い）。
+    CI の `check-deploy-manifests.js` が compose の `ports:` の全件（短い形式・長い形式の `host_ip`）を検査し、
+    IP を省いた形と `network_mode: host` を落とす。口が 1 件も数えられないときも落とす。
 - 外部からの入口は **BFF（エッジ）に一本化**し、BFF が Keycloak JWT で認証する。
-  - **［2026-09-03 追記］例外は個人資料の同期プロトコル 1 前置（`/private-notes/sync/`）だけである。**
+  - **［2026-09-03 追記］例外は個人資料の同期プロトコル 1 前置（`/private-notes/sync/`）だけである。**（［2026-10-23］2 つ目の例外として外部 AI エージェントの入口 `/mcp` を足した。下の追記）
     従前の「一本化」は本追記で例外つきに置き換わる。資格情報がブラウザセッション（HttpOnly Cookie ＋
     CSRF ヘッダ）と**別系統の不透明トークン**であり、BFF に載せると「BFF は Cookie セッションだけ」という
     境界が崩れるため、エッジから文書サービスへ直接通す。エッジで JWT 検証はしない（**端点が自前で
@@ -187,6 +197,19 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
     当たらない要求をすべて拒否に変え、名前空間の中の呼び出し元（BFF・グラフ・MCP）・別名前空間の連携システム・
     プローブまで巻き込むためである。mTLS が STRICT（既定）のときに穴が閉じる —— PERMISSIVE の間は、
     ゲートウェイの Namespace に居るサイドカー無しの Pod からの平文がこの門を素通りする（受け入れた限界）。
+  - **［2026-10-23 追記］2 つ目の例外は外部 AI エージェントの入口（`/mcp`）である。** エッジ host の `/mcp`（完全一致）と `/mcp/` 配下を
+    MCP サーバーへ直接通す（rewrite 無し）。**本番像は既定で出さない opt-in**（`edge.mcp.enabled`）。理由は、計画が外部エージェントの攻撃面への
+    対処に挙げるクライアント単位のレート制限が未配備であることで、有効化は運用者の明示の判断とする。
+    認証はエッジでは再検証せず MCP サーバーが行う（audience が MCP サーバーのトークンだけ。トークン無し・platform の audience は 401）。
+    エッジでの JWT の再検証は採らない —— MCP サーバーの Pod へ当てると BFF の管理 API の中継（audience が違う）を、ゲートウェイへ当てると
+    同期プロトコルの不透明トークンを巻き込み、正当な要求が落ちる。
+    同じポートに同居する管理 REST（`/mcp-clients`）・OpenAPI・自己申告・ヘルスは、経路（`/mcp` の文字列前置にしない）と、有効時に置く Istio の
+    `AuthorizationPolicy`（`mcp-service-edge-mcp-only`・**DENY**。ゲートウェイの Namespace の主体からの `/mcp`・`/mcp/*` 以外を落とす）の 2 層で出さない。
+    NetworkPolicy の穴（ゲートウェイ → MCP サーバーの当該ポート）も同じ条件でしか開かない。稼働のエッジでの 401・陽性対照・管理 REST の不到達は
+    統合スタックの門（`scripts/check-mcp-client-provisioning.js` の M13）が測る。
+    🔴 **この 3 層（経路・L7 の門・NetworkPolicy）は本番像（チャートのエッジ）だけである。** ローカル（経路 B）の 2 つのエッジは**経路の絞り込み 1 層だけ**で、
+    Istio の overlay・Traefik の Ingress とも L7 の門も ingress の NetworkPolicy も持たない。Traefik は `Exact /mcp` ＋ `Prefix /mcp/`（末尾スラッシュ込み）で、
+    Prefix が文字列の前置・パス要素の境界のどちらで照合されても `/mcp-clients` に当たらない。認証は 3 つのエッジとも MCP サーバーが同じく行う。
 
 ### トークンの宛先（audience） — platform の API 宛てに発行されたトークンだけを受け付ける
 
@@ -221,6 +244,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 保存時暗号化 | PostgreSQL（業務 DB）・SeaweedFS（本文/資産）・Qdrant（ベクトル） | **アプリ層の暗号化は未実装（現状=なし）**。保存時暗号化はインフラ層（ストレージ/ボリューム暗号化・k8s Secret 暗号化）に委ねる方針で、実クラスタでの有効化・鍵管理は運用整備（未決事項・#198 と連動）。機微文書の機密性は ABAC（取得段 fail-closed）＋ Wiki `isPrivate` で担保する |
 | 通信時暗号化（外部→BFF） | クライアント〜エッジ | TLS（リバースプロキシ/Ingress で終端）。**ローカル検証環境（経路B）も含めて平文 HTTP を残さない** —— `NFR-11` の適用範囲は環境を問わない（利用者裁定 2026-08-16・裁定依頼は計画側へ提出済み。証明書は計画 `ADR-0047` の selfsigned CA と、経路 B のエッジ TLS 終端の実装 ADR による） |
 | 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化。NetworkPolicy を多層防御として併用 |
+| 通信時暗号化（サービス → 基盤） | 基盤のサービス〜DB（PostgreSQL）・ブローカ（RabbitMQ） | メッシュの mTLS は基盤の名前空間に届かないので、**アプリの接続で TLS にし、サーバ証明書を検証する**。DB は `SSL Mode=VerifyFull`＋基盤の CA（`Root Certificate`）、ブローカは `amqps`＋基盤の CA を信頼ストアへ追加し、名前の照合を共通ヘルパで外さない。証明書は cert-manager の基盤専用の CA（ローカルは自己署名 → CA の 2 段。compose は同じ形を 1 回きりのコンテナで作る）。**現在は移行の第 1 段**であり、取引ユニットと基盤の他のクライアント（認可サーバの DB・Wiki.js・バックアップ）は平文の口で繋がる。平文の口は全クライアントの切り替えを確かめた後に閉じる。キャッシュ・ベクトル索引・テレメトリ・認可サーバ（HTTP）の TLS は後続の段 |
 | 個人情報 / 機微情報 | 文書本文・属性（機密区分）・利用者クレーム（clearance/department） | 文書の機密区分（`confidentiality`）は必須（サーバー側検証）。ABAC で区分×利用者資格を deny-by-default 評価（検索段の fail-closed な ABAC 強制）。高機密本文の外部 LLM への越境は egress ポリシーで遮断（confidential/restricted はセルフホスト固定）。個人情報の専用マスキング/匿名化は現状スコープ外（本システムは社内文書が対象。取り込み対象データの PII 取り扱いは各データソース側の責務） |
 
 > **注（実装 ADR の参照）**: 上表が参照する**文書の機密区分のサーバー側検証は PR #211（Issue #199）で新設され
@@ -328,7 +352,8 @@ ABAC が判定に使う利用者の部門は IdP の利用者属性 `department`
   Grafana・Qdrant・Mailpit は無効化の前に送信の試行を捕捉し、後は 0 件だった。Loki・Tempo は送信が 4 時間ごとで観測の窓に入らないため、
   実効設定（`/config`・`/status/config`）が `reporting_enabled: false` を返すことを確かめた。
 
-🔴 **残る穴**: egress の既定拒否（default-deny）は実装の確認が未決であり、**表に無い製品や検査をすり抜けた設定の送信を止める手段は無い**。
+🔴 **残る穴**: egress の既定拒否（default-deny）は網の層（NetworkPolicy）で段階的に当てている途中である（上の「多層防御」）。
+**まだ当てていない Pod（ローカルの段 2 の Pod）では、表に無い製品や検査をすり抜けた設定の送信を止める手段は無い**。
 ブラウザが取りに行く通信（Grafana のニュース・アバター）は捕捉していない（上流の既定値の文書で確かめた）。
 秘匿管理（OpenBao）は既定で外へ送るものを持たない（dev サーバを 130 秒観測し、loopback 以外の接続は 0 件。メトリクスの `telemetry` は設定したときだけ出る）ので、上の表に載せていない。
 TEI（埋め込み）はモデルの取得そのものが外部通信で、設定で止めるものではない。既定で配備されず、有効化の前にモデルの事前配置か自社管理の
@@ -398,12 +423,16 @@ Loki と Tempo は製品単体で認証を掛けられず、運用の口（`/flu
 | --- | --- | --- |
 | 経路 B（`deploy/local/observability`） | **2 段** | 前段（身元の検証）＋ NetworkPolicy |
 | 経路 A（compose） | 🔴 **0 段** | 前段も到達の制限も無い。Loki・Tempo の口をホストへ公開している。開発者の手元の検証環境として受け入れる |
-| 本番像（helm chart） | — | Loki・Tempo を配備していない。**展開するときは 2 段を配備の定義に含める**（前段の無いまま足さない） |
+| 本番像（helm chart） | — | Loki・Tempo を配備していない。**展開するときは 2 段を配備の定義に含める**（前段の無いまま足さない）。**CI が描画結果で強制する**（下の「機械の検査」）。同じ名前空間の全 Pod から届く既存の許可（allow-intra-namespace）の対象からも外す必要がある |
 
 - Tempo の OTLP の受け口（トレースの書き込み）は管理用の口ではなく、前段を通さない。到達の制限（Collector だけ）の 1 段である。
 - Alertmanager は製品内（web config）で認証を掛けられるので、前段ではなく製品内で掛ける。**配備はまだ認証なし**である（運用仕様書の点検の記録）。
 - **機械の検査**: `scripts/scripts.repo.test.js` が、製品の待ち受け・前段の道の列挙と既定の拒否・前段の env の必須の参照・Service の宛先・NetworkPolicy の許可・
   Collector と Grafana のトークンの配線を突き合わせ、1 か所ずつ壊すと落ちることを固定している。`scripts/k8s-local-up.test.js` がトークンの生成を固定している。
+  ［2026-10-16 追記］`scripts/check-deploy-manifests.js`（CI）が、chart の既定と `ci/*.yaml` の全派生・全 overlay の描画結果に Loki・Tempo が現れたら、
+  **前段**（同じ Pod の、Secret から資格情報を受けるリバースプロキシ・製品の loopback 待ち・Service の宛先が前段の口）と**到達の制限**（Pod を名指しで選ぶ NetworkPolicy があり、
+  Pod を選ぶ全 NetworkPolicy の送り元が名指し）の**両方**を要求する。名前（コンテナ名・NetworkPolicy 名）では判定しない。chart は現状「対象なし」で通り、経路 B が描画結果での陽性対照になる。
+  前段の認証の中身（道の列挙・トークン）は見ないので、chart へ足す変更は経路 B と同等の突き合わせをその変更で置く。
 - 🔴 **残る穴**: NetworkPolicy の強制は稼働クラスタで実測していない（前段の判定と通しの経路は、配備と同じ版の公式イメージで実測した）。経路 A は 0 段のまま。
 
 ## 秘密情報管理
@@ -512,6 +541,20 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   PVC に置き、Pod 内ラッパーが unseal 鍵を PVC 上の平文ファイルから読んで自動 unseal する（`PERSIST=0` ならインメモリ）。
   root トークンが既知の dev 値である以上、鍵をローカルディスクに置いても守りの水準は変わらない。いずれも
   **dev 専用**であり、本番の Vault 化（unseal/監査/HA/ローテーション）充足ではない（Tier 3）。
+- **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）は公知の既定値で作らない**（2026-10-22。fail-closed）: 起動器
+  （`k8s-local-up.sh`）と保管先の初期投入（`bootstrap.sh`。まだ無い KV だけ）は、`KEYCLOAK_ADMIN_PASSWORD` / `RABBITMQ_PASSWORD` の明示 ＞
+  既存の値（起動器は Secret `keycloak-admin` / `rabbitmq`、初期投入は KV が在れば触らない）の順に使い、どちらも無いか開発用の値と同じなら、
+  何も作らずに名指して止まる。開発用の値は**使い捨ての開発環境だけ**、明示の opt-in `ALLOW_DEV_INFRA_CREDENTIALS=1`（`1` だけ）で許す
+  （大きく警告する。CI の使い捨てスタックはこれを付ける）。値は出力しない。
+- **認証基盤の管理面はエッジに出さない**（2026-10-22）: エッジ（経路B の Traefik・Istio のエッジ・chart のエッジ）は、認証基盤の
+  `/admin` と管理用の realm（`/realms/master`）を 403 で拒む。利用者が使う realm の経路（ログイン・トークン・アカウントコンソール・
+  テーマの資源）はそのまま通す。管理者は port-forward 越しの Admin REST か Pod の中の kcadm.sh で操作する
+  （管理コンソールの画面は開けない。手順は `deploy/local/edge/README.md`「Keycloak の管理コンソール」）。稼働のエッジでの拒否は起動の門（`check-stack-ready.js` の G4b）が実測する。
+- **投入器の主体は既定で無効**（2026-10-22）: 開発用の投入器と運用スクリプト（再発行・アーカイブ）が名乗る機密クライアント
+  （`abac-seeder`。管理者のロールを持つ）は、realm の宣言で無効にしてある。スクリプトは**実行の間だけ**認証基盤の管理者として有効にし、
+  終わったら（失敗・中断を含む）無効へ戻す。戻し損ねても、realm の後追いが次の起動で宣言（無効）へ戻す。資格情報は実行時に
+  明示の env か稼働の Secret（保管先 → ESO の同期先）から読み、realm の宣言の値（公知の dev の値）へは落ちない。手で閉じるときは
+  `node scripts/lib/abac-seeder-session.js --live --disable`。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
   シークレット（`wiki-js` / `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader` / `mcp-client-admin`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
@@ -526,8 +569,14 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
     dev ではない扱いにする（未知のクラスタで安全側に倒す）。dev のクラスタだと分かっているときだけ `ALLOW_DEV_CLIENT_SECRETS=1` で
     通せる（警告を出す）。判定は context の**名前**だけを見るので、共有クラスタの context に許可集合の形の名前を付けない。
     止めたときのメッセージは、下の検知の手順（`--check-dev-secrets`）も告げる。
+    ［2026-10-22］**対象は上の 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた**（多層防御）。対象は手で並べず、
+    宣言（`serviceAccountsEnabled` で、宣言が secret を持つもの）から起動器・保管先の初期投入・後追い・検知が同じ規則で導出する。宣言へ
+    クライアントを足せば、守りの側を触らずに対象へ入る。env の名前は既定で `<CLIENT_ID の大文字・- を _>_CLIENT_SECRET`
+    （例外は `bff` が `BFF_OIDC_CLIENT_SECRET`、`abac-seeder` が `ABAC_SEED_CLIENT_SECRET`）。一覧は
+    `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2` で出す。
+    保管先の初期投入は、宣言に現れたクライアントの置き場が決まっていなければ止まる（入れ漏れを黙って通さない）。
   - **初回の取り込みへ env の値を渡す**: Keycloak 本体の realm の初回 import は、起動器が作る取り込み元（Secret `keycloak-realm-import`。
-    実の secret を含み得るので ConfigMap にしない）を読む。起動器はこれを作るとき、上の 3 つの env を与えたクライアントの secret を宣言の
+    実の secret を含み得るので ConfigMap にしない）を読む。起動器はこれを作るとき、対象（上の項）のうち env を与えたクライアントの secret を宣言の
     dev の値から env の値へ差し替える（値は出力せず、一時ファイルは本人だけが読める権限で作って必ず消す）。env を与えて新しいクラスタを
     起動すれば、認証基盤の側も最初からその値になる。宣言の realm を読む後追いと申請の門は、宣言のままの ConfigMap を読み続ける。
     保管先（Vault）を使う起動で保管先に既に値が在るときは、保管先は書き換えないので、env には保管先に在る値と同じ値を与える。
@@ -671,16 +720,17 @@ audit の行の形（`type`・`request.path`・`request.operation`・`auth.metad
 
 | 脅威 | 影響 | 対策 |
 | --- | --- | --- |
-| 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保。**［2026-09-03 追記］唯一の例外は個人資料の同期プロトコル 1 前置**で、公開するのはサービスではなく端点群である（端点が同期トークンを自前検証し、所有者の個人資料に構造的に閉じる）。露出範囲は末尾スラッシュ込みの前置 1 本に閉じ、静的検査（`k8s-local-up.test.js`）と、実測の**対**（エッジ経由は画面配信へ落ちる／同じ端点を直に叩くと 401）で固定した |
+| 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保。**［2026-09-03 追記］例外は個人資料の同期プロトコル 1 前置**（［2026-10-23］と、opt-in の外部 AI エージェントの入口 `/mcp`。認証は MCP サーバーが行い、同居する管理 REST は経路と L7 の門の 2 層で出さない）で、公開するのはサービスではなく端点群である（端点が同期トークンを自前検証し、所有者の個人資料に構造的に閉じる）。露出範囲は末尾スラッシュ込みの前置 1 本に閉じ、静的検査（`k8s-local-up.test.js`）と、実測の**対**（エッジ経由は画面配信へ落ちる／同じ端点を直に叩くと 401）で固定した |
 | 同一ネットワーク内からの内部 API 無認証到達（残余リスク） | ネットワーク内の侵害があれば内部 API へ到達可能 | **Istio STRICT mTLS 配備済み**（サービスメッシュの計画 ADR は Accepted・#100）でサイドカー未注入クライアントの平文到達を拒否し相互認証。k8s NetworkPolicy を多層防御として併用。残課題は内部 API での OIDC/JWT 検証（別 Issue で追跡） |
 | NetworkPolicy 退行・誤設定による Wiki.js への直接到達 | 機密文書が Wiki.js 上で無条件閲覧可能に | ABAC ゲートウェイ＋ネットワーク分離に加え、機密区分由来の `isPrivate`（public 以外は非公開）を多層防御として付与。稼働 Wiki.js での分離検証は PoC フォロー |
 | 削除・非公開化された文書が Wiki.js に残存 | 撤回済み社内文書が外部システム（Wiki.js）に残り続ける | **削除・アーカイブ同期経路を実装済み**。`DocumentDeleted` 新設と `status=archived` 拡張で下流 WikiService が Wiki.js ページの撤去・非公開化・メタデータ Archived 化を伝播する。加えて `isPrivate`（public 以外は非公開）を多層防御として維持 |
-| 高機密文書本文の外部埋め込み API への送信 | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保。**［2026-10-05］高機密文書（未指定・未知を含む）は埋め込みを呼ぶ前に分け、本文を埋め込みのどの送信先へも送らず、ベクトルを持たない語彙索引へ全文索引だけで書く**（ゲートウェイの fail-closed は二重の守りとして残る）。回帰は `DocumentUpdatedConsumerTests`（呼ばれたら失敗する埋め込みで、高機密文書が 1 回も埋め込みへ渡らないこと）。🔴 **代わりに、語彙索引の文書は検索に現れるので、RAG 回答の文脈として `restricted` と機密区分が未指定・未知の本文が Claude（ZDR のモデルに限る）へ送られ得る。** 追加統制は未定義のまま送ることを計画が受け入れたリスクとして記録している（守りは ZDR の要件・ABAC・個人資料の AI 入力のトグル） |
-| 検索結果の再順位付けのための本文の外部送信（既定は無効） | 有効にすると、検索のたびに候補の本文（1 件あたり最大 400 字・最大 20 件）が `restricted` と機密区分が未指定・未知の文書を含めて Claude（ティア B）へ出る。候補の本文に書かれた命令でモデルの出力を操られる（プロンプト注入） | 送るのは ABAC で絞った後・「横断検索に含める」で落とした後で、「AI の入力に含める」が許す候補だけ。越境は送った候補の最も高い機密区分で判定させ、用途 `rerank` は**区分によらず ZDR 必須**（非 ZDR モデル・ティア C を除く。ゲートウェイのコードが持つ）。失敗は元の順で返し、別の送信先へ倒す経路は無い。本文・検索語は区切りの内側に置き `<` `>` を全角へ置き換え、出力は送った件数の範囲の番号としてしか読まない（候補を足せない）。追加統制は未定義のまま（計画が受け入れたリスク）。回帰は `ClaudeRerankTests`・`ClaudeRerankWiringTests`・`LlmRouterTests`（`Route_RerankPurpose_*`） |
+| 高機密文書本文の外部埋め込み API への送信 | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保。**［2026-10-05］高機密文書（未指定・未知を含む）は埋め込みを呼ぶ前に分け、本文を埋め込みのどの送信先へも送らず、ベクトルを持たない語彙索引へ全文索引だけで書く**（ゲートウェイの fail-closed は二重の守りとして残る）。回帰は `DocumentUpdatedConsumerTests`（呼ばれたら失敗する埋め込みで、高機密文書が 1 回も埋め込みへ渡らないこと）。🔴 **代わりに、語彙索引の文書は検索に現れるので、RAG 回答の文脈として `restricted` と機密区分が未指定・未知の本文が Claude（ZDR のモデルに限る）へ送られ得る。**［2026-10-16］「ZDR のモデルに限る」はモデル単位の ZDR の要件（`NonZdrModels` の除外）に限る意味であり、組織の ZDR は未締結である（期限付きで受け入れたリスク。下の Claude の行）。 追加統制は未定義のまま送ることを計画が受け入れたリスクとして記録している（守りは ZDR の要件・ABAC・個人資料の AI 入力のトグル） |
+| 検索結果の再順位付けのための本文の外部送信（既定は無効） | 有効にすると、検索のたびに候補の本文（1 件あたり最大 400 字・最大 20 件）が `restricted` と機密区分が未指定・未知の文書を含めて Claude（ティア B）へ出る。候補の本文に書かれた命令でモデルの出力を操られる（プロンプト注入） | 送るのは ABAC で絞った後・「横断検索に含める」で落とした後で、「AI の入力に含める」が許す候補だけ。越境は送った候補の最も高い機密区分で判定させ、用途 `rerank` は**区分によらず ZDR 必須**（非 ZDR モデル・ティア C を除く。ゲートウェイのコードが持つ。［2026-10-16］🔴 これはモデル単位の除外であり、組織の ZDR 契約を見ない。Claude の組織の ZDR は未締結で、送った本文は標準の保持〔最長 30 日・米国〕の下にある。次の行）。失敗は元の順で返し、別の送信先へ倒す経路は無い。本文・検索語は区切りの内側に置き `<` `>` を全角へ置き換え、出力は送った件数の範囲の番号としてしか読まない（候補を足せない）。追加統制は未定義のまま（計画が受け入れたリスク）。回帰は `ClaudeRerankTests`・`ClaudeRerankWiringTests`・`LlmRouterTests`（`Route_RerankPurpose_*`） |
 | 機密区分変更時の旧コレクション残存（ABAC バイパス） | 例 public→confidential 変更後、旧 voyage コレクションに本文が残り機密扱いの文書が低区分コレクションで検索ヒット | 取り込み冒頭で全モデル別コレクションから当該文書を削除してから再索引する（`DeleteByDocumentFromAllAsync`）。回帰は `DocumentUpdatedConsumerTests` で担保 |
 | インフラ製品の既定の外部通信（利用統計・更新確認・テレメトリ） | 稼働の情報（版・規模・利用の数）が製品の提供元へ送られる。データ外部送信方針の「AI 以外の外部送信は原則行わない」を破る | 全経路の配備で無効化し、CI が描画結果で検査する（上の「インフラ製品の既定の外部通信」）。**egress の既定拒否は未確認**で、表に無い製品は止まらない |
-| Voyage AI のデータ保持・学習利用 | 送信本文が外部で保持・学習に利用される | 契約でゼロ保持（学習利用オプトアウト）を設定・確認してから本番データを流す（運用仕様書に記録）。未認定の間は Voyage 経路を無効化できる |
-| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず、**既定では**既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`。送信先はゲートウェイの構成 `Embedding:Routing:QueryProfile` で名指しでき、**指定できるのは越境ポリシーが既に許したエンドポイントだけ**である）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。［2026-09-26 更新］高機密（ruri/768）コレクションは検索が**束ねて読む**ようになり、そのコレクションを引くクエリは**セルフホスト（社外送信なし）で埋める**（検索サービスが読み先コレクションを名乗り、ゲートウェイが越境判定の後で絞る。取り込みの越境判定は変えない）。**主コレクションのクエリの既定は外部経路のまま**と計画が確定したため、クエリ文の越境の再評価は閉じた。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
+| Voyage AI のデータ保持・学習利用 | 送信本文が外部で保持・学習に利用される | 契約でゼロ保持（学習利用オプトアウト）を設定・確認してから本番データを流す（運用仕様書に記録）。未認定の間は Voyage 経路を無効化できる。**［2026-10-14］認定した**: 規約（Last Updated: May 27, 2026）と照合し、学習不使用・ゼロ保持は opt-out（2026-10-14 実施）で満たす。🔴 **所在（レジデンシー）は規約に保証が無く、オーナーが受け入れたリスクとして残る。** opt-out より前の 960 回の送信は学習に使われ得るものとして受容した。認定は opt-out を実施したアカウントの鍵に限る（この射程は推論による。オーナーは未確認。安全側に倒した制約）。根拠は運用仕様書の「ゼロ保持認定状況の記録」。**［2026-10-16］計画がこれをティア B の定義（所在の条件）への例外として記録した。** 根拠は公開の規約と opt-out だけで、契約書は無い。🔴 **「監査可能」の条件は照合していない**（計画に定義が無い）。射程の外の鍵の環境では、運用仕様書の「未認定の環境へデプロイする場合」の 2 つの形（鍵を入れない／セルフホストを有効にして Voyage を止める）を当てる |
+| Claude（ティア B）へ送った本文の保持と推論の所在 | 回答生成・再順位付け・分析で、`restricted` と機密区分が未指定・未知の文書を含む本文が Claude へ出る。組織の ZDR が無いと入出力は提供元に保持され、推論の地域も定まらない | **［2026-10-16］** 🔴 **組織の ZDR は未締結と記録した**: 送った本文は標準の保持（受領から 30 日以内に削除・米国に保存。利用ポリシー違反として検知された分は最長 2 年）の下にある。**期限付きで受け入れたリスク**（受容者は利用者〔オーナー〕、期限は ZDR を締結するか恒久的に受け入れるかの判断まで。その判断は本番運用への移行の判断の前）。推論の所在（`inference_geo` を指定せず、既定 `"global"` では米国・欧州・アジア・豪州の一部の国）は受け入れたリスク。学習は明示の許可が無い限り使われない。「監査可能」は未照合。ゲートウェイの ZDR の要件はモデル単位の除外だけである。記録は運用仕様書の「LLM ゲートウェイの送信先ティア（Claude）の認定状況」 |
+| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず、**既定では**既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`。送信先はゲートウェイの構成 `Embedding:Routing:QueryProfile` で名指しでき、**指定できるのは越境ポリシーが既に許したエンドポイントだけ**である）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）~~契約~~（［2026-10-16］契約ではなく公開の規約とアカウントの opt-out）が本文と同じく適用される。［2026-09-26 更新］高機密（ruri/768）コレクションは検索が**束ねて読む**ようになり、そのコレクションを引くクエリは**セルフホスト（社外送信なし）で埋める**（検索サービスが読み先コレクションを名乗り、ゲートウェイが越境判定の後で絞る。取り込みの越境判定は変えない）。**主コレクションのクエリの既定は外部経路のまま**と計画が確定したため、クエリ文の越境の再評価は閉じた。**［2026-10-17］改まった。** 高機密の文書は埋め込まず、ベクトルを持たない語彙索引にだけ載る（上の「高機密文書本文の外部埋め込み API への送信」の行）。語彙索引はクエリを埋めずに全文の系統だけで引くので、高機密の文書を見つけるためにクエリ文を埋めることは無い。ruri/768 のコレクションに高機密の文書は入らず、それを束ねる設定はセルフホストを有効にした opt-in の構成だけに残る。~~ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する。~~ ［2026-10-14］ゼロ保持・学習不使用は認定した（上の行）。クエリ文の所在の保証が無い点は本文と同じく受け入れたリスクである |
 
 ## 未決事項
 
@@ -702,4 +752,9 @@ audit の行の形（`type`・`request.path`・`request.operation`・`auth.metad
 - 監査ログの保管期間・改ざん防止・エクスポートの運用設定（可観測性基盤側。#198 連動）。NFR「監査ログ保持」の具体化。
 - ~~検索クエリ側の機密区分ルーティング~~ ［2026-09-26 解消］計画が「クエリの埋め込みは取り込みと別に扱い、既定は外部経路。
   高機密コレクションを引くときだけセルフホストで埋める」と確定し、検索は高機密コレクションを束ねて読むようになった。
-  残るのは Voyage のゼロ保持契約の認定（上の行）であり、**その認定までクエリ文の外部送信の保護は書面上のもの**である。
+  ［2026-10-17］その後、高機密の文書は埋め込まず語彙索引にだけ載せると計画が改めた（2026-10-05）。高機密コレクションは無くなり、語彙索引はクエリを埋めずに引く。
+  ~~残るのは Voyage のゼロ保持契約の認定（上の行）であり、**その認定までクエリ文の外部送信の保護は書面上のもの**である。~~
+  ［2026-10-14］その認定も済んだ（脅威の表の Voyage の行。学習不使用・ゼロ保持は opt-out で満たし、所在の保証が無い点は受け入れたリスクとして残る）。
+- **Claude の ZDR の締結と、ティア B の判定根拠の記録**（［2026-10-16］）: Claude の組織の ZDR は未締結で、期限付きで受け入れている（脅威の表の Claude の行）。
+  締結するか標準の保持を恒久的に受け入れるかを、本番運用への移行の判断の前に決める。ティア B の各送信先の判定根拠（契約・保持・学習・所在・監査）は
+  エンドポイント定義に無く（`Tier` だけ）、運用仕様書の記録が暫定の手段である。「監査可能」の定義が計画で決まったら、ティア B の各送信先を照合し直す。

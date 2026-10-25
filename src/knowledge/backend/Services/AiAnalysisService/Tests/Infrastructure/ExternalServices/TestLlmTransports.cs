@@ -11,17 +11,12 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
 // FR-04, FR-11, NFR-02, ADR-0029, ADR-0075, IADR-0379, IADR-0400 (#1255):
-// 既存の RagOrchestrator 試験を **REST 輸送と gRPC 輸送の両方**で回すための小道具。
-//
-// 🔴 **同じ 1 つの元データから両輸送を組む。** 試験は従来どおり「ゲートウェイが返す本文」を
-// JSON / SSE の文字列で書き、ここがそれを解釈して gRPC の偽クライアントへ載せ替える ——
-// 元データを 2 つ書くと、**片方だけを直して「一致した」ことにできてしまう**。
-//
-// REST の側は `null` を返す（RagOrchestrator が `httpFactory` から HttpLlmCompletionTransport を組む。
-// すなわち**現行そのまま**であり、既存試験の意味を変えていない）。
+// 既存の RagOrchestrator 試験を gRPC 輸送で回すための小道具。
+// 試験は従来どおり「ゲートウェイが返す本文」を JSON / SSE の文字列で書き、ここがそれを解釈して
+// gRPC の偽クライアントへ載せ替える。
+// [[IADR-0533]] (#1255): REST 輸送を撤去したので、輸送の種類は gRPC だけである（旧 `Rest` の値は消した）。
 public enum LlmTransportKind
 {
-    Rest,
     Grpc,
 }
 
@@ -38,15 +33,12 @@ public static class TestLlmTransports
     /// 呼び出し元が落ちる枝が REST と同じであることを、これで測る。
     /// </para>
     /// </summary>
-    public static ILlmCompletionTransport? Create(
+    public static ILlmCompletionTransport Create(
         LlmTransportKind kind,
         string llmBody,
         string mediaType = "application/json",
         HttpStatusCode status = HttpStatusCode.OK)
     {
-        if (kind == LlmTransportKind.Rest)
-            return null; // RagOrchestrator が httpFactory から REST 輸送を組む（現行のまま）。
-
         if (status != HttpStatusCode.OK)
             return Grpc(new ThrowingCompletionClient(
                 new RpcException(new Status(StatusCode.Unavailable, "gateway unavailable"))));

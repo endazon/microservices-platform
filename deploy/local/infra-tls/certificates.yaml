@@ -1,0 +1,69 @@
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤のサーバ証明書（段 1 は postgres と rabbitmq）。
+#
+# dnsNames はクライアントが引く名前をすべて列挙する。クライアントは ExternalName の素の名前（postgres / rabbitmq。
+# deploy/local/aliases）で繋ぐので、TLS の名前の照合もその名前で行われる。FQDN の 3 形も並べる（名前空間を跨いで
+# 直接引くクライアント・運用の確認手順）。
+# ⚠ dnsNames の中にコメント行を入れないこと（scripts/scripts.repo.test.js が `- ` の行を読む）。
+#
+# 証明書の更新: cert-manager は期限の 30 日前に Secret を更新するが、postgres / rabbitmq は起動時に読む。
+#   k8s-local-up.sh は Pod の雛形へ証明書の指紋を刻み、変わっていれば作り直す（stamp_infra_tls_restart）。
+#   更新の後、期限（1 年）までに一度は起動器を再実行すること。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: postgres-tls
+  namespace: platform-infra
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: platform-infra-tls
+spec:
+  secretName: postgres-tls
+  commonName: postgres
+  dnsNames:
+    - postgres
+    - postgres.platform-infra
+    - postgres.platform-infra.svc
+    - postgres.platform-infra.svc.cluster.local
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  duration: 8760h # 1 年
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: platform-infra-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: rabbitmq-tls
+  namespace: platform-infra
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: platform-infra-tls
+spec:
+  secretName: rabbitmq-tls
+  commonName: rabbitmq
+  dnsNames:
+    - rabbitmq
+    - rabbitmq.platform-infra
+    - rabbitmq.platform-infra.svc
+    - rabbitmq.platform-infra.svc.cluster.local
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  duration: 8760h # 1 年
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: platform-infra-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

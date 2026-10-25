@@ -1,4 +1,3 @@
-using System.Net;
 using System.Security.Claims;
 using AwesomeAssertions;
 using GraphService.Domain;
@@ -12,9 +11,13 @@ namespace GraphService.Tests.Infrastructure.ExternalServices;
 
 // FR-17, FR-05, UC-10, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0034, ADR-0036 D-07, ADR-0075,
 // [[IADR-0272]] 決定 4, [[IADR-0379]] 決定 5, [[IADR-0401]] 決定 1 (#1255):
-// **T-P2-02** —— ABAC スコープ解決の REST 経路と gRPC 経路が同じ答えを返すことを固定する。
+// **T-P2-02** —— ABAC スコープ解決の gRPC 経路が、呼び出し先の答え（`Granted` / `AllowedFilters` / `Branches`）を
+// そのまま返すことを固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]] 決定 1: REST 経路を撤去したので、旧形の「REST と同じ答え」は絶対値の表明へ書き換えた。
+// REST にしか無い表明（非 2xx・空本文・利用者の本文の形）と REST の縮退の WARN を固定していた 2 つの試験クラスは撤去した
+// （gRPC の縮退の WARN は `AuthzScopeGrpcClient` が出し、共有の試験が固定する）。
 //
-// 🔴 **同値は `read` と `write` の両方で測る。** `action` は既定値を持たない引数であり
+// 🔴 **`read` と `write` の両方で測る。** `action` は既定値を持たない引数であり
 // （[[IADR-0272]] 決定 4）、輸送を替えるときに落とすと**書き込み経路が読み取り権限で通る**。
 // 片方の action でしか測らないと、その取り違えが緑のまま通る。
 [Trait("TestKind", "Unit")]
@@ -46,27 +49,17 @@ public class GraphAccessResolverGrpcTests
             new AccessScopeBranch("owner", [new AttributeFilter("owner", ["test-user"])]),
         ]);
 
-    private static string GrantedJson =>
-        System.Text.Json.JsonSerializer.Serialize(
-            Granted(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-
-    // T-P2-02: REST と gRPC が `Granted` / `AllowedFilters` / `Branches` で一致する（read / write とも）。
+    // T-P2-02: gRPC の答えが `Granted` / `AllowedFilters` / `Branches` まで保たれる（read / write とも）。
     [Theory]
     [InlineData(GraphAccessAction.Read)]
     [InlineData(GraphAccessAction.Write)]
-    public async Task Rest_and_grpc_resolve_the_same_scope(string action)
+    public async Task Grpc_resolves_the_scope_the_authorization_service_returned(string action)
     {
-        var rest = await new GraphAccessResolver(
-            new StubHttpClientFactory(_ => Json(GrantedJson))).ResolveAsync(Ctx(), action, Ct);
-
         var fake = FakeAuthzScopeClient.Returning(Granted());
-        var grpc = await new GraphAccessResolver(
-            new StubHttpClientFactory(_ => throw new InvalidOperationException("REST は呼ばれてはならない")),
-            fake.Wrap()).ResolveAsync(Ctx(), action, Ct);
+        var grpc = await new GraphAccessResolver(fake.Wrap()).ResolveAsync(Ctx(), action, Ct);
 
-        grpc.Should().BeEquivalentTo(rest);
-        // 陽性対照: 実際に gRPC を通っている（REST 側は例外を投げる器なので、通っていれば落ちている）。
-        fake.CallCount.Should().Be(1);
+        grpc.Should().BeEquivalentTo(Granted());
+        fake.CallCount.Should().Be(1, "陽性対照: 実際に gRPC を通っている");
     }
 
     // 🔴 `action` は gRPC の本文へ**そのまま**載る。既定へ丸めない。
@@ -77,7 +70,7 @@ public class GraphAccessResolverGrpcTests
     {
         var fake = FakeAuthzScopeClient.Returning(Granted());
 
-        await new GraphAccessResolver(new NeverHttpClientFactory(), fake.Wrap())
+        await new GraphAccessResolver(fake.Wrap())
             .ResolveAsync(Ctx(), action, Ct);
 
         fake.LastRequest.Should().NotBeNull();
@@ -85,49 +78,19 @@ public class GraphAccessResolverGrpcTests
         fake.LastRequest.UserAttributes.Should().ContainKeys("clearance", "department");
     }
 
-    // 縮退: gRPC の輸送失敗はすべて deny-by-default（REST の非 2xx・不達と同じ枝）。
+    // 縮退: gRPC の輸送失敗はすべて deny-by-default（条件の無い deny。宛先が未構成のときの UNAVAILABLE を含む）。
     [Theory]
     [InlineData(StatusCode.Unauthenticated)]
     [InlineData(StatusCode.PermissionDenied)]
     [InlineData(StatusCode.Unavailable)]
+    [InlineData(StatusCode.DeadlineExceeded)]
+    [InlineData(StatusCode.Internal)]
     public async Task Grpc_failure_degrades_to_deny(StatusCode status)
     {
-        var restDeny = await new GraphAccessResolver(new StubHttpClientFactory(
-            _ => new HttpResponseMessage(HttpStatusCode.InternalServerError)))
+        var grpcDeny = await new GraphAccessResolver(FakeAuthzScopeClient.Failing(status).Wrap())
             .ResolveAsync(Ctx(), GraphAccessAction.Read, Ct);
 
-        var grpcDeny = await new GraphAccessResolver(
-            new NeverHttpClientFactory(), FakeAuthzScopeClient.Failing(status).Wrap())
-            .ResolveAsync(Ctx(), GraphAccessAction.Read, Ct);
-
-        grpcDeny.Should().BeEquivalentTo(restDeny);
         grpcDeny.Granted.Should().BeFalse();
-    }
-
-    private static HttpResponseMessage Json(string body) =>
-        new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-        };
-
-    private sealed class StubHttpClientFactory(Func<HttpRequestMessage, HttpResponseMessage> respond)
-        : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-            => new(new StubHandler(respond)) { BaseAddress = new Uri("http://localhost/") };
-    }
-
-    // gRPC 経路のとき REST が 1 度も使われないことを型で担保する器。
-    private sealed class NeverHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-            => throw new InvalidOperationException("gRPC 経路では REST クライアントを作ってはならない");
-    }
-
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(respond(request));
+        grpcDeny.AllowedFilters.Should().BeEmpty();
     }
 }

@@ -15,6 +15,8 @@ using WikiService.Features.Wiki.SyncDocument;
 using WikiService.Infrastructure.Persistence;
 using WikiService.Domain.Ports;
 using WikiService.Infrastructure.ExternalServices;
+using WikiService.Common.Observability;
+using OpenTelemetry.Metrics;
 
 const string ServiceName = "microservices-platform.wiki-service";
 
@@ -53,12 +55,10 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<WikiDbContext>(opt => opt.UseNpgsql(connStr));
 
 // FR-13, FR-05, ADR-0011: 閲覧の ABAC 判定は本システム（AuthorizationService）が担う。
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
-// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0401 決定 1 (#1255):
-// ABAC スコープ解決の gRPC 経路。**並走中の正は REST である。**
-// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ `AuthzScopeGrpcClient` が
-// 登録され、解決器は在ればそれを使う（無ければ上の名前つき HttpClient で REST のまま）。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// FR-05, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0075, IADR-0401 決定 1, [[IADR-0533]] (#1255):
+// スコープ解決の輸送は east-west gRPC だけである（［2026-10-10］REST `POST /authz/scope` の並走は撤去した）。
+// `Services:AuthorizationServiceGrpc` が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、
+// 解決器は deny-by-default へ倒れる。
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddScoped<IWikiAccessResolver, WikiAccessResolver>();
 
@@ -89,7 +89,32 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 
 // FR-13, ADR-0027 (#1640): 同期・撤去の受け口の期限（本文の取得・Wiki.js 1 回）。
 // 既定の実行期限（60 秒）に最悪の所要時間が収まらない構成は、ここで起動を止める。
-builder.Services.AddSingleton(WikiSyncTimeouts.From(builder.Configuration));
+// ［2026-10-23 / #2100・[[IADR-0599]] 決定 3・4］門の待ち（`Wiki:WriteGateWaitSeconds`）と両受け口の実行期限（`Wiki:HandlerTimeoutSeconds`・既定 90 秒）も
+// ここで読み、最悪の所要時間と再試行の連鎖が収まらない構成は起動を止める。実行期限は下の UseWolverine で方針として与える。
+var wikiSyncTimeouts = WikiSyncTimeouts.From(builder.Configuration);
+builder.Services.AddSingleton(wikiSyncTimeouts);
+// 🔴 FR-13, [[IADR-0563]] 決定 1・2 (#1971): Wiki.js へ同時に書き込む数の上限（`Wiki:MaxParallelWrites`・既定 1・1〜4）。
+// 同期と撤去の両方の受け口がこの 1 つの門を通る。下の 2 つのリスナーの並列度も同じ値にそろえる。
+// 🔴 FR-13, NFR-05, [[IADR-0599]] 決定 1・2 (#2100): **門はレプリカをまたいで効く。** helm の既定は HPA（minReplicas 2）であり、
+// プロセスの中の枠だけではレプリカの数だけ Wiki.js への書き込みが並ぶ（#1971 の pageTree の主キーの衝突が戻る）。
+// 本番（リレーショナルな DB）は wiki-service の PostgreSQL の advisory lock でレプリカをまたぐ枠を取る。InMemory（単体試験）だけが
+// プロセスの中の枠に縮退する（GraphService のリースの選び方〔[[IADR-0299]] 決定 3〕と同じ）。
+var maxParallelWrites = WikiJsWriteGate.ReadMaxParallelWrites(builder.Configuration);
+builder.Services.AddSingleton<IWikiJsReplicaWriteLock>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+    if (!db.Database.IsRelational())
+        return ProcessLocalWikiJsReplicaWriteLock.Instance;
+    return new PostgresWikiJsReplicaWriteLock(
+        connStr, sp.GetRequiredService<ILogger<PostgresWikiJsReplicaWriteLock>>());
+});
+builder.Services.AddSingleton(sp => new WikiJsWriteGate(maxParallelWrites, sp.GetRequiredService<IWikiJsReplicaWriteLock>()));
+// FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934): 恒久的な失敗（slug の一意制約・本文の NoSuchKey）で記録だけして終えた同期の計数。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<WikiSyncSkippedMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(WikiSyncSkippedMetrics.MeterName));
 builder.Services.AddPlatformConsumerTimeouts();
 
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -128,18 +153,31 @@ builder.Host.UseWolverine(opts =>
     // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
     // FR-14 / #1801: 段宣言（step）を渡す。queue 宣言があればそれ、無ければイベント型名で束ね・購読し、
     // `enabled: false` の段ではキューを束ねずリスナーも立てない（WolverineExtensions の段宣言版）。
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+    opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision()
         .BindPlatformQueue<DocumentDeleted>("wiki-service", deleteStep)
         .BindPlatformQueue<DocumentUpdated>("wiki-service", syncStep);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う。
     // fan-out の保存: DocumentUpdated は ingestion-service と別キューになる（サービス名前置）。
     // ハンドラへの振り分けはメッセージ型で決まる（キュー 2 本 → 同一ホスト内で型別ディスパッチ）。
-    opts.ListenToPlatformQueue<DocumentDeleted>("wiki-service", deleteStep);
-    opts.ListenToPlatformQueue<DocumentUpdated>("wiki-service", syncStep);
+    // 🔴 FR-13, [[IADR-0557]] 決定 5, [[IADR-0563]] 決定 1・2 (#1971): **リスナーの数は書き込みの門の上限（既定 1）に明示する。**
+    // Wiki.js 2.5 の pages.create / pages.delete は木の再構築（rebuild-tree）をトランザクション無しの truncate → insert で走らせ、並ぶと
+    // pageTree の主キーで衝突して書き込みが失敗する（実測: 並列 2 で 2/8・並列 4 で 6/8）。律速は Wiki.js の CPU で、毎分も 1 割強しか増えない。
+    // RabbitMQ のリスナーは Wolverine の既定で Inline（1 通の処理を待ってから次を受け取る）・リスナーの数 1 である（6.24.4 で
+    // WikiJsWriteGateWiringTests が固定する）。Inline で並びを決めるのはリスナーの数なので、既定に頼らず門と同じ値を明示する
+    // （門より多く受け取って門で待つ形にもしない）。
+    opts.ListenToPlatformQueue<DocumentDeleted>("wiki-service", deleteStep)
+        ?.ListenerCount(maxParallelWrites);
+    opts.ListenToPlatformQueue<DocumentUpdated>("wiki-service", syncStep)
+        ?.ListenerCount(maxParallelWrites);
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // FR-13, ADR-0027, [[IADR-0599]] 決定 4 (#2100): 両受け口の実行期限（既定 90 秒）。門の待ちがレプリカをまたいで延びる分
+    // （既定 30 秒）を、Wolverine の既定 60 秒では収められない。他のメッセージ型の既定は変えない。
+    opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentUpdated>(wikiSyncTimeouts.Handler));
+    opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentDeleted>(wikiSyncTimeouts.Handler));
 });
 
 var app = builder.Build();

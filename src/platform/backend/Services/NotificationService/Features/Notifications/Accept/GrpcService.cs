@@ -11,8 +11,8 @@ namespace NotificationService.Features.Notifications.Accept;
 // [[IADR-0379]] 決定 4・5, [[IADR-0398]] 決定 1・7, [[IADR-0401]], [[IADR-0408]], [[IADR-0417]],
 // [[IADR-0419]] (#1255): 通知の受け口の **east-west gRPC 面**。
 //
-// 🔴 **本体は持たない。** `NotificationIngress.AcceptAsync` を呼ぶだけであり、REST の
-// `POST /internal/notifications` と**同じ関数**を通る（検証器も重複判定も 2 つにしない。
+// 🔴 **本体は持たない。** `NotificationIngress.AcceptAsync` を呼ぶだけであり、撤去した REST の
+// `POST /internal/notifications`（［2026-10-15 / #1902］撤去）と**同じ関数**を通っていた（検証器も重複判定も 2 つにしない。
 // [[IADR-0402]] 決定 6 / [[IADR-0408]] / [[IADR-0417]] 決定 5 と同じ形）。
 // ここに在るのは「輸送の言葉へ写すこと」だけである。
 //
@@ -21,7 +21,7 @@ namespace NotificationService.Features.Notifications.Accept;
 // gRPC 面は [[IADR-0379]] 決定 4 に従い realm ロール `platform-service` を要求する ——
 // **権限が狭まる向き**である（[[IADR-0401]] 決定 1 / [[IADR-0417]] 決定 4 と同じ）。
 // 🔴 **利用者トークンでは開かない**（confused deputy の防止）——「認証さえあれば通る」形にすると、
-// 転送された管理者トークンで s2s の面が開く。**REST の口は残す**（並走中の正は REST）。
+// 転送された管理者トークンで s2s の面が開く。［2026-10-15 / #1902・[[IADR-0533]]］無認証の REST の口は撤去した。受け口はこの面だけである。
 //
 // 🔴 **status への写像は REST の状態コードと 1:1 である。**
 //   検証違反 → `INVALID_ARGUMENT`（REST の 400 = `ValidationProblem`）。それ以外は成功。

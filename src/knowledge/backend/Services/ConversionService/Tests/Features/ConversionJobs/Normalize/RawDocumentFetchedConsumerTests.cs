@@ -5,6 +5,7 @@ using ConversionService.Domain;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Wolverine;
 
@@ -64,9 +65,78 @@ public class RawDocumentFetchedConsumerTests
         published.Title.Should().Be("test");
     }
 
+    // NFR-28, NFR-19, FR-19 (#2131): **原本の所在と、そこから作られる表題をログへ出さない。**
+    // 表題は所在のファイル名から作られる（上の試験で `/docs/test.docx` → `test`）。所在を出せば表題を出すのと同じである。
+    // 境界: 所在に改行・行区切り（U+2028）を含める。全水準・構造化の値まで見る。
+    [Fact]
+    public async Task Consumer_does_not_log_original_path_or_title_at_any_level()
+    {
+        const string marker = "秘密の相談";
+        var sourceId = Guid.NewGuid();
+        var fetchId = Guid.NewGuid();
+        var path = $"/notes/私の日記\n\u2028{marker}.docx";
+        var normalizer = new FakeNormalizationService(new NormalizationResult(
+            DocumentId: DeterministicGuid.ForDocument(sourceId, path),
+            MarkdownUri: "storage://normalized/doc.md",
+            AssetUris: [],
+            DiagramsCoded: 0,
+            DiagramsRetained: 0,
+            Figures: []));
+        var publisher = new RecordingDocumentNormalizedPublisher();
+        var options = new DbContextOptionsBuilder<ConversionJobDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        await using var db = new ConversionJobDbContext(options);
+        var logger = new StructuredRecordingLogger<RawDocumentFetchedConsumer>();
+        var consumer = new RawDocumentFetchedConsumer(normalizer, publisher, new EfConversionJobStore(db), logger);
+
+        await consumer.Handle(
+            new RawDocumentFetched(
+                fetchId, sourceId, "filesystem", path,
+                "storage://bucket/raw/x.docx", "application/msword",
+                new Dictionary<string, string> { ["confidentiality"] = "internal" },
+                [],
+                DateTimeOffset.UtcNow),
+            new Envelope(),
+            TestContext.Current.CancellationToken);
+
+        // 前提: 変換の経路を通り、表題は所在から作られた（印が表題に入っている）。
+        publisher.Calls.Should().ContainSingle().Which.Title.Should().Contain(marker);
+        logger.Entries.Should().NotContain(e => e.Carries(marker), "所在・表題をどの水準のログにも出さない");
+        // 陰性対照: 行そのものは残り、鍵は取得 ID である。
+        logger.Entries.Should().Contain(e => e.Level == LogLevel.Information && e.Carries(fetchId.ToString()));
+    }
+
     private sealed class FakeNormalizationService(NormalizationResult result) : INormalizationService
     {
         public Task<NormalizationResult> NormalizeAsync(RawDocumentFetched raw,
             CancellationToken ct = default) => Task.FromResult(result);
+    }
+}
+
+// #2131: 書式化後の文言と構造化の値の両方を残すダブル（新規パッケージを増やさないため手書きする）。
+file sealed class StructuredRecordingLogger<T> : ILogger<T>
+{
+    public sealed record Entry(LogLevel Level, string Message, IReadOnlyList<string> Values)
+    {
+        public bool Carries(string fragment) =>
+            Message.Contains(fragment, StringComparison.Ordinal)
+            || Values.Any(v => v.Contains(fragment, StringComparison.Ordinal));
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Entry> _entries = new();
+
+    public IReadOnlyList<Entry> Entries => [.. _entries];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        var values = state is IEnumerable<KeyValuePair<string, object?>> pairs
+            ? pairs.Select(p => p.Value?.ToString() ?? string.Empty).ToList()
+            : [];
+        _entries.Enqueue(new Entry(logLevel, formatter(state, exception), values));
     }
 }

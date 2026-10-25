@@ -1,12 +1,12 @@
 # IADR-0066 / ADR-0004: 認証（Keycloak, dev）。realm `platform` を import。
 # 取り込み元の realm JSON は kustomize の外で `scripts/k8s-local-up.sh` の [3/7] が実ファイル（deploy/keycloak/…）から
 # **Secret `keycloak-realm-import`** として作り、/opt/keycloak/data/import へマウントする（単一情報源＝既存 realm ファイル）。
-# NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): ConfigMap ではなく Secret なのは、レルム管理のロールを持つ 3 クライアント
-# （identity-admin / reset-gate / mcp-client-admin）の secret を、env を与えたときは宣言の dev の値ではなく env の値で渡すため
+# NFR-18, ADR-0124 決定 1, IADR-0518 (#1834) / IADR-0572: ConfigMap ではなく Secret なのは、サービスアカウントを持つ機密クライアント
+# （宣言から導出する。当初は identity-admin / reset-gate / mcp-client-admin の 3 つ）の secret を、env を与えたときは宣言の dev の値ではなく env の値で渡すため
 # （dev 以外のクラスタの初回の取り込みで公知の値のクライアントを作らない・消費側の Secret と食い違わない）。
 # 宣言のままの ConfigMap `keycloak-realms` は realm の後追い Job と申請の門が読む（こちらは変えない）。
 #
-# IADR-0261 (#438): realm.json に loginTheme/accountTheme=platform を投入済み。テーマの実体
+# IADR-0261 (#438) / IADR-0532: realm.json に loginTheme/accountTheme/emailTheme=platform を投入済み。テーマの実体
 # （deploy/keycloak/themes/platform/）は下記 ConfigMap `keycloak-theme-platform` としてマウントする。
 # ★ この ConfigMap は kustomize の外（root 外ファイル参照はセキュリティ上不可。上記 realm と同型の制約）
 # のため、`scripts/k8s-local-up.sh` の [3/7] ブロック（realm の ConfigMap・取り込み元の Secret の直後）が生成する
@@ -64,6 +64,10 @@ spec:
             # 揺れる。実測）。v2 の KC_HOSTNAME に完全な URL を与える。KC_HOSTNAME_URL を戻さない（k8s-local-up.test.js が止める）。
             - name: KC_HOSTNAME
               value: https://keycloak.localhost
+            # NFR-18, IADR-0575 (GHSA-rh44-px44-p48q): KC_HOSTNAME_ADMIN は**置かない**。置くと Admin REST が要求するトークンの発行者が
+            #   管理用の URL に変わり、in-cluster の http://keycloak:8080 で取ったトークン（発行者は KC_HOSTNAME）を使う realm の後追い・
+            #   各サービスの Admin REST が拒まれ得る。エッジは /admin と /realms/master を拒む（keycloak-admin-deny.yaml・edge-istio）ので、
+            #   管理の操作は port-forward 越しの Admin REST か Pod の中の kcadm.sh で行う（deploy/local/edge/README.md）。
             # IADR-0524: バックチャネル（token・jwks・userinfo・introspection）の URL は要求の host で描く（24 の v1 の既定と同じ）。
             # .NET は in-cluster の well-known から jwks_uri を引くので、これが無いとエッジの URL（ローカル CA）を引きに行く。
             - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
@@ -96,8 +100,14 @@ spec:
             # ヒープになり、metaspace / off-heap と合わせて 2Gi を超えて OOMKilled(137) を繰り返した（7 日で 11 回。
             # 再起動中は全サービスのトークン検証が一時的に 401 になる）。50% ≒ 1GiB に抑える。JAVA_OPTS 全体は
             # 置き換えない（Keycloak が用意した上書き点だけを使う）。
+            # ［2026-10-14 / #1927・IADR-0539］常駐を下げる。PoC の実測 787 MiB（ノード 87% の最大の Pod）。
+            #   - MaxRAMPercentage 50 → 40（≈1,024Mi → ≈819Mi）。非ヒープ（metaspace ≤256m は kc.sh の既定・コードキャッシュ ≤240m・
+            #     スレッド）を足しても ≈1.4Gi で limits 2Gi の内側。起動時の augmentation の山は limits（2Gi）で受ける（下の注記）。
+            #   - Min/MaxHeapFreeRatio 10/20 と G1PeriodicGCInterval（ms）: 26.7.4 の kc.sh は G1 で「最大ヒープまで取りに行きがち」と
+            #     自ら書く（既定の空き率は 40/70）。augmentation で広げたヒープを、暇な間の周期 GC で OS へ返させる。
+            #   キャッシュ（start-dev は local の Infinispan）は変えない —— PoC の realm は件数の上限（既定 10,000）に届かない。
             - name: JAVA_OPTS_KC_HEAP
-              value: "-XX:MaxRAMPercentage=50"
+              value: "-XX:MaxRAMPercentage=40 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20 -XX:G1PeriodicGCInterval=60000"
           ports:
             - containerPort: 8080
             # IADR-0524: 管理用のポート（ヘルス）。kubelet だけが見る。Service には出さない。
@@ -133,15 +143,35 @@ spec:
           configMap:
             name: keycloak-theme-platform
             optional: true # #438: k8s-local-up.sh が [3/7] で自動生成する。fail-safe のため未作成でも Pod は起動する
+            # IADR-0532: キーは相対パスの `/` を `__` に置き換えたもの（k8s-local-up.sh の生成規則）。テーマにファイルを
+            # 足したらここにも足す —— 実ファイル・生成キー・items の集合の一致は scripts/k8s-local-up.test.js が止める。
             items:
-              - key: login-theme-properties
-                path: login/theme.properties
-              - key: login-css
-                path: login/resources/css/platform.css
-              - key: account-theme-properties
-                path: account/theme.properties
-              - key: account-css
+              - key: account__resources__css__platform.css
                 path: account/resources/css/platform.css
+              - key: account__resources__css__tokens.css
+                path: account/resources/css/tokens.css
+              - key: account__resources__favicon.svg
+                path: account/resources/favicon.svg
+              - key: account__resources__logo.svg
+                path: account/resources/logo.svg
+              - key: account__theme.properties
+                path: account/theme.properties
+              - key: email__html__template.ftl
+                path: email/html/template.ftl
+              - key: email__theme.properties
+                path: email/theme.properties
+              - key: login__messages__messages_en.properties
+                path: login/messages/messages_en.properties
+              - key: login__messages__messages_ja.properties
+                path: login/messages/messages_ja.properties
+              - key: login__resources__css__platform.css
+                path: login/resources/css/platform.css
+              - key: login__resources__css__tokens.css
+                path: login/resources/css/tokens.css
+              - key: login__resources__js__platform-a11y.js
+                path: login/resources/js/platform-a11y.js
+              - key: login__theme.properties
+                path: login/theme.properties
 ---
 apiVersion: v1
 kind: Service

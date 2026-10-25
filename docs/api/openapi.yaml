@@ -268,7 +268,11 @@ paths:
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 見つからない }
-        "409": { description: 同名のタグが既に辞書にある（自分自身は除く） }
+        "409":
+          description: |
+            同名のタグが既に辞書にある（自分自身は除く）。
+            または、再発行が並行する文書の確定に上限（3 回）まで負けた（`error: version_conflict`。`message` に再送を促す文。
+            改名も再発行も確定していない。同じ要求の再送で再開できる。IADR-0637 決定 6）
         "502": { description: DocumentService へ到達できない }
     delete:
       x-roles: [platform-admin]
@@ -1381,20 +1385,113 @@ paths:
         `RequireRole anyOf={[Admin, Operator]}` で絞られていたが、**API は無認証でも通っていた**。
         **同じ `/bff/documents` でも `{id}` 以下（SC-03 の文書詳細）は認証のみ**である ——
         あちらは SC-01 の出典クリックから一般利用者が遷移する。
+
+        ［2026-10-14 / #1923・#1897］**ページで返す**（IADR-0537）。並びは更新日時の降順・同時刻は ID の降順。
+        - 送り方は**オフセット**（`offset` / `limit`）。`limit` は既定 50、1〜100 に丸める。`offset` が総件数以上なら `items` は空。
+        - 🔴 **`total` は利用者の ABAC スコープで絞った後の件数だけである。** 権限外の文書は `items` にも `total` にも入らず、
+          ページの境界も変えない（存在秘匿）。後段の続きの印はこの口の外へ出さない。
+        - 後段（文書サービス）から一覧を引き切れないとき（途中のページを含む）は **502**（ProblemDetails。運用画面の一覧 `/bff/datasources`・`/bff/conversion/jobs` と同じ向き）を返す。
+          空のページ・部分の件数へは畳まない（本当の 0 件と区別できなくなる。#1897）。本文は中立の文言だけで、文書の有無も件数も載せない。
+        - 許可ポリシーが無い（見える文書が無い）ときは `items` が空・`total` が 0 のページを返す（deny-by-default。従前どおり）。
+
+        ［2026-10-15 / #1923 段 2］**並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。並べ替えは文書サービスが行い、
+        絞り込みは ABAC で絞った後に当てる。`total` は絞り込み後、`unfilteredTotal` と `statusCounts` は絞り込み前（いずれも ABAC 後）の数。
+
+        ［2026-10-17 / #1923］**タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲**を同じ作法で当てる。
+        どれも省略可で、省略は従前の応答と同じ。`sourceCounts` / `projectCounts` も絞り込み前（ABAC 後）の数。
+
+        ［2026-10-20 / #1993］**このページの文書の索引の状態（`indexStatuses`）**を添える。ページを切り出した後に、ページの文書の ID だけを
+        取り込み側へ 1 回で問い合わせる（権限外の文書の状態は引かない）。取り込み側から引けなければ全件 `unknown` で、一覧は失敗しない。
       operationId: bff-document-list
+      parameters:
+        - name: offset
+          in: query
+          required: false
+          description: 先頭から飛ばす件数（ABAC で絞った後の並びで数える）。既定 0。負・数でない値は 400
+          schema: { type: integer, format: int32, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          description: 1 ページの件数。既定 50。1〜100 に丸める（範囲外もエラーにしない）。数でない値は 400
+          schema: { type: integer, format: int32, minimum: 1, maximum: 100, default: 50 }
+        - name: sort
+          in: query
+          required: false
+          description: 並べ替え（キーが同値なら ID）。既定は更新日時の新しい順。未知の値は 400
+          schema:
+            type: string
+            enum: [updated-desc, updated-asc, created-desc, created-asc, title-asc, title-desc]
+            default: updated-desc
+        - name: q
+          in: query
+          required: false
+          description: 表題の部分一致（大文字小文字を区別しない。検索の索引を使わない）。前後の空白は除き、空は無指定。200 文字を超えると 400
+          schema: { type: string, maxLength: 200 }
+        - name: status
+          in: query
+          required: false
+          description: 状態（公開ライフサイクル）で絞る。未知の値は 400
+          schema:
+            type: string
+            enum: [draft, normalized, published, archived]
+        - name: origin
+          in: query
+          required: false
+          description: タブ。`collected` は機械の収集（データソースの鍵が `col:`）、`curated` はそれ以外（人の文書・報告書・データソースの取り込み）。未知の値は 400
+          schema:
+            type: string
+            enum: [curated, collected]
+        - name: source
+          in: query
+          required: false
+          description: データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400（`sourceCounts` の鍵も 300 文字で切ってあるので、件数に出た鍵は必ず受理される）
+          schema: { type: string, maxLength: 300 }
+        - name: confidentiality
+          in: query
+          required: false
+          description: 機密区分で絞る。未知の値は 400
+          schema:
+            type: string
+            enum: [public, internal, confidential, restricted]
+        - name: tag
+          in: query
+          required: false
+          description: タグの表示名の完全一致。100 文字を超えると 400
+          schema: { type: string, maxLength: 100 }
+        - name: project
+          in: query
+          required: false
+          description: 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400（`projectCounts` の鍵も 100 文字で切ってあるので、件数に出た鍵は必ず受理される）
+          schema: { type: string, maxLength: 100 }
+        - name: createdFrom
+          in: query
+          required: false
+          description: 保存日（作成日時）の範囲の始め（含む）。ISO 8601 の日時。オフセットの無い値は UTC。壊れた値は 400
+          schema: { type: string, format: date-time }
+        - name: createdBefore
+          in: query
+          required: false
+          description: 保存日（作成日時）の範囲の終わり（含まない）。ISO 8601 の日時。`createdFrom` 以下なら 400
+          schema: { type: string, format: date-time }
       responses:
         "200":
-          description: 文書一覧（スコープ内のみ）
+          description: 文書一覧の 1 ページ（スコープ内のみ）
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/DocumentDto"
+                $ref: "#/components/schemas/DocumentListPageDto"
+        "400":
+          description: "`offset` が負、`offset` / `limit` が数でない、`sort` / `status` / `origin` / `confidentiality` が未知、`q` / `source` / `tag` / `project` が上限を超える、日時が壊れている、または `createdFrom` が `createdBefore` 以上"
         "401":
           description: 未認証（#656）
         "403":
           description: 管理者・運用者以外（#656）
+        "502":
+          description: 文書サービスから一覧を引き切れなかった（空の一覧へ畳まない。#1897・#1923）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
     post:
       x-roles: [platform-admin]
       tags: [Documents]
@@ -1432,6 +1529,10 @@ paths:
       x-roles: []
       tags: [Documents]
       summary: "FR-06, SC-03: 文書詳細（スコープ外・不在は同じ 404）"
+      description: |
+        FR-19, ADR-0036 D-08（#2046）: 緊急アクセスで指名された platform-admin は、有効な間だけ対象の個人資料 1 件を
+        この口で開ける。可否は文書サービスが要求ごとに発動記録で判定し（閲覧を 1 件ずつ監査ログへ記録する）、
+        BFF は許可も拒否も足さない。応答に共有先の写し（`sharedWith`）は載らない。
       operationId: bff-document-detail
       responses:
         "200":
@@ -1448,7 +1549,8 @@ paths:
       summary: "FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）"
       description: |
         `expectedVersion` が現在版と異なれば lost update を防ぐため **409** で拒否する。
-        409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`。
+        照合の後に別の更新が版を進めた場合も（`expectedVersion` の有無を問わず）保存が負けて **409** になる（黙って上書きしない）。
+        409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`（`expectedVersion` は要求に無ければ null）。
       operationId: bff-document-update
       requestBody:
         required: true
@@ -1489,6 +1591,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
+        "409": { description: "読んだ後に別の更新が版を進めた（`{ error: \"version_conflict\", expectedVersion: null, currentVersion }`）。文書は残るので削除をやり直す" }
 
   /bff/documents/{id}/content:
     get:
@@ -1496,8 +1599,13 @@ paths:
       tags: [Documents]
       summary: "FR-06, SC-03: 文書本文（正規化 Markdown）"
       description: |
-        ABAC 判定後にオブジェクトストレージ（`storage://`）からサーバサイドで読み取る。
-        ストレージ未配備・URI 未設定時はプレースホルダ本文へ縮退する（500 にしない）。
+        ABAC 判定（詳細と同じ）の後、本文を文書サービスから受け取って返す。BFF はオブジェクトストレージを読まない。
+        本文を返せないときは**案内文を 200 で返さない**（#1905）:
+        - 本文の参照が無い・本文のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:document-body-unavailable`、`reason` は `not_stored` / `missing`）
+        - 本文が上限（16 MiB・UTF-8）を超える … **413**（ProblemDetails。`sizeBytes` / `limitBytes`。切り詰めない）
+        - 文書サービスから本文を受け取れない … **502**（ProblemDetails）
+        不在・スコープ外の 404 は本文を持たない（存在秘匿。理由を言わない）。
+        緊急アクセス（#2046）で詳細が開けた指名された platform-admin は本文も開ける（文書サービスが判定し、本文の閲覧として記録する）。
       operationId: bff-document-content
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1509,7 +1617,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/DocumentContentDto"
         "401": { description: 未認証（#656） }
-        "404": { description: 不在またはスコープ外（存在秘匿） }
+        "404": { description: 不在またはスコープ外（存在秘匿。本文なし）、または本文が保管されていない（ProblemDetails。#1905） }
+        "413":
+          description: 本文が上限を超える（本文は返さない。#1905）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
+        "502":
+          description: 文書サービスから本文を受け取れなかった（案内文へ畳まない。#1905）
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetails"
   /bff/documents/{id}/versions:
     get:
       x-roles: []
@@ -1578,7 +1698,7 @@ paths:
         "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
         "409":
-          description: "不正な状態遷移（例 archived → published）"
+          description: "不正な状態遷移（例 archived → published）。または、確定が並行する文書の確定に負けた（`error: version_conflict`。IADR-0637 決定 7。本文の形は版の競合と同じ）"
           content:
             application/json:
               schema:
@@ -1906,9 +2026,11 @@ paths:
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**"
       description: |
-        **BFF がオブジェクトストレージから解決して返す**（`GET /bff/documents/{id}/content` と同じ形。
-        IADR-0154 決定 2）。コード化済みの図は画像を保持しないため 404 になる——
-        **未知の図と区別しない**（どちらも「その画像は無い」）。
+        **画像は変換サービス（図の所有者）が読み、BFF は利用者の資格情報を付けて中継するだけである**
+        （BFF はオブジェクトストレージを持たない。#1941）。コード化済みの図は画像を保持しないため 404 になる——
+        **未知の図と区別しない**（どちらも「その画像は無い」。問題詳細なし）。
+        - 画像の参照が無い・画像のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:figure-image-unavailable`、`reason` は `not_stored` / `missing`）
+        - 変換サービスから画像を受け取れない（ストレージ未構成・一時障害・不達） … **502**
       operationId: bff-conversion-job-figure-image
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -1921,7 +2043,8 @@ paths:
               schema: { type: string, format: binary }
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外 }
-        "404": { description: 画像が無い（未知の図・コード化済みの図・ストレージ未解決） }
+        "404": { description: 画像が無い（未知の図・コード化済みの図は本文なし。参照・オブジェクトが無いときは ProblemDetails。#1941） }
+        "502": { description: 変換サービスから画像を受け取れなかった（ストレージ未構成・一時障害・不達。「画像が無い」へ畳まない。#1941） }
 
   /bff/conversion/jobs/{id}/figures/{figureId}/correction:
     post:
@@ -2059,7 +2182,9 @@ paths:
         - 🔴 **`dryRun` は必須**（省略は 400）。`true` は何も発行せず、カーソルより後ろの全件の内訳を返す。
         - 並び: `createdAt` 昇順、同時刻は `id` 昇順（`GET /documents/page` と同じキーセット）。走査の間ずっと在った文書はちょうど 1 回ずつ選ばれる。
           `createdBefore` を走査の開始時刻に固定すると、途中で作られた文書（作成の経路で発行済み）は選ばれない。
-        - 台帳は書き換えない（版も更新時刻も動かない）。中身は通常の経路と同じ（共有先・タグの表示名・本文指紋・本文の所在）。
+        - 台帳の内容は書き換えない（版も更新時刻も動かない）。進むのは発行の連番（`EventSequence`）だけである（IADR-0637）。
+          中身は通常の経路と同じ（共有先・タグの表示名・本文指紋・本文の所在）。
+        - ページの確定が並行する文書の確定に負けたら、ページを読み直してやり直す（上限 3 回）。上限を超えたら何も確定せずに 409 を返す。
         - 露出の 3 トグルが OFF の個人資料は発行しない（`skippedByGate` に数え、カーソルはその先へ進む）。
         - dry-run も発行も 1 呼び出しごとにログへ 1 行残す（認証済みの主体と `requestedBy` / `reason` の札）。
         - 発行は耐久アウトボックスを持たない。200 はブローカへの到達の保証ではない（確かめ方は Qdrant の `points_count`）。
@@ -2085,6 +2210,10 @@ paths:
                   description: 属性の完全一致（AND。キー・値とも大文字小文字を区別）。空のキー・空の値は 400
                 requestedBy: { type: string, maxLength: 100, description: "操作者の札（記録だけに使う。認証済みの主体と一緒にログへ出る。制御文字は潰す）" }
                 reason: { type: string, maxLength: 500, description: "理由の札（記録だけに使う。駆動スクリプトは発行する実行で必須にする）" }
+                status:
+                  type: string
+                  enum: [draft, normalized, published, archived]
+                  description: "台帳の状態の完全一致（#1961）。未知の値は 400。省略は状態を問わない。`archived` で流すと、配備前にアーカイブした文書が検索・RAG・グラフから外れる（受け手は本文を読まない）"
       responses:
         "200":
           description: 発行した 1 ページ（dry-run は残り全件の内訳）
@@ -2112,6 +2241,211 @@ paths:
           description: 未認証
         "403":
           description: 管理者でない
+        "409":
+          description: ページの確定が並行する文書の確定に上限（3 回）まで負けた。このページは 1 件も確定していない（IADR-0637 決定 6）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, resumeCursor]
+                properties:
+                  error: { type: string, enum: [version_conflict] }
+                  resumeCursor: { type: [string, "null"], description: "負けたページの先頭のカーソル（＝要求の `cursor`。先頭のページなら null）。次の要求の `cursor` にそのまま渡せば再開できる" }
+
+  /documents/archive-bodyless:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03, SC-05: 本文のオブジェクトが無い（NoSuchKey）古い文書をアーカイブする（一回限りの管理操作。管理者だけ。#1931）"
+      description: |
+        `createdAt < createdBefore` かつ未アーカイブかつ本文の参照が `storage://` の組織文書について、本文のオブジェクトの有無を
+        **HEAD 相当で確かめ（本文を読まない）**、キーが無い（NoSuchKey）文書だけを既存の状態 `archived` へ移す。
+        **管理者（`platform-admin`）だけ**が呼べる。メッシュ内部の口であり、BFF には出さない。
+        量の制御・カナリア・中断と再開・キューと DLQ の監視は駆動スクリプト `scripts/archive-bodyless-documents.js` が持つ。
+
+        - 🔴 **`dryRun` と `createdBefore` は必須**（省略は 400）。アーカイブする呼び出しは `reason` も必須。
+        - 「無い」は NoSuchKey だけ。バケットが無い・時間切れ・5xx はそのページを 1 件もアーカイブせずに 502 を返す。
+          ストレージが構成されていなければ 503。
+        - 本文が在る・期限ちょうど以降・本文の参照が無い・個人資料・アーカイブ済みの文書には触らない（状態・版・更新時刻が動かない）。
+        - アーカイブした文書は版を 1 つ進め（注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated`（status=archived）を発行する。
+        - 冪等。アーカイブ済みは母集合から外れるので、2 回流しても 2 回目は何もしない。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。dry-run も同じページ送りで確かめる。
+      operationId: archive-bodyless-documents
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dryRun, createdBefore]
+              properties:
+                dryRun: { type: boolean, description: "true で確かめて件数だけを返し、false でアーカイブする（必須）" }
+                createdBefore: { type: string, format: date-time, description: "この時刻より前に作られた文書だけ（必須。既定なし）" }
+                limit: { type: integer, default: 100, minimum: 1, maximum: 200, description: 1 ページの件数（範囲外は 400） }
+                cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（認証済みの主体と一緒にログへ出る）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（アーカイブする呼び出しでは必須）" }
+      responses:
+        "200":
+          description: 確かめた 1 ページ（dry-run も同じ）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, createdBefore, matched, remaining, selected, bodyMissing, bodyPresent, skippedPrivateNote, archived, alreadyArchived, notStored]
+                properties:
+                  dryRun: { type: boolean }
+                  createdBefore: { type: string, format: date-time }
+                  matched: { type: integer, description: カーソルに依らない母集合（期限より前・未アーカイブ・本文の参照が storage://） }
+                  remaining: { type: integer, description: この呼び出しの前にカーソルより後ろに残っていた件数 }
+                  selected: { type: integer, description: このページの件数 }
+                  bodyMissing: { type: integer, description: このページで本文のオブジェクトが無かった（NoSuchKey）件数 }
+                  bodyPresent: { type: integer, description: このページで本文が在った件数（触らない） }
+                  skippedPrivateNote: { type: integer, description: このページの個人資料（対象外。触らない） }
+                  archived: { type: integer, description: アーカイブした件数（dry-run は 0） }
+                  alreadyArchived: { type: integer, description: 期限より前でアーカイブ済みの件数（母集合の外） }
+                  notStored: { type: integer, description: "期限より前で本文の参照が無い・storage:// でない件数（母集合の外）" }
+                  nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null }
+        "400":
+          description: dryRun・createdBefore の省略、アーカイブする呼び出しの reason の省略、limit の範囲外、長さの超過、不正なカーソル
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者でない
+        "409":
+          description: "ページの確定が並行する文書の確定に負けた（`error: version_conflict` と `message`）。このページは 1 件も確定していない。同じ要求（同じカーソル）を再送する（IADR-0637 決定 7）"
+        "502":
+          description: 本文の存在確認が NoSuchKey 以外で失敗した（バケットが無い・5xx・時間切れ。そのページは何もアーカイブしない）
+        "503":
+          description: オブジェクトストレージが構成されていない（何もアーカイブしない）
+
+  /documents/archive-ast-quotes:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03, SC-05: 株取引ユニットの相場スナップショット（kind = Quote）の文書をアーカイブする（一回限りの管理操作。管理者だけ。#1974）"
+      description: |
+        `project = ai-stock-trading` かつ `kind = Quote`（大文字小文字を区別する完全一致）の、未アーカイブの組織文書を既存の状態 `archived` へ移す（消さない）。
+        **管理者（`platform-admin`）だけ**が呼べる。メッシュ内部の口であり、BFF には出さない。条件は口の側で固定する。本文は読まない。
+        量の制御・カナリア・中断と再開・キューと DLQ の監視は駆動スクリプト `scripts/archive-ast-quote-documents.js` が持つ。
+
+        - 🔴 **`dryRun` は必須**（省略は 400）。アーカイブする呼び出しは `reason` も必須。dry-run は件数と対象の文書 ID だけを返す。
+        - アーカイブした文書は版を 1 つ進め（注記は固定の文字列）、単票のアーカイブと同じ `DocumentUpdated`（status=archived）を発行する。
+        - 他の kind・他の project・個人資料・アーカイブ済みには触らない。冪等（アーカイブ済みは母集合から外れる）。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。
+      operationId: archive-ast-quotes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dryRun]
+              properties:
+                dryRun: { type: boolean, description: "true で件数と対象の ID だけを返し、false でアーカイブする（必須）" }
+                limit: { type: integer, default: 100, minimum: 1, maximum: 200, description: 1 ページの件数（範囲外は 400） }
+                cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（認証済みの主体と一緒にログへ出る）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（アーカイブする呼び出しでは必須）" }
+      responses:
+        "200":
+          description: 選んだ 1 ページ（dry-run も同じ）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, selected, archived, ids]
+                properties:
+                  dryRun: { type: boolean }
+                  selected: { type: integer, description: このページの対象の件数 }
+                  archived: { type: integer, description: アーカイブした件数（dry-run は 0） }
+                  ids: { type: array, items: { type: string, format: uuid }, description: このページの対象の文書 ID }
+                  nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null }
+        "400":
+          description: dryRun の省略、アーカイブする呼び出しの reason の省略、limit の範囲外、長さの超過、不正なカーソル
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者でない
+        "409":
+          description: "ページの確定が並行する文書の確定に負けた（`error: version_conflict` と `message`）。このページは 1 件も確定していない。同じ要求（同じカーソル）を再送する（IADR-0637 決定 7）"
+
+  /documents/strip-untrusted-boundary:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03: 株取引ユニットが境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作。管理者だけ。#1973）"
+      description: |
+        `project = ai-stock-trading` の未アーカイブの組織文書について本文を読み、表題か本文が `<<<UNTRUSTED_DATA` で始まり `UNTRUSTED_DATA>>>` で終わるなら、
+        **先頭と末尾の枠（と隣の改行 1 つ）だけを、枠が無くなるまで**剥がす。**管理者（`platform-admin`）だけ**が呼べる。メッシュ内部の口であり、BFF には出さない。
+        量の制御・カナリア・中断と再開・キューと DLQ の監視は駆動スクリプト `scripts/strip-untrusted-boundary.js` が持つ。
+
+        - 🔴 **`dryRun` は必須**（省略は 400）。書き換える呼び出しは `reason` も必須。dry-run は件数と対象の文書 ID だけを返す。
+        - 剥がした本文は新しいキーへ書いて参照を付け替える（元のオブジェクトは上書きしない）。状態・属性・タグは動かさず、版を 1 つ進め（注記は固定の文字列）、
+          単票の更新と同じ `DocumentUpdated` を発行する。
+        - 本文のキーの欠落（NoSuchKey）は「本文なし」として表題だけを見る。それ以外の読み取りの失敗・書き込みの失敗は、そのページを 1 件も書き換えずに 502。
+          ストレージが構成されていなければ 503。
+        - 他の project・個人資料・アーカイブ済み・枠の無い文書には触らない。剥がすと空になる表題・本文（枠だけ）は剥がさない。冪等（2 回目は何も変えない）。
+        - 並び: `createdAt` 昇順、同時刻は `id` 昇順（キーセット）。
+      operationId: strip-untrusted-boundary
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dryRun]
+              properties:
+                dryRun: { type: boolean, description: "true で確かめて件数と対象の ID だけを返し、false で書き換える（必須）" }
+                limit: { type: integer, default: 100, minimum: 1, maximum: 200, description: 1 ページの件数（範囲外は 400） }
+                cursor: { type: string, description: "前の応答の `nextCursor`（不透明）。不正な値は 400" }
+                requestedBy: { type: string, maxLength: 100, description: "操作者の札（認証済みの主体と一緒にログへ出る）" }
+                reason: { type: string, maxLength: 500, description: "理由の札（書き換える呼び出しでは必須）" }
+      responses:
+        "200":
+          description: 確かめた 1 ページ（dry-run も同じ）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [dryRun, selected, wrapped, titleWrapped, bodyWrapped, bodyMissing, notStored, titleLeftWrapped, bodyLeftWrapped, stripped, items]
+                properties:
+                  dryRun: { type: boolean }
+                  selected: { type: integer, description: このページで確かめた件数 }
+                  wrapped: { type: integer, description: 表題か本文が枠の形だった件数（`items` の件数） }
+                  titleWrapped: { type: integer, description: 表題を剥がす（剥がした）件数 }
+                  bodyWrapped: { type: integer, description: 本文を剥がす（剥がした）件数 }
+                  bodyMissing: { type: integer, description: 本文のキーが欠落していた件数（表題だけを見た） }
+                  notStored: { type: integer, description: "本文の参照が無い・storage:// でない件数（表題だけを見た）" }
+                  titleLeftWrapped: { type: integer, description: 剥がすと空になるので表題を残した件数 }
+                  bodyLeftWrapped: { type: integer, description: 剥がすと空になるので本文を残した件数（空の本文を書かない） }
+                  stripped: { type: integer, description: 書き換えた件数（dry-run は 0） }
+                  items:
+                    type: array
+                    description: 対象の文書（表題・本文の中身は返さない）
+                    items:
+                      type: object
+                      required: [id, title, body]
+                      properties:
+                        id: { type: string, format: uuid }
+                        title: { type: boolean, description: 表題が枠の形だった }
+                        body: { type: boolean, description: 本文が枠の形だった }
+                  nextCursor: { type: [string, "null"], description: 続きのカーソル。尽きたら null }
+        "400":
+          description: dryRun の省略、書き換える呼び出しの reason の省略、limit の範囲外、長さの超過、不正なカーソル
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者でない
+        "409":
+          description: "ページの確定が並行する文書の確定に負けた（`error: version_conflict` と `message`）。このページは 1 件も確定していない。同じ要求（同じカーソル）を再送する（IADR-0637 決定 7）"
+        "502":
+          description: 本文の読み取り（キーの欠落以外）または書き込みが失敗した（そのページは何も書き換えない）
+        "503":
+          description: オブジェクトストレージが構成されていない（何も書き換えない）
 
   /documents/{id}:
     get:
@@ -2209,6 +2543,8 @@ paths:
           description: 公開成功
         "404":
           description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
+        "409":
+          description: "確定が並行する文書の確定に負けた（`error: version_conflict`・`expectedVersion`・`currentVersion`。何も確定していない。IADR-0637 決定 7）"
 
   /documents/{id}/archive:
     post:
@@ -2222,6 +2558,8 @@ paths:
           description: アーカイブ成功（status=archived の DocumentUpdated を発行）
         "404":
           description: 見つからない、または個人資料（管理の口の対象外。主体を問わず不在と区別しない。#1629）
+        "409":
+          description: "確定が並行する文書の確定に負けた（`error: version_conflict`・`expectedVersion`・`currentVersion`。何も確定していない。IADR-0637 決定 7）"
 
   /documents/{id}/versions:
     get:
@@ -2326,24 +2664,9 @@ paths:
           description: 同期キューに追加
 
   # ── AuthorizationService ──────────────────────────
-  /authz/scope:
-    post:
-      tags: [Authorization]
-      summary: "FR-05, ADR-0004: ABAC スコープ解決"
-      operationId: resolve-scope
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AccessScopeRequest"
-      responses:
-        "200":
-          description: 許可されたフィルター
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AccessScopeResponse"
+  # ［2026-10-15 / #1902］`POST /authz/scope` は撤去した（east-west の権限スコープ解決は gRPC `AuthzScope/Resolve` だけ）。
+  # 要求の形（`AccessScopeRequest`）は記述する口が無くなったので外した。応答の形（`AccessScopeResponse`）は
+  # `granted` と `allowedFilters` の読み方の契約として残す（gRPC の応答も同じ 2 状態を運ぶ）。
 
   /authz/policies:
     get:
@@ -2775,36 +3098,8 @@ paths:
         "403":
           description: platform-service ロールを持たない主体（利用者トークンは管理者でも拒否。#1364）
 
-  /embed:
-    post:
-      tags: [Embeddings]
-      summary: "FR-02, FR-05, ADR-0016/0017, IADR-0025: 埋め込み生成"
-      description: |
-        IngestionService（purpose=index）/ RetrievalService（purpose=query）が呼び出す。
-        機密区分（confidentiality）で送信先ティアを切替: confidential/restricted はティアA
-        （セルフホスト Ruri v3/768 次元）固定で外部送信しない（未構成時は fail-closed で
-        embedded=false）。それ以外はティアB（Voyage voyage-3.5/1024 次元）。検索クエリ
-        （purpose=query）は検索対象コレクションと次元を一致させるため既定外部経路へ固定する。
-        送信拒否・不調時も 500 を伝播せず embedded=false の縮退応答を 200 で返す
-        （retryable=true は一時障害で呼び出し側が再試行、false は恒久理由でスキップ）。
-      operationId: embed
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EmbedApiRequest"
-      responses:
-        "200":
-          description: 埋め込み結果（送信拒否・縮退時は embedded=false）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EmbedApiResponse"
-        "401":
-          description: 未認証（サービス間トークンが無い。#1364）
-        "403":
-          description: platform-service ロールを持たない主体（利用者トークンは管理者でも拒否。#1364）
+  # ［2026-10-15 / #1902］`POST /embed`（と `POST /complete/stream`）は撤去した（east-west の埋め込み・逐次生成は gRPC だけ）。
+  # 要求の形（`EmbedApiRequest`）は記述する口が無くなったので外した。応答の形（`EmbedApiResponse`）は縮退の読み方の契約として残す。
 
   /bff/graph/edge-types:
     get:
@@ -3245,6 +3540,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在または他人の資料（区別しない） }
+        "409": { description: "読んだ後に別の保存（同期等）が版を進めた（`{ error: \"version_conflict\", expectedVersion: null, currentVersion }`）。設定は保存されていない" }
 
   # ── ADR-0098 決定 1・2（planning#618 の裁定。SC-19 主要素 3）: 公開範囲の指定先（共有台帳） ──
   # 後段 DocumentService の `/documents/{id}/shares*`（共有台帳の管理 API）へ透過中継する。
@@ -3314,6 +3610,112 @@ paths:
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在・他人の資料・該当する共有が無い（区別しない） }
 
+  # ── SC-19 / SC-03, FR-19, UC-11, ADR-0036 D-08: 緊急アクセス（Break-glass。#2046）─────────────
+  # 本人同意型の管理者の閲覧（planning#841 の裁定）。所有者本人が資料 1 件について理由を書き、platform-admin を
+  # 1 人指名して発動する。有効な間（発動から 15 分・延長なし・本人は早く終えられる）だけ、指名された 1 人が
+  # SC-03 の既存の口（`/bff/documents/{id}`・`/content`）でその 1 件を**閲覧だけ**できる。
+  #
+  # 認可:
+  #   - 発動・終了・状態は**所有者本人のセッションだけ**。BFF でも本人の個人資料かを確かめ（緊急アクセスを含めない
+  #     文書の読み取りで `owner` を見る）、後段（文書サービス）も台帳と `owner` で判定する（二重）。
+  #     他人の・無い・個人資料でない・指名されただけの管理者・機械の主体は、いずれも **404**（存在秘匿）。
+  #   - 発動だけ ABAC の `write` スコープで前段を絞る（403）。終了・状態には置かない（終了は露出を縮める向き）。
+  #   - 監査ログは platform-admin（全件）と本人（自分の資料の行だけ）。絞るのは後段。機械の主体は 403。
+  #   - 閲覧の可否（指名・有効期間・本人の終了・所有者・論理削除・いま platform-admin か）は**後段が要求ごとに
+  #     サーバ側の発動記録で判定する**。BFF は SC-03 の詳細・本文で許可も拒否も足さない。
+  /bff/private-notes/{id}/break-glass:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスの状態（所有者本人のみ。残り時間の表示用）"
+      description: |
+        有効な発動があればその写し、無ければ `active: null`。**この値を閲覧の許可の根拠にしない**
+        （許可は文書サービスが要求ごとに発動記録で決める）。
+      operationId: bff-break-glass-status
+      responses:
+        "200":
+          description: 状態
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BreakGlassStatusResponse" }
+        "401": { description: 未認証 }
+        "404": { description: 不在・他人の資料・個人資料でない・機械の主体（区別しない） }
+        "502": { description: 文書サービスに届かない }
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスを発動する（所有者本人のみ。資料 1 件・理由必須・platform-admin を 1 人指名）"
+      description: |
+        有効時間は発動から 15 分固定（延長なし）。指名先は利用者名簿で platform-admin かを確かめる。
+        **後段の本文は詰め替えず透過する**（400 の検証・409 の重ね発動／論理削除中・503 の名簿不達）。
+      operationId: bff-break-glass-activate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ActivateBreakGlassRequest" }
+      responses:
+        "201":
+          description: 発動した（発動記録の写し）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BreakGlassGrantDto" }
+        "400": { description: 理由が空・長すぎる／指名先が空・本人・サービスアカウント・platform-admin でない（RFC7807 ValidationProblem） }
+        "401": { description: 未認証 }
+        "403": { description: write 許可ポリシーが無い（deny-by-default） }
+        "404": { description: 不在・他人の資料・個人資料でない・機械の主体（区別しない） }
+        "409": { description: 論理削除中の資料、または同じ資料に有効な発動が既にある }
+        "502": { description: 文書サービスに届かない }
+        "503": { description: 指名先が platform-admin かを確かめられない（発動しない） }
+
+  /bff/private-notes/{id}/break-glass/end:
+    post:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスを 15 分より前に終える（所有者本人のみ）"
+      description: |
+        終了日時は本人の終了か発動＋15 分の早いほう。指名された管理者を含む第三者は終えられない（404）。
+        **write スコープの前段を置かない**（終了は露出を縮める向きであり、ポリシーの有無で止めない）。
+      operationId: bff-break-glass-end
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 終えた（発動記録の写し。`active=false`）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BreakGlassGrantDto" }
+        "401": { description: 未認証 }
+        "404": { description: 不在・他人の資料・有効な発動が無い・機械の主体（区別しない） }
+        "502": { description: 文書サービスに届かない }
+
+  /bff/break-glass/audit:
+    get:
+      x-roles: []
+      tags: [PrivateNotes]
+      summary: "FR-19, UC-11, SC-19: 緊急アクセスの監査ログ（platform-admin は全件・本人は自分の資料の行だけ）"
+      description: |
+        発動・終了・有効中の閲覧を 1 件ずつ、新しい順に返す。**資料の本文・題名は載らない**。
+        誰の行まで読めるかは文書サービスが判定する（BFF は人の主体であることだけを確かめる）。
+      operationId: bff-break-glass-audit
+      parameters:
+        - { name: documentId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: 監査ログ
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BreakGlassAuditEntryDto" }
+        "400": { description: "`limit` が範囲外・`documentId` が UUID でない（RFC7807 ValidationProblem）" }
+        "401": { description: 未認証 }
+        "403": { description: 機械の主体 }
+        "502": { description: 文書サービスに届かない }
+
   /bff/private-notes/purge:
     post:
       x-roles: []
@@ -3340,7 +3742,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write 許可ポリシーが無い }
         "404": { description: 不在または他人の資料が混じっている（区別しない） }
-        "409": { description: 削除済みでない資料が混じっている（`not_deleted`） }
+        "409": { description: "削除済みでない資料が混じっている（`not_deleted`）。または、確定が並行する確定に負けた（`version_conflict` と `message`。本文の実体は消えている場合があるが資料は削除済みのまま残る。再送で片付く。IADR-0637 決定 7）" }
 
   /bff/private-notes/devices:
     get:
@@ -3569,7 +3971,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write スコープが無い }
         "404": { description: 不在・他人の競合（区別しない） }
-        "409": { description: 解決済みの競合 }
+        "409": { description: "解決済みの競合。または、`local` の確定が並行する確定に負けた（`version_conflict`。解決は巻き戻り、選び直せる。IADR-0637 決定 7）" }
         "507": { description: both の別名資料が保存容量の上限で作れない（ProblemDetails） }
 
   # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 BFF ─
@@ -4493,7 +4895,7 @@ components:
     SearchResponse:
       type: object
       description: "FR-03: 検索応答（`Knowledge.Contracts/Dtos/SearchDto.cs` の `SearchResponse`）"
-      required: [results, totalHits, elapsedMs]
+      required: [results, totalHits, elapsedMs, degraded, degradedReasons]
       properties:
         results:
           type: array
@@ -4501,6 +4903,22 @@ components:
             $ref: "#/components/schemas/SearchResultDto"
         totalHits: { type: integer }
         elapsedMs: { type: integer }
+        degraded:
+          type: boolean
+          description: |
+            FR-03, NFR-06（#1871）: 部品（埋め込み・グラフ展開・再順位付け）のどれかが働かず、結果がその分だけ劣化して返ったか。
+            `degradedReasons` が空でないことと一致する。権限が無いのか該当が無いのかは表さない
+            （deny・空クエリ・BFF 側の空応答への縮退は `false` のまま）。構成で無効な段は縮退に数えない。
+        degradedReasons:
+          type: array
+          description: |
+            縮退の理由（固定語彙・重複なし・この列挙の順）。本文・URL・資格情報・例外メッセージは載せない。
+            `embed-failed`＝主コレクションのクエリ埋め込みが空（hybrid は語彙検索のみ、semantic は 0 件）／
+            `fused-embed-failed`＝追加コレクションの埋め込みが空／`graph-expand-failed`＝近傍展開が働かない／
+            `rerank-failed`＝再順位付けを元の順へ戻した。
+          items:
+            type: string
+            enum: [embed-failed, fused-embed-failed, graph-expand-failed, rerank-failed]
 
     SearchResultDto:
       type: object
@@ -4650,23 +5068,6 @@ components:
             発行側が値を持たない場合は安全側の `restricted` へ縮退する。`default` は書かない
             ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
             **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
-
-    AccessScopeRequest:
-      type: object
-      required: [userId, userAttributes]
-      properties:
-        userId: { type: string }
-        userAttributes:
-          type: object
-          additionalProperties: { type: string }
-        action:
-          type: string
-          description: >-
-            ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。
-            `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で
-            従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、
-            書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を
-            deny へ縮退させる）。
 
     AccessScopeResponse:
       type: object
@@ -4846,6 +5247,18 @@ components:
             本文を投入した呼び出し側は、送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
             本文を読める主体に本文の指紋を見せても新しい情報は漏れない（個人資料の `contentHash` と同じ扱い）。
             **項目を持たない旧応答は「指紋不明」として読む。**
+        dataSourceName:
+          type: string
+          nullable: true
+          description: |
+            FR-06, SC-05 (#1923): 取り込み元のデータソースの表示名（台帳の写し。データソースの改名は次の同期まで遡及しない）。
+            直接投入・画面からの作成では `null`。**項目を持たない旧応答は「データソースなし」として読む。**
+        originalUri:
+          type: string
+          nullable: true
+          description: |
+            FR-06, SC-05 (#1923): 原本の所在（API の書き手が渡した元の URL など。AST の収集ではニュース・開示の出典）。
+            書き手の申告であり検証していない。画面は `http(s)` のときだけリンクにする。
 
     DocumentPageDto:
       type: object
@@ -4862,11 +5275,52 @@ components:
           nullable: true
           description: 次のページの `cursor` にそのまま渡す不透明な文字列。呼び出し側は解釈しない
 
+    DocumentListPageDto:
+      type: object
+      description: |
+        FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
+        `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
+      required: [items, total, offset, limit, unfilteredTotal, statusCounts, sourceCounts, projectCounts, indexStatuses]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentDto" }
+        total: { type: integer, format: int32, description: ABAC で絞った後の総件数 }
+        offset: { type: integer, format: int32, description: このページの先頭の位置（丸めた後） }
+        limit: { type: integer, format: int32, description: 1 ページの件数（丸めた後） }
+        unfilteredTotal:
+          type: integer
+          format: int32
+          description: 表題・状態の絞り込みを当てる前の件数（ABAC で絞った後）。絞り込みが無ければ `total` と同じ
+        statusCounts:
+          type: object
+          additionalProperties: { type: integer, format: int32 }
+          description: 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+        sourceCounts:
+          type: object
+          additionalProperties: { type: integer, format: int32 }
+          description: |
+            データソースの鍵ごとの件数（#1923 の残り）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）。
+            鍵は `ds:<dataSourceName>`（データソースの取り込み）→ `col:<属性 source>`（機械の収集）→ `report`（`kind` と `periodKey` を持つ確定報告書）→ `manual` の順で 1 つに決まる。
+        projectCounts:
+          type: object
+          additionalProperties: { type: integer, format: int32 }
+          description: 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+        indexStatuses:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [indexed, embedding_pending, not_indexed, unknown]
+          description: |
+            FR-06, SC-05 (#1993): **このページの文書（`items`）の索引の状態**（文書 ID → 値）。鍵は `items` の ID だけ（ABAC を通った文書だけを取り込み側へ問い合わせる）。
+            `indexed`（ベクトルか語彙索引に点がある）・`embedding_pending`（埋め込み待ちの点がある）・`not_indexed`（点が無い）・`unknown`（取り込み側から引けなかった）。
+            引けなくても一覧は 200 で返り、全件 `unknown` になる。**項目を持たない旧応答は全件「不明」として読む。**
+
     DocumentContentDto:
       type: object
       description: |
-        SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後にオブジェクトストレージ
-        （`storage://`）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
+        SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後に文書サービスから受け取り
+        （本文の実体はオブジェクトストレージ `storage://`）、閲覧を許可された呼び出し元にのみ払い出す。
       required: [id, title, markdown]
       properties:
         id: { type: string, format: uuid }
@@ -5845,28 +6299,7 @@ components:
         target: { type: string }
         detail: { type: string }
 
-    # ── IADR-0025: 埋め込みゲートウェイ（/embed）─────
-    EmbedApiRequest:
-      type: object
-      required: [text]
-      properties:
-        text: { type: string, description: "埋め込み対象テキスト（取り込みは本文全量を送るため機密区分で越境判定）" }
-        confidentiality:
-          type: string
-          nullable: true
-          enum: [public, internal, confidential, restricted]
-          description: "機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない"
-        purpose:
-          type: string
-          enum: [index, query]
-          default: index
-          description: "用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定"
-        targetCollection:
-          type: string
-          nullable: true
-          example: "knowledge_chunks_ruri_v3"
-          description: "検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ"
-
+    # ── IADR-0025: 埋め込みゲートウェイの応答（gRPC `LlmEmbedding/Embed` の写しの DTO。REST `/embed` は撤去）─────
     EmbedApiResponse:
       type: object
       description: "embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す"
@@ -6335,6 +6768,62 @@ components:
       properties:
         subjectType: { type: string }
         subjectId: { type: string }
+
+    # ── #2046（planning#841）: 緊急アクセス ──
+    ActivateBreakGlassRequest:
+      type: object
+      description: |
+        FR-19, UC-11, SC-19, ADR-0036 D-08: 緊急アクセスの発動。所有者本人だけが送れる。
+        `reason` は必須（空白だけは不可・500 文字以内）。`nomineeUserId` は閲覧を許す platform-admin 1 人の利用者名。
+      properties:
+        reason: { type: [string, "null"] }
+        nomineeUserId: { type: [string, "null"] }
+
+    BreakGlassGrantDto:
+      type: object
+      description: |
+        FR-19, SC-19: 発動記録 1 件（所有者本人へ返す形）。`active` / `endsAt` は応答の時点の写しであり、
+        **閲覧の許可の根拠にしない**（残り時間の表示にだけ使う）。`endsAt` は本人の終了か発動＋15 分の早いほう。
+      required: [id, documentId, nomineeUserId, reason, activatedAt, expiresAt, endsAt, active]
+      properties:
+        id: { type: string, format: uuid }
+        documentId: { type: string, format: uuid }
+        nomineeUserId: { type: string }
+        reason: { type: string }
+        activatedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: string, format: date-time }
+        active: { type: boolean }
+
+    BreakGlassStatusResponse:
+      type: object
+      description: "FR-19, SC-19: 資料 1 件の緊急アクセスの状態。有効な発動が無ければ `active` は null。"
+      properties:
+        active:
+          oneOf:
+            - { $ref: "#/components/schemas/BreakGlassGrantDto" }
+            - { type: "null" }
+
+    BreakGlassAuditEntryDto:
+      type: object
+      description: |
+        FR-19, SC-19, ADR-0036 D-08: 監査ログ 1 行（`operation` は `activate` / `end` / `view`）。
+        `viewTarget` は閲覧の行だけ（`document` / `content`）。**資料の本文・題名は運ばない**。
+      required: [id, grantId, occurredAt, operation, actorUserId, documentId, ownerUserId, nomineeUserId, reason, activatedAt, endsAt]
+      properties:
+        id: { type: string, format: uuid }
+        grantId: { type: string, format: uuid }
+        occurredAt: { type: string, format: date-time }
+        operation: { type: string }
+        actorUserId: { type: string }
+        documentId: { type: string, format: uuid }
+        ownerUserId: { type: string }
+        nomineeUserId: { type: string }
+        reason: { type: string }
+        activatedAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        viewTarget: { type: [string, "null"] }
 
     # ── ADR-0099（planning#618）: 同期履歴 ──
     SyncHistoryEntryDto:

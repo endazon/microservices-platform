@@ -17,35 +17,93 @@ INFRA_NS="platform-infra"
 vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
   'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; '"$1"; }
 
-# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、レルム管理のロールを持つ機密クライアントの secret を
+# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830): **dev 以外の kube context で、機密クライアントの secret を
 #   公知の dev の値で Vault へ入れない。** 判定は scripts/lib/dev-client-secret-guard.sh の 1 本（k8s-local-up.sh と共有）。
-#   対象は **KV がまだ無いもの**だけ —— 在る KV は下の vkv_create_if_absent が触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
+#   対象は **KV（AST の app-secrets はそのキー）がまだ無いもの**だけ —— 在るものは下の vkv_create_if_absent / vkv_patch_if_missing が
+#   触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
 #   🔴 Vault へ何か書く前に判定する（止まるときは何も書かない）。
+#   ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
+#   広げた（手で並べず宣言から導出する）。置き場は client_secret_kv_of が持つ。**置き場の決まっていないクライアントが宣言に
+#   現れたら止める**（新しいクライアントの入れ漏れを黙って通さない。置き場を足すか、Vault に種を置かないなら空を返す）。
+#   🔴 **非対称に注意**: 判定器・取り込み元・後追い・検知は宣言へクライアントを足せば触らずに対象へ入るが、この表だけは
+#      足したクライアントごとに置き場の追記が要る（追記するまで bootstrap.sh は止まる。意図した fail-closed）。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-#   KV のパスは 3 つとも `msp/<client>-oidc`（下の vkv_create_if_absent）。env の名前は判定器が持つ（dev_client_secret_env_name）。
+# client_secret_kv_of <client> → 「<KV のパス> <キー>」。Vault に種を置かないクライアントは空。知らないクライアントは 1。
+client_secret_kv_of() {
+  case "$1" in
+    bff | identity-admin | mcp-client-admin | reset-gate | synthetic-monitor) printf 'msp/%s-oidc client-secret' "$1" ;;
+    retrieval-service | ingestion-service | aianalysis-service | graph-service | conversion-service | wiki-service | \
+      datasource-service | mcp-server | document-service) printf 'msp/%s-token client-secret' "$1" ;;
+    ai-stock-trading-svc) printf 'ai-stock-trading/app-secrets service-auth-client-secret' ;;
+    ai-stock-trading-kb-writer) printf 'ai-stock-trading/app-secrets kb-auth-client-secret' ;;
+    ai-stock-trading-kb-reader) printf 'ai-stock-trading/app-secrets kb-reader-auth-client-secret' ;;
+    ai-stock-trading-llm-caller) printf 'ai-stock-trading/app-secrets llm-auth-client-secret' ;;
+    ai-stock-trading-owner) printf 'ai-stock-trading/app-secrets discord-owner-auth-client-secret' ;;
+    abac-seeder) printf 'msp/abac-seeder-oidc client-secret' ;; # IADR-0576: 投入器・運用スクリプトが実行時に Secret から読む
+    *) return 1 ;;
+  esac
+}
+# client_secret_kv_present <path> <key> → 0＝在る。AST の app-secrets はキー単位（vkv_patch_if_missing と同じ）、他は KV 単位
+# （vkv_create_if_absent と同じ）で見る。
+client_secret_kv_present() {
+  case "$1" in
+    ai-stock-trading/app-secrets) vexec "vault kv get -field=$2 secret/$1 >/dev/null 2>&1" ;;
+    *) vexec "vault kv metadata get secret/$1 >/dev/null 2>&1" ;;
+  esac
+}
+dev_client_secret_load_targets || exit 1
 dev_secret_args=()
 for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
-  vexec "vault kv metadata get secret/msp/${dev_secret_client}-oidc >/dev/null 2>&1" && continue
+  if ! dev_secret_loc="$(client_secret_kv_of "$dev_secret_client")"; then
+    echo "ERROR: bootstrap.sh: realm の機密クライアント ${dev_secret_client} の Vault の置き場が決まっていない（client_secret_kv_of に足す）。守れないまま進まない" >&2
+    exit 1
+  fi
+  [ -n "$dev_secret_loc" ] || continue
+  # shellcheck disable=SC2086  # 意図的な単語分割:「<KV のパス> <キー>」の 2 語。値は上の client_secret_kv_of の case が返す固定の字面だけ
+  client_secret_kv_present ${dev_secret_loc} && continue
   dev_secret_env="$(dev_client_secret_env_name "$dev_secret_client")"
   dev_secret_args+=("${dev_secret_client}=${!dev_secret_env:-}")
 done
 if [ "${#dev_secret_args[@]}" -gt 0 ]; then
   dev_client_secret_guard "bootstrap.sh" "${dev_secret_args[@]}" || exit 1
 fi
-unset dev_secret_args dev_secret_client dev_secret_env
+unset dev_secret_args dev_secret_client dev_secret_env dev_secret_loc
+
+# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）の KV を
+#   公知の開発用の値で作らない。** 判定は scripts/lib/infra-credentials.sh の 1 本（k8s-local-up.sh と共有）。
+#   対象は **KV がまだ無いもの**だけ（在る KV は下の vkv_create_if_absent が触らない。IADR-0485）。k8s-local-up.sh から呼ぶときは、
+#   起動器が [1/7] の直後で決めた値（明示か既存の Secret の値）を env で受け取る。🔴 Vault へ何か書く前に判定する。
+# shellcheck source=scripts/lib/infra-credentials.sh
+. "$ROOT/scripts/lib/infra-credentials.sh"
+infra_cred_needed=()
+vexec "vault kv metadata get secret/msp/keycloak-admin >/dev/null 2>&1" || infra_cred_needed+=(KEYCLOAK_ADMIN_PASSWORD)
+# NFR-18, IADR-0577: 旧 msp/rabbitmq-app（全サービス共通の 1 組）は作らない。サービスは msp/rabbitmq-users の各自のユーザーで名乗る。
+vexec "vault kv metadata get secret/msp/rabbitmq >/dev/null 2>&1" || infra_cred_needed+=(RABBITMQ_PASSWORD)
+if [ "${#infra_cred_needed[@]}" -gt 0 ]; then
+  infra_cred_guard "bootstrap.sh" "${infra_cred_needed[@]}" || exit 1
+fi
+unset infra_cred_needed
 
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'
 
 echo "==> auth/kubernetes/config（in-cluster local mode: Vault 自身の SA を reviewer に使う）"
+# NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 下の role はすべて audience=vault を持つ（対象者を秘匿管理に限ったトークンだけを受ける）。
+#   名乗る側（ESO の store の serviceAccountRef.audiences・BFF / datasource の projected token・バックアップの CronJob）は同じ値を渡す。
+#   🔴 配備の順序: 名乗る側を先に出し、role の audience を後から付ける（k8s-local-up.sh は [6/7] の helm の後にここを呼ぶ）。
+#      role に audience が無い間は、OpenBao が TokenReview にトークン自身の audience を渡すので、新しいトークンでもログインできる。
+#   一致は scripts/vault-k8s-auth-audience.test.js が固定する。issuer は設定しない（同 IADR 決定 3）。
 vexec 'vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc'
+# 配備を 2 段に分ける口（VAULT_ROLE_AUDIENCE_DEFER=1 のときだけ role の audience を書き換えない）。既定は字面どおり audience=vault。
+# shellcheck source=scripts/lib/vault-role-audience.sh
+. "$ROOT/scripts/lib/vault-role-audience.sh"
 
 echo "==> policy: eso-read（MSP＋AST の read・store は両者共有のため両 path を許可）"
 vexec 'vault policy write eso-read -' < "$ROOT/deploy/local/vault/eso/policy-eso-read.hcl"
 
 echo "==> role: eso（ESO の SA external-secrets/external-secrets に束縛）"
-vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read ttl=1h'
+vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read audience=vault ttl=1h')"
 
 # SC-22, ADR-0095 決定 3, IADR-0433 決定 1・4, IADR-0453 決定 9 (#1411): 画面（/admin/secrets）から秘密情報を
 # 投入する BFF の書き込み権限。**画面と同じ PR で配備する**（先に権限だけを作らない。ADR-0095 §統制の表）。
@@ -64,7 +122,7 @@ echo "==> policy: bff-secret-group-write（SC-22 の群だけ・専用接頭辞�
 vexec 'vault policy write bff-secret-group-write -' < "$ROOT/deploy/local/vault/eso/policy-bff-secret-group-write.hcl"
 
 echo "==> role: bff-secret-writer（BFF 専用 SA microservices-platform/bff に束縛）"
-vexec 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write,bff-secret-group-write ttl=1h'
+vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/bff-secret-writer bound_service_account_names=bff bound_service_account_namespaces=microservices-platform policies=bff-secret-write,bff-secret-group-write audience=vault ttl=1h')"
 
 # FR-01, UC-04, NFR-18, IADR-0495 決定 1 (#458 段 S1): datasource-service がコネクタの資格情報（`vault:datasource/…#<key>`）を
 # 実行時に読む権限。🔴 policy は専用接頭辞 `secret/data/datasource/*` の read だけ（ESO の `msp/*` の外。書き込み・削除なし）。
@@ -75,7 +133,7 @@ echo "==> policy: datasource-connector-read（secret/data/datasource/* の read 
 vexec 'vault policy write datasource-connector-read -' < "$ROOT/deploy/local/vault/eso/policy-datasource-connector-read.hcl"
 
 echo "==> role: datasource-connector-reader（datasource-service 専用 SA microservices-platform/datasource-service に束縛）"
-vexec 'vault write auth/kubernetes/role/datasource-connector-reader bound_service_account_names=datasource-service bound_service_account_namespaces=microservices-platform policies=datasource-connector-read ttl=1h'
+vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/datasource-connector-reader bound_service_account_names=datasource-service bound_service_account_namespaces=microservices-platform policies=datasource-connector-read audience=vault ttl=1h')"
 
 # SC-22, ADR-0095 決定 4, IADR-0456 決定 6 (#1477): **画面（/admin/secrets）が書く KV は無いときだけ作る。**
 # 従前は毎回 `vault kv put`（全置換）していたため、`k8s-local-up.sh` を再実行するたびに**画面で入れた値が env の既定（空）で消えた**。
@@ -169,7 +227,7 @@ if vkv_exists msp/llm-provider-credentials; then
   vkv_patch_nonempty msp/llm-provider-credentials voyage-api-key "${VOYAGE_API_KEY:-}"
   # FR-02, IADR-0504 (#1764): voyage-api-key は後から足したプロパティである。ExternalSecret（externalsecret-llm.yaml）は
   # data[] のプロパティが KV に無いと同期全体を失敗させる（anthropic-api-key の差し替えまで届かなくなる）ので、
-  # **無いときだけ空で足す**（在る値は触らない。空＝鍵なし＝埋め込みは一時障害で DLQ へ。値は Runbook の手順で入れる）。
+  # **無いときだけ空で足す**（在る値は触らない。空＝鍵なし＝埋め込みは一時障害で、取り込みは全文だけの点（埋め込み待ち）を書く〔#1908〕。値は Runbook の手順で入れる）。
   vkv_patch_if_missing msp/llm-provider-credentials voyage-api-key ''
 else
   # FR-02, IADR-0504 (#1764 監査): 作るときも鍵を `sh -c` の引数へ埋め込まない（Pod 内の ps・監査ログに載る）。
@@ -186,10 +244,8 @@ vkv_create_if_absent msp/object-storage-credentials accessKey "${OBJECT_STORAGE_
 # NFR, ADR-0002 (#1012): サービス DB のパスワード。appsettings.json から接続文字列を撤去したため、
 # これが無いと ESO=1 では DB を持つ全サービスが起動できない。dev 既定は init スクリプトが作る `kp`。
 vkv_create_if_absent msp/postgres-app password "${APP_DB_PASSWORD:-kp}"
-# NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。appsettings.json から接続文字列を撤去したため、
-# これが無いと ESO=1 では RabbitMQ を使う 7 サービスが起動できない。★値は step 3 の基盤 secret
-# `rabbitmq` と**同値**にすること（同じ env RABBITMQ_PASSWORD から作る。ズレると認証破壊）。
-vkv_create_if_absent msp/rabbitmq-app password "${RABBITMQ_PASSWORD:-guest}"
+# NFR-18, IADR-0577（旧 #1022 の msp/rabbitmq-app）: ブローカへの app 側の資格情報は、下の msp/rabbitmq-users
+# （サービスごとのユーザー・乱数。IADR-0573）へ移した。全サービス共通の 1 組は作らない（既に在る KV は触らない・読み手は無い）。
 vkv_create_if_absent msp/wikijs-db password "${WIKIJS_DB_PASSWORD:-kp}"
 # SC-22 の項目（IADR-0456 決定 6）。Wiki.js が発行した鍵の書き戻し（deploy/local/wikijs-setup/bootstrap.sh）は別の経路である。
 if vkv_exists msp/wikijs-sync; then
@@ -261,6 +317,11 @@ vkv_create_if_absent msp/reset-gate-oidc client-secret "${RESET_GATE_CLIENT_SECR
 # `RagLatencySeriesAbsent` を鳴らす（原因が「評価対象が本当に無い」と区別できない。wikijs-oidc と同じ罠）。
 # 種は無条件に入れる。ExternalSecret を apply するのは SYNTHETIC=1 のときだけである（k8s-local-up.sh）。
 vkv_create_if_absent msp/synthetic-monitor-oidc client-secret "${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}"
+# NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
+# 投入器（seed-*.js）と運用スクリプト（republish・archive）は、実行時に ESO の同期先 Secret platform-infra/abac-seeder-oidc から読む
+# （realm の宣言の値へは落ちない）。**既定は realm の宣言の値**（dev のクラスタの初回。dev ではない context で env を与えなければ、
+# 冒頭の判定が止める）。env は作るときだけ効く（#1682）。
+vkv_create_if_absent msp/abac-seeder-oidc client-secret "${ABAC_SEED_CLIENT_SECRET:-$(dev_client_secret_dev_value abac-seeder)}"
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）。★値は k8s-local-up.sh step 3 の手動 apply と
 # **完全一致**させること（env 由来 or 同じ既定 postgres/guest/admin）。DB/broker/keycloak は既存パスワードで初期化済みのため、
 # 値がズレると認証破壊。ExternalSecret は creationPolicy: Merge で同一値を上書きするのみ（値不変＝無害）。
@@ -312,6 +373,28 @@ else
   vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
 fi
 
+# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーのパスワード。**乱数で、無いときだけ**入れる
+#   （開発用の既定値を持たない。在る値は触らない＝回すのは同じ KV を書き換えてから reconcile-users.sh）。
+#   ユーザーの集合と KV の割り当ては deploy/local/rabbitmq-setup/users.txt（単一情報源）から読む。
+#   値は標準入力で渡す（vault のコマンドの引数に載せない）。表示しない。
+rmq_random() { od -An -N24 -tx1 /dev/urandom | tr -d ' \n'; }
+echo "==> seed: ブローカのサービスごとのユーザー（msp/rabbitmq-users・ai-stock-trading/rabbitmq-users。乱数・無いときだけ）"
+rmq_users_file="$ROOT/deploy/local/rabbitmq-setup/users.txt"
+for rmq_kv in $(grep -v '^[[:space:]]*#' "$rmq_users_file" | awk 'NF >= 4 { print $4 }' | sort -u); do
+  if ! vkv_exists "$rmq_kv"; then
+    rmq_args=()
+    for rmq_user in $(grep -v '^[[:space:]]*#' "$rmq_users_file" | awk -v kv="$rmq_kv" '$4 == kv { print $1 }'); do
+      rmq_args+=("$rmq_user" "$(rmq_random)")
+    done
+    vkv_create_if_absent "$rmq_kv" "${rmq_args[@]}"
+  else
+    for rmq_user in $(grep -v '^[[:space:]]*#' "$rmq_users_file" | awk -v kv="$rmq_kv" '$4 == kv { print $1 }'); do
+      vkv_patch_if_missing "$rmq_kv" "$rmq_user" "$(rmq_random)"
+    done
+  fi
+done
+unset rmq_kv rmq_args rmq_user rmq_users_file
+
 # SC-22, ADR-0095 決定 1, IADR-0456 決定 6 (#1477): AST が ESO で受ける ai-stock-trading/app-secrets（契約 #1477 の表）。
 # **無いときだけ作る。在れば触らない**（画面で入れた外部 API キー・Discord ID を消さない。env での上書きも持たない —— 投入面は画面）。
 # *-auth-client-* 10 件（5 組）は realm（deploy/keycloak/microservices-platform-realm.json の機密クライアント）と**同値**の dev 既定
@@ -319,6 +402,26 @@ fi
 # （ズレると client_credentials が invalid_client になる）。画面から書ける 12 件は空文字（未設定＝各連携が no-op）。
 # 🔴 ai-stock-trading/moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
 # 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 10、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
+# NFR-18, IADR-0572 (GHSA-rh44-px44-p48q): AST の機密クライアントの secret も、env（名前は判定器の dev_client_secret_env_name。
+# 例 AI_STOCK_TRADING_SVC_CLIENT_SECRET）を与えたときはその値で入れる。冒頭の判定は「無いキーを env 未設定（dev の値）で作る」を
+# dev ではない context で止めるので、env を与えて通したときに dev の値が残らないよう、ここで env の値へ揃える。
+# <mode>: created ＝この実行で KV を作った（seed の値を env で上書きする）/ present ＝在る KV（無いキーにだけ足す。在る値は触らない）。
+# 値は stdin で渡す（vkv_patch_nonempty / vkv_patch_if_missing）。対象は宣言から導出した集合のうち置き場が app-secrets のもの。
+ast_auth_secrets_from_env() { # <created|present>
+  local c loc env val
+  for c in $DEV_CLIENT_SECRET_GUARDED; do
+    loc="$(client_secret_kv_of "$c")" || continue
+    case "$loc" in ai-stock-trading/app-secrets\ *) ;; *) continue ;; esac
+    env="$(dev_client_secret_env_name "$c")"
+    val="${!env:-}"
+    [ -n "$val" ] || continue
+    if [ "$1" = "created" ]; then
+      vkv_patch_nonempty ai-stock-trading/app-secrets "${loc#* }" "$val"
+    else
+      vkv_patch_if_missing ai-stock-trading/app-secrets "${loc#* }" "$val"
+    fi
+  done
+}
 if ! vkv_exists ai-stock-trading/app-secrets; then
   vexec "vault kv put -cas=0 secret/ai-stock-trading/app-secrets \
     finnhub-api-key='' marketdata-finnhub-api-key='' fred-api-key='' edinet-subscription-key='' \
@@ -331,7 +434,9 @@ if ! vkv_exists ai-stock-trading/app-secrets; then
     llm-auth-client-id='ai-stock-trading-llm-caller' llm-auth-client-secret='ai-stock-trading-llm-caller-dev-secret-change-me' \
     discord-owner-auth-client-id='ai-stock-trading-owner' discord-owner-auth-client-secret='dev-only-owner-secret'"
   mark_changed ai-stock-trading/app-secrets
+  ast_auth_secrets_from_env created
 else
+  ast_auth_secrets_from_env present
   # 在る KV にも *-auth-client-* 10 件を**無いものだけ**足す（画面が先に書いて作った KV には auth キーが無く、
   # そのままでは ast-secrets に auth キーが載らず AST のサービス間トークン取得が止まる。PR #1478 監査 D4）。値は上の seed と同値。
   vkv_patch_if_missing ai-stock-trading/app-secrets service-auth-client-id 'ai-stock-trading-svc'
@@ -460,6 +565,7 @@ echo "  #1817: mcp-client-admin-oidc (MSP ns。SC-12 の無人の登録・差し
 echo "  #1245: reset-gate-oidc (platform-infra ns。SC-15 の申請を閉じる門。空だと門が起動しない＝窓が開いたままになる)"
 echo "  #1255: retrieval-service-token, ingestion-service-token, aianalysis-service-token, graph-service-token, conversion-service-token, wiki-service-token, datasource-service-token, mcp-server-token, document-service-token (MSP ns。east-west gRPC の s2s 資格情報。空だと当該 Pod が起動しない)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
+echo "  IADR-0573: rabbitmq-users (platform-infra ns。ブローカのサービスごとのユーザーの写し。KV は msp/rabbitmq-users・ai-stock-trading/rabbitmq-users で、無いときだけ乱数で作った)"
 echo "  #438/#1102/#1144: keycloak-smtp (platform-infra ns。from/user/password は空＝実値未供給。宛先の既定はクラスタ内の捕捉用 MTA。k8s-local-up.sh の ESO=1 が常時 apply する。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  #1127: wikijs-oidc (MSP ns。Wiki.js の OIDC ストラテジ seed が読む。WIKIJS_OIDC=1 のときだけ apply される)"
 echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが env で読む。SYNTHETIC=1 のときだけ apply される)"
@@ -467,6 +573,6 @@ echo "  #1287: synthetic-monitor-oidc (MSP ns。合成監視のプローブが e
 #    打った人が必ず NotFound を踏む）。grafana-oidc / headlamp-oidc は OBSERVABILITY=1 / HEADLAMP=1 の、
 #    wikijs-oidc は WIKIJS_OIDC=1 の、synthetic-monitor-oidc は SYNTHETIC=1 のときだけ apply されるため、
 #    無条件の並びからは外して注記に回す。
-echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials object-storage-credentials postgres-app msp-rabbitmq-users wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
 echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp"
 echo "             （grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 のときだけ apply される）"

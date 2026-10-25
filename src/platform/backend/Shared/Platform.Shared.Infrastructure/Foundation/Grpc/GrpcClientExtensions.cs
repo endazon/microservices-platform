@@ -34,11 +34,20 @@ public static class GrpcClientExtensions
             metadata.Add("Authorization", $"Bearer {token}");
         });
 
-    public static GrpcChannel CreatePlatformChannel(string address, IServiceTokenProvider tokenProvider) =>
-        GrpcChannel.ForAddress(address, new GrpcChannelOptions
+    // FR-06, NFR-16 (#1897): `maxReceiveMessageSize` は**渡した呼び出し元のチャネルだけ**受信上限を変える。
+    // 省略（null）なら `GrpcChannelOptions` の既定（grpc-dotnet の 4 MB）を**触らない**。
+    // 🔴 `GrpcChannelOptions.MaxReceiveMessageSize = null` は「無制限」の意味になるので、null を代入しない。
+    public static GrpcChannel CreatePlatformChannel(
+        string address, IServiceTokenProvider tokenProvider, int? maxReceiveMessageSize = null)
+    {
+        var options = new GrpcChannelOptions
         {
             Credentials = ChannelCredentials.Create(
                 ChannelCredentials.Insecure, CreateServiceCallCredentials(tokenProvider)),
             UnsafeUseInsecureChannelCallCredentials = true,
-        });
+        };
+        if (maxReceiveMessageSize is { } max)
+            options.MaxReceiveMessageSize = max;
+        return GrpcChannel.ForAddress(address, options);
+    }
 }

@@ -2,26 +2,31 @@
 'use strict';
 /*
  * check-ci-latency.js
- * 「逆転」——`build-and-test` が `claude-review` の下限を追い越したことを検知する（IADR-0232 決定 8）。
+ * `build-and-test` の待ち時間が**自分自身の過去の床**から伸びたことを検知する
+ * （IADR-0232 決定 8。2026-10-12 追記 / #1910 で判定方式を置き換えた）。
  *
  * 背景:
- *   PR の待ち時間は必須チェックの最大値で決まる。実測（2026-08-21）では
- *     claude-review: 最小 148 秒 / 中央 339 秒（差分量に比例する）
- *     build-and-test: 241 秒
- *   であり、**既に逆転していた**。
+ *   PR の待ち時間は必須チェックの最大値で決まる。ビルド時間は機能追加とともに連続的に伸びるため、
+ *   **いつ伸びたか誰も気付かない**。これは自動起票や fail-closed の門と同じ「**気付けない種類の劣化**」であり、
+ *   検知を機械に任せる。
  *
- *   🔴 **中央値ではなく「下限」と比べる。** 密なループでは PR が小さく、レビューは下限へ寄る。
- *   下限を下回っている間、ビルド時間の増加は**レビューの陰に隠れて見えない**。
- *   下限を超えた瞬間から、**増加は 1 秒残らず待ち時間になる**。
- *
- *   ビルド時間は機能追加とともに連続的に伸びるため、**いつ超えたか誰も気付かない**。
- *   これは自動起票や fail-closed の門と同じ「**気付けない種類の劣化**」であり、検知を機械に任せる。
+ *   旧方式（2026-08-22〜2026-10-12）は「監視対象の中央値 > `claude-review` の**最小値**」で鳴らした。
+ *   前提は「必須チェックの最長は当面 claude-review で、その下限は動かない」だった。
+ *   2026-10-10 にレビューのモデルを切り替えて claude-review の下限が約 70 秒で底を打ち
+ *   （準備 35〜50 秒＋処理 16〜60 秒）、`build-and-test` の中央値（約 156 秒）が恒常的に上回った。
+ *   **前提が失われたので、基準を「レビューの下限」から「監視対象自身の過去の床」へ改めた**（利用者裁定 2026-10-12）。
+ *   claude-review との比較は**参考値**として出し続ける（判定には使わない）。
  *
  * 方式:
- *   直近のマージ済み PR について、**その PR の check 群が動き出した時刻からの完了までの経過**を
- *   GitHub API で引き、
- *     監視対象（既定 build-and-test）の**中央値**  >  基準（既定 claude-review）の**最小値**
+ *   マージ済み PR を新しくマージされた順に並べ、N 本（`CI_LATENCY_SAMPLES`）ずつ窓に区切る。
+ *   先頭の窓が「現在」、その後ろの K 個が「過去」。
+ *     現在の窓の監視対象の**中央値**  >  過去 K 窓それぞれの中央値の**最小値**（床） × R
  *   なら exit 1。
+ *
+ *   🔴 **現在の窓だけを epoch で絞る。過去の窓は絞らない**（IADR-0241。2026-10-12 追記）。
+ *   `ci.yml` はほぼ毎日変わる（8/20 以降の 53 日で 52 回）。過去の窓まで絞ると床を作れる日が無くなり、
+ *   監視は恒常的に skip する。床は「この check がどこまで速く走れたか」の記録であり、構成をまたいでよい。
+ *   **レビュー側の構成変更（`claude-code-review.yml`）は epoch に含めない** —— 判定はもう claude-review を使わない。
  *
  *   🔴 **check-run 自身の所要（completed_at - started_at）で測らない。** 実データで踏んだ罠である ——
  *   `build-and-test` は matrix の脚を `needs:` で束ねる**集約ジョブ**であり、
@@ -29,13 +34,17 @@
  *   待ち時間として意味を持つのは **check 群の開始からの完了オフセット（同 126 秒）**である。
  *   所要で測ると、集約ジョブは実際の 1/8 に見え、**監視が永久に鳴らない**。
  *
- *   🔴 **しきい値を固定値で持たない（自己校正）。** 基準側も同じ run 群から実測する。
+ *   🔴 **しきい値を固定値で持たない（自己校正）。** 床も同じ check の過去の run から実測する。
  *   固定値は環境とコードベースの変化で必ず腐る（本作業でも「キャッシュは初回必ずミス」という
- *   固定の思い込みが実測で誤りだった）。
+ *   固定の思い込みが実測で誤りだった）。R は秒数ではなく倍率である。
  *
  *   🔴 **監視対象は中央値、基準は最小値。** 対象を中央値にするのは 1 本の外れ値（ランナーの
- *   当たり外れ）で鳴らさないため。基準を最小値にするのは、上記のとおり守るべき相手が
- *   下限だからである。**この非対称は意図的であり、揃えてはならない。**
+ *   当たり外れ）で鳴らさないため。基準を（過去の窓の中央値の）最小値にするのは、守るべき相手が
+ *   「この check が出せていた速さ」の下限だからである。**この非対称は意図的であり、揃えてはならない。**
+ *
+ *   🔴 **限界: K 窓より遅い速度で伸び続ける劣化は、床が一緒に上がるので鳴らない。** 床の比較は
+ *   「急な段差」の検知であり、長期の漂流の検知ではない。漂流は参考値を週次の出力で人が見る
+ *   （既定値の選定と実測は作業仕様書 20261012_1910_ci-latency-self-floor.md）。
  *
  * 使い方:
  *   GITHUB_REPOSITORY=owner/repo GITHUB_TOKEN=... node scripts/check-ci-latency.js
@@ -44,21 +53,34 @@
  *
  * 環境変数:
  *   CI_LATENCY_TARGET     監視対象の check 名（既定 build-and-test）
- *   CI_LATENCY_BASELINE   基準の check 名（既定 claude-review）
- *   CI_LATENCY_SAMPLES    走査するマージ済み PR の本数（既定 10）
+ *   CI_LATENCY_BASELINE   参考値に出す check 名（既定 claude-review）。**判定には使わない**
+ *   CI_LATENCY_SAMPLES    1 窓のマージ済み PR の本数 N（既定 20）
+ *   CI_LATENCY_FLOOR_WINDOWS  床を取る過去の窓の数 K（既定 3。1 以上の整数）
+ *   CI_LATENCY_FLOOR_RATIO    床に対する倍率 R（既定 1.25。1 より大きい数）。現在の中央値が床 × R を超えたら赤
  *   CI_LATENCY_STEP_RATIO 定常性の門の倍率（既定 2）。中央値 ÷ 最小 がこれ以上なら判定を skip する
  *   CI_LATENCY_CONFIG_PATH  CI 構成ファイル（既定 .github/workflows/ci.yml）。epoch の導出に使う
  *   CI_LATENCY_EPOCH        epoch の上書き（ISO 8601）。**両方向の実測に使う**
- *   CI_LATENCY_MIN_SAMPLES  判定に要る最小本数（既定 3）
+ *   CI_LATENCY_MIN_SAMPLES  現在の窓の判定に要る最小本数（既定 3。1 以上の整数）
+ *   CI_LATENCY_FLOOR_MIN_SAMPLES  過去の窓が床の候補になる最小本数（既定 ceil(N / 2)＝N の半分以上。1 以上の整数）
  */
+
+const fs = require('fs');
 
 const TARGET = process.env.CI_LATENCY_TARGET || 'build-and-test';
 const BASELINE = process.env.CI_LATENCY_BASELINE || 'claude-review';
-const SAMPLES = Number(process.env.CI_LATENCY_SAMPLES || 10);
+// 🔴 既定 20（#1910 で 10 から上げた）。10 本の窓の中央値はランナー差だけで ±15〜18% 揺れ、R（1.25）の余裕を食う。
+const SAMPLES = Number(process.env.CI_LATENCY_SAMPLES || 20);
+// 既定値の根拠（8/20〜10/12 の 572 本で再計算した安定期の誤報率・悪化期の検知率）は作業仕様書にある。
+const FLOOR_WINDOWS = Number(process.env.CI_LATENCY_FLOOR_WINDOWS || 3);
+const FLOOR_RATIO = Number(process.env.CI_LATENCY_FLOOR_RATIO || 1.25);
 const STEP_RATIO = Number(process.env.CI_LATENCY_STEP_RATIO || 2);
 const CONFIG_PATH = process.env.CI_LATENCY_CONFIG_PATH || '.github/workflows/ci.yml';
 // 🔴 中央値は本数が少ないと 1 本に引きずられる。3 本を下限とする。
 const MIN_SAMPLES = Number(process.env.CI_LATENCY_MIN_SAMPLES || 3);
+// 🔴 過去の窓が床の候補になる本数は **N に連動させる**（既定 ceil(N / 2)。#1912 のレビュー指摘）。
+// 現在の窓と同じ 3 本で候補にすると、たまたま速かった少数の窓が K 窓のあいだ床を固定し、誤報側へ倒れる。
+// 過去の窓は epoch で絞らないので本数が欠けるのは API 失敗か skip された run だけであり、半分を要求しても履歴の門はまず効かない。
+const FLOOR_MIN_SAMPLES = Number(process.env.CI_LATENCY_FLOOR_MIN_SAMPLES || Math.ceil(SAMPLES / 2));
 const FILES_PAGE_SIZE = 100;
 // GitHub の `/pulls/{n}/files` は最大 3000 件までしか返さない（＝30 ページ）。
 const FILES_MAX_PAGES = 30;
@@ -117,6 +139,58 @@ function min(xs) {
 }
 
 /**
+ * 設定値（K・R・N）の検査。不正なら理由の文字列、正しければ null。
+ * 🔴 **不正値を黙って既定へ戻さない。** `CI_LATENCY_FLOOR_RATIO=1` は「床から 1 秒でも伸びたら鳴る」、
+ * `0` や数値でない値は `NaN` 比較で**常に緑**になる。どちらも監視が黙って壊れる形なので、設定の誤りとして赤くする。
+ */
+function validateConfig({
+  floorWindows = FLOOR_WINDOWS,
+  floorRatio = FLOOR_RATIO,
+  samples = SAMPLES,
+  minSamples = MIN_SAMPLES,
+  floorMinSamples = FLOOR_MIN_SAMPLES,
+  stepRatio = STEP_RATIO,
+} = {}) {
+  if (!Number.isInteger(floorWindows) || floorWindows < 1) {
+    return `CI_LATENCY_FLOOR_WINDOWS は 1 以上の整数でなければならない（現在 ${floorWindows}）`;
+  }
+  if (!Number.isFinite(floorRatio) || floorRatio <= 1) {
+    return `CI_LATENCY_FLOOR_RATIO は 1 より大きい数でなければならない（現在 ${floorRatio}）`;
+  }
+  if (!Number.isInteger(samples) || samples < 1) {
+    return `CI_LATENCY_SAMPLES は 1 以上の整数でなければならない（現在 ${samples}）`;
+  }
+  // 🔴 NaN だと `length < NaN` も `t >= lo * NaN` も false になり、門を**素通り**する（#1912 のレビュー指摘）。
+  if (!Number.isInteger(minSamples) || minSamples < 1) {
+    return `CI_LATENCY_MIN_SAMPLES は 1 以上の整数でなければならない（現在 ${minSamples}）`;
+  }
+  if (!Number.isInteger(floorMinSamples) || floorMinSamples < 1) {
+    return `CI_LATENCY_FLOOR_MIN_SAMPLES は 1 以上の整数でなければならない（現在 ${floorMinSamples}）`;
+  }
+  if (!Number.isFinite(stepRatio) || stepRatio <= 1) {
+    return `CI_LATENCY_STEP_RATIO は 1 より大きい数でなければならない（現在 ${stepRatio}）`;
+  }
+  return null;
+}
+
+/**
+ * 床＝過去の窓それぞれの中央値の**最小値**。
+ * 監視対象の値が `minSamples` 本に満たない窓は候補にしない（少数の中央値は外れ値そのものになる）。
+ * 呼び出し側は `FLOOR_MIN_SAMPLES`（既定 ceil(N / 2)）を渡す。
+ * 返す `windows` は候補になった窓の数（履歴の門が使う）。
+ *
+ * 🔴 **「全値の最小」でも「中央値の中央値」でもない。** 全値の最小は 1 本の当たりの速い run で床が下がり
+ * 常に鳴る。中央値の中央値は過去の悪化を床へ取り込み、段差を見逃す。窓ごとの中央値で外れ値を消してから、
+ * その中で最も速かった窓を床にする。
+ */
+function floorOf(pastWindows, { minSamples = MIN_SAMPLES } = {}) {
+  const medians = (pastWindows || [])
+    .filter((w) => Array.isArray(w) && w.length >= minSamples)
+    .map((w) => median(w));
+  return { floor: min(medians), windows: medians.length, medians };
+}
+
+/**
  * 判定。値が揃わないときは **fail-open**（exit 0）にする。
  * 🔴 理由: 本検査は「速さ」の監視であって正しさの門ではない。API が引けない・
  * サンプルが足りないといった理由で赤くすると、**本来の失敗と区別が付かない雑音**になる。
@@ -134,10 +208,29 @@ function min(xs) {
  * **代償を明記する: 窓の途中で実際にビルドが 2 倍に伸びた場合も、この門は 1 週遅らせる**
  * （窓が入れ替われば次回鳴る）。速さの監視は fail-open であるという上の方針と同じ向きであり、
  * **見逃しより誤報のほうが監視を壊す**という判断で意図的にこちらへ倒している。
+ *
+ * 🔴 **履歴の門（#1910）。** 床の候補になる過去の窓が `floorWindows` 個に満たなければ判定しない。
+ * 少ない窓の最小は床として浅く（揺れた 1 窓がそのまま床になる）、判定の意味が設定値と食い違う。
+ *
+ * 判定（#1910）: 現在の窓の中央値 > 床 × `floorRatio` なら NG。**ちょうど R 倍は緑**（超えたら赤）。
+ * `baselineDurations`（claude-review）は**参考値**（`baseline` / `reversed`）としてだけ返し、判定には使わない。
  */
-function judge({ targetDurations, baselineDurations, stepRatio = STEP_RATIO, minSamples = MIN_SAMPLES, epoch = null }) {
+function judge({
+  targetDurations,
+  baselineDurations = [],
+  pastWindows = [],
+  floorWindows = FLOOR_WINDOWS,
+  floorRatio = FLOOR_RATIO,
+  stepRatio = STEP_RATIO,
+  minSamples = MIN_SAMPLES,
+  floorMinSamples = FLOOR_MIN_SAMPLES,
+  epoch = null,
+}) {
   const t = median(targetDurations);
   const b = min(baselineDurations);
+  const { floor, windows } = floorOf(pastWindows, { minSamples: floorMinSamples });
+  // 参考値（判定には使わない）。旧方式の「逆転」——監視対象の中央値が claude-review の下限を超えたか。
+  const ref = { target: t, baseline: b, reversed: t !== null && b !== null ? t > b : null, floor, windows };
   // 🔴 **現在の CI 構成で測られた PR が少なすぎるうちは判定しない**（IADR-0241）。
   // 🔴 **この門を null 判定より前に置く。** 0 本のときこそ epoch を理由に添えねばならない ——
   // 「サンプルが足りない」とだけ言われると、**check 名の設定ミスと区別が付かない**。
@@ -152,26 +245,241 @@ function judge({ targetDurations, baselineDurations, stepRatio = STEP_RATIO, min
         `現在の CI 構成（${epoch ? `${epoch} 以降` : 'epoch 不明'}）で測られた ${TARGET} の対象が ` +
         `${targetDurations.length} 本しかない（判定には ${minSamples} 本要る）。` +
         '中央値がまだ現在の構成を表さないため判定しない',
-      target: t,
-      baseline: b,
+      ...ref,
     };
   }
-  if (t === null || b === null) {
-    return { ok: true, skipped: true, reason: 'サンプルが足りない', target: t, baseline: b };
+  if (t === null) {
+    return { ok: true, skipped: true, reason: 'サンプルが足りない', ...ref };
   }
-  // 🔴 定常性の門。下の説明を参照。
+  // 🔴 定常性の門。上の説明を参照。
   const lo = min(targetDurations);
   if (lo !== null && t >= lo * stepRatio) {
     return {
       ok: true,
       skipped: true,
       reason: `監視対象のサンプルが CI 構成の変更をまたいでいる（最小 ${Math.round(lo)} 秒 / 中央値 ${Math.round(t)} 秒 = ${(t / lo).toFixed(1)} 倍 ≧ ${stepRatio} 倍）。中央値が現在の構成を表していないため判定しない`,
-      target: t,
-      baseline: b,
+      ...ref,
     };
   }
-  return { ok: t <= b, skipped: false, target: t, baseline: b };
+  // 🔴 履歴の門（#1910）。黙って緑にしない —— skipped を立て、何個あって何個要るかを出す。
+  if (windows < floorWindows || floor === null) {
+    return {
+      ok: true,
+      skipped: true,
+      reason:
+        `床を取る過去の窓が足りない（${floorMinSamples} 本以上の値を持つ過去の窓が ${windows} 個。判定には ${floorWindows} 個要る）。` +
+        '床が決まらないため判定しない',
+      ...ref,
+    };
+  }
+  return { ok: t <= floor * floorRatio, skipped: false, ratio: t / floor, ...ref };
 }
+
+/**
+ * マージ順（新しい順）に並んだ PR を、現在の窓（先頭 `samples` 本）と過去の窓（続く `samples` 本ずつ × `floorWindows`）に区切る。
+ * 🔴 **窓の境界はマージ順だけで決める。** 現在の窓で epoch により外した PR を過去の窓へ繰り下げない ——
+ * 繰り下げると、epoch が動くたびに過去の窓の中身がずれ、床が構成変更の頻度に依存して揺れる。
+ * 過去の窓が `samples` 本に満たない（PR が足りない）ときは、その窓は短いまま返す（候補になるかは `floorOf` が本数で決める）。
+ */
+function splitWindows(prs, { samples = SAMPLES, floorWindows = FLOOR_WINDOWS } = {}) {
+  const list = prs || [];
+  const current = list.slice(0, samples);
+  const past = [];
+  for (let k = 1; k <= floorWindows; k += 1) {
+    const w = list.slice(k * samples, (k + 1) * samples);
+    if (!w.length) break;
+    past.push(w);
+  }
+  return { current, past };
+}
+
+/*
+ * 待ち時間の分解（#2006）: **実行の経路**と**キュー待ち**に分ける。判定（judge）には使わない。
+ *
+ * #1999 の赤は、コードや構成の退行ではなくランナーのキュー待ちが伸びたことが原因だった
+ * （実行の経路の中央値は床の窓も現在の窓も 130 秒、キューの中央値は 6 秒 → 38 秒）。従来の出力は待ち時間しか出さず、
+ * 「次の手」が ci.yml のマージを探させていたので、切り分けを run と job の時刻から手で行った。
+ *
+ * 方法: 監視対象の check-run から `needs:` を遡って律速の鎖を作る。各段で、`needs:` に載るジョブの check-run のうち
+ * **最後に完了したもの**を前段とする（それが揃うまで始まれない）。
+ *   キュー = Σ（その段の開始 − 前段の完了）＋（鎖の先頭の開始 − 群の開始）
+ *   実行   = Σ（その段の完了 − その段の開始）
+ * 両者の和は待ち時間（群の開始から監視対象の完了まで）にちょうど等しい。
+ * 🔴 **`needs:` を使わず「直前に完了した任意の run」を前段にしてはならない。** 1 PR に約 48 本の check-run が並走するので、
+ *    ほぼ常に何かが走っており、キューが 0 に見える。
+ * `needs:` は構成ファイル（CONFIG_PATH）から読む。check-run の名前はジョブの `name:`（`${{ … }}` を含めば前方一致）か、
+ * `name:` が無ければジョブ ID である。鎖のどこかでジョブを引けなければ、その PR は分解しない（数えて出す）。
+ */
+
+/** 構成ファイルの `jobs:` から、ジョブ ID → { match（check-run 名の判定）, needs } を読む。読めなければ null。 */
+function parseNeedsGraph(text) {
+  if (!text) return null;
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const start = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+  if (start < 0) return null;
+  const jobs = new Map();
+  let cur = null;
+  let inNeedsList = false;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^\S/.test(line)) break; // jobs: の外
+    const id = /^ {2}([A-Za-z0-9_-]+):\s*(?:#.*)?$/.exec(line);
+    if (id) {
+      cur = { id: id[1], name: null, needs: [] };
+      jobs.set(cur.id, cur);
+      inNeedsList = false;
+      continue;
+    }
+    if (!cur) continue;
+    if (inNeedsList) {
+      const item = /^ {6}- ([A-Za-z0-9_-]+)\s*(?:#.*)?$/.exec(line);
+      if (item) { cur.needs.push(item[1]); continue; }
+      if (/^ {6,}\S/.test(line) || /^\s*(#.*)?$/.test(line)) continue;
+      inNeedsList = false;
+    }
+    const name = /^ {4}name:\s*(.+?)\s*$/.exec(line);
+    if (name) { cur.name = name[1].replace(/^(['"])(.*)\1$/, '$2'); continue; }
+    const needs = /^ {4}needs:\s*(.*?)\s*(?:#.*)?$/.exec(line);
+    if (needs) {
+      const v = needs[1];
+      if (!v) inNeedsList = true;
+      else if (v.startsWith('[')) cur.needs = v.replace(/[[\]]/g, '').split(',').map((x) => x.trim()).filter(Boolean);
+      else cur.needs = [v];
+    }
+  }
+  if (!jobs.size) return null;
+  for (const j of jobs.values()) {
+    const label = j.name || j.id;
+    const at = label.indexOf('${{');
+    j.match = at < 0 ? (n) => n === label : (n) => n.startsWith(label.slice(0, at));
+  }
+  return jobs;
+}
+
+/** check-run の名前からジョブ ID を引く（一致が 1 つでなければ null）。 */
+function jobIdOf(runName, graph) {
+  const hits = [...graph.values()].filter((j) => j.match(runName));
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+/** 1 PR の待ち時間を { exec, queue }（秒）へ分ける。分けられなければ null。 */
+function decompose(runs, t0, graph, target = TARGET) {
+  if (!graph || t0 === null) return null;
+  const done = (runs || []).filter((r) => r && r.started_at && r.completed_at && r.status === 'completed');
+  let node = done.find((r) => r.name === target && durationSec(r) !== null);
+  if (!node) return null;
+  let exec = 0;
+  let queue = 0;
+  for (let guard = 0; guard < 50; guard += 1) {
+    const id = jobIdOf(node.name, graph);
+    if (!id) return null;
+    const startMs = Date.parse(node.started_at);
+    exec += Math.max(0, Date.parse(node.completed_at) - startMs) / 1000;
+    const needs = graph.get(id).needs;
+    const preds = done.filter((r) => r !== node && needs.includes(jobIdOf(r.name, graph)) && Date.parse(r.completed_at) <= startMs);
+    if (!needs.length) {
+      queue += Math.max(0, startMs - t0) / 1000;
+      return { exec, queue };
+    }
+    if (!preds.length) return null; // needs はあるのに check-run を引けない（構成が違う head）
+    const pred = preds.reduce((a, b) => (Date.parse(b.completed_at) > Date.parse(a.completed_at) ? b : a));
+    queue += Math.max(0, startMs - Date.parse(pred.completed_at)) / 1000;
+    node = pred;
+  }
+  return null;
+}
+
+/** 窓の分解の要約（中央値。値が無ければ null）。 */
+function summarizeBreakdown(parts) {
+  const list = (parts || []).filter(Boolean);
+  return { n: list.length, exec: median(list.map((p) => p.exec)), queue: median(list.map((p) => p.queue)) };
+}
+
+/**
+ * 床の窓から現在の窓への伸びが、主にどちらにあるか。'queue' | 'exec' | null（決められない）。
+ * キューの伸びが正で、実行の経路の伸び（負なら 0）より大きければ 'queue'（増えた分の大半がキュー側）。
+ * 🔴 分解できた本数が `minSamples`（既定 FLOOR_MIN_SAMPLES＝床の候補と同じ N の半分）に満たない窓では決めない（null＝従来の文言）。
+ *    1〜2 本の中央値で主因を断定すると、「次の手」を誤って切り替える（PR #2011 の AI レビュー 🟡）。
+ */
+function dominantCause(current, floorWindow, { minSamples = FLOOR_MIN_SAMPLES } = {}) {
+  if (!current || !floorWindow) return null;
+  if (!(current.n >= minSamples) || !(floorWindow.n >= minSamples)) return null;
+  if ([current.exec, current.queue, floorWindow.exec, floorWindow.queue].some((x) => x === null || x === undefined)) return null;
+  const dq = current.queue - floorWindow.queue;
+  const de = current.exec - floorWindow.exec;
+  if (dq > 0 && dq > Math.max(de, 0)) return 'queue';
+  if (de > 0) return 'exec';
+  return null;
+}
+
+/** 赤のときの「次の手」。キューが主因なら混雑の確認へ、そうでなければ従来の文言（構成の退行を探す）。 */
+function nextStepText(cause, { samples = SAMPLES, floorWindows = FLOOR_WINDOWS } = {}) {
+  const tail = `意図した増加なら、過去の窓が入れ替わる（約 ${samples * (floorWindows + 1)} 本のマージ）まで赤が続く。`;
+  if (cause === 'queue') {
+    return '次の手: 伸びた分の大半はキュー待ち（ジョブが始まるまでの時間）であり、実行の経路は伸びていない。' +
+      'ci.yml やテストの退行を探す前に、ランナーの混雑（同時間帯の run 数。`actions/runs?created=<期間>` の total_count）を確認する。' +
+      `混雑が平常に戻れば、窓の入れ替わり（約 ${samples * (floorWindows + 1)} 本のマージ）で緑に戻る。閾値は緩めない（#1999 で再検証済み）。`;
+  }
+  return '次の手: 伸びた窓のマージ（特に ci.yml・テストの追加）を探し、律速の脚を割る ' +
+    '（IADR-0232 の 2026-09-28 / 10-02 追記: テストのシャーディング・閉包だけのビルド）。' + tail;
+}
+
+/** 床になった過去の窓の添字（floorOf と同じ規則: FLOOR_MIN_SAMPLES 本以上の窓のうち中央値が最小）。無ければ null。 */
+function floorWindowIndex(pastWindows, { minSamples = FLOOR_MIN_SAMPLES } = {}) {
+  let best = null;
+  (pastWindows || []).forEach((w, i) => {
+    if (!Array.isArray(w) || w.length < minSamples) return;
+    const m = median(w);
+    if (best === null || m < best.m) best = { i, m };
+  });
+  return best ? best.i : null;
+}
+
+const fmtSec = (x) => (x === null || x === undefined ? '—' : `${Math.round(x)}`);
+
+/** 窓ごとの分解を 1 行にする。 */
+function breakdownLine({ graphLoaded, current, past, currentTotal, pastTotals }) {
+  if (!graphLoaded) {
+    return `[check-ci-latency] 待ち時間の分解: ${CONFIG_PATH} の needs を読めなかったので分解していない（判定には影響しない）。`;
+  }
+  const cell = (b, total) => `実行 ${fmtSec(b.exec)} / キュー ${fmtSec(b.queue)}（${b.n}/${total} 本）`;
+  return `[check-ci-latency] 待ち時間の分解（中央値・秒。実行＝ needs を遡った律速の鎖の実行時間の合計、キュー＝その鎖で始まるまで待った時間の合計）: ` +
+    `現在の窓 ${cell(current, currentTotal)} ／ 過去の窓 [${past.map((b, i) => cell(b, pastTotals[i])).join(', ')}]`;
+}
+
+/** 主因の行。 */
+function causeLine(cause, current, floorWindow) {
+  if (!floorWindow || cause === null) {
+    const ns = floorWindow && current ? `（分解できた本数: 現在 ${current.n} 本・床 ${floorWindow.n} 本。要 ${FLOOR_MIN_SAMPLES} 本）` : '';
+    return `伸びの内訳: 実行の経路とキュー待ちのどちらが伸びたかを決められなかった（分解できた本数が足りない、またはどちらも伸びていない）${ns}。従来の「次の手」を出す。`;
+  }
+  const dq = current.queue - floorWindow.queue;
+  const de = current.exec - floorWindow.exec;
+  const sign = (x) => `${x >= 0 ? '+' : ''}${Math.round(x)}`;
+  return `伸びの内訳（床の窓と比べて。分解できた本数: 現在 ${current.n} 本・床 ${floorWindow.n} 本）: 実行の経路 ${sign(de)} 秒・キュー待ち ${sign(dq)} 秒 → 主因は${cause === 'queue' ? '**キュー待ち**' : '**実行の経路**'}。`;
+}
+
+/**
+ * 赤のときの説明（主因の行と「次の手」）。main と同じ配線を 1 か所に置き、自己試験で固定する。
+ * 🔴 床の窓は待ち時間（pastWindows）で選び、同じ添字の分解（pastBreakdowns）と比べる。両者は collect が同じ順に積む。
+ */
+function explainRed({ pastWindows, currentBreakdown, pastBreakdowns, minSamples = FLOOR_MIN_SAMPLES }) {
+  const curB = summarizeBreakdown(currentBreakdown);
+  const floorIdx = floorWindowIndex(pastWindows, { minSamples });
+  const floorB = floorIdx === null ? null : summarizeBreakdown(pastBreakdowns[floorIdx]);
+  const cause = dominantCause(curB, floorB, { minSamples });
+  return { cause, floorIdx, causeLine: causeLine(cause, curB, floorB), nextStep: nextStepText(cause) };
+}
+
+/** 構成ファイルを読んで needs の木を返す。読めなければ null（分解をしないだけ。判定には影響しない）。 */
+function loadNeedsGraph(path = CONFIG_PATH) {
+  try {
+    return parseNeedsGraph(fs.readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 async function fetchJson(url, token) {
   const res = await fetch(url, {
     headers: {
@@ -353,17 +661,31 @@ function representsCurrentConfig({ t0, mergedAt, changedConfig, epoch }) {
   return false;
 }
 
-async function collect({ repo, token, samples }) {
+// PR 一覧のページ上限。100 本 × 10 ページ。既定（N=20・K=3）では 80 本のマージ済み PR が要る。
+const PULLS_MAX_PAGES = 10;
+
+async function collect({ repo, token, samples, floorWindows = FLOOR_WINDOWS }) {
   const base = `https://api.github.com/repos/${repo}`;
-  // per_page を samples の 3 倍取るのは、closed には**マージされずに閉じた** PR が混ざるためである。
-  let prs;
-  try {
-    prs = await fetchJson(`${base}/pulls?state=closed&per_page=${samples * 3}&sort=updated&direction=desc`, token);
-  } catch (e) {
-    e.scope = 'repo'; // リポジトリ全体が引けない＝設定の誤りとして扱う
-    throw e;
+  // 現在の窓 1 個＋過去の窓 K 個ぶんのマージ済み PR が要る（#1910）。
+  // closed には**マージされずに閉じた** PR が混ざるので、マージ済みが要る本数の 1.5 倍に達するまでページを読む
+  // （`sort=updated` はマージ順ではないため、末尾の取りこぼしを余裕で吸う）。
+  const needed = samples * (floorWindows + 1);
+  const prs = [];
+  for (let page = 1; page <= PULLS_MAX_PAGES; page += 1) {
+    let batch;
+    try {
+      batch = await fetchJson(`${base}/pulls?state=closed&per_page=100&sort=updated&direction=desc&page=${page}`, token);
+    } catch (e) {
+      e.scope = 'repo'; // リポジトリ全体が引けない＝設定の誤りとして扱う
+      throw e;
+    }
+    const list = Array.isArray(batch) ? batch : [];
+    prs.push(...list);
+    if (list.length < 100) break;
+    if (prs.filter((p) => p && p.merged_at).length >= needed * 1.5) break;
   }
-  const merged = sortByMergedAtDesc(prs).slice(0, samples);
+  const ordered = sortByMergedAtDesc(prs).slice(0, needed);
+  const { current: merged, past } = splitWindows(ordered, { samples, floorWindows });
 
   // 🔴 **現在の CI 構成で測られた PR だけを母集合にする**（IADR-0241）。
   // 中央値は「窓の多数派」を映すので、構成を変えた直後の窓は旧構成の値を現在の値として報告する。
@@ -380,6 +702,9 @@ async function collect({ repo, token, samples }) {
 
   const targetDurations = [];
   const baselineDurations = [];
+  // #2006: 待ち時間の分解（判定には使わない）。needs の木は構成ファイルから 1 回だけ読む。
+  const graph = loadNeedsGraph();
+  const currentBreakdown = [];
   let fetchFailures = 0;
   let missingHeads = 0;
   for (const pr of merged) {
@@ -446,11 +771,55 @@ async function collect({ repo, token, samples }) {
       if (r.name === TARGET) targetDurations.push(d);
       else if (r.name === BASELINE) baselineDurations.push(d);
     }
+    currentBreakdown.push(decompose(all, t0, graph));
   }
+
+  // 🔴 **過去の窓は epoch で絞らない**（#1910。IADR-0241 の 2026-10-12 追記）。
+  // `ci.yml` はほぼ毎日変わるので、絞ると床を作れる日が無くなる。床は構成をまたいだ「出せていた速さ」の記録である。
+  // 変更ファイル一覧も引かない（epoch の判定に使うだけなので要らない）。
+  const pastWindows = [];
+  const pastBreakdowns = [];
+  for (const w of past) {
+    const values = [];
+    const parts = [];
+    for (const pr of w) {
+      const sha = pr.head && pr.head.sha;
+      if (!sha) continue;
+      let runs;
+      try {
+        runs = await fetchJson(`${base}/commits/${sha}/check-runs?per_page=100`, token);
+      } catch (e) {
+        const kind = classifyFailure(e.status, { rateLimited: e.rateLimited, scope: 'commit' });
+        if (kind === 'config') {
+          e.scope = 'commit';
+          throw e;
+        }
+        if (kind === 'missing') missingHeads += 1;
+        else fetchFailures += 1;
+        continue;
+      }
+      const all = runs.check_runs || [];
+      const t0 = checkSetStart(all);
+      for (const r of all) {
+        if (r.name !== TARGET) continue;
+        const d = waitSec(r, t0);
+        if (d !== null) values.push(d);
+      }
+      parts.push(decompose(all, t0, graph));
+    }
+    pastWindows.push(values);
+    pastBreakdowns.push(parts);
+  }
+
   return {
     merged: merged.length,
+    pastMerged: past.reduce((n, w) => n + w.length, 0),
     targetDurations,
     baselineDurations,
+    pastWindows,
+    currentBreakdown,
+    pastBreakdowns,
+    graphLoaded: Boolean(graph),
     fetchFailures,
     missingHeads,
     skippedPreEpoch,
@@ -587,62 +956,157 @@ async function selfTest() {
   ok('median: 空は null', () => eq(median([]), null));
   ok('min: 最小を返す', () => eq(min([5, 2, 9]), 2));
 
-  ok('judge: 対象の中央値が基準の最小以下なら ok', () =>
-    eq(judge({ targetDurations: [100, 110, 120], baselineDurations: [130, 300] }).ok, true));
-  ok('judge: 対象の中央値が基準の最小を超えたら NG（＝逆転）', () =>
-    eq(judge({ targetDurations: [200, 240, 260], baselineDurations: [148, 400] }).ok, false));
-  ok('judge: 基準は中央値ではなく最小で見る', () => {
-    // 基準の中央値は 300 だが最小は 148。対象の中央値 240 は中央値なら通り、最小なら落ちる。
-    // 🔴 対象を 3 本にしてあるのは、最小本数の門（既定 3 本）を通すためである。
-    // 1 本だと門が先に効いて skip し、**この試験は「落ちない」ことを確かめるだけの空試験になる**。
-    const r = judge({ targetDurations: [235, 240, 245], baselineDurations: [148, 300, 500] });
+  // --- #1910: 判定は「監視対象自身の過去の床」。床＝過去 K 窓それぞれの中央値の最小。 ---
+  // 試験の既定: K=3・R=1.25。過去の窓は 3 本ずつ（最小本数の門 3 本を満たす）。
+  const J = (o) => judge({ floorWindows: 3, floorRatio: 1.25, minSamples: 3, floorMinSamples: 3, ...o });
+  const steady = [[100, 104, 108], [98, 100, 103], [101, 105, 110]]; // 窓の中央値 104 / 100 / 105 → 床 100
+  ok('🔴 judge: 床の R 倍を超えて伸びたら NG（#1910 の本判定）', () => {
+    const r = J({ targetDurations: [128, 130, 133], pastWindows: steady });
     eq(r.skipped, false, '門ではなく本判定に到達していること');
-    eq(r.ok, false, '最小と比べていない');
+    eq(r.floor, 100, '床');
+    eq(r.ok, false, '130 > 100 × 1.25');
   });
-  ok('judge: 対象は最小ではなく中央値で見る（外れ値で鳴らさない）', () => {
-    // 対象の最小は 140 だが中央値は 240。基準 148 に対し、
-    // 最小で見れば通り（140 <= 148）、中央値で見れば落ちる（240 > 148）。落ちるのが正しい。
-    // 🔴 開き幅を 1.71 倍に抑えてあるのは、定常性の門（2 倍）に掛からせないためである
-    //    ——「中央値で見ているか」だけを試験したいので、門の側で skip されては測れない。
-    const r = judge({ targetDurations: [140, 240, 260], baselineDurations: [148] });
+  ok('🔴 judge: 緩やかな揺らぎ（床の 1.15 倍）は ok', () => {
+    const r = J({ targetDurations: [110, 115, 121], pastWindows: steady });
+    eq(r.skipped, false, '門ではなく本判定に到達していること');
+    eq(r.ok, true, '115 <= 125');
+  });
+  ok('🔴 judge: 履歴（床の候補になる過去の窓）が K 個に満たなければ skip（黙って緑にしない）', () => {
+    const r = J({ targetDurations: [300, 310, 320], pastWindows: steady.slice(0, 2) });
+    eq(r.ok, true);
+    eq(r.skipped, true, 'skip として記録されねばならない');
+    if (!r.reason.includes('2 個') || !r.reason.includes('3 個要る')) throw new Error(`窓の数が理由に出ていない: ${r.reason}`);
+  });
+  ok('judge: 過去の窓が最小本数に満たなければ床の候補にしない（履歴の門へ回る）', () => {
+    // 3 窓あるが 1 窓は 2 本しかない → 候補 2 窓 < K=3 → skip。
+    const r = J({ targetDurations: [300, 310, 320], pastWindows: [[100, 104, 108], [98, 100], [101, 105, 110]] });
+    eq(r.skipped, true);
+    eq(r.windows, 2);
+  });
+  ok('🔴 judge: 過去の窓は N の半分（floorMinSamples）以上の値が無ければ床の候補にしない（少数の速い窓で床を固定しない）', () => {
+    // N=20 相当（floorMinSamples=10）。3 本だけの速い窓（中央値 60）が床になると 100 前後の現在の窓が誤って鳴る。
+    const full = (v) => Array(10).fill(v);
+    const r = J({
+      targetDurations: [100, 104, 108],
+      pastWindows: [[58, 60, 62], full(100), full(102), full(98)],
+      floorWindows: 3,
+      floorMinSamples: 10,
+    });
+    eq(r.windows, 3, '3 本の窓を候補に数えている');
+    eq(r.floor, 98, '少数の窓が床になっている');
+    eq(r.ok, true);
+  });
+  ok('judge: 履歴が 0 窓でも skip（床 null を判定に使わない）', () => {
+    const r = J({ targetDurations: [300, 310, 320], pastWindows: [] });
+    eq(r.skipped, true);
+    eq(r.ok, true);
+  });
+  ok('judge: ちょうど R 倍は ok（超えたら赤。境界）', () => {
+    // 🔴 対象を 3 本にする理由: 1 本だと最小本数の門が先に効き、**skip の ok:true を「境界が通った」と読み違える**。
+    const r = J({ targetDurations: [125, 125, 125], pastWindows: steady });
+    eq(r.skipped, false, '門ではなく本判定に到達していること');
+    eq(r.ok, true, '125 = 100 × 1.25 は超えていない');
+    eq(J({ targetDurations: [126, 126, 126], pastWindows: steady }).ok, false, '1 秒超えたら赤');
+  });
+  ok('🔴 judge: 床は「過去の窓の中央値の最小」（全値の最小ではない）', () => {
+    // 全値の最小は 60（1 本の当たり）。全値の最小を床にすると 60 × 1.25 = 75 < 115 で鳴ってしまう。
+    const r = J({ targetDurations: [110, 115, 121], pastWindows: [[60, 104, 108], [98, 100, 103], [101, 105, 110]] });
+    eq(r.floor, 100);
+    eq(r.ok, true, '全値の最小で見ている');
+  });
+  ok('🔴 judge: 床は「過去の窓の中央値の最小」（中央値の中央値ではない）', () => {
+    // 窓の中央値 100 / 150 / 160。中央値の中央値は 150 で 140 は通るが、床 100 × 1.25 = 125 < 140 で落ちるのが正しい。
+    const r = J({ targetDurations: [138, 140, 142], pastWindows: [[98, 100, 103], [148, 150, 152], [158, 160, 162]] });
+    eq(r.floor, 100);
+    eq(r.ok, false, '最小で見ていない');
+  });
+  ok('judge: 監視対象は最小ではなく中央値で見る（外れ値で鳴らさない・外れ値で見逃さない）', () => {
+    // 対象の最小は 90 だが中央値は 140。最小で見れば通り（90 <= 125）、中央値で見れば落ちる（140 > 125）。
+    // 🔴 開き幅を 1.6 倍に抑えてあるのは、定常性の門（2 倍）に掛からせないためである。
+    const r = J({ targetDurations: [90, 140, 150], pastWindows: steady });
     eq(r.skipped, false, '門で skip されてはならない');
     eq(r.ok, false);
+  });
+  ok('🔴 judge: claude-review との逆転は判定に使わない（参考値として返すだけ）', () => {
+    // 旧方式なら 115 > 70 で逆転＝NG。新方式では床 100 × 1.25 = 125 の内なので ok。
+    const r = J({ targetDurations: [110, 115, 121], baselineDurations: [70, 88, 120], pastWindows: steady });
+    eq(r.skipped, false);
+    eq(r.ok, true, 'claude-review の下限で判定している（旧方式に戻っている）');
+    eq(r.baseline, 70, '参考値（claude-review の最小）');
+    eq(r.reversed, true, '参考値（逆転の有無）');
+  });
+  ok('judge: 逆転していなくても床から伸びれば NG（基準は claude-review ではない）', () => {
+    const r = J({ targetDurations: [128, 130, 133], baselineDurations: [400], pastWindows: steady });
+    eq(r.reversed, false);
+    eq(r.ok, false);
+  });
+  ok('judge: R と K は引数で効く', () => {
+    eq(J({ targetDurations: [128, 130, 133], pastWindows: steady, floorRatio: 1.35 }).ok, true, 'R=1.35 なら 130 <= 135');
+    eq(J({ targetDurations: [128, 130, 133], pastWindows: steady, floorWindows: 4 }).skipped, true, 'K=4 なら 3 窓では足りない');
   });
   // 🔴 実データで踏んだ罠の回帰テスト（最適化直後、12 本中 11 本が旧構成で中央値が旧値を指した）。
   ok('judge: 構成変更をまたいだサンプルは判定しない（狼少年にしない）', () => {
     // 旧構成 447 秒が 11 本・新構成 126 秒が 1 本。中央値 447 は現在の構成を表していない。
     const old11 = Array(11).fill(447);
-    const r = judge({ targetDurations: [...old11, 126], baselineDurations: [129] });
+    const r = J({ targetDurations: [...old11, 126], pastWindows: steady });
     eq(r.ok, true, '鳴ってはならない');
     eq(r.skipped, true, 'skip として記録されねばならない');
   });
   ok('judge: 窓が入れ替わったら判定する（門は恒久的に黙らせない）', () => {
-    // すべて新構成。ばらつきは 1.2 倍程度で門を通り、126 <= 129 なので ok。
-    const r = judge({ targetDurations: [120, 126, 140], baselineDurations: [129] });
+    const r = J({ targetDurations: [120, 126, 140], pastWindows: [[120, 126, 130], [118, 125, 131], [121, 127, 135]] });
     eq(r.skipped, false, '判定されねばならない');
     eq(r.ok, true);
   });
-  ok('judge: 定常なサンプルなら逆転を見逃さない', () => {
-    const r = judge({ targetDurations: [230, 241, 250], baselineDurations: [148] });
-    eq(r.skipped, false);
-    eq(r.ok, false);
-  });
-  ok('judge: ランナーのばらつき（1.2 倍）は門を通す', () => {
-    const r = judge({ targetDurations: [409, 447, 479], baselineDurations: [129] });
+  ok('judge: ランナーのばらつき（1.2 倍）は定常性の門を通す', () => {
+    const r = J({ targetDurations: [409, 447, 479], pastWindows: steady });
     eq(r.skipped, false, '1.2 倍で skip してはならない');
     eq(r.ok, false);
   });
   ok('judge: サンプル不足は fail-open だが skipped を立てる', () => {
-    const r = judge({ targetDurations: [], baselineDurations: [148] });
+    const r = J({ targetDurations: [], baselineDurations: [148], pastWindows: steady });
     eq(r.ok, true);
     eq(r.skipped, true);
   });
-  ok('judge: 同値は逆転ではない（境界）', () => {
-    // 🔴 対象を 3 本にする理由は上と同じ。1 本だと最小本数の門が先に効き、
-    // **skip の ok:true を「境界が通った」と読み違える**（AST では黙って素通りする試験になっていた）。
-    const r = judge({ targetDurations: [148, 148, 148], baselineDurations: [148] });
-    eq(r.skipped, false, '門ではなく本判定に到達していること');
-    eq(r.ok, true);
+  ok('floorOf: 窓の中央値の最小と、候補の窓の数を返す', () => {
+    const f = floorOf([[100, 104, 108], [98, 100], [101, 105, 110]], { minSamples: 3 });
+    eq(f.floor, 104);
+    eq(f.windows, 2);
+  });
+  ok('floorOf: 候補が無ければ null', () => eq(floorOf([], { minSamples: 3 }).floor, null));
+
+  // 窓の切り方（#1910）。境界はマージ順だけで決まり、過去の窓は短くても返す。
+  ok('splitWindows: 先頭 N 本が現在、続く N 本ずつが過去の窓（K 個まで）', () => {
+    const prs = Array.from({ length: 10 }, (_, i) => i);
+    const { current, past } = splitWindows(prs, { samples: 2, floorWindows: 3 });
+    eq(current, [0, 1]);
+    eq(past, [[2, 3], [4, 5], [6, 7]]);
+  });
+  ok('splitWindows: PR が足りなければ過去の窓は少ない（履歴の門で skip される）', () => {
+    const { past } = splitWindows([0, 1, 2, 3, 4], { samples: 2, floorWindows: 3 });
+    eq(past, [[2, 3], [4]]);
+  });
+  ok('validateConfig: 既定値は正しい', () => eq(validateConfig({ floorWindows: 3, floorRatio: 1.25, samples: 20 }), null));
+  ok('🔴 validateConfig: 門の値（MIN_SAMPLES・FLOOR_MIN_SAMPLES・STEP_RATIO）の不正も設定の誤り（NaN で門を素通りさせない）', () => {
+    const good = { floorWindows: 3, floorRatio: 1.25, samples: 20, minSamples: 3, floorMinSamples: 10, stepRatio: 2 };
+    eq(validateConfig(good), null);
+    for (const bad of [
+      { minSamples: NaN }, { minSamples: 0 }, { minSamples: 2.5 },
+      { floorMinSamples: NaN }, { floorMinSamples: 0 },
+      { stepRatio: NaN }, { stepRatio: 1 }, { stepRatio: 0.5 },
+    ]) {
+      if (validateConfig({ ...good, ...bad }) === null) throw new Error(`誤りとして扱われない: ${JSON.stringify(bad)}`);
+    }
+  });
+  ok('🔴 validateConfig: R ≦ 1・K < 1・数値でない値は設定の誤り（NaN 比較で常に緑にしない）', () => {
+    for (const bad of [
+      { floorWindows: 3, floorRatio: 1, samples: 20 },
+      { floorWindows: 3, floorRatio: NaN, samples: 20 },
+      { floorWindows: 0, floorRatio: 1.25, samples: 20 },
+      { floorWindows: 1.5, floorRatio: 1.25, samples: 20 },
+      { floorWindows: 3, floorRatio: 1.25, samples: 0 },
+    ]) {
+      if (validateConfig(bad) === null) throw new Error(`誤りとして扱われない: ${JSON.stringify(bad)}`);
+    }
   });
 
   // 🔴 ページネーションの回帰テスト。**1 ページ目だけ見ると、構成ファイルの変更が
@@ -773,29 +1237,34 @@ async function selfTest() {
     ));
 
   ok('🔴 judge: 対象が最小本数に満たなければ判定しない', () => {
-    const r = judge({ targetDurations: [120, 130], baselineDurations: [146], minSamples: 3, epoch: EPOCH });
+    const r = J({ targetDurations: [120, 130], pastWindows: steady, epoch: EPOCH });
     eq(r.skipped, true);
     if (!r.reason.includes('2 本しかない')) throw new Error(`本数が理由に出ていない: ${r.reason}`);
     if (!r.reason.includes(EPOCH)) throw new Error(`epoch が理由に出ていない: ${r.reason}`);
   });
   ok('🔴 judge: 本数が足りれば判定する（skip しっぱなしでない）', () => {
-    const r = judge({ targetDurations: [120, 130, 125], baselineDurations: [146], minSamples: 3, epoch: EPOCH });
+    const r = J({ targetDurations: [120, 130, 125], pastWindows: steady, epoch: EPOCH });
     eq(r.skipped, false);
-    eq(r.ok, true, '125 秒 <= 146 秒');
+    eq(r.ok, true, '125 秒 <= 100 × 1.25');
   });
-  ok('judge: 本数が足りていれば逆転を検出する', () => {
-    const r = judge({ targetDurations: [200, 210, 205], baselineDurations: [146], minSamples: 3, epoch: EPOCH });
+  ok('judge: 本数が足りていれば床からの伸びを検出する', () => {
+    const r = J({ targetDurations: [200, 210, 205], pastWindows: steady, epoch: EPOCH });
     eq(r.skipped, false);
     eq(r.ok, false);
   });
-  ok('judge: 最小本数の門は定常性の門より先に効く', () => {
-    // 中央値 240 / 最小 20 ＝ 12 倍。両方の門に当たるが、報告すべきは「本数が足りない」ほうである。
-    const r = judge({ targetDurations: [20, 240], baselineDurations: [146], minSamples: 3, epoch: EPOCH });
+  ok('judge: 最小本数の門は定常性の門・履歴の門より先に効く', () => {
+    // 中央値 240 / 最小 20 ＝ 12 倍・履歴 0 窓。すべての門に当たるが、報告すべきは「本数が足りない」ほうである。
+    const r = J({ targetDurations: [20, 240], pastWindows: [], epoch: EPOCH });
     eq(r.skipped, true);
     if (!r.reason.includes('本しかない')) throw new Error(`理由が違う: ${r.reason}`);
   });
+  ok('judge: 定常性の門は履歴の門より先に効く（構成変更の直後は「履歴不足」と誤って言わない）', () => {
+    const r = J({ targetDurations: [100, 447, 447], pastWindows: [] });
+    eq(r.skipped, true);
+    if (!r.reason.includes('構成の変更をまたいでいる')) throw new Error(`理由が違う: ${r.reason}`);
+  });
   ok('judge: epoch 不明でも本数の門は効く（理由にその旨が出る）', () => {
-    const r = judge({ targetDurations: [120], baselineDurations: [146], minSamples: 3, epoch: null });
+    const r = J({ targetDurations: [120], pastWindows: steady, epoch: null });
     eq(r.skipped, true);
     if (!r.reason.includes('epoch 不明')) throw new Error(`理由が違う: ${r.reason}`);
   });
@@ -810,6 +1279,150 @@ async function selfTest() {
       else process.env.CI_LATENCY_EPOCH = orig;
     }
   });
+  // --- #2006: 待ち時間の分解（実行の経路とキュー待ち）と「次の手」の切り替え ---------------------------------------
+  const MINI_CI = [
+    'name: CI',
+    'jobs:',
+    '  discover-units:',
+    '    runs-on: x',
+    '  backend-build:',
+    '    name: backend-build (${{ matrix.label }})',
+    '    needs: discover-units',
+    '  static-checks:',
+    '    runs-on: x',
+    '  build-and-test:',
+    '    needs: [discover-units, backend-build, static-checks]',
+    '  lint:',
+    '    needs:',
+    '      - discover-units',
+    '      - backend-build',
+    '',
+  ].join('\n');
+  const atS = (sec) => new Date(Date.parse('2026-10-20T13:06:43Z') + sec * 1000).toISOString();
+  const runAt = (name, a, b, conclusion = 'success') => ({ name, started_at: atS(a), completed_at: atS(b), status: 'completed', conclusion });
+  // 実データ（MSP の head cf07fed0。群の開始 13:06:43）を秒へ直したもの。
+  //   discover-units 2→12 ／ backend-build (knowledge 3/3) 19→129 ／ (platform 1/2) 14→118 ／ static-checks 2→77 ／ build-and-test 134→146
+  //   lint は build-and-test に無関係（needs に無い）で、build-and-test の開始の直前に完了する。
+  const realHead = (bt = [134, 146], extra = []) => [
+    runAt('discover-units', 2, 12),
+    runAt('backend-build (knowledge 3/3)', 19, 129),
+    runAt('backend-build (platform 1/2)', 14, 118),
+    runAt('static-checks', 2, 77),
+    runAt('lint', 120, 133),
+    runAt('pr-size', 0, 9),
+    runAt('build-and-test', bt[0], bt[1]),
+    ...extra,
+  ];
+  const t0Of = (runs) => checkSetStart(runs);
+  ok('#2006 parseNeedsGraph: needs の 3 つの書き方（スカラー・[…]・行の列）と name の ${{ }} を読む', () => {
+    const g = parseNeedsGraph(MINI_CI);
+    eq(g.get('backend-build').needs, ['discover-units']);
+    eq(g.get('build-and-test').needs, ['discover-units', 'backend-build', 'static-checks']);
+    eq(g.get('lint').needs, ['discover-units', 'backend-build']);
+    eq(jobIdOf('backend-build (platform 1/2)', g), 'backend-build');
+    eq(jobIdOf('build-and-test', g), 'build-and-test');
+    eq(jobIdOf('no-such-job', g), null);
+  });
+  ok('#2006 decompose: 実データの head で、実行 132 秒・キュー 14 秒（和は待ち時間 146 秒にちょうど等しい）', () => {
+    const runs = realHead();
+    const d = decompose(runs, t0Of(runs), parseNeedsGraph(MINI_CI));
+    eq(d, { exec: 132, queue: 14 });
+    eq(d.exec + d.queue, waitSec(runs.find((r) => r.name === 'build-and-test'), t0Of(runs)));
+  });
+  ok('🔴 #2006 decompose: needs に無い run（lint）を前段にしない（並走する run でキューが 0 に見える罠）', () => {
+    // lint は 133 秒に完了し build-and-test は 134 秒に始まる。lint を前段にするとキューは 1 秒に縮む。
+    const runs = realHead();
+    eq(decompose(runs, t0Of(runs), parseNeedsGraph(MINI_CI)).queue, 14);
+  });
+  ok('#2006 decompose: 脚の開始が遅れたぶんはキューに入る（#1987 の形: 律速の脚が群の開始から遅れて始まった）', () => {
+    const runs = [
+      runAt('discover-units', 2, 12),
+      runAt('backend-build (platform 2/2)', 218, 313),
+      runAt('static-checks', 2, 77),
+      runAt('build-and-test', 318, 330),
+    ];
+    const d = decompose(runs, t0Of(runs), parseNeedsGraph(MINI_CI));
+    // 群の開始は 2 秒（最初の run の開始）。キュー = (12 → 218) + (313 → 318)。和は待ち時間 330 − 2 = 328 秒。
+    eq(d, { exec: 10 + 95 + 12, queue: 206 + 5 });
+  });
+  ok('#2006 decompose: ジョブを引けない／needs の run が無い／構成が無いときは null（分解しない）', () => {
+    const g = parseNeedsGraph(MINI_CI);
+    eq(decompose([runAt('unknown', 0, 10), runAt('build-and-test', 12, 20)], 0, parseNeedsGraph('jobs:\n  x:\n    runs-on: y\n')), null);
+    eq(decompose([runAt('build-and-test', 12, 20)], Date.parse(atS(0)), g), null);
+    eq(decompose(realHead(), Date.parse(atS(0)), null), null);
+  });
+  ok('#2006 dominantCause: #1999 の数字（実行 130 → 130・キュー 6 → 38）はキューが主因', () =>
+    eq(dominantCause({ n: 20, exec: 130, queue: 38 }, { n: 20, exec: 130, queue: 6 }), 'queue'));
+  ok('#2006 dominantCause: 実行の経路が伸びれば実行が主因（構成の退行の形）', () =>
+    eq(dominantCause({ n: 20, exec: 190, queue: 8 }, { n: 20, exec: 130, queue: 6 }), 'exec'));
+  ok('#2006 dominantCause: 両方伸びたら大きいほう（同じならキューと言わない）', () => {
+    eq(dominantCause({ n: 20, exec: 150, queue: 40 }, { n: 20, exec: 130, queue: 6 }), 'queue');
+    eq(dominantCause({ n: 20, exec: 170, queue: 20 }, { n: 20, exec: 130, queue: 6 }), 'exec');
+    eq(dominantCause({ n: 20, exec: 150, queue: 26 }, { n: 20, exec: 130, queue: 6 }), 'exec');
+  });
+  ok('#2006 dominantCause: 値が欠ければ null（決められない）', () => {
+    eq(dominantCause({ n: 20, exec: null, queue: 38 }, { n: 20, exec: 130, queue: 6 }), null);
+    eq(dominantCause({ n: 20, exec: 130, queue: 38 }, null), null);
+  });
+  ok('#2006 nextStepText: キューが主因ならランナーの混雑を確認させ、そうでなければ従来の文言（ci.yml を探す）', () => {
+    const q = nextStepText('queue');
+    if (!q.includes('ランナーの混雑') || !q.includes('actions/runs?created=')) throw new Error(q);
+    if (q.includes('特に ci.yml')) throw new Error(`キューが主因なのに ci.yml を探させている: ${q}`);
+    for (const c of ['exec', null]) {
+      const e = nextStepText(c);
+      if (!e.includes('特に ci.yml・テストの追加')) throw new Error(e);
+      if (e.includes('ランナーの混雑')) throw new Error(e);
+    }
+  });
+  ok('#2006 floorWindowIndex: 床になる窓（本数を満たす窓のうち中央値が最小）の添字', () => {
+    eq(floorWindowIndex([[150, 160, 170], [140, 145, 146], [100]], { minSamples: 2 }), 1);
+    eq(floorWindowIndex([[1]], { minSamples: 2 }), null);
+  });
+  ok('#2006 実物の ci.yml: build-and-test の needs を読め、脚の check-run 名からジョブを引ける（配線）', () => {
+    const g = parseNeedsGraph(fs.readFileSync(require('path').join(__dirname, '..', '.github/workflows/ci.yml'), 'utf8'));
+    if (!g || !g.has(TARGET)) throw new Error('ci.yml から build-and-test を読めない');
+    for (const n of ['discover-units', 'backend-build']) {
+      if (!g.get(TARGET).needs.includes(n)) throw new Error(`build-and-test の needs に ${n} が無い`);
+    }
+    eq(jobIdOf('backend-build (platform 1/2)', g), 'backend-build');
+    eq(jobIdOf('discover-units', g), 'discover-units');
+  });
+  ok('#2006 summarizeBreakdown: 分解できなかった PR（null）を除いて中央値と本数を出す', () => {
+    eq(summarizeBreakdown([{ exec: 120, queue: 5 }, null, { exec: 130, queue: 40 }, { exec: 125, queue: 10 }]), { n: 3, exec: 125, queue: 10 });
+    eq(summarizeBreakdown([]), { n: 0, exec: null, queue: null });
+  });
+  ok('🔴 #2006 dominantCause: 分解できた本数が下限に満たない窓では決めない（1〜2 本の中央値で次の手を切り替えない）', () => {
+    eq(dominantCause({ n: 2, exec: 130, queue: 38 }, { n: 20, exec: 130, queue: 6 }, { minSamples: 10 }), null);
+    eq(dominantCause({ n: 20, exec: 130, queue: 38 }, { n: 9, exec: 130, queue: 6 }, { minSamples: 10 }), null);
+    eq(dominantCause({ n: 10, exec: 130, queue: 38 }, { n: 10, exec: 130, queue: 6 }, { minSamples: 10 }), 'queue');
+  });
+  ok('#2006 breakdownLine / causeLine: 中央値・本数・内訳・主因を出す。needs を読めなければその旨を出す', () => {
+    const line = breakdownLine({ graphLoaded: true, current: { n: 20, exec: 126, queue: 52 }, past: [{ n: 20, exec: 127, queue: 9 }], currentTotal: 20, pastTotals: [20] });
+    for (const w of ['現在の窓 実行 126 / キュー 52（20/20 本）', '過去の窓 [実行 127 / キュー 9（20/20 本）]']) if (!line.includes(w)) throw new Error(line);
+    if (!breakdownLine({ graphLoaded: false }).includes('分解していない')) throw new Error('needs を読めないときの行が無い');
+    const c = causeLine('queue', { n: 20, exec: 126, queue: 52 }, { n: 18, exec: 127, queue: 9 });
+    for (const w of ['実行の経路 -1 秒', 'キュー待ち +43 秒', '主因は**キュー待ち**', '現在 20 本・床 18 本']) if (!c.includes(w)) throw new Error(c);
+    const u = causeLine(null, { n: 2, exec: 1, queue: 1 }, { n: 20, exec: 1, queue: 1 });
+    if (!u.includes('決められなかった') || !u.includes('現在 2 本・床 20 本')) throw new Error(u);
+  });
+  ok('🔴 #2006 explainRed: 床の窓（待ち時間の中央値が最小）と同じ添字の分解と比べる（添字の取り違えを固定する）', () => {
+    const W = (v, k) => Array.from({ length: k }, () => v);
+    const P = (exec, queue, k) => Array.from({ length: k }, () => ({ exec, queue }));
+    // 過去の窓 2 番目（添字 1）が床。そこはキューが少ない。添字 0 はキューが多く、取り違えると「主因はキュー」と言えなくなる。
+    const r = explainRed({
+      pastWindows: [W(200, 10), W(145, 10), W(170, 10)],
+      currentBreakdown: P(126, 52, 10),
+      pastBreakdowns: [P(127, 60, 10), P(127, 9, 10), P(127, 30, 10)],
+      minSamples: 5,
+    });
+    eq(r.floorIdx, 1);
+    eq(r.cause, 'queue');
+    if (!r.nextStep.includes('ランナーの混雑')) throw new Error(r.nextStep);
+    // 分解できた本数が足りなければ従来の文言。
+    const r2 = explainRed({ pastWindows: [W(145, 10)], currentBreakdown: [...P(126, 52, 2), ...Array(8).fill(null)], pastBreakdowns: [P(127, 9, 10)], minSamples: 5 });
+    eq(r2.cause, null);
+    if (!r2.nextStep.includes('特に ci.yml')) throw new Error(r2.nextStep);
+  });
   await Promise.all(pending);
   console.log(t.join('\n'));
   console.log(`[check-ci-latency] 自己試験 ${t.length} 件${process.exitCode ? ' に失敗あり' : ' OK。'}`);
@@ -820,6 +1433,13 @@ async function main() {
   if (argv.includes('--self-test')) return await selfTest();
 
   const reportOnly = argv.includes('--report-only');
+  // 🔴 設定値の誤りは fail-open しない（validateConfig の説明を参照）。
+  const configError = validateConfig();
+  if (configError) {
+    console.log(`::error::[check-ci-latency] 設定の誤り: ${configError}。**監視が動いていない。**`);
+    process.exitCode = 1;
+    return;
+  }
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
   if (!repo || !token) {
@@ -830,15 +1450,20 @@ async function main() {
 
   const {
     merged,
+    pastMerged,
     targetDurations,
     baselineDurations,
+    pastWindows,
+    currentBreakdown,
+    pastBreakdowns,
+    graphLoaded,
     fetchFailures,
     missingHeads,
     skippedPreEpoch,
     epoch,
     branch,
-  } = await collect({ repo, token, samples: SAMPLES });
-  const r = judge({ targetDurations, baselineDurations, epoch });
+  } = await collect({ repo, token, samples: SAMPLES, floorWindows: FLOOR_WINDOWS });
+  const r = judge({ targetDurations, baselineDurations, pastWindows, epoch });
 
   // 内訳は 1 つの括弧へまとめる（両方非ゼロのとき括弧が区切りなく並んで読みにくいため）。
   const notes = [];
@@ -847,14 +1472,25 @@ async function main() {
   // 🔴 黙って母集合を狭めない。何本外したかを必ず出す。
   if (skippedPreEpoch) {
     notes.push(
-      `${skippedPreEpoch} 本は現在の CI 構成より前（${branch || '既定ブランチ'} の ${CONFIG_PATH} が最後に変わった ${epoch} より前）に測られたので母集合から外した`,
+      `${skippedPreEpoch} 本は現在の CI 構成より前（${branch || '既定ブランチ'} の ${CONFIG_PATH} が最後に変わった ${epoch} より前）に測られたので現在の窓から外した`,
     );
   }
   console.log(
-    `[check-ci-latency] マージ済み PR ${merged} 本を走査: ` +
+    `[check-ci-latency] 現在の窓: マージ済み PR ${merged} 本を走査: ` +
       `${TARGET} ${targetDurations.length} 件 / ${BASELINE} ${baselineDurations.length} 件` +
       (notes.length ? `（うち ${notes.join('、')}）` : ''),
   );
+  const fmt = (x) => (x === null || x === undefined ? '—' : `${Math.round(x)}`);
+  console.log(
+    `[check-ci-latency] 過去の窓: マージ済み PR ${pastMerged} 本を ${SAMPLES} 本ずつ ${pastWindows.length} 窓（要 ${FLOOR_WINDOWS} 窓。各 ${FLOOR_MIN_SAMPLES} 本以上。epoch では絞らない）: ` +
+      `${TARGET} の件数 [${pastWindows.map((w) => w.length).join(', ')}] / 中央値 [${pastWindows
+        .map((w) => (w.length >= FLOOR_MIN_SAMPLES ? fmt(median(w)) : '—'))
+        .join(', ')}] 秒`,
+  );
+  // #2006: 窓ごとの分解（実行の経路・キュー待ちの中央値）。判定には使わない。
+  const curB = summarizeBreakdown(currentBreakdown);
+  const pastB = pastBreakdowns.map((w) => summarizeBreakdown(w));
+  console.log(breakdownLine({ graphLoaded, current: curB, past: pastB, currentTotal: currentBreakdown.length, pastTotals: pastBreakdowns.map((w) => w.length) }));
   // 🔴 該当 run が 0 件なら、まず **check 名の設定ミス**を疑わせる。
   // 既定値のまま配備すると 0 件になり、fail-open で**緑のまま永久に skip する**。
   // 🔴 **ただし epoch で外したことが原因なら、この警告を出してはならない。**
@@ -865,37 +1501,40 @@ async function main() {
         `CI_LATENCY_BASELINE（現在 ${BASELINE}）が**このリポジトリの check 名と一致しているか**を確かめること。`,
     );
   }
+  // 参考値（判定には使わない）。旧方式（〜2026-10-12）の「逆転」。漂流（床が一緒に上がる遅い伸び）は判定に現れないので、ここを人が見る。
+  if (r.target !== null && r.baseline !== null) {
+    console.log(
+      `[check-ci-latency] 参考値（判定には使わない）: ${TARGET} 中央値 ${fmt(r.target)} 秒 / ${BASELINE} 最小 ${fmt(r.baseline)} 秒` +
+        `（${r.reversed ? '逆転している' : '逆転していない'}。IADR-0232 決定 8 の 2026-10-12 追記により判定から外した）`,
+    );
+  }
   if (r.skipped) {
     console.log(`[check-ci-latency] 判定を skip した（${r.reason}）。`);
-    console.log('[check-ci-latency] **緑は「逆転していない」を意味しない。判定していないだけである。**');
-    if (r.target !== null && r.baseline !== null) {
-      console.log(
-        `[check-ci-latency] 参考値（判定には使っていない）: ${TARGET} 中央値 ${Math.round(r.target)} 秒 / ` +
-          `${BASELINE} 最小 ${Math.round(r.baseline)} 秒`,
-      );
-    }
+    console.log('[check-ci-latency] **緑は「伸びていない」を意味しない。判定していないだけである。**');
     return;
   }
+  const limit = r.floor * FLOOR_RATIO;
   console.log(
-    `[check-ci-latency] ${TARGET} の中央値 ${Math.round(r.target)} 秒  vs  ` +
-      `${BASELINE} の最小 ${Math.round(r.baseline)} 秒（余裕 ${Math.round(r.baseline - r.target)} 秒）`,
+    `[check-ci-latency] ${TARGET} の中央値 ${fmt(r.target)} 秒  vs  自身の過去の床 ${fmt(r.floor)} 秒 × ${FLOOR_RATIO} = ${fmt(limit)} 秒` +
+      `（床の ${r.ratio.toFixed(2)} 倍。過去 ${r.windows} 窓の中央値の最小）`,
   );
 
   if (r.ok) {
-    console.log('[check-ci-latency] OK: 逆転していない。');
+    console.log('[check-ci-latency] OK: 床から伸びていない。');
     return;
   }
 
-  const over = Math.round(r.target - r.baseline);
-  console.log(`::error::[check-ci-latency] 逆転している。${TARGET}（中央値 ${Math.round(r.target)} 秒）が ` +
-    `${BASELINE} の下限（${Math.round(r.baseline)} 秒）を ${over} 秒超えた。` +
-    'これ以降、ビルド時間の増加はそのまま PR の待ち時間になる。');
-  console.log('[check-ci-latency] 次の手（IADR の「段 3」に分析済み）: ' +
-    '①テストのシャーディング ②backend 非変更 PR で backend ジョブを skip ③ビルド成果物の再利用。');
+  console.log(`::error::[check-ci-latency] ${TARGET}（中央値 ${fmt(r.target)} 秒）が自身の過去の床（${fmt(r.floor)} 秒）の ` +
+    `${FLOOR_RATIO} 倍（${fmt(limit)} 秒）を超えた（${r.ratio.toFixed(2)} 倍）。直近の窓で待ち時間が段差で伸びている。`);
+  // #2006: 床の窓（中央値が最小の過去の窓）と比べ、伸びの主因で「次の手」を切り替える。判定（R 倍）は変えない。
+  const explained = explainRed({ pastWindows, currentBreakdown, pastBreakdowns });
+  console.log(`[check-ci-latency] ${explained.causeLine}`);
+  console.log(`[check-ci-latency] ${explained.nextStep}`);
   if (!reportOnly) process.exitCode = 1;
 }
 
-main().catch((e) => {
+// #2006: 分解の関数を手元の再計算（作業仕様書の実測）から読めるよう、直接実行のときだけ main を走らせる。
+if (require.main === module) main().catch((e) => {
   // 🔴 **権限・認証の誤りは赤くする。** これは「CI が遅い」ではなく「**監視が壊れている**」であり、
   // fail-open で緑を返せば、監視は一度も働かないまま緑を返し続ける
   // （＝「監視が黙って壊れるのは監視が無いより悪い」そのもの）。
@@ -912,3 +1551,5 @@ main().catch((e) => {
   // 一過性のネットワーク・API 失敗では赤くしない（fail-open）。ただし黙らない。
   console.log(`[check-ci-latency] 実行できなかったため skip した（fail-open）: ${e.message}`);
 });
+
+module.exports = { explainRed, breakdownLine, causeLine, parseNeedsGraph, jobIdOf, decompose, summarizeBreakdown, dominantCause, nextStepText, floorWindowIndex, checkSetStart, waitSec, median, sortByMergedAtDesc, splitWindows };

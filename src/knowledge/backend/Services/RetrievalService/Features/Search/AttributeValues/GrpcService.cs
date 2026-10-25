@@ -15,16 +15,14 @@ namespace RetrievalService.Features.Search.AttributeValues;
 // [[IADR-0410]], [[IADR-0415]], [[IADR-0416]], [[IADR-0417]] (#1255):
 // 権限内属性値の照会の **east-west gRPC 面**。
 //
-// 🔴 **本体は持たない。** `AttributeValuesEndpoint.ListAsync` を呼ぶだけであり、
-// REST `POST /search/attribute-values` と**同じ関数**を通る（問い合わせを 2 つにしない）。
+// 🔴 **本体は持たない。** `AttributeValuesQuery.ListAsync` を呼ぶだけである（問い合わせを 2 つにしない）。
+// ［2026-10-15 / #1902・[[IADR-0533]]］REST `POST /search/attribute-values` は撤去した。属性値の照会の面はこれだけである。
 //
 // 🔴 **利用者文脈を本文で受け、スコープは自分で解決する**（`ADR-0086` 決定 1 / [[IADR-0416]]）。
 // **呼び出し元が解決したスコープを受ける口は開かない**（[[IADR-0410]]）——
 // 開くと、そこへ到達できる誰もが任意の scope を主張できる。
 //
-// 🔴 **ServiceCaller を要求する。** REST の受け口は認可を持たない（#1318 欠陥 B）が、
-// gRPC 面は [[IADR-0379]] 決定 4 に従い `platform-service` を要求する ——
-// **権限が狭まる向き**である。**REST の口は残す**（並走中の正は REST）。
+// 🔴 **ServiceCaller を要求する**（[[IADR-0379]] 決定 4。`platform-service`）。
 //
 // 🔴 **「候補が無い」と「権限が無い」を区別させない**（[[IADR-0151]] 決定 5）——
 // どちらも**空の配列**で返る。引けなかったのは gRPC status である。
@@ -74,7 +72,7 @@ public sealed class AttributeValuesGrpcService(
             return response;
 
         response.Values.AddRange(
-            await AttributeValuesEndpoint.ListAsync(store, fused, request.Key, scope, context.CancellationToken));
+            await AttributeValuesQuery.ListAsync(store, fused, request.Key, scope, context.CancellationToken));
         return response;
     }
 

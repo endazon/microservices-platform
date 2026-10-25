@@ -1,9 +1,10 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using Anthropic.SDK;
+using Anthropic;
 using AwesomeAssertions;
 using LlmGateway.Domain.Ports;
+using LlmGateway.Domain.Routing;
 using LlmGateway.Infrastructure.ExternalServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,6 +21,8 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 // 強制の tool_choice・assistant prefill を 400 で拒む。いまの実装はどれも送っていないが、**送らないことを固定する試験が
 // 無かった**（SDK の既定や MessageParameters への 1 行の追加で、全件 400 に変わり得る）。
 // あわせて、用途別 effort（`Llm:PurposeEffort`）が `output_config.effort` として**対応モデルにだけ**載ることを固定する。
+// ［2026-10-17 / #1749・IADR-0562］SDK を公式 `Anthropic` へ移した。effort は SDK の `OutputConfig.Effort` で送る
+// （旧 SDK 向けの要求本文の整形ハンドラは撤去した）。要求本文は SDK が直列化したものを本番と同じ生成点越しに捕まえる。
 [Trait("TestKind", "Unit")]
 public class ClaudeProviderRequestShapeTests
 {
@@ -97,10 +100,12 @@ public class ClaudeProviderRequestShapeTests
         capture.SingleBody().GetProperty("output_config").GetProperty("effort").GetString().Should().Be("medium");
     }
 
-    // T-37: effort を受けないモデル（haiku-4-5 は effort を 400 で拒む）へは、用途に設定があっても送らない。
-    // 切り戻しで rerank を haiku-4-5 へ戻しても、設定 1 つで全件 400 にならないことの固定。
+    // T-37: effort の対応集合（ClaudeEffort.CapableModels）に無いモデルへは、用途に設定があっても送らない
+    // （effort を 400 で拒むモデルへ設定 1 つで全件 400 にしない）。
+    // ［2026-10-17 / #1903］従前は「切り戻しで rerank を haiku-4-5 へ戻したとき」の固定だった。計画 ADR-0138 決定 7 で
+    // 旧世代は許可集合から外れ切り戻しの前提は消えたが、対応集合の外へ送らない仕組みは残るので、集合の外の例として旧 ID を使う。
     [Fact]
-    public async Task CompleteAsync_RerankOnHaiku45_DoesNotSendEffort()
+    public async Task CompleteAsync_ModelOutsideCapableSet_DoesNotSendEffort()
     {
         var capture = new CapturingHandler();
         var provider = Provider(capture, effort: new() { ["rerank"] = "low" });
@@ -122,7 +127,7 @@ public class ClaudeProviderRequestShapeTests
         capture.SingleBody().TryGetProperty("output_config", out _).Should().BeFalse();
     }
 
-    // T-37: 呼び出しの後に文脈が残らない（シングルトンの HttpClient を共有する次の呼び出しへ effort が漏れない）。
+    // T-37: effort つきの呼び出しの直後の effort なしの呼び出しへ effort が漏れない（同じ AnthropicClient を共有する）。
     [Fact]
     public async Task CompleteAsync_EffortDoesNotLeakToNextCall()
     {
@@ -132,37 +137,26 @@ public class ClaudeProviderRequestShapeTests
         await provider.CompleteAsync(new CompletionRequest("q", 512, "claude-haiku-5-5", "rerank"), TestContext.Current.CancellationToken);
         await provider.CompleteAsync(new CompletionRequest("q", 512, "claude-haiku-5-5", "rag-answer"), TestContext.Current.CancellationToken);
 
-        AnthropicRequestContext.Effort.Should().BeNull();
         capture.Bodies.Should().HaveCount(2);
         capture.Bodies[1].TryGetProperty("output_config", out _).Should().BeFalse();
     }
 
-    // T-38: 整形の純関数。既存の output_config へ足し、呼び出し側の明示 effort は上書きしない。JSON でなければ触らない。
+    // ［2026-10-17 / #1749］T-38（要求本文の整形の純関数）は、対象の整形ハンドラごと撤去した。effort の直列化は上の T-37 が見る。
+    // 日本語のプロンプトを \uXXXX へ膨らませないこと（送信量）は SDK の直列化に任せる。素のまま送られることだけを固定する。
     [Fact]
-    public void TryAddEffort_MergesWithoutOverriding()
+    public async Task CompleteAsync_JapanesePrompt_IsSentAsIs()
     {
-        AnthropicRequestShapingHandler.TryAddEffort("""{"model":"m","output_config":{"format":{"type":"json"}}}""", "low", out var merged)
-            .Should().BeTrue();
-        using (var doc = JsonDocument.Parse(merged))
-        {
-            var oc = doc.RootElement.GetProperty("output_config");
-            oc.GetProperty("effort").GetString().Should().Be("low");
-            oc.GetProperty("format").GetProperty("type").GetString().Should().Be("json");
-        }
+        var capture = new CapturingHandler();
+        var provider = Provider(capture, effort: new() { ["rerank"] = "low" });
 
-        AnthropicRequestShapingHandler.TryAddEffort("""{"output_config":{"effort":"high"}}""", "low", out var kept).Should().BeFalse();
-        kept.Should().Be("""{"output_config":{"effort":"high"}}""");
-        AnthropicRequestShapingHandler.TryAddEffort("not json", "low", out _).Should().BeFalse();
-        AnthropicRequestShapingHandler.TryAddEffort("[1]", "low", out _).Should().BeFalse();
-    }
+        await provider.CompleteAsync(new CompletionRequest("並べ替えて", 512, "claude-haiku-5-5", "rerank"), TestContext.Current.CancellationToken);
 
-    // T-38: 日本語のプロンプトを \uXXXX へ膨らませない（JSON として同値・送信量だけの問題）。
-    [Fact]
-    public void TryAddEffort_KeepsNonAsciiPromptReadable()
-    {
-        AnthropicRequestShapingHandler.TryAddEffort("""{"messages":[{"role":"user","content":"並べ替えて"}]}""", "low", out var shaped)
-            .Should().BeTrue();
-        shaped.Should().Contain("並べ替えて");
+        var message = capture.SingleBody().GetProperty("messages")[0];
+        var content = message.GetProperty("content");
+        var text = content.ValueKind == JsonValueKind.String
+            ? content.GetString()
+            : content[0].GetProperty("text").GetString();
+        text.Should().Be("並べ替えて");
     }
 
     // T-39: 値域外の effort は起動時に落とす（実行時に送ると全件 400）。値域内は通す。
@@ -194,11 +188,27 @@ public class ClaudeProviderRequestShapeTests
         ClaudeEffort.Resolve(options, "rerank", "claude-haiku-5-5").Should().Be("low");
     }
 
+    // T-42, FR-11, ADR-0138 決定 7 (#1903): effort の対応集合は実配備の利用許可集合（claude-managed の Models）と一致する。
+    // 許可集合に無いモデルを対応集合に残さない（旧世代を外し忘れない）。許可集合へ足したモデルが effort に対応するのに
+    // 対応集合へ足し忘れると、effort が黙って送られなくなる（壊れはしないが設定が効かない）ので、それも赤にする。
+    [Fact]
+    public void CapableModels_EqualDeployedClaudeEndpointModels()
+    {
+        using var factory = new TestWebApplicationFactory();
+
+        var routing = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+        var claude = routing.Endpoints.Single(e => e.Name == "claude-managed");
+
+        ClaudeEffort.CapableModels.Should().BeEquivalentTo(claude.Models);
+        ClaudeEffort.CapableModels.Should().BeEquivalentTo(["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]);
+    }
+
     // FR-11, IADR-0531 (#1875) T-40: 本番の DI 合成（Program.cs の `AddKeyedSingleton<ILlmProvider, ClaudeProvider>("claude")`）で、
     // ClaudeProvider が `IOptionsMonitor<ClaudePurposeEffortOptions>` を受け取り、既定の rerank=low が要求本文まで届く。
     // ClaudeProvider の effort 設定は省略可能な引数（既定 null）なので、DI が渡さなくても起動は通り、
     // **effort が黙って送られなくなるだけ**になる（上の試験はどれも手で組んだ ClaudeProvider なので気付けない）。
-    // TestWebApplicationFactory は ILlmProvider をスタブへ差し替えるため使わず、AnthropicClient だけを記録用へ替える。
+    // TestWebApplicationFactory は ILlmProvider をスタブへ差し替えるため使わず、AnthropicClient の一次ハンドラだけを記録用へ替える
+    // （［2026-10-17 / #1749］生成点は本番と同じ AnthropicClientFactory.Create。送信先だけが違う）。
     [Fact]
     public async Task HostComposedClaudeProvider_ReceivesEffortOptions_AndSendsRerankLow()
     {
@@ -212,7 +222,7 @@ public class ClaudeProviderRequestShapeTests
         capture.SingleBody().GetProperty("output_config").GetProperty("effort").GetString().Should().Be("low");
     }
 
-    // 本番の Program.cs の登録をそのまま使い、AnthropicClient の送信先だけを記録用ハンドラへ差し替えるホスト。
+    // 本番の Program.cs の登録をそのまま使い、AnthropicClient の送信先（一次ハンドラ）だけを記録用ハンドラへ差し替えるホスト。
     private sealed class CapturingAnthropicHost(CapturingHandler capture) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -228,35 +238,14 @@ public class ClaudeProviderRequestShapeTests
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<AnthropicClient>();
-                services.AddSingleton(_ => new AnthropicClient(
-                    new APIAuthentication("test-key"),
-                    new HttpClient(new AnthropicRequestShapingHandler { InnerHandler = capture })));
+                services.AddSingleton(sp => AnthropicClientFactory.Create(
+                    sp.GetRequiredService<IConfiguration>(), primaryHandler: capture));
             });
         }
     }
 
     private static ClaudeProvider Provider(CapturingHandler capture, Dictionary<string, string>? effort)
-    {
-        var handler = new AnthropicRequestShapingHandler { InnerHandler = capture };
-        var client = new AnthropicClient(new APIAuthentication("test-key"), new HttpClient(handler));
-        var config = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
-        var options = effort is null
-            ? null
-            : new StaticOptionsMonitor(new ClaudePurposeEffortOptions
-            {
-                Purposes = new Dictionary<string, string>(effort, StringComparer.OrdinalIgnoreCase),
-            });
-        return new ClaudeProvider(client, config, options);
-    }
-
-    private sealed class StaticOptionsMonitor(ClaudePurposeEffortOptions value) : IOptionsMonitor<ClaudePurposeEffortOptions>
-    {
-        public ClaudePurposeEffortOptions CurrentValue => value;
-
-        public ClaudePurposeEffortOptions Get(string? name) => value;
-
-        public IDisposable? OnChange(Action<ClaudePurposeEffortOptions, string?> listener) => null;
-    }
+        => TestClaudeProviders.Create(capture, effort: effort);
 
     // 送られた要求本文を記録し、stream の有無に合わせた最小の正常応答を返す。
     private sealed class CapturingHandler : HttpMessageHandler

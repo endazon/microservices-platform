@@ -1,14 +1,18 @@
 # NFR-21, NFR-18, ADR-0008, IADR-0471 (#1560): platform-infra の秘匿管理（/vault/data）を日次で暗号化してクラスタ外 2 か所へ置く。
-# ［2026-10-09 / #1840］IADR-0525: 製品は OpenBao、ストレージは raft（/vault/data/raft）。移行前の旧 Vault の file ストレージが
-#   /vault/data 直下に残っていれば、それも同じ写しに入る（手順書 docs/operations/secret-store-openbao-migration-runbook.md）。
-#   🔴 raft の bbolt はページをその場で書き換えるので、下の前後の比較では同じ秒の書き込みを見分けられない（破れた写しを残し得る）。
-#   整合したスナップショットへの改めは #1868（IADR-0525）。
+# ［2026-10-09 / #1840］IADR-0525: 製品は OpenBao、ストレージは raft（/vault/data/raft）。
+# ［2026-10-16 / #1868］IADR-0548: 稼働中の /vault/data の tar をやめ、raft の**整合したスナップショット**
+#   （GET /v1/sys/storage/raft/snapshot）と init のファイル（unseal 鍵）を写す。bbolt はページをその場で書き換えるため、
+#   前後のファイル一覧の比較では破れた写しを見分けられなかった。
+# - 認証は k8s auth。専用の ServiceAccount platform-backup-vault の projected token（10 分）で role platform-backup-vault に
+#   ログインする。role のポリシーは sys/storage/raft/snapshot の read だけで、トークンは 1 回きり・5 分。
+#   🔴 root トークン・Secret vault-dev-token を渡さない。role とポリシーは deploy/local/platform-backup/vault/bootstrap.sh が入れる
+#   （起動スクリプトが永続化の overlay を当てた後に毎回呼ぶ）。
+# - スナップショットはメモリの emptyDir（/scratch）で検査（gzip・tar・中の SHA256SUMS）してから age へ渡す。壊れていれば回を書かない。
 #
-# 🔴 /vault/data には Pod 内ラッパーが置いた unseal 鍵と初期 root トークンの平文ファイルがある（vault-persistence 参照）。
-#    **この写しはそれだけで Vault の中身をすべて復号できる**ため、平文の tar をディスクへ書かず、tar → gzip → age を
-#    パイプで繋いで暗号文だけを置く。
-# - PVC vault-data を**読み取り専用**でマウントする（RWO の local-path は単一ノードなら同じノードの別 Pod から読める）。
-#   稼働中のストレージ（raft の bolt ファイル）の写しなので、スクリプトは写す前後のファイル一覧を比べ、変わっていたらやり直す（3 回まで）。
+# 🔴 init のファイル（/vault/data/.local-dev-init）には unseal 鍵と初期 root トークンの平文がある（vault-persistence 参照）。
+#    スナップショットと合わせると**秘匿管理の中身をすべて復号できる**ため、どちらも age で暗号化した暗号文だけを置く。
+# - PVC vault-data を**読み取り専用**でマウントする（init のファイルを読むためだけ。RWO の local-path は単一ノードなら
+#   同じノードの別 Pod から読める）。raft のファイルは読まない。
 # - 時刻: JST 12:15（Postgres の回と重ねない。米国市場の時間帯 JST 22:30〜05:00 を避ける）。後追いは 22:00 JST まで
 #   （35100 秒 = 12:15 から 9 時間 45 分）。
 # - 受取人・保管先・目印の扱いは Postgres の回（../postgres/cronjob.yaml）と同じ。
@@ -39,14 +43,16 @@ spec:
             app.kubernetes.io/component: vault
         spec:
           restartPolicy: Never
+          # IADR-0548: k8s auth の名乗り。既定のトークンは自動で載せず、下の projected token（期限つき）だけを渡す。
+          serviceAccountName: platform-backup-vault
           automountServiceAccountToken: false
           containers:
             - name: backup
-              # Postgres の回と同じイメージ（tar / gzip / bash / age を持つ）。［2026-09-26 / #1564］age はイメージに同梱し、
+              # Postgres の回と同じイメージ（tar / gzip / bash / age を持つ。秘匿管理とは bash の /dev/tcp で HTTP を話すので道具を足さない）。［2026-09-26 / #1564］age はイメージに同梱し、
               # 実行時にネットワークから何も入れない（deploy/local/platform-backup/image/Dockerfile。scripts/k8s-local-images.sh が
               # ビルドする。レジストリには無いので IfNotPresent で pull しない。タグは中身の版から作り、上げるときは 3 か所を揃える）。
               # /vault/data の init ファイル（uid 100・0600）を読むため root で動かす（マウントは読み取り専用）。
-              image: k3d-local/platform-backup:pg16.15-age1.3.2-r0
+              image: k3d-local/platform-backup:pg16.15-age1.3.2-r1
               imagePullPolicy: IfNotPresent
               command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
               env:
@@ -56,6 +62,15 @@ spec:
                   value: "/backup/c /backup/e"
                 - name: VAULT_DATA_DIR
                   value: /vault/data
+                # IADR-0548: 秘匿管理の宛先（クラスタ内・平文の HTTP。秘匿管理は tls_disable）と k8s auth の role。
+                - name: BACKUP_VAULT_ADDR
+                  value: http://vault.platform-infra:8200
+                - name: BACKUP_VAULT_AUTH_ROLE
+                  value: platform-backup-vault
+                - name: BACKUP_VAULT_SA_JWT_FILE
+                  value: /var/run/secrets/platform-backup/jwt
+                - name: BACKUP_VAULT_SCRATCH
+                  value: /scratch
               securityContext:
                 allowPrivilegeEscalation: false
                 # seccomp は RuntimeDefault。capabilities の削減（drop: [ALL] ＋ 必要最小の add）は稼働クラスタで
@@ -75,13 +90,19 @@ spec:
                   readOnly: true
                 - name: staging
                   mountPath: /staging
+                - name: scratch
+                  mountPath: /scratch
+                - name: vault-auth
+                  mountPath: /var/run/secrets/platform-backup
+                  readOnly: true
                 - name: target-c
                   mountPath: /backup/c
                 - name: target-e
                   mountPath: /backup/e
               resources:
                 requests: { cpu: 50m, memory: 64Mi }
-                limits: { cpu: 500m, memory: 256Mi }
+                # スナップショットの作業場所（/scratch）はメモリの emptyDir で、この上限に数えられる。
+                limits: { cpu: 500m, memory: 512Mi }
           volumes:
             - name: vault-data
               persistentVolumeClaim:
@@ -98,6 +119,20 @@ spec:
             - name: staging
               emptyDir:
                 sizeLimit: 1Gi
+            # IADR-0548: スナップショットを検査する間だけ置く場所。ディスクへ書かないようメモリに置く（検査後に消す）。
+            - name: scratch
+              emptyDir:
+                medium: Memory
+                sizeLimit: 256Mi
+            # IADR-0548: k8s auth に渡す ServiceAccount のトークン（期限 10 分）。
+            # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 対象者（audience）は秘匿管理（vault）。role も同じ値を要求する。
+            - name: vault-auth
+              projected:
+                sources:
+                  - serviceAccountToken:
+                      path: jwt
+                      audience: vault
+                      expirationSeconds: 600
             - name: target-c
               hostPath:
                 path: /mnt/c/platform-infra-backups

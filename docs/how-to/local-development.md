@@ -3,14 +3,14 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-09
+updated: 2026-10-22
 author: claude
 ---
 <!-- trace:
 ids: [NFR-18, FR-13, FR-14, UC-07]
 adrs: [ADR-0131, ADR-0032, ADR-0048, ADR-0106]
-iadrs: [IADR-0524, IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461]
-specs: [20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs]
+iadrs: [IADR-0587, IADR-0524, IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461, IADR-0581]
+specs: [20261022_j4qv_compose-loopback-bind, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs, 20261022_actions-sha-pin-and-dependabot]
 issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 -->
 
@@ -24,7 +24,7 @@ issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 
 | ツール | バージョン | 備考 |
 | --- | --- | --- |
-| .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.0` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
+| .NET SDK | 10.0.x | [`global.json`](../../global.json) は `8.0.100` + `rollForward: latestMajor`（10.x でビルド可）。ターゲットは [`src/Directory.Build.props`](../../src/Directory.Build.props) で `net10.0` |
 | Node.js | 22 | フロントエンド CI（[`frontend.yml`](../../.github/workflows/frontend.yml)）と揃える |
 | Docker / Docker Compose | v2 相当 | インフラ・全サービスのローカル起動 |
 | git | — | ユニット submodule（`src/ai-stock-trading`）の取得を含む |
@@ -107,6 +107,9 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 （mesh 導入までの暫定措置としてネットワーク分離を第一防御としていたもの。サービス間認証の第一防御は
 すでに Istio STRICT mTLS に移行済みで、
 ネットワーク分離は多層防御として存続している）。外部から到達できるのは以下のみである。
+**いずれもループバック（`127.0.0.1`）でだけ待ち受ける**ので、同じホストのブラウザ・CLI からしか届かない
+（同じ LAN の別の端末からは届かない。別の端末から使うときは SSH のポート転送などで入る）。
+ポートを足すときも `"127.0.0.1:HOST:CONTAINER"`（長い形式なら `host_ip: 127.0.0.1`）で書く。IP を省くと全インターフェースで待ち受け、CI の compose 検査が落とす。
 
 | サービス | URL | 備考 |
 | --- | --- | --- |
@@ -134,6 +137,7 @@ Wiki.js を使う機能を試す場合、初回のみ管理 UI（`http://localho
 | 計画書（FR/UC/SC/計画 ADR）が見つからない | **本リポジトリには入っていない**（submodule ではない）。隣接クローン `../project-planning` を用意するか、GitHub 上で開く |
 | Keycloak の healthcheck が unhealthy のまま | Keycloak のイメージは curl/wget 非搭載。compose の healthcheck は bash の `/dev/tcp` で管理用のポート 9000 の `/health/ready` を検査するため数十秒〜1分程度は正常な起動待ち（`deploy/docker-compose.yml` のコメント参照）。8080 の `/health/ready` は 26 では 404 |
 | Wiki.js の OIDC ログインが `Failed to fetch user profile` | Issuer は `http://localhost:8080/realms/platform`（ブラウザ経路）で設定する。`keycloak:8080` を指定すると失敗する（`docs/operations/operations.md` 実測記録） |
+| `localhost` の URL に繋がらない（接続拒否） | 公開はループバックの IPv4（`127.0.0.1`）だけである。`localhost` が IPv6（`::1`）へ解決されて IPv4 へ戻らないクライアントでは `http://127.0.0.1:<ポート>` を使う |
 | フロントエンドから BFF に到達しない | dev は `pnpm run dev` の Vite プロキシ（`VITE_BFF_TARGET` で上書き可）または compose の Caddy `/bff` プロキシ経由。BFF(5000) が起動しているか確認する |
 | LLM/埋め込み呼び出しが失敗する | `.env`（gitignore 済み）に `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` 等を設定する（`deploy/docker-compose.yml` の `llm-gateway` 環境変数を参照）。キー未設定でも起動はするが呼び出しは失敗する |
 

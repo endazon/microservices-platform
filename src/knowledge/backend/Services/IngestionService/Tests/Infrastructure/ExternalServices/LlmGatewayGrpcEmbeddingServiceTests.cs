@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using AwesomeAssertions;
 using Grpc.Core;
 using IngestionService.Infrastructure.ExternalServices;
@@ -8,16 +6,14 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace IngestionService.Tests.Infrastructure.ExternalServices;
 
 // T-P1-07 —— FR-02, FR-05, ADR-0013, ADR-0016, ADR-0029, ADR-0075, IADR-0256, IADR-0379, IADR-0397 (#1255):
-// 取り込み埋め込みの gRPC 実装が、REST 実装（LlmGatewayEmbeddingServiceTests）と**同じ
-// `EmbeddingResult(Vector, Collection, Embedded, Retryable)`** を返し、**輸送の失敗では例外を上げる**
-// ことを固定する。
-//
-// 🔴 既存の REST 側の 3 ケース（正常・fail-closed・本文欠落）と対で読むこと。gRPC には「本文欠落」が
-// 無い（不達は RpcException になる）ので、その 1 ケースは**例外の側**へ移っている。
+// 取り込み埋め込みの gRPC 実装が `EmbeddingResult(Vector, Collection, Embedded, Retryable)` を写し、
+// **輸送の失敗では例外を上げる**ことを固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST 実装（`LlmGatewayEmbeddingService`）とその試験を撤去した。REST 側の 3 ケース
+// （正常・fail-closed・本文欠落）のうち前 2 つは本クラスが持ち、本文欠落は gRPC に無い形（不達は RpcException）なので例外の側にある。
 [Trait("TestKind", "Unit")]
 public class LlmGatewayGrpcEmbeddingServiceTests
 {
-    // 稼働クラスタから採取した REST 応答（既存テストの GatewayResponse）と同じ内容の proto 応答。
+    // 稼働クラスタから採取した応答（旧 REST の試験の GatewayResponse）と同じ内容の proto 応答。
     private static Pb.EmbedResponse GatewayResponse(
         bool embedded = true, bool retryable = false, params float[] vector)
     {
@@ -74,32 +70,6 @@ public class LlmGatewayGrpcEmbeddingServiceTests
         result.Retryable.Should().BeTrue();
     }
 
-    // 同値: REST 実装と gRPC 実装が**同じゲートウェイ応答**に対して同じ EmbeddingResult を返す。
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, false)]
-    [InlineData(false, true)]
-    public async Task Rest_と_grpc_は同じ応答に同じ戻りを返す(bool embedded, bool retryable)
-    {
-        float[] vector = embedded ? [0.1f, -0.2f, 0.3f] : [];
-        var grpc = await new LlmGatewayGrpcEmbeddingService(
-                new FakeClient(GatewayResponse(embedded, retryable, vector)))
-            .EmbedAsync("本文", "public", TestContext.Current.CancellationToken);
-
-        var json = $$"""
-            {"vector":[{{string.Join(",", vector.Select(v => v.ToString("R")))}}],
-             "dimensions":{{vector.Length}},"model":"deterministic-hash-v1",
-             "collection":"{{(embedded ? "knowledge_chunks_deterministic_v1" : "")}}",
-             "embedded":{{(embedded ? "true" : "false")}},"endpoint":"deterministic-local",
-             "routingReason":"機密区分 Public / 用途 Index","retryable":{{(retryable ? "true" : "false")}}}
-            """;
-        var rest = await new LlmGatewayEmbeddingService(
-                new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("http://llm-gateway") })
-            .EmbedAsync("本文", "public", TestContext.Current.CancellationToken);
-
-        grpc.Should().BeEquivalentTo(rest);
-    }
-
     // 🔴 T-P1-07 の本丸: 輸送の不達（UNAVAILABLE）は**例外のまま上がる**（現行 REST の
     // EnsureSuccessStatusCode と同じ判断）。ここで Retryable=true へ倒すと、ゲートウェイの故障と
     // 機密区分による送信拒否が同じ形になり区別できなくなる（IADR-0256 決定 3）。
@@ -145,13 +115,4 @@ public class LlmGatewayGrpcEmbeddingServiceTests
                 () => Status.DefaultSuccess, () => [], () => { });
     }
 
-    private sealed class StubHandler(string json) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            });
-    }
 }

@@ -1,6 +1,6 @@
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
-using Anthropic.SDK;
+using Anthropic;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 using Microsoft.AspNetCore.Hosting;
@@ -102,8 +102,8 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
 
     /// <summary>
     /// NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): 同じプロセスの **HTTP/1.1 側（REST）** を叩く
-    /// クライアント。**s2s トークンを載せる** —— REST 3 口が `ServiceCaller` を要するようになったため、
-    /// 素の `HttpClient` では 401 になる（従前は資格情報なしで通っていた）。
+    /// クライアント。**s2s トークンを載せる** —— REST の口（［2026-10-15 / #1902］撤去後は `/complete` だけ）が
+    /// `ServiceCaller` を要するため、素の `HttpClient` では 401 になる（従前は資格情報なしで通っていた）。
     /// </summary>
     public HttpClient CreateRestClient() => new()
     {

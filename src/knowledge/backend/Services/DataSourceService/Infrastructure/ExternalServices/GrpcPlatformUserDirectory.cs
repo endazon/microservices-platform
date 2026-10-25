@@ -5,7 +5,8 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 
 // FR-05, UC-04, SC-06, SC-17, NFR-09, NFR-16, ADR-0029, ADR-0064 決定 4, ADR-0074 決定 4, ADR-0075,
 // [[IADR-0329]], [[IADR-0379]], [[IADR-0401]] 決定 2・3 (#1255):
-// 写像先の実在検証の **east-west gRPC 実装**（兄弟クラス。REST 実装は `AuthorizationServiceUserDirectory`）。
+// 写像先の実在検証の **east-west gRPC 実装**。［2026-10-10 / #1255・[[IADR-0533]]］REST 実装（`AuthorizationServiceUserDirectory`）は
+// 撤去し、本クラスだけが残る（下の「REST 実装」への言及は当時の対応の記録である）。
 //
 // 🔴 **利用者の `Authorization` を転送しない。** REST 実装は `/authz/users`（AdminOnly・全件列挙）を
 // 通すために転送していたが、east-west の面へ利用者トークンを載せると呼び出し先が

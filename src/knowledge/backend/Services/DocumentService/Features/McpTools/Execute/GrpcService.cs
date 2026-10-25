@@ -128,8 +128,12 @@ public sealed class McpToolExecutionGrpcService(
     // 🔴 **個別（`get_document`）は落とさない** —— 文書 ID を知る利用者が ABAC の範囲で題名と属性を読むのは、SC-03 の閲覧
     //   （REST `GET /documents/{id}`）と同じ意味である。本文は MCP の応答に載らない（`ToResult` は題名と許可リストの属性だけ）。
     //   その ID は MCP の一覧・検索・グラフのどれからも得られないので、AI エージェントが列挙で見つける経路は一覧を閉じれば閉じる。
+    //
+    // 🔴 ［2026-10-16 / #1961・計画 ADR-0141 決定 2・[[IADR-0551]] 決定 4］**アーカイブした文書も一覧に載せない**（件数にも入れない）。
+    //   判定は `DocumentArchival.IsArchived`（台帳の状態。取り込み・グラフ・Wiki と同じ関数）。**個別（`get_document`）は本 ADR では
+    //   定めない**（ADR-0141 決定 2。内容の ABAC の門を開く前に計画が決める —— ADR-0121 決定 4 段 4）ので、従前どおり落とさない。
     internal static IReadOnlyList<DocumentDto> ListableToAgents(IEnumerable<DocumentDto> visible) =>
-        [.. visible.Where(d => DocumentExposure.IsMcpListable(d.Attributes))];
+        [.. visible.Where(d => !DocumentArchival.IsArchived(d.Status) && DocumentExposure.IsMcpListable(d.Attributes))];
 
     // 🔴 本文の利用者文脈を信じてよいのは、それを運ぶのが**利用者の権限で動く中継者として許可集合に載った
     //   機械クライアント**（MCP サーバー）だからである（ADR-0086 §結果が受け入れた依存の範囲。ADR-0117 決定 3）。
@@ -154,6 +158,7 @@ public sealed class McpToolExecutionGrpcService(
         McpToolDeclarationSource.Declare().Tools.Any(t => string.Equals(t.Name, tool, StringComparison.Ordinal));
 
     // ADR-0034 決定 9: Keycloak が client credentials の主体へ付ける利用者名の形（`DocumentReadPrincipal.RelayedUser` と同じ判定）。
+    // ［2026-10-23 / [[IADR-0607]] 残余 2］接頭辞の判定のまま残す。真のとき個人資料を落とす（厳しい側）にだけ働くため。
     internal static bool IsServiceAccount(string userId) =>
         userId.StartsWith(MachinePrincipal.ServiceAccountUsernamePrefix, StringComparison.OrdinalIgnoreCase);
 

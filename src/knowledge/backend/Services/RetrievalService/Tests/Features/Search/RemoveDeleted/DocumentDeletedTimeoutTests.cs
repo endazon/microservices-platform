@@ -28,7 +28,7 @@ public class DocumentDeletedTimeoutTests
 
     private static DocumentDeletedConsumer Build(IVectorStore primary, IVectorStore fused, DocumentDeletedTimeouts timeouts)
         => new(primary, new FusedCollections([new FusedCollection("extra", fused, new FixedEmbedding([]))]),
-            ConsumerTimeoutsForTests.Calls(), timeouts, NullLogger<DocumentDeletedConsumer>.Instance);
+            WrittenCollections.None, ConsumerTimeoutsForTests.Calls(), timeouts, NullLogger<DocumentDeletedConsumer>.Instance);
 
     // 止まった Qdrant（主・追加のどちらでも）は、受け口の ct が立つより前に時間切れとして投げる（再試行・デッドレターへ）。
     [Theory]

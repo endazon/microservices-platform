@@ -1,8 +1,8 @@
 <!-- trace:
 adrs: [ADR-0048, ADR-0118]
-iadrs: [IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508]
-specs: [20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups]
-issues: [#1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, planning#286]
+iadrs: [IADR-0635, IADR-0067, IADR-0180, IADR-0232, IADR-0240, IADR-0470, IADR-0505, IADR-0507, IADR-0508, IADR-0568, IADR-0578, IADR-0625]
+specs: [20261025_2244_e2e-live-paths-system-under-test, 20261022_ci-workflow-trust-and-injection-hardening, 20261012_1910_static-checks-off-critical-path, 20261008_1796_integration-gate-hardening, 20261008_1788_integration-all-skip-gate, 20261007_1768_codeowners-static-checks-gate, 20261001_1686_ci-build-artifact-reuse, 20260928_issue-1686_knowledge-test-sharding, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1581_workflow-token-permissions, 20260926_issue-1551_submodule-backend-pr-ci, 20260909_issue-1345-1348_ci-governance-audit-followups, 20261020_2005_age-apkindex-watch, 20261024_2026_e2e-live-workflow]
+issues: [#2244, #1910, #1796, #1775, #1788, #1768, #1686, #1617, #1588, #1581, #1551, #268, #719, #783, #1019, #1345, #1346, #1347, #1348, #1352, #2005, #2026, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -155,8 +155,9 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 | `image-build` | `images.yml` | サービスイメージのビルド検証（compose を単一情報源とする独立ワークフロー）の集約ジョブ |
 | `scripts-tests` | `ci.yml` | 🔴 **#936 で追加。** 検査器そのものの単体試験（`scripts.test.js` の 664 件）と、**`check-adr-numbering` / `check-doc-updated` / `check-landed-subjects` の実データ判定**がここで走る。`paths:` を持たず全 PR で起動し、matrix でもない。**これを必須にしないと、採番の欠番・`updated:` の据え置き・着地件名の規約違反が赤いまま着地できる**（#936 の作業中に前 2 者が実際に赤くなった） |
 | `static-checks-units` | `ci.yml` | submodule 取得が要る静的検査の集約ジョブ（unit 依存方向・chart / overlay のレンダリング＋スキーマ突合・unit サービス所有権）。`paths:` を持たず全 PR で起動し、matrix でもない |
-| ~~`static-checks`~~ | `ci.yml` | **単独の check 名としては必須にしない。`build-and-test` の `needs` で拾う**（#1768）。所有者のブランチ保護の変更なしに門へ入れるためである。所要は 65〜80 秒で、直近 16 本の run（2026-10-07 実測。develop への push 10 本・PR 6 本）のすべてで `build-and-test` の開始より前（最小 28 秒前）に終わっており、律速の `build-and-test` を延ばしていない。`build-and-test` が遅くなれば `check-ci-latency.js` の監視に現れる。**`static-checks` が赤なら `build-and-test` も赤になる**ので、原因は `static-checks` のステップ名で探す。表のこの主張と `ci.yml` の `needs` は `check-workflow-job-refs.js` が突合する |
+| ~~`static-checks`~~ | `ci.yml` | **単独の check 名としては必須にしない。`build-and-test` の `needs` で拾う**（#1768）。所有者のブランチ保護の変更なしに門へ入れるためである。**律速にならないことは前提ではなく、実測で保つ。** 2026-10-07 の配線時は所要 65〜80 秒で、`build-and-test` の開始より前（最小 28 秒前）に終わっていた。その後、ステップ「Smoke-test k8s-local-up opt-in gates」（`scripts/k8s-local-up.test.js`）の試験の積み増しで所要が 117〜149 秒に伸び、PR の run 30 本中 13 本で律速になった（`build-and-test` の開始を 10〜27 秒遅らせた）。同試験を CPU 数ぶんの子プロセスで並列に走らせるようにして、段は約 110 秒から 43 秒、`static-checks` は 76 秒に戻った（2026-10-12 実測。他の needs の終了は直近 30 本で最小 113 秒）。並列の段数は `K8S_UP_TEST_SHARDS` で変えられる（1 で直列）。`build-and-test` が遅くなれば `check-ci-latency.js` の監視に現れる。**`static-checks` が赤なら `build-and-test` も赤になる**ので、原因は `static-checks` のステップ名で探す。表のこの主張と `ci.yml` の `needs` は `check-workflow-job-refs.js` が突合する |
 | ~~`CodeQL`~~ | `codeql.yml` | **必須にしない（#719 で除外へ変更）**。`pull_request` に `paths:` を持つため、コード変更の無い PR では check 自体が report されず、必須指定すると恒久 pending になる。集約 check 名 `CodeQL`（ジョブ名 `Analyze (csharp)` と別物）である点は従来どおり。網羅は push（develop/main）と週次 schedule の全量解析が担保する |
+| ~~`e2e-live`~~ | `e2e-live.yml` | **必須にしない**。稼働環境（使い捨ての統合スタック）に依存する赤で PR を止めない（live の E2E の実行層の方針）。`pull_request` は live の土台と試験される側（スタックが建てるイメージの中身・起動器と配備物）を変える PR に `paths:` で絞って走るので、必須にすると恒久 pending にもなる。日次・dispatch の失敗は issue になる |
 | `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
 
 > **★ `CI` / `Security` / `Images` / `PR Title` を指定してはならない。** いずれも**ワークフロー名**であり、
@@ -284,10 +285,11 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 | `codeql.yml` の `analyze` | `security-events` | `actions` | 解析結果のアップロード |
 | `backlog-audit.yml` の `audit` | `issues` | `pull-requests` | 棚卸し issue と計画 ID レンジのずれの専用 issue の更新・PR の列挙 |
 | `ci-latency-watch.yml` の `watch` | — | `pull-requests` / `checks` | PR 一覧と check-runs を読む（足りないと 403） |
+| `age-apkindex-watch.yml` の `watch` | `issues` | — | platform-backup の age の版と Alpine の APKINDEX のずれの専用 issue の起票・上書き |
 | 各ワークフローの `report-failure` と `ci-failure-issue.yml` の `report` | `issues` | `actions` | 後段の失敗の起票と、失敗したジョブ名の取得 |
 | `integration-stack-rerun.yml` の `rerun` | `actions` / `issues` | — | 統合スタックの所要時間の判定だけが赤の実行を 1 回だけ再実行し（失敗したジョブの再実行）、結果を起票済みの issue へ書く。実行・ジョブ・ログの読み取りも同じトークンで行う |
 
-🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` 6 本すべてが与える。**
+🔴 **再利用ワークフロー `ci-failure-issue.yml` の `report` が要求する範囲は、呼び出し側の `report-failure` すべてが与える。**（本数は導出値なので書かない）
 要求が呼び出し側の上限を超えると、呼び出し側の実行が起動時に失敗する。この一致も同じ検査が突き合わせる。
 
 🔴 **`changelog` / `openapi` / `release` / `report-failure` は develop・main・タグへの push、日次・週次、手動実行でしか走らない。**
@@ -309,7 +311,7 @@ PR の CI ではこれらの権限が足りているかを確かめられない�
 | スラッシュコマンド（`/new-spec` 等）が出ない | repo-template の `.claude/` をリポ直下にコピーしたか確認し、Claude Code を再起動して読み直す。 |
 | 計画書（`projects/<name>`）を参照できない | 本リポは planning に依存しない。隣接クローン（既定 `../project-planning`）を用意するか、GitHub 上の URL で該当ページを開いて確認する。 |
 | CI / AI ワークフローが起動しない | `.example` を外して有効化したか（`scripts/apply-profile.sh`）、必要な Secrets を登録したか確認する。Actions のログでトリガ条件を確認する。 |
-| `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
+| `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。加えて、`@claude` を書いた本文（コメント・レビュー・issue）の書き手が OWNER / MEMBER / COLLABORATOR であることを確かめる（それ以外の書き手の本文では起動しない。issue を割り当てても、issue 本文の書き手が該当しなければ起動しない）。 |
 | ビルド・テストが C#/.NET 前提で合わない | 技術スタック別の差し替え対象（`ci.yml` / `setup.sh` / `.devcontainer/` / `settings.json` の permissions）を使用言語へ直す。一覧は計画リポの `tools/impl-handoff-kit/README.md`「技術スタック別の差し替え対象」。 |
 
 ## 安全に任せるための原則

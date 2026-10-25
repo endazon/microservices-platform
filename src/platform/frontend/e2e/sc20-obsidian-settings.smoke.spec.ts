@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import type {
   SyncConflictDetailDto,
   SyncConflictSummaryDto,
@@ -396,6 +396,69 @@ test('SC-20 (#1447): a device that never synced keeps the original empty-state g
   ).toBeVisible();
   // 🔴 陰性対照: 同期していない利用者へ「配備前の同期」の話をしない（無用な不安を与える）。
   await expect(panel.getByText(/配備前の同期は表示されません/)).toHaveCount(0);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+// ───────────── M-065（#2021 / E-16）: 端末の期限の描き分け ─────────────
+//
+// 期待値は計画 05_screens §SC-20 主要素 1・2 から起こした。
+// - 端末の状態は 有効（残り日数）／期限切れ間近（残り 7 日以内）／期限切れ／失効 の 4 つを**区別して**出す。
+//   期限切れは「同期が既に停止している」ことを意味する。期限切れの端末からは再発行の導線を置く。
+// - 期限切れ後もプラグイン設定に古いトークンが残る旨の固定文言を置く。
+// 🔴 **同期の一時停止／再開（主要素 7）は本 PR の対象外である。** 公開 API に呼ぶ口が無く、実装は「置かない」を
+//    選んでいる（画面仕様書 SC-20 §未決事項 2）。契約の追加が要るため、作業仕様書と PR 本文に理由を書いた。
+
+test('M-065: 端末は 有効・期限切れ間近（7 日以内）・期限切れ・失効 を文言で描き分け、期限切れからは再発行できる', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      ...QUIET_SYNC_PANELS,
+      'GET /private-notes/devices': [
+        device({
+          id: 'd-ok',
+          deviceName: '自宅 PC',
+          expiresAt: new Date(Date.now() + 20 * DAY).toISOString(),
+        }),
+        device({
+          id: 'd-soon',
+          deviceName: '会社の PC',
+          expiresAt: new Date(Date.now() + 6.5 * DAY).toISOString(),
+        }),
+        device({
+          id: 'd-edge',
+          deviceName: '境界の PC',
+          expiresAt: new Date(Date.now() + 7.5 * DAY).toISOString(),
+        }),
+        device({
+          id: 'd-expired',
+          deviceName: '古いタブレット',
+          expiresAt: new Date(Date.now() - DAY).toISOString(),
+          active: false,
+        }),
+        device({ id: 'd-revoked', deviceName: 'なくしたスマホ', revoked: true, active: false }),
+      ],
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const rowOf = (name: string) => page.getByRole('row').filter({ hasText: name });
+  await expect(rowOf('自宅 PC').getByText('有効（残り 20 日）')).toBeVisible();
+  // ★ 残り 7 日以内は「期限切れ間近」。7 日を超えれば「有効」のまま（境界の両側）。
+  await expect(rowOf('会社の PC').getByText('期限切れ間近（残り 7 日）')).toBeVisible();
+  await expect(rowOf('境界の PC').getByText('有効（残り 8 日）')).toBeVisible();
+  // ★ 期限切れは同期が止まっていることを言い、同じ行から再発行できる。
+  await expect(rowOf('古いタブレット').getByText('期限切れ（同期は停止しています）')).toBeVisible();
+  await expect(rowOf('古いタブレット').getByRole('button', { name: '再発行する' })).toBeVisible();
+  // 失効は期限より優先する（失効した端末に期限の文言を出さない）。再発行も出さない。
+  await expect(rowOf('なくしたスマホ').getByText('失効済み')).toBeVisible();
+  await expect(rowOf('なくしたスマホ').getByText(/残り|期限切れ/)).toHaveCount(0);
+  await expect(rowOf('なくしたスマホ').getByRole('button', { name: '再発行する' })).toHaveCount(0);
+
+  // 固定文言: 期限切れ後もプラグイン設定には古いトークンが残る。
+  await expect(page.getByText(/Obsidian\s*プラグインの設定には残ったままです。/)).toBeVisible();
 
   expectBffTrafficIsComplete(traffic);
 });

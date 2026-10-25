@@ -2,6 +2,8 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Features.Documents.Archive;
+using DocumentService.Features.Documents.ArchiveAstQuotes;
+using DocumentService.Features.Documents.ArchiveBodyless;
 using DocumentService.Features.Documents.AstStaleCopies;
 using DocumentService.Features.Documents.Create;
 using DocumentService.Features.Documents.Delete;
@@ -13,6 +15,7 @@ using DocumentService.Features.Documents.ListVersions;
 using DocumentService.Features.Documents.Publish;
 using DocumentService.Features.Documents.PutBody;
 using DocumentService.Features.Documents.Republish;
+using DocumentService.Features.Documents.StripUntrustedBoundary;
 using DocumentService.Features.Documents.Update;
 using DocumentService.Features.Documents.UpdateMetadata;
 using DocumentService.Infrastructure.Persistence;
@@ -74,11 +77,9 @@ public static class DocumentEndpoints
         var bodyIntake = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
 
         // ── FR-18, SC-03, ADR-0063 決定 3, IADR-0364 (#1187): AI タグ提案の承認の反映先 ──
-        //
-        // 🔴 **この群にもロールを積まない。** 認可は「①所有者の動的束縛 **または** ②管理者ロール」の
-        // 選言であり（決定 3）、group にロールを積むと①の側（自分の文書の提案を承認する一般利用者）が
-        // 死ぬ。判定は口の中で行い、拒否は 404 に倒す（`PutBody` と同じ）。**`write` 群へ入れてはならない。**
-        var tagReflection = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
+        // ［2026-10-15 / #1902・[[IADR-0533]] 追記］REST の `POST /documents/{id}/tags`（`tagReflection` 群）は撤去した ——
+        // 呼び出し元（GraphService の D-2）は east-west gRPC（`DocumentTagWrite/AddTag`）だけになっていた。
+        // 認可の選言（①所有者 または ②管理者）と 404 の一本道は `AddDocumentTagUseCase` が持つ。
 
         // FR-06, NFR-08 (#1575): 組織文書の絞り込み・ページング（`GET /documents/page`）も上の `read` 群に居る。
         // ロールは積まない —— 集合は `GET /documents` の部分集合であり、ロールで塞ぐと既存の一覧より狭い主体しか
@@ -93,7 +94,6 @@ public static class DocumentEndpoints
         PublishDocumentEndpoint.Map(write);
         ArchiveDocumentEndpoint.Map(write);
         PutDocumentBodyEndpoint.Map(bodyIntake);
-        AddDocumentTagEndpoint.Map(tagReflection);
         ListDocumentVersionsEndpoint.Map(read);
         GetDocumentVersionEndpoint.Map(read);
         DeleteDocumentEndpoint.Map(write);
@@ -105,6 +105,18 @@ public static class DocumentEndpoints
         // FR-02, FR-06, UC-04, ADR-0013, [[IADR-0503]] (#1762): 全文書（または絞った文書）への `DocumentUpdated` の再発行（再索引の手段）。
         // `write` 群（admin / operator）に置き、口の側で `AdminOnly` を積む（管理者だけ。運用者・機械の書き手には開けない）。
         RepublishDocumentUpdatedEndpoint.Map(write);
+
+        // FR-06, UC-03, [[IADR-0549]] (#1931 項目 3): 本文のオブジェクトが無い（NoSuchKey）古い文書の一括アーカイブ（一回限りの管理操作）。
+        // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。SC-05 のアーカイブと同じ基準）。
+        ArchiveBodylessDocumentsEndpoint.Map(write);
+
+        // FR-06, UC-03, [[IADR-0556]] (#1973): AST が境界語つきで保存した文書の表題・本文から枠を剥がす（一回限りの管理操作）。
+        // `write` 群に置き、口の側で `AdminOnly` を積む（管理者だけ。一括アーカイブと同じ基準）。
+        StripUntrustedBoundaryEndpoint.Map(write);
+
+        // FR-06, UC-03, [[IADR-0549]]（2026-10-17 追記 / #1974）: AST の相場スナップショット（kind = Quote）の一括アーカイブ（一回限りの管理操作）。
+        // `write` 群に置き、口の側で `AdminOnly` を積む（本文の無い文書の一括アーカイブと同じ基準・同じ手段）。
+        ArchiveAstQuotesEndpoint.Map(write);
 
         return app;
     }
@@ -201,6 +213,29 @@ public static class DocumentEndpoints
             .Select(s => s.SubjectId)
             .ToListAsync(ct);
 
+    // FR-19, ADR-0142 決定 1・2, IADR-0636 (#2138): **論理削除中の個人資料か**（台帳 `PrivateNote.DeletedAt` が唯一の正本）。
+    // 発行の唯一の点（`PublishUpdatedAsync`）と読み取りの唯一の判定点（`DocumentReadAccess.CanReadAsync` の引数）が使う。
+    // 組織文書は台帳を持たないので引かない（偽）。🔴 確定の中で呼ぶときは保存の後に呼ぶ（保存前の変更はクエリに映らない）。
+    internal static async Task<bool> IsDeletedPrivateNoteAsync(
+        DocumentDbContext db, Document d, CancellationToken ct = default)
+        => DocumentScopes.IsPrivateNote(d.Attributes)
+           && await db.PrivateNotes.AnyAsync(n => n.DocumentId == d.Id && n.DeletedAt != null, ct);
+
+    // 一覧用（共有先の解決と同じく 1 クエリ）。論理削除中の個人資料の文書 ID を返す。
+    internal static async Task<HashSet<Guid>> ResolveDeletedPrivateNotesAsync(
+        DocumentDbContext db, IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0)
+            return [];
+
+        var ids = documentIds.ToList();
+        var deleted = await db.PrivateNotes
+            .Where(n => ids.Contains(n.DocumentId) && n.DeletedAt != null)
+            .Select(n => n.DocumentId)
+            .ToListAsync(ct);
+        return [.. deleted];
+    }
+
     // FR-19, [[IADR-0447]] (#1447): 一覧用。**1 クエリで引いて文書ごとへ分配する**（N+1 を作らない
     // ——`PrivateNoteEnrichment.LoadAsync` が共有の件数で採っているのと同じ形）。
     // 返す辞書に**共有 0 件の文書の鍵は現れない**（呼び出し側は `GetValueOrDefault` で null 相当を得る）。
@@ -259,9 +294,26 @@ public static class DocumentEndpoints
         // **応答（`DocumentDto.SharedWith`）と同じ関数**であり、値が経路で割れない。
         var sharedWith = await ResolveSharedWithAsync(db, d.Id, ct);
 
+        // 🔴 FR-19, ADR-0142 決定 1・4, IADR-0636 決定 1 (#2138): **論理削除中の個人資料は撤収の形で出す**（露出 3 キーを `excluded` にした写し）。
+        // 全経路がここを通るので（IADR-0455）、削除中に共有の変更・タグの改名・再発行が門を通っても載り直さない。
+        // 台帳の露出（`Document.Attributes`・`PrivateNote`）は変えない —— 復元で台帳のまま出し直す（決定 4）。
+        var attributes = await IsDeletedPrivateNoteAsync(db, d, ct)
+            ? DocumentExposure.WithAllExcluded(d.Attributes)
+            : d.Attributes;
+
+        // 🔴 FR-02, FR-19, IADR-0637 (#2150 / #2251): **発行の連番を、確定と同じトランザクションで進めて保存してから載せる。**
+        // 唯一の発行点なので、全経路（IADR-0455）がここで採番される。保存は文書行の UPDATE であり、版と連番の両方を並行トークンに持つ ——
+        // 読んだ後に別の発行（または編集）が確定していれば、ここで `DbUpdateConcurrencyException` になり確定ごと巻き戻る（発行 0）。
+        // 追跡外の実体を渡されると連番が保存されず、次の発行が同じ値を使う。黙って進めず止める。
+        if (db.Entry(d).State == EntityState.Detached)
+            throw new InvalidOperationException(
+                $"発行の連番を保存できない: 文書 {d.Id} が追跡されていない（IADR-0637）。発行は追跡中の実体で呼ぶこと。");
+        var sequence = d.AdvanceEventSequence();
+        await db.SaveChangesAsync(ct);
+
         await bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
-            d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
-            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, sharedWith, ct);
+            attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
+            d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, sharedWith, sequence, ct);
     }
 
     // FR-19, ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4 (#1184): **発行の門。**
@@ -316,6 +368,46 @@ public static class DocumentEndpoints
         => wasPublishable || PassesPublishGate(d)
             ? PublishUpdatedAsync(bus, db, d, names, ct)
             : Task.CompletedTask;
+
+    // FR-06, ADR-0027 §決定, IADR-0608 決定 3 (#2168): **確定込みの門の入口。** DB の変更を保存し、保存の後の DB から
+    // イベントを組み立てて門へ通し、両方を 1 トランザクションで確定してから送る（Transactional Outbox）。
+    // 返すのはタグの表示名辞書である（応答の写像に同じ辞書を使う。トランザクションの中で読んだ値）。
+    //
+    // 保存を `DocumentDbContext.SaveChangesAsync` の直呼びで済ませてから門を呼ぶと、門は例外になる
+    // （`CommitAsync` の外では発行を積めない。確定されない発行を作らないため。IADR-0608 決定 2）。
+    // 保存が失敗すれば例外がそのまま出る（版の競合の 409 への写像は呼び出し側が持つ）。発行は巻き戻り 1 通も出ない。
+    internal static Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableAsync(
+        IDocumentUpdatedPublisher bus, DocumentDbContext db, Document d, CancellationToken ct = default)
+        => SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, [d], ct);
+
+    // 複数文書の版（一括アーカイブ・再発行・タグ改名）。全件の保存と全件の発行を 1 回の確定に載せる。
+    internal static async Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableAsync(
+        IDocumentUpdatedPublisher bus, DocumentDbContext db, IReadOnlyCollection<Document> docs, CancellationToken ct = default)
+    {
+        Dictionary<Guid, string> names = [];
+        await bus.CommitAsync(async c =>
+        {
+            await db.SaveChangesAsync(c);
+            names = await TagResolver.NamesAsync(db, c);
+            foreach (var d in docs)
+                await PublishUpdatedIfIndexableAsync(bus, db, d, names, c);
+        }, ct);
+        return names;
+    }
+
+    // 撤収の形（`PublishUpdatedIfIndexableOrWithdrawingAsync`）の確定込みの入口。`wasPublishable` は書き換える「前」に取った値。
+    internal static async Task<Dictionary<Guid, string>> SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+        IDocumentUpdatedPublisher bus, DocumentDbContext db, Document d, bool wasPublishable, CancellationToken ct = default)
+    {
+        Dictionary<Guid, string> names = [];
+        await bus.CommitAsync(async c =>
+        {
+            await db.SaveChangesAsync(c);
+            names = await TagResolver.NamesAsync(db, c);
+            await PublishUpdatedIfIndexableOrWithdrawingAsync(bus, db, d, wasPublishable, names, c);
+        }, ct);
+        return names;
+    }
 
     // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
     // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。

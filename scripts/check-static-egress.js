@@ -53,8 +53,18 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  */
 const DEFAULT_TARGETS = ['src/packages/ui/storybook-static', 'src/platform/frontend/dist'];
 
-/** 走査するファイル拡張子（テキストとして読めるもの）。 */
-const TEXT_EXT = new Set(['.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.json', '.svg', '.map']);
+/**
+ * 走査するファイル拡張子（テキストとして読めるもの）。
+ * `.ftl` / `.properties` は Keycloak テーマ（deploy/keycloak/themes）の資源である——テーマはビルド不要で
+ * ソースがそのまま利用者のブラウザ・メールへ出る。メールの外枠（email/html/*.ftl）と、HTML を値に持つ
+ * 文言（login/messages/messages_*.properties の loginTitleHtml 等）が外部の画像・CSS を引けば、
+ * それは取得である。拡張子で漏らすと「走査した」ことと「見た」ことが食い違う（#1893 監査）。
+ * SPA・カタログ・プラグインの成果物にはこの 2 種は現れないので、全体に効かせても他の走査先は変わらない。
+ */
+const TEXT_EXT = new Set([
+  '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.json', '.svg', '.map',
+  '.ftl', '.properties',
+]);
 
 const SKIP_DIRS = new Set(['node_modules', '.git']);
 
@@ -444,6 +454,33 @@ function selfTest() {
       // 外部参照を除けば通る。
       fs.writeFileSync(path.join(dist, 'index.html'), '<script src="./x.js"></script>');
       assert.strictEqual(main(['--require', 'dist']), 0);
+    } finally {
+      delete process.env.STATIC_EGRESS_ROOT;
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  ok('main: Keycloak テーマの .ftl / .properties も走査し、外部の画像を検出する', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-'));
+    try {
+      const theme = path.join(base, 'themes', 'platform');
+      fs.mkdirSync(path.join(theme, 'email', 'html'), { recursive: true });
+      fs.mkdirSync(path.join(theme, 'login', 'messages'), { recursive: true });
+      const ftl = path.join(theme, 'email', 'html', 'template.ftl');
+      const props = path.join(theme, 'login', 'messages', 'messages_ja.properties');
+      fs.writeFileSync(ftl, '<#macro emailLayout><img src="https://cdn.example.com/logo.png"><#nested></#macro>');
+      fs.writeFileSync(props, 'loginTitleHtml=<span>{0}</span>\n');
+      process.env.STATIC_EGRESS_ROOT = base;
+      assert.deepStrictEqual(listTextFiles(path.join(base, 'themes')).sort(), [
+        'platform/email/html/template.ftl',
+        'platform/login/messages/messages_ja.properties',
+      ]);
+      assert.strictEqual(main(['--require', 'themes']), 1);
+      // .ftl の外部参照を除き、.properties 側の HTML 値に外部の画像を入れても検出する。
+      fs.writeFileSync(ftl, '<#macro emailLayout><#nested></#macro>');
+      assert.strictEqual(main(['--require', 'themes']), 0);
+      fs.writeFileSync(props, 'loginTitleHtml=<img src="//cdn.example.com/x.png">{0}\n');
+      assert.strictEqual(main(['--require', 'themes']), 1);
     } finally {
       delete process.env.STATIC_EGRESS_ROOT;
       fs.rmSync(base, { recursive: true, force: true });

@@ -1,5 +1,6 @@
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Platform.Bff.Foundation.Endpoints;
 
@@ -106,6 +107,8 @@ public static class UserAdminBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "AuthorizationService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             // 後段不達は 502（管理 API のため存在秘匿は不要。呼び出し側で再試行できる）。
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }

@@ -28,6 +28,10 @@ spec:
       labels:
         app: {{ $svcName }}
     spec:
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
+      # 非 root（イメージの USER と同じ uid。src/platform/frontend/Dockerfile）・seccomp RuntimeDefault。
+      automountServiceAccountToken: false
+      {{- include "msp.podSecurityContext.restricted" $f.runAsUser | nindent 6 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -35,8 +39,10 @@ spec:
       containers:
         - name: {{ $svcName }}
           # 生成イメージのため global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。
-          image: "{{ .Values.global.image.registry }}/{{ $f.image }}:{{ $f.tag | default "latest" }}"
+          # NFR-20, IADR-0605 (#2132): タグは frontend.tag か global.image.tag（無ければ描画が落ちる。templates/_image.tpl）。
+          image: "{{ .Values.global.image.registry }}/{{ $f.image }}:{{ include "msp.selfBuiltImageTag" (dict "root" $ "tag" $f.tag "what" "frontend") }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
           ports:
             - containerPort: {{ $f.port }}
           # 実行時 config（config.js）と Caddy の /bff プロキシ上流を env で注入する（compose の frontend と同契約）。

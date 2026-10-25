@@ -47,6 +47,12 @@ public class TestAuthHandler(
     // この組み合わせでしか無人にならないこと自体が、`MachinePrincipal` の陽性対照である。
     public const string ClientIdHeader = "X-Test-Client-Id";
 
+    // NFR-09, [[IADR-0606]]: `MachinePrincipal.IsMachine` の腕 A は、利用者名が `service-account-<azp>` と
+    // **一致する**ときだけ無人と読む。Keycloak のサービスアカウントのトークンは必ず `azp=<clientId>` を載せるので、
+    // `X-Test-User: service-account-<clientId>` だけを渡した要求には、その形どおりの `azp` を補う（実トークンの再現）。
+    // **`X-Test-Client-Id` を明示したときは補わない**（利用者名と一致しない `azp` の陰性対照を書けるようにする）。
+    private const string ServiceAccountPrefix = "service-account-";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var roles = Request.Headers.TryGetValue(RolesHeader, out var header)
@@ -67,6 +73,10 @@ public class TestAuthHandler(
         if (Request.Headers.TryGetValue(ClientIdHeader, out var clientId)
             && !string.IsNullOrWhiteSpace(clientId.ToString()))
             claims.Add(new Claim("azp", clientId.ToString()));
+        else if (!noName
+            && user.StartsWith(ServiceAccountPrefix, StringComparison.OrdinalIgnoreCase)
+            && user.Length > ServiceAccountPrefix.Length)
+            claims.Add(new Claim("azp", user[ServiceAccountPrefix.Length..]));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);

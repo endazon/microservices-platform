@@ -84,6 +84,10 @@ spec:
         # スクリプトを差し替えたら Pod を作り直す（overlay では手で rollout restart が要った）。
         checksum/probe: {{ .Files.Get "files/synthetic-monitor/probe.js" | sha256sum | quote }}
     spec:
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: k8s API を呼ばないのでトークンを置かない。
+      # 非 root（node イメージの node ユーザー）・seccomp RuntimeDefault。overlay（deploy/local/synthetic-monitor）と同じ値。
+      automountServiceAccountToken: false
+      {{- include "msp.podSecurityContext.restricted" $sm.runAsUser | nindent 6 }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -92,6 +96,7 @@ spec:
         - name: probe
           image: {{ $sm.image | quote }}
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
           command: ["node", "/probe/probe.js"]
           env:
             - name: KC_URL
@@ -127,7 +132,7 @@ spec:
             name: synthetic-monitor-probe
 {{- if .Values.networkPolicy.enabled }}
 ---
-# allow-intra-namespace（networkpolicy.yaml）は egress を「同 Namespace ＋ DNS」に絞るため、
+# egress の既定拒否（networkpolicy-egress.yaml）は egress を「同 Namespace ＋ DNS」に絞るため、
 # 別 Namespace の Keycloak（token 端点）へは L3/L4 で届かない（届かなければ 1 度も BFF へ到達せず、
 # RagLatencySeriesAbsent が「評価対象が無い」の顔で鳴る）。プローブの Pod から Keycloak の Pod・ポートへ 1 本だけ開ける。
 # BFF → Vault（allow-bff-egress-to-vault）と同じ型。プローブ → BFF は同 Namespace なので既存の許可で足りる。

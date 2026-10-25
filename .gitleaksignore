@@ -25,3 +25,27 @@ a154bc7e337e168417d81ca9380bafbc78780202:scripts/scripts.test.js:generic-api-key
 # 鍵名 SESSION_STORE_PASSWORD の隣に直書きしていた。値は秘密ではないが、generic-api-key は鍵と見分けられない。
 # 後続のコミットで実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
 102de5ff5150c38e040668c72f68c731eb2192c2:scripts/k8s-local-up.test.js:generic-api-key:5290
+
+# #1868 の試験用の偽 JWT（backup.test.sh の FAKE_JWT）。head では実行時に組み立てる形に改めた。ここに残すのは履歴の 1 コミットぶんだけである。
+9573cc3969d1b302690d3a7a5e2faffb84fba049:deploy/local/platform-backup/script/backup.test.sh:jwt:233
+
+# #2024 / IADR-0570: ExternalSecret e2e-accounts の secretKey 欄（Secret の**キー名** E2E_TRADING_OWNER_TOTP_SECRET であって値ではない）。
+# generic-api-key は鍵名 `secretKey` の隣の長い英大文字列を鍵と見分けられない。値はリポジトリに無い（OpenBao → ESO）。
+6dad64a08089509aa492f0a16770d137568f1805:deploy/local/vault/eso/externalsecret-e2e-accounts.yaml:generic-api-key:75
+# #2054: 上の行は PR ブランチのコミットを指しており、squash merge で develop に載ったコミットは別 SHA になる
+# （fingerprint は SHA を含むので一致しない）。develop 上の同じ行（同じ誤検知・キー名であって値ではない）をここで無効化する。
+# PR ブランチの行は、ブランチが origin に残る限り週次 schedule（全参照を走査）が拾うため残す。
+af01abc57ebb818879e491c169cf34162a1d15ab:deploy/local/vault/eso/externalsecret-e2e-accounts.yaml:generic-api-key:75
+# 上の注記と作業仕様書の結果の節が、そのキー名を「鍵名: 値」の形で引用していた（同じ誤検知）。後続のコミットで引用の形を改めた。履歴の 1 コミットぶんずつ。
+c9b1b237e6e3b9c1ba435e37175e5860b4d11f50:.gitleaksignore:generic-api-key:32
+db7c148ec4268631fecd54456d11d0f69dc19c0b:.ai-context/specs/20261021_2024_e2e-accounts-realm-eso.md:generic-api-key:104
+
+# 宣言から導出する守りの試験（IADR-0572）で、述語の変異を試す架空のクライアントの宣言の secret（`probe-0570-…`）を
+# 鍵名 secret の隣に直書きしていた。値は秘密ではないが、generic-api-key は鍵と見分けられない。
+# 後続のコミットで実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
+320cc30ad9b8ebeb6bbec123d377c90a51c9d087:scripts/keycloak-realm-reconcile.test.js:generic-api-key:620
+
+# #2025 / IADR-0624: live 層の L1 の試験が、環境変数の**名前**（E2E_ の接頭辞と TOTP の秘密の接尾辞をつないだもの）を
+# 鍵名 totpSecret の隣に直書きしていた。値ではない（値はリポジトリに無い。OpenBao → ESO）。generic-api-key は鍵と見分けられない。
+# 後続のコミットで名前を実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
+5de7782b56557ce1a00fc718d184e10ffcf1b71e:src/platform/frontend/e2e/live-opt-in.smoke.spec.ts:generic-api-key:90

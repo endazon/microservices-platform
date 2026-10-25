@@ -57,6 +57,20 @@ spec:
             host: document-service.microservices-platform.svc.cluster.local
             port:
               number: 8080
+    # FR-16, UC-08, ADR-0024 / ADR-0021, IADR-0594 (#2045): 外部 AI エージェントの入口（MCP の Streamable HTTP）。
+    # 本番チャート（templates/edge.yaml）の edge.mcp と同じ契約: **exact /mcp ＋ prefix /mcp/**（`prefix: /mcp` は文字列の前方一致で
+    # 同じポートの管理 REST /mcp-clients まで飲むので使わない）・rewrite 無し・catch-all より前。/mcp-clients は catch-all → SPA へ落ちる。
+    # 認証は MCP サーバーが行う（audience=mcp-server のトークンだけ。トークン無し・platform-api の audience は 401）。
+    # 本番チャート側は opt-in（既定 false）だが、この overlay 自体が opt-in（ISTIO=1 かつ LOCALEDGE=1）であり、FR-16 を実測する
+    # 環境（統合スタックの門 M13）なので無条件に持つ（同期の経路と同じ扱い）。
+    - match:
+        - uri: { exact: /mcp }
+        - uri: { prefix: /mcp/ }
+      route:
+        - destination:
+            host: mcp-service.microservices-platform.svc.cluster.local
+            port:
+              number: 8080
     # catch-all → SPA(frontend)。history fallback は frontend pod の Caddy が担う（#1135）。
     - match:
         - uri: { prefix: / }
@@ -83,6 +97,18 @@ spec:
   gateways:
     - istio-system/msp-edge
   http:
+    # NFR-18, IADR-0575 (GHSA-rh44-px44-p48q): **管理面（/admin・/realms/master）はエッジに出さない**（403 を直に返す）。
+    #   Istio の route は先勝ちなので、下の catch-all より前（先頭）に置く。edge-istio-reset-floor はリセット申請の床を
+    #   この拒否の**後**（/spec/http/1）へ入れる（床の正規表現は realm 名を問わないので、前に置くと master へ届く）。
+    #   uri の prefix は文字列の前方一致なので、/realms/master は exact と「/realms/master/」の prefix に分ける
+    #   （/realms/master-x のような別名の realm を巻き込まない）。管理者の経路は port-forward（deploy/local/edge/README.md）。
+    - name: keycloak-admin-surface-deny
+      match:
+        - uri: { prefix: /admin }
+        - uri: { exact: /realms/master }
+        - uri: { prefix: /realms/master/ }
+      directResponse:
+        status: 403
     - match:
         - uri: { prefix: / }
       route:

@@ -32,12 +32,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
     [Fact]
     public async Task Introspection_endpoint_reports_ingest_step()
     {
-        var client = _factory.CreateClient();
-
-        var res = await client.GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(TestContext.Current.CancellationToken);
+        // ［2026-10-10 / #1517・[[IADR-0533]]］REST の自己申告の面（GET /internal/introspection）は撤去した。
+        // 申告の中身は gRPC 面が返すのと同じ DI の 1 つ（`ServiceIntrospectionDto`）から読む。
+        var report = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         report.Should().NotBeNull();
         report!.Service.Should().Be("ingestion-service");
         report.Steps.Should().ContainSingle(s => s.Name == "ingest")
@@ -69,6 +66,24 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
             .Should().BeOneOf(StatusCode.Unauthenticated, StatusCode.PermissionDenied);
     }
 
+    // T-48 (FR-02, NFR-06, [[IADR-0536]] 決定 2・3 (#1908)): 本番の Program.cs が埋め込み待ちの埋め直しの器と計器を登録し、
+    // 器がブートストラップより後に並ぶ（コレクションを作ってから数える）。受け口が要求する計器も解決できる。
+    [Fact]
+    public void Registers_the_embedding_pending_reembed_service_after_the_bootstrap()
+    {
+        var hosted = _factory.Services.GetServices<IHostedService>().Select(s => s.GetType()).ToList();
+        hosted.Should().Contain(typeof(IngestionService.Features.Ingestion.ReembedPending.EmbeddingPendingReembedHostedService));
+        // #1924 の監査: 比べる相手（発見の器）が在ることも主張する（無いと IndexOf が -1 で順序の主張が素通りする）。
+        hosted.Should().Contain(typeof(QdrantKeywordIndexDiscoveryHostedService));
+        hosted.IndexOf(typeof(IngestionService.Features.Ingestion.ReembedPending.EmbeddingPendingReembedHostedService))
+            .Should().BeGreaterThan(hosted.IndexOf(typeof(QdrantKeywordIndexDiscoveryHostedService)));
+        _factory.Services.GetRequiredService<IngestionService.Common.Observability.EmbeddingPendingMetrics>()
+            .Should().NotBeNull();
+        // #1931 / [[IADR-0540]]: 本文の欠落の計数も受け口が要求する。
+        _factory.Services.GetRequiredService<IngestionService.Common.Observability.BodyMissingMetrics>()
+            .Should().NotBeNull();
+    }
+
     public sealed class Factory : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -81,10 +96,6 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 }));
             builder.ConfigureServices(services =>
             {
-                // 実 RabbitMQ 接続を避けるため MassTransit をテストハーネスへ差し替える。
-                services.RemoveAll<IBusControl>();
-                services.AddMassTransitTestHarness();
-
                 // ADR-0027 / E3b: ingest 段の購読は Wolverine へ移った。
                 // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
                 // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる

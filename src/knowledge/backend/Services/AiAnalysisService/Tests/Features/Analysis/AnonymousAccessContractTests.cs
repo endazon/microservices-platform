@@ -1,4 +1,5 @@
 using AiAnalysisService.Domain;
+using AiAnalysisService.Tests.Infrastructure.ExternalServices;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Authentication;
@@ -159,24 +160,19 @@ public class AnalysisAnonymousContractTestFactory : WebApplicationFactory<Progra
             {
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test",
-                ["Services:AuthorizationService"] = "http://localhost:5005",
-                ["Services:RetrievalService"] = "http://localhost:5003",
-                ["Services:LlmGateway"] = "http://localhost:5007",
             }));
         builder.ConfigureServices(services =>
         {
             // 🔴 `IRagOrchestrator` は**差し替えない**。実物の経路を測るのが目的である。
             services.RemoveAll<IServiceTokenProvider>();
             services.AddSingleton<IServiceTokenProvider>(new FixedServiceTokenProvider());
-            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => Authz);
+            // [[IADR-0533]] (#1255): 認可は east-west gRPC だけである。本物のラッパの下へ、
+            // 呼ばれた回数を数える HTTP スタブを応答の元として差し込む。
+            services.RemoveAll<AuthzScopeGrpcClient>();
+            services.AddSingleton(_ => TestRagOrchestrator.AuthzOver(Authz));
 
-            // 後段は本テストの対象ではない。**到達不能を返す**（`RagOrchestrator` は検索失敗を
-            // 空文脈へ、LLM 不達を縮退文言へ倒すので、認証済みの経路も 200 で終わる）。
-            services.AddHttpClient("RetrievalService")
-                .ConfigurePrimaryHttpMessageHandler(() => new UnavailableHandler());
-            services.AddHttpClient("LlmGateway")
-                .ConfigurePrimaryHttpMessageHandler(() => new UnavailableHandler());
+            // 後段（検索・生成）は本テストの対象ではない。gRPC の宛先を構成しないので **UNAVAILABLE** になる
+            // （`RagOrchestrator` は検索失敗を空文脈へ、LLM 不達を縮退文言へ倒すので、認証済みの経路も 200 で終わる）。
 
             // JWT/Keycloak に依存せず、ヘッダの有無で「未認証／認証済み」を切り替える。
             services.AddAuthentication(AnalysisTestUserAuthHandler.SchemeName)
@@ -203,16 +199,6 @@ public class RecordingAuthorizationHandler : HttpMessageHandler
     }
 }
 
-// 後段（検索・LLM）を不達にする器。**認可サービスには使わない。**
-public class UnavailableHandler : HttpMessageHandler
-{
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        => Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
-        {
-            Content = new StringContent("{}", Encoding.UTF8, "application/json"),
-        });
-}
-
 // ヘッダ `X-Test-User` が在るときだけ認証済みにする。無いときは `NoResult`（＝未認証）。
 // **「常に認証済み」にしてしまうと未認証の契約が測れない**ので、切り替え可能にしてある。
 public class AnalysisTestUserAuthHandler(
@@ -236,7 +222,7 @@ public class AnalysisTestUserAuthHandler(
 }
 
 // #1333: 実 IdP を持たないテストで s2s トークンの**発行だけ**を固定する。
-// 🔴 `ServiceTokenHandler` は本物が走る —— スコープ解決の要求に Bearer が載ることは変えない。
+// （[[IADR-0533]] 以降、スコープ解決は gRPC のラッパを差し替えて測るので、発行側は登録の都合で置くだけである。）
 internal sealed class FixedServiceTokenProvider : IServiceTokenProvider
 {
     public ValueTask<string> GetTokenAsync(CancellationToken ct) => ValueTask.FromResult("test-service-token");

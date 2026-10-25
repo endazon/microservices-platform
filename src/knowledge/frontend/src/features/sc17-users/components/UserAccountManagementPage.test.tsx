@@ -106,10 +106,10 @@ function departmentResponse(path: string) {
 }
 
 /** 経路ごとに応答を振り分ける（1 画面が複数本引くため、URL で分けないと取り違える）。 */
-function mockApi(overrides: { users?: unknown } = {}) {
+function mockApi(overrides: { users?: unknown; roles?: readonly string[] } = {}) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (String(path).includes('/admin/users/assignable-roles')) {
-      return Promise.resolve(jsonResponse(ROLES));
+      return Promise.resolve(jsonResponse(overrides.roles ?? ROLES));
     }
     if (String(path).endsWith('/department')) return Promise.resolve(departmentResponse(path));
     if (String(path).includes('/authz/attributes'))
@@ -161,7 +161,10 @@ describe('UserAccountManagementPage (SC-17)', () => {
     expect(rows.getByText('田中 太郎')).toBeInTheDocument();
     expect(rows.getByText('finance')).toBeInTheDocument();
     // 併任は「・」で連ねる（計画の例「管理者・運用者」）。単独ロールの利用者は 2 人居る。
-    expect(rows.getAllByText('platform-operator', { selector: 'td' })).toHaveLength(2);
+    // #2214: ロールは計画の表示名で出す（識別子 `platform-operator` は出さない）。
+    expect(rows.getAllByText('運用者', { selector: 'td' })).toHaveLength(2);
+    expect(rows.getByText('システム管理者', { selector: 'td' })).toBeInTheDocument();
+    expect(rows.queryByText('platform-operator')).not.toBeInTheDocument();
     expect(rows.getByText('clearance: internal')).toBeInTheDocument();
     // INDEX 決定 21: 状態は色 ＋ アイコン ＋ テキスト。無効の文言は計画そのまま。
     expect(rows.getAllByText('有効')).toHaveLength(2);
@@ -184,7 +187,15 @@ describe('UserAccountManagementPage (SC-17)', () => {
     // 部門を戻し、ロールで絞る（陽性対照つき: 絞る前は 3 人居る）。
     await user.selectOptions(screen.getByLabelText('部門'), '');
     expect(within(await usersTable()).getAllByRole('row')).toHaveLength(4); // 見出し行 ＋ 3
-    await user.selectOptions(screen.getByLabelText('ロール'), 'platform-admin');
+    // #2214: 選択肢は表示名で出し、値（絞り込みの鍵）は識別子のまま。
+    const roleFilter = screen.getByLabelText('ロール');
+    expect(within(roleFilter).getByRole('option', { name: 'システム管理者' })).toHaveValue(
+      'platform-admin',
+    );
+    expect(within(roleFilter).getByRole('option', { name: '運用者' })).toHaveValue(
+      'platform-operator',
+    );
+    await user.selectOptions(roleFilter, 'システム管理者');
     await waitFor(async () =>
       expect(within(await usersTable()).getAllByRole('row')).toHaveLength(2),
     );
@@ -198,8 +209,8 @@ describe('UserAccountManagementPage (SC-17)', () => {
     await renderPage();
     await openEditor(user, '田中 太郎');
 
-    // 併任（複数選択）ができる。
-    await user.click(screen.getByRole('checkbox', { name: 'platform-admin' }));
+    // 併任（複数選択）ができる。#2214: 選択肢は表示名で、送る値は識別子のまま（下の body 検査）。
+    await user.click(screen.getByRole('checkbox', { name: 'システム管理者' }));
     await user.selectOptions(screen.getByLabelText('機密区分上限 *'), 'confidential');
     await user.click(screen.getByRole('button', { name: '保存' }));
 
@@ -231,6 +242,27 @@ describe('UserAccountManagementPage (SC-17)', () => {
     ).toBe(false);
   });
 
+  // #2214: 表示名の写像は**値集合の外を生値のまま**出す（知らない識別子を既知の名前へ丸めない）。
+  // 認可基盤は realm の人が割り当てるロールをすべて返す（`wiki-editor` 等）。一覧・フィルタ・編集の 3 か所を測る。
+  it('shows a role outside the known set by its identifier', async () => {
+    mockApi({
+      roles: ['platform-admin', 'platform-operator', 'wiki-editor'],
+      users: [{ ...USERS[0], roles: ['platform-operator', 'wiki-editor'] }],
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    const rows = within(await usersTable());
+    expect(rows.getByText('運用者・wiki-editor', { selector: 'td' })).toBeInTheDocument();
+    expect(
+      within(screen.getByLabelText('ロール')).getByRole('option', { name: 'wiki-editor' }),
+    ).toHaveValue('wiki-editor');
+    await openEditor(user, '田中 太郎');
+    expect(screen.getByRole('checkbox', { name: 'wiki-editor' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '運用者' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'システム管理者' })).not.toBeChecked();
+  });
+
   // 05_screens §SC-17 入力/バリデーション: ロール割当は**必須**（複数選択）。
   it('refuses to save an empty role assignment', async () => {
     mockApi();
@@ -238,7 +270,7 @@ describe('UserAccountManagementPage (SC-17)', () => {
     await renderPage();
     await openEditor(user, '田中 太郎');
 
-    await user.click(screen.getByRole('checkbox', { name: 'platform-operator' })); // 唯一のロールを外す
+    await user.click(screen.getByRole('checkbox', { name: '運用者' })); // 唯一のロールを外す
     const before = mocks.apiRequest.mock.calls.length;
     await user.click(screen.getByRole('button', { name: '保存' }));
 

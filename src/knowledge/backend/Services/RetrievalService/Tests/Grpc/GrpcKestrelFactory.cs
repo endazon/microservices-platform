@@ -53,6 +53,16 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
     /// <summary>試験が索引へ入れるチャンクの置き場（器の寿命で共有）。</summary>
     public InMemoryVectorStore Index { get; } = new();
 
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): true のあいだクエリ埋め込みは空ベクトルで返る（`/embed` の縮退を再現する）。
+    // 器は共有されるので、立てた試験が finally で戻す。
+    public bool EmbeddingUnavailable { get; set; }
+
+    private sealed class SwitchableEmbeddingService(GrpcKestrelFactory owner) : IEmbeddingService
+    {
+        public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+            => Task.FromResult(owner.EmbeddingUnavailable ? [] : new float[1536]);
+    }
+
     // ポートは GrpcTestConfiguration（環境変数）が決める。ConfigureAppConfiguration では間に合わない。
     public int GrpcPort => GrpcTestConfiguration.GrpcPort;
 
@@ -99,7 +109,7 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
             services.AddScoped(_ => FusedCollections.None);
 
             services.RemoveAll<IEmbeddingService>();
-            services.AddSingleton<IEmbeddingService, StubEmbeddingService>();
+            services.AddSingleton<IEmbeddingService>(new SwitchableEmbeddingService(this));
 
             // 🔴 これが無いとテストホストの起動が実ブローカへの接続を試みてハングする。
             services.DisableAllExternalWolverineTransports();
@@ -132,6 +142,13 @@ public sealed class GrpcKestrelFactory : WebApplicationFactory<Program>
         };
         if (withUsername)
             claims["preferred_username"] = subject;
+        // NFR-09, [[IADR-0606]]: 実 Keycloak の access token は必ず `azp` を載せる。サービスアカウント
+        // （`service-account-<clientId>`）で `azp` を与えなかったときは、その形どおり `azp = clientId` を補う
+        // （`MachinePrincipal.IsMachine` の腕 A は利用者名と `azp` の一致で判定する）。
+        azp ??= subject.StartsWith("service-account-", StringComparison.OrdinalIgnoreCase)
+            && subject.Length > "service-account-".Length
+                ? subject["service-account-".Length..]
+                : null;
         if (azp is not null)
             claims["azp"] = azp;
 

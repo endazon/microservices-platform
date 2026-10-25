@@ -382,10 +382,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
-            tags, updatedAt, sharedWith: sharedWith);
+            tags, updatedAt, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): 書く点の属性キーへキーワード索引を張る（張り済みなら RPC を出さない）。
         await EnsureAttributeKeywordIndexesAsync(collection, attributes.Keys, ct);
 
@@ -405,10 +405,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
-            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): チャンクの口と同じ。
         await EnsureAttributeKeywordIndexesAsync(collection, attributes.Keys, ct);
 
@@ -426,10 +426,10 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes,
-            tags, updatedAt, sharedWith: sharedWith);
+            tags, updatedAt, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): 語彙索引にも張る（検索は語彙索引でも facet する）。
         await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
@@ -443,14 +443,165 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, indexText, ChunkId.MetadataChunkIndex,
-            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith);
+            markdownUri, attributes, tags, updatedAt, hasBody: false, sharedWith: sharedWith, sequence: sequence);
         // [[IADR-0502]] 決定 2 (ii) (#1760): 語彙索引のチャンクの口と同じ。
         await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
 
         await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
+    }
+
+    // FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1 (#1908): 埋め込み待ちの印（真偽）と理由（文字列）のペイロードキー。
+    // 🔴 **印を持つのは埋め込み待ちの点だけ**（高機密の語彙索引の点・主の点はキー自体を持たない）。
+    // 埋め直しの器は印で拾い、印のある点だけを消す —— 高機密の点を埋め直しの対象にしない。
+    internal const string EmbeddingPendingKey = "embedding_pending";
+    internal const string EmbeddingPendingReasonKey = "embedding_pending_reason";
+
+    // FR-02, [[IADR-0536]] 決定 1 (#1908): 埋め込み待ちのチャンクを語彙索引へ書く。
+    // ペイロードはチャンクの口と同じ関数（`BuildChunkPayload`）で作り、印と理由を足す（`BuildEmbeddingPendingPayload`）。
+    public async Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        long? sequence = null, CancellationToken ct = default)
+    {
+        var payload = BuildEmbeddingPendingPayload(BuildChunkPayload(documentId, title, text, chunkIndex,
+            markdownUri, attributes, tags, updatedAt, sharedWith: sharedWith, sequence: sequence), reason);
+        await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
+
+        await client.UpsertAsync(_lexical, [BuildLexicalPoint(chunkId, payload)], cancellationToken: ct);
+    }
+
+    // FR-02, ADR-0070 決定 4, [[IADR-0536]] 決定 1 (#1908): 本文なしの public / internal 文書の埋め込み待ちのメタデータ点。
+    public async Task UpsertEmbeddingPendingMetadataPointAsync(Guid pointId, Guid documentId, string title,
+        string indexText, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+        long? sequence = null, CancellationToken ct = default)
+    {
+        var payload = BuildEmbeddingPendingPayload(BuildChunkPayload(documentId, title, indexText,
+            ChunkId.MetadataChunkIndex, markdownUri, attributes, tags, updatedAt, hasBody: false,
+            sharedWith: sharedWith, sequence: sequence), reason);
+        await EnsureAttributeKeywordIndexesAsync(_lexical, attributes.Keys, ct);
+
+        await client.UpsertAsync(_lexical, [BuildLexicalPoint(pointId, payload)], cancellationToken: ct);
+    }
+
+    // [[IADR-0536]] 決定 1: 印と理由を足す（純関数。試験が形を固定する）。
+    internal static Dictionary<string, Value> BuildEmbeddingPendingPayload(
+        Dictionary<string, Value> payload, string reason)
+    {
+        payload[EmbeddingPendingKey] = new Value { BoolValue = true };
+        payload[EmbeddingPendingReasonKey] = new Value { StringValue = reason };
+        return payload;
+    }
+
+    // [[IADR-0536]] 決定 2・3: 埋め込み待ちの点だけを選ぶフィルタ（純関数。数える・拾う・消すが同じ 1 本を使う）。
+    internal static Filter BuildEmbeddingPendingFilter() =>
+        new()
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition { Key = EmbeddingPendingKey, Match = new Match { Boolean = true } }
+                }
+            }
+        };
+
+    public Task EnsureEmbeddingPendingIndexAsync(CancellationToken ct = default) =>
+        client.CreatePayloadIndexAsync(_lexical, EmbeddingPendingKey, PayloadSchemaType.Bool, cancellationToken: ct);
+
+    public async Task<long> CountEmbeddingPendingAsync(CancellationToken ct = default) =>
+        (long)await client.CountAsync(_lexical, BuildEmbeddingPendingFilter(), exact: true, cancellationToken: ct);
+
+    public async Task<EmbeddingPendingPage> ListEmbeddingPendingAsync(
+        int limit, CancellationToken ct = default)
+    {
+        var page = await client.ScrollAsync(_lexical,
+            filter: BuildEmbeddingPendingFilter(),
+            limit: (uint)Math.Max(1, limit),
+            payloadSelector: new WithPayloadSelector { Enable = true },
+            vectorsSelector: new WithVectorsSelector { Enable = false },
+            cancellationToken: ct);
+
+        var points = new List<EmbeddingPendingPoint>();
+        var unreadable = new List<string>();
+        foreach (var p in page.Result)
+        {
+            if (ReadEmbeddingPendingPoint(p.Id, p.Payload) is { } point)
+                points.Add(point);
+            else
+                unreadable.Add(p.Id.HasUuid ? p.Id.Uuid : p.Id.Num.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        return new EmbeddingPendingPage(points, unreadable);
+    }
+
+    public async Task<EmbeddingPendingPoint?> GetEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
+    {
+        var points = await client.RetrieveAsync(_lexical, pointId, withPayload: true, withVectors: false,
+            cancellationToken: ct);
+        return points.Count == 0 ? null : ReadEmbeddingPendingPoint(points[0].Id, points[0].Payload);
+    }
+
+    // 🔴 **印のある点だけを消す**（ID ＋ 印の AND）。同じ ID で高機密の点（印なし）へ書き換わっていたら消さない。
+    public Task DeleteEmbeddingPendingAsync(Guid pointId, CancellationToken ct = default)
+    {
+        var filter = BuildEmbeddingPendingFilter();
+        filter.Must.Add(new Condition
+        {
+            HasId = new HasIdCondition { HasId = { new PointId { Uuid = pointId.ToString() } } }
+        });
+        return client.DeleteAsync(_lexical, filter, cancellationToken: ct);
+    }
+
+    // [[IADR-0536]] 決定 2: 点のペイロードから埋め込み待ちの点を復元する（純関数。`BuildChunkPayload` の逆写像）。
+    // 印が無い・ID が UUID でない・文書 ID が読めない点は null（埋め直しの対象にしない）。
+    internal static EmbeddingPendingPoint? ReadEmbeddingPendingPoint(PointId id, IDictionary<string, Value> payload)
+    {
+        if (!payload.TryGetValue(EmbeddingPendingKey, out var pending) || !pending.BoolValue)
+            return null;
+        if (!Guid.TryParse(id.Uuid, out var pointId)
+            || !Guid.TryParse(StringOf(payload, "document_id"), out var documentId))
+            return null;
+
+        var attributes = payload.TryGetValue("attributes", out var attrs)
+                         && attrs.KindCase == Value.KindOneofCase.StructValue
+            ? attrs.StructValue.Fields.ToDictionary(f => f.Key, f => f.Value.StringValue, StringComparer.Ordinal)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        DateTimeOffset? updatedAt = payload.TryGetValue("updated_at", out var at)
+                                    && at.KindCase == Value.KindOneofCase.IntegerValue
+            ? DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue)
+            : null;
+
+        var markdownUri = StringOf(payload, "markdown_uri");
+        var sharedWith = ListOf(payload, AttributeValueKeys.SharedWith);
+
+        return new EmbeddingPendingPoint(
+            pointId,
+            documentId,
+            StringOf(payload, "document_title"),
+            StringOf(payload, FullTextKey),
+            payload.TryGetValue("chunk_index", out var idx) ? (int)idx.IntegerValue : 0,
+            markdownUri.Length == 0 ? null : markdownUri,
+            attributes,
+            ListOf(payload, "tags"),
+            updatedAt,
+            sharedWith.Count == 0 ? null : sharedWith,
+            StringOf(payload, EmbeddingPendingReasonKey),
+            SequenceOf(payload));
+
+        static string StringOf(IDictionary<string, Value> p, string key) =>
+            p.TryGetValue(key, out var v) ? v.StringValue : "";
+
+        static List<string> ListOf(IDictionary<string, Value> p, string key) =>
+            p.TryGetValue(key, out var v) && v.KindCase == Value.KindOneofCase.ListValue
+                ? [.. v.ListValue.Values.Select(x => x.StringValue)]
+                : [];
     }
 
     // [[IADR-0497]] 決定 1: **ベクトルを持たない点**（純関数。試験が形を固定する）。
@@ -478,7 +629,8 @@ public class QdrantIngestionVectorStore(
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null,
         bool hasBody = true,
-        List<string>? sharedWith = null)
+        List<string>? sharedWith = null,
+        long? sequence = null)
     {
         var payload = new Dictionary<string, Value>
         {
@@ -504,6 +656,11 @@ public class QdrantIngestionVectorStore(
         // 検索側（RetrievalService.QdrantVectorStore）の書き込み・復元と表現を揃えること。
         if (updatedAt is { } at)
             payload["updated_at"] = new Value { IntegerValue = at.ToUnixTimeMilliseconds() };
+
+        // FR-02, IADR-0639 決定 3 (#2150 / #2251): 版の発行の連番。旧版の点の後始末が、同じ時刻の新しい版の点を消さないために持つ。
+        // 連番の無い電文（旧形式）では書かない（読む側は「連番なし」＝時刻だけで比べる）。
+        if (sequence is { } seq)
+            payload[SequenceKey] = new Value { IntegerValue = seq };
 
         // FR-02: タグをペイロードに保持（検索結果の絞り込み・表示用）
         if (tags.Count > 0)
@@ -536,6 +693,75 @@ public class QdrantIngestionVectorStore(
         }
 
         return payload;
+    }
+
+    // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 文書 ID のペイロードキー（書き込み〔`BuildChunkPayload`〕・削除・索引の状態の照会が同じ値を使う）。
+    internal const string DocumentIdKey = "document_id";
+
+    // [[IADR-0565]] 決定 2: `document_id` のキーワード索引を全コレクションへ張る（`EnsureKeywordIndexesAsync` と同じ作法。失敗は上げる）。
+    public async Task EnsureDocumentIdIndexAsync(CancellationToken ct = default)
+    {
+        foreach (var name in AllCollectionNames)
+            await client.CreatePayloadIndexAsync(name, DocumentIdKey, PayloadSchemaType.Keyword,
+                BuildKeywordIndexParams(), cancellationToken: ct);
+    }
+
+    // [[IADR-0565]] 決定 2: 渡した文書 ID のどれかを持つ点だけを選ぶフィルタ（純関数）。
+    internal static Filter BuildDocumentIdsFilter(IEnumerable<Guid> documentIds)
+    {
+        var keywords = new RepeatedStrings();
+        keywords.Strings.AddRange(documentIds.Select(id => id.ToString()));
+        return new Filter
+        {
+            Must =
+            {
+                new Condition { Field = new FieldCondition { Key = DocumentIdKey, Match = new Match { Keywords = keywords } } }
+            }
+        };
+    }
+
+    // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 渡した文書のうち、どれが点を持つか。
+    // 🔴 **コレクションごとに facet（`document_id`）を 1 回**（語彙索引は印あり・印なしの 2 回）。文書ごとに数えない（N+1 にしない）。
+    // facet の上限は渡した ID の数（フィルタが渡した ID に絞るので、それより多くの値は返らない）。数は捨てる（有無だけを使う）。
+    public async Task<DocumentIndexPresence> GetIndexPresenceAsync(
+        IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+    {
+        var indexed = new HashSet<Guid>();
+        var pending = new HashSet<Guid>();
+        if (documentIds.Count == 0)
+            return new DocumentIndexPresence(indexed, pending);
+
+        foreach (var c in _collections)
+            await CollectDocumentIdsAsync(c.Name, BuildDocumentIdsFilter(documentIds), documentIds.Count, indexed, ct);
+
+        // 語彙索引: 印ありの点は埋め込み待ち、印なしの点（高機密の語彙索引だけの文書）は索引済み。
+        var pendingFilter = BuildDocumentIdsFilter(documentIds);
+        pendingFilter.Must.Add(BuildEmbeddingPendingFilter().Must[0]);
+        var lexicalOnlyFilter = BuildDocumentIdsFilter(documentIds);
+        lexicalOnlyFilter.MustNot.Add(BuildEmbeddingPendingFilter().Must[0]);
+        try
+        {
+            await CollectDocumentIdsAsync(_lexical, pendingFilter, documentIds.Count, pending, ct);
+            await CollectDocumentIdsAsync(_lexical, lexicalOnlyFilter, documentIds.Count, indexed, ct);
+        }
+        // 語彙索引がまだ無い（ブートストラップの失敗）なら、そこに点も無い（`DeleteByDocumentFromAllAsync` と同じ扱い）。
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound && !ct.IsCancellationRequested)
+        {
+        }
+
+        return new DocumentIndexPresence(indexed, pending);
+    }
+
+    private async Task CollectDocumentIdsAsync(string collection, Filter filter, int limit, HashSet<Guid> into,
+        CancellationToken ct)
+    {
+        var facets = await client.FacetAsync(collection, DocumentIdKey, filter: filter, limit: (ulong)limit, exact: true,
+            cancellationToken: ct);
+        foreach (var hit in facets.Hits)
+        {
+            if (hit.Count > 0 && hit.Value.HasStringValue && Guid.TryParse(hit.Value.StringValue, out var id))
+                into.Add(id);
+        }
     }
 
     // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する（機密区分変更時の残存防止）。
@@ -572,5 +798,169 @@ public class QdrantIngestionVectorStore(
                                                 && !ct.IsCancellationRequested)
         {
         }
+    }
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): **版の印のコレクション**（ベクトルを持たない。1 文書 1 点・点 ID ＝ 文書 ID）。
+    // 🔴 **検索のコレクションとは別に置く。** 検索側（RetrievalService）はこの名前を読まないので、印が検索に混ざることは無い。
+    // 載せるのは文書 ID・版（epoch ミリ秒）・判定軸の指紋だけで、題名・本文・タグ・属性の値は載せない（[[IADR-0595]] 決定 3）。
+    // 作成は最初の書き込みで行う（起動時のブートストラップの呼び出し順を変えない。無ければ「印が無い」と読む）。
+    internal const string IndexVersionCollectionName = "knowledge_document_index_versions";
+    internal const string IndexVersionUpdatedAtKey = "updated_at";
+    internal const string IndexVersionAccessKey = "access_fingerprint";
+
+    // FR-02, IADR-0639 決定 3 (#2150 / #2251): 版の印と点の両方が持つ、発行の連番のキー（無ければ連番なし）。
+    internal const string SequenceKey = "sequence";
+
+    public async Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+    {
+        try
+        {
+            var points = await client.RetrieveAsync(IndexVersionCollectionName, documentId, withPayload: true,
+                withVectors: false, cancellationToken: ct);
+            return points.Count == 0 ? null : ReadIndexVersion(points[0].Payload);
+        }
+        // まだ 1 度も書いていない（コレクションが無い）なら、印も無い。
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    public async Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+    {
+        var point = BuildIndexVersionPoint(documentId, version);
+        try
+        {
+            await client.UpsertAsync(IndexVersionCollectionName, [point], cancellationToken: ct);
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+            if (!await client.CollectionExistsAsync(IndexVersionCollectionName, ct))
+                await client.CreateCollectionAsync(IndexVersionCollectionName, new VectorParamsMap(), cancellationToken: ct);
+            await client.UpsertAsync(IndexVersionCollectionName, [point], cancellationToken: ct);
+        }
+    }
+
+    // [[IADR-0595]] 決定 1: 版の印の点（純関数。試験が形を固定する）。ベクトルは空（語彙索引の点と同じ作法）。
+    internal static PointStruct BuildIndexVersionPoint(Guid documentId, DocumentIndexVersion version) =>
+        BuildLexicalPoint(documentId, new Dictionary<string, Value>
+        {
+            [DocumentIdKey] = new Value { StringValue = documentId.ToString() },
+            [IndexVersionUpdatedAtKey] = new Value { IntegerValue = version.UpdatedAtMs },
+            [IndexVersionAccessKey] = new Value { StringValue = version.AccessFingerprint },
+        }.WithSequence(version.Sequence));
+
+    // [[IADR-0595]] 決定 1: 版の印を読み戻す（純関数）。版の読めない点は null（印が無いのと同じに扱う —— 判定軸は「不明」になり、
+    // 取り込みは旧版の点を先に消す側〔fail-closed〕へ倒れる）。
+    internal static DocumentIndexVersion? ReadIndexVersion(IDictionary<string, Value> payload)
+    {
+        if (!payload.TryGetValue(IndexVersionUpdatedAtKey, out var at) || at.KindCase != Value.KindOneofCase.IntegerValue)
+            return null;
+        var access = payload.TryGetValue(IndexVersionAccessKey, out var a) ? a.StringValue : "";
+        return new DocumentIndexVersion(DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue), access, SequenceOf(payload));
+    }
+
+    // FR-02, FR-05, [[IADR-0595]] 決定 2 (#2101): 旧版の点を全コレクションから消す（`DeleteByDocumentFromAllAsync` と同じ巡り方）。
+    public async Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
+        IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default)
+    {
+        foreach (var c in _collections)
+            await client.DeleteAsync(c.Name, BuildSupersededFilter(documentId, version, sequence, KeepIn(keep, c.Name)),
+                cancellationToken: ct);
+
+        // 語彙索引が無い（ブートストラップの失敗）なら消す点も無い（`DeleteByDocumentFromAllAsync` と同じ扱い）。
+        try
+        {
+            await client.DeleteAsync(_lexical, BuildSupersededFilter(documentId, version, sequence, KeepIn(keep, _lexical)),
+                cancellationToken: ct);
+        }
+        catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound
+                                                && !ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    private IEnumerable<Guid> KeepIn(IReadOnlyCollection<IndexedPointRef> keep, string collection) =>
+        keep.Where(k => string.Equals(k.Collection ?? _lexical, collection, StringComparison.Ordinal))
+            .Select(k => k.PointId);
+
+    // [[IADR-0595]] 決定 2: 旧版の点を選ぶフィルタ（純関数）。
+    //   - 文書の点であること（`document_id`）
+    //   - `updated_at` が `version` より**厳密に新しくない**こと（新しい版の点は残す。`updated_at` を持たない古い点は消す）
+    //   - この取り込みで書いた点（`keep`）でないこと
+    //   - ［IADR-0639 決定 3］同じ時刻でも、点と版の両方に連番があり、点の連番の方が大きければ残す（同じ時刻の新しい版の点）。
+    //     連番を持たない点（旧点）は時刻だけで比べる（同じ時刻なら消す。現行と同じ）。
+    internal static Filter BuildSupersededFilter(Guid documentId, DateTimeOffset version, long? sequence, IEnumerable<Guid> keep)
+    {
+        var filter = new Filter
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition { Key = DocumentIdKey, Match = new Match { Keyword = documentId.ToString() } }
+                }
+            },
+            MustNot =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition
+                    {
+                        Key = "updated_at",
+                        Range = new Qdrant.Client.Grpc.Range { Gt = version.ToUnixTimeMilliseconds() }
+                    }
+                }
+            }
+        };
+
+        if (sequence is { } seq)
+            filter.MustNot.Add(new Condition
+            {
+                Filter = new Filter
+                {
+                    Must =
+                    {
+                        new Condition
+                        {
+                            Field = new FieldCondition
+                            {
+                                Key = "updated_at",
+                                Range = new Qdrant.Client.Grpc.Range
+                                {
+                                    Gte = version.ToUnixTimeMilliseconds(),
+                                    Lte = version.ToUnixTimeMilliseconds(),
+                                }
+                            }
+                        },
+                        new Condition
+                        {
+                            Field = new FieldCondition { Key = SequenceKey, Range = new Qdrant.Client.Grpc.Range { Gt = seq } }
+                        },
+                    }
+                }
+            });
+
+        var ids = keep.Select(id => new PointId { Uuid = id.ToString() }).ToList();
+        if (ids.Count > 0)
+            filter.MustNot.Add(new Condition { HasId = new HasIdCondition { HasId = { ids } } });
+        return filter;
+    }
+
+    // IADR-0639 決定 3: ペイロードの連番（無い・整数でなければ null）。
+    internal static long? SequenceOf(IDictionary<string, Value> payload)
+        => payload.TryGetValue(SequenceKey, out var v) && v.KindCase == Value.KindOneofCase.IntegerValue ? v.IntegerValue : null;
+}
+
+internal static class SequencePayloadExtensions
+{
+    // 版の印のペイロードへ連番を足す（連番なしなら足さない）。
+    internal static Dictionary<string, Value> WithSequence(this Dictionary<string, Value> payload, long? sequence)
+    {
+        if (sequence is { } seq)
+            payload[QdrantIngestionVectorStore.SequenceKey] = new Value { IntegerValue = seq };
+        return payload;
     }
 }

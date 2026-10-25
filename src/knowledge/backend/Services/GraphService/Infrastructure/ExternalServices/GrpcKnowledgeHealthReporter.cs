@@ -11,9 +11,8 @@ namespace GraphService.Infrastructure.ExternalServices;
 // ADR-0076, [[IADR-0256]] 決定 3, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]] 決定 4・5,
 // [[IADR-0389]] 決定 5, [[IADR-0408]] (#1255): ナレッジ健全性の観測値の送出アダプタの **gRPC 版**。
 //
-// **並走中の正は REST である。** 本実装は `Services:DashboardServiceGrpc` が構成されたときだけ
-// 登録され（`AddKnowledgeHealthGrpcClient`）、無ければ `HttpKnowledgeHealthReporter` のままである。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の兄弟実装は撤去し、本実装が唯一の輸送である**（[[IADR-0379]] 決定 5
+// 「並走中の正は REST」を反転）。宛先が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、下の縮退の枝へ落ちる。
 //
 // 🔴 **利用者の資格情報は載せない**（[[IADR-0379]] 決定 4）。載るのは本サービス自身の s2s トークンだけである。
 // これが成立するのは、**この経路が現状も利用者の資格情報を運んでいない**からである ——
@@ -34,22 +33,42 @@ namespace GraphService.Infrastructure.ExternalServices;
 // 失敗時に `RecordDelivered` を呼ばないことが `absent` 系アラートの土台である。
 // **試みた回数を数える形へ変えてはならない**（受け口が死んでいる間も系列が生き続け、不在が鳴らない）。
 //
-// ★ タイムアウト: REST 側は `HttpClient.Timeout = SendTimeout`（5 秒）で与えている。gRPC には
-// `HttpClient` が無いので **`deadline` で同じ 5 秒を与える**（`HttpKnowledgeHealthReporter.SendTimeout`
-// を**そのまま引く** —— 値を書き写すと片方だけ動いたときに気付けない）。期限切れは
-// `RpcException(DeadlineExceeded)` であり、上の「受理されない」枝と同じ縮退になる。
+// ★ タイムアウト: **`deadline` で `SendTimeout` を与える**（［2026-10-15 / #1907・[[IADR-0542]]］30 秒。従前は撤去した
+// REST 実装の `HttpClient.Timeout` から引き継いだ 5 秒）。期限切れは `RpcException(DeadlineExceeded)` であり、上の「受理されない」枝と同じ縮退になる。
+// ［2026-10-11 / #1895］**期限切れでも再送しない。次の周期（`KnowledgeHealthHostedService.Interval`＝1 時間）を待つ。**
+// 報告は全量のスナップショット置換なので、次の周期の報告が取りこぼしをそのまま埋める。受け口は期限で取り消されると
+// 置換をロールバックする（旧い値が残り、半端な値にはならない）。同じ周期の中で再送すると、遅い受け口へ同じ重さを重ねるだけである。
+// ［2026-10-15 / #1907・[[IADR-0542]] 決定 2］#1895 の「期限 5 秒は延ばさない」を改め、**30 秒へ延ばした**。
+// 4 万件は 1 秒前後に収まるが、15 万件（最も重い形）は負荷の高いホストで 3〜6 秒になり、5 秒では毎周期の成否が揺れる
+// （実測は #1907 の作業仕様書）。1 時間周期の 5 指標が詰まっても止まるのは最大 2.5 分で、受け口は取り消しでロールバックする。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の兄弟実装 `HttpKnowledgeHealthReporter` は撤去し、本クラスが唯一の実装である。
 public sealed class GrpcKnowledgeHealthReporter(
     Pb.KnowledgeHealthReport.KnowledgeHealthReportClient client,
     KnowledgeHealthReportMetrics metrics,
     TimeProvider clock,
     ILogger<GrpcKnowledgeHealthReporter> logger) : IKnowledgeHealthReporter
 {
+    /// <summary>
+    /// 報告 1 回の期限（受け口が応答しないと定期処理がその間止まるため、既定の無期限にしない）。
+    /// NFR-16, [[IADR-0542]] 決定 2 (#1907): 30 秒（15 万件の置換が負荷の高いホストでも収まる幅）。
+    /// </summary>
+    public static readonly TimeSpan SendTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// NFR-16 (#1907): 要求の符号化サイズがこれ以上なら警告を出す（受け口の受信上限の既定 16 MiB の 75%）。
+    /// 受け口の上限は dashboard の構成キー `Grpc:KnowledgeHealthReportMaxReceiveMessageSize` が持ち、
+    /// **サービスを跨ぐため定数を共有できない**（既定値の一致は両側の試験で固定する）。
+    /// 🔴 警告が出始めたら、上限をさらに上げる前に分割（世代つき書き込み）を検討する（[[IADR-0542]] §残余リスク）。
+    /// </summary>
+    public const int PayloadWarnBytes = 12 * 1024 * 1024;
+
     public async Task ReportAsync(
         string indicator,
         IReadOnlyList<KnowledgeHealthObservation> observations,
         int? thresholdDays = null,
         CancellationToken ct = default)
     {
+        var payloadBytes = 0;
         try
         {
             var request = new Pb.ReportRequest { Indicator = indicator };
@@ -69,13 +88,28 @@ public sealed class GrpcKnowledgeHealthReporter(
             // **しきい値を持たない 3 指標の報告が全部落ちる**（REST が項目そのものを出さないのと同じ理由）。
             if (thresholdDays is { } days) request.ThresholdDays = days;
 
+            // NFR-16 (#1907): 要求のサイズを送る前に測り、受け口の受信上限に近づいたら先に知らせる
+            // （当たってからでは `ResourceExhausted` で毎周期失敗し、閲覧が古いまま残る）。
+            payloadBytes = request.CalculateSize();
+            if (payloadBytes >= PayloadWarnBytes)
+                logger.LogWarning(
+                    "ナレッジ健全性の報告が受け口の受信上限に近い。indicator={Indicator} count={Count} bytes={Bytes} warnBytes={WarnBytes}。"
+                    + "受け口の上限（Grpc:KnowledgeHealthReportMaxReceiveMessageSize）か報告の分割を検討すること。",
+                    indicator, observations.Count, payloadBytes, PayloadWarnBytes);
+
+            var started = clock.GetTimestamp();
             await client.ReportAsync(
                 request,
-                deadline: clock.GetUtcNow().UtcDateTime.Add(HttpKnowledgeHealthReporter.SendTimeout),
+                deadline: clock.GetUtcNow().UtcDateTime.Add(SendTimeout),
                 cancellationToken: ct);
 
             // ★ [[IADR-0389]] 決定 5: **受理されたときだけ数える。**
             metrics.RecordDelivered(indicator);
+            // NFR-16 (#1907): 成功も 1 行残す（1 時間に指標の数だけ）。件数・サイズ・所要が、期限と受信上限に
+            // どれだけ余裕があるかの実測になる（PoC の確認手順はこの行を読む）。
+            logger.LogInformation(
+                "ナレッジ健全性の報告が受理された。indicator={Indicator} count={Count} bytes={Bytes} elapsedMs={ElapsedMs}",
+                indicator, observations.Count, payloadBytes, (long)clock.GetElapsedTime(started).TotalMilliseconds);
         }
         // 🔴 #1637: **呼び出し元の取り消しは報告の失敗（Error のログ）へ畳まない。** 本物のチャネルは取り消しを
         // `RpcException(Cancelled)` で投げる（`ThrowOperationCanceledOnCancellation` は既定の false）ので、
@@ -92,9 +126,9 @@ public sealed class GrpcKnowledgeHealthReporter(
             // REST の「非 2xx」と「到達できない」は gRPC では同じ `RpcException` に畳まれる。
             // どちらも**数えず・投げず・エラーログを残す**（現行の 2 枝と同じ値・同じ副作用）。
             logger.LogError(ex,
-                "ナレッジ健全性の報告に失敗した（status={Status}）。indicator={Indicator} count={Count}。"
+                "ナレッジ健全性の報告に失敗した（status={Status}）。indicator={Indicator} count={Count} bytes={Bytes}。"
                 + "対象の識別子は本文へ出さない。",
-                ex.StatusCode, indicator, observations.Count);
+                ex.StatusCode, indicator, observations.Count, payloadBytes);
         }
         // ★ 呼び出し元のキャンセル以外は**すべて**握る（fail-open。REST 側と同じ姿勢・同じ理由）。
         // s2s トークンの取得失敗（`InvalidOperationException`）もここへ落ちる ——
@@ -123,13 +157,14 @@ public static class KnowledgeHealthGrpcClientExtensions
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "DashboardServiceGrpc";
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］**常に登録する。** 構成が無ければ、生成クライアントを常に `UNAVAILABLE` を返す
+    // 呼び出し器の上に組む（REST の兄弟実装は撤去した。呼び出し元は「届かない」の枝へ落ちる）。
     public static IServiceCollection AddKnowledgeHealthGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.KnowledgeHealthReport.KnowledgeHealthReportClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。本サービスは既に 2 つの宛先を持ち得る ——

@@ -15,9 +15,10 @@ related_ids:
   - IADR-0128
   - IADR-0137
   - IADR-0465
+  - IADR-0558
 author: claude
 created: 2026-08-10
-updated: 2026-09-26
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/03_usecases/01_usecases.md
@@ -83,6 +84,10 @@ Phase 2 で変換結果 Markdown 全体の編集を扱う。**補正版を正**�
 ワーカー側へ画像配信を足さないのは [IADR-0029](./IADR-0029_config-info-api-placement-and-drift-granularity.md)（ワーカーは最小 HTTP サーフェス）に従うためである。
 **ワーカーが返すのは図のメタデータ（`imageUri` を含む）だけ**である。
 バイト列を図の一覧に載せない（data URI 等）のは、応答が図の枚数だけ膨らむためである。
+
+［2026-10-17 追記 / #1941］**本決定は [IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md) が置き換えた。** BFF にはストレージが配線されておらず、
+配備では常に 404 だった。画像は変換サービスの `GET /jobs/{id}/figures/{figureId}/image`（群 ∧ `AdminOnly`）が読み、BFF は利用者の資格情報を付けて
+中継する（ADR-0109 決定 1 のエッジ。他の 5 口と同じ）。バイト列を図の一覧に載せない点は変えない。本文は書き換えていない。
 
 ### 決定 3: 補正は **本文の図ブロック 1 つの置換**であり、原本からの再変換ではない
 
@@ -150,6 +155,7 @@ Phase 2 で変換結果 Markdown 全体の編集を扱う。**補正版を正**�
 計画 ADR-0109 決定 3（planning#651）により ConversionService は中継された利用者の資格情報を自ら検証し、
 **図の一覧と人手補正の投稿（ワーカー側の 2 口）にも本決定と同じ `AdminOnly` を重ねる**（BFF と同じ境界）。
 画像の取得は BFF がオブジェクトストレージから返す口であり、ワーカーには無い（決定 2 のまま）。本文は書き換えていない。
+［2026-10-17 追記 / #1941］画像の取得もワーカー側の口になった（[IADR-0558](./IADR-0558_conversion-figure-image-via-conversion-service.md)）。門は同じ `AdminOnly` を重ねる。
 
 ## 契約への追加（[IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md) 決定 2: 末尾に既定値つき）
 

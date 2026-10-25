@@ -1,0 +1,73 @@
+**Claude finished @endazon's task in 2m 33s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/40042280932)
+
+---
+## AI コードレビュー結果
+
+変更 16 ファイル中 16 ファイルを読んだ（生成物 0 ファイルを除外）。
+- `a11y.smoke.spec.ts`（+876/-147）は差分を末尾まで行単位で読んだ。
+- `PrivateNotesPage.tsx` は字下げが大半なので、`git diff -w` で字下げを除いた差分を読んだ。
+- Keycloak の `tokens.css` 2 ファイルは生成物だが、差分が 1 行ずつなので除外せずに読んだ。
+- `.claude/rules/traceability.repo.md` は作業ツリーが統合ブランチ版に戻されている。そのため `git show HEAD:` の PR 版を読んだ。
+
+この回の対象は、前回レビュー以降に足された `72fba6b1` である。内容は NFR の範囲（`NFR-29` → `NFR-30`）の追随漏れの是正と、別紙の履歴への「`NFR-01..30`」の回の追加である。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- （指摘なし）
+
+前回の 🟡 2 件（`scripts.repo.test.js` の 10342・10559 行付近のコメントが古い件、別紙の履歴に今回の回の見出しが無い件）は、`72fba6b1` で解消している。
+- `scripts.repo.test.js` は 9217・9697・10342・10559 の各行が `NFR-30` になった。
+- `check-planning-adr-range.js` の注記・エラー文・書式の例も直っている。
+- 別紙には「［2026-10-24］`NFR-01..29` → `NFR-01..30`」の節が入った。
+
+### 🟢 軽微
+- **作業仕様書の内部に食い違いがある**（`.ai-context/specs/20261024_2015_axe-all-screens.md`）。
+  - 「母集合」節の最後の項目は、`traceability.repo.md` の `NFR-01`〜`NFR-29` が「本 PR の変更で生じた誤りではない。報告」と書いている。
+  - 同じ仕様書の判断 6 と本 PR の差分は、この記述をすでに直している。
+  - 仕様書は作業中の PR のものなので書き換えてよい。「（判断 6 で直した）」のように 1 行で追随させておくと、読み手が迷わない。
+- **PR 本文の検証欄が古い。**
+  - 「102 passed（a11y は 28）」と書いてある。仕様書は「103 passed（a11y 29）」で、台帳の整合を見る test が 1 本増えている。
+  - 「28 面」は面の数なので正しい。test 数だけが食い違う。
+- **別紙が「宣言の ADR は 0001..0141、計画の実物は 0001..0143 で 2 件遅れ」と明記している。**
+  - 本 PR では引き直さず、週次の棚卸しに回すと書いてある。範囲外の切り出しとして妥当である。
+  - 新規 issue にするか棚卸しに任せるかは人の判断になる。
+- **台帳の死に行検査の陽性対照は、閾値が現在の面数と同じ 28 である。**
+  - 面を足したら閾値も上げる運用になる。
+  - コメントに書いてあるので、運用で守れる範囲である。
+  - 面名を変数やテンプレートで渡すと偽陽性（死に行と判定）の側に倒れる。安全側なので問題ない。
+- `PrivateNotesPage.tsx` の `TabsContent value={search.tab}` は、非アクティブなタブの `aria-controls` が未描画のパネルを指す。axe は `aria-selected=false` の場合にこれを許容する。この許容は axe の規則の実装に依存する。axe の版を上げて SC-19 が赤くなったら、まずここを疑うとよい（前回から変わらず）。
+
+### ✅ 確認できたこと（このセッションで実走）
+- `git diff --name-only origin/develop...HEAD`: 16 ファイル。`src/*/backend/**`・`.github/`・`deploy/helm/**` の差分は無い。`scripts/` には差分がある。
+- `git log --oneline origin/develop..HEAD`: 3 コミット。
+- `node scripts/check-trace-blocks.js`: OK（197 件）
+- `node scripts/gen-knowledge-graph.js --check`: OK（in-repo エッジ先の実在に違反なし。参考出力の 73 件は fail にならない既存分）
+- `node scripts/check-doc-links.js`: OK（1874 件。fail-open の 1 件は既存）
+- `node scripts/check-doc-updated.js --base origin/develop`: OK（docs 2 件）。作業ツリーの未コミット差分 1 件の警告が出た。これはアクションが規約ファイルを復元したためである。
+- `node scripts/check-commit-messages.js`: OK（3 件適合・除外 0 件）
+- `node scripts/check-plan-id-qualification.js`: OK（3902 件）
+- `git show HEAD:.claude/rules/traceability.repo.md`: 11 行目が `NFR-01`〜`NFR-30` になっている。`scripts.repo.test.js` の固定値（9217・9697 行）と一致する。
+- 色の変更（`#845f0f`）は、`styles.css` の 2 か所と Keycloak の 2 つの生成物（account / login）で同値である。
+- `a11y.smoke.spec.ts` の `expectAxeClean('…')` の呼び出しを数えて、28 面であることを確かめた。
+  - 台帳検査の test が別に 1 本あり、合計 29 test になる。仕様書の「a11y 29」と一致した。
+  - 台帳検査の正規表現 `/expectAxeClean\('/g` は、自分自身の行（バックスラッシュ入り）には当たらない。陽性対照が自己参照で水増しされることは無い。
+
+### 🔍 実行できなかったこと
+- **`scripts.test.js`（`REQUIRE_REPO_TESTS=1`・前景）は、PR の欠陥ではない失敗で止まり、exit 1 になった。**
+  - 失敗した assertion: `scripts.repo.test.js:9217`「既存の規範 `NFR-01`〜`NFR-30` が入口から消えた」。
+  - 原因は、このワークスペースの `.claude/rules/traceability.repo.md` が統合ブランチ版（`NFR-29`）に復元されていることである。そのため PR 側が `NFR-30` に直した検査値と食い違った。
+  - PR 版は `NFR-30` を持つ（`git show HEAD:` で確認済み）。
+  - ただし、この失敗の先の全件の合格は確認できていない。PR 本文の「1178 passed」は、この環境では追試できていない。
+- Playwright の E2E、`pnpm run lint` / `typecheck` / `format:check`、`vitest run` は、許可コマンドの一覧に無いので未実行。そのため以下は未検証である。
+  - 28 面 × 2 テーマで違反 0 件
+  - コントラスト比の実測値（4.70:1 / 5.79:1）
+  - 台帳検査の test が実際に緑になること
+  - `toolOptions.runOnly` の形が `{ type: 'tag', values: [...] }` であること
+- 変異テスト（修正を戻す、`wcag22aa` を外す、存在しないキーを足す）は、ファイルを書き換える検証なので追試できない。PR 本文の記述が根拠である。
+- 計画書原文（NFR-30、planning#814）は CI から届かないので未確認。PR 本文・仕様書・IADR-0614 の引用を基準にした。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ · branch `test/NFR-30-axe-all-screens`

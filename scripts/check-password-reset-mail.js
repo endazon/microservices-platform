@@ -392,10 +392,19 @@ function pickTargetUser(realm) {
  *
  * 選び方: standard flow が有効・bearer-only でない・redirectUri を 1 つ以上持つクライアントのうち、
  * public client があればそれ、無ければ製品自身の `bff`、それも無ければ最初の候補（決定的）。
+ *
+ * ［2026-10-16 / #1894 / IADR-0546］**Keycloak の組み込みクライアント（`KEYCLOAK_BUILTIN_CLIENTS`）は候補にしない。**
+ * SC-16 のために `account` / `account-console`（public・redirectUri は相対の `/realms/<realm>/account/*`）を宣言へ足したところ、
+ * 上の「public を優先」がそれを選び、リセット経路と存在秘匿の測定が製品のログイン経路ではなくアカウントコンソールを
+ * 叩く形へ黙って変わった（相対 URI のまま `redirect_uri` に載る）。測りたいのは製品のブラウザログインの経路である。
  */
+const KEYCLOAK_BUILTIN_CLIENTS = Object.freeze([
+  'account', 'account-console', 'admin-cli', 'broker', 'realm-management', 'security-admin-console',
+]);
 function pickBrowserFlowClient(realm) {
   const clients = Array.isArray(realm && realm.clients) ? realm.clients : [];
-  const candidates = clients.filter((x) => x && x.bearerOnly !== true && x.standardFlowEnabled !== false
+  const candidates = clients.filter((x) => x && !KEYCLOAK_BUILTIN_CLIENTS.includes(x.clientId)
+    && x.bearerOnly !== true && x.standardFlowEnabled !== false
     && Array.isArray(x.redirectUris) && x.redirectUris.length > 0);
   const c = candidates.find((x) => x.publicClient === true)
     || candidates.find((x) => x.clientId === 'bff')
@@ -740,7 +749,7 @@ function evaluateTimingConsistency(input) {
       + ' ADR-0094 決定 2 / IADR-0432）。'
       + ` 系統差が無くても約 ${Math.round(1 / TIMING_ALPHA)} 回に 1 回はこの赤が偶然出る（ADR-0113 §結果）——`
       + ' 1 回の赤で床を疑う前に、p の小ささと赤の続き方を見る。');
-    return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition, rankSum };
+    return { verdict: TIMING_VERDICT.FAIL, failures, lines, perRepetition, rankSum, slower: pooledSlower };
   }
   if (inconclusive) {
     // 🔴 `評価不能` は**緑にしない**（ADR-0094 決定 4）。標本が足りないことを合格として記録すると、
@@ -749,9 +758,9 @@ function evaluateTimingConsistency(input) {
       + ' 自己対照（環境の測定ノイズ）が広く、この測定では差の有無を言えない。'
       + ' 🔴 **これを緑にすると「測れていない」が「差が無い」として記録される。**'
       + ' 標本数を増やすか、測定条件（負荷・並走するジョブ）を揃えて測り直す。');
-    return { verdict: TIMING_VERDICT.INCONCLUSIVE, failures, lines, perRepetition, rankSum };
+    return { verdict: TIMING_VERDICT.INCONCLUSIVE, failures, lines, perRepetition, rankSum, slower: pooledSlower };
   }
-  return { verdict: TIMING_VERDICT.PASS, failures, lines, perRepetition, rankSum };
+  return { verdict: TIMING_VERDICT.PASS, failures, lines, perRepetition, rankSum, slower: pooledSlower };
 }
 
 /**
@@ -785,6 +794,28 @@ function timingStepOutputs(r) {
     `t25_p=${rs ? formatP(rs.p) : ''}`,
     `t25_w=${rs ? rs.w : ''}`,
   ];
+}
+
+/** ［#1998］注釈の istio の表記。空（床なし）と未設定を、ログの `ISTIO:` 行の読み取り（'' と null）と同じ区別で残す。 */
+const istioLabel = (v) => (v === null || v === undefined ? '(未設定)' : (String(v) === '' ? '(空)' : String(v)));
+
+/** ［#1998］T-25 の結果を載せる注釈の title。scripts/t25-monthly-summary.js の読み取り器と一致させる。 */
+const T25_ANNOTATION_TITLE = 't25-rank-sum';
+
+/**
+ * ［#1998］T-25 の順位和検定の結果を、ジョブの注釈（`::notice`）として出す 1 行。**純関数**（出力は main が行う）。
+ * 順位和検定まで届いていなければ null（合否によらず、届いたら出す）。
+ *
+ * 🔴 **再実行の記録（t25-rerun-on-chance-red.js）はジョブのログではなくこの注釈を先に読む。** ログの取得は
+ * 別ホストへの 302 を辿り、ワークフローの中で 2 回とも読めなかった（#1929・#1998 の記録の p / W がすべて「—」）。
+ * 注釈は check-runs の JSON から読めるので、ほかの読み取りと同じ経路に乗る。
+ */
+function timingAnnotation(r, { istio = null } = {}) {
+  const t = r && r.timing;
+  const rs = t && t.rankSum;
+  if (!rs || typeof rs.p !== 'number' || !Number.isFinite(rs.p)) return null;
+  return `::notice title=${T25_ANNOTATION_TITLE}::verdict=${t.verdict} p=${formatP(rs.p)} W=${rs.w}`
+    + ` expectedW=${rs.expectedW} slower=${t.slower || '—'} istio=${istioLabel(istio)}`;
 }
 
 /** 本文に現れる URL をすべて拾う（末尾の句読点は落とす）。 */
@@ -1800,13 +1831,27 @@ function selfTest() {
     ] };
     assert.strictEqual(pickBrowserFlowClient(realm), null);
   });
-  ok('#1413 ラチェット: 実データの realm に public client は無く、それでも選べる', () => {
+  // ［2026-10-16 / #1894 / IADR-0546］例外は Keycloak の組み込み `account` / `account-console` だけ
+  // （scripts.repo.test.js の #1393 ラチェットと同じ集合。形の制約〈audience なし・fullScopeAllowed=false 等〉はそちらが固定する）。
+  ok('#1413 ラチェット: 実データの realm に（組み込み以外の）public client は無く、それでも製品の confidential を選べる', () => {
     const r = loadRealm();
     assert.ok(r.ok);
-    const hasPublic = (r.value.clients || []).some((x) => x && x.publicClient === true && x.standardFlowEnabled !== false);
-    assert.strictEqual(hasPublic, false, 'public client が復活している（IADR-0429 に反する。戻すなら新 IADR）');
+    const extra = (r.value.clients || []).filter((x) => x && x.publicClient === true && x.standardFlowEnabled !== false
+      && !['account', 'account-console'].includes(x.clientId)).map((x) => x.clientId);
+    assert.deepStrictEqual(extra, [], 'public client が復活している（IADR-0429 に反する。戻すなら新 IADR）');
     const c = pickBrowserFlowClient(r.value);
     assert.ok(c && c.publicClient === false, '確認: confidential の標準フロークライアントが選ばれる');
+    assert.strictEqual(c.clientId, 'bff', '確認: 製品の BFF が選ばれる（組み込みのアカウントコンソールではない）');
+    assert.match(c.redirectUri, /^https?:\/\//, '確認: redirectUri が絶対 URI');
+  });
+  ok('#1894 陰性対照: 組み込みの public client（account / account-console）は public でも選ばない', () => {
+    const realm = { clients: [
+      { clientId: 'account', publicClient: true, standardFlowEnabled: true, redirectUris: ['/realms/platform/account/*'] },
+      { clientId: 'account-console', publicClient: true, standardFlowEnabled: true, redirectUris: ['/realms/platform/account/*'] },
+      { clientId: 'bff', publicClient: false, standardFlowEnabled: true, redirectUris: ['https://localhost/bff/auth/callback'] },
+    ] };
+    assert.strictEqual(pickBrowserFlowClient(realm).clientId, 'bff');
+    assert.strictEqual(pickBrowserFlowClient({ clients: realm.clients.slice(0, 2) }), null, '組み込みしか無ければ選べない（前提なしで止まる）');
   });
 
   // ---- #1617 / 計画 ADR-0118 決定 2: 「T-25 の順位和検定の赤ただ 1 件」の判定（自動の再実行の前提）-------------
@@ -1847,6 +1892,18 @@ function selfTest() {
       assert.strictEqual(out[2], `t25_w=${red.rankSum.w}`);
       assert.deepStrictEqual(timingStepOutputs({ failures: ['[前提] x'] }), ['t25_only_red=false', 't25_p=', 't25_w=']);
     });
+    ok('#1998: 順位和検定まで届いたら合否によらず注釈を 1 行出し、届かなければ出さない', () => {
+      const r = timingAnnotation({ failures: [...red.failures], timing: red }, { istio: '1' });
+      assert.ok(r.startsWith(`::notice title=${T25_ANNOTATION_TITLE}::verdict=${TIMING_VERDICT.FAIL} p=`), r);
+      assert.ok(r.includes(` W=${red.rankSum.w} expectedW=${red.rankSum.expectedW} `) && r.endsWith(' istio=1'), r);
+      const g = timingAnnotation({ failures: [], timing: green }, { istio: '' });
+      assert.ok(g.includes(`verdict=${TIMING_VERDICT.PASS} `) && g.endsWith(' istio=(空)'), g);
+      assert.ok(/ slower=\S+ /.test(g), g);
+      assert.ok(timingAnnotation({ failures: [], timing: green }).endsWith(' istio=(未設定)'), '未設定を空と混ぜる');
+      assert.strictEqual(timingAnnotation({ failures: [...short.failures], timing: short }), null, '反復不足（p が無い）');
+      assert.strictEqual(timingAnnotation({ failures: ['[前提] x'] }), null, 'T-25 まで届かない');
+      assert.strictEqual(timingAnnotation(null), null);
+    });
   }
 
   console.log(`[check-password-reset-mail] self-test OK: ${n} 件`);
@@ -1869,6 +1926,11 @@ async function main() {
   for (const notice of r.notices) console.log(notice);
   // #1617: 手順の出力は**合否を出す前に**書く（赤の手順の出力も後続の `if:` から読める）。Actions の外では書かない。
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${timingStepOutputs(r).join('\n')}\n`);
+  // #1998: T-25 の結果を注釈で残す（再実行の記録がログを読めなくても p と W を読めるように）。Actions の外では出さない。
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const note = timingAnnotation(r, { istio: process.env.ISTIO === undefined ? null : String(process.env.ISTIO) });
+    if (note) console.log(note);
+  }
   if (r.failures.length > 0) {
     console.error(`[check-password-reset-mail] ${r.failures.length} 件の失敗:`);
     for (const f of r.failures) console.error(`\n  - ${f}`);
@@ -1917,6 +1979,8 @@ module.exports = {
   evaluateTimingConsistency,
   isTimingOnlyRankSumRed,
   timingStepOutputs,
+  timingAnnotation,
+  T25_ANNOTATION_TITLE,
   rankSumTest,
   median,
   splitAlternating,

@@ -52,6 +52,11 @@ internal static class AstStaleCopyRules
     public const string SourceKey = "source";
     public const string PublishedAtKey = "publishedAt";
 
+    // FR-19, #1891: AST の承認待ちの報告書の写し（ドラフト。AST#1301・planning#784・[[IADR-0529]]）の目印。
+    // AST の `KnowledgeReportDraftCopy.StateKey` / `DraftState` と同じ綴り（確定版の写しはこのキーを持たない）。
+    public const string ReportStateKey = "reportState";
+    public const string DraftReportState = "draft";
+
     // 除いた理由（応答の鍵）。**並びは判定の順**。
     public static class Reasons
     {
@@ -102,8 +107,15 @@ internal static class AstStaleCopyRules
 
     // AST の入れ直し（AST/IADR-0436 決定 2）と同じ写しの判定: `kind`・`periodKey` があり、
     // project を持つか、project が無く表題が確定時の写像の表題と完全に一致する。
+    //
+    // 🔴 FR-19, #1891: **`reportState=draft`（承認待ちの写し）は確定報告書の写しに数えない**（`not-ast-shape` に落ちる）。
+    //   ドラフトは確定版と同じ `kind`・`periodKey`・`project` を持つため、数えると確定版との組が `currentAccountReports.duplicates`
+    //   に出て、runbook の「新しい方を消す」で**確定版を消す**。古い写しの対象（`targets`）にも入れない（ドラフトの後始末は AST の責務）。
+    //   表題（`報告書ドラフト `）は見ない —— 属性だけで外し、表題を変えられても確定版の重複に紛れないようにする。
     internal static bool IsReport(string title, IReadOnlyDictionary<string, string> attributes, bool hasAstProject)
     {
+        if (string.Equals(ValueOrNull(attributes, ReportStateKey), DraftReportState, StringComparison.Ordinal)) return false;
+
         var kind = ValueOrNull(attributes, KindKey);
         var periodKey = ValueOrNull(attributes, PeriodKeyKey);
         if (kind is null || periodKey is null || !ReportKinds.Contains(kind)) return false;

@@ -27,7 +27,8 @@ namespace DocumentService.Features.Documents;
 // ADR-0065 決定 2 の適用: 実体は `Features/Documents/<操作>/` に置くのが原則だが、
 // **本クラスは 4 操作が共有する**ため合成点と同じ階層に置く（`ToDto` / `ToVersionDto` /
 // `PublishUpdatedAsync` と同じ扱い）。**各操作フォルダへ複写しない。**
-public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess access)
+public sealed class DocumentReadUseCase(
+    DocumentDbContext db, DocumentReadAccess access, DocumentService.Features.BreakGlass.BreakGlassViewGate breakGlass)
 {
     // FR-06, UC-03: 一覧（更新の新しい順）。読めない文書は除く（#1614）。
     //
@@ -37,20 +38,91 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
     public async Task<List<DocumentDto>> ListAsync(DocumentReadPrincipal principal, CancellationToken ct = default)
     {
         var names = await TagResolver.NamesAsync(db);
+        // ［2026-10-14 / #1923・[[IADR-0537]]］並びは gRPC のページ（`ListPageAsync`）と同じ全順序（同時刻は ID の降順）。
         var docs = await db.Documents
-            .OrderByDescending(d => d.UpdatedAt)
+            .InListOrder()
             .ToListAsync(ct);
         var shares = await DocumentEndpoints.ResolveSharedWithAsync(
+            db, docs.Select(d => d.Id).ToList(), ct);
+        // FR-19, ADR-0142 決定 2, IADR-0636 決定 2 (#2138): 論理削除中の個人資料（共有先と同じく 1 クエリで引く）。
+        var deleted = await DocumentEndpoints.ResolveDeletedPrivateNotesAsync(
             db, docs.Select(d => d.Id).ToList(), ct);
 
         var visible = new List<DocumentDto>(docs.Count);
         foreach (var d in docs)
         {
             var sharedWith = shares.GetValueOrDefault(d.Id);
-            if (await access.CanReadAsync(principal, d, sharedWith, ct))
+            if (await access.CanReadAsync(principal, d, sharedWith, deleted.Contains(d.Id), ct))
                 visible.Add(DocumentEndpoints.ToDto(d, names, sharedWith));
         }
         return visible;
+    }
+
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): gRPC `ListDocuments` の 1 ページ分の既定と上限。
+    // 1 件は約 450 バイト（#1899 の実測）なので、上限 1000 件で約 450 KB —— grpc-dotnet の既定の受信上限 4 MB に十分収まる。
+    internal const int DefaultPageSize = 500;
+    internal const int MaxPageSize = 1000;
+
+    // 塊読みの上限（`DocumentPageQuery.MaxScanChunk` と同じ考え方）。読めない文書が続く区間でも往復の回数を抑える。
+    private const int MaxScanChunk = 2000;
+
+    // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧の**1 ページ**（更新日時の降順・同時刻は ID の降順）。
+    // 集合は `ListAsync` と同じ（読める文書の全件）で、ここはそれを `pageSize` 件ずつ切り出す。
+    //
+    // 🔴 **読めるかの判定は切り出す前に行う。** 切り出した後に落とすと、ページが短くなり、続きの印が
+    //   読めない文書を指す（その ID と時刻を呼び出し元へ渡すことになる）。台帳を SQL のキーセットで塊ごとに読み、
+    //   塊の中で判定し、読める文書が `pageSize + 1` 件に達するか台帳が尽きるまで進む（`DocumentPageQuery.ReadPageAsync` と同じ形）。
+    // 🔴 **続きの印は返した最後の文書から作る**（`DocumentListCursor.After(page[^1])`）。塊の末尾の行（読めない文書であり得る）からは作らない。
+    // 🔴 **.NET 側で並べ直さない。** Postgres の uuid の順と `Guid.CompareTo` の順を、並べる側と比べる側で混ぜない。
+    internal Task<(List<DocumentDto> Page, string? NextPageToken)> ListPageAsync(
+        DocumentReadPrincipal principal, int pageSize, DocumentListCursor? after, CancellationToken ct = default)
+        => ListPageAsync(principal, after?.Sort ?? DocumentListSortKey.UpdatedDesc, pageSize, after, ct);
+
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 並べ替えを選ぶ形。🔴 印の並べ替えは `sort` と一致していること
+    // （呼び出し側〔`GrpcService`〕が先に `INVALID_ARGUMENT` で弾く。ここへ不一致が届くのは配線の誤りなので例外にする）。
+    internal async Task<(List<DocumentDto> Page, string? NextPageToken)> ListPageAsync(
+        DocumentReadPrincipal principal, DocumentListSortKey sort, int pageSize, DocumentListCursor? after,
+        CancellationToken ct = default)
+    {
+        if (after is { } given && given.Sort != sort)
+            throw new ArgumentException($"続きの印の並べ替え（{given.Sort}）が要求の並べ替え（{sort}）と違う。", nameof(after));
+
+        var page = new List<(Document Doc, List<string>? SharedWith)>(pageSize + 1);
+        var position = after;
+        var chunk = pageSize + 1;
+        while (page.Count <= pageSize)
+        {
+            var batch = await db.Documents.AsNoTracking()
+                .Before(position).InListOrder(sort).Take(chunk).ToListAsync(ct);
+            if (batch.Count > 0)
+            {
+                var shares = await DocumentEndpoints.ResolveSharedWithAsync(db, batch.Select(d => d.Id).ToList(), ct);
+                var deleted = await DocumentEndpoints.ResolveDeletedPrivateNotesAsync(db, batch.Select(d => d.Id).ToList(), ct);
+                foreach (var d in batch)
+                {
+                    var sharedWith = shares.GetValueOrDefault(d.Id);
+                    if (!await access.CanReadAsync(principal, d, sharedWith, deleted.Contains(d.Id), ct))
+                        continue;
+                    page.Add((d, sharedWith));
+                    if (page.Count > pageSize) break;
+                }
+            }
+
+            if (batch.Count < chunk)
+                break;
+            position = DocumentListCursor.After(sort, batch[^1]);
+            chunk = Math.Min(chunk * 2, MaxScanChunk);
+        }
+
+        string? next = null;
+        if (page.Count > pageSize)
+        {
+            page.RemoveRange(pageSize, page.Count - pageSize);
+            next = DocumentListCursor.After(sort, page[^1].Doc).Encode();
+        }
+
+        var names = await TagResolver.NamesAsync(db);
+        return (page.Select(p => DocumentEndpoints.ToDto(p.Doc, names, p.SharedWith)).ToList(), next);
     }
 
     // FR-06, UC-03: 1 件の取得。台帳に無い・読めないは同じ null（#1614。ADR-0056）。
@@ -60,6 +132,42 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
         return doc is null
             ? null
             : DocumentEndpoints.ToDto(doc.Value.Doc, await TagResolver.NamesAsync(db), doc.Value.SharedWith);
+    }
+
+    // FR-19, UC-11, SC-03, 計画 ADR-0036 D-08, [[IADR-0610]] (#2046): **SC-03 の閲覧の 1 件の取得**（緊急アクセスを含む）。
+    //
+    // 通常の判定（`DocumentReadAccess`）で読めればそのまま返す（`GetAsync` と同じ）。読めないときに限り、
+    // 緊急アクセスで指名された管理者かを `BreakGlassViewGate` に問う（許すときは閲覧の監査ログを 1 行保存済み）。
+    //
+    // 🔴 **呼ぶのは SC-03 の閲覧の 3 口だけ**（REST `GET /documents/{id}`・gRPC `GetDocument`・`GetDocumentContent`）。
+    //   `GetAsync`（MCP のツール実行も使う）・一覧・版は緊急アクセスで開かない。口を足すときは IADR-0610 を改める。
+    // 🔴 緊急アクセスで返す応答には**共有先の写しを載せない**（閲覧に要らない。ADR-0101 の「写しは所有者へ」と同じ向き）。
+    public async Task<DocumentDto?> GetForViewAsync(DocumentReadPrincipal principal, Guid id, string viewTarget,
+        CancellationToken ct = default)
+        => (await FindForViewAsync(principal, id, viewTarget, allowBreakGlass: true, ct))?.Document;
+
+    // FR-19, SC-03, 計画 ADR-0036 D-08, [[IADR-0611]] (#2046 の 2 本目): 上の形に**緊急アクセスで読めたか**を添えて返す。
+    //
+    // gRPC の `GetDocument`（BFF の詳細）は応答の `granted_by_break_glass` にこれを載せ、BFF は独自の判定を足さずに通す。
+    // 🔴 `allowBreakGlass` が偽なら `GetAsync` と同じ（緊急アクセスの判定を問わない ＝ 閲覧の監査ログも作らない）。
+    //   gRPC の既定は偽であり、呼び出し元が SC-03 の閲覧のときだけ真で呼ぶ（書き込み・版・本人の確認の前段は偽のまま）。
+    public async Task<DocumentView?> FindForViewAsync(DocumentReadPrincipal principal, Guid id, string viewTarget,
+        bool allowBreakGlass, CancellationToken ct = default)
+    {
+        var doc = await db.Documents.FindAsync([id], ct);
+        if (doc is null) return null;
+
+        var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
+        var deleted = await DocumentEndpoints.IsDeletedPrivateNoteAsync(db, doc, ct);
+        if (await access.CanReadAsync(principal, doc, sharedWith, deleted, ct))
+            return new(DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith), ViaBreakGlass: false);
+
+        if (!allowBreakGlass)
+            return null;
+
+        return await breakGlass.TryAuthorizeViewAsync(principal, doc, viewTarget, ct)
+            ? new(DocumentEndpoints.ToDto(doc, await TagResolver.NamesAsync(db), sharedWith: null), ViaBreakGlass: true)
+            : null;
     }
 
     // FR-06, UC-03: 版履歴一覧（新しい順）。
@@ -102,6 +210,58 @@ public sealed class DocumentReadUseCase(DocumentDbContext db, DocumentReadAccess
         if (doc is null) return null;
 
         var sharedWith = await DocumentEndpoints.ResolveSharedWithAsync(db, doc.Id, ct);
-        return await access.CanReadAsync(principal, doc, sharedWith, ct) ? (doc, sharedWith) : null;
+        var deleted = await DocumentEndpoints.IsDeletedPrivateNoteAsync(db, doc, ct);
+        return await access.CanReadAsync(principal, doc, sharedWith, deleted, ct) ? (doc, sharedWith) : null;
     }
 }
+
+// FR-06, NFR-16, [[IADR-0537]] (#1923・#1897), [[IADR-0545]]: 一覧のページの並びとキーセットの述語。
+internal static class DocumentListOrder
+{
+    // 並びでカーソルより**厳密に後ろ**の行。並べ替えはカーソルが持つ（`DocumentListCursor.Sort`）。
+    // 更新日時の降順なら SQL では `"UpdatedAt" <= @c AND ("UpdatedAt" < @c OR "Id" < @id)` に訳される。
+    // 🔴 **先頭の「キー <= c」（昇順は「>= c」）を外さない**（意味は `key < c OR (key = c AND Id < id)` と同じで冗長に見える）。
+    //   Postgres はこの項だけを複合索引（`(UpdatedAt, Id)` / `(CreatedAt, Id)` / `(Title, Id)`）の開始位置に使える
+    //   （`DocumentPageQuery.AfterCursor` の注記と同じ理由。[[IADR-0509]]）。
+    // 🔴 「以下」にしない —— 前ページの末尾をもう一度返す。
+    // 🔴 表題は `string.Compare` で比べる（SQL の `<` / `>` に訳され、ORDER BY と同じ照合順序で比べる）。.NET 側で比べない。
+    internal static IQueryable<Document> Before(this IQueryable<Document> ledger, DocumentListCursor? after)
+    {
+        if (after is not { } cursor)
+            return ledger;
+        var at = cursor.At;
+        var title = cursor.Title ?? string.Empty;
+        var id = cursor.Id;
+        return cursor.Sort switch
+        {
+            DocumentListSortKey.UpdatedAsc =>
+                ledger.Where(d => d.UpdatedAt >= at && (d.UpdatedAt > at || d.Id > id)),
+            DocumentListSortKey.CreatedDesc =>
+                ledger.Where(d => d.CreatedAt <= at && (d.CreatedAt < at || d.Id < id)),
+            DocumentListSortKey.CreatedAsc =>
+                ledger.Where(d => d.CreatedAt >= at && (d.CreatedAt > at || d.Id > id)),
+            DocumentListSortKey.TitleAsc =>
+                ledger.Where(d => string.Compare(d.Title, title) >= 0
+                    && (string.Compare(d.Title, title) > 0 || d.Id > id)),
+            DocumentListSortKey.TitleDesc =>
+                ledger.Where(d => string.Compare(d.Title, title) <= 0
+                    && (string.Compare(d.Title, title) < 0 || d.Id < id)),
+            _ => ledger.Where(d => d.UpdatedAt <= at && (d.UpdatedAt < at || d.Id < id)),
+        };
+    }
+
+    // ページの並び。**キーセットの述語（`Before`）と同じ 2 列・同じ向き**で並べる。既定は更新日時の降順。
+    internal static IOrderedQueryable<Document> InListOrder(this IQueryable<Document> ledger,
+        DocumentListSortKey sort = DocumentListSortKey.UpdatedDesc) => sort switch
+        {
+            DocumentListSortKey.UpdatedAsc => ledger.OrderBy(d => d.UpdatedAt).ThenBy(d => d.Id),
+            DocumentListSortKey.CreatedDesc => ledger.OrderByDescending(d => d.CreatedAt).ThenByDescending(d => d.Id),
+            DocumentListSortKey.CreatedAsc => ledger.OrderBy(d => d.CreatedAt).ThenBy(d => d.Id),
+            DocumentListSortKey.TitleAsc => ledger.OrderBy(d => d.Title).ThenBy(d => d.Id),
+            DocumentListSortKey.TitleDesc => ledger.OrderByDescending(d => d.Title).ThenByDescending(d => d.Id),
+            _ => ledger.OrderByDescending(d => d.UpdatedAt).ThenByDescending(d => d.Id),
+        };
+}
+
+// FR-19, SC-03, [[IADR-0611]] (#2046): 閲覧の 1 件と、それが緊急アクセスで読めたものか（通常の判定では読めない）。
+public sealed record DocumentView(DocumentDto Document, bool ViaBreakGlass);

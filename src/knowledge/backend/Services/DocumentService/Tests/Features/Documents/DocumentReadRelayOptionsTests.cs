@@ -142,8 +142,9 @@ public class DocumentReadRelayOptionsTests
     {
         var options = Bind([]);
 
+        options.TrustsUserContextFrom(ServiceAccount("bff")).Should().BeTrue();
         options.TrustsUserContextFrom(ServiceAccount("bff", withAzp: false)).Should()
-            .BeTrue("azp が無ければ service-account-<clientId> から復元する（MachinePrincipal.ClientIdOf）");
+            .BeFalse("クライアント識別のクレームが無ければ機械と読まない（IADR-0606。利用者名から復元して信じない）");
         options.TrustsUserContextFrom(ServiceAccount("BFF")).Should().BeFalse("大小文字を畳まない");
 
         var human = new ClaimsPrincipal(new ClaimsIdentity(

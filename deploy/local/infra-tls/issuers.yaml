@@ -1,0 +1,49 @@
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤の CA（selfSigned → CA の 2 段。IADR-0206 決定 2 と同じ形）。
+# 1 段目の selfSigned はルート CA を発行するだけに使う。ルート CA は Secret cert-manager/platform-infra-root-ca の ca.crt として
+# 安定して存在し、k8s-local-up.sh がその ca.crt を ConfigMap platform-infra-ca（MSP・AST の名前空間）へ写す。
+# CA 固有の設定は ClusterIssuer に閉じる（計画 ADR-0023 の設計要件）。Vault PKI 等へ移すときは issuerRef の差し替えで済む。
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: platform-infra-selfsigned
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: platform-infra-tls
+spec:
+  selfSigned: {}
+---
+# ルート CA。CA ClusterIssuer は参照先の Secret をコントローラの名前空間（--cluster-resource-namespace の既定 = cert-manager）
+# から読むので、ここに置く。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-infra-root-ca
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: platform-infra-tls
+spec:
+  isCA: true
+  commonName: microservices-platform platform-infra root CA
+  secretName: platform-infra-root-ca
+  duration: 87600h # 10 年（ローカル開発用）
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: platform-infra-selfsigned
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# 葉証明書を発行する CA Issuer。
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: platform-infra-ca
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: platform-infra-tls
+spec:
+  ca:
+    secretName: platform-infra-root-ca

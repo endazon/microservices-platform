@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import {
   getBffDocumentContentQueryKey,
   getBffDocumentDetailQueryKey,
@@ -11,8 +11,15 @@ import {
   useBffDocumentPublish,
   useBffDocumentUpdate,
 } from '@foundation/api/generated/documents/documents';
-import { okArray } from '@foundation/api/orvalSelect';
-import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
+import { okData } from '@foundation/api/orvalSelect';
+import type {
+  BffDocumentListConfidentiality,
+  BffDocumentListParams,
+  BffDocumentListSort,
+  BffDocumentListStatus,
+  DocumentListPageDto,
+} from '@foundation/api/generated/bff.schemas';
+import type { DocumentOrigin } from '../types/documentSource';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理の照会・作成・更新・状態遷移・削除
 // （サーバー状態は TanStack Query。ADR-0031）。
@@ -29,12 +36,163 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 // 書き込みは BFF が「対象文書が利用者の ABAC スコープ内か」を先に確かめ、スコープ外・不在を
 // いずれも 404 で返す（IADR-0041 / IADR-0009。閲覧できない文書は変更もできない）。
 
+/**
+ * 一覧の全ページに前方一致するキー（`['/bff/documents']`）。
+ *
+ * ［2026-10-14 / #1923］一覧はページ（`offset` / `limit`）ごとに `['/bff/documents', { offset, limit }]` で引く。
+ * TanStack Query の部分一致は配列の要素単位なので、このキーでの無効化は**全ページ**に届く（詳細群には届かない。下記）。
+ */
 export const documentsKey = getBffDocumentListQueryKey();
 
-/** 一覧（ABAC スコープ内のみ返る）。 */
-export function useAdminDocuments() {
-  return useBffDocumentList<DocumentDto[], unknown>({
-    query: { queryKey: documentsKey, select: okArray },
+/** SC-05, FR-06, IADR-0537（#1923）: 1 ページの件数の選択肢と既定（BFF の上限 100・既定 50 と同じ）。 */
+export const DOCUMENT_PAGE_SIZES = [25, 50, 100] as const;
+export const DEFAULT_DOCUMENT_PAGE_SIZE = 50;
+
+export interface DocumentPageRequest {
+  offset: number;
+  limit: number;
+}
+
+/** SC-05, FR-06, IADR-0545（#1923 段 2）: 並べ替えの選択肢（BFF の `sort` と同じ語彙）。既定は更新日時の新しい順。 */
+export type DocumentSort = BffDocumentListSort;
+export const DEFAULT_DOCUMENT_SORT: DocumentSort = 'updated-desc';
+
+/** 状態の絞り込み（BFF の `status` と同じ語彙）。`''` は「すべて」。 */
+export type DocumentStatusFilter = BffDocumentListStatus | '';
+
+/**
+ * 一覧の 1 回の要求（ページ ＋ 並べ替え ＋ 絞り込み）。
+ *
+ * 表題の検索語（`q`）は前後の空白を除いて送り、空なら送らない（BFF も同じく空を無指定として扱う）。
+ */
+export interface DocumentListRequest extends DocumentPageRequest, DocumentListConditions {
+  sort: DocumentSort;
+  /** ［2026-10-17 / #1923・IADR-0561］タブ（`''` はすべて）。条件ではなく見せ方として扱う（「条件を解除」で外さない）。 */
+  origin: DocumentOrigin;
+}
+
+/** 機密区分の絞り込み（BFF の `confidentiality` と同じ語彙）。`''` は「すべて」。 */
+export type DocumentConfidentialityFilter = BffDocumentListConfidentiality | '';
+
+/**
+ * 操作の帯の条件（「条件を解除」で外すもの）。値が `''` なら無指定。
+ * ［2026-10-17 / #1923・IADR-0561］データソース・機密区分・タグ・プロジェクト・保存日（`YYYY-MM-DD`。利用者の時刻帯の暦日）を足した。
+ */
+export interface DocumentListConditions {
+  q: string;
+  status: DocumentStatusFilter;
+  source: string;
+  confidentiality: DocumentConfidentialityFilter;
+  tag: string;
+  project: string;
+  createdFrom: string;
+  createdTo: string;
+}
+
+export const EMPTY_DOCUMENT_CONDITIONS: DocumentListConditions = {
+  q: '',
+  status: '',
+  source: '',
+  confidentiality: '',
+  tag: '',
+  project: '',
+  createdFrom: '',
+  createdTo: '',
+};
+
+/** 既定のタブ（人の文書・報告書）。機械の収集が大半を占める台帳で、人の文書を埋もれさせない（IADR-0561）。 */
+export const DEFAULT_DOCUMENT_ORIGIN: DocumentOrigin = 'curated';
+
+/**
+ * 暦日（`YYYY-MM-DD`）を利用者の時刻帯のその日の 0 時の瞬間（ISO 8601 の UTC）へ写す。`dayOffset` 日だけずらす。
+ * 「まで」はその日を含めたいので、翌日の 0 時を `createdBefore`（含まない）として送る。
+ */
+function startOfLocalDay(date: string, dayOffset = 0): string | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return undefined;
+  const [, y, m, d] = match;
+  return new Date(Number(y), Number(m) - 1, Number(d) + dayOffset).toISOString();
+}
+
+/** 表題の検索語の上限（BFF の `q` の上限 200 文字と同じ）。入力欄の `maxLength` に使う。 */
+export const DOCUMENT_TITLE_QUERY_MAX = 200;
+
+/**
+ * 要求をクエリ引数へ写す。**既定値は載せない**（既定の並べ替え・空の検索語・「すべて」）——
+ * 同じ一覧が別のキャッシュキーに割れないように、また従前の URL（`?offset=&limit=`）を保つため。
+ */
+function toListParams(request: DocumentListRequest): BffDocumentListParams {
+  const params: BffDocumentListParams = { offset: request.offset, limit: request.limit };
+  if (request.sort !== DEFAULT_DOCUMENT_SORT) params.sort = request.sort;
+  const q = request.q.trim();
+  if (q !== '') params.q = q;
+  if (request.status !== '') params.status = request.status;
+  if (request.origin !== '') params.origin = request.origin;
+  if (request.source !== '') params.source = request.source;
+  if (request.confidentiality !== '') params.confidentiality = request.confidentiality;
+  if (request.tag !== '') params.tag = request.tag;
+  if (request.project !== '') params.project = request.project;
+  const from = startOfLocalDay(request.createdFrom);
+  if (from) params.createdFrom = from;
+  const before = startOfLocalDay(request.createdTo, 1);
+  if (before) params.createdBefore = before;
+  return params;
+}
+
+/** 操作の帯の条件で絞り込んでいるか（空の表示と「条件を解除」を出し分ける）。タブは含めない。 */
+export function hasConditions(request: DocumentListConditions): boolean {
+  return (
+    request.q.trim() !== '' ||
+    (Object.keys(EMPTY_DOCUMENT_CONDITIONS) as (keyof DocumentListConditions)[]).some(
+      (key) => key !== 'q' && request[key] !== '',
+    )
+  );
+}
+
+/** 帯の条件かタブのどちらかで絞り込んでいるか（要約の文を「絞り込み m 件（全 n 件）」にする）。 */
+export function isFiltered(request: DocumentListConditions & { origin?: DocumentOrigin }): boolean {
+  return hasConditions(request) || (request.origin ?? '') !== '';
+}
+
+/**
+ * 応答封筒から 1 ページを取り出す。**`items` が配列でなければ空へ縮退させる**
+ * （`okArray` と同じ理由。`bffFetch` は本文なしで `{}` を返す——IADR-0135 決定 7［2026-08-06 追記］）。
+ */
+function okPage(res: Parameters<typeof okData>[0]): DocumentListPageDto {
+  const page = okData(res) as Partial<DocumentListPageDto>;
+  const total = page.total ?? 0;
+  return {
+    items: Array.isArray(page.items) ? page.items : [],
+    total,
+    offset: page.offset ?? 0,
+    limit: page.limit ?? DEFAULT_DOCUMENT_PAGE_SIZE,
+    // ［2026-10-15 / #1923 段 2］項目を持たない応答（旧い BFF）は「絞り込みなし」として読む。
+    unfilteredTotal: page.unfilteredTotal ?? total,
+    statusCounts: page.statusCounts ?? {},
+    // ［2026-10-17 / #1923・IADR-0561］同上（旧い BFF は返さない）。
+    sourceCounts: page.sourceCounts ?? {},
+    projectCounts: page.projectCounts ?? {},
+    // ［2026-10-20 / #1993］旧い BFF は返さない → 空（列は全件「不明」。未索引へ倒さない）。
+    indexStatuses: page.indexStatuses ?? {},
+  };
+}
+
+/**
+ * 一覧の 1 ページ（ABAC スコープ内のみ返る。`total` も BFF が権限で絞った後の件数）。
+ * ［2026-10-15 / #1923 段 2・IADR-0545］並べ替え・表題の部分一致・状態の絞り込みも同じ要求で送る
+ * （並べ替えは文書サービス、絞り込みは BFF が ABAC の後に当てる。`unfilteredTotal` / `statusCounts` は絞り込み前の数）。
+ *
+ * ページを替える間は前のページを出したままにする（`keepPreviousData`）——読み込み中の表示へ切り替えると、
+ * ページ送りのたびに表が消えて位置を見失う。
+ */
+export function useAdminDocuments(request: DocumentListRequest) {
+  const params = toListParams(request);
+  return useBffDocumentList<DocumentListPageDto, unknown>(params, {
+    query: {
+      queryKey: getBffDocumentListQueryKey(params),
+      select: okPage,
+      placeholderData: keepPreviousData,
+    },
   });
 }
 

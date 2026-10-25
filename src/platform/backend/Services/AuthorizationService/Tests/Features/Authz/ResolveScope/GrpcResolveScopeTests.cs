@@ -316,36 +316,9 @@ public class GrpcResolveScopeTests
             .Should().Be(StatusCode.InvalidArgument);
     }
 
-    // T-07: REST と gRPC は同じ評価器を呼ぶ —— 同じ入力に対して granted / filters / branches が一致する。
-    // （REST が同じプロセスの HTTP/1.1 ポートで応えることが、ポート維持の 2 つ目の証明でもある。）
-    [Fact]
-    public async Task Rest_and_grpc_resolve_the_same_scope()
-    {
-        var token = GrpcKestrelFactory.IssueToken(ServiceSubject, [PlatformAuthPolicies.ServiceRole]);
-        var grpc = await PlainClient().ResolveAsync(
-            EngineeringRequest(), headers: Bearer(token), cancellationToken: TestContext.Current.CancellationToken);
-
-        // 🔴 **REST 面も `ServiceCaller` を要る**（計画 ADR-0088 決定 2 / #1333）——
-        // 従前この端点は認可を 1 つも掛けていなかった。gRPC と**同じ 1 つのポリシー**である。
-        using var http = new HttpClient { BaseAddress = new Uri(_factory.HttpAddress) };
-        http.DefaultRequestHeaders.Authorization = new("Bearer", token);
-        var restResp = await http.PostAsJsonAsync("/authz/scope",
-            new AccessScopeRequest("alice", new Dictionary<string, string>
-            {
-                ["department"] = "engineering",
-                ["clearance"] = "internal",
-            }),
-            TestContext.Current.CancellationToken);
-        restResp.EnsureSuccessStatusCode();
-        var rest = (await restResp.Content.ReadFromJsonAsync<AccessScopeResponse>(
-            TestContext.Current.CancellationToken))!;
-
-        grpc.Granted.Should().Be(rest.Granted);
-        grpc.UserId.Should().Be(rest.UserId);
-        grpc.AllowedFilters.Select(f => (f.Key, Values: f.AllowedValues.ToList()))
-            .Should().BeEquivalentTo(rest.AllowedFilters.Select(f => (f.Key, Values: f.AllowedValues)));
-        grpc.Branches.Select(b => b.Name).Should().BeEquivalentTo(rest.Branches!.Select(b => b.Name));
-    }
+    // T-07: ［2026-10-15 / #1902・[[IADR-0533]]］「REST と gRPC が同じスコープを返す」同値の対は外した ——
+    // REST の `/authz/scope` を撤去したので対が作れない。評価の中身は TestServer 上の gRPC 面の試験
+    // （`AccessScopeContractTests`・`ClaimedUserAttributesAreIgnoredTests` ほか）が固定する。
 
     // T-12: 構造の門。gRPC サービス型が ServiceCaller ポリシーを宣言していること（属性が外れると
     // T-03 / T-04 が落ちるが、どの層で外れたかを名指しするためにここでも固定する）。

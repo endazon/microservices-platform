@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using AiAnalysisService.Domain.Ports;
 using AiAnalysisService.Infrastructure.ExternalServices;
+using AiAnalysisService.Tests.Infrastructure.ExternalServices;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
@@ -158,7 +159,8 @@ public class RagAnswerContractTests
             "user-1", new Dictionary<string, string>(), TestContext.Current.CancellationToken);
 
         gateway.LastPurpose.Should().Be("analysis");
-        gateway.LastModel.Should().BeNull("モデルはゲートウェイが用途から決める（呼び出し側で固定しない）");
+        // proto3 は null を持たない —— gRPC 輸送では「未指定」は空文字で届く（[[IADR-0533]]）。
+        gateway.LastModel.Should().BeNullOrEmpty("モデルはゲートウェイが用途から決める（呼び出し側で固定しない）");
     }
 
     // 質問回答は `rag-answer`。**分析と同じ用途名にしない**（同じにすると用途別の割当・
@@ -208,7 +210,7 @@ public class RagAnswerContractTests
         bool llmIsStream = false)
     {
         var factory = new RecordingGatewayFactory(abac, llmBody, llmStatus, llmIsStream);
-        return (new RagOrchestrator(factory), factory);
+        return (TestRagOrchestrator.Create(factory), factory);
     }
 
     // 認可・検索・LLM の 3 依存を 1 つのハンドラで担う。
@@ -242,7 +244,7 @@ public class RagAnswerContractTests
 
             switch (name)
             {
-                case AuthzScopeHttpClient.ClientName:
+                case TestRagOrchestrator.AuthzClientName:
                     return Ok(JsonSerializer.Serialize(abac, Json));
 
                 case "RetrievalService":

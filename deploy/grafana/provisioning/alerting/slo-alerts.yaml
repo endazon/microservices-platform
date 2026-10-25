@@ -25,15 +25,15 @@
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
 #      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、
 #      ルールの `uid` が 40 文字以下・英数字と `-` `_` だけ・一意で、写しの両方で同じ集合（#1881）、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 24 件返すことを確かめること。**
+#      **配備時に `/api/v1/provisioning/alert-rules` が 27 件返すことを確かめること。**
 #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
 #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
-#      現在の内訳: platform-availability 2 ／ platform-slo 4 ／ platform-slo-evaluation-target 6
+#      現在の内訳: platform-availability 2 ／ platform-slo 5 ／ platform-slo-evaluation-target 6
 #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ department-sync 1 ／ owner-read-policy 2
-#      ／ mcp-client-idp-reconciliation 2 ＝ **24**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した）
+#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ ingestion-budget 1 ／ messaging-dead-letter 1 ／ department-sync 1 ／ owner-read-policy 2
+#      ／ mcp-client-idp-reconciliation 2 ＝ **27**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した。［2026-10-17 / #1746］platform-slo に SearchRerankLatencyTargetUndefined を足して 4 → 5。［2026-10-20 / #1991］ingestion-budget 1 を足して 25 → 26。［2026-10-23 / #2043］messaging-dead-letter 1 を足して 26 → 27）
 #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
-#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24 へ数え直した）。
+#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24、#1746 で 24 → 25、#1991 で 25 → 26、#2043 で 26 → 27 へ数え直した）。
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -175,8 +175,12 @@ groups:
             model:
               refId: A
               instant: true
+              # IADR-0559 (ADR-0129 決定 2): 再順位付けが有効と報告されている間は外す（注記の正本は deploy/prometheus/alerts.yml）。
+              # 外れている間 A は空になり、noDataState により NoData になる（無風の時と同じ見え方）。有効なことは下の
+              # SearchRerankLatencyTargetUndefined が鳴らす。
               expr: |
                 histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="microservices-platform.retrieval-service"}[5m])))
+                unless on () (max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) == 1)
           - refId: C
             datasourceUid: __expr__
             model:
@@ -186,6 +190,39 @@ groups:
               conditions:
                 # 単位は**秒**（1.5s）。ミリ秒の 1500 ではない。
                 - evaluator: { type: gt, params: [1.5] }
+
+      # NFR-29, ADR-0129 決定 2・3, IADR-0559: 再順位付けが有効な構成の検索 p95 目標（NFR-29）は pending なので、
+      # 閾値つきの警報の代わりに「有効と報告されていること」を鳴らす（注記の正本は deploy/prometheus/alerts.yml）。
+      # 🔴 Prometheus 版は `== 1` で絞るが、ここは生の値を `gt 0` で比べる（#1577。絞ってから比べる形にしない）。
+      #   ゲージが無いときは `or on () vector(0)` で 0（無効）として読み、NoData を立てない。
+      - uid: slo-search-rerank-target-undefined
+        title: SearchRerankLatencyTargetUndefined
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "検索の再順位付けが有効だが、有効時の検索 p95 目標（NFR-29）が未確定"
+          description: "retrieval-service が Rerank__Enabled=true で動いている。NFR-29 の値は pending であり、有効化の条件（ADR-0129 決定 3）を満たしていない。この間 SearchLatencyP95High（1.5s）は外れている。戻すなら Rerank__Enabled=false。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: |
+                max(search_rerank_enabled{job="microservices-platform.retrieval-service"}) or on () vector(0)
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
 
       - uid: slo-rag-first-token-p95-high
         title: RagFirstTokenP95High
@@ -530,7 +567,7 @@ groups:
           severity: warning
         annotations:
           summary: "ユニットの主体が project を付けずに文書を保存した（0 が正常）"
-          description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
+          description: "DocumentService の documents_unit_project_missing_total が直近 1 時間で前進した（初めて現れた場合を含む）。ユニット（サービスアカウント）の保存経路は project を無条件で付与するため、非ゼロはその経路を通らない書き込みが起きたことを意味する。documents_client_id / documents_operation で書き手と操作を特定する。保存は止まっていない（計器であって統制ではない。ADR-0085 決定 4）。"
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -538,7 +575,77 @@ groups:
             model:
               refId: A
               instant: true
-              expr: 'increase(documents_unit_project_missing_total[1h]) > 0'
+              expr: '((documents_unit_project_missing_total unless documents_unit_project_missing_total offset 1h) or increase(documents_unit_project_missing_total[1h])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+  # FR-02, FR-03, ADR-0127 決定 1, IADR-0567 (#1991): 取り込みの総枠の使い切り（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。
+  # 🔴 **`noDataState: OK`**（平常時は系列が無い）。評価器は `gt 0`（expr の `> 0` の後に残る値は前進量か初回の計器の値＝正の数。#1577 の形ではない。初回の腕は IADR-0593）。
+  - orgId: 1
+    name: ingestion-budget
+    folder: SLO
+    interval: 1m
+    rules:
+      - uid: ingestion-budget-exhausted
+        title: IngestionBudgetExhausted
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "取り込みの総枠を使い切り、文書の一部だけが索引された（0 が正常）"
+          description: "取り込みサービスの messaging_consumer_timeout_total（messaging_timeout_target が embedding-budget または lexical-budget）が直近 1 時間で前進した（初めて現れた場合を含む）。総枠（Ingestion:EmbeddingBudgetSeconds。既定 300 秒）を使い切った文書は、残りのチャンクを書かずに再試行せずデッドレターへ送られ、一部の点だけが検索に現れる。{{ $labels.messaging_timeout_target }} が埋め込み側か語彙索引側かを示す。取り込みのログの Warning（exhausted its ... budget）で文書を特定し、本文を分けるか、総枠と受け口の期限（Ingestion:HandlerTimeoutSeconds）を延ばしてから DocumentUpdated を再発行する（運用仕様書 §埋め込みプロバイダ）。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: 'sum by (messaging_timeout_target) ((messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget|lexical-budget"} unless messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget|lexical-budget"} offset 1h) or increase(messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget|lexical-budget"}[1h])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+
+  # NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): デッドレター到達（**0 が正常**）。注記の正本は deploy/prometheus/alerts.yml。初回の腕（`unless ... offset 1h`）を外さない。
+  # 🔴 **`noDataState: OK`**（平常時は系列が無い）。評価器は `gt 0`（expr の `> 0` の後に残る値は前進量か初回の計器の値＝正の数。#1577 の形ではない。初回の腕は IADR-0593）。
+  - orgId: 1
+    name: messaging-dead-letter
+    folder: SLO
+    interval: 1m
+    rules:
+      - uid: messaging-dead-letter-reached
+        title: DeadLetterReached
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
+          description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}・error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: 'sum by (job, messaging_message_type, error_type) ((messaging_dead_letter_total unless messaging_dead_letter_total offset 1h) or increase(messaging_dead_letter_total[1h])) > 0'
           - refId: C
             datasourceUid: __expr__
             model:
@@ -550,7 +657,7 @@ groups:
 
   # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
   # 🔴 **`noDataState: OK`**（平常時・同期が Off のときは系列が無い）。🔴 **評価器は `gt 0` で正しい** ——
-  #   expr の `> 0` の後に残る値は前進量そのもの（正の数）であり、`== 0` で絞って `gt 0` で比べる形（#1577）ではない。
+  #   expr の `> 0` の後に残る値は前進量か初回の計器の値（正の数）であり、`== 0` で絞って `gt 0` で比べる形（#1577）ではない。
   #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
   - orgId: 1
     name: department-sync
@@ -575,7 +682,7 @@ groups:
             model:
               refId: A
               instant: true
-              expr: '(sum(increase(department_sync_users_total{department_sync_outcome="failed"}[1h])) or vector(0)) + (sum(increase(department_sync_cycles_total{department_sync_outcome=~"aborted|all_skipped_changed"}[1h])) or vector(0)) + (sum(increase(department_sync_enumeration_incomplete_total[1h])) or vector(0)) > 0'
+              expr: '(sum((department_sync_users_total{department_sync_outcome="failed"} unless department_sync_users_total{department_sync_outcome="failed"} offset 1h) or increase(department_sync_users_total{department_sync_outcome="failed"}[1h])) or vector(0)) + (sum((department_sync_cycles_total{department_sync_outcome=~"aborted|all_skipped_changed"} unless department_sync_cycles_total{department_sync_outcome=~"aborted|all_skipped_changed"} offset 1h) or increase(department_sync_cycles_total{department_sync_outcome=~"aborted|all_skipped_changed"}[1h])) or vector(0)) + (sum((department_sync_enumeration_incomplete_total unless department_sync_enumeration_incomplete_total offset 1h) or increase(department_sync_enumeration_incomplete_total[1h])) or vector(0)) > 0'
           - refId: C
             datasourceUid: __expr__
             model:

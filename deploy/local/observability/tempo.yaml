@@ -56,6 +56,11 @@ spec:
         - name: tempo
           image: grafana/tempo:2.5.0@sha256:f0200a9bff6d14eb3a4332194f7b77c37ee1a3535e7e41db024d95aab6f1b4e8
           args: ["-config.file=/etc/tempo/config.yaml"]
+          # NFR, IADR-0539 (#1927): Go のヒープのソフトな上限。超えても落ちず、目標の手前で GC を回して返せるページを OS へ返す
+          # （PoC の実測 260 MiB / limits 512Mi）。保持（block_retention 1h）は既に短く、ここでは変えない。
+          env:
+            - name: GOMEMLIMIT
+              value: "192MiB"
           # Tempo は OTLP 受信を 4317(grpc)/4318(http) で待つ。collector の otlp/tempo exporter が tempo:4317 へ送る。
           # #1842: HTTP（3201）は loopback 待ちなので宣言しない。Service の口 3200 は gate が持つ。
           ports:

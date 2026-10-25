@@ -3,15 +3,15 @@ title: 合成監視トラフィックの標識と、費用・利用状況から�
 type: observability-spec
 status: in-progress
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-10, SC-10]
 adrs: [ADR-0006, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0079]
-iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110]
-specs: [20260905_issue-1203_analysis-ask-absent-companion]
-issues: [#1203, #1202, #1204, #1111, planning#524, planning#538]
+iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533]
+specs: [20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue]
+issues: [#1203, #1202, #1204, #1111, #1902, planning#524, planning#538]
 -->
 <!-- 起点 ID・関連 ADR/IADR・仕様書名・修飾付き issue 参照は本文へ書かず、上の trace ブロックへ入れる -->
 
@@ -47,7 +47,7 @@ issues: [#1203, #1202, #1204, #1111, planning#524, planning#538]
 | 利用状況（検索・回答の件数） | BFF の発火の口（`IUsageEventReporter.Report`） | **唯一の発火点**。ここを通さなければ行が入らない |
 | 検索傾向（最小出現件数のしきい値） | 同上（独立の除外は置かない） | 行が入らないなら、しきい値を通過する語も生じない |
 | 利用イベントの受け口 | DashboardService の `POST /dashboard/events` | 多層防御。**行を作る側の性質**にする（直接叩かれた場合） |
-| LLM 費用（トークン累計・金額） | LlmGateway の `/complete` と `/complete/stream` | 単価を解決して金額を積む主体がそこである |
+| LLM 費用（トークン累計・金額） | LlmGateway の一括（`/complete`・gRPC `Complete`）と逐次（gRPC `CompleteStream`） | 単価を解決して金額を積む主体がそこである |
 
 **SLO の分子分母からは外さない。** 合成監視を置く目的が「評価対象を作ること」であり、
 そこから外すと器の意味が消える。

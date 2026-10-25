@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
-using Platform.Shared.Infrastructure.Foundation.Authz;
 
 namespace Platform.Bff.Tests;
 
@@ -55,15 +54,16 @@ public sealed class MeasuringBffFactory : BffTestFactory
         // 後から登録した ConfigurePrimaryHttpMessageHandler が最終的な PrimaryHandler を上書きする。
         builder.ConfigureServices(services =>
         {
-            // #1333: スコープ解決は専用クライアントを通る（計画 ADR-0088 決定 2）。
-            services.AddHttpClient(AuthzScopeHttpClient.ClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => new MeasuringHandler(this, "authz"));
             services.AddHttpClient("AuthorizationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MeasuringHandler(this, "authz"));
             services.AddHttpClient("DocumentService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MeasuringHandler(this, "document"));
         });
     }
+
+    // ［2026-10-10 / #1255・[[IADR-0533]]］スコープ解決とスコープ確認の GET は east-west gRPC になった。器の橋渡し
+    // （gRPC → HTTP スタブ）の先を計測用のハンドラへ差し替え、往復を従来どおり数える。
+    protected override HttpMessageHandler GrpcBridgeHandler(string service) => new MeasuringHandler(this, service);
 
     private sealed class MeasuringHandler(MeasuringBffFactory owner, string service) : HttpMessageHandler
     {

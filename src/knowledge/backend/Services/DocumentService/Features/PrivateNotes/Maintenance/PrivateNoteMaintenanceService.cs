@@ -13,7 +13,7 @@ namespace DocumentService.Features.PrivateNotes.Maintenance;
 // 個人資料の定期処理。①90 日経過の自動物理削除（＋事後通知 ①-c）②版履歴の刈り取り
 // （直近 50 版かつ 90 日）③完全削除 7 日前通知（①-b）④週次の削除通知（①-a）
 // ⑤同期トークンの期限 7 日前通知（③）⑥**退職 30 日後の完全削除**（通知なし。#1409）
-// ⑦**同期履歴の 3 年超の削除**（ADR-0099 決定 3。#1446）。
+// ⑦**同期履歴の 3 年超の削除**（ADR-0099 決定 3。#1446）⑧**緊急アクセスの記録の 3 年超の削除**（ADR-0036 D-08。#2046）。
 //
 // 🔴 **⑥と①は別の時計である。** ①は ADR-0037 決定 5 の「論理削除から 90 日」、
 // ⑥は ADR-0036 D-09 の「退職から 30 日」であり、起点も対象も違う（⑥は論理削除の有無を見ない）。
@@ -60,6 +60,30 @@ public sealed class PrivateNoteMaintenanceService(
         // **順序はどこでもよい** —— 他の 6 つと対象の表が重ならない（唯一 `SyncAuditEntries` を
         // 触る処理である）。末尾に置くのは、通知の 3 つが遅れる理由を作らないためである。
         await PurgeSyncAuditAsync(now, ct);
+        // ★［2026-10-23 追加 / #2046・ADR-0036 D-08・[[IADR-0610]]］⑧緊急アクセスの監査ログと発動記録の保持期限（3 年）。
+        // ⑦と同じく対象の表が他と重ならない（唯一 `BreakGlass*` を触る処理である）ので順序は問わない。
+        await PurgeBreakGlassRecordsAsync(now, ct);
+    }
+
+    // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): **緊急アクセスの監査ログと発動記録は 3 年で消える。**
+    // 年数は `BreakGlassPolicy.RetentionYears` が唯一の値（ここへ書き下さない）。
+    // 監査ログは行の日時、発動記録は「発動＋15 分」（`ExpiresAt`）で切る —— 発動記録の行の全操作はその時刻以前に起きるので、
+    // 発動記録が先に消えて監査ログだけが残ることは境界の 15 分を除いて無い（残っても読み取りは行の値で返す）。
+    // 通知しない。件数だけを 1 行残す（⑦と同じ粒度）。
+    private async Task PurgeBreakGlassRecordsAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var cutoff = now.AddYears(-Knowledge.Contracts.Dtos.BreakGlassPolicy.RetentionYears);
+        var entries = await db.BreakGlassAuditEntries.Where(a => a.OccurredAt < cutoff).ToListAsync(ct);
+        var grants = await db.BreakGlassGrants.Where(g => g.ExpiresAt < cutoff).ToListAsync(ct);
+        if (entries.Count == 0 && grants.Count == 0) return;
+
+        db.BreakGlassAuditEntries.RemoveRange(entries);
+        db.BreakGlassGrants.RemoveRange(grants);
+        await db.SaveChangesAsync(ct);
+
+        logger.LogInformation(
+            "保持期限（{Years} 年）を超えた緊急アクセスの記録を削除した（監査ログ {Entries} 件・発動記録 {Grants} 件）",
+            Knowledge.Contracts.Dtos.BreakGlassPolicy.RetentionYears, entries.Count, grants.Count);
     }
 
     // FR-20, SC-20 主要素 6, ADR-0099 決定 3, #1446: **同期履歴は 3 年で消える。**
@@ -146,11 +170,16 @@ public sealed class PrivateNoteMaintenanceService(
         // 引き続き真のときだけ消す。**引けない（`null`）・失敗した（例外）ときは消さない。**
         // 残る隙間は「読み直し → 1 人分の削除」だけである（名簿と DB を跨ぐ排他までは取らない）。
         var skipped = 0;
+        var lost = 0;
         foreach (var owner in purgeable)
         {
             if (!await StillPurgeableAsync(owner, ct)) { skipped++; continue; }
-            await PurgeAllOwnedAsync(owner, now, ct);
+            // FR-02, IADR-0637 (#2150): 1 人分の確定が並行する確定に負けても、他の所有者と後段の処理（90 日の削除・通知）は進める。
+            if (!await CommitIsolatedAsync(() => PurgeAllOwnedAsync(owner, now, ct))) lost++;
         }
+        if (lost > 0)
+            logger.LogWarning(
+                "退職者の個人資料の完全削除: 並行する確定に負けた {Lost} 人の分は削除せず、次周期でやり直す", lost);
 
         if (skipped > 0)
             logger.LogInformation(
@@ -191,14 +220,17 @@ public sealed class PrivateNoteMaintenanceService(
         var docs = await db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync(ct);
         db.Documents.RemoveRange(docs);
         db.PrivateNotes.RemoveRange(due);
-        await db.SaveChangesAsync(ct);
+        // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
+        // FR-19, ADR-0096 決定 1, ADR-0057 決定 1・3, IADR-0604 (#2042): **行の削除と同じトランザクションに積んで確定する**
+        // （Transactional Outbox）。確定の後に送出が落ちても Outbox の表に残り、再送される（索引の撤去が失われない）。
+        // FR-02, IADR-0637 (#2150): 削除は最後の発行の連番 + 1 を運ぶ（文書の行が無ければ連番なし）。
+        var sequences = docs.ToDictionary(d => d.Id, d => d.EventSequence + 1);
+        foreach (var id in ids)
+            await deletedBus.PublishDeletedAsync(id, now, sequences.TryGetValue(id, out var s) ? s : null, ct);
+        await deletedBus.SaveChangesAndFlushAsync(ct);
 
         // 🔴 件数と所有者だけ。**タイトルは載せない。**
         audit.Record("private-note.purge.departed", owner, "granted", $"count={due.Count}");
-
-        // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
-        foreach (var id in ids)
-            await deletedBus.PublishDeletedAsync(id, now, ct);
 
         // 🔴 所有者 ID を構造化プロパティへ出さない（監査ログ側に既にある。二重に散らさない）。
         logger.LogInformation(
@@ -213,6 +245,11 @@ public sealed class PrivateNoteMaintenanceService(
     // 1 件の実体削除の失敗で周期全体を止めると、**無関係な資料の期限超過が積み上がる**。
     // 消せなかった文書は**行を残す**ので `PurgeAt <= now` を満たしたままであり、次周期で再入する。
     // 「行だけ消してオブジェクトを残す」ことだけは絶対にしない（参照が失われ回復不能になる）。
+    //
+    // ［2026-10-26 / #2150・IADR-0637］🔴 **確定は所有者ごとに分ける。** 文書行の削除は並行トークン（版・発行の連番）で照合され、
+    // 読んだ後に同じ資料へ別の確定（復元・共有の変更・タグの改名・再発行）が入ると負ける。全件を 1 回で確定すると、1 件の負けで
+    // 他の所有者の削除も、周期の後段（版の整理・通知）も止まる（周期の catch は `RunCycleAsync` にしか無い）。負けた所有者の分は
+    // 行を残し（オブジェクトは消えていても、次周期の再入で片付く）、他は進める。
     private async Task PurgeExpiredAsync(DateTimeOffset now, CancellationToken ct)
     {
         var candidates = await db.PrivateNotes
@@ -220,34 +257,71 @@ public sealed class PrivateNoteMaintenanceService(
             .ToListAsync(ct);
         if (candidates.Count == 0) return;
 
+        var purged = 0;
+        var lost = 0;
+        foreach (var byOwner in candidates.GroupBy(n => n.OwnerId).ToList())
+        {
+            var count = 0;
+            if (await CommitIsolatedAsync(async () => count = await PurgeExpiredOfOwnerAsync(byOwner.Key, [.. byOwner], now, ct)))
+                purged += count;
+            else
+                lost++;
+        }
+
+        if (lost > 0)
+            logger.LogWarning("個人資料の自動物理削除: 並行する確定に負けた所有者 {Lost} 人の分は削除せず、次周期でやり直す", lost);
+        if (purged > 0)
+            logger.LogInformation("個人資料の自動物理削除を実行した（{Count} 件）", purged);
+    }
+
+    // 1 人分の 90 日の削除。消した件数を返す。
+    private async Task<int> PurgeExpiredOfOwnerAsync(string owner, List<PrivateNote> candidates, DateTimeOffset now, CancellationToken ct)
+    {
         // オブジェクトを先に消し、**消せたものだけ**を今周期の削除対象にする。
         var ids = await purger.PurgeIsolatedAsync(
             candidates.Select(n => n.DocumentId).ToList(), ct);
-        if (ids.Count == 0) return;
+        if (ids.Count == 0) return 0;
 
         var due = candidates.Where(n => ids.Contains(n.DocumentId)).ToList();
         var docs = await db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync(ct);
         db.Documents.RemoveRange(docs);
         db.PrivateNotes.RemoveRange(due);
-        await db.SaveChangesAsync(ct);
-
-        foreach (var byOwner in due.GroupBy(n => n.OwnerId))
-        {
-            audit.Record("private-note.purge.auto", byOwner.Key, "granted",
-                $"count={byOwner.Count()}");
-            // FR-22 ①-c: 完全削除の事後通知（件数のみ。タイトルを含めない）。
-            await notifier.NotifyAsync(byOwner.Key,
-                PrivateNoteNotificationKinds.PrivateNotePurgeDone, now,
-                count: byOwner.Count(), ct: ct);
-            // 使用量が下がって閾値を割れば、警告の発火記録を再武装する（FR-22 ②）。
-            await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, byOwner.Key, now, ct);
-        }
-        await db.SaveChangesAsync(ct);
-
         // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
+        // FR-19, ADR-0037 決定 5, ADR-0057 決定 1・3, IADR-0604 (#2042): **行の削除と同じトランザクションに積んで確定する**
+        // （Transactional Outbox）。従前は事後通知と使用量の再計算の後に発行しており、その間に落ちると再発行の起点が消えた。
+        // FR-02, IADR-0637 (#2150): 削除は最後の発行の連番 + 1 を運ぶ（文書の行が無ければ連番なし）。
+        var sequences = docs.ToDictionary(d => d.Id, d => d.EventSequence + 1);
         foreach (var id in ids)
-            await deletedBus.PublishDeletedAsync(id, now, ct);
-        logger.LogInformation("個人資料の自動物理削除を実行した（{Count} 件）", due.Count);
+            await deletedBus.PublishDeletedAsync(id, now, sequences.TryGetValue(id, out var s) ? s : null, ct);
+        await deletedBus.SaveChangesAndFlushAsync(ct);
+
+        audit.Record("private-note.purge.auto", owner, "granted", $"count={due.Count}");
+        // FR-22 ①-c: 完全削除の事後通知（件数のみ。タイトルを含めない）。
+        await notifier.NotifyAsync(owner,
+            PrivateNoteNotificationKinds.PrivateNotePurgeDone, now,
+            count: due.Count, ct: ct);
+        // 使用量が下がって閾値を割れば、警告の発火記録を再武装する（FR-22 ②）。
+        await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
+        await db.SaveChangesAsync(ct);
+        return due.Count;
+    }
+
+    // FR-02, IADR-0637 (#2150): 所有者 1 人分の確定を隔離する。並行トークンに負けたら追跡を捨てて false を返す（他の所有者へ進む）。
+    // 負けた確定は削除の行・発行ごと巻き戻っている。それ以外の失敗は従前どおり周期の catch（`RunCycleAsync`）へ出す。
+    private async Task<bool> CommitIsolatedAsync(Func<Task> work)
+    {
+        try
+        {
+            await work();
+            return true;
+        }
+        catch (DbUpdateException ex) when (DocumentService.Features.Documents.DocumentVersionConflict.Is(ex))
+        {
+            db.ChangeTracker.Clear();
+            // 🔴 所有者 ID は出さない（監査ログ側に消した分だけ残る）。
+            logger.LogWarning(ex, "個人資料の完全削除の確定が並行する確定に負けた。この所有者の分は次周期でやり直す");
+            return false;
+        }
     }
 
     // ADR-0037 決定 16: 版履歴の保持上限。**直近 50 版から外れ、かつ作成から 90 日を超えた版**を
@@ -379,6 +453,7 @@ public sealed class PrivateNoteMaintenanceService(
 // 計測者は「前倒しが効いた」と思ったまま 24 時間待つことになる）。
 public sealed class PrivateNoteMaintenanceHostedService(
     IServiceScopeFactory scopeFactory,
+    IPrivateNoteMaintenanceLeaseCoordinator leaseCoordinator,
     ILogger<PrivateNoteMaintenanceHostedService> logger) : BackgroundService
 {
     public static readonly TimeSpan Interval = TimeSpan.FromHours(24);
@@ -440,14 +515,18 @@ public sealed class PrivateNoteMaintenanceHostedService(
         }
     }
 
+    // #2100: 周期の本体。**試験だけが差し替える**（リースで単一実行になることを、本体の長さに依らず決定的に測るため）。
+    // 本番は既定のまま（スコープの `PrivateNoteMaintenanceService` を回す）。
+    internal Func<IServiceProvider, CancellationToken, Task> CycleBody { get; init; } = RunMaintenanceAsync;
+
+    private static Task RunMaintenanceAsync(IServiceProvider services, CancellationToken ct) =>
+        services.GetRequiredService<PrivateNoteMaintenanceService>().RunAsync(DateTimeOffset.UtcNow, ct);
+
     private async Task RunCycleAsync(CancellationToken stoppingToken)
     {
         try
         {
-            using var scope = scopeFactory.CreateScope();
-            var maintenance = scope.ServiceProvider
-                .GetRequiredService<PrivateNoteMaintenanceService>();
-            await maintenance.RunAsync(DateTimeOffset.UtcNow, stoppingToken);
+            await TryRunCycleAsync(stoppingToken);
         }
         // ［2026-09-26 / #1598・[[IADR-0431]] 追記］🔴 **素通しするのは停止要求（stoppingToken）の取り消しだけである。**
         // 下流の時間切れ（HttpClient の TaskCanceledException 等）は停止要求ではなく周期の失敗であり、ここで記録して
@@ -458,5 +537,24 @@ public sealed class PrivateNoteMaintenanceHostedService(
             // 定期処理の失敗でホストを落とさない。次周期で再試行する。
             logger.LogError(ex, "個人資料の定期処理に失敗した。次周期で再試行する。");
         }
+    }
+
+    // 🔴 FR-19, [[IADR-0599]] 決定 5 (#2100): 単一実行のゲート。**リースを取得できたレプリカだけが処理する。**
+    // 取得できない周期は何もしない（スキップ＝fail-safe）。戻り値は実行したか。形は GraphService の
+    // `KnowledgeHealthHostedService.TryRunCycleAsync`（[[IADR-0299]] 決定 3）と同じである。
+    // リースは周期の本体の間ずっと持つ（本体の途中で他のレプリカが入らない）。
+    internal async Task<bool> TryRunCycleAsync(CancellationToken ct)
+    {
+        await using var lease = await leaseCoordinator.TryAcquireAsync(ct);
+        if (lease is null)
+        {
+            logger.LogInformation(
+                "個人資料の定期処理のリースを取得できなかった（他レプリカが実行中）。本周期をスキップする。");
+            return false;
+        }
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        await CycleBody(scope.ServiceProvider, ct);
+        return true;
     }
 }

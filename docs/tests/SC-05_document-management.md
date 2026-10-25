@@ -3,15 +3,15 @@ title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-02
+updated: 2026-10-24
 author: claude
 ---
 <!-- trace:
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031, ADR-0066]
-iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
-issues: [#501, #1065]
+iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127, IADR-0308, IADR-0537, IADR-0545, IADR-0561, IADR-0565]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261014_1923_document-list-pagination, 20261015_1923_document-list-sort-filter, 20261017_1923_document-list-facets-preview, 20261020_1993_document-list-index-status, 20261024_2019_sc05-sc06-sc07-e2e]
+issues: [#501, #1065, #1923, #1897, #1993, #2019]
 -->
 
 # テスト仕様書: 文書管理
@@ -50,7 +50,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 |
 | --- | --- | --- | --- |
-| 1 | 一覧 | —| `GET /bff/documents` を呼び、タイトル（`/docs/$id` へのリンク）・機密区分（**生値**）・版（`v{n}`）を表示する |
+| 1 | 一覧 | —| `GET /bff/documents` を呼び、タイトル（`/docs/$id` へのリンク）・機密区分（~~**生値**~~ ［2026-10-24 / #2019］**用語集の表示名**）・版（`v{n}`）を表示する |
 | 2 | 登録 | 文書管理 基本 1 / 属性・タグ管理 | タイトル・機密区分・タグを送る（`{ title, attributes: { confidentiality }, tags }`） |
 | 3 | **必須属性** | **文書管理の例外フロー** | 空・空白のみでは保存できず、要求も出ない。注記が画面に出ている |
 | 4 | 更新（楽観ロック） | —| 現在版を `expectedVersion` として送る。**既存の属性（部門）を落とさない** |
@@ -123,6 +123,195 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 **§テストケース 6（画面は `archived` の行に公開を出さない）と対である。** 画面が出さないことと
 サーバが拒むことは別の担保であり、片方だけでは実効境界にならない。
 
+## 一覧のページング（#1923）
+
+> **［2026-10-14 追記 / #1923］** 一覧をページで出すようにした（送り方はオフセット・既定 50 件・総件数は権限で絞った後の数）。
+> 3 層で固定する。**総件数が権限外の文書の存在を漏らさないこと**は BFF の層でしか測れない（絞っているのが BFF であるため）。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `pageNumbers.test.ts`（純関数）／ `useDocumentAdmin.test.tsx`（無効化）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| P1 | ページ送り | 総件数と表示範囲を出し、「次へ」で `offset=50` を要求する。先頭では「前へ」を押せず、現在のページに `aria-current` | `shows the total and the range, and requests the next page` |
+| P2 | 件数の選択 | 選択肢は 25 / 50 / 100（既定 50）。選ぶと `offset=0` から引き直す | `requests the first page again with the chosen page size` |
+| P3 | 末尾を越えた | 総件数が減って現在のページが範囲外になったら末尾のページを引く | `moves back to the last page when the current page falls beyond the total` |
+| P4 | ページ番号 | 先頭・末尾・現在の前後 1 つ。間は省略 | `pageNumbers`（6 ケース） |
+| P5 | 無効化 | 一覧キーでの無効化が全ページのキーに届く | `reaches every page of the list through the list key` |
+| P7 | 読み込み中 | 次のページを読む間は前のページの行を出したまま、ページ送り・件数の選択を止める（`keepPreviousData` と busy の変異で落ちる） | `keeps the previous page on screen and the pager busy while the next page loads` |
+| P8 | 最後のページ | 「次へ」を押せない | `disables "next" on the last page` |
+| P6 | **失敗を 0 件に見せない** | 一覧の 502 はエラー表示（再試行つき）。0 件の文言もページ送りも出さない | `shows the list failure (502) as an error, not as an empty list` |
+
+### BFF（xUnit）
+
+テスト: [`Platform.Bff.Tests/BffDocumentListPagingTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentListPagingTests.cs)
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| B1 | 窓と総件数 | 権限内 3 件・権限外 2 件で、総件数 3・窓は絞った後の順番 | `窓と総件数は権限で絞った後の並びで数える` |
+| B2 | **存在秘匿** | 権限外の文書を混ぜても、総件数・ページの中身・境界が変わらない（陽性対照: 区分を広げれば 5 件と数える） | `権限外の文書は総件数にもページの中身にも境界にも現れない` |
+| B3 | 個人資料 | 区分では読める個人資料も総件数に入らない | `個人資料は総件数に入らない` |
+| B4 | 後段のページを辿る | 後段が 1 件ずつ返しても結果は同じ。後段へは上限 1000 で求め、印を渡して終端まで辿る | `後段のページを辿っても窓と総件数は変わらない` |
+| B5 | 丸め | `limit` は既定 50・1〜100 に丸める | `ページの大きさはサーバ側で丸める` |
+| B6 | 末尾を越えた | 空の窓と同じ総件数 | `末尾を越えたoffsetは空の窓と同じ総件数を返す` |
+| B7 | 改ざん | 負の `offset`、数でない `offset` / `limit` は 400（負の `limit` は 400 にせず 1 に丸める。B5） | `負のoffsetと数でないoffset_limitは400` |
+| B8 | 縮退 | スコープが無ければ空のページ（総件数 0） | `スコープが無ければ空のページを返す` |
+| B9 | **失敗を 0 件に畳まない** | 後段のページを辿る途中で失敗したら 502（空のページにも部分の数にも畳まない。本文に表題・件数を載せない）。WARN を 1 行出す | `後段のページを辿る途中で失敗したら空にも部分にも畳まず502` |
+
+### 後段（DocumentService・xUnit）
+
+テスト: [`DocumentListPagingTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/DocumentListPagingTests.cs) ／
+[`GrpcDocumentReadTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/GrpcDocumentReadTests.cs)
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| S1 | ページの境界 | 5 件を 2 件ずつで 2・2・1 件、重複・抜けなし、最後に印なし（倍数ちょうどでも空のページを返さない） |
+| S2 | 安定順序 | 更新日時が同じ文書は ID の降順。境界が同時刻の間に落ちても抜けない |
+| S3 | 読めない文書 | ページに入らず、続きの印も読めない文書を指さない（陽性対照: 所有者には返る）。長く続いても先へ届く |
+| S4 | 印の改ざん | 壊れた印・作成日時の口の印・表せない時刻は読めず、gRPC では `INVALID_ARGUMENT` |
+| S5 | ページの大きさ | 0 は既定 500、上限 1000 に丸める（rpc を通して: `page_size=5000` は 1000 件で止まり続きの印が付く、`0` は 500 件）。負は `INVALID_ARGUMENT` |
+| S6 | REST と同値 | 印を辿った全件が REST の一覧と順序まで一致する |
+| S7 | 実 PostgreSQL | uuid の順・マイクロ秒の丸めをまたいで抜け・重複なし。`(UpdatedAt, Id)` の索引を後ろから、印の位置から引く（`DocumentListKeysetPostgresTests`。Docker が要る） |
+
+## 一覧の並べ替え・絞り込み（#1923 段 2）
+
+> **［2026-10-15 追記 / #1923 段 2］** 並べ替え（更新日時・作成日時・表題）・表題の部分一致・状態の絞り込み・件数の要約・本文と更新日時の列。
+> 並べ替えは後段のキーセット、絞り込みは BFF が ABAC の後に当てる。**件数が権限外の文書の存在を漏らさないこと**は BFF の層で測る。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `documentBody.test.ts`（純関数）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| F1 | 並べ替え | 選ぶと `sort` を載せて `offset=0` から引く。既定（更新日時が新しい順）は載せない | `requests the chosen sort from the first page and omits the default` |
+| F2 | 表題の検索 | 入力が止まってから 1 回だけ、前後の空白を除いて `q` を送る。要約は「絞り込み m 件（全 n 件）中 a–b 件」 | `requests the title query once after typing stops, trimmed` |
+| F3 | 状態 | 選択肢に状態別の件数を添え、選ぶと `status` を送る。「条件を解除」で条件を外して先頭から引く | `filters by status with per-status counts and clears the filters` |
+| F4 | 空の区別 | 絞り込みの結果だけが 0 件なら「条件に一致する文書はありません。」（「文書はまだありません。」を出さない） | `distinguishes "no match" from "no documents yet"` |
+| F5 | 列 | 本文の状態（本文あり／本文なし（原本を参照）／本文未設定）と更新日時。長い表題は省略し、全文は `title` とリンクの名前に残す | `shows the body state and the update time, and keeps the full title on hover` |
+| F7 | **解除で入力欄も戻す** | 表題の検索で 0 件にした後、空の表示の「条件を解除」で入力欄が空になり、待ち時間の後も古い語で引き直さない | `clearing from the empty result also clears the title input and does not re-apply the query` |
+| F6 | 本文の状態の導出 | `hasBody=false` は「本文なし」、参照が無ければ「本文未設定」 | `documentBodyState`（3 ケース） |
+
+### BFF（xUnit）
+
+テスト: [`Platform.Bff.Tests/BffDocumentListFilterTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentListFilterTests.cs)
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| G1 | 並べ替えの受け渡し | `sort` の 6 値（と省略）が後段の enum へ写る。後段のページを辿る間も同じ並べ替えで要求する | `並べ替えは後段の要求へ渡す` ／ `後段のページを辿る間も同じ並べ替えで要求する` |
+| G2 | 表題の部分一致 | 大文字小文字を区別しない。窓と `total` は一致した文書だけ、`unfilteredTotal` は絞る前の数。前後の空白は除く | `表題の部分一致は大文字小文字を区別せず窓と総件数を絞る` ／ `表題の検索語は前後の空白を除く` |
+| G3 | 状態・状態別の件数 | `status` で絞る。`statusCounts` は絞り込みに依らない | `状態で絞り状態別の件数は絞り込みに依らない` ／ `絞り込みの窓は絞った後の順番で切る` |
+| G4 | **存在秘匿** | 絞り込み・並べ替えを付けても、権限外の文書を混ぜた台帳と混ぜない台帳で応答が一致する（陽性対照: 区分を広げれば権限外も一致して数える） | `権限外の文書は絞り込みの件数にも状態別の件数にも現れない` |
+| G6 | **重複を数えない** | 走査の途中で更新された文書を後段が次のページで再び返しても（昇順）、件数にも窓にも 1 度だけ | `走査の途中で更新されて後段が同じ文書を再び返しても二重に数えない` |
+| G5 | 検証 | 未知の `sort` / `status`（大文字違いを含む）は 400 で、後段を呼ばない。`q` は 200 文字まで | `未知の並べ替えと状態は400` ／ `表題の検索語は200文字まで` |
+
+### 後段（DocumentService・xUnit）
+
+テスト: [`DocumentListPagingTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/DocumentListPagingTests.cs) ／
+[`GrpcDocumentReadTests.cs`](../../src/knowledge/backend/Services/DocumentService/Tests/Features/Documents/GrpcDocumentReadTests.cs) ／
+[`DocumentListKeysetPostgresTests.cs`](../../src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentListKeysetPostgresTests.cs)
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| T1 | 並べ替えごとの全順序 | 6 通りの並べ替えで、印を 2 件ずつ辿った結果がキー（同値は ID・キーと同じ向き）の全順序と一致し、重複も抜けも無い |
+| T2 | 読めない文書 | 表題の並べ替えでも、読めない文書はページにも印にも出ない |
+| T3 | 印と並べ替え | 別の並べ替えの印は読まない（使い方の誤りは例外、rpc では `INVALID_ARGUMENT`。陽性対照: 同じ並べ替えなら続きが読める） |
+| T4 | 印の往復・改ざん | 並べ替えごとの印は往復で値が変わらない（表題の `:`・日本語を含む）。既定の並びは従前の形の印。壊れた印（キー不明・表題が壊れた・時刻が数でない・ID が壊れた）は読めない |
+| T5 | 未定義の並べ替え | enum に無い値は `INVALID_ARGUMENT`（既定へ畳まない） |
+| T6 | 実 PostgreSQL | 同じ表題・同じ作成時刻の群（uuid の順の取り違えで前後が入れ替わる Guid）を表題・作成日時・更新日時の昇降で辿って抜け・重複なし。`(Title, Id)` の索引を印の位置から引く（昇順は前から・降順は後ろから。Docker か外部の PostgreSQL が要る） |
+
+## 一覧のタブ・データソースほかの絞り込み・列・プレビュー（#1923 の残り）
+
+> **［2026-10-17 追記 / #1923］** タブ（人の文書・報告書／機械の収集／すべて）・データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、
+> データソース別・プロジェクト別の件数、データソースとタグの列、出典のリンク、本文の先頭のプレビュー。絞り込みは段 2 と同じく BFF が ABAC の後に当てる。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `documentSource.test.ts`（純関数）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| H1 | タブ | 既定は「人の文書・報告書」（`origin=curated`）。件数はデータソース別の件数から導き、押下状態は `aria-pressed`。替えると先頭から引き、「すべて」は `origin` を載せない | `opens on the curated tab with counts and switches tabs from the first page` |
+| H2 | 帯の条件 | データソース（件数つき・表示名）・機密区分・タグ（辞書）・プロジェクト（「プロジェクトなし」）・保存日がそれぞれのクエリに写る。「まで」は翌日 0 時を含まない終わりとして送る。「条件を解除」は帯の条件を外しタブを残す | `sends each facet, the inclusive date range and clears them but keeps the tab` |
+| H3 | 列 | データソース（収集は「収集: 出典名」）・タグ（3 個まで＋残数）。出典は `http(s)` だけリンクにする（`storage://` はしない） | `shows the data source and tags, and links only http(s) originals` |
+| H4 | プレビュー | 本文の先頭 1,000 文字を横のペインに素の文字で出す。文書詳細と出典への導線。運用者にも出す。閉じられる | `previews the head of the body in the side pane, also for an operator` |
+| H5 | プレビューの状態 | 台帳が本文なしと言う文書は本文を引かない。413 は「大きすぎる」と出す | `does not fetch a body the ledger says is absent, and explains a too-large body` |
+| H6 | タブの空 | タブだけで 0 件なら「このタブの文書はありません。」と「すべての文書を表示」（「文書はまだありません。」を出さない） | `tells that the tab is empty and offers all documents` |
+| H7 | 鍵の導出・表示 | データソース → 収集 → 報告書 → 手入力の順（BFF と同じ例）。長い出典名は BFF と同じ上限で切る。表示名・タブの件数・リンクにしてよい URL | `documentSourceKey` ／ `documentSourceKey の上限` ／ `sourceLabel / originCounts / linkableOriginalUri` |
+
+### BFF（xUnit）
+
+テスト: [`Platform.Bff.Tests/BffDocumentListFacetTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentListFacetTests.cs)
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| J1 | 鍵の導出 | `ds:` → `col:` → `report`（`kind` と `periodKey` の両方）→ `manual` の順で 1 つに決まる。タブは `col:` だけが収集 | `データソースの鍵はデータソース_収集_報告書_手入力の順で決まる` |
+| J2 | 各絞り込み | タブ・データソース・機密区分・タグ・プロジェクト（`(none)`）・保存日（オフセットを読む・終わりは含まない）が窓と `total` を絞り、`unfilteredTotal` は絞る前の数 | `絞り込みは窓と総件数を絞り全体の件数は絞る前の数` |
+| J3 | 件数 | `sourceCounts` / `projectCounts` は絞り込みに依らず、合計は `unfilteredTotal` | `データソース別とプロジェクト別の件数は絞り込みに依らない` |
+| J4 | 後方互換 | 新しいクエリを付けない要求は従前どおり全件（ABAC 後）。データソースの表示名と原本の所在が gRPC を往復して応答に載る | `新しいクエリを付けない要求は従前どおり全件を返す` ／ `データソースの表示名と原本の所在が一覧の応答に載る` |
+| J5 | **存在秘匿** | 新しい絞り込みを付けても、権限外の文書を混ぜた台帳と混ぜない台帳で応答（全件数・各件数・窓）が一致する（陽性対照つき） | `権限外の文書は新しい絞り込みの件数にもデータソース別の件数にも現れない` |
+| J6 | **存在秘匿（個人資料）** | 他人の個人資料も、新しい絞り込み・データソース別・プロジェクト別の件数のどれにも現れない（陽性対照つき） | `他人の個人資料は新しい絞り込みの件数にもプロジェクト別の件数にも現れない` |
+| J7 | 許可ポリシーなし | 件数はどれも 0 / 空 | `許可ポリシーが無いときデータソース別とプロジェクト別の件数は空` |
+| J9 | **件数の鍵は選べる** | 長い出典名の鍵は受理の上限で切って数え（サロゲートペアは割らない）、切った鍵で絞ると 400 にならずその文書に当たる | `長い出典名の鍵は受理の上限で切って数え選べる` |
+| J10 | **件数の鍵は選べる（プロジェクト）** | 長い `project` の鍵も受理の上限（100）で切って数え（サロゲートペアは割らない）、切った値で絞るとその文書に当たる | `長いプロジェクトの鍵は受理の上限で切って数え選べる` |
+| J8 | 検証 | 未知の `origin` / `confidentiality`、壊れた日時、`createdFrom >= createdBefore` は 400 で後段を呼ばない。`source` / `tag` / `project` は上限ちょうどまで | `未知の値と壊れた日時と逆向きの範囲は400で後段を呼ばない` ／ `長すぎる値は400で上限ちょうどは通る` |
+
+### 契約・後段（xUnit）
+
+テスト: `Knowledge.Contracts.Tests/DocumentReadGrpcMappingTests.cs` ／ `DocumentService.Tests/.../DocumentMapperTests.cs`
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| K1 | gRPC の写像 | データソースの表示名・原本の所在は presence で運び、null と空文字を分ける（全項目の往復の器にも足した） |
+| K2 | REST の写像 | 台帳の `DataSourceName` / `OriginalUri` が同名の列から写り、無ければ null |
+
+## 一覧の索引の状態の列（索引済み・埋め込み待ち・未索引・不明）
+
+> **［2026-10-20 追記］** 列の見直しの最後の残り。取り込み側が文書 ID の集合から索引の状態を返す gRPC 面を持ち、BFF がページを切り出した後に
+> そのページの ID だけを 1 回で問い合わせる。引けなければ全件「不明」で、一覧は失敗させない。
+
+### 画面（Vitest）
+
+テスト: `DocumentManagementPage.test.tsx` ／ `documentIndexStatus.test.ts`（純関数）
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| L1 | 列 | 列「索引」に 4 値（索引済み・埋め込み待ち・未索引・不明）を文言つきのバッジで出す。応答に鍵の無い文書は「不明」 | `shows the index state of each document and unknown when the key is missing` |
+| L2 | 旧い応答 | 項目そのものが無い応答でも一覧は出て、全件「不明」 | `reads a response without index statuses as unknown for every row` |
+| L3 | 写像 | 4 値の文言と色（埋め込み待ちだけ警告色）。鍵が無ければ「不明」で未索引へ倒さない。未知の値は生値 | `documentIndexStatusView` |
+
+### BFF（xUnit）
+
+テスト: `Platform.Bff.Tests/BffDocumentListIndexStatusTests.cs`
+
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| M1 | 結合 | ページの文書の状態が 3 値で載り、照会はページの ID だけを 1 回（N+1 にしない） | `窓の文書の状態が3値で出て_照会は窓のIDを1回だけ` |
+| M2 | 照会しない | ページが空・許可ポリシーが無いときは照会しない | `窓が空なら照会しない` ／ `許可ポリシーが無いときは照会しない` |
+| M3 | **存在秘匿** | 権限外の文書・他人の個人資料の ID を問い合わせない。混ぜた台帳と混ぜない台帳で応答と照会した ID が一致（陽性対照: 区分を広げれば権限外も照会に出る） | `権限外の文書と他人の個人資料の状態は問い合わせない` |
+| M4 | 縮退 | UNAVAILABLE・INTERNAL・期限切れ・INVALID_ARGUMENT・s2s トークン取得失敗で全件「不明」、一覧は 200 | `取り込み側が応答しないときは全件不明で一覧は失敗しない` |
+| M5 | 値 | 未指定・未知の値は「不明」（未索引へ倒さない） | `未指定の値は不明として読む` ／ `値の写しは3値と不明` |
+| M6 | 登録 | 宛先が無くても登録し、呼ぶと全件「不明」。宛先が在ればキー付きのチャネルを 1 本だけ（二重登録でも 1 本） | `宛先が無ければ登録はされ_呼ぶと全件不明` ／ `宛先が在ればキー付きのチャネルを1本だけ張る` |
+
+配線（helm・compose の BFF の宛先 `Services__IngestionServiceGrpc`）は `EastWestGrpcDeploymentWiringTests` の経路 I-1 が固定する。
+
+### 取り込み側（IngestionService・xUnit）
+
+テスト: `IngestionService.Tests/Features/Indexing/GetIndexStatuses/DocumentIndexStatusGrpcServiceTests.cs` ／
+`IngestionService.Tests/Infrastructure/ExternalServices/QdrantIndexPresenceTests.cs` ／
+実 Qdrant: `Knowledge.IntegrationTests/Search/IndexStatusQdrantTests.cs`（CI の integration）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| N1 | 分類 | 埋め込み待ちの印の点が 1 つでもあれば埋め込み待ち（一部だけ埋め込めた文書も）、印なしの点だけなら索引済み、無ければ未索引 |
+| N2 | 面の検証 | 上限 100 ちょうどは通り、超過・UUID でない ID は INVALID_ARGUMENT で索引を呼ばない。重複は 1 つ、要求の順で返す。空は空 |
+| N3 | 「引けなかった」 | 索引の失敗は UNAVAILABLE（詳細を載せない）。未索引へ畳まない |
+| N4 | 面の権限 | 本番の面は ServiceCaller の後ろにある（s2s の無い要求は認可で止まる） |
+| N5 | 問い合わせの回数 | コレクションごとに facet 1 回（語彙索引は印あり・なしの 2 回）。ID が 1 件でも 100 件でも同じ回数で、どれも渡した ID に絞る |
+| N6 | 索引 | ブートストラップが `document_id` のキーワード索引を全コレクションへ張る（既存の索引の後） |
+| N7 | 実 Qdrant | 本番の書き込みの口で書いた文書が 3 値に分かれ、ページの外の文書は数えない。索引が無ければ facet は失敗する（陰性対照） |
+
 ## ABAC・存在秘匿の担保
 
 - 読み取りは ABAC スコープ内のみ返る。書き込みは BFF が対象文書のスコープを先に確かめ、
@@ -139,6 +328,12 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentWriteEndpointTests`
 - `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter Publish`
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListPagingTests`（一覧のページング）
+- `dotnet test src/knowledge/backend/Services/DocumentService/Tests --filter "DocumentListPagingTests|ListDocuments_"`（同・後段）
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListFilterTests`（一覧の並べ替え・絞り込み）
+- `PLATFORM_TEST_POSTGRES=<接続文字列> dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter DocumentListKeysetPostgresTests`（実 PostgreSQL）
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentListIndexStatusTests`（索引の状態の結合）
+- `dotnet test src/knowledge/backend/Services/IngestionService/Tests --filter "DocumentIndexStatusGrpcServiceTests|QdrantIndexPresenceTests"`（同・取り込み側）
 
 <!-- trace-table:
 row1: SC-05, FR-06

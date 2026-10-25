@@ -14,10 +14,10 @@
 //
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
 //   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。REST の受け口は認証を
-//   課していない（メッシュ内部限定）ので、**この面は現状より狭い**。REST 側は変えない
-//   （並走中の正は REST。IADR-0379 決定 5）。
+//   課していない（メッシュ内部限定）ので、**この面は現状より狭い**。
+//   ［2026-10-10 / #1255・[[IADR-0533]]］REST の受け口 `GET /internal/mcp-tools` と、その収集は撤去した（#1517）。
 //
-// ■ 🔴 **扇形である。** 呼び出し元は MCP サーバーの 1 つ、宛先は構成（`Mcp:Services` / `Mcp:GrpcServices`）で開く。
+// ■ 🔴 **扇形である。** 呼び出し元は MCP サーバーの 1 つ、宛先は構成（`Mcp:Services`。旧 `Mcp:GrpcServices` は撤去）で開く。
 //   宛先ごとに同じ 1 つの rpc を実装するので、宛先が増えても proto は増えない。
 //
 // ■ proto3 に null は無い（IADR-0397 決定 5 ほか）。5 項目はいずれも DTO 側でも null を取らない。

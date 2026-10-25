@@ -34,6 +34,11 @@ export interface AskCitation {
   sourceUri?: string | null;
   score: number;
   snippet: string;
+  /**
+   * FR-04, SC-01（#541 / #2017）: 出典の文書の機密区分（ABAC 文書属性 `confidentiality` の生値）。
+   * 契約 `CitationDto` の必須欄。**表示名へは `CitationList` が写す**（正は計画リポジトリの用語集）。
+   */
+  confidentiality: string;
 }
 
 /**

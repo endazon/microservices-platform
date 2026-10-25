@@ -35,7 +35,7 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 const { TIMING_ALPHA, TIMING_VERDICT } = require('./check-password-reset-mail.js');
 const {
-  parseT25FromJobLog, ghGet, ghGetJson, DEFAULT_REPO, WORKFLOW_FILE, STACK_JOB_NAME, RESET_GATE_PREFIX,
+  readT25ForJob, ghGetJson, DEFAULT_REPO, WORKFLOW_FILE, STACK_JOB_NAME, RESET_GATE_PREFIX,
 } = require('./t25-monthly-summary.js');
 
 /** integration-stack.yml の「T-25 だけの赤」の手順名（API は長い手順名を切るので短い ASCII に保つ）。 */
@@ -131,7 +131,7 @@ const runUrl = (repo, id, attempt) => `https://github.com/${repo}/actions/runs/$
 const markerOf = (kind, runId) => `<!-- t25-chance-red:${kind}:${runId} -->`;
 const manualCommand = (repo, runId) => `gh run rerun ${runId} --failed --repo ${repo}`;
 
-function rerunRequestedBody({ repo, run, t25, error }) {
+function rerunRequestedBody({ repo, run, t25, error, t25Error = null }) {
   const head = error
     ? `**T-25（所要時間）だけが赤だったが、同じコミットの再実行を起こせなかった。** 手で 1 回だけ再実行すること:\n\n\`\`\`sh\n${manualCommand(repo, run.id)}\n\`\`\`\n\n（エラー: ${String(error).split('\n')[0]}）`
     : '**T-25（所要時間）だけが赤だったので、同じコミットで 1 回だけ再実行した**（計画 ADR-0118 決定 2）。結果はこの issue へ自動で書く。';
@@ -141,6 +141,7 @@ function rerunRequestedBody({ repo, run, t25, error }) {
     '',
     `- 赤の実行: ${runUrl(repo, run.id, 1)}（契機 \`${run.event}\` / コミット \`${run.head_sha}\`）`,
     `- T-25: p=${fmtP(t25 && t25.p)} / W=${(t25 && t25.w) ?? '—'}（有意水準 ${TIMING_ALPHA}・両側）`,
+    ...unreadNote('赤の実行', { error: t25Error }),
     '- ほかの門: すべて緑（スタック・ABAC と検索の投入・ABAC と検索の門・ログイン経路の門）。パスワードリセットの門の中の失敗も T-25 の順位和検定の赤だけ',
     `- 再実行: \`${manualCommand(repo, run.id)}\` 相当（同じ run の attempt 2）。**再実行の再実行はしない。**`,
     '',
@@ -168,7 +169,7 @@ const OUTCOME_TEXT = {
   ],
 };
 
-function reportBody({ repo, run, outcome, first, second }) {
+function reportBody({ repo, run, outcome, first, second, firstError = null, secondError = null }) {
   const lines = [
     markerOf('report', run.id),
     `### T-25 の偶然の赤の確かめ: ${outcome}`,
@@ -179,6 +180,7 @@ function reportBody({ repo, run, outcome, first, second }) {
     '| --- | --- | --- | --- | --- | --- |',
     `| 1（赤） | ${runUrl(repo, run.id, 1)} | failure | ${(first && first.verdict) || '—'} | ${fmtP(first && first.p)} | ${(first && first.w) ?? '—'} |`,
     `| 2（再実行） | ${runUrl(repo, run.id, 2)} | ${run.conclusion} | ${(second && second.verdict) || '—'} | ${fmtP(second && second.p)} | ${(second && second.w) ?? '—'} |`,
+    ...(firstError || secondError ? ['', ...unreadNote('attempt 1 ', { error: firstError }), ...unreadNote('attempt 2 ', { error: secondError })] : []),
     '',
     `コミット \`${run.head_sha}\`（契機 \`${run.event}\`）。月次の要約は \`node scripts/t25-monthly-summary.js --month <YYYY-MM>\` が数える。`,
   ];
@@ -196,15 +198,22 @@ function readAttempt({ repo, runId, attempt, execFn }) {
   return { run, jobs };
 }
 
+/**
+ * attempt のジョブから T-25 の結果を読む。注釈 → ログの順（#1998。t25-monthly-summary.js の readT25ForJob）。
+ * 🔴 **読めなかった理由を返す**（以前は例外を握りつぶして null を返し、記録の p / W が 2 回とも「—」なのに理由が残らなかった）。
+ * @returns {{t25:(object|null), error:(string|null)}}
+ */
 function t25Of({ repo, jobs, execFn }) {
   const job = (jobs || []).find((j) => j.name === STACK_JOB_NAME);
-  if (!job) return null;
-  try {
-    return parseT25FromJobLog(ghGet(execFn, `repos/${repo}/actions/jobs/${job.id}/logs`));
-  } catch (e) {
-    return null;
-  }
+  if (!job) return { t25: null, error: `ジョブ「${STACK_JOB_NAME}」が無い` };
+  const { t25, error } = readT25ForJob({ repo, jobId: job.id, execFn });
+  // ログは読めたが門の区間が無い（＝p が無い）ときも、値が無いことに変わりはない。
+  if (t25 && typeof t25.p === 'number' && Number.isFinite(t25.p)) return { t25, error: null };
+  return { t25, error: error || 'ログに T-25 の順位和検定の行が無い' };
 }
+
+/** p を読めなかったときだけ、理由を 1 行で返す（読めたら空）。 */
+const unreadNote = (label, r) => (r && r.error ? [`- ${label}の T-25 を読めなかった: ${String(r.error).split('\n')[0]}`] : []);
 
 function findIssue({ repo, execFn }) {
   for (let page = 1; page <= 10; page += 1) {
@@ -249,7 +258,8 @@ function execute({ repo, runId, attempt, apply, execFn = execFileSync }) {
   if (decision.action === 'none') return { code: 0, decision, log };
 
   if (decision.action === 'rerun') {
-    const t25 = t25Of({ repo, jobs: cur.jobs, execFn });
+    const { t25, error: t25Error } = t25Of({ repo, jobs: cur.jobs, execFn });
+    if (t25Error) log.push(`T-25 を読めなかった: ${t25Error}`);
     const issue = findIssue({ repo, execFn });
     const marker = markerOf('rerun', runId);
     if (!apply) {
@@ -275,7 +285,7 @@ function execute({ repo, runId, attempt, apply, execFn = execFileSync }) {
       log.push(`🔴 再実行を起こせなかった: ${error.split('\n')[0]}`);
     }
     if (issue) {
-      postComment({ repo, issue, body: rerunRequestedBody({ repo, run: cur.run, t25, error }), execFn });
+      postComment({ repo, issue, body: rerunRequestedBody({ repo, run: cur.run, t25, error, t25Error }), execFn });
       log.push(`issue #${issue} へ書いた`);
     } else {
       log.push('🔴 マーカーの issue が開いていない（起票に失敗した？）。コメントは書いていない');
@@ -284,8 +294,10 @@ function execute({ repo, runId, attempt, apply, execFn = execFileSync }) {
   }
 
   // report（attempt 2）
-  const first = t25Of({ repo, jobs: prev.jobs, execFn });
-  const second = t25Of({ repo, jobs: cur.jobs, execFn });
+  const { t25: first, error: firstError } = t25Of({ repo, jobs: prev.jobs, execFn });
+  const { t25: second, error: secondError } = t25Of({ repo, jobs: cur.jobs, execFn });
+  if (firstError) log.push(`attempt 1 の T-25 を読めなかった: ${firstError}`);
+  if (secondError) log.push(`attempt 2 の T-25 を読めなかった: ${secondError}`);
   const outcome = rerunOutcome(cur.run, second);
   log.push(`再実行の結果: ${outcome}（T-25 attempt 1 p=${fmtP(first && first.p)} / attempt 2 p=${fmtP(second && second.p)}）`);
   const issue = findIssue({ repo, execFn });
@@ -302,7 +314,7 @@ function execute({ repo, runId, attempt, apply, execFn = execFileSync }) {
     log.push(`issue #${issue} に結果の記録がある。何もしない`);
     return { code: 0, decision: { ...decision, outcome }, log };
   }
-  postComment({ repo, issue, body: reportBody({ repo, run: cur.run, outcome, first, second }), execFn });
+  postComment({ repo, issue, body: reportBody({ repo, run: cur.run, outcome, first, second, firstError, secondError }), execFn });
   log.push(`issue #${issue} へ書いた`);
   return { code: 0, decision: { ...decision, outcome }, log };
 }
@@ -446,7 +458,13 @@ function selfTest() {
       if (/actions\/runs\/42$/.test(p)) return JSON.stringify({ id: 42, run_attempt: latestAttempt });
       if ((m = /actions\/jobs\/(\d+)\/logs$/.exec(p))) {
         const a = Object.values(attempts).find((x) => x.jobs[0].id === Number(m[1]));
+        if (a.logError) { const e = new Error('Command failed: gh api'); e.stderr = `${a.logError}\n`; throw e; }
         return a.log;
+      }
+      if ((m = /check-runs\/(\d+)\/annotations$/.exec(p))) {
+        const a = Object.values(attempts).find((x) => x.jobs[0].id === Number(m[1]));
+        if (a.annError) { const e = new Error('Command failed: gh api'); e.stderr = `${a.annError}\n`; throw e; }
+        return JSON.stringify(a.annotations || []);
       }
       if (/repos\/o\/r\/issues$/.test(p)) {
         return JSON.stringify(issueOpen ? [{ number: 3, body: 'other' }, { number: 7, body: `${ISSUE_MARKER}\n**integration-stack が失敗した。**` }] : []);
@@ -511,6 +529,41 @@ function selfTest() {
     assert.ok(gh.comments[0].body.includes('再実行も T-25 が赤'));
     const closed = makeGh({ attempts: { 1: a1, 2: a2 }, latestAttempt: 2, issueOpen: false });
     assert.strictEqual(execute({ repo: 'o/r', runId: 42, attempt: 2, apply: true, execFn: closed.fn }).code, 1);
+  });
+
+  // ---- #1998: 注釈から読む・読めなければ理由を書く ----------------------------------------------------
+  const { timingAnnotation } = require('./check-password-reset-mail.js');
+  const annOf = (verdict, p, w) => {
+    const line = timingAnnotation({ timing: { verdict, slower: '実在', rankSum: { p, w, expectedW: 588 } } }, { istio: '1' });
+    return [{ title: /title=([^:]+)::/.exec(line)[1], message: line.replace(/^::notice title=[^:]+::/, ''), annotation_level: 'notice' }];
+  };
+  ok('🔴 #1998 実行: ログを読めなくても、注釈から p と W を読んで記録へ載せる（ログは読まない）', () => {
+    const b1 = { ...a1, annotations: annOf('不合格', 0.0094, 713), logError: 'HTTP 404: Not Found' };
+    const b2 = { run: runOf({ run_attempt: 2, conclusion: 'success' }), jobs: greenJobs(), annotations: annOf('合格', 0.6165, 563), logError: 'HTTP 404: Not Found' };
+    const gh = makeGh({ attempts: { 1: b1 }, comments: [] });
+    execute({ repo: 'o/r', runId: 42, attempt: 1, apply: true, execFn: gh.fn });
+    assert.ok(gh.comments[0].body.includes('p=0.0094 / W=713'), gh.comments[0].body);
+    assert.ok(!gh.comments[0].body.includes('読めなかった'), '読めたのに理由を書いた');
+    const g2 = makeGh({ attempts: { 1: b1, 2: b2 }, latestAttempt: 2 });
+    const r = execute({ repo: 'o/r', runId: 42, attempt: 2, apply: true, execFn: g2.fn });
+    assert.strictEqual(r.decision.outcome, 'chance-red');
+    assert.ok(g2.comments[0].body.includes('| 不合格 | 0.0094 | 713 |') && g2.comments[0].body.includes('| 合格 | 0.6165 | 563 |'), g2.comments[0].body);
+    assert.ok(!g2.calls.some((c) => /\/logs$/.test(c)), `注釈で読めたのにログを読んだ: ${g2.calls.join('\n')}`);
+  });
+  ok('🔴 #1998 実行: 注釈もログも読めなければ、p は「—」のまま理由を記録とログへ書く（握りつぶさない）', () => {
+    const c1 = { ...a1, annError: 'HTTP 403: Resource not accessible by integration', logError: 'HTTP 404: Not Found' };
+    const gh = makeGh({ attempts: { 1: c1 } });
+    const r1 = execute({ repo: 'o/r', runId: 42, attempt: 1, apply: true, execFn: gh.fn });
+    assert.strictEqual(r1.code, 0, '読めないことで再実行を止めない');
+    assert.strictEqual(gh.calls.filter((c) => c.startsWith('run rerun')).length, 1);
+    const want = '注釈: HTTP 403: Resource not accessible by integration / ログ: HTTP 404: Not Found';
+    assert.ok(gh.comments[0].body.includes('p=— / W=—') && gh.comments[0].body.includes(`赤の実行の T-25 を読めなかった: ${want}`), gh.comments[0].body);
+    assert.ok(r1.log.some((l) => l.includes(want)), r1.log.join('\n'));
+    const c2 = { run: runOf({ run_attempt: 2, conclusion: 'success' }), jobs: greenJobs(), annError: 'HTTP 403: x', logError: 'HTTP 404: y' };
+    const g2 = makeGh({ attempts: { 1: c1, 2: c2 }, latestAttempt: 2 });
+    execute({ repo: 'o/r', runId: 42, attempt: 2, apply: true, execFn: g2.fn });
+    const body = g2.comments[0].body;
+    assert.ok(body.includes(`attempt 1 の T-25 を読めなかった: ${want}`) && body.includes('attempt 2 の T-25 を読めなかった: 注釈: HTTP 403: x / ログ: HTTP 404: y'), body);
   });
 
   console.log(`[t25-rerun-on-chance-red] self-test OK: ${n} 件`);

@@ -11,7 +11,7 @@ import {
   LIFECYCLE_VALUES,
   UNRESOLVED_DEPARTMENT,
 } from '../../../lib/abac';
-import { i18n } from '@foundation/i18n';
+import { confidentialityLabel, i18n } from '@foundation/i18n';
 import { SOURCE_TYPES, sourceTypeLabel } from '../types/syncState';
 import { OwnerMappingRows, useOwnerMappingRows } from './OwnerMappingRows';
 import type { CreateDataSourceRequest } from '@foundation/api/generated/bff.schemas';
@@ -132,7 +132,7 @@ export function DataSourceForm({
 
         <div>
           {/* FR-05 / IADR-0019: 既定の機密区分。未指定でもサーバが internal を補完する。
-                値そのものは翻訳しない（表示名が計画に無い値がある。abac/confidentiality.ts 参照）。 */}
+                選択肢は用語集の表示名で出し、値は契約の値のまま送る（`@foundation/i18n` の写像。#2019）。 */}
           <Label htmlFor="ds-conf">
             <Trans>既定の機密区分</Trans>
           </Label>
@@ -143,7 +143,7 @@ export function DataSourceForm({
           >
             {CONFIDENTIALITY_VALUES.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {confidentialityLabel(value, (d) => i18n._(d))}
               </option>
             ))}
           </Select>
@@ -153,7 +153,7 @@ export function DataSourceForm({
           {/* FR-05, UC-04, SC-06（#767）: 既定の所管部門。計画 07_abac-attribute-model は
                 `department` を**必須**の文書属性と定めるが、値域を列挙していない（「部門コード
                 （人事/経理/開発 等）」の例示のみ）ため自由入力にする。**実装が値集合を決めない。**
-                予約値そのものは翻訳しない（機密区分の値と同じ扱い）。
+                予約値そのものは翻訳しない（後段が入れる実際の値。機密区分は #2019 から表示名へ写す）。
                 ［2026-09-26 / #754 / IADR-0468］値域は利用者裁定で Keycloak realm の部門グループ
                 （`/department/<コード>`）と定まった。**未入力なら、サーバが登録する管理者の部門グループ
                 （ちょうど 1 つのとき）のコードで補う**ので、補助文でそれを伝え、例示もコードの体系に揃える。
@@ -189,7 +189,7 @@ export function DataSourceForm({
                 07_abac-attribute-model の `lifecycle` 属性（`draft` / `active` / `archived`）が正であり、
                 `department` と違って**列挙がある**ので選択式にする。**「未指定」を選べることが要件**
                 —— 終端の `active` は指定が無いときだけ効くためである（09_datasource-connectors）。
-                値そのものは翻訳しない（保存値。機密区分と同じ扱い）。 */}
+                値そのものは翻訳しない（保存値。機密区分は #2019 から表示名へ写す）。 */}
           <Label htmlFor="ds-lifecycle">
             <Trans>既定のライフサイクル状態</Trans>
           </Label>

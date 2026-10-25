@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import type { PlatformUserDto } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
@@ -18,13 +18,13 @@ const user: PlatformUserDto = {
   username: 'hando.taro',
   displayName: 'ハンドウ タロウ',
   enabled: true,
-  roles: ['platform-user'],
+  roles: ['platform-operator'],
   attributes: { department: '営業部' },
 };
 
 const adminHandlers = {
   'GET /admin/users': [user],
-  'GET /admin/users/assignable-roles': ['platform-user', 'platform-admin'],
+  'GET /admin/users/assignable-roles': ['platform-admin', 'platform-operator'],
   'GET /admin/authz/attributes': [],
 };
 
@@ -52,6 +52,16 @@ test('SC-17: a platform administrator reaches the screen and its navigation entr
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'ユーザー管理' })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'hando.taro' })).toBeVisible();
+  // ★ #2214: 一覧のロール列は計画の表示名（05_screens §SC-17 主要素）。識別子は出さない。
+  const row = page.getByRole('row').filter({ hasText: 'hando.taro' });
+  await expect(row.getByRole('cell', { name: '運用者', exact: true })).toBeVisible();
+  await expect(row.getByText('platform-operator')).toHaveCount(0);
+  // ロールのフィルタも表示名で選ぶ（値は識別子のまま）。
+  await expect(page.getByLabel('ロール', { exact: true }).getByRole('option')).toHaveText([
+    'すべて',
+    'システム管理者',
+    '運用者',
+  ]);
 
   expectBffTrafficIsComplete(traffic);
 });
@@ -72,5 +82,191 @@ test('SC-17: a non-administrator gets the same not-found page and never learns t
   await expect(page.getByRole('link', { name: 'ユーザー管理' })).toHaveCount(0);
 
   expect(traffic.calls.map((c) => c.key)).not.toContain('GET /admin/users');
+  expectBffTrafficIsComplete(traffic);
+});
+
+// ───────────── M-106・M-107（#2020 / E-15）: 併任・機密区分上限の必須・無効化の確認・新規作成の不在 ─────────────
+//
+// 期待値は計画 05_screens §SC-17 から起こした。
+// - ロール割当は必須・複数選択（併任可）。選択肢は定義済みロールだけ（画面は一覧の口から作る）。
+//   ［#2214］選択肢は計画の表示名（platform-admin＝システム管理者・platform-operator＝運用者）で出し、
+//   送る値は識別子のまま。表に無い識別子（realm の `wiki-editor` 等）は生値のまま出す。
+//   計画の 4 種のうち利用者・管理者には realm ロールがまだ無い（ADR-0026 のフォローアップ）。
+// - ABAC 属性: 機密区分上限は**必須**（SC-09 に定義済みの値のみ）、タグは任意。
+// - 部門は部門グループの所属の変更であり、属性 `department` を直接書かない（ADR-0116 決定 1）。
+// - 無効化 → 全セッション即時失効（表示は「無効（全セッション失効）」）。
+// - アカウントは人事システム連携で自動プロビジョニングし、**本画面から新規作成はしない**。
+
+// 開発の realm が持つ「人が割り当てるロール」と同じ集合（`InMemoryIdentityAdminClient` の値域）。
+const ROLES = ['platform-admin', 'platform-operator', 'wiki-editor'];
+const USER_DICTIONARY = [
+  {
+    id: '66666666-6666-4666-8666-666666666666',
+    key: 'clearance',
+    label: '機密区分上限',
+    allowedValues: ['public', 'internal', 'confidential'],
+    required: true,
+    scope: 'user',
+    createdAt: '2026-10-01T00:00:00Z',
+    updatedAt: '2026-10-01T00:00:00Z',
+  },
+  {
+    id: '77777777-7777-4777-8777-777777777777',
+    key: 'tags',
+    label: 'タグ',
+    allowedValues: ['経理'],
+    required: false,
+    scope: 'user',
+    createdAt: '2026-10-01T00:00:00Z',
+    updatedAt: '2026-10-01T00:00:00Z',
+  },
+];
+const editorHandlers = {
+  'GET /admin/users': [user],
+  'GET /admin/users/assignable-roles': ROLES,
+  'GET /admin/authz/attributes': USER_DICTIONARY,
+  'GET /admin/users/user-1/department': {
+    departmentGroups: ['sales'],
+    departmentAttribute: 'sales',
+    choices: ['sales', 'dev'],
+  },
+};
+
+test('M-106: ロールは定義済みのものから表示名で併任でき、機密区分上限が無ければ保存せず、揃えば部門以外を送る', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      ...editorHandlers,
+      'PUT /admin/users/user-1/roles': (call) => ({
+        ...user,
+        roles: (call.body as { roles: string[] }).roles,
+      }),
+      'PUT /admin/users/user-1/attributes': (call) => ({
+        ...user,
+        attributes: (call.body as { attributes: Record<string, string> }).attributes,
+      }),
+    },
+  });
+
+  await page.goto('/admin/users');
+  await page
+    .getByRole('row')
+    .filter({ hasText: 'hando.taro' })
+    .getByRole('button', { name: '編集' })
+    .click();
+  const editor = page.getByTestId('permission-editor');
+  await expect(editor).toBeVisible();
+
+  // ★ 選択肢は定義済みのロールだけ（一覧の口が返した 3 種）。#2214: 表示名で出す（表に無いものは生値）。
+  const roleGroup = editor.getByRole('group', { name: 'ロール割当（必須・複数選択可）' });
+  await expect(roleGroup.getByRole('checkbox')).toHaveCount(3);
+  await expect(roleGroup.locator('label')).toHaveText(['システム管理者', '運用者', 'wiki-editor']);
+  await expect(roleGroup.getByRole('checkbox', { name: '運用者' })).toBeChecked();
+  // 併任: システム管理者を足す（運用者は既に付いている）。
+  await roleGroup.getByRole('checkbox', { name: 'システム管理者' }).check();
+
+  // ★ 機密区分上限は必須: 未選択では保存の要求を出さず、理由を示す。
+  await editor.getByRole('button', { name: '保存' }).click();
+  await expect(editor.getByTestId('assignment-issues')).toContainText('機密区分上限は必須です。');
+  expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+
+  // 揃えて保存する。選択肢は定義済みの値だけ。
+  const clearance = editor.getByLabel('機密区分上限 *');
+  await expect(clearance.getByRole('option')).toHaveText([
+    '選択してください',
+    'public',
+    'internal',
+    'confidential',
+  ]);
+  await clearance.selectOption('internal');
+  await editor.getByRole('button', { name: '保存' }).click();
+  await expect(editor.getByTestId('assignment-issues')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      traffic.calls
+        .filter((c) => c.method === 'PUT')
+        .map((c) => c.key)
+        .sort(),
+    )
+    .toEqual(['PUT /admin/users/user-1/attributes', 'PUT /admin/users/user-1/roles']);
+
+  const body = (key: string) => traffic.calls.find((c) => c.key === key)?.body;
+  // 送る値は識別子のまま（表示名を送らない）。
+  expect((body('PUT /admin/users/user-1/roles') as { roles: string[] }).roles.sort()).toEqual([
+    'platform-admin',
+    'platform-operator',
+  ]);
+  // 属性は機密区分上限だけ（タグは任意なので未選択なら載らない）。部門は属性として書かない。
+  expect(body('PUT /admin/users/user-1/attributes')).toEqual({
+    attributes: { clearance: 'internal' },
+  });
+  expect(traffic.calls.map((c) => c.key)).not.toContain('PUT /admin/users/user-1/department');
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-106: 無効化は「全セッション失効」を告げる確認を挟み、やめれば送らず、確認すれば 1 回だけ送る', async ({
+  page,
+}) => {
+  let disabled = false;
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: {
+      ...editorHandlers,
+      'GET /admin/users': () => [{ ...user, enabled: !disabled }],
+      'POST /admin/users/user-1/disable': () => {
+        disabled = true;
+        return { ...user, enabled: false };
+      },
+    },
+  });
+
+  await page.goto('/admin/users');
+  const row = page.getByRole('row').filter({ hasText: 'hando.taro' });
+  await expect(row.getByText('有効', { exact: true })).toBeVisible();
+  await row.getByRole('button', { name: '編集' }).click();
+  const editor = page.getByTestId('permission-editor');
+
+  await editor.getByRole('button', { name: '無効化（全セッション失効）' }).click();
+  const dialog = page.getByRole('alertdialog').or(page.getByRole('dialog'));
+  await expect(dialog).toContainText('その利用者の全セッションが即座に失効し');
+  await dialog.getByRole('button', { name: 'やめる' }).click();
+  await expect(dialog).toHaveCount(0);
+  const disables = () => traffic.calls.filter((c) => c.key === 'POST /admin/users/user-1/disable');
+  expect(disables()).toHaveLength(0);
+
+  await editor.getByRole('button', { name: '無効化（全セッション失効）' }).click();
+  await dialog.getByRole('button', { name: '無効化する' }).click();
+  await expect(row.getByText('無効（全セッション失効）')).toBeVisible();
+  expect(disables()).toHaveLength(1);
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-107: 本画面にはアカウントを新規作成する操作が無く、作成は人事連携による旨を示す', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: adminHandlers,
+  });
+
+  await page.goto('/admin/users');
+  // 陽性対照: 一覧の行と、その行の操作（編集）は描けている。
+  const row = page.getByRole('row').filter({ hasText: 'hando.taro' });
+  await expect(row.getByRole('button', { name: '編集' })).toBeVisible();
+
+  // ★ 本文領域（main。共通シェルのヘッダ・ナビは除く）の全ボタンの集合を完全一致で見る
+  // （作成・追加・招待の操作がどんな文言で増えても赤になる）。
+  // 並べ替えの見出しボタン（ユーザー・状態）と、行の「編集」だけである。
+  const names = (await page.getByRole('main').getByRole('button').allTextContents()).map((n) =>
+    n.trim(),
+  );
+  expect(names).toEqual(['ユーザー', '状態', '編集']);
+  await expect(page.getByTestId('users-help')).toContainText('この画面からは作成できません');
+  expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+
   expectBffTrafficIsComplete(traffic);
 });

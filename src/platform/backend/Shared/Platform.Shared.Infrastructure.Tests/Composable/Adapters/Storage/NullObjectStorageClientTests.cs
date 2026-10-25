@@ -78,6 +78,9 @@ public class NullObjectStorageClientTests
             () => sut.GetTextAsync(uri, TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<NotSupportedException>(
             () => sut.GetBytesAsync(uri, TestContext.Current.CancellationToken));
+        // #1940: 上限つきの取得も同じ向き（本文を持たない）。
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => sut.GetTextBoundedAsync(uri, 1024, TestContext.Current.CancellationToken));
     }
 
     [Fact]

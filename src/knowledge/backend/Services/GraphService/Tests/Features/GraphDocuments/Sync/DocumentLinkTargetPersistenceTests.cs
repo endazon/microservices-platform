@@ -69,7 +69,7 @@ public class DocumentLinkTargetPersistenceTests
             db, new FixedClock(T0.AddDays(1)), reader, sync,
             new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-            NullLogger<GraphDocumentSyncConsumer>.Instance);
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader);
     }
 
@@ -175,7 +175,7 @@ public class DocumentLinkTargetPersistenceTests
         db.Documents.Add(GraphDocument.Create(DocA, "文書A", [], "fp-a", T0));
         await db.SaveChangesAsync(ct);
 
-        var consumer = new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db), NullLogger<DocumentDeletedConsumer>.Instance);
+        var consumer = new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db), NoOpTagEdgeLocks.Instance, NullLogger<DocumentDeletedConsumer>.Instance);
         await consumer.Handle(new DocumentDeleted(DocA, T0.AddDays(1)), ct);
 
         (await TargetsOfAsync(db, DocA, ct)).Should().BeEmpty(

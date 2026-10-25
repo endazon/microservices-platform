@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-09
+updated: 2026-10-22
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0525, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489]
-specs: [20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper]
-issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
+iadrs: [IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -29,7 +29,7 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 | 対象 | CronJob（名前空間 `platform-infra`） | 時刻（JST） | 成果物（回のディレクトリの中） |
 | --- | --- | --- | --- |
 | Postgres の全 DB（非テンプレート・接続可）と globals（ロール） | `platform-backup-postgres` | 毎日 12:00 | `pg-<DB 名>.dump.age`（`pg_dump -Fc`）・`pg-globals.sql.age`・`SHA256SUMS` |
-| 秘匿管理（OpenBao）のストレージ（`/vault/data`。raft は `raft/`） | `platform-backup-vault` | 毎日 12:15 | `vault-data.tar.gz.age`・`SHA256SUMS` |
+| 秘匿管理（OpenBao）の raft の**整合したスナップショット**と init のファイル（unseal 鍵） | `platform-backup-vault` | 毎日 12:15 | `vault-raft.snap.age`・`vault-init.age`・`SHA256SUMS` |
 
 - 保管先は 2 か所: `C:\platform-infra-backups\` と `E:\platform-infra-backups\`（WSL のディストリからは
   `/mnt/c/...`・`/mnt/e/...`）。その下に `postgres\<回>\` と `vault\<回>\` が並ぶ。回の名前は UTC の時刻
@@ -37,8 +37,13 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 - 時刻は米国市場の時間帯（JST 22:30〜05:00）を避けている。PC を止めていて取りこぼした回は、22:00 JST までに
   クラスタが戻れば後追いで走り、それを過ぎたら翌日の回を待つ。
 - **すべての成果物は age の公開鍵で暗号化されている。** 平文はディスクへ書かれない（生成器から age へパイプで渡す）。
-  🔴 Vault の写しには unseal 鍵と初期 root トークンの平文ファイルが含まれる（Pod 内で自動 unseal するため）。
-  **復号した Vault の写しは、それだけで Vault の中身をすべて読める**。復号は必要なときだけ、使い捨ての場所で行う。
+  🔴 Vault の回の `vault-init.age` は unseal 鍵と初期 root トークンの平文ファイルである（Pod 内で自動 unseal するため）。
+  **復号したスナップショットと init のファイルを合わせると、Vault の中身をすべて読める**。復号は必要なときだけ、使い捨ての場所で行う。
+- Vault の回は、秘匿管理が自分で一貫した時点を書き出す **raft のスナップショット**（`GET /v1/sys/storage/raft/snapshot`）を取り、
+  中の `SHA256SUMS` で `meta.json`・`state.bin` を検算してから暗号化する。空・途中で切れた・検算が合わないスナップショットは置かない
+  （その日の回を書かずに Job が失敗する）。
+- Vault の回の Job は**専用の ServiceAccount `platform-backup-vault` で秘匿管理へログイン**する（k8s auth）。持つ権限はスナップショットを
+  取ることだけで、トークンは 1 回きり・5 分。root トークンは Job へ渡さない。認証の設定（role とポリシー）は起動スクリプトが毎回入れる（§1 の 5）。
 - 永続化しない使い捨てスタック（`PERSIST=0`）には CronJob を置かない。Vault の回は Vault を永続化して立てたとき
   （`VAULT=1` の既定）にだけ置かれる。
 
@@ -70,7 +75,7 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 
 | 項目 | 内容 |
 | --- | --- |
-| 必要な権限 | クラスタへの `kubectl`（`platform-infra` の ConfigMap の作成・Job の閲覧、リストア試験の `--live` では `deploy/postgres` への exec） |
+| 必要な権限 | クラスタへの `kubectl`（`platform-infra` の ConfigMap の作成・Job の閲覧、リストア試験の `--live` では `deploy/postgres` への exec、Vault の認証の投入と戻しでは `deploy/vault` への exec と ClusterRoleBinding の適用） |
 | 必要なツール | `age` と `age-keygen`（運用者の端末）、`kubectl`、コンテナの CLI（Rancher Desktop の `docker`）、Git Bash か WSL の bash、`sha256sum` |
 | 所要時間の目安 | 準備 15 分・日々の確認 5 分・リストア試験 20〜40 分（DB の大きさによる） |
 
@@ -118,6 +123,19 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
    bash scripts/k8s-local-images.sh --live          # 全イメージ。起動スクリプトの [2/7] と同じもの
    kubectl apply -k deploy/local/platform-backup/postgres
    kubectl apply -k deploy/local/platform-backup/vault      # Vault を永続化しているときだけ
+   bash deploy/local/platform-backup/vault/bootstrap.sh      # 同じ。Vault の回の認証（k8s auth の role とポリシー）
+   ```
+
+   Vault の回の認証は、起動スクリプトが永続化した秘匿管理を当てた後に毎回入れる（`==> platform-backup(vault): …` の 4 行が出る）。
+   単独で当てたときは上の `bootstrap.sh` を走らせる（冪等。秘匿管理が unseal 済みであること）。入るもの: Vault の SA への TokenReview の権限、
+   kubernetes 認証、ポリシー `platform-backup-raft-snapshot`（`sys/storage/raft/snapshot` の read だけ）、role `platform-backup-vault`
+   （SA `platform-infra/platform-backup-vault` にだけ束縛し、対象者〔audience〕が `vault` のトークンだけを受ける。CronJob の projected token が
+   同じ対象者を持つ）。確かめるには:
+
+   ```bash
+   kubectl -n platform-infra exec deploy/vault -- sh -c 'VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault policy read platform-backup-raft-snapshot'
+   kubectl -n platform-infra exec deploy/vault -- sh -c 'VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault read auth/kubernetes/role/platform-backup-vault' \
+     | grep -E 'audience|bound_service_account_(names|namespaces)|token_(policies|no_default_policy|num_uses|ttl)'
    ```
 
    CronJob のイメージは `k3d-local/platform-backup:pg<PG の版>-age<age の版>` で、`imagePullPolicy: IfNotPresent`
@@ -148,6 +166,9 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
    ```
 
    ログの末尾が `完了（保管先 2 か所）` であり、C: と E: の `postgres\` に同じ名前の回が並べば成功。
+   Vault の回は `kubectl -n platform-infra wait --for=condition=complete job/platform-backup-vault-manual-1 --timeout=15m` の後に
+   ログを読み、`raft snapshot: ok（<バイト数> バイト・整合を検査済み）`・`init（unseal 鍵）: ok`・`完了（保管先 2 か所）` が出て、
+   `vault\<回>\` に `vault-raft.snap.age` と `vault-init.age` が並べば成功。
    手動の Job は確かめたら `kubectl -n platform-infra delete job <名前>` で消してよい（保管先の回は消えない）。
 
 ## 2. 日々の確認
@@ -239,13 +260,45 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
    | `FAIL … 追記専用の台帳が減っている` | 台帳の行が稼働側で消えている（**バックアップではなく稼働側の問題を疑う**） |
 
    終了コード 0 が合格。使い捨てのコンテナは成否によらず消える。
-5. Vault の回も復号できることを確かめる（中身は展開しない。**一覧を見るだけ**）:
+5. **Vault の回を、使い捨ての OpenBao（コンテナ。ネットワーク無し）へ戻して開けることを確かめる。** 稼働中の秘匿管理には触れない。
+   リポジトリの作業ツリーの根で、`RUN` に試す回（例 `/c/platform-infra-backups/vault/2026-10-16T031500Z`）、`KEY` に秘密鍵のファイルを入れて:
 
    ```bash
-   age -d -i <秘密鍵のファイル> /c/platform-infra-backups/vault/<回>/vault-data.tar.gz.age | tar -tzf - | head
+   BAO_IMAGE="$(sed -n 's/^ *image: \(openbao\/openbao:.*\)$/\1/p' deploy/local/vault/vault-dev.yaml)"
+   W="$(mktemp -d)"
+   (cd "$RUN" && sha256sum -c SHA256SUMS)                                   # 保管先の写しの検証
+   age -d -i "$KEY" -o "$W/raft.snap" "$RUN/vault-raft.snap.age"
+   age -d -i "$KEY" -o "$W/init" "$RUN/vault-init.age"
+   mkdir "$W/x" && tar -xzf "$W/raft.snap" -C "$W/x" && (cd "$W/x" && sha256sum -c SHA256SUMS)   # meta.json: OK / state.bin: OK
+   chmod 755 "$W" && chmod 644 "$W/raft.snap" "$W/init"                    # コンテナの利用者（openbao）が読めるように
+   docker run -d --name bao-drill --network none -v "$W:/drill:ro" --entrypoint sh "$BAO_IMAGE" -c '
+     mkdir -p /tmp/raft && printf "%s\n" "storage \"raft\" {" "  path = \"/tmp/raft\"" "  node_id = \"drill\"" "}" \
+       "listener \"tcp\" {" "  address = \"127.0.0.1:8200\"" "  tls_disable = true" "}" \
+       "api_addr = \"http://127.0.0.1:8200\"" "cluster_addr = \"http://127.0.0.1:8201\"" > /tmp/drill.hcl &&
+     exec bao server -config=/tmp/drill.hcl'
+   sleep 5
+   docker exec bao-drill sh -c '
+     export BAO_ADDR=http://127.0.0.1:8200
+     bao operator init -key-shares=1 -key-threshold=1 > /tmp/new || exit 1
+     printf "%s" "$(sed -n "s/^Unseal Key 1: //p" /tmp/new)" | bao write sys/unseal key=- >/dev/null || exit 1
+     sleep 3
+     BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /tmp/new)" bao operator raft snapshot restore -force /drill/raft.snap || exit 1
+     sleep 3
+     printf "%s" "$(sed -n "s/^Unseal Key 1: //p" /drill/init)" | bao write sys/unseal key=- >/dev/null || exit 1
+     sleep 3
+     BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /drill/init)" bao kv list secret/msp'
+   echo "drill: $?"                                                          # 0 で、KV の名前の一覧が出れば合格
+   docker rm -f bao-drill
+   rm -rf "$W"                                                               # 🔴 復号したものを残さない
    ```
 
-   Vault の実際の戻し（Vault を止めて `/vault/data` を置き換える）は、失ったときにだけ行う。手順は §5。
+   - 使い捨ての OpenBao は新しい鍵で init してから、写しを `-force` で戻す（鍵が違うので sealed になる）。そこへ写しの init のファイルの
+     unseal 鍵を与えて開く —— §5 の「失ったときの戻し」と同じ道筋を、稼働側に触れずに通している。
+   - 値は表示しない（`kv list` は名前だけ）。数を稼働側と比べるなら `| wc -l` を付ける。
+   - **差し替え（OpenBao への移行）の前に取った回**は `vault-data.tar.gz.age`（旧 Vault の file ストレージの tar）で、この手順の対象外である。
+     復号できることだけを確かめる: `age -d -i "$KEY" "$RUN/vault-data.tar.gz.age" | tar -tzf - | head`。
+
+   Vault の実際の戻しは、失ったときにだけ行う。手順は §5。
 
 ## 4. 切替前の回を長期保持にする
 
@@ -259,11 +312,39 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
   `age -d -i <秘密鍵> pg-<DB>.dump.age | kubectl -n platform-infra exec -i deploy/postgres -- pg_restore -U postgres -d <DB>`。
   ロールが無いときは先に `pg-globals.sql.age` を `psql` へ流す。**まず §3 の方法で使い捨ての Postgres に戻して中身を
   確かめてから**稼働側へ戻す。
-- **Vault**: Vault の Deployment を 0 にし、PVC `vault-data` の中身を復号した写しで置き換え、1 に戻す（Pod 内の
-  ラッパーが写しの中の鍵で unseal する）。🔴 復号した写しは作業が終わったら消す。
-  🔴 **秘匿管理を OpenBao へ差し替える前に取った回は、旧 Vault の file ストレージの写しである**（`raft/` を含まない）。
-  OpenBao はそれを開けない（Pod 内のラッパーは起動を拒んで止まる。データは守られる）。戻した後に
-  [移行の手順書](secret-store-openbao-migration-runbook.md)の手順 3〜5 で raft へ移す。
+- **Vault（OpenBao。`vault-raft.snap.age` の回）**: **まず §3 の 5 で使い捨ての OpenBao へ戻して開けることを確かめてから**稼働側へ戻す。
+  戻すと、スナップショットを取った後に入れた値（秘密情報の投入画面での書き込み等）は失われる。root で行う（運用者の操作。Job の role では戻せない）。
+  - **秘匿管理は動いていて、中身だけを戻すとき**（誤って消した・壊した）:
+
+    ```bash
+    age -d -i <秘密鍵のファイル> <回>/vault-raft.snap.age | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+      'umask 077; f="$(mktemp)"; cat > "$f" && VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault operator raft snapshot restore "$f"; rc=$?; rm -f "$f"; exit $rc'
+    kubectl -n platform-infra exec deploy/vault -- vault status | grep Sealed     # false
+    ```
+
+    `Sealed` が `true` のまま（collector に届かない audit device があると、戻した後の立ち上げで封印される）なら
+    `kubectl -n platform-infra rollout restart deploy/vault` で Pod を作り直す（ラッパーが unseal する）。
+  - **PVC ごと失ったとき**（新しい空の PVC で立て直した後）: ラッパーは新しい鍵で init して立ち上がる。そこへ写しを `-force` で戻し、
+    init のファイルを写しの方へ差し替えて Pod を作り直す:
+
+    ```bash
+    kubectl -n platform-infra rollout status deploy/vault --timeout=180s            # 新しい鍵で init・unseal 済み
+    age -d -i <秘密鍵のファイル> <回>/vault-raft.snap.age | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+      'umask 077; f="$(mktemp)"; cat > "$f" && VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault operator raft snapshot restore -force "$f"; rc=$?; rm -f "$f"; exit $rc'
+    # 鍵が違うので、ここで sealed になる（正しい）。init のファイルを写しの方へ差し替える:
+    age -d -i <秘密鍵のファイル> <回>/vault-init.age | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+      'umask 077; cat > /vault/data/.local-dev-init.restore && mv /vault/data/.local-dev-init.restore /vault/data/.local-dev-init'
+    kubectl -n platform-infra rollout restart deploy/vault
+    kubectl -n platform-infra rollout status deploy/vault --timeout=180s
+    kubectl -n platform-infra logs deploy/vault | grep vault-entrypoint          # initialized (reusing …)・unsealed・fixed root token present・ready
+    ```
+
+    `-force` を付けずに別の鍵の秘匿管理へ戻すと `could not verify hash file` で拒まれる（正しい）。戻した後は k8s auth の role
+    （ESO・バックアップ等）もスナップショットの時点のものになる。起動スクリプトを再実行すると bootstrap が最新の設定を入れ直す。
+- **Vault（差し替えの前に取った `vault-data.tar.gz.age` の回）**: Vault の Deployment を 0 にし、PVC `vault-data` の中身を復号した写しで
+  置き換え、1 に戻す。🔴 **これは旧 Vault の file ストレージの写しである**（`raft/` を含まない）。OpenBao はそれを開けない
+  （Pod 内のラッパーは起動を拒んで止まる。データは守られる）。戻した後に [移行の手順書](secret-store-openbao-migration-runbook.md)の
+  手順 3〜5 で raft へ移す。🔴 復号した写しは作業が終わったら消す。
 
 ## 6. イメージの版を上げる（age・ベース）
 
@@ -271,6 +352,7 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 3 つで固定している。Alpine の安定版ブランチは各パッケージの最新のリリースしか置かないため、上流が age の `-rN` を上げると
 取得が失敗し、CI の `build-local (platform-backup)` が赤くなる。**赤くなるのが正しい**（黙って別の版を入れない）。
 次の手順で上げる。稼働クラスタへは、リポジトリに入ってから §1 の 5 で当てる。
+上流の作り直しは日次の監視（`age-apkindex-watch.yml`）が検知し、ラベル `age-apkindex-drift` の issue を立てる（本文に固定の版と APKINDEX の版が並ぶ）。**版は自動では上がらない**ので、その issue から次の手順へ進む。
 起動スクリプトの WARN から来たときは、その「原因:」の行が**版の解決の失敗**であることを先に確かめる（資格情報ヘルパーや到達の失敗は版を上げても直らない。「失敗したときの分岐」を見る）。
 
 1. **ベースの digest を引く**（稼働クラスタへ pull しない。レジストリの API を読むだけ）。`postgres:<PG の版>-alpine<Alpine の版>`
@@ -312,7 +394,13 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 | `保管先に目印 .platform-backup-target がありません` | ドライブが外れている・目印を置いていない | ドライブを確かめて §1 の 4。**もう片方には書けている** |
 | `DB の一覧を取れません` | Postgres が落ちている・Secret `postgres` のパスワードと DB が食い違う | `kubectl -n platform-infra get pods`、Secret の供給（起動スクリプト・ESO）を確かめる |
 | `一部の成果物が欠けています`（回が `-partial`） | 特定の DB の `pg_dump` が失敗 | ログの `pg_dump が失敗しました: <DB>` を見る |
-| `Vault のデータが変わり続けるため…` | 写している間に Vault へ書き込みが続いた | 書き込みの少ない時間に手動の Job を走らせ直す |
+| `秘匿管理へ接続できません` / `秘匿管理から応答がありません` | 秘匿管理（`deploy/vault`）が落ちている・起動中 | `kubectl -n platform-infra get pods -l app=vault`。Ready になってから手動の Job を走らせ直す |
+| `秘匿管理へログインできません（HTTP 403 …）` | Vault の回の認証（role・ポリシー）が入っていない・PVC を作り直して消えた・role が別の SA に束縛されている | §1 の 5 の `bootstrap.sh` を走らせ（または起動スクリプトを再実行し）、手動の Job を走らせ直す |
+| `秘匿管理へログインできません（HTTP 503 …）` / `スナップショットを取れません（HTTP 503 …）` | 秘匿管理が sealed | `kubectl -n platform-infra rollout restart deploy/vault`（ラッパーが unseal する）の後に走らせ直す |
+| `スナップショットを取れません（HTTP 403 …）` | role のポリシーが `sys/storage/raft/snapshot` の read を持たない | §1 の 5 の確かめ方でポリシーを見て、`bootstrap.sh` を走らせ直す |
+| `スナップショットが空です` / `gzip として壊れています` / `… SHA256SUMS と一致しません` / `… がありません（raft のスナップショットではない）` | 取得の途中で切れた・秘匿管理が raft でない（旧 Vault のまま） | 秘匿管理のログと `vault status` の `Storage Type` を見る。raft でなければ移行の手順書へ。そうでなければ走らせ直す。**この回は書かれていない**（壊れた写しは置かない） |
+| `ServiceAccount のトークンがありません` | CronJob のマニフェストが古い（projected token の無い版） | `kubectl apply -k deploy/local/platform-backup/vault` で当て直す |
+| `init のファイルがありません` / `init のファイルに unseal 鍵の行がありません`（回が `-partial`） | PVC の `.local-dev-init` が無い・壊れている | 秘匿管理のラッパーのログ（`vault-entrypoint`）を見る。**この回は同じ秘匿管理へは戻せるが、失ったときには開けない** |
 | `消せませんでした（想定外の中身があります）` | 回のディレクトリに手でファイルやフォルダを置いた | 置いたものを退けてから次の回を待つ |
 | Job が作られない | PC 停止で後追いの締切（22:00 JST）を過ぎた | 翌日の回を待つか、手動の Job を走らせる |
 
@@ -325,13 +413,11 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, AST#346]
 ## 限界（この手順で担保できないこと）
 
 - **オフサイトではない。** C: と E: は同じ筐体にある。本機の喪失・盗難・ランサムウェアには耐えない。
-- **Vault の写しは稼働中の写しである。** 写す前後でファイル一覧（名前・サイズ・更新時刻）を比べて変化があればやり直すが、
-  秒未満の間に同じサイズで書き換わったファイルは見分けられない。ローカルの Vault は書き込みが稀なので実害は小さい。
-  🔴 **秘匿管理を OpenBao へ差し替えた後は、この穴が広がる。** 永続化は raft で、`raft/vault.db`・`raft/raft/raft.db` は bbolt の
-  ファイルである。bbolt はページを**その場で**書き換え、ファイルのサイズは段階的にしか変わらないので、同じ秒の書き込みは前後の比較で
-  見分けられず、**破れた写しを成功として残し得る**。書き込みが無いあいだはファイルが変わらないことは確かめた（45 秒）が、
-  ログインのトークンの失効など裏の書き込みは起こり得る。整合したスナップショット（raft のスナップショット）へ改める作業は #1868 で扱う。
-  それまでは、戻す前に §3 の方法で写しを使い捨ての場所で開き、unseal できて KV が読めることを確かめてから稼働側へ戻す。
+- **Vault の回は、秘匿管理が動いていて unseal 済みで、認証（§1 の 5）が入っているときだけ取れる。** どれかが欠けた日は回が無い
+  （Job の失敗として見える）。
+- **Vault の回は raft だけを写す。** 移行の後に片付けていない旧 Vault の file ストレージ（`/vault/data` 直下の `core/` 等）は写さない
+  （移行前の写しは、移行の手順書の手順 1 で取った回である）。
+- Vault の回のスナップショットは、作業場所（メモリ・256 Mi）に収まる大きさまで。超えると Job が失敗する（PoC の実測は数十 KB）。
 - **行数の一致は中身の一致ではない。** リストア試験は件数だけを突き合わせる（台帳の欠損を見つけるための最低限）。
 - 秘密鍵を失えば、すべての回が復号できない。予備の鍵を受取人に並べて別の場所に保管すること。
 - 取りこぼしの後追いは 22:00 JST まで。PC を毎日 12:00〜22:00 に動かしていないと、その日の回は取れない。

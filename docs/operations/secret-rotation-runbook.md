@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-10-09
+updated: 2026-10-22
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
 adrs: [ADR-0132, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126, ADR-0131]
-iadrs: [IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
-specs: [20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
+iadrs: [IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
+specs: [20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
 issues: [#1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, planning#700, planning#716, AST#1078]
 -->
 
@@ -32,7 +32,7 @@ issues: [#1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, pl
 | 分類 | 何か | 回せるか | 手順 |
 | --- | --- | --- | --- |
 | `items[]`（6 項目） | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
-| `excluded[]`（7 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測）。順序と途中で止まったときの戻し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) |
+| `excluded[]`（6 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測）。順序と途中で止まったときの戻し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) |
 | `deferred[]`（18 項目）と `items[]` の `notWritable` の `*-auth-client-*`（5 組） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 9・サービス間 9・取引ユニットの 5 | 🟡 **認証基盤と対でなら回せる** | [手順 C](#手順-c-deferred認証基盤と対で回す)（コンソール。未実測） |
 
 `excluded[]`・`deferred[]`・`*-auth-client-*` はいずれも**対になる秘密**（相手と同時に変えないと成立しない秘密）であり、画面の対象外である。
@@ -162,7 +162,8 @@ kubectl -n <namespace> annotate externalsecret <name> force-sync="$(date +%s)" -
 | --- | --- | --- | --- | --- | --- |
 | DB 管理者（`msp/postgres`） | `kubectl -n platform-infra exec -it deploy/postgres -- psql -U postgres -c '\password postgres'`（対話で 2 回入力。値は引数にもログにも出ない） | `msp/postgres` の `password` | `platform-infra/postgres` | 無し（DB の初期化時にしか読まれない） | `PG_PASSWORD` |
 | アプリの DB 利用者 `kp`（`msp/postgres-app` と `msp/wikijs-db`） | `kubectl -n platform-infra exec -it deploy/postgres -- psql -U postgres -c '\password kp'` | 🔴 **`msp/postgres-app` と `msp/wikijs-db` の両方の `password`**（同じ DB 利用者 `kp` を共有している） | `microservices-platform/postgres-app` と `microservices-platform/wikijs-db` | `microservices-platform` の Deployment すべて（DB を使う各サービスと `wiki-js`） | `APP_DB_PASSWORD` と `WIKIJS_DB_PASSWORD`（**同値**） |
-| ブローカ（`msp/rabbitmq` と `msp/rabbitmq-app`） | 無し（ブローカは永続化しておらず、再起動時に Secret の値で利用者を作り直す） | 🔴 **`msp/rabbitmq` の `password` と `msp/rabbitmq-app` の `password` を同値で** | `platform-infra/rabbitmq` と `microservices-platform/rabbitmq-app` | `platform-infra` の `rabbitmq` を先に、次に `microservices-platform` の Deployment すべて | `RABBITMQ_PASSWORD`（利用者名も変えるなら `RABBITMQ_USER` と chart の `global.messaging.user`） |
+| ブローカの既定のユーザー（`msp/rabbitmq`） | 無し（ブローカは永続化しておらず、再起動時に Secret の値で既定のユーザーを作る。無効化の印があれば起動の直後に消える） | `msp/rabbitmq` の `password` | `platform-infra/rabbitmq` | `platform-infra` の `rabbitmq` だけ（サービスは既定のユーザーで名乗らない） | `RABBITMQ_PASSWORD`（利用者名も変えるなら `RABBITMQ_USER`） |
+| ブローカのサービスごとのユーザー（`msp/rabbitmq-users` と `ai-stock-trading/rabbitmq-users`。プロパティ名＝ユーザー名） | 下の「作り直しのコマンド」の後に `bash deploy/local/rabbitmq-setup/reconcile-users.sh`（ブローカのそのユーザーのパスワードを KV の値へ合わせる） | 回すユーザーのプロパティだけ | `platform-infra/rabbitmq-users` と、基盤のユーザーなら `microservices-platform/msp-rabbitmq-users`（取引ユニットのユーザーは取引ユニットの名前空間の写し） | そのユーザーのサービスだけ（ブローカは作り直さない） | 無し（値は保管先だけが持つ） |
 | 認証基盤の管理者（`msp/keycloak-admin`） | 認証基盤の master realm の管理画面で `admin` のパスワードを変える（環境変数の管理者は初回起動時にしか使われず、以後は認証基盤の DB が持つ） | `msp/keycloak-admin` の `password` | `platform-infra/keycloak-admin` | 無し。確かめ方: `bash deploy/local/keycloak-setup/reconcile-realm.sh --check` が**認証エラーで落ちない**こと（宣言の追随 Job がこの Secret で管理 API へログインする） | `KEYCLOAK_ADMIN_PASSWORD` |
 | オブジェクトストレージの管理者資格情報（`msp/object-storage-credentials`） | 無し（資格情報は起動時の環境変数で決まり、SeaweedFS はデータ側へ保存しない）。🔴 **永続化済みのデータを持つ SeaweedFS が資格情報の変更後もそのデータを読めることは未実測** | `msp/object-storage-credentials` の `accessKey` / `secretKey` | `microservices-platform/object-storage-credentials` | `seaweedfs` を先に、次に `microservices-platform` の Deployment すべて（各サービスが同じ資格情報で接続する） | `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY` |
 
@@ -175,9 +176,11 @@ kubectl -n microservices-platform rollout restart deploy           # 名前空�
 kubectl -n microservices-platform wait --for=condition=Available deploy --all --timeout=300s
 ```
 
-🔴 **ブローカを回してはいけない場合**: 取引ユニットを同じクラスタに配備しているとき。取引ユニットのチャートは
-ブローカの接続文字列に開発用の利用者名とパスワードを**直書きしている**（取引ユニットの `values.yaml` の `rabbitmqConnectionString`）。
-回すと取引ユニットの Worker がブローカへ接続できなくなる。**取引ユニット側が接続文字列を Secret から組み立てるようになるまで回さない。**
+［2026-10-22］基盤のサービスも取引ユニットの Worker も、ブローカへは**サービスごとのユーザー**で名乗る（既定のユーザーを使わない）。
+既定のユーザーを回しても、ブローカの再起動のほかに作り直す消費側は無い。
+🔴 **既定のユーザーを回してはいけない場合**: 取引ユニットがサービスごとのユーザーへ切り替える前の版で稼働しているとき
+（その版は既定のユーザーで名乗る）。確かめ方: `kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_connections user` に
+既定のユーザーが現れないこと。
 
 🔴 **ブローカの再起動で、処理中のメッセージは失われる**（永続化していない）。各サービスの消費は冪等なので再配信で重複しても安全だが、失われたものは戻らない。業務の少ない時間に行う。
 

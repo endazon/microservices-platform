@@ -9,8 +9,8 @@ namespace LlmGateway.Features.Completions;
 
 // FR-04, FR-11, NFR-02, ADR-0010, ADR-0025, ADR-0029, ADR-0038, ADR-0044, ADR-0075, ADR-0076,
 // IADR-0037, IADR-0101, IADR-0104, IADR-0110, IADR-0111, IADR-0212, IADR-0225, IADR-0374, IADR-0378,
-// IADR-0379, IADR-0397, IADR-0400 (#1255): テキスト生成の**判定器本体**。
-// REST（Complete/Endpoint・CompleteStream/Endpoint）と gRPC（GrpcService）の**両方がここを呼ぶ**。
+// IADR-0379, IADR-0397, IADR-0400 (#1255), IADR-0601 (#2116): テキスト生成の**判定器本体**。
+// REST（Complete/Endpoint）と gRPC（GrpcService）の**両方がここを呼ぶ**（［2026-10-15 / #1902］逐次の REST は撤去し、逐次は gRPC だけ）。
 //
 // 🔴 **判定器を 2 つにしない**（IADR-0400 決定 2。#1290 が EmbedUseCase を括り出したのと同型）。
 // 越境判定（router.Route）・プロバイダ解決・フォールバック鎖・計器の計上・LogStopReason は
@@ -152,10 +152,10 @@ public sealed class CompletionUseCase(
         throw new UnreachableException("completion attempt chain ended without a response");
     }
 
-    // IADR-0037, FR-04, FR-11: 逐次生成（REST `POST /complete/stream` の本体）。
+    // IADR-0037, FR-04, FR-11: 逐次生成（gRPC `LlmCompletion/CompleteStream` の本体。［2026-10-15 / #1902］REST `/complete/stream` は撤去した）。
     //
     // 🔴 **1 チャンク 1 イベントで yield する。まとめてから返さない。**
-    // 呼び出し側（REST は SSE の 1 行へ書いて flush、gRPC は IServerStreamWriter.WriteAsync）が
+    // 呼び出し側（gRPC の IServerStreamWriter.WriteAsync。撤去した REST は SSE の 1 行へ書いて flush していた）が
     // 受け取った順に送出することで、初回トークンの境界が保たれる（IADR-0400 決定 1）。
     // ここでバッファリングすると、輸送を server-streaming にした意味が消える。
     public async IAsyncEnumerable<CompletionStreamEvent> StreamAsync(
@@ -205,7 +205,7 @@ public sealed class CompletionUseCase(
         // あり、**無音の穴にしないためにここで残す**。射程を広げるなら新しい ADR / IADR が要る。
         if (decision.Fallbacks.Count > 0)
             logger.LogWarning(
-                "Fallback chain {FallbackModels} is configured for this route but /complete/stream does not "
+                "Fallback chain {FallbackModels} is configured for this route but the streaming path (CompleteStream) does not "
                 + "implement fallback (ADR-0038 決定 3 / IADR-0225 の射程外). endpoint={Endpoint} model={Model}",
                 string.Join(",", decision.Fallbacks), decision.EndpointName, decision.Model);
 
@@ -213,11 +213,22 @@ public sealed class CompletionUseCase(
         var outputTokens = 0;
         string? stopReason = null;
         // IADR-0212 決定 3: Done を受け取れないまま終わった送信は「0 トークン」ではない。
-        // 記録するのは最終チャンクで実数を受け取れたときだけである（0 埋めをしない）。
+        // 最終チャンクの実数（inputTokens / outputTokens）を受け取れたかどうか。
         var sawDone = false;
         var faulted = false;
         // #1819: 失敗の最終イベントへ上流の HTTP 状態を載せる（例外は catch の外へ持ち出せないので値だけ控える）。
         int? upstreamStatus = null;
+
+        // FR-10, ADR-0044 決定 3, IADR-0601 決定 1 (#2116): Done に届かなかったときに計上する**判明分**。
+        // プロバイダの経過報告（Done=false でトークン数を持つチャンク）は**その時点の累計**なので、足さずに置き換える。
+        var knownInput = 0;
+        var knownOutput = 0;
+        // 上流から 1 チャンクでも受け取ったか（＝送信が成立し、課金が始まり得る）。
+        var started = false;
+        // 🔴 IADR-0601 決定 4: **計上は 1 回だけ。** 計器（llm.completion.total）と利用実績をこのストリームについて
+        // 記録し終えたら立てる。最終イベントの yield の**前に**立てる —— 呼び出し側が最終イベントの受信中に
+        // 列挙を捨てても、finally が 2 回目を書かないようにする（正常完了の二重計上の防止）。
+        var settled = false;
 
         // 🔴 反復子は yield を跨ぐ try/catch を持てない。列挙子を手で回し、`MoveNextAsync` だけを
         // try/catch で囲む（yield は try/finally の中にあってよい）。こうすると
@@ -227,80 +238,148 @@ public sealed class CompletionUseCase(
             .GetAsyncEnumerator(ct);
         try
         {
-            while (true)
+            try
             {
-                CompletionChunk chunk;
-                try
+                while (true)
                 {
-                    if (!await enumerator.MoveNextAsync())
+                    CompletionChunk chunk;
+                    try
+                    {
+                        if (!await enumerator.MoveNextAsync())
+                            break;
+                        chunk = enumerator.Current;
+                    }
+                    // IADR-0601 決定 3 (#2116): 呼び出し側が取り消した（ct が立った）後の例外は、**型を問わず**取り消しとして
+                    // 素通りさせる（下の finally が数える）。取り消しに伴う IOException 等を upstream_error にしない。
+                    // ct が立っていない例外は OperationCanceledException（HTTP の期限切れ等）も含めて上流の失敗として縮退させる。
+                    catch (Exception ex) when (!ct.IsCancellationRequested)
+                    {
+                        // 呼び出し先不調でも 500 を伝播させず、縮退イベントを返す。
+                        // IADR-0374 (#1091): ストリーム経路は鎖を持たないため**全ての上流失敗がここへ来る**
+                        // （429 を含む）。非ストリームと同じ軸・同じ構造化フィールドで残す ——
+                        // 経路によって観測が欠けると、レート制限の有無が「どちらの経路を使ったか」に依存する。
+                        logger.LogError(ex, "LLM stream failed at endpoint {Endpoint} ({Model}) (upstream status {Status})",
+                            decision.EndpointName, decision.Model, LlmFallbackPolicy.StatusCodeOf(ex));
+                        metrics.RecordCompletion(
+                            LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity,
+                            failure: ex);
+                        faulted = true;
+                        // IADR-0601 決定 4: 計器を書いた直後に決着させる。下の DisposeAsync が投げても、
+                        // 外側の finally が cancelled を重ねて数えないようにする（二重計上の防止）。
+                        settled = true;
+                        upstreamStatus = LlmFallbackPolicy.StatusCodeOf(ex);
                         break;
-                    chunk = enumerator.Current;
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // 呼び出し先不調でも 500 を伝播させず、縮退イベントを返す。
-                    // IADR-0374 (#1091): ストリーム経路は鎖を持たないため**全ての上流失敗がここへ来る**
-                    // （429 を含む）。非ストリームと同じ軸・同じ構造化フィールドで残す ——
-                    // 経路によって観測が欠けると、レート制限の有無が「どちらの経路を使ったか」に依存する。
-                    logger.LogError(ex, "LLM stream failed at endpoint {Endpoint} ({Model}) (upstream status {Status})",
-                        decision.EndpointName, decision.Model, LlmFallbackPolicy.StatusCodeOf(ex));
-                    metrics.RecordCompletion(
-                        LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity,
-                        failure: ex);
-                    faulted = true;
-                    upstreamStatus = LlmFallbackPolicy.StatusCodeOf(ex);
-                    break;
-                }
+                    }
 
-                if (!string.IsNullOrEmpty(chunk.TextDelta))
-                    yield return new CompletionStreamEvent(chunk.TextDelta);
-                if (chunk.Done)
-                {
-                    inputTokens = chunk.InputTokens;
-                    outputTokens = chunk.OutputTokens;
-                    stopReason = chunk.StopReason;
-                    sawDone = true;
+                    started = true;
+                    if (!string.IsNullOrEmpty(chunk.TextDelta))
+                        yield return new CompletionStreamEvent(chunk.TextDelta);
+                    if (chunk.Done)
+                    {
+                        inputTokens = chunk.InputTokens;
+                        outputTokens = chunk.OutputTokens;
+                        stopReason = chunk.StopReason;
+                        sawDone = true;
+                    }
+                    else if (chunk.InputTokens > 0 || chunk.OutputTokens > 0)
+                    {
+                        knownInput = Math.Max(knownInput, chunk.InputTokens);
+                        knownOutput = Math.Max(knownOutput, chunk.OutputTokens);
+                    }
                 }
             }
+            finally
+            {
+                // IADR-0601 決定 4 (#2116): 後始末の失敗で計上の流れを変えない。ここで投げると、決着（settled）と
+                // 利用実績の計上が食い違う（上流失敗の判明分が積まれない・正常完了の実数が積まれない）。ログに残して握る。
+                try
+                {
+                    await enumerator.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "LLM stream enumerator failed to dispose at endpoint {Endpoint} ({Model})",
+                        decision.EndpointName, decision.Model);
+                }
+            }
+
+            if (faulted)
+            {
+                // FR-10, IADR-0601 決定 1・2 (#2116): 上流が**送信の後で**切れたなら判明分を計上し、不完全として数える。
+                // 送信前の失敗（最初の MoveNextAsync で 429 等。1 チャンクも来ていない）は一括経路の上流失敗と同じく何も積まない。
+                settled = true;
+                if (started)
+                    RecordUnfinishedUsage(LlmUsageMetrics.IncompleteUpstreamError);
+                yield return new CompletionStreamEvent(
+                    string.Empty, Done: true, Sent: false,
+                    Text: $"呼び出し先 {decision.EndpointName} が現在利用できません。",
+                    Model: decision.Model ?? string.Empty, RoutingReason: decision.Reason,
+                    FailureKind: CompletionFailureKinds.UpstreamError, UpstreamStatusCode: upstreamStatus);
+                yield break;
+            }
+
+            CompletionEndpoints.LogStopReason(logger, stopReason, decision);
+            metrics.RecordCompletion(
+                LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity,
+                sawDone ? outputTokens : null);
+            // FR-10, ADR-0044 決定 1・3 (#443): 利用実績は Done で実数を受け取れたときは**その実数で 1 回**計上する。
+            // 途中で終わった送信を 0 トークンとして積むと費用が実態より安く見えるため、Done が無ければ
+            // 判明分（下限）を積み、不完全として数える（IADR-0601 (#2116)。旧来はどちらも積まなかった）。
+            //
+            // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視は費用へ計上しない。**
+            // 除外は黙って落とさず件数を積む（一括経路と同じ規則）。
+            settled = true;
+            if (sawDone)
+            {
+                if (isSynthetic)
+                    usage.RecordSyntheticExclusion(decision, purpose, sensitivity);
+                else
+                    usage.RecordUsage(decision, purpose, sensitivity, inputTokens, outputTokens);
+            }
+            else
+            {
+                RecordUnfinishedUsage(LlmUsageMetrics.IncompleteNoFinalChunk);
+            }
+
+            yield return new CompletionStreamEvent(
+                string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
+                InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,
+                StopReason: stopReason);
         }
         finally
         {
-            await enumerator.DisposeAsync();
+            // FR-10, IADR-0601 決定 3 (#2116): **ここへ settled=false で来るのは呼び出し側が止めたときだけである** ——
+            // ct による取り消し（ct が立った後の MoveNextAsync の例外は型を問わずそのまま伝播する）か、
+            // 呼び出し側が途中で列挙を捨てた（gRPC の切断等で DisposeAsync が来た）か。上流の失敗はすべて上の catch が拾う。
+            // 🔴 計上は同期の計器（Counter.Add）で、取り消された ct を使わない。取り消しで計上が途切れることはない。
+            if (!settled)
+            {
+                settled = true;
+                logger.LogInformation(
+                    "LLM stream cancelled by the caller at endpoint {Endpoint} ({Model}) after upstream started={Started}",
+                    decision.EndpointName, decision.Model, started);
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultCancelled, null, decision, purpose, sensitivity);
+                RecordUnfinishedUsage(LlmUsageMetrics.IncompleteCancelled);
+            }
         }
 
-        if (faulted)
-        {
-            yield return new CompletionStreamEvent(
-                string.Empty, Done: true, Sent: false,
-                Text: $"呼び出し先 {decision.EndpointName} が現在利用できません。",
-                Model: decision.Model ?? string.Empty, RoutingReason: decision.Reason,
-                FailureKind: CompletionFailureKinds.UpstreamError, UpstreamStatusCode: upstreamStatus);
-            yield break;
-        }
-
-        CompletionEndpoints.LogStopReason(logger, stopReason, decision);
-        metrics.RecordCompletion(
-            LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity,
-            sawDone ? outputTokens : null);
-        // FR-10, ADR-0044 決定 1・3 (#443): 利用実績は **Done で実数を受け取れたときだけ**計上する。
-        // 途中で終わった送信を 0 トークンとして積むと、費用が実態より安く見える。
-        //
-        // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視は費用へ計上しない。**
-        // 除外は黙って落とさず件数を積む（一括経路と同じ規則）。
-        // **`sawDone` の条件はそのまま**である —— 途中で終わった送信は費用でも除外でもなく、
-        // 「実数を受け取れなかった」であって、どちらの数にも入れない。
-        if (sawDone)
+        // IADR-0601 決定 1・2: Done に届かなかった送信の計上。判明分があれば RecordUsage を**1 回**呼び（下限）、
+        // あわせて不完全を 1 件数える（件数だけでトークンを持たないので、同じ分を 2 回数えない）。
+        // 合成監視は費用へ入れない規則（IADR-0378）をそのまま守り、除外の件数だけを積む。
+        void RecordUnfinishedUsage(string reason)
         {
             if (isSynthetic)
+            {
                 usage.RecordSyntheticExclusion(decision, purpose, sensitivity);
-            else
-                usage.RecordUsage(decision, purpose, sensitivity, inputTokens, outputTokens);
-        }
+                return;
+            }
 
-        yield return new CompletionStreamEvent(
-            string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
-            InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,
-            StopReason: stopReason);
+            var known = knownInput > 0 || knownOutput > 0;
+            if (known)
+                usage.RecordUsage(decision, purpose, sensitivity, knownInput, knownOutput);
+            usage.RecordIncomplete(decision, purpose, sensitivity, reason, known);
+        }
     }
 
     // FR-11, NFR-17, NFR-19, NFR-28, IADR-0104 追記 (#1819): 越境拒否を運用者が事後に追えるようにする。

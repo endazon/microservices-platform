@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net.Http.Json;
 using AwesomeAssertions;
+using LlmGateway.Tests.Grpc;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -130,7 +131,7 @@ public class LlmSyntheticUsageExclusionTests(TestWebApplicationFactory factory)
             .Which.Value.Should().Be(1, "**黙って落とさない** —— 外した件数を数える");
     }
 
-    // ★ 陽性（SSE）: SC-01 が実際に使う経路でも同じ規則が効く。
+    // ★ 陽性（逐次）: SC-01 が実際に使う経路でも同じ規則が効く。
     [Fact]
     public async Task PostCompleteStream_WhenSynthetic_ExcludesFromCostAndCountsExclusion()
     {
@@ -139,13 +140,11 @@ public class LlmSyntheticUsageExclusionTests(TestWebApplicationFactory factory)
         client.DefaultRequestHeaders.Add(SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
         using var probe = new UsageProbe(app.Services);
 
-        var response = await client.PostAsJsonAsync(
-            "/complete/stream",
-            new { Prompt = "監視用の代表リクエスト", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" },
+        // ［2026-10-15 / #1902］逐次の REST（SSE）を撤去したので、同じ本体を呼ぶ gRPC 面を叩く
+        // （合成監視の標識は同じ HttpClient の既定ヘッダとして gRPC の要求にも載る）。
+        await client.CompleteStreamAsync(
+            new CompletionApiRequest("監視用の代表リクエスト", MaxTokens: 100, Confidentiality: "public", Purpose: "rag-answer"),
             TestContext.Current.CancellationToken);
-
-        response.EnsureSuccessStatusCode();
-        await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.TokensCounterName);
         probe.Items.Should().ContainSingle(m => m.Instrument == LlmUsageMetrics.SyntheticExcludedCounterName);

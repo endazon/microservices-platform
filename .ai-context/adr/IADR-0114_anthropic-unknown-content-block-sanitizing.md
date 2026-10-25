@@ -14,9 +14,11 @@ related_ids:
   - IADR-0112
   - IADR-0113
   - ADR-0038
+  - IADR-0535
+  - IADR-0562
 author: claude
 created: 2026-08-01
-updated: 2026-08-18
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)
   - planning:projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted)
@@ -122,6 +124,13 @@ plan_refs:
 
 ## 決定
 
+> **［2026-10-17 追記 / #1749］本 IADR の仕組み（決定 1〜4・6 の許可リストの委譲ハンドラ）は [IADR-0562](./IADR-0562_anthropic-official-sdk-migration.md) で撤去した。本文は書き換えない。**
+> SDK を公式 `Anthropic`（12.53.0）へ移した。公式 SDK は判別子に無い型も例外にせず保持するので、応答全体を失う欠陥そのものが無くなった（ソースで確認）。
+> **決定 5（捨てた型名を記録する。本文は載せない）は残る**。置き場所は `ClaudeProvider`（本文に使わない `text` 以外のブロックを数える）へ移り、段階は IADR-0535 のまま。
+> 決定 2 の後半（一次ハンドラで応答圧縮を明示する）は `AnthropicClientFactory` が引き継ぐ。決定 6（全ブロックが本文でなければ空へ縮退）は帰結として同じ。
+> `status` は `Accepted` に据え置く（決定の記録として残す）。
+
+
 **決定1: 許可リスト方式のサニタイズを入れる。**
 `AnthropicContentBlockSanitizer`（純関数）が `content[]` から `text` / `image` / `tool_use` /
 `tool_result` **以外**を除去する。拒否リスト（`thinking` を名指しで落とす）ではなく許可リストにするのは、
@@ -150,6 +159,12 @@ SDK 既定の内部クライアントの設定に依存しないよう `Automati
 無言で捨てるとモデル側の応答形状の変化に気づけないまま本文が空になり得る。ログには**型名のみ**を出し、
 本文は載せない（プロンプト・応答の全量記録は呼び出し側の `LogPrompts` の管轄であり、既定オフの
 安全側設定をゲートウェイ側から迂回させない）。
+
+> **［2026-10-13 追記 / #1917］決定 5 のログ段階は [IADR-0535](./IADR-0535_anthropic-content-block-drop-log-level.md) が改めた。本文は書き換えない。**
+> 5.5 系（IADR-0531）では thinking が全割当モデルで無効にできない通常の応答の形になり、1 応答 1 行の WARN が
+> PoC の 7 時間で 685 行になった。現行は「`thinking` / `redacted_thinking` だけの除去で既知ブロックが残る → Debug」
+> 「想定外の型の除去・除去で content が空 → Warning」で、件数は計器 `llm.anthropic.content_blocks_dropped` で数える。
+> **「型名のみを載せ、本文は載せない」の線は変わらない。** `status` は `Accepted` に据え置く（決定 1〜4・6 は不変）。
 
 **決定6: 全ブロックが未知なら content 空へ縮退する（例外にしない）。**
 呼び出し側は「空応答」として既存の安全既定（AST では Hold／プレースホルダ）で扱える。

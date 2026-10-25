@@ -18,7 +18,7 @@ public class QdrantBootstrapHostedService(
         var store = scope.ServiceProvider.GetRequiredService<IIngestionVectorStore>();
         try
         {
-            // ADR-0016: モデル別コレクション（voyage/1024・ruri/768）を実次元で作成・保証する。
+            // ADR-0016: モデル別コレクション（既定は voyage/1024。opt-in のときだけ ruri/768）を実次元で作成・保証する。
             // FR-03, #1116: 併せて `text` の全文ペイロードインデックスを（新規・既存とも）張る。
             await store.EnsureCollectionsAsync(ct);
             // FR-03, #1118, [[IADR-0339]] 決定 2: 日本語 2-gram（`text_ngram`）の索引も同じ作法で張る。
@@ -28,9 +28,11 @@ public class QdrantBootstrapHostedService(
             // （`tags`・`shared_with`）のキーワード索引も同じ作法で張る。属性キーは書き込み時と
             // `QdrantKeywordIndexDiscoveryHostedService`（既存の点からの発見）が張る。
             await store.EnsureKeywordIndexesAsync(ct);
+            // FR-06, SC-05, [[IADR-0565]] 決定 2 (#1993): 索引の状態の照会（facet）が引く `document_id` のキーワード索引も張る。
+            await store.EnsureDocumentIdIndexAsync(ct);
             logger.LogInformation(
                 "Qdrant collections, full-text payload indexes (text, text_ngram) and keyword payload indexes "
-                + "(tags, shared_with) ensured for ingestion index (per-model and lexical)");
+                + "(tags, shared_with, document_id) ensured for ingestion index (per-model and lexical)");
         }
         catch (Exception ex)
         {

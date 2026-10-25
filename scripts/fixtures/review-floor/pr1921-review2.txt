@@ -1,0 +1,41 @@
+**Claude finished @endazon's task in 25s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/38557277451)
+
+---
+## AI コードレビュー結果
+
+変更 6 ファイル中 6 ファイルを読んだ（生成物の除外なし）。`docs/` 3 件と `.ai-context/` 3 件の文書だけの変更で、`src/`・`scripts/`・`.github/`・`deploy/` に差分はない。前回レビューの指摘が、新しい 2 コミットで反映されているかを確かめた。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- （指摘なし）
+  - 前回の 🟡「認定の射程が推論なのに docs では断定形」は解消済み。`operations.md:1110`・`voyage-embedding-key-runbook.md:36`・`security.md:682` の 3 箇所に「この射程は推論による。オーナーは未確認」とある。仕様書の決めたこと 2 にも追記がある。
+  - オーナーへの確認事項として PR 本文に載せるとよい。
+
+### 🟢 軽微
+- 前回の 🟢「`security.md` クエリ文の行の書式の揺れ」も解消済み。旧文は取り消し線になり、［2026-10-14］の追記が付いた。705 行付近も同じ書式で揃っている。
+- ティアB の定義（レジデンシー／越境保証）と、規約で満たせない Voyage の乖離は、PR 本文のとおり環流の要否が未決のまま残る。計画の 08_data-egress-policy の原文は未確認で、「計画書原文で要確認」とする。`decision-needed` の起票を早めに決めるとよい。
+- 仕様書の記述では、`decision-needed` の下書きを作成済みで、起票はオーケストレーターが行う。起票の実在は本セッションでは確認できていない。
+
+### ✅ 確認できたこと
+実行して出力を見たコマンドは次のとおり。
+- `git diff --name-only origin/develop...HEAD`: 6 ファイル。コミットは 3 件。
+- `node scripts/check-trace-blocks.js` → OK（193 件）。
+- `node scripts/gen-knowledge-graph.js --check` → OK。参考表示の 72 件は fail にならない既存分。
+- `node scripts/check-doc-links.js` → OK（1679 件）。fail-open の 1 件は既存の凍結記録。
+- `node scripts/check-doc-updated.js --base origin/develop` → OK（3 件）。
+- `node scripts/check-commit-messages.js` → 3 件すべて適合。
+- `node scripts/check-plan-id-qualification.js` → OK（3600 件）。
+- `security.md` と runbook の差分を目視した。trace ブロックに仕様書 `20261014_1740_voyage-zero-retention-certification` が追記され、`security.md` は `#1740` も `issues:` に追記済みである。表示テキストへの新規の issue 番号・IADR・計画 ID は無い。
+- IADR-0025 の差分を目視した。末尾の日付つき追記と、`updated:`・`related_specs:` の更新だけで、本文は書き換えていない。
+
+### 🔍 実行できなかったこと
+- ビルド・テスト・`scripts.test.js`・helm は実行していない。`src/`・`scripts/`・`.github/`・`deploy/` に差分が無く、対象外だからである。
+- issue #1740 のコメント（opt-out の日時 2026-10-14 20:22 JST ごろ、960 回、オーナーの受容）と Voyage AI Terms of Service の原文は、本セッションでは未確認である。PR 本文と仕様書の引用のとおりに受け取っており、条項の正否は未検証。
+- 計画の ADR-0016 と 08_data-egress-policy の原文は参照していない（CI の外にある）。
+- IADR-0504 と `operations.md` の差分は、出力が大きく、本セッションでは全文を読めていない。両者は前回レビューで読んだ内容に、今回の追記だけが加わった差分である。今回の読みは、仕様書の母集合の表と、上の検査器の出力が根拠である。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ ・ branch: `docs/NFR-1740-voyage-zero-retention-record`

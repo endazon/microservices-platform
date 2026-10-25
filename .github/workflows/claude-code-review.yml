@@ -78,9 +78,12 @@ jobs:
       #      権限が無いと許可されていても実行時に失敗する。
       # 注: ツール許可に additional_permissions は使わない（あれはアプリトークンのスコープ用）。
       actions: read
+      # NFR, IADR-0615 (#2184) / IADR-0617 (#2206): 判定のステップが、同じ head SHA の CI `scripts-tests` の check-run を読む
+      # （下限「scripts.test.js 全件」の代わりの根拠。作業ツリーの復元の有無を問わない）。
+      checks: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # NFR, IADR-0232 (#1581, #1588): checkout 自身の資格情報（extraheader）を .git/config へ残さない。
           # レビューは push せず（contents: read）、`git fetch` は public リポジトリなので認証なしで通る。
@@ -102,9 +105,9 @@ jobs:
       # 検証(build/test)を @claude セッション内で実走するための SDK 準備。
       # 技術スタックに合わせて書き換える（既定は C#/.NET 10。ci.example.yml と揃える。
       # 他スタックは actions/setup-node / actions/setup-python 等に置き換える）。
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
 
       # レビューは PR オープン/更新で自動起動するため、モデル指定は PR 本文/タイトルの
       # 「@claude opus / sonnet / haiku」で切り替える。未指定時は既定 claude-sonnet-5-5。
@@ -135,10 +138,17 @@ jobs:
         # 版を上げるときは **PR で実測して緑を確認してから** SHA を進めること。
         # 🔴 **claude-code-review.yml と claude-coding.yml は同じ SHA を指す** ——
         # 片方だけ動かすと「レビューは通るのに @claude は動かない」という切り分けの難しい状態になる。
-        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1（2026-09-08 実測で緑）
+        uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1（2026-09-08 実測で緑）
         # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # NFR, IADR-0538（検証の下限）: Claude Code の Bash の時間上限を広げる。既定は 120 秒で、超えた呼び出しは
+          # バックグラウンドへ移る。レビューの agent はその結果を待ったままターンを終え、判定のコメントを投稿しない
+          # （Check review verdict が「見出しの欠落・下限の未達」で落ちる）。下限が求める `scripts.test.js` の全件は
+          # 実測で約 2 分 40 秒（2026-10-22。1138 件）かかり、既定の 120 秒を超える（MSP#2051 のレビューで 2 回続けて再現した）。
+          # 既定 600 秒・上限 900 秒は、ジョブの timeout-minutes（20 分）の内側に収まる。
+          BASH_DEFAULT_TIMEOUT_MS: "600000"
+          BASH_MAX_TIMEOUT_MS: "900000"
         with:
           # 認証はどちらか一方のみ設定する（未設定の方は空文字で無視される）:
           #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
@@ -257,7 +267,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git grep:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(bash -n:*),Bash(bash scripts/k8s-local-down.test.sh),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git grep:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(awk:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(bash -n:*),Bash(bash scripts/k8s-local-down.test.sh),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info),Bash(helm lint:*),Bash(helm template:*)"
           # 【プロンプトの書き方】prompt: の中身は毎 PR そのまま送信され課金される。事故の経緯・
           # 実測値の記録は送信されないこの YAML コメント側へ書き、prompt には AI が従う指示だけを
           # 置く（監査 2026-08-18・planning#416 の追随。#869）。prompt が禁じる各項目の経緯:
@@ -281,11 +291,65 @@ jobs:
             - **サマリの投稿はどの検証よりも優先する。** レビューの最後に、下記フォーマットの
               サマリコメントを必ず自分で投稿してから終了する。委譲したまま・**バックグラウンド実行の
               結果を待ったまま**終了してはならない（判定ゼロのまま success になり「レビュー済み・
-              指摘なし」と読まれる。planning#333）。時間が足りなければ「未検証（理由）」と書いて
-              投稿すること。
-            - **変更範囲に応じて検証を絞る。** 実装ディレクトリの差分が空（docs のみの変更等）なら
-              ビルド・テストを実行しない。**実行しなかったことは「実行できなかったこと」節へ理由を
-              添えて書く**（黙って省略しない）。
+              指摘なし」と読まれる。planning#333）。検証を打ち切って投稿を優先してよいのは、
+              **ジョブの上限（20 分）に近づいた場合だけ**である（ターン数の上限は無い）。
+              そのときは「未検証（20 分の上限）」と書いて投稿すること。
+            - **絞ってよいのは、下の【検証の下限】に含まれない検証だけである。** 実装ディレクトリの
+              差分が空（docs のみの変更等）ならビルド・テストを実行しない。**実行しなかったことは
+              「実行できなかったこと」節へ理由を添えて書く**（黙って省略しない）。
+
+            【検証の下限・最重要】（#1911。下限は省略できない。省くなら下の「理由に使えない語」以外の理由が要る）
+            まず `git diff --name-only origin/develop...HEAD` で変更ファイルの一覧を取り、次を**すべて**行う
+            （merge base が取れなければ `git fetch origin develop` を先に実行する）。
+            - **変更ファイルは全部読む。** 差分（`git diff origin/develop...HEAD -- <パス>`）か全文を、
+              1 ファイルずつ読む。除外してよいのは生成物（orval の生成物〔`src/<unit>/frontend/src/lib/api/generated/` 配下〕・
+              Lingui の `messages.ts` / `messages.po`・`pnpm-lock.yaml`・`CHANGELOG.md`・`docs/api/openapi.yaml`・
+              EF マイグレーションの `*.Designer.cs` と `*ModelSnapshot.cs`）だけで、除外したら本文の冒頭にその一覧を書く。
+              本文の冒頭（最初の 🔴 の見出しより前）には「変更 N ファイル中 M ファイルを読んだ」と書く（N と M は数字で書く）。
+              生成物を除外したときは「変更 N ファイル中 M ファイルを読んだ（生成物 K ファイルを除外: …）」と K も数字で書く。
+              **この申告と下の各項目の実行の記載は `check-review-verdict.js` が読み、欠ければジョブを落とす**
+              （M + K が N に満たない・申告が無い・「下限を満たしていない」と書いた・読んだと申告したファイルを
+              精読していないと書いた・`deploy/helm/**` の差分で `helm lint` / `helm template` が「確認できたこと」の節に無い・
+              `scripts/` `.github/` の差分で `scripts.test.js` が「確認できたこと」の節に無く、同じ head の CI `scripts-tests` も
+              success でない）。**実行したコマンドは
+              「確認できたこと」の節に、実行しなかったものは「🔍 実行できなかったこと」の節に書く**（検査器は節で読み分ける）。
+            - **「読んだ」の定義: 差分を行単位で読んだこと**（全文を読む必要はない。差分は 1 行ずつ全部読む）。
+              ファイル名・テスト名の一覧、検査器の結果、要点だけの確認、範囲の確認、先頭部分だけの目視は
+              「読んだ」に**数えない**。数えないファイルは M に入れない（除外した生成物は M に入れず K に数える）。
+              出力が大きくて一度に読み切れない差分は、パスを分けて読み切る。「変更 N ファイル中 N ファイルを読んだ」と
+              書いた本文で、冒頭・「確認できたこと」・「🔍 実行できなかったこと」のどこかに「全行は読んでいない」
+              「行単位では読んでいない」「精読していない」「全文を読めていない」「未読」等と書くと、申告と矛盾するとして
+              検査器が落とす。読み切れないなら M を正直に書く。計画書・他リポジトリを読めないことはこれに当たらない。
+              これらの語を論じるだけのときは「」かインラインコードで引用する（引用の中は検査器が数えない）。
+            - **`src/<unit>/backend/**` の差分があれば**、`dotnet build src/<unit>/backend/backend.slnx` と、
+              変更したサービスのテストプロジェクトの `dotnet test <…Tests.csproj>` を走らせる。
+              `--filter` は付けず、プロジェクト単位で全件を回す。あわせて
+              `dotnet format src/<unit>/backend/backend.slnx --verify-no-changes` も走らせる。
+            - **`scripts/` か `.github/` の差分があれば**、`scripts.test.js` を全件走らせる。
+              `REQUIRE_REPO_TESTS=1` が要るので、次の子プロセス形の 1 コマンドで呼ぶ:
+              `node -e "const r=require('child_process').spawnSync('node',['scripts/scripts.test.js'],{env:Object.assign({},process.env,{REQUIRE_REPO_TESTS:'1'}),stdio:'inherit'});process.exit(r.status===null?1:r.status);"`
+              🔴 **Bash の timeout を 600000 にして前景で走らせる。バックグラウンドにしない**（全件は 2 分を超える。
+              バックグラウンドへ移ると結果を待ったまま終わり、判定を投稿できない）。
+              `.claude/` 等が統合ブランチ版へ戻されたせいで、復元されたファイルを読む試験だけが落ちたときは、
+              「確認できたこと」に書かず「🔍 実行できなかったこと」に、落ちた試験と復元されたファイルを書く。
+              その場合の下限は、検査器が同じ head の CI `scripts-tests` の success で確かめる（成功と書き換えない）。
+              検査器は復元の有無にかかわらず CI の success を下限の代わりの根拠にするが、全件の実行は省かない
+              （差分の所在を見誤って「scripts/ の差分は無い」と書かない。`git diff --name-only` で確かめる）。
+            - **`scripts/` / `.github/` / `docs/` / `.ai-context/` のどれかに差分があれば**、文書系の検査器を走らせる:
+              `node scripts/check-trace-blocks.js` / `node scripts/gen-knowledge-graph.js --check` /
+              `node scripts/check-doc-links.js` / `node scripts/check-doc-updated.js --base origin/develop` /
+              `node scripts/check-commit-messages.js` / `node scripts/check-plan-id-qualification.js`。
+            - **`deploy/helm/**` の差分があれば**、変更した chart に `helm lint <chart>` と
+              `helm template ci-check <chart>` を走らせる（`ci/*.yaml` があれば `-f` でも回す）。
+              `deploy/helm/microservices-platform` は自製イメージのタグが無いと描画で止まる（#2132。仕様）ので、
+              両方に `--set-string global.image.tag=render-only-0000000` を付ける。
+            - **理由に使えない語**: 「時間」「時間配分」「時間の都合」「時間優先」「差分が大きい」
+              「ファイル数が多い」「静的な読み取りに絞った」は、下限を省く理由として**認めない**。
+              ジョブの上限は 20 分で、ターン数の上限は無い。下限の検証を走らせても上限には遠く届かない。
+            - **ワークスペースへ書き込まない。** ファイルを作るコマンドは走らせない。出力ファイルを取る
+              引数（`--out` / `--publish-out` 等）がどうしても要るときは `/tmp/` 配下を指定し、
+              結果は標準出力で読む（#1317 相当の事故。ワークスペースへファイルを残さない）。
+            - 下限の各項目の結果（コマンドと件数・exit）は、本文の「確認できたこと」に列挙する。
 
             【使える Bash コマンドの一覧（正の一覧）・最重要】
             このレビューで実行できる Bash コマンドは**次で全部**である。**一覧に無いコマンドは
@@ -310,9 +374,11 @@ jobs:
               すべて拒否される。
             - **実行系**: `node` / `dotnet restore` / `dotnet build` / `dotnet test` /
               `dotnet format` / `dotnet --version` / `dotnet --info`。
+              helm は **`helm lint …` と `helm template …` の 2 形だけ**である（#1911。
+              `helm version` / `helm install` 等は拒否される）。
               シェルは **`bash -n <ファイル>`（構文検査のみ）** と
               **`bash scripts/k8s-local-down.test.sh`（引数なしの固定形）** の 2 形だけである
-              （#1723。他の `bash <スクリプト>` や `helm` は拒否される）。
+              （#1723。他の `bash <スクリプト>` は拒否される）。
             - Bash 以外では Read / Grep / Glob と GitHub MCP ツールが使える。
             よくある誤りと正しい手順:
             - **`python3` は許可されていない。** YAML / JSON の構文確認を `python3 -c` で
@@ -413,6 +479,9 @@ jobs:
             ### 🟢 軽微
             - （指摘なし）または具体的な指摘内容
 
+            ### ✅ 確認できたこと（このセッションで実走）
+            - 実行したコマンドと結果（件数・exit）を列挙する（【検証の下限】の各項目を含む）
+
             ### 🔍 実行できなかったこと
             - なし / または「`<コマンド>` は権限拒否（このため <どの主張> は未検証）」の形で列挙
 
@@ -507,8 +576,51 @@ jobs:
       # **実際には何も判定されていない**。上の check-permission-denials.js では捕まらない
       # ——あちらは「ツールを 1 つも実行できなかった」形を見る。ここはツールが動いており
       # **最後の投稿だけが無い**形を見る。2 本セットで配布される。
+      #
+      # 検証の下限（NFR / IADR-0538。AST#1337・AST#1346・AST#1347 の移植）も同じステップで読む。#1924 の
+      # レビューは 2 回続けて下限を満たさず（38 ファイル中「コード 15 ファイルと主要な文書」/ 8 ファイル）緑で通った。
+      # 差分の種類に応じた下限（deploy/helm/** → helm lint / helm template、scripts/ .github/ → scripts.test.js）を
+      # 判定するため、PR の変更ファイルを CHANGED_FILES で渡す（checkout は fetch-depth: 0）。差分を引けなければ空で
+      # 渡し、検査器はその判定だけを warn 付きで skip する（fail-open）。ALLOW_MISSING_VERDICT は下限には効かない。
+      #
+      # 代わりの根拠（NFR / IADR-0615・#2184、IADR-0617・#2206 で改定）: `scripts/` か `.github/` の差分があれば、
+      # **同じ head SHA の CI `scripts-tests`（ci.yml。GitHub Actions が出す check-run）の conclusion** を待って検査器へ渡す。
+      # success なら下限「scripts.test.js 全件」を満たしたとみなす。scripts.test.js 全件は scripts-tests と同じ試験であり、
+      # レビュアーが回し直しても独立した保証は増えない。IADR-0615 は作業ツリーが PR 版と違う（RESTORED_FILES が空でない）
+      # ときに限っていたが、MSP#2205（復元なし・差分の所在の見誤り）で再実行の枠を食い潰したため、その条件を外した。
+      # RESTORED_FILES（`git diff --name-only HEAD` で実測）はログのためだけに渡す。success 以外・待ちきれない・
+      # check-run が無いときは空のまま渡し、下限は従来どおり未達になる（緩めて通す形にしない）。
+      # 差分の判定は `case` で行う（`printf … | grep -q` は pipefail の下で書き手が SIGPIPE で落ちうる。#2202）。
       - name: Check review verdict
         if: always()
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
-        run: node scripts/check-review-verdict.js "$EXECUTION_FILE"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA...$HEAD_SHA" 2>/dev/null \
+                           || git diff --name-only "$BASE_SHA" "$HEAD_SHA" 2>/dev/null || true)"
+          export CHANGED_FILES
+          RESTORED_FILES="$(git diff --name-only HEAD 2>/dev/null || true)"
+          export RESTORED_FILES
+          SCRIPTS_TESTS_CONCLUSION=""
+          NL=$'\n'
+          case "$NL$CHANGED_FILES" in
+            *"${NL}scripts/"* | *"${NL}.github/"*) TOUCHES_SCRIPTS=1 ;;
+            *) TOUCHES_SCRIPTS="" ;;
+          esac
+          if [ -n "$TOUCHES_SCRIPTS" ]; then
+            echo "scripts/ か .github/ の差分がある（作業ツリーと PR 版の差: $(printf '%s' "${RESTORED_FILES:-なし}" | tr '\n' ' ')）。CI scripts-tests（$HEAD_SHA）の完了を待つ（最大 10 分）。"
+            for _ in $(seq 1 40); do
+              r="$(gh api "repos/$REPO/commits/$HEAD_SHA/check-runs?check_name=scripts-tests" \
+                     --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.started_at) | last | select(. != null) | "\(.status) \(.conclusion)"' \
+                     2>/dev/null || true)"
+              case "$r" in "completed "*) SCRIPTS_TESTS_CONCLUSION="${r#completed }"; break ;; esac
+              sleep 15
+            done
+            echo "CI scripts-tests の conclusion: ${SCRIPTS_TESTS_CONCLUSION:-（完了を観測できなかった）}"
+          fi
+          export SCRIPTS_TESTS_CONCLUSION
+          node scripts/check-review-verdict.js "$EXECUTION_FILE"

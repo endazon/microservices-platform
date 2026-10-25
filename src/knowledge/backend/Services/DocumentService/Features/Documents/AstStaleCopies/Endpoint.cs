@@ -125,6 +125,8 @@ public sealed record AstStaleArticleSummary(
     DateTimeOffset? PublishedTo);
 
 // 入れ直しの後の確認用: 現在のサービスアカウントが所有する報告書の写しの件数と、同じ kind・periodKey が 2 件以上ある組。
+// 承認待ちの写し（`reportState=draft`）は数えない（#1891。`AstStaleCopyRules.IsReport`）。確定版とドラフトが組として出ると、
+// runbook の「新しい方を消す」で確定版を消すため。
 public sealed record AstCurrentAccountReports(int Count, IReadOnlyList<AstDuplicatedReport> Duplicates);
 
 public sealed record AstDuplicatedReport(string Kind, string PeriodKey, int Copies);

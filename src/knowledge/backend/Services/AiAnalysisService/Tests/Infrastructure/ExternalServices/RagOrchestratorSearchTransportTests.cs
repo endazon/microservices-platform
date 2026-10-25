@@ -27,18 +27,14 @@ public class RagOrchestratorSearchTransportTests
     private static AccessScopeResponse Granted() => new(
         "user-1", [new AttributeFilter("dept", ["sales", "hr"])], true);
 
-    // 🔴 T-01: **既定は REST 輸送である**（[[IADR-0379]] 決定 5 / `ADR-0089` 決定 1）。
-    // 輸送を差し込まない直接構築（既存の試験がすべてこの形）は 1 つも変わらない。
+    // 🔴 T-01: **検索の輸送は必須の依存である**（[[IADR-0533]] 決定 1。REST の並走は撤去済み）。
+    // 既定値を持つと、差し込み忘れが黙って別の輸送へ落ちる（旧形は既定が REST だった）。
     [Fact]
-    public void 輸送を与えなければREST輸送が既定である()
+    public void 検索の輸送は既定値を持たない必須の依存である()
     {
-        var orchestrator = new RagOrchestrator(new StubHttpClientFactory());
-
-        // 差し込み口が既定 null であることを型で示す（既定が gRPC へ動くと並走の正が反転する）。
         typeof(RagOrchestrator).GetConstructors().Single()
             .GetParameters().Single(p => p.ParameterType == typeof(IRagSearchTransport))
-            .HasDefaultValue.Should().BeTrue();
-        orchestrator.Should().NotBeNull();
+            .HasDefaultValue.Should().BeFalse();
     }
 
     // 🔴 T-02 陽性対照: 質問経路は**利用者文脈と、利用者が指定した絞り込み（交差前）**を輸送へ渡す。
@@ -60,11 +56,11 @@ public class RagOrchestratorSearchTransportTests
         query.NarrowTo.Should().ContainKey("dept");
         query.NarrowTo!["dept"].Should().Equal(["sales"]);
 
-        // ★ 陽性対照: REST 輸送が使う実効スコープも**同時に**運ばれている
+        // ★ 陽性対照: 交差済みの実効スコープも**同時に**運ばれている
         //（交差済みなので `dept` は指定で絞られている）。
         query.EffectiveScope.GrantsAccess.Should().BeTrue();
         query.EffectiveScope.Filters.Single(f => f.Key == "dept").AllowedValues
-            .Should().Equal(["sales"], "REST 輸送は交差済みの実効スコープを送る");
+            .Should().Equal(["sales"], "実効スコープは交差済みである");
     }
 
     // 🔴 T-03: 分析経路も**同じ形**で運ぶ（データ範囲の器から絞り込みを取り出す）。
@@ -103,9 +99,9 @@ public class RagOrchestratorSearchTransportTests
     public async Task 権限が無ければ検索を1度も呼ばない()
     {
         var transport = new RecordingTransport();
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new StubHttpClientFactory(scopeJson: Json(new AccessScopeResponse("user-1", [], false))),
-            searchTransport: transport);
+            search: transport);
 
         var answer = await orchestrator.AskAsync("質問", "user-1",
             new Dictionary<string, string>(), null, Ct);
@@ -117,7 +113,7 @@ public class RagOrchestratorSearchTransportTests
     // ── 器 ────────────────────────────────────────────────────────
 
     private static RagOrchestrator Orchestrator(IRagSearchTransport transport) =>
-        new(new StubHttpClientFactory(Json(Granted())), searchTransport: transport);
+        TestRagOrchestrator.Create(new StubHttpClientFactory(Json(Granted())), search: transport);
 
     private static string Json(AccessScopeResponse scope) =>
         System.Text.Json.JsonSerializer.Serialize(

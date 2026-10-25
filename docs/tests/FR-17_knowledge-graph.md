@@ -3,15 +3,15 @@ title: FR-17 知識グラフ（型付き辺・ホップごと ABAC） テスト�
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-10-09
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-17, UC-10, SC-09, SC-10, FR-04, NFR-09, FR-10, FR-18]
 adrs: [ADR-0086, ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050, ADR-0027, ADR-0120, ADR-0035, ADR-0083, ADR-0076, ADR-0059]
-iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478, IADR-0425, IADR-0430, IADR-0479, IADR-0496, IADR-0389, IADR-0503, IADR-0521]
-specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_issue-1611_mcp-tool-execution-ports, 20261004_1733_cluster-detection-catch-up, 20261009_1396_graph-edges-links-tags]
-issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #1663, #1611, #1733, #1396]
+iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478, IADR-0425, IADR-0430, IADR-0479, IADR-0496, IADR-0389, IADR-0503, IADR-0521, IADR-0533]
+specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_issue-1611_mcp-tool-execution-ports, 20261004_1733_cluster-detection-catch-up, 20261009_1396_graph-edges-links-tags, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #1663, #1611, #1733, #1396, #1255, #1517]
 -->
 
 # テスト仕様書: 知識グラフ（型付き辺・ホップごとのアクセス制御）
@@ -66,11 +66,11 @@ issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #16
 | T-12 | — | 応答表現の公開コンストラクタ | 存在しない | 権限外を出さない | 自動 |
 | T-13 | — | 応答表現を返す静的経路 | すべてスコープを要求する | 権限外を出さない | 自動 |
 | T-14 | — | 未フィルタ部分グラフ型の可視性 | 公開型でない | 権限外を出さない | 自動 |
-| T-15 | 認可サービスが 500 | スコープ解決 | 拒否へ縮退 | 権限外を出さない | 自動 |
-| T-16 | 接続拒否 | 同上 | 拒否へ縮退 | 権限外を出さない | 自動 |
-| T-17 | タイムアウト | 同上 | 拒否へ縮退 | 権限外を出さない | 自動 |
-| T-18 | 本文がスコープでない | 同上 | 拒否へ縮退 | 権限外を出さない | 自動 |
-| T-19 | クレームあり | 同上 | 利用者属性が送信本文に載る | 探索 | 自動 |
+| T-15 | 認可サービスが失敗を返す（gRPC の失敗ステータス） | スコープ解決 | 拒否へ縮退 | 権限外を出さない | 自動 |
+| T-16 | 到達できない（`UNAVAILABLE`。宛先が未構成の場合を含む） | 同上 | 拒否へ縮退 | 権限外を出さない | 自動 |
+| T-17 | 期限切れ（`DEADLINE_EXCEEDED`） | 同上 | 拒否へ縮退 | 権限外を出さない | 自動 |
+| T-18 | 本文がスコープでない（撤去） | — | REST の応答本文の形だった。gRPC の応答は型を持ち、この形は起こらない | — | — |
+| T-19 | クレームあり | 同上 | 利用者属性と action が要求に載る | 探索 | 自動 |
 | T-20 | 型と辺が 1 件ずつ | 型を改名 | **辺の行が 1 行も変化しない**・名前は追随 | 種類の管理 | 自動 |
 | T-21 | 前後に空白のある名前 | 作成・改名 | 正規化される | 種類の管理 | 自動 |
 | T-22 | 空の辞書 | 初期値集合の投入 | 中核 5 種＋推奨 4 種・対称型は 1 つだけ | 種類の管理 | 自動 |
@@ -150,7 +150,7 @@ issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #16
 
 - `AbacNodeFilterTests`（T-01〜T-09）
 - `GraphTypeGateArchitectureTests`（T-10〜T-14）
-- `GraphAccessResolverTests`（T-15〜T-19）
+- `GraphAccessResolverGrpcTests`（T-15〜T-17・T-19。T-18 は撤去）
 - `EdgeTypeDictionaryTests`（T-20〜T-28）
 - `EdgeTypeEndpointsTests`（T-31〜T-38。**アプリ層のガードのみ**）
 - `UserAuthoredEdgeTests`（T-41〜T-46。**ここで効いているのはアプリ層の事前検査だけ**。同じ重複を DB 層で拒む `ux_edges` は次の `EdgeTypeDbGuardTests` が受け持つ）

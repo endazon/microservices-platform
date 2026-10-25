@@ -17,9 +17,19 @@ const PREVIEW_URL = `http://localhost:${PREVIEW_PORT}`;
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
+  // NFR / IADR-0621（#2036）: ファイル単位ではなく test 単位で worker とシャードへ配る。
+  // ファイルごとの本数の偏り（数本〜数十本）がそのままシャードの所要の偏りになるのを避ける。
+  // spec はファイル内で状態を共有しない（モジュール直下の可変状態・`describe.serial` は 0 件。走査して確かめた）。
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
+  // NFR / IADR-0621 / 基準書 §4: L1 の 1 実行（CI では 1 シャード）あたりの上限。ジョブの
+  // `timeout-minutes`（20 分）より先に切れ、どの test で止まったかがレポートに残る。
+  globalTimeout: process.env.CI ? 15 * 60_000 : 0,
+  // NFR / IADR-0621 / 基準書 §9: CI はシャードごとに blob を書き、`frontend.yml` の `e2e` ジョブが
+  // `merge-reports` で html ＋ github（注釈）へまとめる。シャードで github を出すと、まとめた側と
+  // 注釈が二重になるため、シャードでは list（ログ）だけを並べる。
+  reporter: process.env.CI ? [['blob'], ['list']] : 'list',
   use: {
     baseURL: PREVIEW_URL,
     trace: 'on-first-retry',
@@ -42,5 +52,22 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 60_000,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // IADR-0569: L1 の project 名は `smoke`（#2023 で `chromium` から改めた。基準書 §2.1 / §12）。
+  // ja-JP 以外のロケールの project は `smoke-<locale 小文字>` とする。M-020（#2023）: en-US では
+  // ブランド表示名がロケールで差し替わらず、ナビが英語になることを `e2e/i18n.smoke.spec.ts` だけで見る ——
+  // 他の spec は日本語の文言を待つので、en-US では走らせない（走らせると全件が文言の違いで落ちる）。
+  projects: [
+    {
+      name: 'smoke',
+      use: { ...devices['Desktop Chrome'] },
+      // IADR-0569 決定 3 / IADR-0624: live 層（`e2e/live/`。`playwright.live.config.ts` が流す）は L1 で走らせない。
+      // 既定の testMatch は `*.ro.spec.ts` なども拾うため、ディレクトリで外す。
+      testIgnore: [/i18n\.smoke\.spec\.ts$/, /[\\/]e2e[\\/]live[\\/]/],
+    },
+    {
+      name: 'smoke-en-us',
+      use: { ...devices['Desktop Chrome'], locale: 'en-US' },
+      testMatch: /i18n\.smoke\.spec\.ts$/,
+    },
+  ],
 });

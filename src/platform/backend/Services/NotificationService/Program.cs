@@ -88,12 +88,11 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapNotificationEndpoints();
-// FR-22: メッシュ内部限定の受け口（認証は課さない。OpenAPI には載せない）。
-app.MapNotificationIngressEndpoints();
 // FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0419]] (#1255):
-// 同じ受け口の east-west gRPC 面。**本体（NotificationIngress.AcceptAsync）は上の REST と共有**し、
-// 面は `ServiceCaller`（realm ロール platform-service）を要求する ——
-// **REST の無認証の口はそのまま残す**（並走中の正は REST。切替は呼び出し元の構成 1 つで行う）。
+// 通知の受け口の east-west gRPC 面。本体は `NotificationIngress.AcceptAsync`。
+// 面は `ServiceCaller`（realm ロール platform-service）を要求する。
+// ［2026-10-15 / #1902・[[IADR-0533]] 追記］無認証の REST の受け口（`POST /internal/notifications`）は撤去した ——
+// 送信側（DocumentService の N-1）は gRPC だけになっていた。受け口はこの gRPC 面だけである。
 app.MapGrpcService<NotificationIngressGrpcService>();
 
 app.Run();

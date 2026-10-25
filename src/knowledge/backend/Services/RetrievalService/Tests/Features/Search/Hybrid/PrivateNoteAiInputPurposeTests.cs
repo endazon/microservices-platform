@@ -116,7 +116,6 @@ public class PrivateNoteAiInputPurposeTests
         ai.ExposureKey.Should().Be(DocumentExposure.AiKey);
         ai.UserId.Should().Be("alice", "用途を変えても主体は変わらない");
         ai.Attributes.Should().Contain("department", "dev");
-        ai.ForwardableCredential.Should().BeNull();
     }
 
     // FR-17, ADR-0035: 二段検索の出口も同じ用途で落とす（段は利用者文脈を素通しする）。
@@ -171,11 +170,11 @@ public class PrivateNoteAiInputPurposeTests
     {
         public List<SearchResultDto> Candidates { get; } = [];
 
-        public Task<List<SearchResultDto>> RerankAsync(
+        public Task<RerankOutcome> RerankAsync(
             SearchRequest request, string sort, List<SearchResultDto> candidates, CancellationToken ct = default)
         {
             Candidates.AddRange(candidates);
-            return Task.FromResult(candidates);
+            return Task.FromResult(new RerankOutcome(candidates));
         }
     }
 }

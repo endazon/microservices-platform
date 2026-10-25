@@ -230,10 +230,12 @@ describe('McpClientManagementPage (SC-12)', () => {
     expect(await screen.findByTestId('registration-issues')).toHaveTextContent(
       '有人にはリダイレクト URI が 1 件以上必要です。',
     );
-    await user.type(
-      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
-      'https://agent.example.test/*{enter}http://localhost:8080/cb',
-    );
+    // URI は 1 文字ずつ打たず貼り付ける（#2089 の CI で 5000ms を超えた揺らぎの原因）。
+    // 入力欄は画面全体の状態に紐づくため、1 打鍵ごとに一覧ごと再描画され、
+    // 2 回分 約 120 打鍵がこの試験の所要時間の約半分を占めていた。検証は「登録」押下時に
+    // 行う実装であり、打鍵の途中経過は本試験の対象ではない（貼り付けでも同じ値が届く）。
+    await user.click(screen.getByLabelText('リダイレクト URI（1 行に 1 件）'));
+    await user.paste('https://agent.example.test/*\nhttp://localhost:8080/cb');
     await user.click(screen.getByRole('button', { name: '登録' }));
     expect(await screen.findByTestId('registration-issues')).toHaveTextContent(
       'リダイレクト URI は https か',
@@ -242,10 +244,7 @@ describe('McpClientManagementPage (SC-12)', () => {
 
     // 陽性対照: 正しい 2 件（https・ループバック）は 1 行 1 件のまま送る。
     await user.clear(screen.getByLabelText('リダイレクト URI（1 行に 1 件）'));
-    await user.type(
-      screen.getByLabelText('リダイレクト URI（1 行に 1 件）'),
-      'https://agent.example.test/cb{enter} http://127.0.0.1:53123/callback ',
-    );
+    await user.paste('https://agent.example.test/cb\n http://127.0.0.1:53123/callback ');
     await user.click(screen.getByRole('button', { name: '登録' }));
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(JSON.parse(String((posts()[0][1] as RequestInit).body))).toMatchObject({

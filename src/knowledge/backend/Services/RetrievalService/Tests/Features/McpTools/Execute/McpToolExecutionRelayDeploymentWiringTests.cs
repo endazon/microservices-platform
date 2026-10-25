@@ -27,7 +27,7 @@ public class McpToolExecutionRelayDeploymentWiringTests
 
         clientId.Should().Be("mcp-server", "対照: MCP サーバーの s2s の client を読めていないなら以下は何も検査していない");
         McpToolExecutionRelayOptions.DefaultTrustedUserContextClients.Should().Contain(clientId);
-        block.Should().MatchRegex(@"(?m)^\s+Mcp__GrpcServices__retrieval-service:\s*http://retrieval-service:8081\s*$",
+        block.Should().MatchRegex(@"(?m)^\s+Mcp__Services__retrieval-service:\s*http://retrieval-service:8081\s*$",
             "MCP サーバーはツールの実行を申告元の h2c へ送る（この client が実行口の中継者である根拠）");
         ReadRepoFile(Compose).Should().NotContain(TrustedKey, "構成で集合を変えるならこの試験を直す（上の 🔴）");
     }
@@ -41,7 +41,7 @@ public class McpToolExecutionRelayDeploymentWiringTests
         clientId.Should().Be("mcp-server", "対照: MCP サーバーの s2s の client を読めていないなら以下は何も検査していない");
         McpToolExecutionRelayOptions.DefaultTrustedUserContextClients.Should().Contain(clientId);
         block.Should().MatchRegex(
-            @"(?m)^\s+- name: Mcp__GrpcServices__retrieval-service\s*\n\s+value:\s*""http://retrieval-service:8081""\s*$",
+            @"(?m)^\s+- name: Mcp__Services__retrieval-service\s*\n\s+value:\s*""http://retrieval-service:8081""\s*$",
             "MCP サーバーはツールの実行を申告元の h2c へ送る");
         ReadRepoFile(Helm).Should().NotContain(TrustedKey, "構成で集合を変えるならこの試験を直す（上の 🔴）");
     }

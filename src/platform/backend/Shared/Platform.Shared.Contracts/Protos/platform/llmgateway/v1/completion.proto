@@ -1,6 +1,6 @@
 // FR-04, FR-11, NFR-02, NFR-09, ADR-0010, ADR-0029, ADR-0075, ADR-0076, IADR-0379, IADR-0397,
 // IADR-0400 (#1255):
-// LlmGateway のテキスト生成（REST `POST /complete` / `POST /complete/stream` と同じ意味論）の gRPC 契約。
+// LlmGateway のテキスト生成（REST `POST /complete`・撤去した `POST /complete/stream` と同じ意味論。［2026-10-15 / #1902］）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は LlmGateway。置き場は Platform.Shared.Contracts の
 //   `Protos/platform/llmgateway/v1/`。クライアント・サーバ基底の両方をここから生成する。
@@ -25,7 +25,7 @@ service LlmCompletion {
   // **エラーではなく sent=false の応答**で表す（REST の 200 ＋ Sent=false と同じ）。
   rpc Complete(CompleteRequest) returns (CompleteResponse);
 
-  // 逐次生成。REST `POST /complete/stream`（SSE）と同値。本文の増分を 1 メッセージ 1 delta で送り、
+  // 逐次生成。撤去した REST `POST /complete/stream`（SSE）と同値。本文の増分を 1 メッセージ 1 delta で送り、
   // 最後に done=true のメッセージを送る。
   //
   // 🔴 **サーバストリーミングである（IADR-0400 決定 1）。unary へ潰してはならない。**

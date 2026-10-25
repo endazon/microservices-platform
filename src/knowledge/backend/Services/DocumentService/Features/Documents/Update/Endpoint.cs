@@ -3,6 +3,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents.Update;
@@ -51,13 +52,9 @@ internal static class UpdateDocumentEndpoint
                 return updateProjectKept;
 
             // FR-06, UC-03: 楽観的並行制御。期待版が現在版と異なれば lost update を防ぐため 409。
+            // 🔴 [[IADR-0597]] (#2103): これは読んだ時点の比較であり、比較と保存の間の窓は下の保存が塞ぐ。
             if (req.ExpectedVersion is { } expected && expected != doc.Version)
-                return Results.Conflict(new
-                {
-                    error = "version_conflict",
-                    expectedVersion = expected,
-                    currentVersion = doc.Version
-                });
+                return DocumentVersionConflict.Problem(expected, doc.Version);
 
             var (updateTagIds, updateUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
             if (updateUnknown.Count > 0) return DocumentEndpoints.UnknownTagsProblem(updateUnknown);
@@ -69,15 +66,25 @@ internal static class UpdateDocumentEndpoint
             var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
             doc.Update(req.Title, DocumentBodyIntake.WithCurrentOwner(req.Attributes, doc.Attributes),
                 updateTagIds, req.ChangeNote);
-            await db.SaveChangesAsync();
+            // FR-06, UC-03, [[IADR-0597]] (#2103): 版は並行トークンである。読んだ後に別の更新が版を進めていれば保存は負け、
+            // 黙った上書きも版テーブルの一意索引違反の 500 も起こさず 409 を返す（発行も行わない）。
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 版の競合で保存が負ければ、発行も巻き戻って 1 通も出ない。
+            Dictionary<Guid, string> updateNames;
+            try
+            {
+                updateNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+                    bus, db, doc, wasPublishable, ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, req.ExpectedVersion, ct);
+            }
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
             // **編集も保存である。** 属性は全置換なので、`project` を落とした保存もここで数える
             // （落とせないのは**制限**プロジェクトの値だけ。上の統制と母集合が違う）。
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdate);
-            var updateNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-                bus, db, doc, wasPublishable, updateNames, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, updateNames, ct));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
     }

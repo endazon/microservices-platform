@@ -3,6 +3,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents.UpdateMetadata;
@@ -63,13 +64,9 @@ internal static class UpdateDocumentMetadataEndpoint
                 is { } metaProjectKept)
                 return metaProjectKept;
 
+            // FR-06, UC-03, [[IADR-0597]] (#2103): 読んだ時点の比較（`Update` と同じ。窓は下の保存が塞ぐ）。
             if (req.ExpectedVersion is { } expected && expected != doc.Version)
-                return Results.Conflict(new
-                {
-                    error = "version_conflict",
-                    expectedVersion = expected,
-                    currentVersion = doc.Version
-                });
+                return DocumentVersionConflict.Problem(expected, doc.Version);
 
             var (metaTagIds, metaUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
             if (metaUnknown.Count > 0) return DocumentEndpoints.UnknownTagsProblem(metaUnknown);
@@ -79,14 +76,23 @@ internal static class UpdateDocumentMetadataEndpoint
             var wasPublishable = DocumentEndpoints.PassesPublishGate(doc);
             doc.UpdateMetadata(DocumentBodyIntake.WithCurrentOwner(req.Attributes, doc.Attributes),
                 metaTagIds, req.ChangeNote);
-            await db.SaveChangesAsync();
+            // FR-06, UC-03, [[IADR-0597]] (#2103): 保存で負けたら 409（`Update` と同じ理由・同じ写像）。
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 版の競合で保存が負ければ、発行も巻き戻って 1 通も出ない。
+            Dictionary<Guid, string> metaNames;
+            try
+            {
+                metaNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+                    bus, db, doc, wasPublishable, ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, req.ExpectedVersion, ct);
+            }
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
             // メタデータ更新も属性を全置換する（`Update` と同じ理由・同じ位置）。
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationUpdateMetadata);
-            var metaNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-                bus, db, doc, wasPublishable, metaNames, ct);
             return Results.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, metaNames, ct));
         });
     }

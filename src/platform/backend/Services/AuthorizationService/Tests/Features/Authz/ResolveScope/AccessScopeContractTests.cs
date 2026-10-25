@@ -1,4 +1,6 @@
+using AuthorizationService.Tests.Grpc;
 using AwesomeAssertions;
+using Grpc.Core;
 using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -13,7 +15,11 @@ namespace AuthorizationService.Tests.Features.Authz.ResolveScope;
 // **シリアライズを通っていない**。#525 が言っているのは「契約から区別できない」ことなので、
 // ここでは**本文（JSON）を直接読む**。
 //
-// なぜ `POST /authz/scope` の応答値を端点越しに固定しないか:
+// ［2026-10-15 / #1902・[[IADR-0533]]］REST の `POST /authz/scope` を撤去したので、端点越しの試験は
+// gRPC 面（`AuthzScope/Resolve`）を TestServer 上で叩く。JSON の本文の形（下の Serialize 系）は
+// 契約 DTO の直列化の性質であり、BFF の公開面が同じ DTO を使うので残す。
+//
+// なぜスコープ解決の応答値を端点越しに固定しないか:
 //   TestWebApplicationFactory は InMemory DB を**固定名 `AuthzTest`** で張っており、
 //   プロセス内の全テストで共有される。既存テストは**利用者条件が空のポリシー**を複数作っており
 //   （`AbacEvaluator.MatchesUserConditions` は条件が空なら全利用者にマッチする）、
@@ -56,20 +62,16 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
             "granted が無ければ deny-by-default と全件許可が同一の本文になる");
     }
 
-    // FR-05, T-17 / T-18（#525): `POST /authz/scope` の本文に granted が実際に載る。
+    // FR-05, T-17 / T-18（#525): スコープ解決の面が応答を返す（granted は proto の bool で必ず載る）。
     // **値は主張しない**——共有 InMemory DB のポリシー状態に依存するため（上記コメント）。
     [Fact]
-    public async Task ResolveScopeEndpoint_ResponseBodyContainsGranted()
+    public async Task ResolveScope_ReturnsScope()
     {
-        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+        var res = await factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest("contract-probe", new Dictionary<string, string>()), TestContext.Current.CancellationToken);
 
-        res.EnsureSuccessStatusCode();
-        var body = JsonNode.Parse(await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!.AsObject();
-
-        body.Should().ContainKey("granted");
-        // granted は真偽値である（値そのものは共有 DB のポリシー状態に依存するため主張しない）。
-        body["granted"]!.GetValueKind().Should().BeOneOf(JsonValueKind.True, JsonValueKind.False);
+        res.Status.Should().Be(StatusCode.OK);
+        res.Scope!.UserId.Should().Be("contract-probe");
     }
 
     // ---- FR-19, ADR-0036, ADR-0046 D-06 部品 3, IADR-0253 段 1: 名前つき分岐 ----------------
@@ -166,31 +168,48 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
         req!.Action.Should().Be("write");
     }
 
-    // 🔴 否定形: 値域外の action は 400 で拒否される（黙って空スコープへ写さない）。
-    // 400 は全消費側で Granted=false へ縮退する——deny 側の失敗であり、緩む向きではない。
+    // 🔴 否定形: 値域外の action は INVALID_ARGUMENT で拒否される（黙って空スコープへ写さない）。
+    // status は全消費側で Granted=false へ縮退する——deny 側の失敗であり、緩む向きではない。
+    // 🔴 文言は `PolicyAction.All` から組み立てた値と一致する（値域が増えたときに文言だけが古くならない）。
     [Fact]
-    public async Task ResolveScopeEndpoint_UnknownAction_Returns400()
+    public async Task ResolveScope_UnknownAction_IsInvalidArgument()
     {
-        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
+        var res = await factory.CreateServiceCallerClient().ResolveScopeAsync(
             new AccessScopeRequest("contract-probe", new Dictionary<string, string>(), "delete"),
             TestContext.Current.CancellationToken);
 
-        res.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+        res.Status.Should().Be(StatusCode.InvalidArgument);
+        res.Detail.Should().Be(
+            $"action は {string.Join(" / ", AuthorizationService.Domain.PolicyAction.All)} のいずれかである必要があります。");
     }
 
-    // 陽性対照（上の否定形と対）: 有効な write は 200 で解決される。
-    // **値は主張しない**——共有 InMemory DB のポリシー状態に依存するため（クラス冒頭コメント）。
-    [Fact]
-    public async Task ResolveScopeEndpoint_WriteAction_IsAccepted()
+    // 🔴 G 軸（述語の粒度）: `PolicyAction.IsValid` は**完全一致**である（`Trim` も小文字化もしない）。
+    [Theory]
+    [InlineData("Read")]
+    [InlineData(" read ")]
+    public async Task ResolveScope_ActionWithCaseOrSpaces_IsInvalidArgument(string action)
     {
-        var res = await factory.CreateServiceCallerClient().PostAsJsonAsync("/authz/scope",
-            new AccessScopeRequest("contract-probe", new Dictionary<string, string>(), "write"),
+        var res = await factory.CreateServiceCallerClient().ResolveScopeAsync(
+            new AccessScopeRequest("contract-probe", new Dictionary<string, string>(), action),
             TestContext.Current.CancellationToken);
 
-        res.EnsureSuccessStatusCode();
-        var body = JsonNode.Parse(await res.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken))!.AsObject();
-        body.Should().ContainKey("granted");
+        res.Status.Should().Be(StatusCode.InvalidArgument);
+    }
+
+    // 陽性対照（上の否定形と対）: 値域内の action は解決される。
+    // **値は主張しない**——共有 InMemory DB のポリシー状態に依存するため（クラス冒頭コメント）。
+    [Theory]
+    [InlineData("read")]
+    [InlineData("analyze")]
+    [InlineData("manage")]
+    [InlineData("write")]
+    public async Task ResolveScope_KnownAction_IsAccepted(string action)
+    {
+        var res = await factory.CreateServiceCallerClient().ResolveScopeAsync(
+            new AccessScopeRequest("contract-probe", new Dictionary<string, string>(), action),
+            TestContext.Current.CancellationToken);
+
+        res.Status.Should().Be(StatusCode.OK);
     }
 
     // 端点越しに action が評価器へ届くこと（ハードコード解消の証拠）。
@@ -200,7 +219,7 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
     // **含まれない**」だけであり、他ポリシーの有無・順序に依存しない。
     // 端点が Read をハードコードへ戻ると、含まれるはずの分岐が消えて前者が落ちる。
     [Fact]
-    public async Task ResolveScopeEndpoint_RoutesActionToEvaluator()
+    public async Task ResolveScope_RoutesActionToEvaluator()
     {
         // 🔴 **面ごとに資格が違う**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）——
         // 管理 API は `AdminOnly`、スコープ解決は `ServiceCaller` である。
@@ -225,24 +244,19 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
         var attrs = new Dictionary<string, string>();
 
         // 陽性対照: write スコープに自分の write ポリシーの分岐が含まれ、束縛済みである。
-        var writeRes = await client.PostAsJsonAsync("/authz/scope",
+        var writeRes = await client.ResolveScopeAsync(
             new AccessScopeRequest("alice-989", attrs, "write"), TestContext.Current.CancellationToken);
-        writeRes.EnsureSuccessStatusCode();
-        var writeBody = JsonNode.Parse(await writeRes.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken))!.AsObject();
-        var writeBranches = writeBody["branches"]!.AsArray();
-        var mine = writeBranches.Single(b => b!["name"]!.GetValue<string>() == policyName);
-        mine!["filters"]![0]!["allowedValues"]!.AsArray().Single()!.GetValue<string>()
+        writeRes.Status.Should().Be(StatusCode.OK);
+        var mine = writeRes.Scope!.Branches!.Single(b => b.Name == policyName);
+        mine.Filters[0].AllowedValues.Single()
             .Should().Be("alice-989", "束縛は分岐の中で解決されて端点から返る");
 
         // 否定形（対）: read スコープには write ポリシーの分岐が混ざらない。
-        var readRes = await client.PostAsJsonAsync("/authz/scope",
+        var readRes = await client.ResolveScopeAsync(
             new AccessScopeRequest("alice-989", attrs, "read"), TestContext.Current.CancellationToken);
-        readRes.EnsureSuccessStatusCode();
-        var readBody = JsonNode.Parse(await readRes.Content.ReadAsStringAsync(
-            TestContext.Current.CancellationToken))!.AsObject();
-        readBody["branches"]!.AsArray()
-            .Should().NotContain(b => b!["name"]!.GetValue<string>() == policyName,
+        readRes.Status.Should().Be(StatusCode.OK);
+        readRes.Scope!.Branches!
+            .Should().NotContain(b => b.Name == policyName,
                 "write ポリシーが read へ漏れると閲覧範囲が書き込みポリシーで変わってしまう");
     }
 }

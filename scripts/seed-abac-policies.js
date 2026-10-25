@@ -40,6 +40,7 @@
  */
 
 const fs = require('fs');
+const seeder = require('./lib/abac-seeder-session.js'); // IADR-0576
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 // IADR-0524 (#1859 / #1869): 待ちに上限を置く（1 要求・全体）。超えたら何を待っていたかを名指しして非 0 で終える。
@@ -128,17 +129,10 @@ function buildTokenForm({ clientId, clientSecret }) {
   return form;
 }
 // client_secret は realm ファイル（単一情報源）から引く。値をここへ写さない（#984）。
-const CLIENT_SECRET = (() => {
-  if (process.env.ABAC_SEED_CLIENT_SECRET) return process.env.ABAC_SEED_CLIENT_SECRET;
-  const fromRealm = clientSecretFromRealm(CLIENT_ID);
-  if (fromRealm) return fromRealm;
-  // 黙って既定値へ落ちない。落ちた事実を出す（無音の失敗がこの不具合の本体だった）。
-  warn(
-    `[seed-abac-policies] realm ファイルから client ${CLIENT_ID} の secret を読めませんでした（${REALM_FILE}）。` +
-      ' ABAC_SEED_CLIENT_SECRET を指定してください。',
-  );
-  return '';
-})();
+// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): client_secret は実行時に **明示（ABAC_SEED_CLIENT_SECRET）＞ 稼働の Secret
+// `platform-infra/abac-seeder-oidc`**（OpenBao → ESO。ESO が無ければ起動器が作る）から読む。realm の宣言の値（公知の dev の値）へは
+// 落ちない（secret を回した後も動く）。投入器の主体は既定で無効なので、実行の間だけ有効にする（scripts/lib/abac-seeder-session.js）。
+let CLIENT_SECRET = '';
 
 // --- 一時 port-forward（自分で張り、終了時に必ず片付ける） -------------------------
 const forwards = [];
@@ -160,10 +154,12 @@ function cleanup() {
   forwards.length = 0;
 }
 process.on('exit', cleanup);
-process.on('SIGINT', () => {
-  cleanup();
-  process.exit(1);
-});
+// IADR-0576: 中断でも、この実行が有効にした投入器の主体を無効へ戻してから（port-forward を残したまま）終わる。
+// 🔴 入口として走るときだけ登録する（このモジュールを require する再発行・アーカイブの駆動器では、そちらの handler が戻す。
+//    ここで同期の exit をすると、駆動器の戻しより先にプロセスが終わる）。
+if (require.main === module) {
+  process.on('SIGINT', () => seeder.restoreThenExit(1, { warn, before: cleanup }));
+}
 
 async function waitReachable(url, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
@@ -313,6 +309,13 @@ async function main(argv) {
     }
   }
   log(`接続先: authz=${authzUrl} / keycloak=${kcUrl}`);
+  try {
+    CLIENT_SECRET = seeder.resolveSeederSecret({ envName: 'ABAC_SEED_CLIENT_SECRET' });
+    await seeder.ensureEnabled({ kcUrl, realm: REALM, clientId: CLIENT_ID, log });
+  } catch (e) {
+    warn(`[seed-abac-policies] ${e.message}`);
+    return 2;
+  }
 
   const token = await fetchToken(kcUrl);
   log(`管理トークンを取得しました（client_credentials・client=${CLIENT_ID}）`);
@@ -364,14 +367,17 @@ module.exports = {
 
 if (require.main === module) {
   // IADR-0524 (#1869): 全体の上限。超えたら名指しして非 0（起動器は best-effort で WARN にして先へ進む）。
-  startWatchdog('seed-abac-policies', OVERALL_TIMEOUT_MS, { onExpire: () => { cleanup(); process.exit(1); } });
+  // IADR-0576: どの終わり方でも、この実行が有効にした投入器の主体を無効へ戻してから（port-forward を残したまま）終わる。
+  startWatchdog('seed-abac-policies', OVERALL_TIMEOUT_MS, { onExpire: () => seeder.restoreThenExit(1, { warn, before: cleanup }) });
   main(process.argv.slice(2))
-    .then((code) => {
+    .then(async (code) => {
+      await seeder.restore({ log, warn });
       cleanup();
       process.exit(code);
     })
-    .catch((e) => {
+    .catch(async (e) => {
       warn(`[seed-abac-policies] ${e.message}`);
+      await seeder.restore({ log, warn });
       cleanup();
       process.exit(1);
     });

@@ -2,7 +2,8 @@
 /**
  * NFR, 計画 ADR-0107 決定 3・決定 5 / ADR-0112 決定 3, IADR-0514 (#1787, #1814):
  * `deploy/` のインフラのイメージの参照と、`src/` の自製イメージの基底イメージ・統合試験の Testcontainers の
- * イメージが **digest で固定されている**ことを検査する。
+ * イメージ、`scripts/` が入れる製品の内側のイメージ（`deploy/` の values・kustomization と起動器の既定。#1858 / IADR-0547）が
+ * **digest で固定されている**ことを検査する。
  *
  * **タグだけの参照では、同じタグの中身が差し替わっても検知できない**（ADR-0107 決定 3）。
  * 固定の表記は `<repo>:<tag>@sha256:<64 桁>` —— digest は multi-arch の image index のもので、
@@ -16,6 +17,11 @@
  *   3. Containerfile の `FROM <ref>`（`scratch` と多段ビルドの段名は除く。`${VAR}/` の接頭辞はそのまま読む）、
  *      `COPY --from=<ref>`・`RUN --mount=…,from=<ref>`（段名・段番号は除く。#1814）
  *   4. テンプレートの `image:` 行に直書きした `default "<ref>"`（値が `/` か `:` を含むもの。`default "latest"` は拾わない。#1814）
+ *   5'. kustomization（`kustomization.yaml` / `.yml` / `Kustomization`）の `images:` の項目（`name`/`newName`・`newTag`・`digest`。#1858）
+ *      —— 上流のマニフェストを `resources:` の URL で読み、内側のイメージを images 置換で固定する形。
+ *      `newTag` と `digest` を両方書くと kustomize は `<name>:<tag>@<digest>` で描く（本リポジトリの表記）。
+ *   `scripts/` 配下の `.sh`（#1858）:
+ *   5''. `<名前>_IMAGE="${<名前>_IMAGE:-<ref>}"` の既定（起動器が chart・manifest の外で直接選ぶイメージ。k3s の `K3S_IMAGE`）
  *   `src/` 配下（#1814。submodule `src/ai-stock-trading` は別リポジトリなので除く）:
  *   5. Containerfile（3 と同じ）—— 自製イメージの基底イメージ
  *   6. C# の Testcontainers の参照: `new [名前空間.]<モジュール|Container>Builder([image:] "<ref>")`（ビルダ名の許可リスト）・
@@ -26,8 +32,9 @@
  *      Testcontainers に言及しないファイルの定数、許可リストに無いモジュールのビルダ（IADR-0514 の 2026-10-09 追記）。
  *
  * 対象外（理由つき）:
- *   - **自製イメージ**（`microservices-platform/*`・`k3d-local/*`）: CD が一意タグ/digest を渡す
- *     （運用仕様書 §自製イメージ）。chart 既定の `tag: latest` は CD 上書き用のプレースホルダである。
+ *   - **自製イメージ**（`microservices-platform/*`・`k3d-local/*`）: 配備する側が不変のタグ（git の sha）を渡す
+ *     （運用仕様書 §自製イメージ）。chart は既定のタグを持たず、無ければ描画で止まる（NFR-20 / IADR-0605 / #2132。
+ *     描画の側の固定は scripts/helm-image-tag.test.js）。
  *   - テンプレートの `{{ … }}` を含む行: 値は values 側で検査する（直書きの `default "<ref>"` は 4 で拾う）。
  *   - コメント行。`src/` の YAML（配備物の `image:` は `deploy/` にしか無い。lock ファイル等を誤読しない）。
  *
@@ -52,6 +59,8 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
 /** #1814: 自製イメージの基底イメージと統合試験の Testcontainers の置き場。YAML は読まない（`listFiles` の `kinds`）。 */
 const SRC_DIR = 'src';
+/** #1858: 起動器が直接選ぶイメージ（`K3S_IMAGE` の既定）の置き場。`.sh` だけを読む。 */
+const SCRIPTS_DIR = 'scripts';
 /** 別リポジトリ（AST）の submodule。CI で取得されても本リポの統制の対象外（変えるのは向こうのリポジトリ）。 */
 const SKIP_PATHS = new Set(['src/ai-stock-trading']);
 const EXCEPTIONS_PATH = path.join(__dirname, 'image-digest-exceptions.json');
@@ -151,6 +160,8 @@ function extractRefs(relPath, content) {
   }
 
   if (/\.cs$/.test(base)) return extractCsharpRefs(relPath, lines);
+  if (/\.sh$/.test(base)) return extractShellRefs(relPath, lines);
+  if (/^(kustomization\.ya?ml|Kustomization)$/.test(base)) out.push(...extractKustomizeImages(relPath, lines));
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -286,6 +297,53 @@ function extractCsharpRefs(relPath, lines) {
   return out;
 }
 
+/**
+ * #1858: kustomization の `images:` の項目を参照にする（`newName` があればそれ、無ければ `name`）。
+ * kustomize は `newTag` と `digest` を両方持つ項目を `<name>:<tag>@<digest>` で描く。digest が無い項目は tag だけの参照として落ちる。
+ * kind: 'kustomize-images'。
+ */
+function extractKustomizeImages(relPath, lines) {
+  const out = [];
+  const start = lines.findIndex((l) => /^images:\s*$/.test(stripComment(l)));
+  if (start < 0) return out;
+  let item = null;
+  let itemIndent = -1;
+  const flush = () => {
+    if (!item) return;
+    const name = item.newName || item.name;
+    if (name) out.push({ file: relPath, line: item.line, ref: composeRef(null, name, item.newTag, item.digest), kind: 'kustomize-images' });
+    item = null;
+  };
+  for (let j = start + 1; j < lines.length; j++) {
+    const l = lines[j];
+    if (l.trim() === '' || /^\s*#/.test(l)) continue;
+    const ind = l.length - l.trimStart().length;
+    const dash = /^(\s*)-\s+([A-Za-z0-9_.-]+):\s*(.*)$/.exec(stripComment(l));
+    if (ind === 0 && !dash) break; // 次のトップレベルのキー
+    if (dash) {
+      flush();
+      itemIndent = dash[1].length + 2;
+      item = { line: j + 1, [dash[2]]: unquote(dash[3]) };
+      continue;
+    }
+    const k = /^\s*([A-Za-z0-9_.-]+):\s*(.*)$/.exec(stripComment(l));
+    if (item && k && ind === itemIndent) item[k[1]] = unquote(k[2]);
+  }
+  flush();
+  return out;
+}
+
+/** #1858: シェルの `<名前>_IMAGE="${<名前>_IMAGE:-<ref>}"` の既定を拾う（コメント行は読まない）。kind: 'shell-default'。 */
+function extractShellRefs(relPath, lines) {
+  const out = [];
+  lines.forEach((l, i) => {
+    if (/^\s*#/.test(l)) return;
+    const m = /^\s*(?:export\s+)?([A-Z0-9_]*_IMAGE)="\$\{\1:-([^}]+)\}"/.exec(l);
+    if (m) out.push({ file: relPath, line: i + 1, ref: m[2], kind: 'shell-default' });
+  });
+  return out;
+}
+
 /** registry / name / tag / digest から参照を組み立てる（テンプレートの registry は付けない）。 */
 function composeRef(registry, name, tag, digest) {
   const reg = registry && !String(registry).includes('{{') ? `${registry}/` : '';
@@ -326,7 +384,7 @@ const isContainerfile = (name) => /^(Dockerfile|Containerfile)(\..*)?$/.test(nam
 /**
  * 走査するファイルを集める。`deploy/` は YAML と Containerfile、`src/` は Containerfile と C#（#1814）。
  */
-function listFiles(dir, root, { yaml, csharp }) {
+function listFiles(dir, root, { yaml, csharp, shell = false }) {
   const found = [];
   const walk = (d) => {
     if (!fs.existsSync(d)) return;
@@ -335,7 +393,9 @@ function listFiles(dir, root, { yaml, csharp }) {
       const full = path.join(d, e.name);
       if (SKIP_PATHS.has(path.relative(root, full).split(path.sep).join('/'))) continue;
       if (e.isDirectory()) walk(full);
-      else if ((yaml && /\.ya?ml$/.test(e.name)) || (csharp && /\.cs$/.test(e.name)) || isContainerfile(e.name)) found.push(full);
+      else if (shell) {
+        if (/\.sh$/.test(e.name)) found.push(full); // #1858: scripts/ は .sh だけ（試験の fixture・Containerfile 形の名前を読まない）
+      } else if ((yaml && /\.ya?ml$/.test(e.name)) || (csharp && /\.cs$/.test(e.name)) || isContainerfile(e.name) || (yaml && e.name === 'Kustomization')) found.push(full);
     }
   };
   walk(dir);
@@ -346,6 +406,7 @@ function collect(root = REPO_ROOT) {
   const files = [
     ...listFiles(path.join(root, DEPLOY_DIR), root, { yaml: true, csharp: false }),
     ...listFiles(path.join(root, SRC_DIR), root, { yaml: false, csharp: true }),
+    ...listFiles(path.join(root, SCRIPTS_DIR), root, { yaml: false, csharp: false, shell: true }),
   ];
   const refs = files.flatMap((f) =>
     extractRefs(path.relative(root, f).split(path.sep).join('/'), fs.readFileSync(f, 'utf8')),
@@ -598,6 +659,44 @@ function selfTest() {
   });
   t('#1814 監査: 許可リストに無いビルダ（AuthorizationPolicyBuilder 等）と target-typed の new(…) は拾わない（後者は既知の限界）', () =>
     refsOf('src/T/P.cs', 'using Testcontainers.PostgreSql;\nvar p = new AuthorizationPolicyBuilder("admin").Build();\nvar s = new StringBuilder("x/y:1");\nPostgreSqlBuilder b = new("postgres:16");\n').length === 0);
+  // --- #1858: scripts/ が入れる製品の内側のイメージ（kustomization の images・起動器の既定・chart の values） ---
+  t('#1858 kustomization の images: の項目を newTag・digest から組み立て、digest が無い項目を落とす', () => {
+    const k = 'resources:\n  - https://example.com/v1/install.yaml\nimages:\n  - name: quay.io/a/ctl\n    newTag: v1\n    digest: ' + D +
+      '\n  # 注記\n  - name: quay.io/a/web\n    newName: mirror.io/a/web\n    newTag: "v1"\nlabels: []\n';
+    const r = extractRefs('deploy/x/kustomization.yaml', k);
+    return r.map((x) => x.ref).join() === `quay.io/a/ctl:v1@${D},mirror.io/a/web:v1` && r[0].kind === 'kustomize-images' &&
+      r[0].line === 4 && errs('deploy/x/kustomization.yaml', k).length === 1;
+  });
+  t('#1858 kustomization 以外の YAML の images: は読まない（名前で限る）', () =>
+    refsOf('deploy/x/values.yaml', 'images:\n  - name: foo/bar\n    newTag: "1"\n').length === 0);
+  t('#1858 シェルの <名前>_IMAGE の既定を拾い、tag だけなら落とす（コメント行・他の変数は読まない）', () => {
+    const sh = '# K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1}"\n  K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1}"\nFOO="${FOO:-bar:1}"\nX_IMAGE="${Y_IMAGE:-a:1}"\n';
+    const r = extractRefs('scripts/up.sh', sh);
+    return r.length === 1 && r[0].ref === 'rancher/k3s:v1.35.4-k3s1' && r[0].line === 2 && r[0].kind === 'shell-default' &&
+      errs('scripts/up.sh', sh).length === 1 &&
+      errs('scripts/up.sh', `K3S_IMAGE="\${K3S_IMAGE:-rancher/k3s:v1@${D}}"\n`).length === 0;
+  });
+  t('#1858 変異: 同じ repo:tag を 3 か所に書く values（ESO）の 1 か所だけ digest を差し替えると [digest-mismatch]', () => {
+    const v = (d2) => `image:\n  repository: ghcr.io/e/e\n  tag: v2@${D}\nwebhook:\n  image:\n    repository: ghcr.io/e/e\n    tag: v2@${d2}\n`;
+    return errs('deploy/v.yaml', v(D)).length === 0 && errs('deploy/v.yaml', v(D2)).some((e) => e.startsWith('[digest-mismatch]'));
+  });
+  t('#1858 scripts/ は .sh だけを読む（試験の .js・YAML・Containerfile 形の名前を読まない）', () => {
+    const os = require('os');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cid-'));
+    try {
+      const w = (rel, text) => { fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true }); fs.writeFileSync(path.join(tmp, rel), text); };
+      w('deploy/c.yml', `image: redis:7@${D}\n`);
+      w('scripts/up.sh', 'K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1}"\n');
+      w('scripts/lib/x.sh', 'A_IMAGE="${A_IMAGE:-a:1}"\n');
+      w('scripts/t.test.js', 'const K3S_IMAGE="${K3S_IMAGE:-b:1}";\n');
+      w('scripts/fixtures/Dockerfile', 'FROM c:1\n');
+      w('scripts/fixtures/v.yaml', 'image: d:1\n');
+      const { refs } = collect(tmp);
+      return refs.map((r) => `${r.file}=${r.ref}`).sort().join() === `deploy/c.yml=redis:7@${D},scripts/lib/x.sh=a:1,scripts/up.sh=rancher/k3s:v1`;
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
   t('splitRef はレジストリのポートを tag と取り違えない', () => {
     const s = splitRef(`localhost:5000/foo/bar:1.2@${D}`);
     return s.name === 'localhost:5000/foo/bar' && s.tag === '1.2' && s.digest === D;

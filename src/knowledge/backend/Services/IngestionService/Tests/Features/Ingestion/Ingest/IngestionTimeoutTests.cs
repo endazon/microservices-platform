@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using AwesomeAssertions;
+using IngestionService.Common.Observability;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
@@ -16,7 +18,7 @@ namespace IngestionService.Tests.Features.Ingestion.Ingest;
 // FR-02 テスト仕様 T-18〜T-21 (#1640) —— UC-04, ADR-0013, ADR-0016, ADR-0027:
 // 取り込みの受け口の時間の上限（呼び出しごとの期限・埋め込みの総枠・受け口の実行期限）。
 //
-// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限を含む（本番の既定 420 秒・方針なしなら 60 秒）。
+// 🔴 **縮めた受け口の ct の下で測る。** 受け口の ct は Wolverine の実行期限を含む（本番の既定 435 秒・方針なしなら 60 秒）。
 // ここではそれを 30 秒の CTS で模し（呼び出しごとの 1 秒と十分に離し、負荷下の揺らぎで比が崩れないようにする）、呼び出しごとの期限（1 秒）が**先に**立って時間切れ（`ConsumerTimeoutException`）に
 // なること —— 受け口の ct は立っていないこと —— を見る。呼び出しごとの期限を外す変異では、止まった依存先は
 // 受け口の ct で取り消し（`OperationCanceledException`）として落ち、これらの試験が赤になる。
@@ -50,6 +52,8 @@ public class IngestionTimeoutTests
         => new(
             ports, new MarkdownChunkingService(), embed ?? ports, ports, ports,
             ConsumerTimeoutsForTests.Calls(), timeouts, clock ?? TimeProvider.System,
+            TestMeterFactory.NewEmbeddingPendingMetrics(),
+            TestMeterFactory.NewBodyMissingMetrics(),
             NullLogger<DocumentUpdatedConsumer>.Instance);
 
     // T-18: 止まった依存先（本文・埋め込み・既存チャンクの削除・チャンクの登録・メタデータ点の登録）は、
@@ -138,6 +142,89 @@ public class IngestionTimeoutTests
         ports.Published.Should().BeTrue();
     }
 
+    // T-52 (#1746・[[IADR-0560]]): **語彙索引への書き込みの輪も総枠で打ち切る。** 書き込み 1 回ごとに偽の時計を 1 秒進める店で測る。
+    // 高機密の文書（埋め込みを呼ばない輪）と、1 チャンク目で埋め込みが使えない `internal` の文書（待ちの点の輪）の 2 経路。
+    // 総枠 3 秒なら 3 点を書いた後の判定で残りを書かずに `lexical-budget` の時間切れとして投げ、完了を出さない。
+    // 判定（`LexicalBudgetExhausted` の 2 か所）を外す変異では 10 点すべてを書いて完了を出し、赤になる。
+    [Theory]
+    [InlineData("confidential", true)]
+    [InlineData("internal", false)]
+    public async Task 語彙索引への書き込みも総枠を使い切ったら残りを書かずに時間切れとして投げる(
+        string confidentiality, bool lexicalOnly)
+    {
+        var clock = new FakeTimeProvider();
+        var factory = new TestMeterFactory();
+        var pending = new EmbeddingPendingMetrics(factory);
+        using var written = PendingWrittenListener(factory);
+        var ports = new ClockAdvancingLexicalPorts(clock, TimeSpan.FromSeconds(1), ManySections(10));
+        var consumer = BuildLexical(ports, Scaled with { EmbeddingBudget = TimeSpan.FromSeconds(3) }, clock, pending);
+
+        var act = () => consumer.Handle(EventWith(confidentiality), TestContext.Current.CancellationToken);
+
+        var thrown = (await act.Should().ThrowAsync<ConsumerTimeoutException>()).Which;
+        thrown.Target.Should().Be(IngestionTimeouts.LexicalBudgetTarget);
+        thrown.Message.Should().Contain("3 of 10 chunks");
+        EmbeddingBudgetDeadLetterPolicy.IsBudgetExhausted(thrown).Should().BeTrue("再試行せずデッドレターへ直行させる");
+        ports.LexicalWrites.Should().Be(lexicalOnly ? 3 : 0);
+        ports.PendingWrites.Should().Be(lexicalOnly ? 0 : 3, "待ちの点の輪も同じ総枠で止まる");
+        ports.EmbedCalls.Should().Be(lexicalOnly ? 0 : 1, "高機密は埋め込みを呼ばない。待ちの点は 1 チャンク目で埋め込みを諦める");
+        ports.Published.Should().BeFalse("打ち切った文書は取り込み完了にしない");
+        written.Sum.Should().Be(lexicalOnly ? 0 : 3, "書いた待ちの点は投げる前に計器へ数える");
+    }
+
+    // T-52（対照）: 総枠に収まる文書は語彙索引へ全点を書き、完了を出す。
+    [Theory]
+    [InlineData("confidential", true)]
+    [InlineData("internal", false)]
+    public async Task 総枠に収まれば語彙索引へ全点を書く(string confidentiality, bool lexicalOnly)
+    {
+        var clock = new FakeTimeProvider();
+        var ports = new ClockAdvancingLexicalPorts(clock, TimeSpan.FromSeconds(1), ManySections(10));
+        var consumer = BuildLexical(ports, Scaled with { EmbeddingBudget = TimeSpan.FromSeconds(11) }, clock,
+            TestMeterFactory.NewEmbeddingPendingMetrics());
+
+        await consumer.Handle(EventWith(confidentiality), TestContext.Current.CancellationToken);
+
+        (ports.LexicalWrites + ports.PendingWrites).Should().Be(10);
+        ports.LexicalWrites.Should().Be(lexicalOnly ? 10 : 0);
+        ports.Published.Should().BeTrue();
+    }
+
+    private static DocumentUpdated EventWith(string confidentiality) => Event() with
+    {
+        Attributes = new Dictionary<string, string> { ["confidentiality"] = confidentiality },
+    };
+
+    private static DocumentUpdatedConsumer BuildLexical(
+        ClockAdvancingLexicalPorts ports, IngestionTimeouts timeouts, TimeProvider clock, EmbeddingPendingMetrics pending)
+        => new(
+            ports, new MarkdownChunkingService(), ports, ports, ports,
+            ConsumerTimeoutsForTests.Calls(), timeouts, clock, pending,
+            TestMeterFactory.NewBodyMissingMetrics(),
+            NullLogger<DocumentUpdatedConsumer>.Instance);
+
+    // `ingestion.embedding_pending.written` の合計を数える（この試験の器が作った Meter だけを聞く）。
+    private static SumListener PendingWrittenListener(TestMeterFactory factory) => new(factory, EmbeddingPendingMetrics.WrittenCounterName);
+
+    private sealed class SumListener : IDisposable
+    {
+        private readonly MeterListener _listener = new();
+        public long Sum { get; private set; }
+
+        public SumListener(object scope, string instrument)
+        {
+            _listener.InstrumentPublished = (i, l) =>
+            {
+                if (ReferenceEquals(i.Meter.Scope, scope) && i.Name == instrument)
+                    l.EnableMeasurementEvents(i);
+            };
+            _listener.SetMeasurementEventCallback<long>((_, v, _, _) => Sum += v);
+            _listener.Start();
+        }
+
+        public void Dispose() => _listener.Dispose();
+    }
+
     private static string ManySections(int count) =>
         string.Join("\n\n", Enumerable.Range(1, count).Select(i => $"# 節 {i}\n\n本文 {i}"));
 
@@ -146,7 +233,7 @@ public class IngestionTimeoutTests
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
-    // T-21: 既定の上限と、それが既定のコレクション数（3 = モデル別 2 ＋ 語彙索引 1。#1746）で受け口の実行期限に収まること。
+    // T-21: 既定の上限と、それが既定のコレクション数（2 = モデル別 1〔voyage〕＋ 語彙索引 1。#1746 段 S4 で Ruri を既定から外した）で受け口の実行期限に収まること。
     [Fact]
     public void 構成が無ければ既定の上限になる()
     {
@@ -157,30 +244,70 @@ public class IngestionTimeoutTests
         timeouts.Embedding.Should().Be(TimeSpan.FromSeconds(30));
         timeouts.VectorStore.Should().Be(TimeSpan.FromSeconds(10));
         timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(300));
-        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(420));
-        timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(30), "コレクション 3 本（モデル別 2 ＋ 語彙索引 1）× Qdrant 10 秒");
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(435));
+        timeouts.DeleteFromAll.Should().Be(TimeSpan.FromSeconds(20), "コレクション 2 本（モデル別 1 ＋ 語彙索引 1）× Qdrant 10 秒");
     }
 
     // T-21: 受け口の実行期限が「削除（本数 × Qdrant）＋本文＋総枠＋最後の 1 チャンク」以下なら起動を止める。
-    // 既定値では 20＋20＋300＋30＋10＝380 秒。コレクションが 6 本なら 60＋20＋300＋30＋10＝420 秒で、既定の 420 秒と等しく止まる。
+    // ［2026-10-23 / #2101・IADR-0595 決定 5］版の印（Qdrant 3 回）と書き終えた後の旧版の削除（本数 × Qdrant）を足した。
+    // 既定値（2 本）では 20＋30＋20＋20＋300＋30＋10＝430 秒（既定の 435 秒に収まる）。2 本で総枠 300 秒・受け口 430 秒なら等しく止まる。
+    // ［2026-10-24 / #2066・IADR-0613］総枠を構成で**与えた**ときは縮めないので、3 本で総枠 300 秒なら 450 秒で止まる。
+    // 総枠を与えていなければ受け口の期限に合わせて縮める（下の T-21b）ので、境界の行は総枠を明示する。
+    // 受け口 60 秒は総枠を 1 秒まで縮めても他の項目（131 秒）が収まらず止まる。
     [Theory]
-    [InlineData(6, null)]
-    [InlineData(2, "380")]
-    [InlineData(2, "60")]
-    public void 受け口の実行期限に最悪の所要時間が収まらなければ起動を止める(int collections, string? handler)
+    [InlineData(3, null, "300")]
+    [InlineData(2, "430", "300")]
+    [InlineData(2, "60", null)]
+    public void 受け口の実行期限に最悪の所要時間が収まらなければ起動を止める(int collections, string? handler, string? budget)
     {
         var act = () => IngestionTimeouts.From(
-            Config(new() { [IngestionTimeouts.HandlerKey] = handler }), collections);
+            Config(new()
+            {
+                [IngestionTimeouts.HandlerKey] = handler,
+                [IngestionTimeouts.EmbeddingBudgetKey] = budget,
+            }), collections);
 
         act.Should().Throw<InvalidOperationException>().WithMessage($"*{IngestionTimeouts.HandlerKey}*");
     }
 
-    // T-21: 1 回の配信の再試行の連鎖（4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）がブローカの consumer_timeout 以上なら起動を止める。
-    // 既定では 4 × 420 ＋ 42 ＝ 1722 秒 ＜ 1800 秒。総枠 600・実行期限 720 は連鎖 2922 秒で既定の 1800 秒を超える。
-    // 境界: consumer_timeout を 1722 秒に置くと等しく止まり、1723 秒なら通る。
+    // T-21b（#2066・IADR-0613）: コレクションを足す opt-in（Ruri〔embedding.enabled〕・決定的ローカル埋め込み
+    // 〔embedding.deterministicLocal.enabled〕。chart が描く最大は voyage ＋ Ruri ＋ 決定的 ＋ 語彙索引 の 4 本）でも、
+    // 既定の構成のまま起動できる。総枠を構成で与えていなければ「受け口の期限 − 他の項目 − 余白 5 秒」（上限 300 秒）へ縮める。
+    // 2 本: 435 − 130 − 5 ＝ 300（既定のまま）／ 3 本: 435 − 150 − 5 ＝ 280 ／ 4 本: 435 − 170 − 5 ＝ 260。
+    // 🔴 #2149 の後、integration-stack（決定的ローカル埋め込みで 3 本）で取り込みが起動時に落ち続けた回帰の固定である。
     [Theory]
-    [InlineData("600", "720", null)]
-    [InlineData(null, null, "1722")]
+    [InlineData(2, 300)]
+    [InlineData(3, 280)]
+    [InlineData(4, 260)]
+    public void 総枠を与えていなければコレクションを足しても既定のまま起動できる(int collections, int expectedBudgetSeconds)
+    {
+        var timeouts = IngestionTimeouts.From(Config([]), collections);
+
+        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(expectedBudgetSeconds));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(IngestionTimeouts.DefaultHandlerSeconds));
+        var worst = timeouts.DeleteFromAll * 2 + timeouts.VectorStore * IngestionTimeouts.IndexVersionCalls
+            + timeouts.ContentRead + timeouts.EmbeddingBudget + timeouts.Embedding + timeouts.VectorStore;
+        (timeouts.Handler - worst).Should().Be(TimeSpan.FromSeconds(IngestionTimeouts.DefaultBudgetHeadroomSeconds));
+    }
+
+    // T-21b: 受け口の期限を構成で上げても、総枠の既定（300 秒）より大きくはしない（頭打ち）。
+    [Fact]
+    public void 総枠の既定は受け口の期限を上げても300秒を超えない()
+    {
+        var timeouts = IngestionTimeouts.From(Config(new()
+        {
+            [IngestionTimeouts.HandlerKey] = "439",
+        }), 2);
+
+        timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(IngestionTimeouts.DefaultEmbeddingBudgetSeconds));
+    }
+
+    // T-21: 1 回の配信の再試行の連鎖（4 × 受け口の実行期限 ＋ 試行間の待ち 42 秒）がブローカの consumer_timeout 以上なら起動を止める。
+    // 既定では 4 × 435 ＋ 42 ＝ 1782 秒 ＜ 1800 秒。総枠 600・実行期限 740 は連鎖 3002 秒で既定の 1800 秒を超える（#2101 で最悪の所要時間が 730 秒になったため 720 → 740）。
+    // 境界: consumer_timeout を 1782 秒に置くと等しく止まり、1783 秒なら通る。
+    [Theory]
+    [InlineData("600", "740", null)]
+    [InlineData(null, null, "1782")]
     public void 再試行の連鎖がブローカの_consumer_timeout_に収まらなければ起動を止める(
         string? budget, string? handler, string? broker)
     {
@@ -198,19 +325,19 @@ public class IngestionTimeoutTests
     [Fact]
     public void 総枠を上げるなら受け口の実行期限とブローカの_consumer_timeout_も上げれば通る()
     {
-        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1723" }),
+        IngestionTimeouts.From(Config(new() { [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "1783" }),
                 IngestionTimeouts.DefaultCollectionCount)
             .Should().Be(IngestionTimeouts.Default);
 
         var timeouts = IngestionTimeouts.From(Config(new()
         {
             [IngestionTimeouts.EmbeddingBudgetKey] = "600",
-            [IngestionTimeouts.HandlerKey] = "720",
-            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "3000",
+            [IngestionTimeouts.HandlerKey] = "740",
+            [ConsumerHandlerTimeouts.BrokerConsumerTimeoutKey] = "3100",
         }), 2);
 
         timeouts.EmbeddingBudget.Should().Be(TimeSpan.FromSeconds(600));
-        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(720));
+        timeouts.Handler.Should().Be(TimeSpan.FromSeconds(740));
     }
 
     // ── 部品 ──
@@ -245,7 +372,7 @@ public class IngestionTimeoutTests
         public async Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
         {
             await HangIf(Hung.Upsert, ct);
             Upserts++;
@@ -254,7 +381,7 @@ public class IngestionTimeoutTests
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
             => HangIf(Hung.MetadataUpsert, ct);
 
         // #1746: 語彙索引の口。止まり方は本文チャンクの書き込みと同じ（Qdrant への 1 回の書き込み）。
@@ -262,7 +389,7 @@ public class IngestionTimeoutTests
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             await HangIf(Hung.Upsert, ct);
             Upserts++;
@@ -272,11 +399,103 @@ public class IngestionTimeoutTests
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
             => HangIf(Hung.MetadataUpsert, ct);
+
+        // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
+        public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+            => Task.FromResult<DocumentIndexVersion?>(null);
+
+        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
+            IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
             => HangIf(Hung.Delete, ct);
+
+        public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,
+            CancellationToken ct = default)
+        {
+            Published = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    // 語彙索引への書き込み（高機密のチャンク・埋め込み待ちのチャンク）1 回ごとに偽の時計を進める店（遅いが止まってはいない Qdrant）。
+    // 埋め込みは常に「使えない」（一時障害）を返す —— `public` / `internal` の文書は 1 チャンク目から待ちの点の輪へ進む。
+    private sealed class ClockAdvancingLexicalPorts(FakeTimeProvider clock, TimeSpan perWrite, string body)
+        : IDocumentContentReader, IEmbeddingService, IIngestionVectorStore, IIngestionCompletedPublisher
+    {
+        public bool Published { get; private set; }
+        public int LexicalWrites { get; private set; }
+        public int PendingWrites { get; private set; }
+        public int EmbedCalls { get; private set; }
+
+        public Task<string> ReadAsync(string markdownUri, string title, CancellationToken ct = default) =>
+            Task.FromResult(body);
+
+        public Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct = default)
+        {
+            EmbedCalls++;
+            return Task.FromResult(new EmbeddingResult([], "", Embedded: false, Retryable: true));
+        }
+
+        public Task EnsureCollectionsAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
+            string text, int chunkIndex, float[] vector, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("埋め込みは使えないので主へは書かない");
+
+        public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
+            string title, string indexText, float[] vector, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("本文のある文書はメタデータ点を書かない");
+
+        public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title,
+            string text, int chunkIndex, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+            long? sequence = null, CancellationToken ct = default)
+        {
+            LexicalWrites++;
+            clock.Advance(perWrite);
+            return Task.CompletedTask;
+        }
+
+        public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title,
+            string indexText, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
+            long? sequence = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("本文のある文書はメタデータ点を書かない");
+
+        public Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title,
+            string text, int chunkIndex, string? markdownUri,
+            Dictionary<string, string> attributes, List<string> tags,
+            DateTimeOffset? updatedAt, List<string>? sharedWith, string reason,
+            long? sequence = null, CancellationToken ct = default)
+        {
+            PendingWrites++;
+            clock.Advance(perWrite);
+            return Task.CompletedTask;
+        }
+
+        // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
+        public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+            => Task.FromResult<DocumentIndexVersion?>(null);
+
+        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+            => Task.CompletedTask;
+
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
+            IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,
             CancellationToken ct = default)
@@ -300,7 +519,7 @@ public class IngestionTimeoutTests
     }
 }
 
-// T-21: 本番の Program.cs の配線 —— 取り込みの受け口の実行期限（420 秒）と上限の値が DI から引けること。
+// T-21: 本番の Program.cs の配線 —— 取り込みの受け口の実行期限（435 秒）と上限の値が DI から引けること。
 [Trait("TestKind", "Integration")]
 public class IngestionTimeoutWiringTests(IntrospectionEndpointTests.Factory factory)
     : IClassFixture<IntrospectionEndpointTests.Factory>
@@ -314,7 +533,7 @@ public class IngestionTimeoutWiringTests(IntrospectionEndpointTests.Factory fact
             .Should().ContainSingle(c => c.MessageType == typeof(DocumentUpdated))
             .Which.ExecutionTimeoutInSeconds.Should().Be(IngestionTimeouts.DefaultHandlerSeconds);
 
-        // appsettings.json の `Embedding:Collections` は 2 本 → 既定と一致する。
+        // appsettings.json の `Embedding:Collections` は 1 本（voyage）＋ 語彙索引 1 本 → 既定と一致する（#1746 段 S4）。
         services.GetRequiredService<IngestionTimeouts>().Should().Be(IngestionTimeouts.Default);
         services.GetRequiredService<ConsumerCallTimeouts>().Should().NotBeNull();
     }

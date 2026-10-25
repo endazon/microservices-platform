@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-25
+updated: 2026-10-24
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-19, SC-21, UC-01, UC-02, UC-07, UC-10, UC-11]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102, ADR-0106]
-iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451, IADR-0461]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs]
-issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499]
+iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451, IADR-0461, IADR-0544, IADR-0610, IADR-0611, IADR-0612]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens]
+issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #1905, #2046, planning#841]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -51,6 +51,7 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499]
 | **AI 提案の棚卸し 代替フロー**（承認が確定するのは文書詳細経由のみ） | 当該文書に関わる承認待ちの提案を本文の下に描き、1 件ずつ承認・却下する | `renders a link suggestion with its edge type, rationale and both actions` ＋ `posts approve and reject to the endpoint of that single suggestion` |
 | **AI 提案の棚卸し 制約**（一括承認を提供しない） | 一括のボタンも複数選択も置かない | `never offers a bulk approve or reject action`（**陽性対照つき** —— 単票のボタンが在ることを先に測る） |
 | **自分の資料を管理する 基本**（公開範囲を自ら設定する）を**閲覧側から見た形** | 個人資料を開くと 👤 のラベルと所有者（表示名）が出る。**公開範囲は所有者にだけ**出し、所有者以外には**欄ごと出さない** | `shows the owner display name but no visibility for a viewer who is not the owner` ＋ `shows the visibility to the owner, taken from the owner-only endpoint` |
+| **自分の資料を管理する 例外**（緊急アクセスは所有者本人だけが発動し、指名された管理者が有効な間だけ閲覧する）を**閲覧側から見た形** | `?via=break-glass` で開くと、本文より前に緊急アクセスの閲覧である旨（1 件ずつ記録・閲覧だけ・有効な間だけ）を出し、**AI 提案の承認欄を出さず提案も引かない**。有効でなくなった（404）ら、開けないことと考えられる理由を**区別せずに**告げ、警告も再試行も出さない。知らない `via` は落とす | `緊急アクセスで開いたことを本文より前に告げ、承認の欄を出さない…` ＋ `陽性対照: via なしでは…` ＋ `知らない via の値は落とす…` ＋ `有効でなくなった（後段が 404）ら開けないことを告げる…`（`DocumentDetailPage.test.tsx`） |
 | **同上 例外**（所有者の表示名を引けない／利用者が無効化済み） | 「（不明な利用者）」を出し、**利用者名（識別子）へは落とさない**。退職者でも表示名は出す | `falls back to a neutral label — never to the username — when the display name cannot be resolved` ＋ `shows the display name of a disabled (retired) owner` |
 
 > **「無いこと」を固定するテストが 4 本ある**（**バックリンク欄・ローカルグラフの併置の不在**・一括承認の不在・**所有者以外への公開範囲の欄の不在**・**属性パネルの計画外の行の不在**。後の 2 本は ［2026-09-13 / #1455］ で加わった）。
@@ -127,10 +128,21 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499]
 | 4 | DocumentService が 404（不在） | 404（不在と拒否を区別しない） |
 | 5 | 一覧: internal のみ許可 | 権限内 1 件のみ、secret 文書は非列挙 |
 | 6 | 一覧: 非許可 | 空配列 |
-| 7 | 本文: 許可（ストレージ未配備） | 200・プレースホルダ本文＋`sourceUri` |
+| 7 | 本文: 許可 | 200・後段の本文そのもの＋`sourceUri`（［2026-10-15 / #1905］~~ストレージ未配備でプレースホルダ本文~~。案内文は返さない） |
 | 8 | 本文: 非許可 | 404 |
 | 9 | 版履歴: 許可 | 200・版一覧（新しい順） |
 | 10 | 版履歴: 非許可 | 404 |
+
+［2026-10-15 追記 / #1905］本文の写しは `BffDocumentContentTests`（BFF）と `GrpcDocumentContentTests`（文書サービス・実 h2c）が固定する。
+
+| # | ケース | 期待 |
+| --- | --- | --- |
+| 11 | 本文のオブジェクトが無い（S3 の NoSuchKey）・参照が無い | 404・ProblemDetails（`reason` = `missing` / `not_stored`）。案内文の 200 にしない |
+| 12 | 後段の判定で読めない（`found=false`） | 404（秘匿・本文なし） |
+| 13 | 本文が上限（16 MiB・UTF-8 のバイト数）を超える | 413・ProblemDetails（`sizeBytes` / `limitBytes`）。切り詰めない。ちょうど上限は返す |
+| 14 | 後段から受け取れない（宛先未構成・ストレージ未構成・一時障害）・状態が分からない応答 | 502・ProblemDetails |
+| 15 | バケットが無い（同じ 404 でも NoSuchBucket） | 「本文が無い」にしない（後段は status → BFF は 502） |
+| 16 | 配備: document-service にオブジェクトストレージが配線されている（helm・compose） | `DocumentContentDeploymentWiringTests`（1 行消すと赤） |
 
 ## E2E（Playwright）
 

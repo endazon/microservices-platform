@@ -1,6 +1,8 @@
 # IADR-0017 フォローアップ / IADR-0026: ClusterIP + NetworkPolicy（デフォルト拒否）。
 # mesh(mTLS) は第一防御だが、NetworkPolicy を多層防御（defense-in-depth）として維持する。
-# 既定でこの Namespace への ingress を拒否し、同 Namespace 内通信・DNS・Istio 制御面のみ許可する。
+# 既定でこの Namespace への ingress を拒否し、同 Namespace 内からの ingress のみ許可する。
+# NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: egress（同 Namespace・DNS・istiod・別 Namespace の宛先）は
+# networkpolicy-egress.yaml へ移した（networkPolicy.enabled のとき必ず描く。経路B は networkPolicy.egress.enabled で当てる）。
 {{- if .Values.networkPolicy.enabled }}
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -34,7 +36,6 @@ spec:
         values: [seaweedfs]
   policyTypes:
     - Ingress
-    - Egress
   ingress:
     # 同 Namespace 内の全 Pod からの ingress のみ許可する。k8s 仕様上 `podSelector: {}` は
     # 「この NetworkPolicy と同じ Namespace の全 Pod」を意味するため、これ単独で意図を満たす。
@@ -42,18 +43,9 @@ spec:
     # 同ラベルを持つ任意の別 Namespace からの ingress を意図せず許可し得るため削除した。
     - from:
         - podSelector: {}
-  egress:
-    # 同 Namespace 内。
-    - to:
-        - podSelector: {}
-    # DNS（kube-dns / CoreDNS）。
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
+  # NFR-18, IADR-0589: egress（同 Namespace ＋ DNS）はここに置かない。networkpolicy-egress.yaml の
+  # default-deny-egress / allow-egress-intra-namespace / allow-egress-dns が名前空間の全 Pod（SeaweedFS を含む）に当たる。
+  # DNS の宛先は kube-dns の Pod だけ（networkPolicy.egress.dns）。
 {{- /* Issue #284, IADR-0076: エッジ（Istio ingressgateway）は通常別 Namespace（istio-system）に居るため、
        default-deny 下では gateway→bff-service の ingress が L3/L4 で塞がれる（VirtualService が描画されても
        実到達しない）。edge 有効時のみ、その Namespace から bff-service への ingress を明示許可する
@@ -142,6 +134,36 @@ spec:
         - protocol: TCP
           port: {{ .Values.edge.privateNotesSync.port }}
 {{- end }}
+{{- /* FR-16, UC-08, ADR-0024, IADR-0594 (#2045): エッジ → MCP サーバー（外部 AI エージェントの入口 /mcp）も
+       default-deny 下では L3/L4 で塞がれる。allow-edge-ingress-to-document-service と同型で 4 本目を開ける。
+       **edge.mcp.enabled が立っているときだけ**（既定 false）＝ルートが無い配備では穴も開かない。
+       穴はポート全体に開くので、edge.yaml の AuthorizationPolicy（<service>-edge-mcp-only・DENY）が /mcp の面の外を落とす。 */}}
+{{- if .Values.edge.mcp.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-edge-ingress-to-mcp
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # MCP サーバーの Pod 宛のみに限定する（deployment.yaml のラベル app: <name>-service。chart のキー mcp → mcp-service）。
+  # 行き先は edge.mcp.service を単一情報源に描画するため、VirtualService の destination と必ず一致する。
+  podSelector:
+    matchLabels:
+      app: {{ .Values.edge.mcp.service }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.edge.gateway.namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.edge.mcp.port }}
+{{- end }}
 {{- end }}
 {{- /* NFR-09, ADR-0125 決定 4, IADR-0513 (#1756・#1811): 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）・
        LLM ゲートウェイ（報告書・取引判断の生成）。
@@ -200,7 +222,7 @@ spec:
 {{- end }}
 {{- end }}
 {{- /* SC-22, ADR-0095 決定 3, IADR-0433, IADR-0453 決定 9 (#1411), IADR-0495 決定 3 (#458 段 S1): サービス → Vault。
-       allow-intra-namespace が Egress を「同 Namespace ＋ DNS」に絞るため、別 Namespace の Vault へは
+       egress の既定拒否（networkpolicy-egress.yaml。同 Namespace ＋ DNS だけを許す）の下では、別 Namespace の Vault へは
        L3/L4 で届かない（届かなければ BFF の /bff/secrets は 503、datasource-service の `vault:` 参照は unreachable で fail-closed）。
        **`services.<name>.vault.address` を持つサービスの Pod から Vault の Pod・ポートへ 1 本だけ**開ける
        （BFF＝秘密情報の投入、datasource＝コネクタの資格情報の読み取り）。名前は従前の `allow-bff-egress-to-vault` を保つ。
@@ -236,7 +258,7 @@ spec:
 {{- end }}
 {{- end }}
 {{- /* SC-22, ADR-0095 決定 3, IADR-0456 決定 4 (#1477): BFF → Kubernetes API サーバ（ExternalSecret への force-sync 注釈）。
-       allow-intra-namespace が Egress を「同 Namespace ＋ DNS」に絞るため、API サーバへは L3/L4 で届かない。
+       egress の既定拒否（networkpolicy-egress.yaml。同 Namespace ＋ DNS だけを許す）の下では、API サーバへは L3/L4 で届かない。
        🔴 **宛先（cidrs）を宣言したときだけ描く。** API サーバの所在（ノード IP・マネージドの端点）は環境で違い、
        既定の宛先を置くと「どこへでも 443 / 6443」の穴になる。空なら描かず、依頼は届かず syncRequested=false に倒れる。 */}}
 {{- $bff := .Values.services.bff | default dict }}

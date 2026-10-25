@@ -42,9 +42,8 @@ public static class TagDictionaryEndpoints
         RenameTagEndpoint.Map(write);
         DeleteTagEndpoint.Map(write);
 
-        // FR-18, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): 生成段が引く**名前だけ**の内部口。
-        // **`/internal/...` にあり、どちらの group にも属さない**（DashboardService の受け口と同じ形）。
-        TagNamesEndpoint.Map(app);
+        // FR-18, ADR-0063 決定 2, IADR-0364 決定 2 (#1014): 生成段が引く**名前だけ**の口は gRPC 面だけである
+        // （［2026-10-15 / #1902・[[IADR-0533]]］無認証の REST `GET /internal/tags/names` は撤去した）。
 
         return app;
     }

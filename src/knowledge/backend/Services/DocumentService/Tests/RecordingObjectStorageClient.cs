@@ -19,10 +19,16 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
     // 格納の呼び出し回数。**「拒否したのに保存していた」を検出する**ために数える。
     public int PutTextCallCount;
 
+    // FR-06, [[IADR-0556]] (#1973): 書き込みの失敗注入（キーを受け取り、例外を返せばそれを投げる）。
+    // **器を共有するので、使った試験は最後に null へ戻す。**
+    public Func<string, Exception?>? PutTextThrows { get; set; }
+
     public Task<string> PutTextAsync(string key, string text, string contentType,
         CancellationToken ct = default)
     {
         Interlocked.Increment(ref PutTextCallCount);
+        if (PutTextThrows?.Invoke(key) is { } injected)
+            throw injected;
         var uri = StorageUri.Build(Bucket, key);
         Texts[uri] = text;
         return Task.FromResult(uri);
@@ -65,10 +71,50 @@ public sealed class RecordingObjectStorageClient : IObjectStorageClient
         DeleteThrows = null;
     }
 
-    public Task<string> GetTextAsync(string uri, CancellationToken ct = default) =>
-        Task.FromResult(Texts.TryGetValue(uri, out var text)
+    // FR-06, [[IADR-0544]] (#1905): 読み取りの失敗注入（S3 の NoSuchKey / NoSuchBucket を器で再現する唯一の口）。
+    // null を返した URI は通常どおり読む。**器を共有するので、使った試験は最後に null へ戻す。**
+    public Func<string, Exception?>? GetTextThrows { get; set; }
+
+    // FR-06, [[IADR-0549]] (#1931 項目 3): 本文を読んだ回数（存在確認が本文を読まないことを測る）。
+    public int GetTextCallCount;
+
+    public Task<string> GetTextAsync(string uri, CancellationToken ct = default)
+    {
+        Interlocked.Increment(ref GetTextCallCount);
+        if (GetTextThrows?.Invoke(uri) is { } injected)
+            throw injected;
+        return Task.FromResult(Texts.TryGetValue(uri, out var text)
             ? text
             : throw new KeyNotFoundException(uri));
+    }
+
+    // FR-06, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: 上限つきの取得で受けた URI と上限（本文の口が上限つきで読むことを測る）。
+    public ConcurrentQueue<(string Uri, long MaxBytes)> BoundedReads { get; } = new();
+
+    // 上限つきの取得。器は本文を文字列で持つので、格納のバイト数＝UTF-8 のバイト数で判定する
+    // （全文を読まないことは実クライアントの試験 `S3ObjectStorageClientBoundedReadTests` が固定する）。失敗注入と回数は `GetTextAsync` と共有する。
+    public async Task<BoundedTextRead> GetTextBoundedAsync(string uri, long maxBytes, CancellationToken ct = default)
+    {
+        BoundedReads.Enqueue((uri, maxBytes));
+        var text = await GetTextAsync(uri, ct);
+        var size = System.Text.Encoding.UTF8.GetByteCount(text);
+        return size > maxBytes ? BoundedTextRead.Over(size) : BoundedTextRead.Within(text, size);
+    }
+
+    // FR-06, [[IADR-0549]] (#1931 項目 3): 存在確認。格納した本文があれば在る、無ければ NoSuchKey として「無い」。
+    // 失敗注入（`ExistsThrows`）は NoSuchBucket・時間切れなど「無い」に倒してはならない失敗を再現する。
+    // **器を共有するので、使った試験は最後に null へ戻す。** 確かめた URI は `ExistsCalls` に残す。
+    public Func<string, Exception?>? ExistsThrows { get; set; }
+
+    public ConcurrentQueue<string> ExistsCalls { get; } = new();
+
+    public Task<bool> ExistsAsync(string uri, CancellationToken ct = default)
+    {
+        ExistsCalls.Enqueue(uri);
+        if (ExistsThrows?.Invoke(uri) is { } injected)
+            throw injected;
+        return Task.FromResult(Texts.ContainsKey(uri));
+    }
 
     public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default) =>
         Task.FromResult(Array.Empty<byte>());

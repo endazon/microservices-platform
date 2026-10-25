@@ -55,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -66,14 +66,14 @@ jobs:
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（ci.yml と同じキー）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # 自動起票が本当に動くかを実測するための入口（IADR-0232 残余リスク）。
       # 自動起票は失敗時にしか走らないため、平時は常に skip で緑になる ——
       # 意図的に失敗させない限り「壊れていること」に永久に気付けない。
@@ -116,6 +116,13 @@ jobs:
       # （TRX は xUnit の Trait を書かないため、どの結果が統合試験かを発見に訊く）。
       # 🔴 一覧の --filter は**発見だけ**に掛かり、実行は従来どおり全量（上の「--filter を付けない」は崩れない）。
       # 一覧の失敗（ビルド失敗のユニット等）は出力と終了コード（<unit>.exit）ごと残し、検査器が赤にする（#1796）。
+      #
+      # 🔴 NFR / #2060: **試験のハングは 5 分で testhost ごと止め、どの試験で止まったかを残す**（--blame-hang-timeout）。
+      # 従前はハングするとジョブの timeout-minutes（30 分）まで無出力で待ち、ジョブごと cancelled になった
+      # （run 39783718105・39430975331。どちらも AST の統合 E2E で、どの試験かもスタックも残らない）。
+      # 止めればそのユニットだけが赤になり、残りのユニット・床・実走検査は走り切る（上の #1345 と同じ考え方）。
+      # 5 分は「1 試験の無進捗」の上限で、統合 E2E の最長（コンテナ起動込み 40 秒前後）に対し十分に長い。
+      # ダンプ（mini）と試験の並び（Sequence_*.xml）は下の step が成果物に残す（ハングの原因はスタックで見る）。
       - name: All tests including real containers (all units, with coverage)
         id: tests
         run: |
@@ -132,7 +139,8 @@ jobs:
             if dotnet restore "$slnx" \
               && dotnet build "$slnx" --no-restore --configuration Release \
               && dotnet test "$slnx" --no-build --configuration Release \
-                   --collect:"XPlat Code Coverage" --logger trx --verbosity normal; then
+                   --collect:"XPlat Code Coverage" --logger trx --verbosity normal \
+                   --blame-hang-timeout 5m --blame-hang-dump-type mini; then
               echo "OK: $slnx"
             else
               echo "::error::$slnx のテストが失敗した（残りのユニットは続けて走らせる）。"
@@ -161,6 +169,17 @@ jobs:
             echo "::error::失敗したユニット:$failed"
             exit 1
           fi
+      # NFR / #2060: ハングで止めた testhost のダンプと試験の並びを残す（無ければ何もしない）。
+      - name: Upload hang dumps
+        if: ${{ !cancelled() && steps.tests.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integration-hang-dumps
+          path: |
+            src/**/TestResults/**/*.dmp
+            src/**/TestResults/**/Sequence_*.xml
+          if-no-files-found: ignore
+          retention-days: 7
       # 🔴 カバレッジ床を強制するのはここだけである（IADR-0232 改定 3）。
       # PR 側（ci.yml）は統合テストぶんが無いため --report-only で報告のみ行う。
       # **門を 2 つ置かない** —— 床が 2 つ並ぶとどちらが本物か分からなくなる。
@@ -188,7 +207,7 @@ jobs:
       # そのコミットでは床が 1 度も測られないまま次へ進んだ（run 34233308468 で実測）。
       # 床の評価はテストの合否と独立した観測であり、赤の中でも「被覆が落ちたか」は読めなければならない。
       # `!cancelled()` で走らせ、テスト step 自体が走らなかったとき（force_failure）だけ skip する。
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
         with:
           node-version: "20"

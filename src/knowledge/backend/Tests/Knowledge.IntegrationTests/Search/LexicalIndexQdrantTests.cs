@@ -86,7 +86,7 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
         await writer.UpsertLexicalChunkAsync(chunkId, documentId, "人事の文書",
             $"本文には {PresentTerm} と ABAC-42 が含まれる。", 0, "storage://knowledge/hr.md",
             new Dictionary<string, string> { ["confidentiality"] = "restricted", ["department"] = "hr" },
-            ["人事"], DateTimeOffset.UtcNow, ["bob"], ct);
+            ["人事"], DateTimeOffset.UtcNow, ["bob"], ct: ct);
 
         var reader = NewReader(LexicalCollection);
         var hits = await reader.KeywordSearchAsync(PresentTerm, 10, ScopeFilter.Empty, ct);
@@ -191,7 +191,7 @@ public sealed class LexicalIndexQdrantTests : IAsyncLifetime
 
         async Task<List<SearchResultDto>> Search(string mode) =>
             await service.SearchAsync(new SearchRequest(PresentTerm, 10, null, new AccessScope([], true), mode),
-                new SearchUserContext("it-user", new Dictionary<string, string>(), true, null), ct);
+                new SearchUserContext("it-user", new Dictionary<string, string>(), true), ct);
 
         (await Search(SearchModes.Keyword)).Should().Contain(r => r.DocumentId == secret);
         (await Search(SearchModes.Hybrid)).Should().Contain(r => r.DocumentId == secret);

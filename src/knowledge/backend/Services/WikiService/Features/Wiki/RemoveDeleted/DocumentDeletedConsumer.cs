@@ -20,14 +20,21 @@ namespace WikiService.Features.Wiki.RemoveDeleted;
 // 🔴 ADR-0027 / E3a: **購読は Wolverine へ移した**（IPipelineStep<DocumentDeleted>・IADR-0239）。
 // E3b で DocumentSyncConsumer（DocumentUpdated）も Wolverine へ移り、本サービスに MassTransit は残っていない。
 //
+// 🔴 FR-13, FR-06, [[IADR-0596]] 決定 1・2 (#2102): **削除を版の印に残す**（メタデータの行を消しても印は残す）。削除より前の
+// `DocumentUpdated` が遅れて届いても、ページとメタデータを書き戻さない。文書 ID は変換が決定的に採番するので、削除の後に同じ ID で
+// 作り直された文書がある —— その版（削除より新しい）を反映済みなら、遅れて届いた古い削除は適用しない。保存が突き合わせで負けたら、
+// 保存済みの最新の状態へ Wiki.js を合わせ直す（同期の受け口と同じ。`WikiSyncOrdering`）。
+//
 // 🔴 #1640: Wiki.js からの撤去は期限（`WikiSyncTimeouts.WikiJs`・既定 15 秒）の下で行う。止まった Wiki.js は、受け口の ct
 // （Wolverine の実行期限）で「取り消し」として切られる前に時間切れ（`ConsumerTimeoutException`・計器
 // `messaging.consumer.timeout`）として投げる。呼び出し元の取り消しはそのまま外へ出す。
 public class DocumentDeletedConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
+    IWikiContentReader contentReader,
     ConsumerCallTimeouts calls,
     WikiSyncTimeouts timeouts,
+    WikiJsWriteGate writeGate,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -36,15 +43,43 @@ public class DocumentDeletedConsumer(
     // ADR-0027 / E3a: Wolverine のハンドラ。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
-        await calls.RunAsync(StepName, WikiSyncTimeouts.WikiJsTarget, timeouts.WikiJs,
+        // 🔴 [[IADR-0596]] 決定 2: 古い削除（作り直した後に遅れて届いた削除）は適用しない。
+        var mark = await db.SyncMarks.FirstOrDefaultAsync(m => m.DocumentId == ev.DocumentId, ct);
+        if (DocumentSyncOrdering.IsStaleDelete(mark, ev.DeletedAt, ev.Sequence))
+        {
+            logger.LogInformation(
+                "Wiki delete {DocumentId}: skipped a deletion older than the applied version (deleted_at={DeletedAt:O}, applied_at={AppliedAt:O})",
+                ev.DocumentId, ev.DeletedAt, mark!.AppliedAt);
+            return;
+        }
+
+        // 🔴 #1971・[[IADR-0563]], #2100・[[IADR-0599]]: 同期の受け口と共有の書き込みの門（既定 1 本。全レプリカで合わせて）を通す。pages.delete も木の再構築を走らせ、
+        // 同期の pages.create と並ぶと pageTree の主キーで衝突する。
+        await writeGate.RunAsync(calls, StepName, timeouts.WriteGateWait, timeouts.WikiJs,
             t => wikiJs.DeletePageAsync(WikiPage.PathFor(ev.DocumentId), t), ct);
 
         var page = await db.Pages
             .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ct);
-        if (page is not null)
+        if (page is not null) db.Pages.Remove(page);
+        if (mark is null)
         {
-            db.Pages.Remove(page);
+            mark = DocumentSyncMark.For(ev.DocumentId);
+            db.SyncMarks.Add(mark);
+        }
+        mark.RecordDeleted(ev.DeletedAt, ev.Sequence);
+
+        try
+        {
             await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (WikiSyncOrdering.IsMarkConflict(ex))
+        {
+            // [[IADR-0596]] 決定 3: より新しい版（作り直し）が先に保存されていれば、Wiki.js をその状態へ戻して ack する。
+            // そうでなければ（相手が古い更新・同じ削除の並行）投げて再試行へ委ねる（次の試行で削除を保存し直す）。
+            if (await WikiSyncOrdering.ReconcileIfOvertakenAsync(db, wikiJs, contentReader, calls, timeouts, writeGate,
+                    StepName, ev.DocumentId, m => DocumentSyncOrdering.IsStaleDelete(m, ev.DeletedAt, ev.Sequence), logger, ct))
+                return;
+            throw;
         }
 
         logger.LogInformation("Deleted document {DocumentId} from Wiki.js", ev.DocumentId);

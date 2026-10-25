@@ -22,7 +22,7 @@ namespace RetrievalService.Features.Search.Hybrid;
 //
 // 🔴 **失敗は元の順で返す（fail-open は並びについてだけ）。** 時間切れ・輸送の失敗・越境拒否（`Sent=false`）・
 // `refusal`・解釈できない出力のどれでも、**ゲートウェイ以外の送信先へは倒さない**（そういう枝を持たない）。
-// 縮退は計器（`search.rerank.total{result=degraded}`）と警告ログに残す。
+// 縮退は計器（`search.rerank.total{result=degraded}`）と警告ログに残し、［2026-10-11 / #1871］応答の縮退の印（`rerank-failed`）へも運ぶ。
 // 🔴 **利用者の取り消しは取り消しのまま上げる**（検索そのものを止めるのは呼び出し側の意思である）。
 public sealed class ClaudeSearchReranker(
     IRerankCompletionClient llm,
@@ -31,7 +31,7 @@ public sealed class ClaudeSearchReranker(
     ILogger<ClaudeSearchReranker> logger,
     IHttpContextAccessor? httpContextAccessor = null) : ISearchReranker
 {
-    public async Task<List<SearchResultDto>> RerankAsync(
+    public async Task<RerankOutcome> RerankAsync(
         SearchRequest request, string sort, List<SearchResultDto> candidates, CancellationToken ct = default)
     {
         // 段は無効なら DI に登録されない。ここは構成を直接組んだ呼び出し（試験）への保険である。
@@ -105,23 +105,25 @@ public sealed class ClaudeSearchReranker(
             return Degrade(candidates, RerankMetrics.Unparseable, null);
 
         metrics.Record(RerankMetrics.Applied, RerankMetrics.None);
-        return RerankPrompt.Merge(candidates, slots, [.. order.Select(i => sent[i])]);
+        return new RerankOutcome(RerankPrompt.Merge(candidates, slots, [.. order.Select(i => sent[i])]));
     }
 
-    private List<SearchResultDto> Skip(List<SearchResultDto> candidates, string? reason)
+    // 設計どおり掛けない。**縮退ではない**（[[IADR-0534]]。応答の印を立てない）。
+    private RerankOutcome Skip(List<SearchResultDto> candidates, string? reason)
     {
         if (reason is not null)
             metrics.Record(RerankMetrics.Skipped, reason);
-        return candidates;
+        return new RerankOutcome(candidates);
     }
 
     // 🔴 **元の順で返す。** 検索語・文書の本文はログに出さない（理由だけ）。
-    private List<SearchResultDto> Degrade(List<SearchResultDto> candidates, string reason, Exception? ex)
+    // ［2026-10-11 / #1871］[[IADR-0534]]: 縮退を応答へも運ぶ（`rerank-failed`。細かな理由は計器とログだけに残す）。
+    private RerankOutcome Degrade(List<SearchResultDto> candidates, string reason, Exception? ex)
     {
         metrics.Record(RerankMetrics.Degraded, reason);
         logger.LogWarning(ex,
             "Search rerank degraded ({Reason}); returning the original order of {Count} candidates",
             reason, candidates.Count);
-        return candidates;
+        return new RerankOutcome(candidates, Degraded: true);
     }
 }

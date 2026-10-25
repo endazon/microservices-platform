@@ -1,7 +1,7 @@
 // FR-05, FR-06, FR-09, FR-19, NFR-09, NFR-16, UC-03, SC-03, SC-05, ADR-0002, ADR-0004, ADR-0029,
 // ADR-0036, ADR-0054, ADR-0056, ADR-0065, ADR-0070, ADR-0075, IADR-0012, IADR-0041, IADR-0045,
 // IADR-0290, IADR-0379, IADR-0388, IADR-0397, IADR-0400, IADR-0401, IADR-0402 (#1255), ADR-0119 (#1614):
-// 文書台帳の **読み取り 4 口**（REST `GET /documents`・`/documents/{id}`・`/documents/{id}/versions`・
+// 文書台帳の **読み取り 4 口**（［2026-10-15 / #1905・IADR-0544］＋本文の読み取り 1 口。REST `GET /documents`・`/documents/{id}`・`/documents/{id}/versions`・
 // `/documents/{id}/versions/{version}` と同じ意味論）の gRPC 契約。
 //
 // ■ 置き場と所有（IADR-0379 決定 1）: 所有者は DocumentService。置き場は knowledge ユニットの
@@ -40,10 +40,13 @@ import "google/protobuf/timestamp.proto";
 option csharp_namespace = "Knowledge.Contracts.Grpc.Document.V1";
 
 // 文書台帳の読み取り。ServiceCaller（platform-service）を要求する。
-// **書き込み・本文・共有の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
-// （IADR-0401 決定 2 と同じ作法）。
+// **書き込み・共有の口はこの面に存在しない** —— 呼び出し元が要らないものを面へ出さない
+// （IADR-0401 決定 2 と同じ作法）。［2026-10-15 / #1905・[[IADR-0544]]］本文の読み取り（`GetDocumentContent`）は
+// 呼び出し元（BFF の文書詳細 SC-03）が要るようになったので足した。
 service DocumentRead {
-  // 一覧（更新の新しい順）。REST `GET /documents` と同値。
+  // 一覧（更新の新しい順・同時刻は ID の降順）。［2026-10-14 / #1923・#1897］**ページで返す**
+  // （REST `GET /documents` は全件のまま。集合と並びは同じで、切り出しだけがこの rpc にある）。
+  // ［2026-10-15 / #1923・[[IADR-0545]]］並べ替え（`sort`）を選べる。既定は従前の並び。
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
 
   // 1 件の取得。REST `GET /documents/{id}` と同値。不在は found=false（NOT_FOUND ではない）。
@@ -55,6 +58,14 @@ service DocumentRead {
 
   // 特定版の取得。REST `GET /documents/{id}/versions/{version}` と同値。
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+
+  // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文（正規化 Markdown）。
+  // 本文の実体はオブジェクトストレージにあり、読むのは**台帳の所有者である文書サービス**である
+  // （BFF はストレージの資格情報を持たない）。読めるかの判定は `GetDocument` と同じ（同じ関数を通る）。
+  // 文書が無い・読めないは found=false。本文の状態（在る・参照が無い・実体が無い・大きすぎる）は応答の state で返す。
+  // 🔴 ストレージが構成されていない・一時障害（時間切れ・5xx・バケットが無い）は status（FAILED_PRECONDITION / INTERNAL 等）で返す
+  //   —— 「本文が無い」と「引けなかった」を分ける（IADR-0401 決定 5 と同じ作法）。
+  rpc GetDocumentContent(GetDocumentContentRequest) returns (GetDocumentContentResponse);
 }
 
 // REST の DocumentDto と同じ形。
@@ -78,6 +89,19 @@ message DocumentSummary {
   // FR-06, ADR-0050 決定 1 (#1575): 本文指紋（REST の `DocumentDto.ContentFingerprint`）。
   // 🔴 本文を持たない文書は null。presence で運び、空文字と区別する。
   optional string content_fingerprint = 11;
+  // FR-06, FR-19, ADR-0036 D-06, ADR-0098 決定 1, IADR-0447 (#1898): 共有台帳の写し
+  // （REST の `DocumentDto.SharedWith`。個人は利用者名、グループはグループ ID。順序は台帳の解決順）。
+  // 🔴 これが無いと BFF の単体判定（共有先ベースの分岐）が gRPC 経路でだけ一致せず、
+  //   共有された相手が SC-03 で個人資料を開けない／所有者への応答から共有先が消える（#1898 の回帰）。
+  // proto3 の repeated は presence を持たない。DTO の「null＝共有なし」は**0 件**で運び、受け手は 0 件を null へ戻す
+  // （サーバは空リストを作らない〔`DocumentEndpoints.NullIfEmpty`〕ので、往復で値は変わらない）。
+  repeated string shared_with = 12;
+  // FR-06, SC-05, [[IADR-0561]] (#1923): 取り込み元のデータソースの表示名（台帳の `Document.DataSourceName` の写し）。
+  // 直接投入・画面からの作成では null。presence で運ぶ。
+  optional string data_source_name = 13;
+  // FR-06, SC-05, [[IADR-0561]] (#1923): 原本の所在（台帳の `Document.OriginalUri`。API の書き手が渡した元の URL など）。
+  // 🔴 値は書き手の申告であり、検証していない。画面は `http(s)` のときだけリンクにする。presence で運ぶ。
+  optional string original_uri = 14;
 }
 
 // REST の DocumentVersionDto と同じ形。**本文の参照は持たない**（IADR-0290）。
@@ -115,28 +139,70 @@ message UserContext {
   string action = 3;
 }
 
-// 一覧に絞り込みは無い（REST も無い）。将来の絞り込みは番号を足して非破壊で入れる。
-// （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング〕は別の口であり、
-//  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みを持たない。）
+// 一覧に絞り込みは無い（REST も無い）。［2026-10-15 / #1923・[[IADR-0545]]］**並べ替えは `sort` で選ぶ**（番号の追加）。
+// 絞り込み（表題・状態）は呼び出し元（BFF）が ABAC で絞った後の窓の述語で当てる（全体の件数と同じ 1 周で数えるため。IADR-0545）。
+// （#1575 の REST `GET /documents/page`〔組織文書の絞り込み・ページング。作成日時の昇順〕は別の口であり、
+//  本 rpc の同値の相手ではない。`GET /documents` は従来どおり絞り込みもページングも持たない。）
+//
+// ■ FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): **ページング**。1 応答は台帳の件数に比例しない。
+//   - 並びは `sort` のキー（既定は更新日時の降順）・同値は ID（キーと同じ向き）の全順序。続きは**キーセット**（前ページ末尾のキーと ID）。
+//     🔴 続きの印は並べ替えを持つ。要求の `sort` と印の並べ替えが違えば INVALID_ARGUMENT（黙って別の位置から読まない。IADR-0545）。
+//   - 読めない文書は**切り出す前に**除く。ページが `page_size` 件に満たないのは終端のときだけである。
+//   - 🔴 **総件数は返さない。** この面が数えられるのは「この面が読める件数」であり、呼び出し元（BFF）の
+//     ABAC で絞る前の数である。返すと権限外の文書の存在を数で漏らす経路になる（IADR-0009）。
+//   - 走査の途中で更新された文書は、既定の並び（更新日時の降順）では先頭へ移るのでその走査で読み飛ばされ得る（重複はしない）。
+//     ［2026-10-15 / IADR-0545］昇順の並べ替え（更新日時の昇順など）では末尾へ移り、**同じ文書がもう一度返り得る**。
+//     呼び出し元は 1 周の中で ID で重複を除くこと（BFF の `DocumentListWindow` が除く）。
 message ListDocumentsRequest {
   // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
   UserContext user = 1;
+  // 1 応答の件数。0（省略）は既定 500。上限 1000 を超えた値は 1000 に丸める。負は INVALID_ARGUMENT。
+  int32 page_size = 2;
+  // 前の応答の `next_page_token`。空（省略）は先頭から。不透明な値で、壊れていれば INVALID_ARGUMENT。
+  // 🔴 トークンは返した（読める）文書の末尾からしか作らない —— 読めない文書の ID・時刻を載せない。
+  string page_token = 3;
+  // FR-06, SC-05, [[IADR-0545]] (#1923): 並べ替え。省略（UNSPECIFIED）は更新日時の降順（従前の並び）。未定義の値は INVALID_ARGUMENT。
+  DocumentListSort sort = 4;
+}
+
+// FR-06, SC-05, [[IADR-0545]] (#1923): 一覧の並べ替え。キーが同値なら ID で並べる（降順のキーは ID も降順、昇順は ID も昇順）。
+// どのキーも台帳の複合索引（`(UpdatedAt, Id)` / `(CreatedAt, Id)` / `(Title, Id)`）で開始位置を引ける。
+enum DocumentListSort {
+  // 更新日時の降順（従前の並び）。
+  DOCUMENT_LIST_SORT_UNSPECIFIED = 0;
+  DOCUMENT_LIST_SORT_UPDATED_DESC = 1;
+  DOCUMENT_LIST_SORT_UPDATED_ASC = 2;
+  DOCUMENT_LIST_SORT_CREATED_DESC = 3;
+  DOCUMENT_LIST_SORT_CREATED_ASC = 4;
+  // 表題の並びは台帳（PostgreSQL）の照合順序で決まる（.NET で並べ直さない）。
+  DOCUMENT_LIST_SORT_TITLE_ASC = 5;
+  DOCUMENT_LIST_SORT_TITLE_DESC = 6;
 }
 
 message ListDocumentsResponse {
   repeated DocumentSummary documents = 1;
+  // 続きの印。空なら終端（これ以上の文書は無い）。
+  string next_page_token = 2;
 }
 
 message GetDocumentRequest {
   string id = 1;
   // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
   UserContext user = 2;
+  // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセス（指名された管理者の閲覧）の判定を含めるか。
+  // 🔴 既定（false）は含めない —— 呼び出し元が SC-03 の閲覧（BFF の詳細・本文）のときだけ true にする。
+  // 前提の確認（書き込みの前・版の前・本人の確認）は false のまま呼ぶ（閲覧の監査ログを作らない）。
+  bool allow_break_glass = 3;
 }
 
 message GetDocumentResponse {
   // false は「台帳に無い」（エラーではない）。
   bool found = 1;
   DocumentSummary document = 2;
+  // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスで読めた（通常の判定では読めない）とき true。
+  // 文書サービスが要求ごとにサーバ側の発動記録で判定し、閲覧の監査ログを保存した後でだけ true にする。
+  // 呼び出し元（BFF）はこれを「後段が緊急アクセスとして許した」事実として扱い、独自の許可・拒否を足さない。
+  bool granted_by_break_glass = 3;
 }
 
 message ListVersionsRequest {
@@ -163,4 +229,38 @@ message GetVersionResponse {
   // false は「その版が無い」（文書の不在と区別しない。REST も両方 404 である）。
   bool found = 1;
   DocumentVersionSnapshot snapshot = 2;
+}
+
+// FR-06, UC-03, SC-03, [[IADR-0544]] (#1905): 本文の読み取り。
+message GetDocumentContentRequest {
+  string document_id = 1;
+  // 読み取りの主体（#1614）。省略時は呼び出し元サービス自身。
+  UserContext user = 2;
+  // FR-19, SC-03, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスの判定を含めるか（`GetDocumentRequest` と同じ。既定は含めない）。
+  bool allow_break_glass = 3;
+}
+
+// 本文の状態。🔴 0（UNSPECIFIED）は送らない —— 受け手は 0 を「分からない応答」として扱う（成功へ畳まない）。
+enum DocumentContentState {
+  DOCUMENT_CONTENT_STATE_UNSPECIFIED = 0;
+  // 本文を返した（`markdown`）。
+  DOCUMENT_CONTENT_STATE_AVAILABLE = 1;
+  // 台帳の本文の参照が storage:// でない（未設定を含む）。この面は外部 URL を取りに行かない。
+  DOCUMENT_CONTENT_STATE_NOT_STORED = 2;
+  // 参照はあるが、オブジェクトが無い（S3 の NoSuchKey。[[IADR-0540]] 決定 1 と同じ判定）。
+  DOCUMENT_CONTENT_STATE_MISSING = 3;
+  // 本文が上限（`limit_bytes`）を超える。本文は返さない（切り詰めない）。
+  DOCUMENT_CONTENT_STATE_TOO_LARGE = 4;
+}
+
+message GetDocumentContentResponse {
+  // false は「台帳に無い・読めない」（区別しない。`GetDocument` と同じ）。
+  bool found = 1;
+  DocumentContentState state = 2;
+  // AVAILABLE のときだけ入る。
+  string markdown = 3;
+  // TOO_LARGE のとき: 本文の UTF-8 バイト数（格納された大きさ）と上限。文書サービスは全文を読まずに判定するため、
+  // 大きさが分からず上限＋1 バイトで打ち切ったときは下限（limit_bytes + 1）が入る（#1940）。
+  int64 size_bytes = 4;
+  int64 limit_bytes = 5;
 }

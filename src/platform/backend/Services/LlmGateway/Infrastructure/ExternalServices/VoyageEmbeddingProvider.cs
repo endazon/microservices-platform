@@ -8,7 +8,9 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 
 // FR-02, ADR-0016: Voyage AI 埋め込みプロバイダ（既定・ティアB=保護契約済み外部API）。
 // voyage-3.5（次元 1024）を既定とする。API キーは Secret 経由（Embedding:Voyage:ApiKey、既定空）。
-// 契約時にゼロ保持（学習利用オプトアウト）を設定する（運用仕様書に記録）。BaseUrl/ApiKey 未設定時は
+// NFR-17, ADR-0140 決定 1〜3, IADR-0552 (#1960): ティアB の根拠は契約ではなく公開の規約とアカウントの opt-out で、
+// 所在の保証が無い点は受け入れたリスク。認定は opt-out を行ったアカウントの鍵に限る。
+// アカウントでゼロ保持（学習利用オプトアウト）を設定する（運用仕様書に記録）。BaseUrl/ApiKey 未設定時は
 // 呼び出さず例外を投げ、エンドポイント側で fail-closed（Embedded=false）へ縮退させる。
 public sealed class VoyageEmbeddingProvider(IHttpClientFactory httpFactory, IConfiguration config)
     : IEmbeddingProvider

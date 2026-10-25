@@ -17,6 +17,9 @@ import type {
 } from 'msw';
 
 import type {
+  BreakGlassAuditEntryDto,
+  BreakGlassGrantDto,
+  BreakGlassStatusResponse,
   DocumentShareDto,
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
@@ -33,6 +36,10 @@ import type {
 } from '../bff.schemas';
 
 import {
+  getBffBreakGlassActivateResponseMock,
+  getBffBreakGlassAuditResponseMock,
+  getBffBreakGlassEndResponseMock,
+  getBffBreakGlassStatusResponseMock,
   getBffPrivateNoteCreateResponseMock,
   getBffPrivateNoteExposureResponseMock,
   getBffPrivateNoteListResponseMock,
@@ -53,7 +60,7 @@ import {
   getBffSyncSettingsUpdateResponseMock
 } from './private-notes.faker';
 
-export { getBffPrivateNoteListResponseMock, getBffPrivateNoteCreateResponseMock, getBffPrivateNoteSoftDeleteResponseMock, getBffPrivateNoteRestoreResponseMock, getBffPrivateNoteExposureResponseMock, getBffPrivateNoteShareListResponseMock, getBffPrivateNoteShareGrantResponseMock, getBffPrivateNotePurgeResponseMock, getBffSyncDeviceListResponseMock, getBffSyncDeviceIssueResponseMock, getBffSyncDeviceReissueResponseMock, getBffSyncDeviceRevokeAllResponseMock, getBffSyncSettingsGetResponseMock, getBffSyncSettingsUpdateResponseMock, getBffSyncHistoryListResponseMock, getBffSyncConflictListResponseMock, getBffSyncConflictGetResponseMock, getBffSyncConflictResolveResponseMock } from './private-notes.faker';
+export { getBffPrivateNoteListResponseMock, getBffPrivateNoteCreateResponseMock, getBffPrivateNoteSoftDeleteResponseMock, getBffPrivateNoteRestoreResponseMock, getBffPrivateNoteExposureResponseMock, getBffPrivateNoteShareListResponseMock, getBffPrivateNoteShareGrantResponseMock, getBffBreakGlassStatusResponseMock, getBffBreakGlassActivateResponseMock, getBffBreakGlassEndResponseMock, getBffBreakGlassAuditResponseMock, getBffPrivateNotePurgeResponseMock, getBffSyncDeviceListResponseMock, getBffSyncDeviceIssueResponseMock, getBffSyncDeviceReissueResponseMock, getBffSyncDeviceRevokeAllResponseMock, getBffSyncSettingsGetResponseMock, getBffSyncSettingsUpdateResponseMock, getBffSyncHistoryListResponseMock, getBffSyncConflictListResponseMock, getBffSyncConflictGetResponseMock, getBffSyncConflictResolveResponseMock } from './private-notes.faker';
 
 
 export const getBffPrivateNoteListMockHandler = (overrideResponse?: PrivateNoteListResponse | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<PrivateNoteListResponse> | PrivateNoteListResponse), options?: RequestHandlerOptions) => {
@@ -146,6 +153,54 @@ export const getBffPrivateNoteShareRevokeMockHandler = (overrideResponse?: void 
 
     return new HttpResponse(null,
       { status: 204
+      })
+  }, options)
+}
+
+export const getBffBreakGlassStatusMockHandler = (overrideResponse?: BreakGlassStatusResponse | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<BreakGlassStatusResponse> | BreakGlassStatusResponse), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/private-notes/:id/break-glass', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffBreakGlassStatusResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffBreakGlassActivateMockHandler = (overrideResponse?: BreakGlassGrantDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<BreakGlassGrantDto> | BreakGlassGrantDto), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/private-notes/:id/break-glass', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffBreakGlassActivateResponseMock(),
+      { status: 201
+      })
+  }, options)
+}
+
+export const getBffBreakGlassEndMockHandler = (overrideResponse?: BreakGlassGrantDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<BreakGlassGrantDto> | BreakGlassGrantDto), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/private-notes/:id/break-glass/end', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffBreakGlassEndResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffBreakGlassAuditMockHandler = (overrideResponse?: BreakGlassAuditEntryDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<BreakGlassAuditEntryDto[]> | BreakGlassAuditEntryDto[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/break-glass/audit', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffBreakGlassAuditResponseMock(),
+      { status: 200
       })
   }, options)
 }
@@ -300,6 +355,10 @@ export const getPrivateNotesMock = () => [
   getBffPrivateNoteShareListMockHandler(),
   getBffPrivateNoteShareGrantMockHandler(),
   getBffPrivateNoteShareRevokeMockHandler(),
+  getBffBreakGlassStatusMockHandler(),
+  getBffBreakGlassActivateMockHandler(),
+  getBffBreakGlassEndMockHandler(),
+  getBffBreakGlassAuditMockHandler(),
   getBffPrivateNotePurgeMockHandler(),
   getBffSyncDeviceListMockHandler(),
   getBffSyncDeviceIssueMockHandler(),

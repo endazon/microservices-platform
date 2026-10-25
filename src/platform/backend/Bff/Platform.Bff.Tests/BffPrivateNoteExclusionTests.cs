@@ -74,8 +74,8 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
     {
         _factory.StubDocumentList = [PrivateNote(), OrganizationDocument()];
 
-        var body = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
+        var body = (await _factory.CreateClient()
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
 
         body!.Select(d => d.Id).Should().NotContain(PrivateNoteId);
     }
@@ -87,8 +87,8 @@ public class BffPrivateNoteExclusionTests : IClassFixture<BffTestFactory>
     {
         _factory.StubDocumentList = [PrivateNote(), OrganizationDocument()];
 
-        var body = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
+        var body = (await _factory.CreateClient()
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
 
         body!.Select(d => d.Id).Should().Contain(BffTestFactory.StubDocumentId);
     }

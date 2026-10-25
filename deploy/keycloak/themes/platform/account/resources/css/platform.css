@@ -1,46 +1,256 @@
 /*
- * platform アカウントコンソールテーマ 追加 CSS（IADR-0261 / #438）。
- * 方針は login テーマの platform.css と同一（コメント参照）。
+ * platform アカウントコンソールテーマ（SC-16・ADR-0026・ADR-0031・IADR-0532）。
+ *
+ * 親（keycloak.v3 = React ＋ PatternFly 5）の上に、SPA と同じ Nocturne の配色・角丸・フォントを載せる。
+ * 色は tokens.css（生成物。単一情報源は src/packages/ui/src/styles.css）の意味トークンだけを引く ——
+ * **ここに 16 進の色を書かない**。
+ *
+ * 書き方: アカウントコンソールの <html> にはクラスが無い。PF5 は既定値を `:root`（詳細度 0,1,0）、ダークを
+ * `:where(.pf-v5-theme-dark)`（同 0）に置くので、`html:root`（0,1,1）で書けば読み込み順によらず勝つ。
+ * コンポーネント側の変数はこれらのグローバル変数を参照しているので、写像だけで大半の部品に効く。
  */
 
-:root {
-  --platform-brand: #0f4c81;
-  --platform-brand-dark: #0b3a63;
-  --platform-brand-contrast: #ffffff;
+html:root {
+  --pf-v5-global--BackgroundColor--100: var(--color-surface);
+  --pf-v5-global--BackgroundColor--150: var(--color-surface);
+  --pf-v5-global--BackgroundColor--200: var(--color-bg);
+  --pf-v5-global--BackgroundColor--300: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--400: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--light-100: var(--color-surface);
+  --pf-v5-global--BackgroundColor--light-200: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--light-300: var(--color-bg);
+  --pf-v5-global--BackgroundColor--dark-100: var(--color-bg);
+  --pf-v5-global--BackgroundColor--dark-200: var(--color-surface-muted);
+  --pf-v5-global--BackgroundColor--dark-300: var(--color-surface);
+  --pf-v5-global--BackgroundColor--dark-400: var(--color-surface-muted);
+  --pf-v5-global--Color--100: var(--color-fg);
+  --pf-v5-global--Color--200: var(--color-fg-muted);
+  --pf-v5-global--Color--dark-100: var(--color-fg);
+  --pf-v5-global--Color--dark-200: var(--color-fg-muted);
+  --pf-v5-global--Color--light-100: var(--color-fg);
+  --pf-v5-global--Color--light-200: var(--color-fg-muted);
+  --pf-v5-global--BorderColor--100: var(--color-border);
+  --pf-v5-global--BorderColor--200: var(--color-border);
+  --pf-v5-global--BorderColor--300: var(--color-divider);
+  --pf-v5-global--BorderColor--dark-100: var(--color-border);
+  --pf-v5-global--BorderColor--light-100: var(--color-border);
+  --pf-v5-global--primary-color--100: var(--color-accent);
+  --pf-v5-global--primary-color--200: var(--color-accent);
+  --pf-v5-global--primary-color--dark-100: var(--color-accent);
+  --pf-v5-global--primary-color--light-100: var(--color-accent);
+  --pf-v5-global--link--Color: var(--color-accent);
+  --pf-v5-global--link--Color--hover: var(--color-accent);
+  --pf-v5-global--link--Color--dark: var(--color-accent);
+  --pf-v5-global--link--Color--dark--hover: var(--color-accent);
+  --pf-v5-global--link--Color--light: var(--color-accent);
+  --pf-v5-global--link--Color--light--hover: var(--color-accent);
+  --pf-v5-global--active-color--100: var(--color-accent);
+  --pf-v5-global--active-color--300: var(--color-accent);
+  --pf-v5-global--active-color--400: var(--color-accent);
+  --pf-v5-global--danger-color--100: var(--color-danger);
+  --pf-v5-global--danger-color--200: var(--color-danger);
+  --pf-v5-global--success-color--100: var(--color-success);
+  --pf-v5-global--warning-color--100: var(--color-warning);
+  --pf-v5-global--info-color--100: var(--color-accent);
+  --pf-v5-global--FontFamily--text: var(--font-sans);
+  --pf-v5-global--FontFamily--heading: var(--font-sans);
+  --pf-v5-global--FontFamily--monospace: var(--font-mono);
+  --pf-v5-global--BorderRadius--sm: var(--radius-md);
+  --pf-v5-global--BoxShadow--sm: none;
+  --pf-v5-global--BoxShadow--md: none;
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans",
-    Meiryo, Roboto, Helvetica, Arial, sans-serif;
+html:root body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
 }
 
-#kc-header-wrapper,
-.login-pf-header h1,
-#kc-page-title {
-  color: var(--platform-brand-dark);
+html:root :focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
-.card-pf {
-  border-top: 4px solid var(--platform-brand);
+/* マストヘッド（モックの `.hf-nav`）: 地の色の帯と divider の下線。 */
+html:root .pf-v5-c-masthead {
+  --pf-v5-c-masthead--BackgroundColor: var(--color-bg);
+  border-bottom: 1px solid var(--color-divider);
 }
 
-.btn-primary,
-input[type="submit"].btn-primary {
-  background-color: var(--platform-brand);
-  border-color: var(--platform-brand-dark);
-  color: var(--platform-brand-contrast);
+/* マストヘッドの右（ツールバー）は PF5 が黒を敷く。帯と同じ地へ戻す。 */
+html:root .pf-v5-c-masthead .pf-v5-c-toolbar {
+  --pf-v5-c-toolbar--BackgroundColor: transparent;
+  background: transparent;
 }
 
-.btn-primary:hover,
-.btn-primary:focus,
-.btn-primary:active {
-  background-color: var(--platform-brand-dark);
-  border-color: var(--platform-brand-dark);
+/* メニューの開閉（言語・利用者メニュー・ロケール選択）: 入力と同じ枠。 */
+html:root .pf-v5-c-menu-toggle:not(.pf-m-plain) {
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
 }
 
-.nav-pills > li.active > a,
-.nav-pills > li.active > a:hover {
-  border-color: var(--platform-brand);
-  color: var(--platform-brand-dark);
+html:root .pf-v5-c-menu-toggle:not(.pf-m-plain)::before,
+html:root .pf-v5-c-menu-toggle:not(.pf-m-plain)::after {
+  border: 0;
+}
+
+html:root .pf-v5-c-menu {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+/* 左のナビ（モックの `.rail-l`）: 地の色・現在地は accent-soft の面と accent の左線。 */
+html:root .pf-v5-c-page__sidebar {
+  --pf-v5-c-page__sidebar--BackgroundColor: var(--color-bg);
+  border-right: 1px solid var(--color-divider);
+  box-shadow: none;
+}
+
+html:root .pf-v5-c-nav {
+  --pf-v5-c-nav__link--Color: var(--color-fg-muted);
+  --pf-v5-c-nav__link--hover--Color: var(--color-fg);
+  --pf-v5-c-nav__link--m-current--Color: var(--color-fg);
+  --pf-v5-c-nav__link--BackgroundColor: transparent;
+  --pf-v5-c-nav__link--hover--BackgroundColor: color-mix(in srgb, var(--color-fg) 7%, transparent);
+  --pf-v5-c-nav__link--m-current--BackgroundColor: var(--color-accent-soft);
+  --pf-v5-c-nav__link--before--BorderColor: transparent;
+  --pf-v5-c-nav__link--after--BorderColor: var(--color-accent);
+  --pf-v5-c-nav__section-title--Color: var(--color-fg-muted);
+}
+
+html:root .pf-v5-c-page__main-section,
+html:root .pf-v5-c-page__main {
+  --pf-v5-c-page__main-section--BackgroundColor: var(--color-bg);
+  background-color: var(--color-bg);
+}
+
+html:root .pf-v5-c-page__main-section.pf-m-light {
+  background-color: var(--color-bg);
+}
+
+/* カード・データリスト（モックの `.panel`）: surface の面・border の縁・radius-md。 */
+html:root .pf-v5-c-card,
+html:root .pf-v5-c-data-list,
+html:root .pf-v5-c-expandable-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+html:root .pf-v5-c-data-list__item {
+  background: transparent;
+  border-color: var(--color-divider);
+}
+
+/* 入力（モックの `.input`）。PF5 の ::before / ::after の枠を border に一本化する。 */
+html:root .pf-v5-c-form-control {
+  background: var(--color-bg);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-fg);
+}
+
+html:root .pf-v5-c-form-control::before,
+html:root .pf-v5-c-form-control::after {
+  border: 0;
+}
+
+html:root .pf-v5-c-form-control:focus-within {
+  border-color: var(--color-accent);
+}
+
+html:root .pf-v5-c-form-control.pf-m-error {
+  border-color: var(--color-danger);
+}
+
+html:root .pf-v5-c-form-control.pf-m-readonly,
+html:root .pf-v5-c-form-control.pf-m-disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-fg-muted);
+}
+
+html:root .pf-v5-c-form-control > input:focus-visible,
+html:root .pf-v5-c-form-control > select:focus-visible {
+  outline: none;
+}
+
+/* ボタン（モックの `.btn`）: 主は塗らずに accent の枠と文字、副は divider の枠、危険は危険色の枠。 */
+html:root .pf-v5-c-button {
+  border-radius: var(--radius-md);
+  font-weight: 500;
+}
+
+html:root .pf-v5-c-button.pf-m-primary {
+  background: transparent;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+}
+
+html:root .pf-v5-c-button.pf-m-primary:hover,
+html:root .pf-v5-c-button.pf-m-primary:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+html:root .pf-v5-c-button.pf-m-secondary,
+html:root .pf-v5-c-button.pf-m-tertiary {
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  color: var(--color-fg);
+}
+
+html:root .pf-v5-c-button.pf-m-secondary::after,
+html:root .pf-v5-c-button.pf-m-tertiary::after,
+html:root .pf-v5-c-button.pf-m-danger::after {
+  border: 0;
+}
+
+html:root .pf-v5-c-button.pf-m-danger {
+  background: transparent;
+  border: 1px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+html:root .pf-v5-c-button.pf-m-danger:hover {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
+/* 状態表示: 面を塗らず縁取り。PF5 の Alert はアイコンとタイトルの文言を必ず持つ（色だけにならない）。 */
+html:root .pf-v5-c-alert {
+  --pf-v5-c-alert--BoxShadow: none;
+  --pf-v5-c-alert--BorderTopWidth: 0;
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+}
+
+html:root .pf-v5-c-alert.pf-m-danger {
+  border-color: var(--color-danger);
+}
+
+html:root .pf-v5-c-alert.pf-m-warning {
+  border-color: var(--color-warning);
+}
+
+html:root .pf-v5-c-alert.pf-m-success {
+  border-color: var(--color-success);
+}
+
+html:root .pf-v5-c-alert.pf-m-info {
+  border-color: var(--color-accent);
+}
+
+html:root .pf-v5-c-label {
+  --pf-v5-c-label--BackgroundColor: var(--color-accent-soft);
+  --pf-v5-c-label__content--Color: var(--color-fg);
+}
+
+/* 読み込み中の画面（index.ftl のインライン style が白／#1b1d21 を直書きしている）。 */
+html:root .keycloak__loading-container {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
 }

@@ -4,6 +4,7 @@ import { useLingui } from '@lingui/react';
 import { BookOpen, FileText, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Tag, cn } from '@platform/ui';
+import { confidentialityLabel } from '@foundation/i18n';
 import { citationAnchorId } from './citations';
 import type { AskCitation, CitationKind } from './citations';
 
@@ -48,6 +49,9 @@ const KIND_LABELS = {
   personal: msg`個人資料`,
 } as const;
 
+// FR-04, SC-01（#2017 / E-12）: **出典への機密区分の表示**（05_screens §SC-01「出典への機密区分の表示（確定）」）。
+// 写像は SC-02 と共有するため `lib/i18n/confidentiality.ts` に置いた（#2018）。
+
 export function CitationList({
   citations,
   citePrefix,
@@ -70,6 +74,8 @@ export function CitationList({
             <span className="text-xs text-fg-muted">[{c.number}]</span>
             <Icon className="size-4 shrink-0 text-fg-muted" aria-hidden />
             {renderTitle ? renderTitle(c) : <span className="text-fg">{c.documentTitle}</span>}
+            {/* hi-fi モック: 表題 → 機密区分（neutral）→ 種別（outline）の順。 */}
+            <Tag tone="neutral">{confidentialityLabel(c.confidentiality, (d) => i18n._(d))}</Tag>
             <Tag tone={kind === 'personal' ? 'accent' : 'outline'}>{i18n._(KIND_LABELS[kind])}</Tag>
             <span className="text-xs text-fg-muted">{c.snippet}</span>
           </li>

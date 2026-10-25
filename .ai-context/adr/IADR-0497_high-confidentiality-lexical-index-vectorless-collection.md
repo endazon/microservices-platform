@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-03, FR-05, FR-19, UC-01, UC-04, SC-02, ADR-0127, ADR-0092, ADR-0016, ADR-0017, ADR-0070, ADR-0057, ADR-0061, IADR-0025, IADR-0085, IADR-0467, IADR-0422, IADR-0318, IADR-0339, IADR-0358, IADR-0014, IADR-0012]
 author: claude
 created: 2026-10-05
-updated: 2026-10-06
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0127_high-confidentiality-lexical-only-and-claude-rerank.md (決定 1・2・4・7。フォローアップ 1・2)
   - planning:projects/microservices-platform/07_adr/ADR-0092_multi-collection-search-fusion-and-query-egress.md (決定 1・3)
@@ -112,6 +112,11 @@ IADR-0151 §結果 が「facet の payload index の要否は未検証」と残�
 - **`public` / `internal` の経路は 1 ビットも変えない。** 一時障害（`Retryable=true`）は従来どおり例外で再試行、恒久的な拒否は従来どおりスキップ（**語彙索引へは回さない**）。
 - **ゲートウェイ（`EmbeddingEgress` / `EmbeddingRouter`）は変えない。** 高機密はティア A だけ・無ければ拒否、のまま二重の守りとして残る。
 
+> **［2026-10-14 追記 / #1908］** 上の「`public` / `internal` の経路は 1 ビットも変えない」「恒久的な拒否は語彙索引へは回さない」（埋め込めるはずの文書の不調を
+> 語彙索引で覆い隠さない）は、オーナー裁定（2026-10-14）で改めた。埋め込みが `Embedded=false`（一時障害・恒久的な拒否とも）を返した public / internal の
+> チャンクは、語彙索引へ全文だけの点（印 `embedding_pending`）として書き、埋め込みが使えるようになったら主へ移して消す。覆い隠さないために、待ちの件数を
+> 計器と周期ごとの Warning で読む。詳細は [IADR-0536](./IADR-0536_embedding-pending-lexical-points.md)。高機密の経路（本決定の前半）は変えない。上の本文は書き換えない。
+
 ### 決定 3: 語彙索引のペイロードは、ベクトルのコレクションの点と同じ表現にする
 
 - `BuildChunkPayload` をそのまま使う（`document_id`・`document_title`・`text`・`text_ngram`・`markdown_uri`・`chunk_index`・`updated_at`・`tags`・`shared_with`・`attributes`。本文なしは `has_body = false`）。
@@ -180,8 +185,10 @@ S1 は再順位付けを実装しない。S2 が要るものを次のとおり�
   - **既に取り込まれた高機密文書は、語彙索引に自動では入らない**（従来どこにも書かれていない）。運用で `DocumentUpdated` を再発行する（運用仕様書 §埋め込みプロバイダ の「再索引手順」の手順 2）。
   - **巨大な高機密文書の打ち切りが無い**: 語彙索引への書き込み（`IndexLexicallyAsync`）は埋め込みを呼ばないので埋め込みの総枠（`EmbeddingBudget`）を通らず、
     チャンク数に比例する Qdrant の書き込みを受け口の実行期限（既定 420 秒）だけが上から抑える（1 回 10 秒の期限つき）。段 S4 で扱う。
+    > **［2026-10-17 追記 / #1746］** 実測・計算で要ると判断し、[IADR-0560](./IADR-0560_lexical-index-write-budget.md) が埋め込みの総枠と同じ値の総枠（呼び出し先 `lexical-budget`）を掛けた。使い切った文書は再試行せずデッドレターへ入る。
   - 検索の readiness（`qdrant-fulltext-index` / `qdrant-cjk-ngram-index`）は主コレクションの索引しか見ない（Ruri のコレクションと同じ）。語彙索引の索引の欠落は取り込みの起動時ログ（Error）だけに出る。
   - 取り込みは Ruri のコレクション（`knowledge_chunks_ruri_v3`）を今も作る（空）。片付けは段 S4。
+    > **［2026-10-17 追記 / #1746］** 片付けた。取り込みは opt-in（Helm `embedding.enabled`・compose `SEARCH_FUSED_COLLECTION`）のときだけ Ruri のコレクションを作る。配備物は残す。[IADR-0085](./IADR-0085_selfhosted-embedding-optin-deploy.md) の 2026-10-17 追記。
   - 権限内属性値（facet）は実 Qdrant ではキーワード索引が無く例外になる（既存の欠陥。§実測「参考」）。
   - 「横断検索に含める」OFF・「AI の入力に含める」ON の個人資料は RAG の文脈に入らない（`Finish` が横断検索の露出で先に落とす。既存の挙動で fail-closed の向き。
     語彙索引で到達するようになった）。#1752 で扱う。

@@ -16,7 +16,7 @@ namespace GraphService.Tests.Infrastructure.ExternalServices;
 
 // FR-10, FR-17, FR-19, NFR-09, NFR-16, NFR-21, UC-05, SC-10, ADR-0006, ADR-0029, ADR-0075, ADR-0076,
 // [[IADR-0256]] 決定 3, [[IADR-0265]], [[IADR-0299]], [[IADR-0353]], [[IADR-0379]], [[IADR-0389]] 決定 5,
-// [[IADR-0408]] (#1255): 観測値の報告の gRPC 実装が、**REST 実装と同じ枝・同じ副作用**であることを固定する。
+// [[IADR-0408]] (#1255): 観測値の報告の gRPC 実装が、**旧 REST 実装と同じ枝・同じ副作用**であることを固定する（REST 実装は [[IADR-0533]] で撤去した）。
 //
 // 🔴 ここが本スライスの不変条件そのものである —— 輸送を替えたときに
 // **「届いていないのに届いたことになる」**か**「届かないと業務処理が止まる」**の
@@ -180,11 +180,10 @@ public class GrpcKnowledgeHealthReporterTests
         fake.LastRequest.ThresholdDays.Should().Be(180);
     }
 
-    // 🔴 タイムアウトは REST 側と**同じ 5 秒**である（`HttpClient.Timeout` の代わりに deadline）。
-    // 値は `HttpKnowledgeHealthReporter.SendTimeout` を**そのまま引く** ——
-    // 書き写すと片方だけ動いたときに気付けない。
+    // 🔴 送出 1 回あたりの期限は `GrpcKnowledgeHealthReporter.SendTimeout`（［2026-10-15 / #1907・[[IADR-0542]]］30 秒。
+    // 従前は［2026-10-10 / #1255］[[IADR-0533]] で撤去した REST 実装の `HttpClient.Timeout` から移した 5 秒）。呼び出しごとの deadline で付ける。
     [Fact]
-    public async Task 送出の期限は_REST_と同じ値である()
+    public async Task 送出の期限は構成の上限である()
     {
         var (metrics, probe) = NewProbe();
         using var _ = probe;
@@ -196,26 +195,87 @@ public class GrpcKnowledgeHealthReporterTests
             Indicator, [], ct: TestContext.Current.CancellationToken);
 
         fake.LastOptions.Deadline.Should().Be(
-            now.UtcDateTime.Add(HttpKnowledgeHealthReporter.SendTimeout));
+            now.UtcDateTime.Add(GrpcKnowledgeHealthReporter.SendTimeout));
     }
 
-    // 🔴 T-11: **切替は構成の有無だけである。** `Services:DashboardServiceGrpc` が無ければ
-    // 生成クライアントを**1 つも登録しない** —— 登録の有無で `Program.cs` が REST 実装と
-    // gRPC 実装を選ぶ（並走中の正は REST。戻すのは構成を外すだけでコードは変えない）。
+    // NFR-16, [[IADR-0542]] 決定 1・4 (#1907): 受理されたら、件数・符号化サイズ・所要を Information で 1 行残す
+    // （PoC で受信上限と期限への余裕を読む唯一の実測である）。サイズは送った要求そのものの大きさと一致する。
+    [Fact]
+    public async Task 受理されたら件数とサイズと所要を残す()
+    {
+        var (metrics, probe) = NewProbe();
+        using var _ = probe;
+        var fake = new FakeClient(new Pb.ReportResponse());
+        var logger = new RecordingLogger<GrpcKnowledgeHealthReporter>();
+        var reporter = new GrpcKnowledgeHealthReporter(fake, metrics, TimeProvider.System, logger);
+
+        await reporter.ReportAsync(Indicator, [new("doc-1", null, "not-found"), new("doc-2", null)], ct: Ct);
+
+        var line = logger.OfLevel(LogLevel.Information).Should().ContainSingle().Which.Message;
+        line.Should().Contain($"indicator={Indicator}").And.Contain("count=2")
+            .And.Contain($"bytes={fake.LastRequest!.CalculateSize()}").And.Contain("elapsedMs=");
+        logger.OfLevel(LogLevel.Warning).Should().BeEmpty("小さな報告では警告しない");
+    }
+
+    // 🔴 NFR-16, [[IADR-0542]] 決定 4 (#1907): 受け口の受信上限（既定 16 MiB）の 75% を超えたら、**送る前に**警告する。
+    // 当たってからでは `ResourceExhausted` で毎周期失敗する。陽性（閾値以上）と陰性（閾値未満）を対で置く。
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task 要求が受信上限の75パーセントを超えたら警告する(bool overThreshold)
+    {
+        var (metrics, probe) = NewProbe();
+        using var _ = probe;
+        var logger = new RecordingLogger<GrpcKnowledgeHealthReporter>();
+        var reporter = new GrpcKnowledgeHealthReporter(
+            new FakeClient(new Pb.ReportResponse()), metrics, TimeProvider.System, logger);
+        // 1 件 1 MiB の鍵で、閾値（12 MiB）の上下に置く。
+        var key = new string('k', 1024 * 1024);
+        var count = overThreshold ? 12 : 11;
+
+        await reporter.ReportAsync(
+            Indicator, [.. Enumerable.Range(0, count).Select(_ => new KnowledgeHealthObservation(key, null))], ct: Ct);
+
+        if (overThreshold)
+            logger.OfLevel(LogLevel.Warning).Should().ContainSingle()
+                .Which.Message.Should().Contain($"warnBytes={GrpcKnowledgeHealthReporter.PayloadWarnBytes}");
+        else
+            logger.OfLevel(LogLevel.Warning).Should().BeEmpty();
+        probe.Measurements.Should().ContainSingle("警告は送出を止めない");
+    }
+
+    // 🔴 受け口（dashboard）の受信上限の既定 16 MiB の 75%。**サービスを跨ぐため定数を共有できない**ので、
+    // リテラルで固定する（dashboard 側は `KnowledgeHealthReportReceiveLimitTests.既定の受信上限は16MiBである`）。
+    [Fact]
+    public void 警告の閾値は受け口の既定の受信上限の75パーセントである()
+    {
+        GrpcKnowledgeHealthReporter.PayloadWarnBytes.Should().Be(16 * 1024 * 1024 / 4 * 3);
+    }
+
+    // NFR-16, [[IADR-0542]] 決定 2 (#1907): 期限は 30 秒（15 万件の置換が負荷の高いホストでも収まる幅）。
+    [Fact]
+    public void 送出の期限は30秒である()
+    {
+        GrpcKnowledgeHealthReporter.SendTimeout.Should().Be(TimeSpan.FromSeconds(30));
+    }
+
+    // 🔴 T-11: **宛先の有無で登録の形が変わる。** `Services:DashboardServiceGrpc` が無ければ
+    // 生成クライアントは UNAVAILABLE を返す呼び出し器の上に組まれる（［2026-10-10 / #1255］[[IADR-0533]] 決定 2。
+    // 従前は 1 つも登録せず、`Program.cs` が REST 実装と gRPC 実装を選んでいた。REST 実装は撤去した）。
     //
     // 🔴 **`Program.cs` の DI をテストホストの構成で切り替えて測ることはできない。**
     // 選択は組み立て時（`builder.Configuration[...]`）に行われ、`WebApplicationFactory` が
     // 差し込む構成は Build 時に載るためである（`SimilaritySourceWiringTests` の注記と同じ罠）。
     // したがって**登録関数そのもの**を陽性・陰性の対で固定する。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public void 宛先が未設定でも届かない宛先として登録する()
     {
+        // ［2026-10-10 / #1255］[[IADR-0533]] 決定 2: 未設定でも生成クライアントは登録され、呼び出しは UNAVAILABLE で失敗する
+        // （従前は何も登録せず、`Program.cs` が REST 実装へ倒していた。REST 実装は撤去した）。
         var services = new ServiceCollection()
             .AddKnowledgeHealthGrpcClient(new ConfigurationBuilder().Build());
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.KnowledgeHealthReport.KnowledgeHealthReportClient),
-            "未設定なら何も登録しない（REST のまま）");
+        services.Should().ContainSingle(d => d.ServiceType == typeof(Pb.KnowledgeHealthReport.KnowledgeHealthReportClient));
     }
 
     [Fact]

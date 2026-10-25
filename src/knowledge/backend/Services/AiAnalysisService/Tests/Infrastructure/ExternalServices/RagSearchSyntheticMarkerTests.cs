@@ -18,7 +18,7 @@ namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 //
 // RAG は LLM の抑止（`SuppressLlmForSynthetic`）より**前に**検索する。検索サービスの再順位付けの段は内周の標識で
 // 合成監視を見分けて LLM を呼ばないので、標識が届かないと合成監視のたびに再順位付けの費用が実利用として積まれる。
-// 🔴 陽性（合成なら付く）と陰性対照（通常は付かない）を輸送ごとに対で置く。
+// 🔴 陽性（合成なら付く）と陰性対照（通常は付かない）を対で置く（[[IADR-0533]] で REST 輸送を撤去したので、輸送は gRPC だけである）。
 [Trait("TestKind", "Unit")]
 public class RagSearchSyntheticMarkerTests
 {
@@ -41,7 +41,7 @@ public class RagSearchSyntheticMarkerTests
         if (synthetic)
             http.HttpContext!.Request.Headers[SyntheticTraffic.HeaderName] = SyntheticTraffic.HeaderValue;
         var transport = new RecordingTransport();
-        var orchestrator = new RagOrchestrator(new ScopeOnlyFactory(), http, searchTransport: transport);
+        var orchestrator = TestRagOrchestrator.Create(new ScopeOnlyFactory(), http, search: transport);
 
         switch (path)
         {
@@ -60,21 +60,6 @@ public class RagSearchSyntheticMarkerTests
 
         transport.Last.Should().NotBeNull();
         transport.Last!.IsSynthetic.Should().Be(synthetic);
-    }
-
-    // T-109 (REST 輸送): 合成なら `/search` の要求に標識が付き、通常は付かない。
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task REST輸送は合成のときだけ標識を付ける(bool synthetic)
-    {
-        var handler = new CapturingHandler();
-        var transport = new HttpRagSearchTransport(new SingleClientFactory(handler));
-
-        await transport.SearchAsync(Query(synthetic), Ct);
-
-        handler.LastPath.Should().Be("/search");
-        handler.LastSynthetic.Should().Be(synthetic ? SyntheticTraffic.HeaderValue : null);
     }
 
     // T-109 (gRPC 輸送): 合成なら標識をメタデータで運び、通常はメタデータに何も足さない（利用者の資格情報も載せない）。
@@ -126,33 +111,6 @@ public class RagSearchSyntheticMarkerTests
                         Encoding.UTF8, "application/json"),
                 }
                 : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
-    }
-
-    private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false)
-        {
-            BaseAddress = new Uri("http://retrieval/"),
-        };
-    }
-
-    private sealed class CapturingHandler : HttpMessageHandler
-    {
-        public string? LastPath { get; private set; }
-        public string? LastSynthetic { get; private set; }
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-        {
-            LastPath = request.RequestUri!.AbsolutePath;
-            LastSynthetic = request.Headers.TryGetValues(SyntheticTraffic.HeaderName, out var v)
-                ? string.Join(",", v)
-                : null;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("{\"results\":[],\"totalCount\":0,\"elapsedMs\":0}",
-                    Encoding.UTF8, "application/json"),
-            });
-        }
     }
 
     private sealed class RecordingGrpcClient : Pb.DocumentSearch.DocumentSearchClient

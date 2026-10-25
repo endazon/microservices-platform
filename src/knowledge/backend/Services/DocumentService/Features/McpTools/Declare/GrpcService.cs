@@ -9,8 +9,8 @@ namespace DocumentService.Features.McpTools.Declare;
 // （2026-09-26 追記 / #1515, #1255 経路 ④-a）: ツール定義の自己申告の **east-west gRPC 面**
 // （`platform.mcp.v1.McpToolDeclarations/Declare`）。
 //
-// 🔴 **本体は持たない。** REST `GET /internal/mcp-tools` と**同じ関数**（`McpToolDeclarationSource.Declare`）を
-// 呼んで輸送の言葉へ写すだけであり、申告を 2 つ持たない（片方だけ更新されて輸送ごとに違う申告が返る形を作らない）。
+// 🔴 **本体は持たない。** `McpToolDeclarationSource.Declare` を呼んで輸送の言葉へ写すだけであり
+// （撤去した REST `GET /internal/mcp-tools` も同じ関数を呼んでいた）、申告を 2 つ持たない（片方だけ更新されて輸送ごとに違う申告が返る形を作らない）。
 // 個人資料の除外（`Publishable`）も同じ 1 本の経路を通る。
 //
 // 🔴 **ServiceCaller を要求する。** 利用者のトークンは（管理者であっても）通らない（[[IADR-0379]] 決定 4）。

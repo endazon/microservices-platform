@@ -3,15 +3,15 @@ title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不�
 type: runbook
 status: fixed
 created: 2026-08-11
-updated: 2026-10-10
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-11]
-adrs: [ADR-0038, ADR-0048, AST:ADR-0011]
+adrs: [ADR-0038, ADR-0048, ADR-0138, AST:ADR-0011]
 iadrs: [IADR-0058, IADR-0102, IADR-0112, IADR-0141, IADR-0225, IADR-0228, IADR-0331, IADR-0511, IADR-0531]
-specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs, 20261008_1785_graph-purpose-models, 20261010_1875_claude-5-5-models]
-issues: [#382, #440, #587, #1092, #1785, #1875, AST#296, planning#50, planning#426, planning#783]
+specs: [20260811_issue-587_pin-migration-runbook, 20260831_issue-1092_planning-submodule-residual-refs, 20261008_1785_graph-purpose-models, 20261010_1875_claude-5-5-models, 20261017_1903_drop-pre-5-5-claude-models]
+issues: [#382, #440, #587, #1092, #1785, #1875, #1903, AST#296, AST#1296, AST#1310, planning#50, planning#426, planning#783]
 -->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
@@ -38,21 +38,27 @@ src/platform/backend/Services/LlmGateway/appsettings.json
 **現在の割り当ては次のコマンドで列挙する。**
 
 ```console
-$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
-for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v)"
+$ node <<'EOF'
+const d = require('./src/platform/backend/Services/LlmGateway/appsettings.json');
+for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v);
+EOF
 ```
 
 **［2026-08-18 追記 / #863］フォールバック順序も監視対象である。** 鎖に載ったモデルも
 **実際に利用されるモデル**であり、提供終了の監視から漏らせない。次のコマンドで併せて列挙する。
 
 ```console
-$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/appsettings.json');\
-for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) console.log(k.padEnd(16), v.join(' -> '))"
+$ node <<'EOF'
+const d = require('./src/platform/backend/Services/LlmGateway/appsettings.json');
+for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) console.log(k.padEnd(16), v.join(' -> '));
+EOF
 ```
 
 > **★ `node` で書くのは本リポの前提に合わせるためである。** 本リポの道具立ては **Node.js / .NET** であり、
 > **`python3` は [`scripts/setup.sh`](../../scripts/setup.sh) でコメントアウトされた opt-in**（＝**利用保証が無い**）。
 > **手順書は運用者が実行するもの**であり、**手元に無い処理系へ依存させない。**
+> 処理は `node -e` の引数ではなく heredoc（標準入力）で渡す。Windows で Volta などの shim の `node` を使うと、引数の中の `>`・`|`・`&&` などを
+> `cmd` が解釈し直して壊す（上の `' -> '` がそれに当たる）。標準入力は shim を通っても変わらない。
 
 **用途は 1 つではない。** `trade-decision` のほか `rag-answer` / `analysis` / `diagram-coding` /
 `report-monthly` / `report-weekly` / `report-daily` / `trade-decision-screening` / `rerank` /
@@ -102,13 +108,14 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 | 段 | 扱い |
 | --- | --- |
 | 1. Stage 0 の再実行 | **本切替の時点では済んでいない。** 5.5 系の両層の組での再実行は AST 側の手続きとして計画側の裁定に含まれている。**合格の確認が取れるまで、取引判断は実弾で動かさない**（Stage 0 の合格は実弾解禁の必須ゲートである。前回のピン改定と同じ扱い）。基盤側は、利用者裁定が取引判断の 2 層を明示的に含めたことを根拠に設定を先に切り替えた |
-| 2. 設定の更新 | `PurposeModels` の 2 用途を新版へ改め、`Endpoints[claude-managed].Models` に新版を**追加**した。旧版は**切り戻しのために残した**（`Models` から外すと、切り戻しの設定変更だけでは戻れなくなる）。鎖は従前どおり付けていない |
+| 2. 設定の更新 | `PurposeModels` の 2 用途を新版へ改め、`Endpoints[claude-managed].Models` に新版を**追加**した。旧版は当初、切り戻しのために残した。**［2026-10-17］計画の裁定（古いモデルの廃棄）により、旧版は `Models`・単価表から外した**（下の「切り戻し」）。鎖は従前どおり付けていない |
 | 3. 実装 ADR への記録 | 版数の変更・理由（利用者裁定）・Stage 0 の状態（上記。結果は AST 側で記録される）を、本切替の実装 ADR に残した |
 
-- **配備の順序**: AST はゲートウェイが返すモデル名を割当表と完全一致で照合する。**AST 側が旧・新の両方の ID を受ける段を先に配備し、その後で本切替を配備する。**
-  逆順にすると、切替から AST の配備までの間、取引判断が「割当と違うモデル」として扱われる。
-- **切り戻し**: `PurposeModels` の該当用途を旧版へ戻す（旧版は `Models` と単価表に残っている）。用途別 effort（`Llm:PurposeEffort`）は
-  effort を受けないモデル（`claude-haiku-4-5`）へは送られないので、戻すときに外さなくてよい。
+- **配備の順序**: AST はゲートウェイが返すモデル名を割当表と完全一致で照合する。［2026-10-17 改め］計画の裁定により**移行段（旧・新の両方の ID を受ける段）は設けず、
+  基盤と AST を同時に配備して切り替える。** 順序がずれた間は、取引判断が「割当と違うモデル」として見送りへ倒れる（発注しない）。これは受容されている。
+- **切り戻し**: ［2026-10-17 改め］**旧版への切り戻しの手段は無い。** 旧版は `Models`・単価表・effort の対応集合から外した（`PurposeModels` を旧版へ戻しても、
+  許可集合に無いモデルとして用途の割当か `DefaultModel` へ落ちる）。5.5 系が使えないときは 5.5 系の中のフォールバックだけで受ける。
+  取引判断はフォールバックしないので、ピン留めしたモデルが使えなければ下の「利用不能時の振る舞い」のとおり実行しない。
 
 ---
 

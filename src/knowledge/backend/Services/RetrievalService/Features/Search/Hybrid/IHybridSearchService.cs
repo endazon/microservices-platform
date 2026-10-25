@@ -14,4 +14,18 @@ public interface IHybridSearchService
 {
     Task<List<SearchResultDto>> SearchAsync(
         SearchRequest request, SearchUserContext user, CancellationToken ct = default);
+
+    // FR-03, NFR-06, [[IADR-0534]] (#1871): 結果に**縮退の理由**を添えて返す。入口（`SearchEndpoint.ExecuteAsync`）はこちらを呼ぶ。
+    // 🔴 **既定実装を置かない** —— 置くと、新しい実装が書き忘れたとき「縮退なし」と黙って答える。
+    Task<HybridSearchResult> SearchWithDegradationAsync(
+        SearchRequest request, SearchUserContext user, CancellationToken ct = default);
+}
+
+// FR-03, NFR-06, ADR-0016, [[IADR-0534]] (#1871): 検索結果と縮退の理由（`SearchDegradedReasons` の固定語彙・正の順・重複なし）。
+public sealed record HybridSearchResult(List<SearchResultDto> Results, IReadOnlyList<string> DegradedReasons)
+{
+    // 毎回新しい一覧を返す（呼び出し側が結果へ足しても共有の値が汚れない）。
+    public static HybridSearchResult Empty => new([], []);
+
+    public bool Degraded => DegradedReasons.Count > 0;
 }

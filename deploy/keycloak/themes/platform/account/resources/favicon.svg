@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <!-- SC-16 / IADR-0532: accent の角（SPA のブランド記号）。色は意味トークンの値。 -->
+  <style>rect { fill: #988cdb; } @media (prefers-color-scheme: light) { rect { fill: #5d5294; } }</style>
+  <rect x="2" y="2" width="12" height="12" rx="3"/>
+</svg>

@@ -324,7 +324,9 @@ describe('DocumentDetailPage (SC-03)', () => {
     // **［2026-09-12］項目名から「:」が消えた**（hi-fi の属性欄を `Kv` / `KvItem` へ寄せたため。
     // `dt` / `dd` の対が区切りを担うので、文字としてのコロンは冗長である）。実装が正・テストを追随。
     expect(screen.getByText('機密区分')).toBeInTheDocument();
-    expect(screen.getByText('internal')).toBeInTheDocument();
+    // ［#2018］機密区分の値は用語集の表示名（internal＝社内限）。部門の値は変換しない。
+    expect(screen.getByText('社内限')).toBeInTheDocument();
+    expect(screen.queryByText('internal')).not.toBeInTheDocument();
     expect(screen.getByText('部門')).toBeInTheDocument();
     expect(screen.getByText('accounting')).toBeInTheDocument();
     expect(screen.getByText('経理')).toBeInTheDocument();
@@ -818,5 +820,78 @@ describe('SC-03 breadcrumb leaf (#446)', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('読み込み中…');
     expect(mocks.useBreadcrumbLeaf).toHaveBeenCalled();
     expect(leaves().every((leaf) => leaf === undefined)).toBe(true);
+  });
+});
+
+// FR-19, UC-11, SC-03, 計画 ADR-0036 D-08, planning#841 裁定 1・2 / [[IADR-0612]] (#2046 の 3 本目):
+// **緊急アクセスで指名された管理者の閲覧の導線。** 新しい画面は作らず、SC-03 に `?via=break-glass` の文脈を足す。
+// 🔴 `via` は**表示の文脈だけ**であり、開けるかどうかは後段が決める（下の 404 の例）。
+describe('DocumentDetailPage (SC-03): 緊急アクセスの閲覧', () => {
+  const PRIVATE_NOTE = {
+    ...DETAIL,
+    attributes: { confidentiality: 'restricted', doc_scope: 'private-note', owner: 'tanaka' },
+  };
+
+  async function renderVia(search: string) {
+    return renderUnitRoute((shell) => [createSc03DocumentRoute(shell)], {
+      initialEntry: `/docs/${DOC_ID}${search}`,
+      roles: ['platform-admin'],
+    });
+  }
+
+  it('緊急アクセスで開いたことを本文より前に告げ、承認の欄を出さない（陽性対照: via なしでは出る）', async () => {
+    respond({
+      detail: PRIVATE_NOTE,
+      suggestions: [LINK_SUGGESTION],
+      resolvedUsers: [{ username: 'tanaka', displayName: '田中 タナカ', enabled: true }],
+    });
+    const { queryClient } = await renderVia('?via=break-glass');
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    expect(screen.getByText('緊急アクセス')).toBeInTheDocument();
+    expect(screen.getByText(/この閲覧は 1\s*件ずつ監査ログに記録されます/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/閲覧だけができ、編集・削除・共有の変更はできません/),
+    ).toBeInTheDocument();
+    // 本文は読める（閲覧だけ）。
+    expect(screen.getByText(/締め日は毎月25日とする。/)).toBeInTheDocument();
+    // 🔴 承認の欄（書き込みの導線）は出さず、提案も引かない。
+    expect(screen.queryByRole('heading', { name: 'AI 提案' })).not.toBeInTheDocument();
+    expect(
+      mocks.apiRequest.mock.calls.some((c) => String(c[0]).includes('/graph/suggestions')),
+    ).toBe(false);
+  });
+
+  it('陽性対照: via なしでは緊急アクセスの告知を出さず、承認の欄は従来どおり出る', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderVia('');
+
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.queryByText(/緊急アクセスで閲覧しています/)).not.toBeInTheDocument();
+  });
+
+  it('知らない via の値は落とす（文脈なしと同じ）', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderVia('?via=admin');
+
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.queryByText(/緊急アクセスで閲覧しています/)).not.toBeInTheDocument();
+  });
+
+  it('有効でなくなった（後段が 404）ら開けないことを告げる。理由は区別せず、警告も再試行も出さない', async () => {
+    respond({ detail: ApiError.fromStatus(404), content: ApiError.fromStatus(404) });
+    await renderVia('?via=break-glass');
+
+    expect(
+      await screen.findByText('緊急アクセスでこの資料を開けませんでした。'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/失効したか、所有者が終了したか、あなたが指名されていない/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /再試行/ })).not.toBeInTheDocument();
+    // 本文・属性は描かない。
+    expect(screen.queryByText(/締め日は毎月25日とする。/)).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 using Grpc.Core;
 using Knowledge.Contracts.Grpc;
+using DocumentService.Features.Documents.GetContent;
 using Knowledge.Contracts.Grpc.Document.V1;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
@@ -12,6 +13,7 @@ namespace DocumentService.Features.Documents;
 // FR-05, FR-06, UC-03, SC-03, SC-05, NFR-09, NFR-16, ADR-0002, ADR-0004, ADR-0029, ADR-0056,
 // ADR-0065, ADR-0070, ADR-0075, [[IADR-0012]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]],
 // [[IADR-0402]] (#1255), ADR-0119 決定 3 (#1614): 文書台帳の読み取り 4 口の **east-west gRPC 面**。
+// ［2026-10-15 / #1905・[[IADR-0544]]］本文の読み取り（`GetDocumentContent`。本体は `DocumentContentUseCase`）を足した。
 //
 // 🔴 **本体は持たない。** 4 つとも `DocumentReadUseCase` を呼ぶだけであり、REST の 4 口と
 // **同じ関数**を通る（判定器を 2 つにしない。[[IADR-0397]] / [[IADR-0400]] と同じ形）。
@@ -43,6 +45,7 @@ namespace DocumentService.Features.Documents;
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class DocumentReadGrpcService(
     DocumentReadUseCase reads,
+    DocumentContentUseCase contents,
     IOptions<DocumentReadRelayOptions> relay,
     ILogger<DocumentReadGrpcService> logger)
     : DocumentRead.DocumentReadBase
@@ -50,10 +53,51 @@ public sealed class DocumentReadGrpcService(
     public override async Task<ListDocumentsResponse> ListDocuments(
         ListDocumentsRequest request, ServerCallContext context)
     {
-        var docs = await reads.ListAsync(PrincipalOf(request.User, context), context.CancellationToken);
-        var resp = new ListDocumentsResponse();
+        // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): ページで返す。1 応答は台帳の件数に比例しない。
+        // 🔴 要求の誤り（負の件数・壊れた印）は主体の判定より先に弾く —— どちらも主体に依らず誤りである。
+        var pageSize = PageSizeOf(request.PageSize);
+        var sort = SortOf(request.Sort);
+        DocumentListCursor? after = null;
+        if (!string.IsNullOrEmpty(request.PageToken))
+        {
+            if (!DocumentListCursor.TryDecode(request.PageToken, out var decoded))
+                throw new RpcException(new Status(StatusCode.InvalidArgument,
+                    "page_token が不正です。前の応答の next_page_token をそのまま渡してください。"));
+            // FR-06, SC-05, [[IADR-0545]] (#1923): 🔴 印は並べ替えを持つ。違う並べ替えの印は黙って別の位置から読むことになるので弾く。
+            if (decoded.Sort != sort)
+                throw new RpcException(new Status(StatusCode.InvalidArgument,
+                    "page_token は別の並べ替え（sort）の続きの印です。同じ sort で続きを要求してください。"));
+            after = decoded;
+        }
+
+        var (docs, next) = await reads.ListPageAsync(
+            PrincipalOf(request.User, context), sort, pageSize, after, context.CancellationToken);
+        var resp = new ListDocumentsResponse { NextPageToken = next ?? string.Empty };
         resp.Documents.AddRange(docs.Select(DocumentReadGrpcMapping.ToProto));
         return resp;
+    }
+
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 線上の並べ替えの写像（1 か所）。UNSPECIFIED は従前の並び（更新日時の降順）。
+    // 🔴 未定義の値（新しい呼び出し元が足した値など）は既定へ畳まず要求の誤りにする —— 畳むと別の並びのページが黙って返る。
+    internal static DocumentListSortKey SortOf(DocumentListSort sort) => sort switch
+    {
+        DocumentListSort.Unspecified or DocumentListSort.UpdatedDesc => DocumentListSortKey.UpdatedDesc,
+        DocumentListSort.UpdatedAsc => DocumentListSortKey.UpdatedAsc,
+        DocumentListSort.CreatedDesc => DocumentListSortKey.CreatedDesc,
+        DocumentListSort.CreatedAsc => DocumentListSortKey.CreatedAsc,
+        DocumentListSort.TitleAsc => DocumentListSortKey.TitleAsc,
+        DocumentListSort.TitleDesc => DocumentListSortKey.TitleDesc,
+        _ => throw new RpcException(new Status(StatusCode.InvalidArgument, $"sort の値 {(int)sort} は定義されていません。")),
+    };
+
+    // 0（省略）は既定、上限を超えた値は上限へ丸める。負は要求の誤り（黙って既定へ畳まない）。
+    internal static int PageSizeOf(int requested)
+    {
+        if (requested < 0)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "page_size は 0 以上で指定してください。"));
+        return requested == 0
+            ? DocumentReadUseCase.DefaultPageSize
+            : Math.Min(requested, DocumentReadUseCase.MaxPageSize);
     }
 
     public override async Task<GetDocumentResponse> GetDocument(
@@ -65,10 +109,19 @@ public sealed class DocumentReadGrpcService(
         if (!Guid.TryParse(request.Id, out var id))
             throw new RpcException(new Status(StatusCode.InvalidArgument, "id は GUID である必要があります。"));
 
-        var doc = await reads.GetAsync(PrincipalOf(request.User, context), id, context.CancellationToken);
-        return doc is null
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): SC-03 の閲覧の口（BFF の詳細）なので、緊急アクセスの判定を含む形を通す。
+        // ［2026-10-24 / [[IADR-0611]]］含めるのは呼び出し元が `allow_break_glass` を立てたときだけ（既定は含めない）。
+        //   緊急アクセスで読めたときは `granted_by_break_glass` を立てる（BFF は独自の判定を足さずにこれで通す）。
+        var view = await reads.FindForViewAsync(PrincipalOf(request.User, context), id,
+            Knowledge.Contracts.Dtos.BreakGlassViewTargets.Document, request.AllowBreakGlass, context.CancellationToken);
+        return view is null
             ? new GetDocumentResponse { Found = false }
-            : new GetDocumentResponse { Found = true, Document = DocumentReadGrpcMapping.ToProto(doc) };
+            : new GetDocumentResponse
+            {
+                Found = true,
+                Document = DocumentReadGrpcMapping.ToProto(view.Document),
+                GrantedByBreakGlass = view.ViaBreakGlass,
+            };
     }
 
     public override async Task<ListVersionsResponse> ListVersions(
@@ -97,6 +150,59 @@ public sealed class DocumentReadGrpcService(
         return snapshot is null
             ? new GetVersionResponse { Found = false }
             : new GetVersionResponse { Found = true, Snapshot = DocumentReadGrpcMapping.ToProto(snapshot) };
+    }
+
+    // FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文。判定は `GetDocument` と同じ関数を通る。
+    // 🔴 **「本文が無い」は応答の state、「引けなかった」は status**（IADR-0401 決定 5 と同じ作法）。
+    //   ストレージが構成されていないのは構成の不調なので FAILED_PRECONDITION。一時障害（時間切れ・5xx・バケットが無い）は
+    //   例外のまま上げる（grpc-dotnet が INTERNAL / UNKNOWN へ写す）。呼び出し元（BFF）はどちらも 502 へ写す。
+    public override async Task<GetDocumentContentResponse> GetDocumentContent(
+        GetDocumentContentRequest request, ServerCallContext context)
+    {
+        if (!Guid.TryParse(request.DocumentId, out var id))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "document_id は GUID である必要があります。"));
+
+        DocumentContentResult? result;
+        try
+        {
+            result = await contents.ReadAsync(PrincipalOf(request.User, context), id, request.AllowBreakGlass,
+                context.CancellationToken);
+        }
+        catch (ObjectStorageUnavailableException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
+
+        if (result is null)
+            return new GetDocumentContentResponse { Found = false };
+
+        return result.Status switch
+        {
+            DocumentContentStatus.Available => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.Available,
+                Markdown = result.Markdown!,
+            },
+            DocumentContentStatus.NotStored => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.NotStored,
+            },
+            DocumentContentStatus.Missing => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.Missing,
+            },
+            DocumentContentStatus.TooLarge => new GetDocumentContentResponse
+            {
+                Found = true,
+                State = DocumentContentState.TooLarge,
+                SizeBytes = result.SizeBytes,
+                LimitBytes = result.LimitBytes,
+            },
+            _ => throw new InvalidOperationException($"未知の本文の状態: {result.Status}"),
+        };
     }
 
     // FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614, #1628): 本文の利用者文脈 → 主体。

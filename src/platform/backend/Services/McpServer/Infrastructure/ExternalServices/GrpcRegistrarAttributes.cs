@@ -7,8 +7,8 @@ namespace McpServer.Infrastructure.ExternalServices;
 // FR-16, FR-05, UC-09, SC-12, NFR-09, NFR-16, ADR-0004, ADR-0029, ADR-0036 D-01・D-02,
 // ADR-0062 決定 2・3, ADR-0075, [[IADR-0329]], [[IADR-0379]], [[IADR-0384]], [[IADR-0385]],
 // [[IADR-0401]] 決定 2・4 (#1255):
-// 登録者の割当可能属性の **east-west gRPC 実装**（兄弟クラス。REST 実装は
-// `AuthorizationServiceRegistrarAttributes`）。
+// 登録者の割当可能属性の **east-west gRPC 実装**。［2026-10-10 / #1255・[[IADR-0533]]］REST 実装（`AuthorizationServiceRegistrarAttributes`）は
+// 撤去し、本クラスだけが残る（宛先未構成は `UNAVAILABLE` → 下の Unavailable の枝）。下の「REST と同じ」は当時の対応の記録である。
 //
 // ■ 2 本の問い合わせは REST と同じ（目的が違う 2 つ）
 //   1. `UserDirectory/GetUserAttributes(username)` … 登録者自身の ABAC 属性（タグ）。

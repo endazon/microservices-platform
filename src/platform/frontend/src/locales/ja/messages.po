@@ -31,6 +31,8 @@ msgid "(3) 構成バージョン履歴（新しい順）"
 msgstr "(3) 構成バージョン履歴（新しい順）"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "（不明な利用者）"
 msgstr "（不明な利用者）"
@@ -45,6 +47,10 @@ msgstr "（停止）"
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "（必須）"
 msgstr "（必須）"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "（本文は空です）"
+msgstr "（本文は空です）"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "（終端）"
@@ -82,9 +88,26 @@ msgstr "{h}（既定）"
 msgid "{issuedClientId} の client secret です。表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 msgstr "{issuedClientId} の client secret です。表示できるのは今回だけです。閉じると再表示できません（再発行のみ可能です）。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "{label}（{count} 件）"
+msgstr "{label}（{count} 件）"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "{max} 文字以内で入力してください。"
 msgstr "{max} 文字以内で入力してください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "{nomineeName} に閲覧を許して発動する"
+msgstr "{nomineeName} に閲覧を許して発動する"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "{p} ページ目"
+msgstr "{p} ページ目"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "{reasonLength} / {maxLength} 文字"
+msgstr "{reasonLength} / {maxLength} 文字"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
@@ -114,6 +137,10 @@ msgstr "{title} を選択"
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
 
+#: platform/frontend/src/components/theme/ThemeToggle.tsx
+msgid "{visibleLabel}（表示テーマの切替。押すと {upcomingName} になります）"
+msgstr "{visibleLabel}（表示テーマの切替。押すと {upcomingName} になります）"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "{writtenProperty} を更新しました（版 {writtenVersion}）。"
@@ -138,6 +165,14 @@ msgstr "「{softDeleteTitle}」を削除します。削除しても容量は空�
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
 msgstr "「{tagValue}」を付与"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "「{title}」の出典を開く"
+msgstr "「{title}」の出典を開く"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "「{title}」をプレビュー"
+msgstr "「{title}」をプレビュー"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "「＋ ソース登録」から取り込み元を登録してください。"
@@ -191,6 +226,7 @@ msgstr "👍 {up} / 👎 {down}"
 msgid "👤 個人資料（自分のみ）"
 msgstr "👤 個人資料（自分のみ）"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "2 文字以上入力すると候補が出ます。"
 msgstr "2 文字以上入力すると候補が出ます。"
@@ -542,6 +578,8 @@ msgstr "いまは、あなたの個人資料がすべて同期の対象です。
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
@@ -599,6 +637,7 @@ msgstr "キーワード検索のみ →"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 msgid "キャンセル"
 msgstr "キャンセル"
 
@@ -707,6 +746,10 @@ msgstr "このタグは {inUseCount} 件の文書で使われているため削�
 msgid "このタグは辞書に無いため反映できません。却下してください。"
 msgstr "このタグは辞書に無いため反映できません。却下してください。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "このタブの文書はありません。"
+msgstr "このタブの文書はありません。"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "このデータソースの設定には、画面以外から入れた資格情報が残っています。書き込みはできますが、設定が保管先の値を参照するように移されるまで、書いた値は同期に使われません。"
 msgstr "このデータソースの設定には、画面以外から入れた資格情報が残っています。書き込みはできますが、設定が保管先の値を参照するように移されるまで、書いた値は同期に使われません。"
@@ -753,6 +796,10 @@ msgstr "この提案は一度却下されましたが、文書が更新された
 msgid "この操作は元に戻せません。削除後はいかなる方法でも復元できません。（削除の反映には時間がかかる場合があります。）"
 msgstr "この操作は元に戻せません。削除後はいかなる方法でも復元できません。（削除の反映には時間がかかる場合があります。）"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "この操作は監査ログに記録されます。アクセスは発動から 15 分で自動失効し、延長できません。指名した管理者の閲覧も 1 件ずつ記録されます。"
+msgstr "この操作は監査ログに記録されます。アクセスは発動から 15 分で自動失効し、延長できません。指名した管理者の閲覧も 1 件ずつ記録されます。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。辺の型の絞り込みを緩めるか、探索深さを深くしてください。"
 msgstr "この文書には表示できる関係がありません。辺の型の絞り込みを緩めるか、探索深さを深くしてください。"
@@ -796,6 +843,18 @@ msgstr "この端末を失効しますか？"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "この端末を失効する"
 msgstr "この端末を失効する"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "この資料には有効な緊急アクセスが既にあるか、削除済みのため発動できません。"
+msgstr "この資料には有効な緊急アクセスが既にあるか、削除済みのため発動できません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "この資料に書き込む権限がないため発動できません。"
+msgstr "この資料に書き込む権限がないため発動できません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "この資料に緊急アクセスを発動する…"
+msgstr "この資料に緊急アクセスを発動する…"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "この辺の型は {inUseCount} 本の辺で使われているため削除できません。"
@@ -903,6 +962,15 @@ msgstr "システム"
 msgid "システム管理"
 msgstr "システム管理"
 
+#: platform/frontend/src/lib/i18n/roles.ts
+msgctxt "ロール"
+msgid "システム管理者"
+msgstr "システム管理者"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "システム管理者には、すべての利用者の緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
+msgstr "システム管理者には、すべての利用者の緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "ジョブ"
 msgstr "ジョブ"
@@ -911,6 +979,8 @@ msgstr "ジョブ"
 msgid "スコープ"
 msgstr "スコープ"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -932,6 +1002,10 @@ msgstr "すべての公開範囲"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "すべての同期状態"
 msgstr "すべての同期状態"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "すべての文書を表示"
+msgstr "すべての文書を表示"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "すべての端末を失効しますか？"
@@ -980,6 +1054,7 @@ msgstr "タイトルで絞り込む"
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
@@ -994,6 +1069,10 @@ msgstr "タグ {tag} を削除"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "タグ:"
 msgstr "タグ:"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "タグで絞り込み"
+msgstr "タグで絞り込み"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "タグで絞り込む"
@@ -1057,6 +1136,8 @@ msgstr "ダッシュボード"
 msgid "ツール"
 msgstr "ツール"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
 msgid "データソース"
@@ -1276,9 +1357,23 @@ msgstr "フォルダのパス"
 msgid "フォルダを追加する"
 msgstr "フォルダを追加する"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "プレビュー"
+msgstr "プレビュー"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "プレビューを閉じる"
+msgstr "プレビューを閉じる"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/lib/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "プロジェクト"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "プロジェクトなし"
+msgstr "プロジェクトなし"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "ページが見つかりませんでした。"
@@ -1308,6 +1403,10 @@ msgstr "ページツリーを取得できませんでした。"
 msgid "ページツリーを読み込み中…"
 msgstr "ページツリーを読み込み中…"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "ページ送り"
+msgstr "ページ送り"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "ポート"
 msgstr "ポート"
@@ -1336,6 +1435,10 @@ msgstr "ホーム"
 #: platform/frontend/src/components/ui/ErrorBoundary.tsx
 msgid "ホームへ戻る"
 msgstr "ホームへ戻る"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "ほかのタブに文書があります。"
+msgstr "ほかのタブに文書があります。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "ポリシー"
@@ -1384,6 +1487,10 @@ msgstr "ポリシー定義"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "ポリシー登録"
 msgstr "ポリシー登録"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "まもなく失効します（状態を確認しています）"
+msgstr "まもなく失効します（状態を確認しています）"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "まもなく完全削除（残り {days} 日）"
@@ -1556,9 +1663,17 @@ msgstr "下の「属性を追加」から、利用者属性・文書属性の最
 msgid "下書き"
 msgstr "下書き"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "不明"
+msgstr "不明"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "不明（realm を読めないため最後に確かめた値）"
 msgstr "不明（realm を読めないため最後に確かめた値）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "不明な操作"
+msgstr "不明な操作"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "両方を残しました。別名の資料を作成しています。"
@@ -1580,6 +1695,7 @@ msgstr "両方を残す（別名保存）"
 msgid "並び"
 msgstr "並び"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
@@ -1601,6 +1717,10 @@ msgstr "主要ナビゲーション"
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "人の文書・報告書"
+msgstr "人の文書・報告書"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "人手補正"
 msgstr "人手補正"
@@ -1612,6 +1732,14 @@ msgstr "人手補正（図のコード化）"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "人手補正は管理者のみ実行できます"
 msgstr "人手補正は管理者のみ実行できます"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "今すぐ終了する"
+msgstr "今すぐ終了する"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "他 {moreTags} 件"
+msgstr "他 {moreTags} 件"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。"
@@ -1636,6 +1764,14 @@ msgstr "作成"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "作成する"
 msgstr "作成する"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "作成日時が古い順"
+msgstr "作成日時が古い順"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "作成日時が新しい順"
+msgstr "作成日時が新しい順"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -1736,6 +1872,14 @@ msgstr "保存容量の使用量が 80% を超えました。不要な資料を�
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
 msgstr "保存容量の使用量が 95% を超えました。上限に達すると新しい資料を作成できなくなります。"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "保存日（から）"
+msgstr "保存日（から）"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "保存日（まで）"
+msgstr "保存日（まで）"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "保持範囲は GitOps 側（Git と ArgoCD）が決めます。古い適用は Git の履歴を参照してください。"
@@ -1878,6 +2022,10 @@ msgstr "元の図"
 msgid "元の画像を表示できません。"
 msgstr "元の画像を表示できません。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "先頭 {PREVIEW_CHARS} 文字を表示しています。"
+msgstr "先頭 {PREVIEW_CHARS} 文字を表示しています。"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "入力 {inputTokens} ・出力 {outputTokens} トークン"
 msgstr "入力 {inputTokens} ・出力 {outputTokens} トークン"
@@ -1902,11 +2050,20 @@ msgstr "入力を確認してください"
 msgid "入力内容に誤りがあります。"
 msgstr "入力内容に誤りがあります。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "全 {total} 件中 {from}–{to} 件"
+msgstr "全 {total} 件中 {from}–{to} 件"
+
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "全消去"
 msgstr "全消去"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "公開"
+msgstr "公開"
+
+#: platform/frontend/src/lib/i18n/confidentiality.ts
+msgctxt "機密区分"
 msgid "公開"
 msgstr "公開"
 
@@ -2084,6 +2241,10 @@ msgstr "写像を削除 {rowNumber}"
 msgid "凡例（アイコンと形で区別・色は補助）"
 msgstr "凡例（アイコンと形で区別・色は補助）"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "出典 ↗"
+msgstr "出典 ↗"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "出典:"
 msgstr "出典:"
@@ -2091,6 +2252,10 @@ msgstr "出典:"
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "出典（クリックで文書詳細／Wikiへ）"
 msgstr "出典（クリックで文書詳細／Wikiへ）"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "出典を開く"
+msgstr "出典を開く"
 
 #: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
 msgid "分散トレース"
@@ -2174,10 +2339,12 @@ msgstr "利用者の属性で解決"
 msgid "利用者はまだ登録されていません。"
 msgstr "利用者はまだ登録されていません。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "利用者を検索できませんでした。"
 msgstr "利用者を検索できませんでした。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "利用者を検索中…"
 msgstr "利用者を検索中…"
@@ -2240,6 +2407,10 @@ msgstr "削除済みの個人資料を確認する"
 msgid "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 msgstr "削除済みの資料です。削除済みタブから復元するか、Obsidian 側のファイルを削除してください。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "前へ"
+msgstr "前へ"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "動的束縛: {bindingLabel}（{notation}）"
 msgstr "動的束縛: {bindingLabel}（{notation}）"
@@ -2273,6 +2444,10 @@ msgstr "参照のみ — 構成の変更は Git 経由（GitOps）に限りま�
 msgid "参照元は特定できませんでした。"
 msgstr "参照元は特定できませんでした。"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "収集: {name}"
+msgstr "収集: {name}"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "取り扱い"
@@ -2296,6 +2471,11 @@ msgstr "取得できない"
 msgid "取得に失敗しました。"
 msgstr "取得に失敗しました。"
 
+#: platform/frontend/src/lib/i18n/confidentiality.ts
+msgctxt "機密区分"
+msgid "取扱制限"
+msgstr "取扱制限"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "取消"
 msgstr "取消"
@@ -2303,10 +2483,6 @@ msgstr "取消"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "受信"
 msgstr "受信"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "古い段の残留"
-msgstr "古い段の残留"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "同じパスの資料が既にあります。Obsidian 側でファイル名を変えてください。"
@@ -2491,6 +2667,10 @@ msgstr "型名"
 msgid "型名（必須）"
 msgstr "型名（必須）"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "埋め込み待ち"
+msgstr "埋め込み待ち"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "基盤の利用者 {rowNumber}"
 msgstr "基盤の利用者 {rowNumber}"
@@ -2552,6 +2732,10 @@ msgstr "太い輪郭・大きい表示 = 起点"
 msgid "失効する"
 msgstr "失効する"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。"
+msgstr "失効を確認できません。端末の時計がずれている可能性があります。終えるには「今すぐ終了する」を押してください。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "失効済み"
 msgstr "失効済み"
@@ -2577,6 +2761,7 @@ msgstr "孤立文書（表示中の辺なし）"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
@@ -2607,6 +2792,10 @@ msgstr "実行日時"
 msgid "実行時に取得・次の同期から効く"
 msgstr "実行時に取得・次の同期から効く"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "実行者"
+msgstr "実行者"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "実装"
 msgstr "実装"
@@ -2614,10 +2803,6 @@ msgstr "実装"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "宣言（Git）と実効構成に {count} 件の差分があります。"
 msgstr "宣言（Git）と実効構成に {count} 件の差分があります。"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "宣言に無い購読"
-msgstr "宣言に無い購読"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "対称"
@@ -2650,6 +2835,15 @@ msgstr "対象アクション"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "対象から外す"
 msgstr "対象から外す"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "対象の資料"
+msgstr "対象の資料"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "対象の資料「{noteTitle}」を、指名した管理者 1 人が発動から 15 分間だけ閲覧できるようにします。閲覧だけで、編集・削除・共有の変更・ダウンロードはできません。"
+msgstr "対象の資料「{noteTitle}」を、指名した管理者 1 人が発動から 15 分間だけ閲覧できるようにします。閲覧だけで、編集・削除・共有の変更・ダウンロードはできません。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "対象フォルダから外す"
@@ -2790,6 +2984,8 @@ msgid "復元する"
 msgstr "復元する"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "必須"
 msgstr "必須"
@@ -2802,7 +2998,6 @@ msgstr "必須属性が未設定の場合は保存を拒否します（UC-03 例
 msgid "必須属性にする"
 msgstr "必須属性にする"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: platform/frontend/src/components/ui/notifications.tsx
 msgid "情報"
 msgstr "情報"
@@ -2818,6 +3013,7 @@ msgstr "成功"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 msgid "所有者"
 msgstr "所有者"
 
@@ -2828,6 +3024,10 @@ msgstr "所有者の写像"
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 msgid "所有者の写像（ソース側の利用者 → 基盤の利用者）"
 msgstr "所有者の写像（ソース側の利用者 → 基盤の利用者）"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "手入力"
+msgstr "手入力"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "手動同期"
@@ -2848,6 +3048,22 @@ msgstr "承認済み"
 #: knowledge/frontend/src/features/sc08-analysis/types/analysisRange.ts
 msgid "抽出"
 msgstr "抽出"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "指名された管理者"
+msgstr "指名された管理者"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "指名された資料を閲覧する"
+msgstr "指名された資料を閲覧する"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "指名できるのはシステム管理者（platform-admin）1 人だけです。管理者でない人を選ぶと発動できません。"
+msgstr "指名できるのはシステム管理者（platform-admin）1 人だけです。管理者でない人を選ぶと発動できません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "指名先がシステム管理者かを確認できませんでした。発動していません。時間をおいて再度お試しください。"
+msgstr "指名先がシステム管理者かを確認できませんでした。発動していません。時間をおいて再度お試しください。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "指定されたデータソースは、この画面で資格情報を設定する対象ではありません（無効化されているか、資格情報を使わない種別です）。"
@@ -2881,6 +3097,14 @@ msgstr "指定先を追加しました。"
 msgid "探索深さ（hops）"
 msgstr "探索深さ（hops）"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さ（hops）は 1・2・3 のいずれかです。上限を超える値は丸めずに扱いません。上の「探索深さ（hops）」から選び直してください。"
+msgstr "探索深さ（hops）は 1・2・3 のいずれかです。上限を超える値は丸めずに扱いません。上の「探索深さ（hops）」から選び直してください。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さが範囲外です"
+msgstr "探索深さが範囲外です"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "接続している端末はまだありません。"
 msgstr "接続している端末はまだありません。"
@@ -2888,10 +3112,6 @@ msgstr "接続している端末はまだありません。"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "接続している辺:"
 msgstr "接続している辺:"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "接続の不一致"
-msgstr "接続の不一致"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "接続先"
@@ -2954,6 +3174,7 @@ msgstr "提案の一覧を読み込み中…"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
@@ -3014,6 +3235,14 @@ msgstr "文書の取得に失敗しました。"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
 msgstr "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "文書の種類"
+msgstr "文書の種類"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "文書の絞り込み"
+msgstr "文書の絞り込み"
 
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "文書の詳細は表示できません。"
@@ -3086,6 +3315,10 @@ msgstr "文書詳細で確認"
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "文書詳細へ戻る"
 msgstr "文書詳細へ戻る"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "文書詳細を開く"
+msgstr "文書詳細を開く"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "断たれ得る処理"
@@ -3176,6 +3409,10 @@ msgstr "既読にできませんでした"
 msgid "日付"
 msgstr "日付"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "日時"
+msgstr "日時"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "更新"
@@ -3227,9 +3464,18 @@ msgid "更新日が新しい順"
 msgstr "更新日が新しい順"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "更新日時"
 msgstr "更新日時"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "更新日時が古い順"
+msgstr "更新日時が古い順"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "更新日時が新しい順"
+msgstr "更新日時が新しい順"
 
 #: knowledge/frontend/src/features/sc02-results/types/searchOptions.ts
 msgid "更新日時の新しい順"
@@ -3269,6 +3515,10 @@ msgstr "有効"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "有効（残り {daysLeft} 日）"
 msgstr "有効（残り {daysLeft} 日）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "有効な緊急アクセスはありません"
+msgstr "有効な緊急アクセスはありません"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "有効化"
@@ -3320,6 +3570,10 @@ msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 msgid "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
 msgstr "未登録（写像に無い利用者は予約値 {UNRESOLVED_OWNER} になります）"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "未索引"
+msgstr "未索引"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "未解決の同期競合"
 msgstr "未解決の同期競合"
@@ -3335,21 +3589,39 @@ msgid "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
 msgstr "未設定（予約値 {UNRESOLVED_DEPARTMENT} が入ります）"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "本文"
 msgstr "本文"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
+msgid "本文あり"
+msgstr "本文あり"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "本文が上限（1 MB）を超えています。分割してください。"
 msgstr "本文が上限（1 MB）を超えています。分割してください。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "本文が保管されていません。"
+msgstr "本文が保管されていません。"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "本文が大きすぎるためプレビューできません。文書詳細で確かめてください。"
+msgstr "本文が大きすぎるためプレビューできません。文書詳細で確かめてください。"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
 msgid "本文なし（原本を参照）"
 msgstr "本文なし（原本を参照）"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "本文なしで完了"
 msgstr "本文なしで完了"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
+msgid "本文のプレビュー"
+msgstr "本文のプレビュー"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "本文はこの画面では編集できません。本文を書くには Obsidian 連携を設定してください。"
@@ -3364,6 +3636,7 @@ msgid "本文へ移動"
 msgstr "本文へ移動"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
 msgid "本文を取得できませんでした。"
 msgstr "本文を取得できませんでした。"
 
@@ -3373,8 +3646,13 @@ msgstr "本文を見て解決する"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
 msgid "本文を読み込み中…"
 msgstr "本文を読み込み中…"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentBody.ts
+msgid "本文未設定"
+msgstr "本文未設定"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件"
@@ -3388,6 +3666,10 @@ msgstr "条件なし（すべてに一致）"
 msgid "条件に一致する個人資料がありません。"
 msgstr "条件に一致する個人資料がありません。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "条件に一致する文書はありません。"
+msgstr "条件に一致する文書はありません。"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件の値"
 msgstr "条件の値"
@@ -3399,6 +3681,11 @@ msgstr "条件を変えて再検索してください。"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件を外す: {conditionKey} = {conditionValue}"
 msgstr "条件を外す: {conditionKey} = {conditionValue}"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "条件を解除"
+msgstr "条件を解除"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "条件を追加"
@@ -3511,6 +3798,10 @@ msgstr "検索総数"
 msgid "検索語"
 msgstr "検索語"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "検索語や状態を変えるか、条件を解除してください。"
+msgstr "検索語や状態を変えるか、条件を解除してください。"
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "検索語を入力…"
 msgstr "検索語を入力…"
@@ -3526,10 +3817,6 @@ msgstr "検索語を短くするか、辺の型の絞り込みを緩めてくだ
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証"
 msgstr "検証"
-
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "検証不能（担当サービスへ到達できない）"
-msgstr "検証不能（担当サービスへ到達できない）"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "検証結果"
@@ -3602,6 +3889,10 @@ msgstr "機密区分"
 msgid "機密区分（ABAC属性）"
 msgstr "機密区分（ABAC属性）"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "機密区分で絞り込み"
+msgstr "機密区分で絞り込み"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
@@ -3609,6 +3900,14 @@ msgstr "機密区分の高いデータは外部 API へ送信せずセルフホ�
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "機密区分上限は必須です。"
 msgstr "機密区分上限は必須です。"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentOriginTabs.tsx
+msgid "機械の収集"
+msgstr "機械の収集"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "次へ"
+msgstr "次へ"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "次回同期"
@@ -3633,6 +3932,10 @@ msgstr "正規化済み"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "残り {days} 日"
 msgstr "残り {days} 日"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "残り {minutes} 分 {seconds} 秒（{endsAt} に自動失効）"
+msgstr "残り {minutes} 分 {seconds} 秒（{endsAt} に自動失効）"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "段は登録されていません。"
@@ -3711,6 +4014,7 @@ msgstr "無効化する"
 msgid "版"
 msgstr "版"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
@@ -3734,9 +4038,25 @@ msgstr "状態で絞り込み"
 msgid "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
 msgstr "状態や種類の絞り込みを変えると、ほかの提案が見つかることがあります。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "状態を再確認する"
+msgstr "状態を再確認する"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "現在の指定先"
 msgstr "現在の指定先"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "理由"
+msgstr "理由"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "理由は {maxLength} 文字以内で入力してください。"
+msgstr "理由は {maxLength} 文字以内で入力してください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "理由は必須です。空欄では発動できません。"
+msgstr "理由は必須です。空欄では発動できません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
@@ -3772,6 +4092,19 @@ msgstr "画面"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "画面以外"
 msgstr "画面以外"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "発動"
+msgstr "発動"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "発動する"
+msgstr "発動する"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "発動理由"
+msgstr "発動理由"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
@@ -3842,6 +4175,22 @@ msgstr "監査ログの参照先が未設定です。ツールの呼び出しと
 msgid "監査ログの参照先が未設定です。権限変更とアカウント無効化は認可基盤の管理イベントとして 記録されています。"
 msgstr "監査ログの参照先が未設定です。権限変更とアカウント無効化は認可基盤の管理イベントとして 記録されています。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを取得できませんでした。"
+msgstr "監査ログを取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを表示する"
+msgstr "監査ログを表示する"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを読み込み中…"
+msgstr "監査ログを読み込み中…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "監査ログを閉じる"
+msgstr "監査ログを閉じる"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "直近 {d} 日"
 msgstr "直近 {d} 日"
@@ -3870,6 +4219,10 @@ msgstr "矛盾なし"
 msgid "矛盾はありません。まだ保存していません。"
 msgstr "矛盾はありません。まだ保存していません。"
 
+#: knowledge/frontend/src/features/sc05-documents/types/documentSource.ts
+msgid "確定報告書"
+msgstr "確定報告書"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "確認"
 msgstr "確認"
@@ -3895,6 +4248,16 @@ msgstr "確認時刻"
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
+
+#: platform/frontend/src/lib/i18n/confidentiality.ts
+msgctxt "機密区分"
+msgid "社内限"
+msgstr "社内限"
+
+#: platform/frontend/src/lib/i18n/confidentiality.ts
+msgctxt "機密区分"
+msgid "秘"
+msgstr "秘"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 #: knowledge/frontend/src/features/sc22-secrets/routes/sc22SecretsRoute.tsx
@@ -4016,6 +4379,14 @@ msgstr "競合を記録しました。上の「同期の競合」から解決し
 msgid "管理"
 msgstr "管理"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "管理者の候補"
+msgstr "管理者の候補"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "管理者を含む他の人がこの資料に緊急アクセスを発動することはできません。発動できるのは資料の所有者本人だけです。"
+msgstr "管理者を含む他の人がこの資料に緊急アクセスを発動することはできません。発動できるのは資料の所有者本人だけです。"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 msgid "管理者設定（ABAC）"
 msgstr "管理者設定（ABAC）"
@@ -4027,6 +4398,22 @@ msgstr "範囲を指定してAI分析を依頼 →"
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "範囲指定の分析依頼・結果・出典"
 msgstr "範囲指定の分析依頼・結果・出典"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+msgid "索引"
+msgstr "索引"
+
+#: knowledge/frontend/src/features/sc05-documents/types/documentIndexStatus.ts
+msgid "索引済み"
+msgstr "索引済み"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "終了"
+msgstr "終了"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "終了（予定）"
+msgstr "終了（予定）"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
@@ -4051,6 +4438,10 @@ msgstr "結果 →"
 msgid "結果一覧"
 msgstr "結果一覧"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "絞り込み {total} 件（全 {unfilteredTotal} 件）中 {from}–{to} 件"
+msgstr "絞り込み {total} 件（全 {unfilteredTotal} 件）中 {from}–{to} 件"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "絞り込みの語を短くするか、空にしてください。"
 msgstr "絞り込みの語を短くするか、空にしてください。"
@@ -4062,6 +4453,71 @@ msgstr "絞り込みを「すべて」に戻すと他のジョブが見えます
 #: knowledge/frontend/src/lib/scope-filter/ScopeFilter.tsx
 msgid "絞り込める候補はありません。"
 msgstr "絞り込める候補はありません。"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセス"
+msgstr "緊急アクセス"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "緊急アクセス（Break-glass）"
+msgstr "緊急アクセス（Break-glass）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "緊急アクセス（Break-glass）を発動しますか？"
+msgstr "緊急アクセス（Break-glass）を発動しますか？"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセスが失効したか、所有者が終了したか、あなたが指名されていない可能性があります。開けるのは、有効な間に指名された管理者だけです。"
+msgstr "緊急アクセスが失効したか、所有者が終了したか、あなたが指名されていない可能性があります。開けるのは、有効な間に指名された管理者だけです。"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセスでこの資料を開けませんでした。"
+msgstr "緊急アクセスでこの資料を開けませんでした。"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "緊急アクセスで閲覧しています。この閲覧は 1 件ずつ監査ログに記録されます。閲覧だけができ、編集・削除・共有の変更はできません。所有者が終了するか、発動から 15 分を過ぎると開けなくなります。"
+msgstr "緊急アクセスで閲覧しています。この閲覧は 1 件ずつ監査ログに記録されます。閲覧だけができ、編集・削除・共有の変更はできません。所有者が終了するか、発動から 15 分を過ぎると開けなくなります。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスの状態を取得できませんでした。"
+msgstr "緊急アクセスの状態を取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスの状態を読み込み中…"
+msgstr "緊急アクセスの状態を読み込み中…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "緊急アクセスの監査ログ"
+msgstr "緊急アクセスの監査ログ"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "緊急アクセスの監査ログ（新しい順）"
+msgstr "緊急アクセスの監査ログ（新しい順）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "緊急アクセスの記録はありません。"
+msgstr "緊急アクセスの記録はありません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスを発動しました。"
+msgstr "緊急アクセスを発動しました。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "緊急アクセスを発動できませんでした。時間をおいて再度お試しください。"
+msgstr "緊急アクセスを発動できませんでした。時間をおいて再度お試しください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスを終了しました。"
+msgstr "緊急アクセスを終了しました。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセスを終了できませんでした。既に失効しているか、時間をおいて再度お試しください。"
+msgstr "緊急アクセスを終了できませんでした。既に失効しているか、時間をおいて再度お試しください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "緊急アクセス有効中"
+msgstr "緊急アクセス有効中"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
@@ -4075,6 +4531,14 @@ msgstr "編集フォーム"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "編集中の文書: v{version}"
 msgstr "編集中の文書: v{version}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "自分の資料 1 件について、理由を書き、システム管理者（platform-admin）を 1 人指名して発動します。指名した管理者だけが、発動から 15 分間その資料を閲覧できます（閲覧だけです）。15 分より前に終えることもできます。発動・終了・管理者の閲覧はすべて監査ログに記録されます。"
+msgstr "自分の資料 1 件について、理由を書き、システム管理者（platform-admin）を 1 人指名して発動します。指名した管理者だけが、発動から 15 分間その資料を閲覧できます（閲覧だけです）。15 分より前に終えることもできます。発動・終了・管理者の閲覧はすべて監査ログに記録されます。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "自分の資料に対する緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
+msgstr "自分の資料に対する緊急アクセスの記録が表示されます（新しい順に最大 50 件）。資料の題名と本文は記録されません。"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "自動再起動を配備していない環境では、この値を読むアプリケーションを再起動するまで反映されません。"
@@ -4092,10 +4556,6 @@ msgstr "表示: ダーク"
 msgid "表示: ライト"
 msgstr "表示: ライト"
 
-#: platform/frontend/src/components/theme/ThemeToggle.tsx
-msgid "表示テーマの切替。現在は {currentName}、押すと {upcomingName} になります"
-msgstr "表示テーマの切替。現在は {currentName}、押すと {upcomingName} になります"
-
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "表示中"
 msgstr "表示中"
@@ -4108,6 +4568,10 @@ msgstr "表示中のノードをタイトルで絞り込む"
 msgid "表示中の辺はありません（孤立文書）。"
 msgstr "表示中の辺はありません（孤立文書）。"
 
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentPagination.tsx
+msgid "表示件数"
+msgstr "表示件数"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "表示名"
 msgstr "表示名"
@@ -4115,6 +4579,22 @@ msgstr "表示名"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "表示名は必須です。"
 msgstr "表示名は必須です。"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題で検索"
+msgstr "表題で検索"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題の一部を入力"
+msgstr "表題の一部を入力"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題の昇順"
+msgstr "表題の昇順"
+
+#: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
+msgid "表題の降順"
+msgstr "表題の降順"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
@@ -4207,6 +4687,7 @@ msgstr "該当するページはありません。"
 msgid "該当するものはありません。"
 msgstr "該当するものはありません。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "該当する利用者がいません。"
 msgstr "該当する利用者がいません。"
@@ -4256,6 +4737,8 @@ msgid "説明"
 msgstr "説明"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: platform/frontend/src/app/routing/routeStates.tsx
 #: platform/frontend/src/components/ui/QueryState.tsx
 #: platform/frontend/src/lib/auth/RequireAuth.tsx
@@ -4263,7 +4746,6 @@ msgstr "説明"
 msgid "読み込み中…"
 msgstr "読み込み中…"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "警告"
 msgstr "警告"
@@ -4271,6 +4753,14 @@ msgstr "警告"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "資料が見つかりません。Obsidian 側で再同期してください。"
 msgstr "資料が見つかりません。Obsidian 側で再同期してください。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "資料が見つかりませんでした。"
+msgstr "資料が見つかりませんでした。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "資料を選んでください"
+msgstr "資料を選んでください"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "資格情報の更新 — {name}"
@@ -4435,6 +4925,11 @@ msgstr "運用ダッシュボードは利用できません。"
 msgid "運用状況は下の専用ツール（Grafana など）でも確認できます。"
 msgstr "運用状況は下の専用ツール（Grafana など）でも確認できます。"
 
+#: platform/frontend/src/lib/i18n/roles.ts
+msgctxt "ロール"
+msgid "運用者"
+msgstr "運用者"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "運用面は専用ツールで提供します。本画面はこれらへの入口です。"
 msgstr "運用面は専用ツールで提供します。本画面はこれらへの入口です。"
@@ -4463,10 +4958,6 @@ msgstr "適用履歴はありません。"
 msgid "適用日時"
 msgstr "適用日時"
 
-#: knowledge/frontend/src/features/sc11-config/types/driftView.ts
-msgid "適用漏れ（宣言にあり実効に無い）"
-msgstr "適用漏れ（宣言にあり実効に無い）"
-
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用者"
 msgstr "適用者"
@@ -4474,6 +4965,10 @@ msgstr "適用者"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用者 {appliedBy}"
 msgstr "適用者 {appliedBy}"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "選び直す"
+msgstr "選び直す"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "選択"
@@ -4498,6 +4993,7 @@ msgstr "選択した資料を復元する"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "選択してください"
 msgstr "選択してください"
 
@@ -4593,9 +5089,33 @@ msgstr "関連度"
 msgid "閲覧"
 msgstr "閲覧"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "閲覧（属性）"
+msgstr "閲覧（属性）"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
+msgid "閲覧（本文）"
+msgstr "閲覧（本文）"
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "閲覧できる Wiki ページはありません。"
 msgstr "閲覧できる Wiki ページはありません。"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+msgid "閲覧を許した管理者"
+msgstr "閲覧を許した管理者"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "閲覧を許す管理者"
+msgstr "閲覧を許す管理者"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "閲覧を許す管理者:"
+msgstr "閲覧を許す管理者:"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+msgid "閲覧を許す管理者を名前で検索する"
+msgstr "閲覧を許す管理者を名前で検索する"
 
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 msgid "閲覧権限のある Wiki ページだけが並びます。ページを選ぶと本文を表示します。"

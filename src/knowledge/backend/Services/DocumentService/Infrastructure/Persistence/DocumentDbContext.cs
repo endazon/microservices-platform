@@ -10,6 +10,9 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
 {
     public DbSet<Document> Documents => Set<Document>();
 
+    // FR-01, FR-06, ADR-0057 決定 2, [[IADR-0596]] 決定 7 (#2102): 組織文書を削除した事実（文書 ID と時刻だけ）。
+    public DbSet<DocumentDeletionMark> DocumentDeletionMarks => Set<DocumentDeletionMark>();
+
     // FR-06, UC-03: 版履歴
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
 
@@ -32,6 +35,11 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     // 🔴 **資料を指す列を持たない表である**（決定 5。理由は `SyncAuditEntry` の注記）。
     public DbSet<SyncAuditEntry> SyncAuditEntries => Set<SyncAuditEntry>();
 
+    // FR-19, UC-11, SC-19, 計画 ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動記録と監査ログ（保持 3 年）。
+    // 🔴 **閲覧の可否は発動記録の行で要求ごとに判定する**（トークンに乗せない）。どちらの表も資料の本文を持たない。
+    public DbSet<BreakGlassGrant> BreakGlassGrants => Set<BreakGlassGrant>();
+    public DbSet<BreakGlassAuditEntry> BreakGlassAuditEntries => Set<BreakGlassAuditEntry>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -41,8 +49,25 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             // `GET /documents/page` と再発行の口が `WHERE "CreatedAt" >= c AND (…) ORDER BY "CreatedAt", "Id" LIMIT n` をこれで引く
             // （述語の形は `DocumentPageQuery.AfterCursor`）。
             e.HasIndex(d => new { d.CreatedAt, d.Id });
+            // FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): 一覧のページ（更新日時の降順・同時刻は ID の降順）の索引。
+            // gRPC `ListDocuments` が `WHERE "UpdatedAt" <= c AND (…) ORDER BY "UpdatedAt" DESC, "Id" DESC LIMIT n` をこれで引く
+            // （述語の形は `DocumentListOrder.Before`。降順は索引を後ろから辿るので、昇順の索引 1 本で足りる）。
+            e.HasIndex(d => new { d.UpdatedAt, d.Id });
+            // FR-06, SC-05, [[IADR-0545]] (#1923): 一覧の表題の並べ替え（昇順・降順。同じ表題は ID）の索引。
+            // `WHERE "Title" >= t AND (…) ORDER BY "Title", "Id" LIMIT n` をこれで引く（述語の形は `DocumentListOrder.Before`）。
+            // 表題は最大 500 文字（UTF-8 で最大 2,000 バイト）で、btree の 1 項目の上限（約 2,700 バイト）に収まる。
+            e.HasIndex(d => new { d.Title, d.Id });
             e.Property(d => d.Title).HasMaxLength(500).IsRequired();
             e.Property(d => d.Status).HasMaxLength(50).IsRequired();
+            // FR-06, UC-03, [[IADR-0597]] (#2103): **版は並行トークンである**（列は既存。スキーマは変わらない）。
+            // 文書行の UPDATE / DELETE は `WHERE "Version" = @読んだ版` を伴い、読んだ後に別の保存が版を進めていれば
+            // 0 行で `DbUpdateConcurrencyException` になる。期待版の比較（読んだ時点）と保存の間の窓をここで塞ぐ。
+            // 版を進めない変更（露出トグル等）も、読んだ後に版が進んでいれば負ける（黙って上書きしない）。
+            // 409 への写像は `DocumentVersionConflict`（`Update` / `UpdateMetadata` / `Delete` / 露出トグルの口）。
+            e.Property(d => d.Version).IsConcurrencyToken();
+            // FR-02, IADR-0637 (#2150): 発行の連番も並行トークンである（版を進めない状態の変化どうしの並行も、後から保存する側が負ける）。
+            // 既存の行は 0 から始まる（migration の列の既定値）。
+            e.Property(d => d.EventSequence).IsConcurrencyToken();
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);
             e.Property(d => d.OriginalUri).HasMaxLength(2048);
             e.Property(d => d.ContentType).HasMaxLength(200);
@@ -79,6 +104,12 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .OnDelete(DeleteBehavior.Cascade);
             e.Metadata.FindNavigation(nameof(Document.Versions))!
                 .SetPropertyAccessMode(PropertyAccessMode.Field);
+        });
+
+        mb.Entity<DocumentDeletionMark>(e =>
+        {
+            e.HasKey(m => m.DocumentId);
+            e.Property(m => m.DocumentId).ValueGeneratedNever();
         });
 
         mb.Entity<DocumentVersion>(e =>
@@ -192,6 +223,33 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             e.Property(a => a.Outcome).HasMaxLength(20).IsRequired();
             e.Property(a => a.FailureReason).HasMaxLength(40);
             e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
+        });
+
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動記録。FK は張らない（`BreakGlassGrant` の注記）。
+        // 閲覧の判定は `(DocumentId, NomineeId)` で引き、保持期限の削除は `ExpiresAt` で引く。
+        mb.Entity<BreakGlassGrant>(e =>
+        {
+            e.HasKey(g => g.Id);
+            e.Property(g => g.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(g => g.NomineeId).HasMaxLength(200).IsRequired();
+            e.Property(g => g.Reason).HasMaxLength(Knowledge.Contracts.Dtos.BreakGlassPolicy.ReasonMaxLength).IsRequired();
+            e.Ignore(g => g.EndsAt);
+            e.HasIndex(g => new { g.DocumentId, g.NomineeId });
+            e.HasIndex(g => g.ExpiresAt);
+        });
+
+        // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの監査ログ。本文・題名の列を持たない。
+        mb.Entity<BreakGlassAuditEntry>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Operation).HasMaxLength(20).IsRequired();
+            e.Property(a => a.ActorId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.NomineeId).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Reason).HasMaxLength(Knowledge.Contracts.Dtos.BreakGlassPolicy.ReasonMaxLength).IsRequired();
+            e.Property(a => a.ViewTarget).HasMaxLength(20);
+            e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
+            e.HasIndex(a => a.OccurredAt);
         });
 
         // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である

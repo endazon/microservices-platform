@@ -1,8 +1,9 @@
 using ConversionService.Domain;
+using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using Wolverine;
 
 namespace ConversionService.Features.ConversionJobs.Retry;
 
@@ -20,7 +21,7 @@ internal static class RetryConversionJobEndpoint
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/{id:guid}/retry", async (Guid id, IConversionJobStore store,
-            IMessageBus bus, bool? discardCorrections, CancellationToken ct) =>
+            IConversionRetryPublisher retry, bool? discardCorrections, CancellationToken ct) =>
         {
             var job = await store.GetAsync(id, ct);
             if (job is null)
@@ -48,15 +49,29 @@ internal static class RetryConversionJobEndpoint
                 });
             }
 
-            var ev = await store.PrepareRetryAsync(id, discard, ct);
-            if (ev is null)
-                return Results.Conflict(new { error = "not_retryable", status = job.Status }); // 競合で状態が変わった等
             // 🔴 ADR-0027 / #441 E1: **辺 RawDocumentFetched の 2 つ目の発行元である。**
             // 型名が発行行に現れないため `check-event-topology.js` からは見えない
             // （IADR-0245 決定 6-2）。ここを MassTransit のまま残すと、購読側は Wolverine なので
             // **再変換は受理されたまま永久に実行されず、キュー深さのアラームも鳴らない**
             // （Wolverine が受け取って捨てるため。IADR-0245 の実測）。**辺は原子的に動かす。**
-            await bus.PublishAsync(ev);
+            //
+            // FR-12 例外フロー, ADR-0027 §決定, IADR-0609 (#2169): **queued への遷移と再発行を 1 つの確定に載せる**
+            // （Transactional Outbox）。従前は保存の後に素の発行で、間でプロセスが止まるとジョブは queued のまま
+            // 永久に処理されず、再変換も 409（失敗以外）で受け付けなかった。
+            RawDocumentFetched? ev = null;
+            await retry.CommitAsync(async c =>
+            {
+                ev = await store.PrepareRetryAsync(id, discard, c);
+                if (ev is not null)
+                    await retry.PublishRetryAsync(ev, c);
+            }, ct);
+            if (ev is null)
+            {
+                // FR-12, UC-06, #2159: 判定の後に状態が変わった（並行する再変換に負けた等）。応答の形は変えず、状態は**読み直した現在の値**を返す
+                // （要求の最初に読んだ failed を返すと、負けた側に「失敗のまま」と見せる。#2103 の版の競合が現在版を読み直すのと同じ）。
+                var current = await store.GetAsync(id, ct);
+                return Results.Conflict(new { error = "not_retryable", status = current?.Status ?? job.Status });
+            }
             return Results.Accepted($"/jobs/{id}");
         }).WithName("ConversionJobRetry")
           // NFR-09, FR-12, ADR-0109 決定 3, IADR-0128 決定 1, IADR-0465 (#1520): 再変換は管理者限定。

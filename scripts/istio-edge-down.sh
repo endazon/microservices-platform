@@ -24,6 +24,10 @@ set -euo pipefail
 . "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
 live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
 live_opt_in_require "istio-edge-down.sh"
+# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): Traefik へ戻すときも管理ツールの経路は ADMIN_EDGE=1 のときだけ置く。副作用より前に検める。
+# shellcheck source=scripts/lib/admin-edge.sh
+. "$(dirname "$0")/lib/admin-edge.sh" || exit 3
+admin_edge_validate || exit 1
 
 MSP_NS="${MSP_NS:-microservices-platform}"
 cd "$(dirname "$0")/.."
@@ -38,6 +42,8 @@ set_mesh_mtls_mode "PERMISSIVE"
 
 echo "==> [2/4] Istio エッジ資材の撤去（hostPort を空ける）"
 kubectl delete -k deploy/local/edge-istio --ignore-not-found=true || true
+# IADR-0586: 管理ツールの経路（virtualservice-admin.yaml）は overlay の外に置いたので、ここで別に消す（opt-in の有無によらない）。
+kubectl delete -f deploy/local/edge-istio/virtualservice-admin.yaml --ignore-not-found=true || true
 # SC-15 / ADR-0097 決定 2 / IADR-0432 (#1410 / #1500): 床の**経路**は msp-keycloak-edge（上で消した
 # VirtualService）の先頭 route なので、ここで一緒に消えている。
 # 🔴 **床の器（deploy/mail-relay/reset-floor）と ConfigMap reset-floor-script は消さない。**
@@ -50,7 +56,9 @@ helm uninstall istio-ingressgateway -n istio-system >/dev/null 2>&1 || true
 # 🔴 svclb の DaemonSet は **k3s の --servicelb-namespace（既定 kube-system）**に作られる。
 #   Service と同じ namespace ではない。全 namespace から名前で引く。
 for _ in $(seq 1 60); do
-  if ! kubectl get ds -A -o name 2>/dev/null | grep -q "svclb-istio-ingressgateway"; then break; fi
+  # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+  #   grep は -q を付けずに最後まで読ませる（出力は捨てる）。
+  if ! kubectl get ds -A -o name 2>/dev/null | grep "svclb-istio-ingressgateway" >/dev/null; then break; fi
   sleep 2
 done
 
@@ -60,9 +68,8 @@ kubectl apply -k deploy/local/edge
 kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
 kubectl -n kube-system rollout restart deploy/coredns
 kubectl -n kube-system rollout status deploy/coredns --timeout=120s
-if kubectl get namespace argocd >/dev/null 2>&1; then
-  kubectl apply -f deploy/local/edge/argocd-ingress.yaml
-fi
+# IADR-0586: 管理ツールの経路は ADMIN_EDGE=1 のときだけ置き、それ以外では消す（argocd は ns が在るときだけ扱う）。
+admin_edge_traefik
 
 echo "==> [4/4] Traefik Service が 80/443/50000 を取り戻すのを待つ"
 # helm-controller の reconcile は非同期（IADR-0258）。**observable な結果**（Service のポート）を見る。

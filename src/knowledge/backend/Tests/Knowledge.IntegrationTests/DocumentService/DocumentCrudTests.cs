@@ -6,6 +6,7 @@ using System.Net.Http.Json;
 namespace Knowledge.IntegrationTests.DocumentService;
 
 // FR-06, UC-03: DocumentService CRUD 統合テスト（実 PostgreSQL）
+// #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、更新でも同値を同送する（SC-05 の形。属性は全置換）。
 [Trait("Category", "Integration")]
 public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
@@ -49,7 +50,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
             title = "統合テスト文書",
             originalUri = "https://example.com/doc.pdf",
             contentType = "application/pdf",
-            attributes = new { confidentiality = "internal", department = "engineering" },
+            attributes = new { confidentiality = "internal", doc_scope = "organization", department = "engineering" },
             tags = new[] { "test", "integration" }
         };
 
@@ -74,8 +75,8 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     public async Task ListDocuments_ReturnsAll()
     {
         RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
-        await _client.PostAsJsonAsync("/documents", new { title = "文書 A", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
-        await _client.PostAsJsonAsync("/documents", new { title = "文書 B", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+        await _client.PostAsJsonAsync("/documents", new { title = "文書 A", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+        await _client.PostAsJsonAsync("/documents", new { title = "文書 B", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
 
         var resp = await _client.GetAsync("/documents", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -92,11 +93,11 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     {
         RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres, RequiredServices.Broker);
         var createResp = await _client.PostAsJsonAsync("/documents",
-            new { title = "元タイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+            new { title = "元タイトル", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         var doc = await createResp.Content.ReadFromJsonAsync<DocumentResponse>(TestContext.Current.CancellationToken);
 
         var updateResp = await _client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "新しいタイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+            new { title = "新しいタイトル", attributes = new { confidentiality = "internal", doc_scope = "organization" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         updateResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var getResp = await _client.GetAsync($"/documents/{doc.Id}", TestContext.Current.CancellationToken);

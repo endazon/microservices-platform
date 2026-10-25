@@ -1,5 +1,3 @@
-using System.Net;
-using System.Text;
 using AwesomeAssertions;
 using Grpc.Core;
 using RetrievalService.Infrastructure.ExternalServices;
@@ -8,7 +6,8 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 
 // T-P1-06 —— FR-03, FR-05, ADR-0013, ADR-0016, ADR-0029, ADR-0075, IADR-0256, IADR-0379, IADR-0397 (#1255):
-// クエリ埋め込みの gRPC 実装が、REST 実装と**同じ戻り**を返し、**輸送の失敗では例外を上げる**ことを固定する。
+// クエリ埋め込みの gRPC 実装が戻りを写し、**輸送の失敗では例外を上げる**ことを固定する。
+// ［2026-10-10 / #1255］[[IADR-0533]]: REST 実装（`LlmGatewayEmbeddingService`）を撤去したので、REST との同値の表明は外した。
 //
 // 🔴 ここが本 PR で最も壊れやすい点である。gRPC の `RpcException` を握り潰して `[]` を返すと、
 // HybridSearchService は「意味検索の系統が使えない」と読んで 0 件を返す —— **ゲートウェイの故障が
@@ -19,7 +18,7 @@ namespace RetrievalService.Tests.Infrastructure.ExternalServices;
 [Trait("TestKind", "Unit")]
 public class LlmGatewayGrpcEmbeddingServiceTests
 {
-    // REST 実装と同じ入力・同じゲートウェイ応答で比較するための応答（EmbeddingEndpointTests と同じ形）。
+    // ゲートウェイの応答（EmbeddingEndpointTests と同じ形）。
     private static Pb.EmbedResponse GatewayResponse(bool embedded, params float[] vector)
     {
         var resp = new Pb.EmbedResponse
@@ -58,30 +57,6 @@ public class LlmGatewayGrpcEmbeddingServiceTests
         var vector = await service.EmbedAsync("問い", TestContext.Current.CancellationToken);
 
         vector.Should().BeEmpty();
-    }
-
-    // 陽性対照つき同値: REST 実装と gRPC 実装が**同じゲートウェイ応答**に対して同じ戻りを返す。
-    // REST 側は同じ内容の JSON をスタブハンドラで返す（項目名のずれもここで捕まる）。
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task Rest_と_grpc_は同じ応答に同じ戻りを返す(bool embedded)
-    {
-        var vector = embedded ? new[] { 0.5f, 0.25f } : [];
-        var grpc = await new LlmGatewayGrpcEmbeddingService(new FakeClient(GatewayResponse(embedded, vector)))
-            .EmbedAsync("問い", TestContext.Current.CancellationToken);
-
-        var json = $$"""
-            {"vector":[{{string.Join(",", vector.Select(v => v.ToString("R")))}}],
-             "dimensions":{{vector.Length}},"model":"voyage-3.5",
-             "collection":"knowledge_chunks_voyage_3_5","embedded":{{(embedded ? "true" : "false")}},
-             "endpoint":"voyage-managed","routingReason":"機密区分 Public / 用途 Query","retryable":false}
-            """;
-        var rest = await new LlmGatewayEmbeddingService(
-                new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("http://llm-gateway") })
-            .EmbedAsync("問い", TestContext.Current.CancellationToken);
-
-        grpc.Should().Equal(rest);
     }
 
     // 🔴 T-P1-06 の本丸: 輸送の不達（UNAVAILABLE）は**例外のまま上がる**。空ベクトルへ縮退しない。
@@ -176,28 +151,6 @@ public class LlmGatewayGrpcEmbeddingServiceTests
         vector.Should().BeEmpty();
     }
 
-    // REST 実装と gRPC 実装が**同じ判定**を通ることを、同じ食い違いで固定する
-    // （輸送ごとに照合が分かれると、片方の経路だけが守る食い違いが起こる）。
-    [Fact]
-    public async Task Rest_と_grpc_はコレクションの食い違いに同じ答えを返す()
-    {
-        var target = new QueryEmbeddingTarget("knowledge_chunks_voyage_3_5");
-        var grpc = await new LlmGatewayGrpcEmbeddingService(
-                new FakeClient(GatewayResponseFrom("knowledge_chunks_ruri_v3", "selfhosted-ruri", 0.5f, 0.25f)), target)
-            .EmbedAsync("問い", TestContext.Current.CancellationToken);
-
-        const string json = """
-            {"vector":[0.5,0.25],"dimensions":2,"model":"ruri-v3",
-             "collection":"knowledge_chunks_ruri_v3","embedded":true,
-             "endpoint":"selfhosted-ruri","routingReason":"機密区分 Public / 用途 Query","retryable":false}
-            """;
-        var rest = await new LlmGatewayEmbeddingService(
-                new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("http://llm-gateway") }, target)
-            .EmbedAsync("問い", TestContext.Current.CancellationToken);
-
-        grpc.Should().BeEmpty();
-        rest.Should().Equal(grpc);
-    }
 
     // 判定そのもの（純関数）。**空は「情報が無い」であって「不一致」ではない。**
     [Theory]
@@ -226,15 +179,6 @@ public class LlmGatewayGrpcEmbeddingServiceTests
             Pb.EmbedRequest request, CallOptions options) => Fake.ThrowingCall<Pb.EmbedResponse>(exception);
     }
 
-    private sealed class StubHandler(string json) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(json, Encoding.UTF8, "application/json"),
-            });
-    }
 }
 
 // 生成クライアントの偽物が返す AsyncUnaryCall を組む小道具（呼び出し元 2 サービスで同じ形が要る）。

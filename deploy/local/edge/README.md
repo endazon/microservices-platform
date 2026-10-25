@@ -21,10 +21,10 @@
 | ファイル | 役割 |
 | --- | --- |
 | `traefik-entrypoint.yaml` | k3s Traefik に追加 entrypoint `admin:50000` を定義（`HelmChartConfig`） |
-| `platform-frontend-ingress.yaml` | 80/443（web/websecure）: `/bff`→bff-service、catch-all→frontend-service |
-| `admin-ingress-infra.yaml` | 50000（admin）: grafana/headlamp/vault/qdrant をホスト名ベースで公開（platform-infra） |
-| `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)） |
-| `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時のみスクリプトが条件付き apply） |
+| `platform-frontend-ingress.yaml` | 80/443（web/websecure）: `/bff`→bff-service、`/mcp`（Exact）・`/mcp/`（Prefix）→mcp-service（外部 AI エージェントの入口。#2045）、catch-all→frontend-service |
+| `admin-ingress-infra.yaml` | 50000（admin）: grafana/headlamp/vault/qdrant をホスト名ベースで公開（platform-infra）。**`ADMIN_EDGE=1` のときだけ当たる**（下記「管理ツールへの入り方」） |
+| `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)）。**`ADMIN_EDGE=1` のときだけ** |
+| `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時、かつ **`ADMIN_EDGE=1` のときだけ**スクリプトが apply） |
 | `tls/cert-manager-issuers.yaml` | エッジ TLS の CA（`ClusterIssuer(selfSigned)` → ルート CA `Certificate` → `ClusterIssuer(ca)`。IADR-0206） |
 | `tls/edge-certificate.yaml` | 葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`。IADR-0206） |
 | `tls/kustomization.yaml` | 上 2 つ。**親 kustomization には含めない** —— cert-manager の CRD が入る前に apply すると overlay 全体が落ちるため、スクリプトが「導入 → CRD Established 待ち → apply」の順で当てる |
@@ -70,23 +70,58 @@ Rancher Desktop は k3d の `-p ...@loadbalancer` を使わず、内蔵 k3s の 
 
 ```sh
 kubectl apply -k deploy/local/edge
-# argocd を併用しているなら:
-kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argocd-ingress.yaml
+# 管理ツールの経路は既定で置かない（下記「管理ツールへの入り方」）。置くのは明示の opt-in のときだけ:
+#   kubectl apply -f deploy/local/edge/admin-ingress-infra.yaml -f deploy/local/edge/admin-ingress-wiki.yaml
+#   kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argocd-ingress.yaml
 ```
 
 ## アクセス
 
-- **platform フロント**: `https://localhost/`（SPA）・`https://localhost/bff/...`（BFF）。
+- **platform フロント**: `https://localhost/`（SPA）・`https://localhost/bff/...`（BFF）。外部 AI エージェントの MCP は `https://localhost/mcp`（audience が `mcp-server` のトークンが要る。SC-12 で登録したクライアント）。
   **cert-manager が発行する `edge-tls`** で終端する（IADR-0206・#779）。ルート CA を信頼ストアへ入れるまで
   ブラウザ警告は出るが、**CA を渡せば検証は通る**（下記「エッジ TLS」）。
   **`http://localhost/`（80）は https へ恒久リダイレクトする**（IADR-0220・#841。平文は残さない）。
-- **管理ツール（50000・ホスト名ベース）**:
+- **管理ツール（50000・ホスト名ベース）**: 🔴 **既定では経路を置かない**（50000 は 404 / Istio のエッジは 403）。
+  下の URL は **`ADMIN_EDGE=1` を明示したときだけ**使える。既定の入り方は次節「管理ツールへの入り方」の port-forward。
   - `https://grafana.localhost:50000`（OBSERVABILITY=1）
   - `https://headlamp.localhost:50000`（HEADLAMP=1）
   - `https://vault.localhost:50000`（VAULT=1）
   - `https://qdrant.localhost:50000`（dashboard は `/dashboard`。**SSO 非対応＝認証なし**・閉域前提）
   - `https://argocd.localhost:50000`（ARGOCD=1。argocd-server の `server.insecure` は ArgoCD OIDC 実装 #353 で設定）
   - `https://wiki.localhost:50000`（Wiki.js。Keycloak OIDC＝IADR-0095。管理UI 設定は [wiki-oidc/README](../wiki-oidc/README.md)）
+
+### 管理ツールへの入り方（既定は port-forward。IADR-0586）
+
+管理ツールの集約入口（50000）には、**既定で経路を置かない**（多層防御の強化。GHSA-j4qv-2w99-xg5p）。
+`LOCALEDGE=1` の起動器（`k8s-local-up.sh`・`istio-edge-up.sh`・`istio-edge-down.sh`）は、`ADMIN_EDGE=1` が無ければ
+6 host の経路を**消す**（以前の実行で置いた経路も、再実行で閉じる）。入口（50000 の listener）とポートの公開は残る。
+
+**既定（推奨）: 各ツールへ `kubectl port-forward` で入る。** kube の資格情報（port-forward の権限）を持つ人だけが入れる。
+
+```sh
+kubectl -n platform-infra port-forward svc/grafana 3000:3000            # → http://localhost:3000（local admin でログイン。下記）
+kubectl -n platform-infra port-forward svc/headlamp 4466:80             # → http://localhost:4466（SA トークン。realm にも登録済み）
+kubectl -n platform-infra port-forward svc/vault 8200:8200              # → http://localhost:8200（root トークン。CLI の OIDC は localhost:8250）
+kubectl -n platform-infra port-forward svc/qdrant 6333:6333             # → http://localhost:6333/dashboard
+kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000    # → http://localhost:3300（realm に登録済み。Site URL は wiki-oidc/README）
+kubectl -n argocd port-forward svc/argocd-server 8083:80                # → http://localhost:8083（realm に登録済み）
+```
+
+- Grafana は `root_url` が 50000 の URL に固定されているため、port-forward では SSO が完了しない。local admin（break-glass）で入る
+  （[observability/README](../observability/README.md)）。Keycloak の管理（Admin REST）は下記「Keycloak の管理コンソール」と同じ port-forward。
+
+**明示の opt-in: 従来どおり 50000 の URL（SSO つき）で使う。** 再実行のたびに付ける（付けない再実行は経路を消す）:
+
+```sh
+ADMIN_EDGE=1 LOCALEDGE=1 bash scripts/k8s-local-up.sh --live            # Istio のエッジなら ISTIO=1 も（istio-edge-up.sh へ渡る）
+```
+
+- 値は `1`（置く）・`0` か未指定（置かない。既定）だけを受け、それ以外は**クラスタに触る前に止まる**。
+- opt-in で開けた入口は**認証なしの Qdrant を含む**。ホストの公開範囲（k3d は loopback 固定。Rancher Desktop は内蔵 LB の公開設定）を
+  確かめてから使い、用が済んだら `ADMIN_EDGE` なしで再実行して閉じる。
+- 送信元のアドレスで絞る形（許可リスト）は採らない。k3s の ServiceLB・k3d のロードバランサ・Rancher Desktop の転送を経ると、
+  エッジに見える送信元は同じ内側のアドレスになり、区別できないためである（比較は IADR-0586）。
+- 閉じていることは `scripts/check-stack-ready.js` の G4c がエッジ越しに測る（CI の integration-stack）。
 
 ### admin entrypoint (50000) も TLS 終端である（IADR-0220・#841）
 
@@ -106,8 +141,10 @@ redirectUris は https へ揃えてある**（realm・`values-local.yaml`・`gra
 
 ### エッジ TLS（cert-manager・IADR-0206・#779）
 
-`LOCALEDGE=1` が cert-manager を導入し、`ClusterIssuer(selfSigned)` → ルート CA → `ClusterIssuer(ca)` の
+`LOCALEDGE=1` が `ClusterIssuer(selfSigned)` → ルート CA → `ClusterIssuer(ca)` の
 **2 段**で葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`）を発行する。
+（［2026-10-23 / IADR-0591］cert-manager 自体は基盤のサーバ証明書のために**既定で** `[4/7]` が入れる。LOCALEDGE の段は同じ導入を
+呼び直さない。基盤の CA は `platform-infra-root-ca` でエッジの CA とは別である —— `deploy/local/README.md`「基盤との通信の TLS」。）
 **2 段にするのは、ルート CA を Secret として安定させるため**である —— これを apiserver の `--oidc-ca-file`（#781）と
 backend の信頼ストア（#780）へ渡す。Traefik 既定の自己署名は Secret 化されず再起動ごとに変わるので使えない。
 
@@ -136,6 +173,31 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
   hosts に追記するか、ワイルドカード DNS を使う:
   - hosts（`C:\Windows\System32\drivers\etc\hosts` / `/etc/hosts`）: `127.0.0.1 grafana.localhost argocd.localhost vault.localhost headlamp.localhost qdrant.localhost`
   - もしくは `grafana.127.0.0.1.nip.io:50000` 等の `*.nip.io` / `*.sslip.io`（hosts 編集不要・ワイルドカード解決）。
+
+## Keycloak の管理コンソール（エッジに出さない。IADR-0575）
+
+エッジ（Traefik の `keycloak-edge-admin-deny`・Istio の `msp-keycloak-edge` の先頭の route・chart の `keycloak-master-realm-deny`）は、
+`keycloak.localhost` の **`/admin` と `/realms/master` を 403 で拒む**。利用者が使う realm の経路（`/realms/platform/...` のログイン・
+トークン・アカウントコンソール、`/resources/...`）はこれまでどおり通る（`scripts/k8s-local-up.test.js` の模型と
+`node scripts/check-stack-ready.js --live` の G4b が固定する）。
+
+管理者はエッジを通らず、**port-forward 越しの Admin REST** か **Pod の中の `kcadm.sh`** で操作する:
+
+```bash
+kubectl -n platform-infra port-forward svc/keycloak 8080:8080
+# → master realm の管理者のトークンを http://localhost:8080/realms/master/protocol/openid-connect/token で取り、
+#   http://localhost:8080/admin/realms/<realm>/... を呼ぶ（資格情報は Secret platform-infra/keycloak-admin。端末に出さない）。
+#   形は docs/operations/paired-secret-rotation-runbook.md の手順 1（port-forward と curl）と同じ。
+```
+
+- 🔴 **管理コンソール（ブラウザの画面）はエッジからは開けない。** 画面は `KC_HOSTNAME`（エッジ）の URL へ誘導されるため、
+  port-forward で `http://localhost:8080/admin/` を開いても、ログインの途中でエッジ（拒否）へ飛ぶ。`KC_HOSTNAME_ADMIN` で
+  画面だけを別の URL に出す形は、Admin REST のトークンの発行者を変えて in-cluster の Admin REST（realm の後追い・各サービス）を
+  拒ませ得るので採らない（IADR-0575）。画面が要る作業は、Admin REST か kcadm.sh の手順に置き換える。
+- CLI は Pod の中の `kcadm.sh` を使う（`kubectl -n platform-infra exec deploy/keycloak -- /opt/keycloak/bin/kcadm.sh …`。Pod の中から `http://localhost:8080` へ繋ぐ。
+  資格情報は Pod の env から読み、端末に出さない。`docs/operations/paired-secret-rotation-runbook.md` の手順と同じ形）。
+- realm の後追い（`deploy/local/keycloak-setup/reconcile-realm.sh`）と各サービスの Admin REST は in-cluster の
+  `http://keycloak:8080` を使うので、エッジの拒否の影響を受けない。
 
 ## OIDC（集約後 URL）
 
@@ -177,8 +239,8 @@ kubectl -n microservices-platform delete secret edge-tls
 kubectl delete -k deploy/local/edge
 kubectl -n kube-system delete helmchartconfig traefik   # admin:50000 を撤去（Traefik が既定 values で再適用される）
 
-# cert-manager 本体まで戻すなら（CRD・webhook・Deployment を撤去する。他の用途で使っていないことを確認してから）
-kubectl delete -f "https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml"
+# cert-manager 本体まで戻すなら（CRD・webhook・Deployment を撤去する。🔴 IADR-0591 以後は基盤のサーバ証明書が使うので、既定の構成では消さない）
+kubectl delete -k deploy/local/edge/cert-manager   # 版の URL ＋ 内側のイメージの digest（入れたときと同じ定義）
 ```
 
 > **`kubectl delete -k deploy/local/edge` だけでは TLS 資産が残る。**

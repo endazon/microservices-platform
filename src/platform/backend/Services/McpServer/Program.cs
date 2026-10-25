@@ -58,29 +58,19 @@ builder.Services.AddScoped<IValidator<RegisterMcpClientRequest>, RegisterMcpClie
 // **登録者が持つ集合の部分集合**でなければならず、その判定は後段（ここ）が行う。
 // 登録者の属性の正は認可サービスであり、身元の口（/bff/auth/me）へは配らない（同 決定 4）。
 //
-// 既定は 8080 とする（compose も k8s も 8080 で上書きしている。コード既定の :5005 は古く、
-// 新規に口を開く側で写すと配備の上書き漏れが「名前解決は通るがポートが無い」形で沈黙する）。
-builder.Services.AddHttpClient(
-    AuthorizationServiceRegistrarAttributes.HttpClientName,
-    c => c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
-        ?? "http://authorization-service:8080"));
-// 登録者の主体識別子を読むために要る（REST 実装は加えて Authorization を後段へ転送する）。
-builder.Services.AddHttpContextAccessor();
-
-// FR-16, FR-05, UC-09, SC-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5,
-// IADR-0401 決定 2・4・5 (#1255): 登録者の割当可能属性の輸送。**並走中の正は REST である。**
-// `Services:AuthorizationServiceGrpc`（h2c のアドレス）が構成されたときだけ gRPC 実装を使う。
+// FR-16, FR-05, UC-09, SC-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4,
+// IADR-0401 決定 2・4・5, [[IADR-0533]] (#1255): 登録者の割当可能属性の輸送は **east-west gRPC だけである**
+// （［2026-10-10］REST の `AuthorizationServiceRegistrarAttributes`〔`/authz/users` ＋ `/authz/scope`。利用者トークンを転送〕は撤去した）。
+// `Services:AuthorizationServiceGrpc` が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、
+// 「引けなかった」（Unavailable）へ倒れる —— 無人の登録は検証できないものとして拒まれる（緩む向きには倒れない）。
 //
-// 🔴 **gRPC 実装は利用者トークンを転送しない。** 代わりに呼び出し先の読み口を
+// 🔴 **利用者トークンは転送しない。** 代わりに呼び出し先の読み口を
 // 「この 1 人の属性は何か」へ狭めてある（`UserDirectory/GetUserAttributes`）——
 // 列挙も書き込みも s2s の面に無いので、SC-12 を触れない主体が名簿を引ける経路はできない。
-// 機密区分の読み方（`RegistrarScopeReading`）は**両実装で同じ 1 つ**である（IADR-0384 決定 1）。
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddUserDirectoryGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[AuthzScopeGrpcClient.AddressKey]))
-    builder.Services.AddScoped<IRegistrarAttributeResolver, GrpcRegistrarAttributes>();
-else
-    builder.Services.AddScoped<IRegistrarAttributeResolver, AuthorizationServiceRegistrarAttributes>();
+builder.Services.AddScoped<IRegistrarAttributeResolver, GrpcRegistrarAttributes>();
 
 // 🔴 FR-16, SC-12, 計画 ADR-0123 決定 2・3, [[IADR-0516]] (#1786): SC-12 を IdP への入口にする書き込み口。
 // 無人の登録・属性の差し替えは、検証の後に Keycloak へ機密クライアントとサービスアカウントの属性を書いてから登録簿へ書く。
@@ -102,9 +92,9 @@ builder.Services.AddHostedService<McpServer.Features.McpClients.IdpReconciliatio
 // FR-16, ADR-0024: 宣言的公開構成・自己申告の集約・実効ツール一覧
 builder.Services.AddSingleton<ToolPublicationConfigLoader>();
 builder.Services.AddSingleton<ToolCatalog>();
-// FR-16, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0462（2026-09-26 追記 / #1515, #1255 経路 ④-a）:
-// 申告の収集は宛先ごとに輸送を選ぶ。**並走中の正は REST** —— `Mcp:GrpcServices` にアドレスが在る宛先だけが
-// gRPC で収集される。gRPC の収集器と s2s トークンの発行側は、その構成が在るときだけ登録する。
+// FR-16, NFR-16, ADR-0029, ADR-0075, IADR-0462（#1515, #1255 経路 ④-a）, [[IADR-0533]] 決定 3 (#1517):
+// 申告の収集は gRPC だけで行う（［2026-10-10］REST `GET /internal/mcp-tools` の収集は撤去した）。
+// 宛先は `Mcp:Services`（値は h2c のアドレス）。旧キー `Mcp:GrpcServices` が残っていれば起動を止める。
 builder.Services.AddMcpToolDeclarationSources(builder.Configuration);
 builder.Services.AddHostedService<ToolCatalogRefresher>();
 
@@ -112,7 +102,7 @@ builder.Services.AddHostedService<ToolCatalogRefresher>();
 builder.Services.AddSingleton<ServiceAccountDocumentFilter>();
 builder.Services.AddSingleton<EgressPolicy>();
 // FR-16, NFR-16, ADR-0117 決定 1・4, IADR-0462（2026-09-27 追記 / #1516, #1255 経路 ④-b）: ツールの実行は gRPC で
-// **申告したサービス**へ送る（宛先 = `Mcp:GrpcServices:<サービス名>`。申告の中身の URL は使わない）。実行口の無い宛先は fail-closed。
+// **申告したサービス**へ送る（宛先 = `Mcp:Services:<サービス名>`。申告の中身の URL は使わない）。実行口の無い宛先は fail-closed。
 // s2s の発行側は上の AddMcpToolDeclarationSources が登録するので、その後に呼ぶ。
 builder.Services.AddMcpToolInvoker();
 builder.Services.AddScoped<McpSubjectResolver>();
@@ -150,10 +140,8 @@ var app = builder.Build();
 app.Services.GetRequiredService<ToolPublicationConfigLoader>().Load();
 
 // 🔴 FR-16, NFR-16, IADR-0462（2026-09-26 追記 / #1515）: 申告の収集器も**ここで 1 度組む**。
-// `ToolDeclarationSource` は「`Mcp:GrpcServices` が構成されているのに gRPC の収集器が無い」登録の誤りを
-// コンストラクタで落とすが、初めて組まれるのは ToolCatalogRefresher の中であり、そこでの例外は
-// 「収集の一時失敗」として次の周期へ持ち越される（ホストは止まらず、Error ログだけが続く）。
-// 公開構成の検証と同じ理由で、要求を受ける前に組んで落とす。
+// 初めて組まれるのは ToolCatalogRefresher の中であり、そこでの例外は「収集の一時失敗」として次の周期へ
+// 持ち越される（ホストは止まらず、Error ログだけが続く）。公開構成の検証と同じ理由で、要求を受ける前に組んで落とす。
 using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>();
 // ［2026-09-27 / #1516］ツールの実行器も同じ理由でここで 1 度組む（宛先が在るのに s2s の発行側が無い登録の誤りを、

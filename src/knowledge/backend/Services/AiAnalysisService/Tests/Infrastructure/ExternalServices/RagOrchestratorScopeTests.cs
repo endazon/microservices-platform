@@ -14,7 +14,7 @@ public class RagOrchestratorScopeTests
     [Fact]
     public async Task AskAsync_AuthzHttpFailure_DegradesToEmptyAnswer()
     {
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new ThrowingHttpClientFactory(new HttpRequestException("connection refused")));
 
         AiAnswerDto? answer = null;
@@ -29,7 +29,7 @@ public class RagOrchestratorScopeTests
     [Fact]
     public async Task AskAsync_AuthzTimeout_DegradesToEmptyAnswer()
     {
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new ThrowingHttpClientFactory(new TaskCanceledException("timeout")));
 
         AiAnswerDto? answer = null;
@@ -46,7 +46,7 @@ public class RagOrchestratorScopeTests
     [Fact]
     public async Task AskStreamAsync_Denied_EmitsNeutralMessageBeforeDone()
     {
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new ThrowingHttpClientFactory(new HttpRequestException("connection refused")));
 
         var events = new List<AskEvent>();

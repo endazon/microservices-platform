@@ -49,6 +49,11 @@ public sealed class LlmCompletionMetrics
     // ★ upstream_error に混ぜない —— 混ぜると「回復した呼び出し」が呼び出し先障害の率へ入り、
     //   upstream_error 率 > 10%（critical）のアラート方針が誤発火する。
     public const string ResultFallback = "fallback";
+    // FR-10, IADR-0601 決定 3 (#2116): 逐次応答を**呼び出し側が取り消した**（停止・切断）。送信は成立していた。
+    // ★ upstream_error に混ぜない —— 利用者の停止が呼び出し先障害の率へ入り、upstream_error 率のアラートが誤発火する。
+    // ★ sent にも混ぜない —— sent は「応答を受け取り切った」の分母（拒否率・出力分布）である。
+    // 応答の FailureKind ではない（取り消した呼び出し側へ返す応答は無い）ので共有契約には置かない。
+    public const string ResultCancelled = "cancelled";
 
     // 未知値の集約先と「該当なし」。
     public const string ValueOther = "other";

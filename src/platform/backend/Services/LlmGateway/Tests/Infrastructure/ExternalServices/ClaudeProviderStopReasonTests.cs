@@ -1,11 +1,7 @@
-using System.Net;
-using System.Text;
-using Anthropic.SDK;
 using AwesomeAssertions;
 using LlmGateway.Infrastructure.ExternalServices;
 using LlmGateway.Domain.Ports;
 using Platform.Shared.Contracts.Dtos;
-using Microsoft.Extensions.Configuration;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
@@ -16,11 +12,9 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 [Trait("TestKind", "Unit")]
 public class ClaudeProviderStopReasonTests
 {
+    // ［2026-10-17 / #1749・IADR-0562］公式 SDK の上で同じ応答を与える（生成点は本番と同じ AnthropicClientFactory）。
     private static ClaudeProvider Provider(HttpMessageHandler handler) =>
-        new(new AnthropicClient(new APIAuthentication("test-key"), new HttpClient(handler)),
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["Llm:Model"] = "claude-opus-5-5" })
-                .Build());
+        TestClaudeProviders.Create(handler, new Dictionary<string, string?> { ["Llm:Model"] = "claude-opus-5-5" });
 
     // Anthropic Messages API の応答 JSON（必要部分）。content は 0 個以上の text ブロック。
     private static string MessageJson(string stopReason, params string[] texts)
@@ -44,7 +38,7 @@ public class ClaudeProviderStopReasonTests
     [Fact]
     public async Task CompleteAsync_WhenRefusalWithoutBody_ReportsRefusalStopReason()
     {
-        var provider = Provider(new StubHandler(MessageJson("refusal")));
+        var provider = Provider(new StubAnthropicHandler(MessageJson("refusal")));
 
         var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken);
 
@@ -58,7 +52,7 @@ public class ClaudeProviderStopReasonTests
     [Fact]
     public async Task CompleteAsync_WhenRefusalWithPartialBody_DiscardsBody()
     {
-        var provider = Provider(new StubHandler(MessageJson("refusal", "途中まで書きかけ")));
+        var provider = Provider(new StubAnthropicHandler(MessageJson("refusal", "途中まで書きかけ")));
 
         var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken);
 
@@ -72,7 +66,7 @@ public class ClaudeProviderStopReasonTests
     [Fact]
     public async Task CompleteAsync_WhenMaxTokens_IsDistinguishableFromRefusal()
     {
-        var provider = Provider(new StubHandler(MessageJson("max_tokens")));
+        var provider = Provider(new StubAnthropicHandler(MessageJson("max_tokens")));
 
         var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"), TestContext.Current.CancellationToken);
 
@@ -85,7 +79,7 @@ public class ClaudeProviderStopReasonTests
     [Fact]
     public async Task CompleteAsync_WhenMaxTokens_KeepsTruncatedBody()
     {
-        var provider = Provider(new StubHandler(MessageJson("max_tokens", "途中まで")));
+        var provider = Provider(new StubAnthropicHandler(MessageJson("max_tokens", "途中まで")));
 
         var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"), TestContext.Current.CancellationToken);
 
@@ -97,7 +91,7 @@ public class ClaudeProviderStopReasonTests
     [Fact]
     public async Task CompleteAsync_WhenEndTurn_ReturnsBodyAndStopReason()
     {
-        var provider = Provider(new StubHandler(MessageJson("end_turn", "回答本文")));
+        var provider = Provider(new StubAnthropicHandler(MessageJson("end_turn", "回答本文")));
 
         var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
@@ -112,7 +106,7 @@ public class ClaudeProviderStopReasonTests
     [Fact]
     public async Task CompleteAsync_WhenUnknownStopReason_PassesItThrough()
     {
-        var provider = Provider(new StubHandler(MessageJson("some_future_reason", "本文")));
+        var provider = Provider(new StubAnthropicHandler(MessageJson("some_future_reason", "本文")));
 
         var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
@@ -140,7 +134,7 @@ public class ClaudeProviderStopReasonTests
 
 
         """;
-        var provider = Provider(new StubHandler(sse, "text/event-stream"));
+        var provider = Provider(new StubAnthropicHandler(sse, "text/event-stream"));
 
         var chunks = new List<CompletionChunk>();
         await foreach (var chunk in provider.StreamAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken))
@@ -169,7 +163,7 @@ public class ClaudeProviderStopReasonTests
 
 
         """;
-        var provider = Provider(new StubHandler(sse, "text/event-stream"));
+        var provider = Provider(new StubAnthropicHandler(sse, "text/event-stream"));
 
         var chunks = new List<CompletionChunk>();
         await foreach (var chunk in provider.StreamAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken))
@@ -180,15 +174,15 @@ public class ClaudeProviderStopReasonTests
         done.StopReason.Should().Be(CompletionStopReasons.EndTurn);
         done.InputTokens.Should().Be(11);
         done.OutputTokens.Should().Be(22);
-    }
 
-    // Anthropic への実送信を伴わないよう、固定応答を返すスタブハンドラ。
-    private sealed class StubHandler(string body, string mediaType = "application/json") : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, mediaType)
-            });
+        // FR-10, IADR-0601 決定 1 (#2116): 判明した時点の累計を経過報告（本文なし・Done=false）で返す。
+        // message_start の入力トークンは本文より前に届く —— 上流が本文の途中で切れても入力分を計上できる。
+        var progress = chunks.Where(c => !c.Done && c.TextDelta.Length == 0).ToList();
+        progress.Should().HaveCount(2);
+        progress[0].InputTokens.Should().Be(11);
+        progress[0].OutputTokens.Should().Be(0);
+        chunks.IndexOf(progress[0]).Should().BeLessThan(chunks.FindIndex(c => c.TextDelta == "回答"));
+        progress[1].InputTokens.Should().Be(11);
+        progress[1].OutputTokens.Should().Be(22);
     }
 }

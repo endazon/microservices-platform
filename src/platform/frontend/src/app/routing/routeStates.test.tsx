@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import { RouterContextProvider } from '@tanstack/react-router';
 import { ApiError } from '@foundation/api/ApiError';
 import { router } from './router';
@@ -12,8 +13,13 @@ import { RouteErrorComponent, RoutePendingComponent } from './routeStates';
 // `RouteErrorComponent` は `<Link>` と `useRouter()` を使うので、**実アプリのルータの
 // context の中で**描く（`RouterContextProvider` は context だけを与え、ルートは描かない）。
 
-function renderInRouterContext(ui: React.ReactNode) {
-  return render(<RouterContextProvider router={router}>{ui}</RouterContextProvider>);
+// 実アプリ（`App.tsx`）と同じく `QueryClientProvider` の内側で描く（「再読み込み」がキャッシュを捨てるため）。
+function renderInRouterContext(ui: React.ReactNode, queryClient = new QueryClient()) {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterContextProvider router={router}>{ui}</RouterContextProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe('RouteErrorComponent（defaultErrorComponent）', () => {
@@ -51,6 +57,34 @@ describe('RouteErrorComponent（defaultErrorComponent）', () => {
       expect(reset).toHaveBeenCalledTimes(1);
       expect(invalidate).toHaveBeenCalledTimes(1);
     } finally {
+      invalidate.mockRestore();
+    }
+  });
+
+  // NFR (#2016): 画面のデータは TanStack Query のキャッシュにあり、`router.invalidate()` は触れない。
+  // 契約に反した応答で落ちた画面は、キャッシュが新鮮なままだと同じ例外へ戻る —— 落ちた画面の購読は外れている
+  // （inactive）ので、それだけを捨てる。共通シェルが購読中のもの（active）は残す。
+  it('drops only the inactive query cache on 再読み込み, keeping what the shell still observes', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['crashed-screen'], { notes: 'not-an-array' });
+    queryClient.setQueryData(['shell'], { name: 'ハンドウ タロウ' });
+    // 共通シェルの購読の代わり（observer が付いた query は active）。
+    const unsubscribe = new QueryObserver(queryClient, {
+      queryKey: ['shell'],
+      queryFn: () => ({ name: 'ハンドウ タロウ' }),
+      staleTime: Infinity,
+    }).subscribe(() => {});
+    const invalidate = vi.spyOn(router, 'invalidate').mockResolvedValue(undefined);
+    try {
+      renderInRouterContext(
+        <RouteErrorComponent error={new Error('boom')} reset={() => {}} />,
+        queryClient,
+      );
+      await userEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+      expect(queryClient.getQueryData(['crashed-screen'])).toBeUndefined();
+      expect(queryClient.getQueryData(['shell'])).toEqual({ name: 'ハンドウ タロウ' });
+    } finally {
+      unsubscribe();
       invalidate.mockRestore();
     }
   });

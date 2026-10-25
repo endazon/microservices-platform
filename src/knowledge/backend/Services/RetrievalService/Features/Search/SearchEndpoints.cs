@@ -1,4 +1,3 @@
-using RetrievalService.Features.Search.AttributeValues;
 using RetrievalService.Features.Search.Hybrid;
 
 namespace RetrievalService.Features.Search;
@@ -41,7 +40,7 @@ public static class SearchEndpoints
         var g = app.MapGroup("/search").WithTags("Search").RequireAuthorization();
 
         SearchEndpoint.Map(g);
-        AttributeValuesEndpoint.Map(g);
+        // ［2026-10-15 / #1902・[[IADR-0533]]］属性値の照会（`/search/attribute-values`）の REST は撤去した（gRPC 面だけ）。
 
         return app;
     }

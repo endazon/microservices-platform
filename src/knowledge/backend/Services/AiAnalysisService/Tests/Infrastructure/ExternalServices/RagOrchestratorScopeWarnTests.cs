@@ -5,10 +5,11 @@ using Microsoft.Extensions.Logging;
 
 namespace AiAnalysisService.Tests.Infrastructure.ExternalServices;
 
-// FR-04, FR-05, NFR-09, ADR-0004, [[IADR-0379]] 決定 5 (#1378):
-// REST 経路のスコープ解決が deny-by-default へ縮退した**理由を WARN で出す**ことを固定する。
-// 従前は非 2xx・不達・空本文を無言で `Granted=false` へ畳んでおり、稼働環境で「回答に出典が無い」
-// 原因が読めなかった（#1378）。**`Granted=false`（正当な deny）では出さない**（陰性対照）。
+// FR-04, FR-05, NFR-09, ADR-0004, [[IADR-0379]] 決定 5 (#1378), [[IADR-0533]] 決定 1 (#1255):
+// スコープ解決が deny-by-default へ縮退した**理由の WARN** は、REST 経路の撤去後は gRPC のラッパ
+// `AuthzScopeGrpcClient` が出す（ステータスと詳細を載せる。`AuthzScopeGrpcClientTests` が固定する）。
+// 旧形の 3 本（非 2xx・不達・空本文の WARN）は REST 経路の表明だったので撤去した。
+// 本クラスに残すのは陰性対照 —— **`Granted=false`（正当な deny）ではオーケストレーターが WARN を出さない。**
 //
 // `ResolveScopeAsync` は private なので、観測点は `AskAsync` の応答（deny → 空回答）とログである。
 // deny の枝は検索・LLM を呼ばないので、器は `/authz/scope` だけに答える。
@@ -21,38 +22,9 @@ public class RagOrchestratorScopeWarnTests
         Func<HttpRequestMessage, HttpResponseMessage> respondToScope)
     {
         var log = new CapturingLogger();
-        var answer = await new RagOrchestrator(new StubHttpClientFactory(respondToScope), logger: log)
+        var answer = await TestRagOrchestrator.Create(new StubHttpClientFactory(respondToScope), logger: log)
             .AskAsync("質問", "user-1", new Dictionary<string, string> { ["clearance"] = "internal" }, ct: Ct);
         return (answer, log);
-    }
-
-    [Fact]
-    public async Task A_non_success_status_is_logged_as_a_warning_with_the_status()
-    {
-        var (answer, log) = await AskAsync(_ => new HttpResponseMessage(HttpStatusCode.Forbidden));
-
-        answer.Citations.Should().BeEmpty("挙動は変えない —— 非 2xx は従来どおり deny（空回答）");
-        log.Warnings.Should().ContainSingle().Which.Field("Status").Should().Be(403);
-    }
-
-    [Fact]
-    public async Task A_transport_failure_is_logged_as_a_warning_with_the_exception_type()
-    {
-        var (answer, log) = await AskAsync(_ => throw new HttpRequestException("refused"));
-
-        answer.Citations.Should().BeEmpty();
-        var warn = log.Warnings.Should().ContainSingle().Subject;
-        warn.Field("ErrorType").Should().Be(nameof(HttpRequestException));
-        warn.Exception.Should().BeOfType<HttpRequestException>();
-    }
-
-    [Fact]
-    public async Task An_empty_body_is_logged_as_a_warning()
-    {
-        var (answer, log) = await AskAsync(_ => Json("null"));
-
-        answer.Citations.Should().BeEmpty();
-        log.Warnings.Should().ContainSingle().Which.Field("Status").Should().Be(200);
     }
 
     // 🔴 陰性対照: 正当な deny は WARN を出さない。

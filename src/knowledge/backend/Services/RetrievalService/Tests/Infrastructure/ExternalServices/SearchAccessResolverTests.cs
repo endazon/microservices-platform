@@ -1,4 +1,3 @@
-using System.Net;
 using System.Security.Claims;
 using AwesomeAssertions;
 using Grpc.Core;
@@ -43,10 +42,6 @@ public class SearchAccessResolverTests
         true,
         [new AccessScopeBranch("attribute", [new AttributeFilter("confidentiality", ["internal", "public"])])]);
 
-    private static string GrantedJson =>
-        System.Text.Json.JsonSerializer.Serialize(
-            Granted(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
-
     // 🔴 T-01（本体）: **未認証は認可サービスを 1 度も呼ばない。**
     //
     // 呼ぶと、**利用者条件を持たないポリシーが 1 件でも active なら匿名にも許可が下りる**
@@ -57,7 +52,7 @@ public class SearchAccessResolverTests
     {
         var fake = FakeAuthzScopeClient.Returning(Granted());
 
-        var scope = await new SearchAccessResolver(new NeverHttpClientFactory(), fake.Wrap())
+        var scope = await new SearchAccessResolver(fake.Wrap())
             .ResolveAsync(Anonymous(), Ct);
 
         fake.CallCount.Should().Be(0, "未認証は後段へ問い合わせない（多層防御）");
@@ -72,7 +67,7 @@ public class SearchAccessResolverTests
     {
         var fake = FakeAuthzScopeClient.Returning(Granted());
 
-        var scope = await new SearchAccessResolver(new NeverHttpClientFactory(), fake.Wrap())
+        var scope = await new SearchAccessResolver(fake.Wrap())
             .ResolveAsync(Authenticated(), Ct);
 
         fake.CallCount.Should().Be(1, "★ 陽性対照");
@@ -86,70 +81,37 @@ public class SearchAccessResolverTests
     {
         var fake = FakeAuthzScopeClient.Returning(Granted());
 
-        await new SearchAccessResolver(new NeverHttpClientFactory(), fake.Wrap())
+        await new SearchAccessResolver(fake.Wrap())
             .ResolveAsync(Authenticated(), Ct);
 
         fake.LastRequest!.Action.Should().Be("read");
     }
 
-    // 🔴 T-03: REST と gRPC が**同じ答え**を返す（並走中の正は REST。輸送で判定が変わらない）。
+    // 🔴 T-03: 呼び出し先の答えを `Granted` / `AllowedFilters` / `Branches` まで保って返す。
+    // ［2026-10-10 / #1255］[[IADR-0533]] 決定 1: 旧形は「REST と gRPC が同じ答え」だった。REST 経路を撤去したので絶対値で表明する。
+    // REST の縮退の WARN を固定していた試験クラスも撤去した（gRPC の縮退の WARN は `AuthzScopeGrpcClient` が出す）。
     [Fact]
-    public async Task Rest_and_grpc_resolve_the_same_scope()
+    public async Task Grpc_resolves_the_scope_the_authorization_service_returned()
     {
-        var rest = await new SearchAccessResolver(
-            new StubHttpClientFactory(_ => Json(GrantedJson))).ResolveAsync(Authenticated(), Ct);
-
-        var grpc = await new SearchAccessResolver(
-            new NeverHttpClientFactory(), FakeAuthzScopeClient.Returning(Granted()).Wrap())
+        var grpc = await new SearchAccessResolver(FakeAuthzScopeClient.Returning(Granted()).Wrap())
             .ResolveAsync(Authenticated(), Ct);
 
-        grpc.Should().BeEquivalentTo(rest);
-        rest.Granted.Should().BeTrue("★ 陽性対照 —— 両方 deny で一致したのではない");
+        grpc.Should().BeEquivalentTo(Granted());
     }
 
-    // 🔴 T-04: **輸送の失敗はすべて deny-by-default**（REST の非 2xx・不達と同じ枝）。
+    // 🔴 T-04: **輸送の失敗はすべて deny-by-default**（宛先が未構成のときの UNAVAILABLE を含む）。
     // 権限外文書の漏えいを防ぐため、fail-open は許されない。
     [Theory]
     [InlineData(StatusCode.Unauthenticated)]
     [InlineData(StatusCode.PermissionDenied)]
     [InlineData(StatusCode.Unavailable)]
+    [InlineData(StatusCode.DeadlineExceeded)]
     public async Task A_transport_failure_degrades_to_deny(StatusCode status)
     {
-        var restDeny = await new SearchAccessResolver(new StubHttpClientFactory(
-            _ => new HttpResponseMessage(HttpStatusCode.InternalServerError)))
+        var grpcDeny = await new SearchAccessResolver(FakeAuthzScopeClient.Failing(status).Wrap())
             .ResolveAsync(Authenticated(), Ct);
 
-        var grpcDeny = await new SearchAccessResolver(
-            new NeverHttpClientFactory(), FakeAuthzScopeClient.Failing(status).Wrap())
-            .ResolveAsync(Authenticated(), Ct);
-
-        grpcDeny.Should().BeEquivalentTo(restDeny);
         grpcDeny.Granted.Should().BeFalse();
-    }
-
-    private static HttpResponseMessage Json(string body) =>
-        new(HttpStatusCode.OK)
-        {
-            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
-        };
-
-    private sealed class StubHttpClientFactory(Func<HttpRequestMessage, HttpResponseMessage> respond)
-        : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-            => new(new StubHandler(respond)) { BaseAddress = new Uri("http://localhost/") };
-    }
-
-    private sealed class NeverHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name)
-            => throw new InvalidOperationException("gRPC 経路では REST クライアントを作ってはならない");
-    }
-
-    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(respond(request));
+        grpcDeny.AllowedFilters.Should().BeEmpty();
     }
 }

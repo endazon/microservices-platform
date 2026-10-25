@@ -94,6 +94,8 @@ public class GrpcGraphNeighborExpanderTests
 
         fake.LastRequest.Should().BeNull();
         result.Edges.Should().BeEmpty();
+        // [[IADR-0534]] (#1871): 呼べなかった —— 応答の縮退の印（graph-expand-failed）の根拠。
+        result.Degraded.Should().BeTrue();
     }
 
     // 🔴 T-04: **`found=false` は「見えない・無い」であり、例外ではない**（存在秘匿）。
@@ -106,6 +108,8 @@ public class GrpcGraphNeighborExpanderTests
             .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         result.Edges.Should().BeEmpty();
+        // [[IADR-0534]] (#1871): 見えない起点は異常ではない —— 縮退に数えない（陰性対照）。
+        result.Degraded.Should().BeFalse();
     }
 
     // 🔴 T-05: **近傍の取得が失敗しても検索そのものを落とさない**（REST 実装の非 2xx / 不達と同値）。
@@ -127,6 +131,7 @@ public class GrpcGraphNeighborExpanderTests
 
         var result = await act.Should().NotThrowAsync();
         result.Subject.Edges.Should().BeEmpty();
+        result.Subject.Degraded.Should().BeTrue("[[IADR-0534]] (#1871): 「グラフに何も無い」と見分ける印");
     }
 
     // 🔴 T-06: s2s トークンの取得失敗（`InvalidOperationException`）も**同じ縮退**である。
@@ -142,7 +147,9 @@ public class GrpcGraphNeighborExpanderTests
         var act = async () => await Expander(fake)
             .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
-        (await act.Should().NotThrowAsync()).Subject.Edges.Should().BeEmpty();
+        var result = (await act.Should().NotThrowAsync()).Subject;
+        result.Edges.Should().BeEmpty();
+        result.Degraded.Should().BeTrue();
     }
 
     // 🔴 T-06a / T-06b (#1637): **呼び出し元の取り消しは縮退へ畳まず外へ出す**（REST 版と同じ姿勢）。
@@ -188,7 +195,7 @@ public class GrpcGraphNeighborExpanderTests
         logger.OfLevel(LogLevel.Warning).Should().ContainSingle("★ 陽性対照 —— 縮退の枝は警告を出す");
     }
 
-    // 🔴 T-07: **辞書が引けなければ全辺がフォールバック重みへ倒れる**（REST 実装と同値）。
+    // 🔴 T-07: **辞書が引けなければ全辺がフォールバック重みへ倒れる**（旧 REST 実装と同値）。
     // 陽性対照（辞書が引けたときは実重みが載る）と対で置く ——
     // 対が無いと「常にフォールバック」の実装でも緑になる。
     [Fact]
@@ -208,7 +215,10 @@ public class GrpcGraphNeighborExpanderTests
 
         real.Edges.Should().ContainSingle().Which.Weight.Should().Be(0.9, "★ 陽性対照");
         fallback.Edges.Should().ContainSingle().Which.Weight
-            .Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight);
+            .Should().Be(GrpcGraphNeighborExpander.FallbackEdgeWeight);
+        // [[IADR-0534]] (#1871): 辞書が引けないのは縮退、引けたなら縮退ではない（対）。
+        real.Degraded.Should().BeFalse();
+        fallback.Degraded.Should().BeTrue();
     }
 
     // 🔴 T-08: 辞書に**無い型**の辺もフォールバック重みである（黙って無差別へ落ちない）。
@@ -223,25 +233,27 @@ public class GrpcGraphNeighborExpanderTests
             .ExpandAsync([Seed], 1, Authenticated("alice"), TestContext.Current.CancellationToken);
 
         result.Edges.Should().ContainSingle().Which.Weight
-            .Should().Be(GraphServiceNeighborExpander.FallbackEdgeWeight);
+            .Should().Be(GrpcGraphNeighborExpander.FallbackEdgeWeight);
+        // [[IADR-0534]] (#1871): 辞書は引けている（データの食い違い）—— 縮退には数えない。
+        result.Degraded.Should().BeFalse();
     }
 
-    // 🔴 T-09: **切替は構成の有無だけである。** `Services:GraphServiceGrpc` が無ければ
-    // 生成クライアントを**1 つも登録しない** —— 登録の有無で `Program.cs` が REST 実装と
-    // gRPC 実装を選ぶ（並走中の正は REST。戻すのは構成を外すだけでコードは変えない）。
+    // 🔴 T-09: **宛先の有無で登録の形が変わる。** `Services:GraphServiceGrpc` が無ければ
+    // 生成クライアントは UNAVAILABLE を返す呼び出し器の上に組まれる（［2026-10-10 / #1255］[[IADR-0533]] 決定 2。
+    // 従前は 1 つも登録せず、`Program.cs` が REST 実装と gRPC 実装を選んでいた。REST 実装は撤去した）。
     //
     // 🔴 **`Program.cs` の DI をテストホストの構成で切り替えて測ることはできない**
     // （選択は組み立て時に行われ、`WebApplicationFactory` の構成は Build 時に載る）。
     // したがって**登録関数そのもの**を陽性・陰性の対で固定する。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public void 宛先が未設定でも届かない宛先として登録する()
     {
+        // ［2026-10-10 / #1255］[[IADR-0533]] 決定 2: 未設定でも生成クライアントは登録され、呼び出しは UNAVAILABLE で失敗する
+        // （従前は何も登録せず、`Program.cs` が REST 実装へ倒していた。REST 実装は撤去した）。
         var services = new ServiceCollection()
             .AddGraphNeighborsGrpcClient(new ConfigurationBuilder().Build());
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.GraphNeighbors.GraphNeighborsClient),
-            "未設定なら何も登録しない（REST のまま）");
+        services.Should().ContainSingle(d => d.ServiceType == typeof(Pb.GraphNeighbors.GraphNeighborsClient));
     }
 
     [Fact]

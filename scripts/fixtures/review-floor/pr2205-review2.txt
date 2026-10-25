@@ -1,0 +1,47 @@
+**Claude finished @endazon's task in 24s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/40060225020)
+
+---
+## AI コードレビュー結果
+
+変更 8 ファイル中 4 ファイルを読んだ（生成物 4 ファイルを除外: `src/platform/frontend/src/locales/{en,ja}/messages.{po,ts}`。ja の `messages.po` の差分だけは参考として目視した）。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- （指摘なし）
+
+### 🟢 軽微
+- `scripts/chunk-budget-baseline.json` の新しい `$comment` に「644,788 → 644768 B」とある。直前の項目は桁区切りありの書式（`644,610`）なので、`644,768` にそろえるとよい。
+- `ThemeToggle.tsx` の aria-label 用コメントは長い。仕様書に同じ説明があるので、コメントは「WCAG 2.5.3 のため、見えている文言で始める」程度に縮めてもよい。
+
+### ✅ 確認できたこと（このセッションで実走）
+- `git diff --name-only origin/develop...HEAD` で変更 8 ファイルを確認した。
+- `ThemeToggle.tsx` の差分は読んだ。aria-label は `{visibleLabel}（表示テーマの切替。押すと {upcomingName} になります）` になった。
+  - `<span>` に出す文言と同じ `visibleLabel` で始まるので、WCAG 2.5.3 の趣旨を満たす。
+  - 現在の状態は見えている文言が示すため、「現在は …」を重ねない判断は妥当。
+  - `currentName` は参照が無くなり、削除できている。
+- 単体試験の差分は読んだ。
+  - 3 状態（system / light / dark）で、見えている文言の表示と、aria-label がそれで始まることを検査している。空のテストではない。
+  - 既存の「現在と押した後が入る」試験も新しい文言に追随している。
+- 仕様書の差分は読んだ。frontmatter と母集合の記述があり、`NFR-30` / `IADR-0442` の参照がある。仕様書は着手前に作る規約を満たしている。
+- ja の `messages.po` の差分では、旧 msgid が消え、新 msgid が足されている。旧 msgid の取りこぼしは無い。
+- `node scripts/check-trace-blocks.js` は OK（197 件）。
+- `node scripts/gen-knowledge-graph.js --check` は OK（in-repo のエッジ先に違反なし）。
+- `node scripts/check-doc-updated.js --base origin/develop` は OK。
+- `node scripts/check-commit-messages.js` は適合（1 件）。
+- `node scripts/check-plan-id-qualification.js` は OK。
+- ADR 制約: 逸脱は見当たらない。axe の違反を、既知違反の台帳に逃がさず本体で直している。
+
+### 🔍 実行できなかったこと
+- `vitest` と Playwright(`test:e2e`) は走らせていない。この review ジョブの許可コマンドに無いため。
+  - 「vitest 2026 passed」「e2e 120 passed」は PR 本文の記載であり、未検証。
+- `scripts/` `.github/` の差分は無いので、`scripts.test.js` は走らせていない。
+- `check-i18n-catalogs` と `check-chunk-budget.js --require` は、ビルドが要るため走らせていない。
+  - 初期ロードが 20 B 減るという主張は未検証。
+- `check-doc-links.js` は走らせていない。変更が `.ai-context/` と `scripts/` だけで、`docs/` の差分が無いため。
+- `git diff` で `.claude/` 等の復元による差分は見ていない。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ · branch `fix/NFR-30-theme-toggle-label`

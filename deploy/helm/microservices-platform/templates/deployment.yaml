@@ -1,10 +1,32 @@
 # Generic Deployment template — rendered once per enabled service
 # ADR-0007: k8s Deployment skeleton for microservices-platform services
+{{- /* NFR-18, IADR-0577: 旧キーは、ブローカへ繋ぐサービスの有無によらず描画で止める（ループの中だと messaging: true が 0 件の構成で黙って無視される）。 */}}
+{{- $mqTop := .Values.global.messaging | default dict }}
+{{- if or (hasKey $mqTop "user") (hasKey $mqTop "existingSecret") (hasKey $mqTop "passwordKey") }}
+{{- fail "global.messaging.user / existingSecret / passwordKey は廃止しました。ブローカへはサービスごとのユーザーで接続します（global.messaging.credentialsSecretName / usernamePrefix。IADR-0577）。" }}
+{{- end }}
 {{- range $name, $svc := .Values.services }}
 {{- if $svc.enabled }}
 {{- /* FR-14/FR-15 (#146): pipeline.json をマウントする条件。段ホスト（pipelineSteps）に加え、
        宣言突合のため宣言を必要とする BFF（pipelineDeclaration）も同じ ConfigMap をマウントする。 */}}
 {{- $pipelineMount := and (or $svc.pipelineSteps $svc.pipelineDeclaration) $.Values.pipeline.enabled }}
+{{- /* NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault（k8s auth）へ名乗るサービスには、対象者（audience）を秘匿管理に限った
+       projected token を専用のパスへ置く。k8s API 用の既定のトークン（audience＝API サーバ）では名乗らない。 */}}
+{{- $vaultToken := and $svc.vault $svc.vault.address }}
+{{- /* NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS。検証に使う CA（global.infraCa）を
+       /etc/platform-infra-ca へマウントする。検証を緩める形（Require 等の SSL Mode・名前の照合を外す等）は描かない。 */}}
+{{- $dbTls := and $svc.database $.Values.global.db.tls $.Values.global.db.tls.enabled }}
+{{- $mqTls := and $svc.messaging $.Values.global.messaging.tls $.Values.global.messaging.tls.enabled }}
+{{- $infraCaMount := or $dbTls $mqTls }}
+{{- if $infraCaMount }}
+{{- $ca := $.Values.global.infraCa | default dict }}
+{{- if or (not $ca.configMap) (not $ca.caKey) }}
+{{- fail "global.infraCa.configMap / caKey が要ります（global.db.tls / global.messaging.tls が有効なサービスはサーバ証明書を検証する。IADR-0591）。" }}
+{{- end }}
+{{- end }}
+{{- if and $mqTls (not $.Values.global.messaging.tls.port) }}
+{{- fail "global.messaging.tls.port が要ります（IADR-0591）。" }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -45,7 +67,13 @@ spec:
       # （コネクタの資格情報の読み取りだけ。IADR-0495 決定 1。#458 段 S1）。
       # 宣言が無いサービスは従来どおり名前空間の `default` で動く（`default` を Vault に束縛しないこと）。
       serviceAccountName: {{ .name }}
+      {{- else }}
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: 専用の SA を持たないサービスは k8s API を呼ばない。
+      # 名前空間の `default` のトークンを Pod に置かない（最小権限）。メッシュのサイドカーは自前の projected token を使う。
+      automountServiceAccountToken: false
       {{- end }}
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: 非 root（aspnet イメージの APP_UID）・seccomp RuntimeDefault。
+      {{- include "msp.podSecurityContext.restricted" $.Values.podSecurity.dotnetRunAsUser | nindent 6 }}
       {{- with $.Values.imagePullSecrets }}
       # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
       imagePullSecrets:
@@ -53,8 +81,10 @@ spec:
       {{- end }}
       containers:
         - name: {{ $name }}-service
-          image: "{{ $.Values.global.image.registry }}/{{ $svc.image }}:{{ $svc.tag | default "latest" }}"
+          # NFR-20, IADR-0605 (#2132): タグは services.<名>.tag か global.image.tag（無ければ描画が落ちる。templates/_image.tpl）。
+          image: "{{ $.Values.global.image.registry }}/{{ $svc.image }}:{{ include "msp.selfBuiltImageTag" (dict "root" $ "tag" $svc.tag "what" (printf "services.%s" $name)) }}"
           imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
+          {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
           {{- if $svc.port }}
           ports:
             - containerPort: {{ $svc.port }}
@@ -68,6 +98,34 @@ spec:
           env:
             - name: Otlp__Endpoint
               value: {{ $.Values.global.otel.endpoint }}
+          {{- /* NFR, IADR-0539 (#1927): GC の設定（global.dotnetGc。本番の既定）。services.<名>.dotnetGc が鍵ごとに上書きし、
+                 空文字の鍵は描かない（そのサービスだけ .NET の既定へ戻す）。同じ名前を extraEnv / extraEnvAppend に置けば描画で落とす
+                 —— 同名の env が 2 つ並ぶと、どちらが効くかが字面から読めなくなる。 */}}
+          {{- /* merge は空文字を「未設定」と見なして global の値で埋めるので使わない（空文字の退路が効かなくなる）。鍵の有無で選ぶ。 */}}
+          {{- $gcSvc := $svc.dotnetGc | default dict }}
+          {{- $gcGlobal := $.Values.global.dotnetGc | default dict }}
+          {{- $gcEnv := list }}
+          {{- range $pair := list (list "DOTNET_gcServer" "gcServer") (list "DOTNET_GCConserveMemory" "conserveMemory") (list "DOTNET_GCHeapHardLimitPercent" "heapHardLimitPercent") }}
+          {{- $key := index $pair 1 }}
+          {{- $v := ternary (index $gcSvc $key) (index $gcGlobal $key) (hasKey $gcSvc $key) }}
+          {{- /* 鍵がどちらにも無い（nil）なら描かない。toString は nil を "<nil>" にするので、空文字へ倒してから比べる（#1928 のレビュー）。
+                 default "" は使わない —— 数値の 0 も空と見なして消してしまう。 */}}
+          {{- if kindIs "invalid" $v }}{{- $v = "" }}{{- end }}
+          {{- $gcEnv = append $gcEnv (list (index $pair 0) $v) }}
+          {{- end }}
+          {{- range $e := concat ($svc.extraEnv | default list) ($svc.extraEnvAppend | default list) }}
+          {{- range $g := $gcEnv }}
+          {{- if eq (upper ($e.name | toString)) (upper (index $g 0)) }}
+          {{- fail (printf "services.%s の extraEnv / extraEnvAppend に %s は書けません。GC の設定は global.dotnetGc か services.%s.dotnetGc で与えてください（IADR-0539 / #1927）。" $name $e.name $name) }}
+          {{- end }}
+          {{- end }}
+          {{- end }}
+          {{- range $g := $gcEnv }}
+          {{- if ne (index $g 1 | toString) "" }}
+            - name: {{ index $g 0 }}
+              value: {{ index $g 1 | toString | quote }}
+          {{- end }}
+          {{- end }}
           {{- if $svc.grpcPort }}
             # NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0379 決定 3 (#1201): east-west gRPC の h2c リスナ。
             # 未設定ならアプリはリスナを立てない（既存サービスは 1 バイトも変わらない）。
@@ -172,9 +230,18 @@ spec:
             - name: Vault__AuthMount
               value: {{ $svc.vault.authMount | default "kubernetes" | quote }}
           {{- end }}
+          {{- if $vaultToken }}
+            # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: k8s auth に渡すトークンは下の projected token（audience: vault）。
+            # role は audience=vault を要求する（deploy/local/vault/eso/bootstrap.sh）。コードの既定も同じパス。
+            - name: Vault__ServiceAccountTokenPath
+              value: /var/run/secrets/vault/token
+          {{- end }}
           {{- if $svc.externalSecretSync }}
             # SC-22, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期（force-sync 注釈）を依頼するか。
-            # 名乗りは Pod の ServiceAccount トークン、API サーバの所在は Pod の KUBERNETES_SERVICE_HOST/PORT（env では渡さない）。
+            # 名乗りは Pod の既定の ServiceAccount トークン（/var/run/secrets/kubernetes.io/serviceaccount/token。対象者＝API サーバ）、
+            # API サーバの所在は Pod の KUBERNETES_SERVICE_HOST/PORT（env では渡さない）。
+            # NFR-18, IADR-0585 決定 2, #2193: 上の Vault 用の projected token（audience: vault）は API サーバへ送らない（401 になる）。
+            # 既定のトークンは serviceAccount を持つサービスでは外さない（automountServiceAccountToken: false は SA の無いサービスだけ）。
             - name: ExternalSecretSync__Enabled
               value: {{ $svc.externalSecretSync.enabled | default false | quote }}
           {{- end }}
@@ -220,8 +287,9 @@ spec:
                 secretKeyRef:
                   name: {{ $.Values.global.db.existingSecret }}
                   key: {{ $.Values.global.db.passwordKey }}
+            # NFR-16, IADR-0591: TLS は VerifyFull（CA の検証と host の名前の照合）。CA は global.infraCa だけを信頼する。
             - name: ConnectionStrings__DefaultConnection
-              value: "Host={{ $.Values.global.db.host }};Port={{ $.Values.global.db.port }};Database={{ $svc.database }};Username={{ $.Values.global.db.user }};Password=$(DB_PASSWORD)"
+              value: "Host={{ $.Values.global.db.host }};Port={{ $.Values.global.db.port }};Database={{ $svc.database }};Username={{ $.Values.global.db.user }};Password=$(DB_PASSWORD){{ if $dbTls }};SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/{{ $.Values.global.infraCa.caKey }}{{ end }}"
           {{- end }}
           {{- if $svc.messaging }}
             # NFR, ADR-0027, #1022: ブローカ接続。**資格情報をイメージへ焼かない** —— appsettings.json は
@@ -230,13 +298,29 @@ spec:
             # パスワードは Secret から RABBITMQ_PASSWORD として入れ、接続文字列は k8s の $(VAR) 補間で
             # 組む（env の値に平文パスワードを描画しない。同一 container 内で先に定義した env のみ
             # 参照できるので順序を崩さないこと）。#1012 の global.db ブロックと同型である。
+            # NFR-18, IADR-0577: ユーザーはサービスごと（<usernamePrefix><サービス名>）。パスワードは同名のキー。
+            {{- /* 旧キーの拒否はファイルの先頭（サービスのループの外）で行う。 */}}
+            {{- $mq := $.Values.global.messaging | default dict }}
+            {{- if or (not $mq.host) (not $mq.port) (not $mq.credentialsSecretName) (not $mq.usernamePrefix) }}
+            {{- fail "global.messaging.host / port / credentialsSecretName / usernamePrefix が要ります（ブローカのサービスごとの資格情報。IADR-0577）。" }}
+            {{- end }}
             - name: RABBITMQ_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $.Values.global.messaging.existingSecret }}
-                  key: {{ $.Values.global.messaging.passwordKey }}
+                  name: {{ $mq.credentialsSecretName }}
+                  key: {{ printf "%s%s" $mq.usernamePrefix $name }}
+            {{- if $mqTls }}
+            # NFR-16, IADR-0591: amqps（TLS）。サーバ証明書の CA は信頼ストアへ足す（.NET は SSL_CERT_DIR の各ディレクトリの
+            # 証明書を読む。既定の /etc/ssl/certs を先に残すので、外部の公開 CA の検証は変わらない）。host の名前の照合は
+            # UsePlatformRabbitMq（共通ヘルパ）が外さない。
             - name: RabbitMq__ConnectionString
-              value: "amqp://{{ $.Values.global.messaging.user }}:$(RABBITMQ_PASSWORD)@{{ $.Values.global.messaging.host }}:{{ $.Values.global.messaging.port }}"
+              value: {{ printf "amqps://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.tls.port | quote }}
+            - name: SSL_CERT_DIR
+              value: "/etc/ssl/certs:/etc/platform-infra-ca"
+            {{- else }}
+            - name: RabbitMq__ConnectionString
+              value: {{ printf "amqp://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.port | quote }}
+            {{- end }}
           {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}
@@ -304,6 +388,17 @@ spec:
             - name: Qdrant__FusedCollections__0
               value: {{ $.Values.embedding.collection | quote }}
           {{- end }}
+          {{- if and (eq $name "ingestion") $.Values.embedding.enabled }}
+            # FR-02, ADR-0127 決定 5, IADR-0085 (#1746 段 S4): ティア A を有効化したときだけ、取り込みに Ruri のコレクションを
+            # 作らせる（起動時のブートストラップ・残存防止削除の対象）。既定の appsettings.json は voyage の 1 本だけで、
+            # 無効の配備に空の Ruri のコレクションを作らない。🔴 llmgateway・retrieval と**同じ条件**で描画する ——
+            # 取り込みだけ欠けると、セルフホストへ回った文書の登録がコレクション不在で失敗する。
+            # index 1 は opt-in の Ruri の位置（決定的ローカル埋め込みは index 2。添字は欠けてよい）。
+            - name: Embedding__Collections__1__Name
+              value: {{ $.Values.embedding.collection | quote }}
+            - name: Embedding__Collections__1__VectorSize
+              value: {{ required "embedding.dimensions は必須（IADR-0085）" $.Values.embedding.dimensions | quote }}
+          {{- end }}
           {{- if has $name (list "ingestion" "retrieval") }}
             # FR-02, FR-03, ADR-0127 決定 1・2, IADR-0497 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
             # 高機密文書（confidential・restricted・未指定・未知）は埋め込まずここへ書き、検索は全文の系統だけで束ねる。
@@ -326,7 +421,7 @@ spec:
           {{- end }}
           {{- if eq $name "retrieval" }}
             # FR-03, FR-04, SC-02, ADR-0127 決定 3, IADR-0498 (#1746 段 S2): Claude による再順位付けの段（既定は無効）。
-            # 有効なら用途 rerank で llm-gateway だけを呼ぶ（Services__LlmGateway / Services__LlmGatewayGrpc。埋め込みと同じ宛先）。
+            # 有効なら用途 rerank で llm-gateway だけを呼ぶ（Services__LlmGatewayGrpc。埋め込みと同じ宛先。［2026-10-16 / #1902］REST の宛先は外した）。
             - name: Rerank__Enabled
               value: {{ $.Values.searchRerank.enabled | default false | quote }}
           {{- end }}
@@ -351,7 +446,8 @@ spec:
           {{- if eq $name "ingestion" }}
             # 取り込みは起動時に Embedding:Collections の全コレクションを作る。ここに無いと
             # コレクションが存在せず、Upsert も残存防止削除（DeleteByDocumentFromAllAsync）も届かない。
-            # index 2 は appsettings.json の 2 件（voyage=0 / ruri=1）の後ろへ足す位置である。
+            # index 2 は appsettings.json の voyage（index 0）と opt-in の Ruri（index 1。embedding.enabled のときだけ描く）の
+            # 後ろへ足す位置である（［2026-10-17 / #1746 段 S4］Ruri は既定から外した。添字が欠けても束ねられる）。
             - name: Embedding__Collections__2__Name
               value: {{ $det.collection | quote }}
             - name: Embedding__Collections__2__VectorSize
@@ -394,9 +490,12 @@ spec:
             {{- end }}
             {{- end }}
           {{- end }}
-          {{- if and $svc.port (not $svc.worker) }}
-          # FR-15, IADR-0029 (#142): worker（conversion/ingestion）は /internal/introspection のみの
-          # 最小 HTTP サーフェスで /health/* を持たないため、HTTP ヘルスプローブを付与しない。
+          {{- /* NFR-21, NFR-06, IADR-0602 (#2140): HTTP のポートを持つサービスには**すべて** liveness / readiness を描く。
+                 キュー駆動のワーカー（conversion/ingestion）も 8080 に /health/live・/health/ready を持つ。
+                 ［2026-10-23 / #2140］従前の `worker: true` による抑止は外した —— conversion は health を持つのに probe が無く、
+                 ingestion は health を持たなかった（どちらも落ちても k8s が気づかない）。readiness は自プロセスの必須依存だけを見る。
+                 描画物へは出さない（全サービスに同じ注記が並ぶだけになるため）。 */}}
+          {{- if $svc.port }}
           livenessProbe:
             httpGet:
               path: /health/live
@@ -412,17 +511,50 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
-          {{- if $pipelineMount }}
+          {{- if or $pipelineMount $vaultToken $infraCaMount }}
           volumeMounts:
+            {{- if $pipelineMount }}
             - name: pipeline-config
               mountPath: /etc/microservices-platform/pipeline
               readOnly: true
+            {{- end }}
+            {{- if $vaultToken }}
+            - name: vault-token
+              mountPath: /var/run/secrets/vault
+              readOnly: true
+            {{- end }}
+            {{- if $infraCaMount }}
+            - name: platform-infra-ca
+              mountPath: /etc/platform-infra-ca
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if $pipelineMount }}
+      {{- if or $pipelineMount $vaultToken $infraCaMount }}
       volumes:
+        {{- if $pipelineMount }}
         - name: pipeline-config
           configMap:
             name: pipeline-config
+        {{- end }}
+        {{- if $vaultToken }}
+        # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault 専用のトークン（対象者 vault・期限 10 分。kubelet が期限前に更新する）。
+        - name: vault-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  audience: vault
+                  expirationSeconds: 600
+        {{- end }}
+        {{- if $infraCaMount }}
+        # NFR-16, IADR-0591: 基盤の CA（公開の証明書だけ。非 optional）。キーは 1 つだけ写す（ディレクトリに他の物を置かない）。
+        - name: platform-infra-ca
+          configMap:
+            name: {{ $.Values.global.infraCa.configMap }}
+            items:
+              - key: {{ $.Values.global.infraCa.caKey }}
+                path: {{ $.Values.global.infraCa.caKey }}
+        {{- end }}
       {{- end }}
 {{- end }}
 {{- end }}

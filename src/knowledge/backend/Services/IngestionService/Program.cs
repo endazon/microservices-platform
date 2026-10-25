@@ -5,13 +5,16 @@ using Platform.Shared.Infrastructure.Foundation.Llm;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
+using IngestionService.Features.Ingestion.ReembedPending;
+using IngestionService.Features.Indexing.GetIndexStatuses;
+using IngestionService.Common.Observability;
 using Knowledge.Contracts.Events;
 using IngestionService.Domain;
 using IngestionService.Infrastructure.ExternalServices;
 using IngestionService.Infrastructure.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
-using MassTransit;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Qdrant.Client;
 using Wolverine;
@@ -20,7 +23,7 @@ using Wolverine.RabbitMQ;
 const string ServiceName = "microservices-platform.ingestion-service";
 
 // FR-15, IADR-0029: 自己申告エンドポイントの最小 HTTP サーフェスのため WebApplication を用いる。
-// 取り込みワーカーは Wolverine のハンドラとして稼働する（E3b）。MassTransit は IngestionCompleted の発行だけに残る（単位 E4。IADR-0234 の #1771 追記）。
+// 取り込みワーカーは Wolverine のハンドラとして稼働する（E3b）。IngestionCompleted の発行も Wolverine である（単位 E4。#2134）。
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
@@ -46,13 +49,31 @@ var qdrantHost = builder.Configuration["Qdrant:Host"] ?? "qdrant";
 var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 
-// FR-02, ADR-0016: モデル別コレクション（voyage/1024・ruri/768）の定義（起動時作成・残存防止削除に使用）。
+// NFR-21, NFR-06, ADR-0052 決定 4, [[IADR-0602]] (#2140): liveness / readiness（`/health/live`・`/health/ready`。8080）。
+// 従前は Map が無く（上の gRPC リスナの注記だけが残っていた）、chart も probe を描かなかった —— 落ちても k8s が気づかない。
+// readiness に載せるのは**自プロセスの必須依存だけ**: ブローカ（Wolverine＝DocumentUpdated の購読と IngestionCompleted の発行。
+// ［2026-10-25 / #2134］MassTransit を外したので "masstransit-bus" は無い）と自前のデータストア（Qdrant。書き込み先かつ索引の状態の照会の読み先）。
+// 🔴 **下流のサービス（LLM ゲートウェイ＝埋め込み）は入れない** —— 埋め込みが使えない間も取り込みは全文だけの点で縮退して進む
+// （[[IADR-0536]]）。ここへ入れると LLM ゲートウェイ 1 つの停止で取り込みが NotReady になり、NFR-06 の縮退と逆向きになる。
+// オブジェクトストレージも入れない（本文の欠落は 1 通ごとの失敗・計数で現れる。[[IADR-0540]]）。
+builder.Services.AddPlatformHealthChecks()
+    .AddPlatformWolverineBroker()
+    .AddCheck<QdrantHealthCheck>(
+        QdrantHealthCheck.Name, failureStatus: HealthStatus.Unhealthy,
+        tags: [HealthCheckExtensions.ReadyTag], timeout: TimeSpan.FromSeconds(5));
+
+// FR-02, ADR-0016: モデル別コレクション（既定は voyage/1024 だけ）の定義（起動時作成・残存防止削除に使用）。
+// 🔴 #2137: 既定（appsettings.json の Embedding:Collections）は検索サービスの appsettings.json にも同じ値を置く（検索が文書の削除の対象を
+// ここから導く。一致は Knowledge.IntegrationTests の EmbeddingCollectionsParityTests が固定する）。片方だけ変えない。
+// ［2026-10-17 / #1746 段 S4］ADR-0127 決定 5, [[IADR-0085]]: セルフホスト（ruri/768）は opt-in のときだけ足される。
+// 名前が空の定義（compose の `${…:-}` の既定）は捨てる（`DropUnnamed`）。
 builder.Services.Configure<EmbeddingCollectionsOptions>(
     builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName));
+builder.Services.PostConfigure<EmbeddingCollectionsOptions>(o => o.DropUnnamed());
 // FR-02, FR-03, ADR-0127 決定 1, [[IADR-0497]] 決定 1 (#1746): 語彙索引（ベクトルを持たない専用のコレクション）。
 // 名前は検索サービスと同じキー（`Qdrant:LexicalCollection`）から引く。ベクトルのコレクションと同名なら起動を止める。
 var embeddingCollections = builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName)
-    .Get<EmbeddingCollectionsOptions>()?.Collections ?? [];
+    .Get<EmbeddingCollectionsOptions>()?.DropUnnamed().Collections ?? [];
 var lexicalCollection = LexicalCollection.Resolve(builder.Configuration);
 LexicalCollection.EnsureDistinct(lexicalCollection, embeddingCollections.Select(c => c.Name));
 builder.Services.AddSingleton<IIngestionVectorStore>(sp => new QdrantIngestionVectorStore(
@@ -80,6 +101,20 @@ builder.Services.AddHostedService<QdrantCjkNgramBackfillHostedService>();
 // ブートストラップより後に登録する（コレクションを作ってから走査する）。
 builder.Services.AddHostedService<QdrantKeywordIndexDiscoveryHostedService>();
 
+// FR-02, FR-03, NFR-06, [[IADR-0536]] 決定 1〜3 (#1908): **埋め込みが使えない間の全文だけの点（埋め込み待ち）。**
+// 取り込みは埋め込めなかった public / internal のチャンクを語彙索引へ全文だけで書き、ここで登録する器が
+// 周期ごとに件数を数え（ゲージ `ingestion.embedding_pending.points`・0 でなければ Warning）、埋め込みが使えるようになったら
+// 主のコレクションへ移して語彙索引の点を消す。**ブートストラップより後に登録する**（コレクションを作ってから数える）。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<EmbeddingPendingMetrics>();
+// FR-02, [[IADR-0540]] 決定 3 (#1931): 本文のオブジェクトが無かった取り込みの計数（同じ Meter。下の AddMeter で収集される）。
+builder.Services.AddSingleton<BodyMissingMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(EmbeddingPendingMetrics.MeterName));
+builder.Services.AddSingleton(EmbeddingPendingOptions.From(builder.Configuration));
+builder.Services.AddSingleton<EmbeddingPendingReembedder>();
+builder.Services.AddHostedService<EmbeddingPendingReembedHostedService>();
+
 // FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: オブジェクトストレージ（SeaweedFS）クライアント（storage:// 本文の実取得用）。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
@@ -89,17 +124,11 @@ builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentRea
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
 //
-// FR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0397 (#1255): east-west gRPC への切替。
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
-// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま。
+// FR-02, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0397, [[IADR-0533]] (#1255): 埋め込みの輸送は east-west gRPC だけである
+// （［2026-10-10］REST の `LlmGatewayEmbeddingService` は撤去した）。`Services:LlmGatewayGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、埋め込みは例外として上がる（段の再試行・死に文字へ回る）。
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
-else
-    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
-        c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"))
-        .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddSingleton<IEmbeddingService, LlmGatewayGrpcEmbeddingService>();
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -121,21 +150,11 @@ var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
         + "（k8s は helm の global.messaging、compose は x-rabbit-env が注入する）。"
         + " 既定値は持たない —— 未注入をブローカへの接続失敗として現れさせないためである。");
 
-// 🔴 ADR-0027 / E3b: **ingest 段（DocumentUpdated 購読）は Wolverine へ移した。**
-// MassTransit に残るのは IngestionCompleted の**発行だけ**（その辺は本 PR の射程外。
-// 辺は原子的に動かす —— IADR-0234 決定 3）。移行期間中 **両スタックを同居させる**
-// （E1 の ConversionService と同じ形: Wolverine 購読 ＋ MassTransit 発行）。
-builder.Services.AddScoped<IIngestionCompletedPublisher,
-    MassTransitIngestionCompletedPublisher>();
-builder.Services.AddMassTransit(x =>
-    x.UsingRabbitMq((ctx, cfg) =>
-    {
-        cfg.Host(rabbitConnection);
-        cfg.UsePlatformRetry();
-        cfg.ConfigureEndpoints(ctx);
-    }));
+// 🔴 ADR-0027 / E3b・E4: **ingest 段（DocumentUpdated 購読）も IngestionCompleted の発行も Wolverine である。**
+// ［2026-10-25 / #2134］E4 で発行を MassTransit から移し、本サービスから MassTransit を外した。
+// 発行は非耐久である（本サービスは DB を持たず Outbox を使えない）。購読者は居ない（planning#741 項目 6）。購読者が付く時点で耐久化を再検討する。
+builder.Services.AddScoped<IIngestionCompletedPublisher, WolverineIngestionCompletedPublisher>();
 
-// 購読側（DocumentUpdated）は Wolverine。
 builder.Host.UseWolverine(opts =>
 {
     opts.ServiceName = "ingestion-service";
@@ -148,17 +167,21 @@ builder.Host.UseWolverine(opts =>
     // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
     // FR-14 / #1801: 段宣言（step）を渡す。queue 宣言があればそれ、無ければイベント型名で束ね・購読し、
     // `enabled: false` の段ではキューを束ねずリスナーも立てない（WolverineExtensions の段宣言版）。
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+    opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision()
         .BindPlatformQueue<DocumentUpdated>("ingestion-service", step);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
     opts.ListenToPlatformQueue<DocumentUpdated>("ingestion-service", step);
 
+    // FR-02, IADR-0234 単位 E4 (#2134): 発行側の経路宣言（IADR-0314）。fan-out exchange `IngestionCompleted` へ出す。
+    // 宣言が無いと、Wolverine は送り先の無い発行として捨てる（ローカルの規約ルーティングは共通既定が切っている）。
+    opts.RoutePlatformEvent<IngestionCompleted>();
+
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
 
-    // FR-02, ADR-0027 (#1640): 取り込みの受け口の実行期限（既定 420 秒）。Wolverine の既定 60 秒では、埋め込みの回数が
+    // FR-02, ADR-0027 (#1640): 取り込みの受け口の実行期限（既定 435 秒。［2026-10-23 / #2101］420 → 435）。Wolverine の既定 60 秒では、埋め込みの回数が
     // チャンク数に比例する大きな文書を止まっていなくても切ってしまう。他のメッセージ型の既定は変えない。
     opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentUpdated>(ingestionTimeouts.Handler));
     // #1640: 埋め込みの総枠を使い切った文書は再試行せずデッドレターへ（大きすぎる文書は何度試しても収まらない）。
@@ -168,9 +191,17 @@ builder.Host.UseWolverine(opts =>
 
 var app = builder.Build();
 
-// FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
+// NFR-21, [[IADR-0602]] (#2140): `/health/live`（依存を見ない）・`/health/ready`（上の ready タグだけ）。
+// helm の liveness / readiness が 8080 のこの 2 経路を叩く（templates/deployment.yaml）。
+app.MapPlatformHealthChecks();
+
+// FR-15, IADR-0029: 自己申告（gRPC 面 `ServiceIntrospection/Get`。［2026-10-10 / #1517］REST の GET /internal/introspection は撤去した）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
 app.MapPlatformIntrospection();
+// FR-06, SC-05, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]], [[IADR-0565]] (#1993): 文書の索引の状態の gRPC 面
+// （`knowledge.ingestion.v1.DocumentIndexStatus`）。呼び出し元は BFF の文書管理の一覧（ABAC を通った 1 ページ分の ID だけを渡す）。
+// ServiceCaller を要求する（利用者のトークンでは通らない）。h2c リスナは自己申告の面と同じ（`Grpc:Port`）。
+app.MapGrpcService<DocumentIndexStatusGrpcService>();
 
 app.Run();
 

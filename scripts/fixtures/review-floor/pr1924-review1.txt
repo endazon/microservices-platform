@@ -1,0 +1,39 @@
+**Claude finished @endazon's task in 3m 12s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/38562253505)
+
+---
+## AI コードレビュー結果
+
+変更 38 ファイル中、コード 15 ファイルと主要な文書を読んだ。残りの文書・ADR 追記・試験ファイルは、差分全体の精読までは行っていない。生成物の除外はない。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- `EmbeddingPendingReembedder.cs:76`: `remaining = pending - reembedded` は周期の始めの件数からの推定値で、実測ではない。実際の件数は次周期で再カウントされるので害は小さい。ただし周期中に取り込みが新しい待ちの点を書くと、ゲージと Warning の件数が実際より少なくなる。気になるなら、最後に `CountEmbeddingPendingAsync` を呼び直せる。
+- `EmbeddingPendingReembedder.cs:67`: 読み直しから主への書き込みまでに Qdrant 往復 1 回分の窓が残る。PR 本文と IADR-0536 に既知のリスクとして書かれており、受容済みと読めるので追加の要求はしない。
+- 再取り込みで古い待ちの点が主を上書きしないかを確認した。`DeleteByDocumentFromAllAsync`（Consumer:79・98）が語彙索引も含めて先に消すので、問題ない。
+
+### 🟢 軽微
+- `DocumentUpdatedConsumer.cs` の using 順: `IngestionService.Common.Observability` が `Platform.Shared...` の後ろにある。`dotnet format` は通ったので機械的には問題ない。
+
+### 確認できたこと
+- `dotnet build src/knowledge/backend/backend.slnx`: 成功（警告 0、エラー 0）。
+- `dotnet test` の IngestionService.Tests: 171 件すべて通過。
+- `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes`: 差分なし。
+- `node scripts/check-trace-blocks.js`: OK。
+- `node scripts/check-doc-links.js`: OK。
+- 実装は IADR-0536 の決定 1〜3 に沿っている。
+  - 埋め込みに失敗したら以降のチャンクを埋め込まずに待ちとして書く。例外は投げない。
+  - 主へ書いてから語彙索引を消す順序。
+  - 削除は ID と印の AND で行い、高機密の点は埋め直しで二重に除外する。
+  - 最初の失敗で周期を打ち切る。
+  - 構成値が正の整数でなければ既定へ戻す。
+- 起点 ID（FR-02・FR-03・NFR-06・IADR-0536）はコードコメントに残っている。
+
+### 🔍 実行できなかったこと
+- `scripts.test.js` 全件、`gen-knowledge-graph --check`、`check-doc-updated`、`check-commit-messages`、`check-plan-id-qualification`、`helm lint` / `helm template` は、このセッションでは走らせていない（時間切れではなく、優先度で絞った）。この分は未検証。PR 本文の記載は引き写しになるため、検証済みとは扱わない。
+- LlmGateway と Knowledge.IntegrationTests の `dotnet test` は走らせていない。統合試験は Docker が必要なので走らせられない。
+- 変異試験は書き込みが必要なため追試できない（未検証）。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*

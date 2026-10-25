@@ -21,14 +21,13 @@ public class RagOrchestratorStopReasonTests
 {
     // 拒否時は「回答を生成できませんでした」ではなく、拒否である旨を出典つきで返す。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenGatewayReportsRefusal_ReturnsRefusalMessage(LlmTransportKind transport)
     {
         var body = CompletionJson(stopReason: "refusal", text: "");
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new RoutingHttpClientFactory(body),
-            completionTransport: TestLlmTransports.Create(transport, body));
+            completion: TestLlmTransports.Create(transport, body));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
             ct: TestContext.Current.CancellationToken);
@@ -39,14 +38,13 @@ public class RagOrchestratorStopReasonTests
 
     // 正常終了（end_turn）は従来どおり本文をそのまま返す（回帰防止）。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskAsync_WhenEndTurn_ReturnsBodyUnchanged(LlmTransportKind transport)
     {
         var body = CompletionJson(stopReason: "end_turn", text: "回答本文");
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new RoutingHttpClientFactory(body),
-            completionTransport: TestLlmTransports.Create(transport, body));
+            completion: TestLlmTransports.Create(transport, body));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
             ct: TestContext.Current.CancellationToken);
@@ -57,16 +55,15 @@ public class RagOrchestratorStopReasonTests
     // IADR-0037 の SSE 経路でも done イベントの stopReason で拒否を判別する。
     // 送出済みデルタは撤回できないため、拒否である旨を追記して呼び出し側が気づけるようにする。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenDoneReportsRefusal_EmitsRefusalToken(LlmTransportKind transport)
     {
         const string sse =
             "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5-5\"," +
             "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new RoutingHttpClientFactory(sse, "text/event-stream"),
-            completionTransport: TestLlmTransports.Create(transport, sse, "text/event-stream"));
+            completion: TestLlmTransports.Create(transport, sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>(),
@@ -81,16 +78,15 @@ public class RagOrchestratorStopReasonTests
     // フロントは token を 1 つの文字列へ連結し `white-space: pre-wrap` で表示するため、
     // 先頭に改行を入れると回答冒頭が空行になる。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenRefusedWithoutDeltas_EmitsNoticeWithoutLeadingBlankLine(LlmTransportKind transport)
     {
         const string sse =
             "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5-5\"," +
             "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new RoutingHttpClientFactory(sse, "text/event-stream"),
-            completionTransport: TestLlmTransports.Create(transport, sse, "text/event-stream"));
+            completion: TestLlmTransports.Create(transport, sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>(),
@@ -106,7 +102,6 @@ public class RagOrchestratorStopReasonTests
     // 「書きかけの本文（AI が回答の生成を拒否しました。）」と地の文へ溶け込んで読めなくなる。
     // 拒否は末尾の done で確定するため既出デルタは撤回できない（IADR-0104 §結果のトレードオフ）。
     [Theory]
-    [InlineData(LlmTransportKind.Rest)]
     [InlineData(LlmTransportKind.Grpc)]
     public async Task AskStreamAsync_WhenRefusedAfterDeltas_SeparatesNoticeFromBody(LlmTransportKind transport)
     {
@@ -114,9 +109,9 @@ public class RagOrchestratorStopReasonTests
             "data: {\"delta\":\"書きかけの本文\"}\n\n" +
             "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5-5\"," +
             "\"inputTokens\":11,\"outputTokens\":5,\"stopReason\":\"refusal\"}\n\n";
-        var orchestrator = new RagOrchestrator(
+        var orchestrator = TestRagOrchestrator.Create(
             new RoutingHttpClientFactory(sse, "text/event-stream"),
-            completionTransport: TestLlmTransports.Create(transport, sse, "text/event-stream"));
+            completion: TestLlmTransports.Create(transport, sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>(),
@@ -144,7 +139,7 @@ public class RagOrchestratorStopReasonTests
         {
             var (body, mediaType) = name switch
             {
-                AuthzScopeHttpClient.ClientName => ("""{"userId":"user-1","allowedFilters":[],"granted":true}""",
+                TestRagOrchestrator.AuthzClientName => ("""{"userId":"user-1","allowedFilters":[],"granted":true}""",
                     "application/json"),
                 "RetrievalService" => ("""{"results":[],"total":0,"tookMs":0}""", "application/json"),
                 _ => (llmBody, llmMediaType),

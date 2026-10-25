@@ -20,6 +20,11 @@ namespace DocumentService.Features.Documents.Catalog;
 // 時間切れ（`ConsumerTimeoutException`・計器 `messaging.consumer.timeout`）として投げ、MassTransit の再試行・デッドレター
 // （`UsePlatformRetry`）へ委ねる。**時間切れは指紋の「不明（null）」へ畳まない** —— 畳むと指紋の無いまま台帳を更新して
 // 成功で終わり、再試行されない。呼び出し元の取り消し（バスの停止）はそのまま外へ出す。
+//
+// 🔴 FR-01, FR-06, ADR-0027, [[IADR-0596]] 決定 5〜7 (#2102): **反映済みの再正規化より古い再正規化は反映しない。** `DocumentNormalized` は
+// 少なくとも 1 回届き、順序は保証されない（再配送・デッドレターからの再投入・変換の再実行）。台帳の `LastNormalizedAt` より厳密に古い版、
+// 削除した文書への削除より前の版は、本文を読まず・台帳を書かず・`DocumentUpdated` も出さずに ack する。アーカイブより前に作られた版は
+// 内容を反映するが状態は戻さない（ADR-0141 決定 1 (a) の「再同期でアーカイブを戻す」は、アーカイブより後の再正規化だけに効く）。
 public class DocumentNormalizedConsumer(
     DocumentDbContext db,
     IDocumentUpdatedPublisher bus,
@@ -46,6 +51,26 @@ public class DocumentNormalizedConsumer(
         // **件数を観測して検出する**（[[IADR-0153]] 決定 5 / SC-10。**0 が正常**）。
         var tags = await KnownTagsAsync(ev.Tags, ct);
 
+        // 🔴 [[IADR-0596]] 決定 5・7 (#2102): 順序の門。**本文を読む前に置く** —— 本文の URI は文書 ID 固定（`<id>/document.md`）で
+        // 再変換のたびに上書きされるので、古い版のまま本文を読むと新しい本文の指紋を古い題名・属性に付けてしまう。
+        var doc = await db.Documents.FindAsync(new object?[] { ev.DocumentId }, ct);
+        if (doc is not null && doc.IsNormalizationStale(ev.NormalizedAt))
+        {
+            logger.LogInformation(
+                "Skipped re-normalization of {Id} older than the applied version (normalized_at={NormalizedAt:O}, applied={Applied:O})",
+                ev.DocumentId, ev.NormalizedAt, doc.LastNormalizedAt);
+            return;
+        }
+        if (doc is null
+            && await db.DocumentDeletionMarks.FindAsync(new object?[] { ev.DocumentId }, ct) is { } deleted
+            && deleted.Supersedes(ev.NormalizedAt))
+        {
+            logger.LogInformation(
+                "Skipped normalization of deleted document {Id} produced before the deletion (normalized_at={NormalizedAt:O}, deleted_at={DeletedAt:O})",
+                ev.DocumentId, ev.NormalizedAt, deleted.DeletedAt);
+            return;
+        }
+
         // ADR-0050 決定 1 (#911): 本文指紋。正規化本文をストレージから読んで計算する
         // （DocumentNormalized は本文を運ばず、URI は文書 ID 固定で内容に依存しないため、
         // 発行側で読む以外に「本文が変われば変わる」値を得る手段が無い）。
@@ -59,7 +84,6 @@ public class DocumentNormalizedConsumer(
             fingerprint = DocumentBodyIntake.Fingerprint(body);
         }
 
-        var doc = await db.Documents.FindAsync(new object?[] { ev.DocumentId }, ct);
         // FR-19, ADR-0061 決定 4, [[IADR-0455]] 決定 1 (#1471): **属性を差し替える「前」に門の判定を取る。**
         // 再正規化は属性を辞書ごと差し替えるため、個人資料の露出を外し得る（撤収の形の門を使う）。
         var wasPublishable = doc is not null && DocumentEndpoints.PassesPublishGate(doc);
@@ -75,10 +99,10 @@ public class DocumentNormalizedConsumer(
             // 索引テキストの材料になる（`MetadataIndexText`）。
             doc = Document.CreateNormalized(ev.DocumentId, ev.Title, ev.MarkdownUri,
                 ev.Attributes, tags, fingerprint, ev.AssetUris,
-                ev.HasBody, ev.OriginalPath, ev.DataSourceName);
+                ev.HasBody, ev.OriginalPath, ev.DataSourceName, ev.NormalizedAt);
             db.Documents.Add(doc);
-            logger.LogInformation("Cataloged normalized document {Id} title={Title}",
-                ev.DocumentId, ev.Title);
+            // NFR-28, NFR-19 (#2131): **表題を出さない**（文書 ID だけ）。理由は IngestionService の `DocumentUpdatedConsumer` と同じ。
+            logger.LogInformation("Cataloged normalized document {Id}", ev.DocumentId);
         }
         else
         {
@@ -86,24 +110,26 @@ public class DocumentNormalizedConsumer(
             // 上書きすると管理者が付けたタグが再同期のたびに消える。
             // [[IADR-0296]]: 資産 URI も再正規化の結果で差し替える（属性と同じ扱い）。
             doc.ApplyNormalized(ev.Title, ev.MarkdownUri, ev.Attributes, fingerprint, ev.AssetUris,
-                ev.HasBody, ev.OriginalPath, ev.DataSourceName);
+                ev.HasBody, ev.OriginalPath, ev.DataSourceName, ev.NormalizedAt);
             logger.LogInformation("Updated cataloged document {Id} from re-normalization",
                 ev.DocumentId);
         }
-
-        await db.SaveChangesAsync(ct);
 
         // FR-01: カタログ登録を後続フロー（取り込み・Wiki 同期）へ通知する。
         // **［#635］イベントは表示名を運ぶ**（正本は識別子。[[IADR-0153]] 決定 2）——
         // 射影（Qdrant / Wiki.js）は人が読む面であり、下流は変わらない。
         // ADR-0027 / E3b: 発行は Wolverine（IDocumentUpdatedPublisher 経由）。本段の**購読**
         // （DocumentNormalized・MassTransit）は辺 E2 の射程であり、本 PR では動かさない。
-        var names = await TagResolver.NamesAsync(db, ct);
         // **［#1184］共有先（`shared_with`）の解決も含めて `DocumentEndpoints` の 1 か所へ寄せる**
         // （ADR-0061 決定 5 / [[IADR-0396]] 決定 3）—— ここで独自に組み立てると、
         // 取り込み経路の文書だけ判定軸が 1 本足りない索引になる。
-        await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-            bus, db, doc, wasPublishable, names, ct);
+        //
+        // FR-06, ADR-0027 §決定, IADR-0608 決定 4 (#2168): **台帳の保存と発行を 1 トランザクションで確定する**（Transactional Outbox）。
+        // 購読は MassTransit だが、本サービスの MassTransit には Outbox もトランザクションも無い（`UsePlatformRetry` だけ）ので、
+        // DB のトランザクションは Wolverine の 1 つだけで混ざらない。確定が失敗すれば例外のまま MassTransit の再試行へ出る
+        // （従前の保存の失敗と同じ。発行は巻き戻り 1 通も出ない）。
+        await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+            bus, db, doc, wasPublishable, ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。

@@ -18,7 +18,9 @@
     <!-- NFR, IADR-0251 決定 5: DataProtection の鍵リングをレプリカ間で共有する。共有しないと
          リクエストが別レプリカへ振られた瞬間に Cookie を復号できず、ログアウトしたように見える。
          **単一プロセスの単体テストでは捕まらない**（鍵リングが 1 つしか無いため緑になる）。 -->
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="10.0.10" />
+    <!-- NFR(セキュリティ) / #1922: 版は下の Microsoft.AspNetCore.DataProtection（推移的ピン）と同値に保つ
+         （同じ dotnet/aspnetcore の同一パッチ。下だけを古くすると restore が NU1109 で落ちる）。 -->
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="10.0.13" />
     <!-- NFR(セキュリティ): Microsoft.OpenApi を直接ピンし NU1903(GHSA-v5pm-xwqc-g5wc, High) を解消(#61, #80)。
          AspNetCore.OpenApi 10.0.9 の推移依存が脆弱な 2.x を引き込むため、パッチ版 2.7.5 以上へ引き上げる。 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
@@ -52,7 +54,10 @@
     <PackageVersion Include="Refit.HttpClientFactory" Version="8.0.0" />
     <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
     <!-- LLM -->
-    <PackageVersion Include="Anthropic.SDK" Version="4.0.0" />
+    <!-- FR-11, ADR-0010, ADR-0128, IADR-0562 (#1749): Claude の呼び出しは公式 SDK（NuGet `Anthropic`。計画 04_ai-rag-stack が指定）。
+         旧 `Anthropic.SDK` 4.0.0（第三者製）は外した。版は公開から 14 日以上経った最新（12.53.0・2026-09-30 公開）に固定する。
+         依存（Microsoft.Extensions.AI.Abstractions・System.Net.ServerSentEvents・System.Text.Json）は推移依存として解決させる。 -->
+    <PackageVersion Include="Anthropic" Version="12.53.0" />
     <!-- FR-16, ADR-0024: MCP（Model Context Protocol）サーバーの公式 C# SDK。
          計画 06_technical/11_mcp-server-integration §前提 が「公式 C# SDK（ModelContextProtocol）を
          利用する」と指定している。Core は AspNetCore が推移的に引くため、直接ピンは置かない。 -->
@@ -102,6 +107,11 @@
     <PackageVersion Include="WolverineFx" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.Kafka" Version="6.24.4" />
+    <!-- FR-06, ADR-0027 §決定「イベント発行の原子性は Wolverine の EF Core + PostgreSQL Transactional Outbox を標準とする」,
+         IADR-0604 (#2042): Outbox の 2 パッケージ。参照元は共通ヘルパ（Platform.Shared.Infrastructure の
+         WolverineExtensions.UsePlatformTransactionalOutbox）だけである。版は上の WolverineFx 系と必ず同値に保つ。 -->
+    <PackageVersion Include="WolverineFx.EntityFrameworkCore" Version="6.24.4" />
+    <PackageVersion Include="WolverineFx.Postgresql" Version="6.24.4" />
     <!-- IADR-0217: Wolverine のコード生成は実行時コンパイルを標準とする（事前 codegen ＋
          TypeLoadMode.Static は採らない）。Wolverine 6 系はコア本体から Roslyn コンパイラを分離しており、
          本パッケージが無いと既定の TypeLoadMode.Dynamic でホストが起動しない（計画 ADR-0027 §決定 の
@@ -132,7 +142,12 @@
     <PackageVersion Include="Grpc.Net.Client" Version="2.83.0" />
     <PackageVersion Include="Grpc.Tools" Version="2.83.0" />
     <PackageVersion Include="Google.Protobuf" Version="3.35.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
+    <!-- NFR(セキュリティ) / #1922: 直接の参照は無く、推移的ピンとして効く（上の DataProtection.StackExchangeRedis が引く）。
+         10.0.10 は推移依存 System.Security.Cryptography.Xml / .Pkcs 10.0.10 を引き、GHSA-r955-8q5j-3h83・
+         GHSA-7hqp-7c5m-4vq6・GHSA-c399-9853-6jmj・GHSA-846f-f764-76mx（High）と GHSA-2fmv-rv2c-59x7（Moderate）に
+         当たる（影響範囲 10.0.0〜10.0.12）。10.0.13 は修正済みの Xml / Pkcs 10.0.13 を引く。
+         Xml / Pkcs は個別にピンしない（親を上げれば足りるため、ピンを増やさない）。 -->
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.13" />
     <!-- その他 -->
     <PackageVersion Include="Humanizer" Version="3.0.10" />
     <PackageVersion Include="Ardalis.GuardClauses" Version="5.0.0" />

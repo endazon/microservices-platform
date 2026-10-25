@@ -105,8 +105,10 @@ export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc09AdminAbacNav,
   sc10OperationsNav,
   sc11ConfigNav,
-  sc12McpClientsNav,
+  // SC-09, SC-12 / #2189: 左ナビはグループ内を**この配列の順**に描く（`navGroups()`）。計画の「管理」は
+  // SC-09 ABAC設定 → SC-17 ユーザー管理 → SC-12 MCP管理 であり、SC 番号順ではない（E2E M-012 が固定）。
   sc17UsersNav,
+  sc12McpClientsNav,
   // 05_screens §SC-22: 左ナビ「運用」グループ（運用者・システム管理者だけに出る）。
   sc22SecretsNav,
 ];

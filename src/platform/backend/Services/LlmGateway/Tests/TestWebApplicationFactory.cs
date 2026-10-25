@@ -1,5 +1,5 @@
 using System.Net.Http.Headers;
-using Anthropic.SDK;
+using Anthropic;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 using LlmGateway.Infrastructure.ExternalServices;

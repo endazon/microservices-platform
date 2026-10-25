@@ -15,7 +15,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-07-07
-updated: 2026-10-05
+updated: 2026-10-14
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (Accepted)
   - planning:projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (Accepted)
@@ -23,6 +23,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md
 related_specs:
   - ../specs/20260707_issue-98_embedding-implementation.md
+  - ../specs/20261014_1740_voyage-zero-retention-certification.md
 related_adrs:
   - IADR-0007 (設定駆動の LLM 越境ルーティング)
   - IADR-0022 (既定 opus・ZDR 非対応モデル除外)
@@ -131,3 +132,14 @@ related_adrs:
 - **決定 4（モデル別コレクション分離）・決定 6（全コレクションからの削除）**: 語彙索引は分離したコレクションの 1 本として、削除・全文索引・`text_ngram` の後付けの対象に加わる（IADR-0497 決定 4）。
 - **決定 5・フォローアップ (c)（高機密コレクションの横断検索）**: 語彙索引を全文の系統だけで束ねる形で解いた（IADR-0497 決定 5。束ね方は IADR-0467）。
 - **フォローアップ (a)（Ruri v3 の構築と nDCG@10 の実測）**: 対象が無くなった（ADR-0127 決定 5）。nDCG@10 は「全文のみ＋Claude の再順位付け」と「ハイブリッド（voyage）」の差を測る形に変わる（ADR-0127 決定 6。#1746 段 S3）。
+
+## 追記: フォローアップ (b)（Voyage 契約のティアB 認定）を閉じた（2026-10-14 / #1740）
+
+［2026-10-14 追記 / #1740］フォローアップ (b) は**認定済み**になった（決定は変えていない）。
+オーナーが Voyage AI Terms of Service（Last Updated: May 27, 2026）と照合して認定した。
+
+- 学習不使用・ゼロ保持: opt-out（2026-10-14 20:22 JST ごろ）で満たす。
+- データの所在（レジデンシー）: 規約に保証が無い。オーナーが受容した（受け入れたリスク）。
+- opt-out より前の 960 回の送信は、学習に使われ得るものとして受容した。
+
+照合の表・結論・認定の射程は `docs/operations/operations.md` の「ゼロ保持認定状況の記録」が正である。

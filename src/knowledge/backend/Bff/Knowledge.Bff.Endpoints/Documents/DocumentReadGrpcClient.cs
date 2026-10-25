@@ -15,20 +15,20 @@ namespace Knowledge.Bff.Endpoints.Documents;
 // [[IADR-0009]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]], [[IADR-0402]] (#1255):
 // 文書台帳の読み取り 4 口（`knowledge.document.v1.DocumentRead`）の**呼び出し側**。
 //
-// **並走中の正は REST である。** 本クライアントは `Services:DocumentServiceGrpc` が構成された
-// ときだけ登録され（`AddDocumentReadGrpcClient`）、`DocumentBffEndpoints` は登録が在れば
-// こちらを使う。戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**読み取り 4 口の輸送は本クライアントだけである**（REST の並走は撤去した。
+// [[IADR-0379]] 決定 5「並走中の正は REST」を反転）。`Services:DocumentServiceGrpc` が構成されていなければ、
+// 生成クライアントは常に `UNAVAILABLE` を受け取る（`UnconfiguredGrpcDestination`。下の 4 通りの「引けなかった」の枝へ落ちる）。
 //
 // 🔴 **ここで縮退を畳まない。** 返すのは事実（「無い」＝`null` / 空、「引けなかった」＝例外）だけである。
 //   畳み方は**呼び出し元の call site ごとに違う**（[[IADR-0400]] 決定 5 / [[IADR-0401]] 決定 5 と同じ作法）——
 //   実測すると `DocumentBffEndpoints` の 4 箇所は
-//     ・一覧（`FetchListAsync`）… 非 2xx も不達も **`[]`**
+//     ・一覧（`FetchListPageAsync`）… 不達は **502**（［2026-10-14 / #1923］従前は `[]`。空へ畳むと本当の 0 件と区別できない）
 //     ・詳細（`FetchAuthorizedAsync`）… 非 2xx も不達も **`null`**（→ 404 秘匿）
 //     ・版履歴… 捕捉なし（**500**）。本文 null は `[]`
 //     ・特定版… 非 2xx は **404**、不達は捕捉なし（**500**）
 //   と**4 通りに割れている**。ここで 1 つに畳むと、どれか 1 つの枝が静かに変わる。
-//   したがって **REST の try/catch が在る場所へ `RpcException` を足す**形で写す
-//   （枝を新設せず、既存の枝の入口を広げる）。
+//   したがって **REST の try/catch が在った場所へ `RpcException` を足す**形で写した
+//   （枝を新設せず、既存の枝の入口を広げる。REST の枝は撤去済み）。
 //
 // 🔴 **利用者の資格情報は載せない**（[[IADR-0379]] 決定 4）。載るのは BFF 自身の s2s トークンだけである。
 //
@@ -46,12 +46,53 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "DocumentServiceGrpc";
 
-    /// <summary>FR-06, UC-03: 文書の一覧（更新の新しい順）。引けなければ例外（呼び出し元が畳む）。</summary>
-    public async Task<List<DocumentDto>> ListAsync(ClaimsPrincipal user, CancellationToken ct)
+    /// <summary>
+    /// FR-06, NFR-16 (#1897): D-1（BFF → document）のチャネルの受信上限（バイト）。未設定なら
+    /// <see cref="DefaultMaxReceiveMessageSize"/>。環境変数では `Services__DocumentServiceGrpcMaxReceiveMessageSize`。
+    /// </summary>
+    public const string MaxReceiveMessageSizeKey = "Services:DocumentServiceGrpcMaxReceiveMessageSize";
+
+    /// <summary>
+    /// FR-06, NFR-16 (#1897): 受信上限の既定 64 MiB。
+    /// 応急処置（#1899）当時の `ListDocuments` は台帳の全件を 1 応答で返していた。代表的な 1 件は約 450 バイトで、
+    /// 稼働の台帳は少なくとも 38,703 件（約 17 MB）ある。64 MiB は約 14 万件まで収める。
+    /// grpc-dotnet の既定 4 MB では約 9 千件で `ResourceExhausted` になり、BFF の一覧が空に化けていた。
+    /// 根拠の算定は作業仕様書 `20261010_1897_grpc-receive-limit-stopgap` にある。
+    /// ［2026-10-14 / #1923・[[IADR-0537]]］`ListDocuments` はページで返すようになった（1 応答は <see cref="ListPageSize"/> 件・約 450 KB）。
+    /// 上限は**据え置く**（戻す条件は IADR-0537 の残余。配備の順序で旧い document-service が全件を返す間の保険）。
+    /// </summary>
+    public const int DefaultMaxReceiveMessageSize = 64 * 1024 * 1024;
+
+    /// <summary>
+    /// FR-06, NFR-16, [[IADR-0537]] (#1923・#1897): BFF が後段の 1 ページに求める件数（後段の上限と同じ 1000）。
+    /// 画面のページの大きさとは別物である —— BFF は後段のページを辿りながら ABAC で絞り、画面の窓を切り出す。
+    /// </summary>
+    public const int ListPageSize = 1000;
+
+    /// <summary>
+    /// FR-06, UC-03, [[IADR-0537]] (#1923): 文書の一覧の 1 ページ（更新の新しい順・同時刻は ID の降順）。
+    /// <paramref name="pageToken"/> は前の応答の続きの印（先頭は null）。戻り値の印が null なら終端。
+    /// 引けなければ例外（呼び出し元が畳む）。🔴 **続きの印は後段の内部の値である。BFF の外（画面）へ出さない。**
+    /// </summary>
+    /// <remarks>
+    /// ［2026-10-15 / #1923・[[IADR-0545]]］<paramref name="sort"/> は並べ替え（既定は更新日時の降順）。
+    /// 🔴 続きの印は並べ替えを持つ —— 1 回の走査の中では同じ <paramref name="sort"/> で辿ること（違えば後段が `INVALID_ARGUMENT`）。
+    /// </remarks>
+    public async Task<(List<DocumentDto> Documents, string? NextPageToken)> ListPageAsync(
+        ClaimsPrincipal user, int pageSize, string? pageToken, CancellationToken ct,
+        Pb.DocumentListSort sort = Pb.DocumentListSort.Unspecified)
     {
         var resp = await client.ListDocumentsAsync(
-            new Pb.ListDocumentsRequest { User = ToUserContext(user) }, cancellationToken: ct);
-        return resp.Documents.Select(DocumentReadGrpcMapping.ToDto).ToList();
+            new Pb.ListDocumentsRequest
+            {
+                User = ToUserContext(user),
+                PageSize = pageSize,
+                PageToken = pageToken ?? string.Empty,
+                Sort = sort,
+            },
+            cancellationToken: ct);
+        return (resp.Documents.Select(DocumentReadGrpcMapping.ToDto).ToList(),
+            string.IsNullOrEmpty(resp.NextPageToken) ? null : resp.NextPageToken);
     }
 
     /// <summary>FR-06, UC-03: 文書 1 件。**台帳に無ければ <c>null</c>**（REST の 404 と同値）。</summary>
@@ -60,6 +101,21 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
         var resp = await client.GetDocumentAsync(
             new Pb.GetDocumentRequest { Id = id.ToString("D"), User = ToUserContext(user) }, cancellationToken: ct);
         return resp.Found ? DocumentReadGrpcMapping.ToDto(resp.Document) : null;
+    }
+
+    /// <summary>
+    /// FR-19, UC-11, SC-03, 計画 ADR-0036 D-08, [[IADR-0611]] (#2046): **SC-03 の閲覧の 1 件**（緊急アクセスの判定を含める）。
+    /// 文書サービスが通常の判定で読めなかったものを緊急アクセスで許したときは <c>ViaBreakGlass</c> が真
+    /// （後段は要求ごとにサーバ側の発動記録で判定し、閲覧の監査ログを保存した後でだけ立てる）。読めない・無ければ <c>null</c>。
+    /// 🔴 呼ぶのは BFF の詳細・本文の前段だけ。書き込み・版・本人の確認の前段は <see cref="GetAsync"/>（含めない）を使う。
+    /// </summary>
+    public async Task<(DocumentDto Document, bool ViaBreakGlass)?> GetForViewAsync(
+        ClaimsPrincipal user, Guid id, CancellationToken ct)
+    {
+        var resp = await client.GetDocumentAsync(
+            new Pb.GetDocumentRequest { Id = id.ToString("D"), User = ToUserContext(user), AllowBreakGlass = true },
+            cancellationToken: ct);
+        return resp.Found ? (DocumentReadGrpcMapping.ToDto(resp.Document), resp.GrantedByBreakGlass) : null;
     }
 
     /// <summary>
@@ -83,6 +139,28 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
         return resp.Found ? DocumentReadGrpcMapping.ToDto(resp.Snapshot) : null;
     }
 
+    /// <summary>
+    /// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文。**読めない・無ければ <c>null</c>**。
+    /// 本文の状態（在る・参照が無い・実体が無い・大きすぎる）は応答の <c>State</c> で返す。引けなければ例外（呼び出し元が畳む）。
+    /// </summary>
+    /// <remarks>
+    /// FR-19, ADR-0036 D-08, [[IADR-0611]] (#2046): <paramref name="allowBreakGlass"/> は、前段の詳細（<see cref="GetForViewAsync"/>）が
+    /// 緊急アクセスで読めたときだけ真にする（後段の判定に委ねる。真でも後段が要求ごとに発動記録で判定し直す）。
+    /// </remarks>
+    public async Task<Pb.GetDocumentContentResponse?> GetContentAsync(ClaimsPrincipal user, Guid id, CancellationToken ct,
+        bool allowBreakGlass = false)
+    {
+        var resp = await client.GetDocumentContentAsync(
+            new Pb.GetDocumentContentRequest
+            {
+                DocumentId = id.ToString("D"),
+                User = ToUserContext(user),
+                AllowBreakGlass = allowBreakGlass,
+            },
+            cancellationToken: ct);
+        return resp.Found ? resp : null;
+    }
+
     // FR-19, NFR-09, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614): 読み取りの主体を運ぶ利用者文脈。
     // **載せるのは判定の入力であって判定結果ではない。** 属性の抽出はプラットフォーム唯一の点へ委譲する
     // （`AttributeValuesGrpcClient.ToUserContext` と同じ形。キーをここで列挙しない）。
@@ -103,15 +181,21 @@ public sealed class DocumentReadGrpcClient(Pb.DocumentRead.DocumentReadClient cl
 
 public static class DocumentReadGrpcClientExtensions
 {
-    // `Services:DocumentServiceGrpc` が構成されたときだけ gRPC 経路を登録する。
-    // 未設定なら**何も登録せず**、`DocumentBffEndpoints` は REST のまま（並走中の正は REST）。
+    // `Services:DocumentServiceGrpc` の生成クライアントを登録する。［2026-10-10 / #1255・[[IADR-0533]]］**常に登録する** ——
+    // 未設定なら常に `UNAVAILABLE` を返す呼び出し器の上に組む（[[IADR-0533]] 決定 2。REST へ戻る経路は無い）。
     public static IServiceCollection AddDocumentReadGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[DocumentReadGrpcClient.AddressKey];
         if (string.IsNullOrWhiteSpace(address))
+        {
+            services.TryAddUnconfiguredGrpcClient(
+                DocumentReadGrpcClient.AddressKey, ci => new Pb.DocumentRead.DocumentReadClient(ci));
+            services.AddSingleton<DocumentReadGrpcClient>();
             return services;
+        }
 
+        var maxReceive = ReadMaxReceiveMessageSize(config);
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。BFF は `AddAuthzScopeGrpcClient` が**キー無し**で
         // 登録する認可サービス宛のチャネルを既に持ち得る（参照実装）——
@@ -119,10 +203,26 @@ public static class DocumentReadGrpcClientExtensions
         // 文書のクライアントが認可サービスへ繋がる（あるいはその逆）。
         // `AddLlmGatewayGrpcClient` が同じ理由でキー付きにしているのと同型である。
         services.AddKeyedSingleton(DocumentReadGrpcClient.ChannelKey, (sp, _) =>
-            GrpcClientExtensions.CreatePlatformChannel(address, sp.GetRequiredService<IServiceTokenProvider>()));
+            GrpcClientExtensions.CreatePlatformChannel(
+                address, sp.GetRequiredService<IServiceTokenProvider>(), maxReceive));
         services.AddSingleton(sp => new Pb.DocumentRead.DocumentReadClient(
             sp.GetRequiredKeyedService<GrpcChannel>(DocumentReadGrpcClient.ChannelKey)));
         services.AddSingleton<DocumentReadGrpcClient>();
         return services;
+    }
+
+    // FR-06, NFR-16 (#1897): 受信上限は **D-1 のチャネルだけ**に効かせる（共有の `CreatePlatformChannel` の
+    // 既定は他の呼び出し元のために 4 MB のまま残す）。
+    // 🔴 0 以下・数値でない値は起動時に落とす。黙って既定へ戻すと、構成の誤りが「一覧が空」として再発する。
+    internal static int ReadMaxReceiveMessageSize(IConfiguration config)
+    {
+        var raw = config[DocumentReadGrpcClient.MaxReceiveMessageSizeKey];
+        if (string.IsNullOrWhiteSpace(raw))
+            return DocumentReadGrpcClient.DefaultMaxReceiveMessageSize;
+        if (int.TryParse(raw, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var bytes) && bytes > 0)
+            return bytes;
+        throw new InvalidOperationException(
+            $"{DocumentReadGrpcClient.MaxReceiveMessageSizeKey} は正の整数（バイト）で指定してください: '{raw}'");
     }
 }

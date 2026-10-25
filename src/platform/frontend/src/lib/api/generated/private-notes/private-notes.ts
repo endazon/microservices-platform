@@ -23,6 +23,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ActivateBreakGlassRequest,
+  BffBreakGlassAuditParams,
+  BreakGlassAuditEntryDto,
+  BreakGlassGrantDto,
+  BreakGlassStatusResponse,
   CreatePrivateNoteRequest,
   CreateShareRequest,
   CreateSyncDeviceRequest,
@@ -506,10 +511,15 @@ export type bffPrivateNoteExposureResponse404 = {
   status: 404
 }
 
+export type bffPrivateNoteExposureResponse409 = {
+  data: void
+  status: 409
+}
+
 export type bffPrivateNoteExposureResponseSuccess = (bffPrivateNoteExposureResponse200) & {
   headers: Headers;
 };
-export type bffPrivateNoteExposureResponseError = (bffPrivateNoteExposureResponse401 | bffPrivateNoteExposureResponse403 | bffPrivateNoteExposureResponse404) & {
+export type bffPrivateNoteExposureResponseError = (bffPrivateNoteExposureResponse401 | bffPrivateNoteExposureResponse403 | bffPrivateNoteExposureResponse404 | bffPrivateNoteExposureResponse409) & {
   headers: Headers;
 };
 
@@ -905,7 +915,456 @@ export const useBffPrivateNoteShareRevoke = <TError = void,
       > => {
       return useMutation(getBffPrivateNoteShareRevokeMutationOptions(options));
     }
-    export type bffPrivateNotePurgeResponse200 = {
+    export type bffBreakGlassStatusResponse200 = {
+  data: BreakGlassStatusResponse
+  status: 200
+}
+
+export type bffBreakGlassStatusResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffBreakGlassStatusResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffBreakGlassStatusResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffBreakGlassStatusResponseSuccess = (bffBreakGlassStatusResponse200) & {
+  headers: Headers;
+};
+export type bffBreakGlassStatusResponseError = (bffBreakGlassStatusResponse401 | bffBreakGlassStatusResponse404 | bffBreakGlassStatusResponse502) & {
+  headers: Headers;
+};
+
+export type bffBreakGlassStatusResponse = (bffBreakGlassStatusResponseSuccess | bffBreakGlassStatusResponseError)
+
+export const getBffBreakGlassStatusUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/${id}/break-glass`
+}
+
+/**
+ * 有効な発動があればその写し、無ければ `active: null`。**この値を閲覧の許可の根拠にしない**
+ * （許可は文書サービスが要求ごとに発動記録で決める）。
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスの状態（所有者本人のみ。残り時間の表示用）
+ */
+export const bffBreakGlassStatus = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffBreakGlassStatusResponse> => {
+
+  return bffFetch<bffBreakGlassStatusResponse>(getBffBreakGlassStatusUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffBreakGlassStatusQueryKey = (id: string,) => {
+    return [
+    `/bff/private-notes/${id}/break-glass`
+    ] as const;
+    }
+
+
+export const getBffBreakGlassStatusQueryOptions = <TData = Awaited<ReturnType<typeof bffBreakGlassStatus>>, TError = void>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffBreakGlassStatus>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffBreakGlassStatusQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffBreakGlassStatus>>> = ({ signal }) => bffBreakGlassStatus(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffBreakGlassStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffBreakGlassStatusQueryResult = NonNullable<Awaited<ReturnType<typeof bffBreakGlassStatus>>>
+export type BffBreakGlassStatusQueryError = void
+
+
+/**
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスの状態（所有者本人のみ。残り時間の表示用）
+ */
+
+export function useBffBreakGlassStatus<TData = Awaited<ReturnType<typeof bffBreakGlassStatus>>, TError = void>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffBreakGlassStatus>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffBreakGlassStatusQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffBreakGlassActivateResponse201 = {
+  data: BreakGlassGrantDto
+  status: 201
+}
+
+export type bffBreakGlassActivateResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffBreakGlassActivateResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffBreakGlassActivateResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffBreakGlassActivateResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffBreakGlassActivateResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffBreakGlassActivateResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffBreakGlassActivateResponse503 = {
+  data: void
+  status: 503
+}
+
+export type bffBreakGlassActivateResponseSuccess = (bffBreakGlassActivateResponse201) & {
+  headers: Headers;
+};
+export type bffBreakGlassActivateResponseError = (bffBreakGlassActivateResponse400 | bffBreakGlassActivateResponse401 | bffBreakGlassActivateResponse403 | bffBreakGlassActivateResponse404 | bffBreakGlassActivateResponse409 | bffBreakGlassActivateResponse502 | bffBreakGlassActivateResponse503) & {
+  headers: Headers;
+};
+
+export type bffBreakGlassActivateResponse = (bffBreakGlassActivateResponseSuccess | bffBreakGlassActivateResponseError)
+
+export const getBffBreakGlassActivateUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/${id}/break-glass`
+}
+
+/**
+ * 有効時間は発動から 15 分固定（延長なし）。指名先は利用者名簿で platform-admin かを確かめる。
+ * **後段の本文は詰め替えず透過する**（400 の検証・409 の重ね発動／論理削除中・503 の名簿不達）。
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスを発動する（所有者本人のみ。資料 1 件・理由必須・platform-admin を 1 人指名）
+ */
+export const bffBreakGlassActivate = async (id: string,
+    activateBreakGlassRequest: ActivateBreakGlassRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffBreakGlassActivateResponse> => {
+
+  return bffFetch<bffBreakGlassActivateResponse>(getBffBreakGlassActivateUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(activateBreakGlassRequest)
+  }
+);}
+
+
+
+
+
+export const getBffBreakGlassActivateMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffBreakGlassActivate>>, TError,{id: string;data: ActivateBreakGlassRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffBreakGlassActivate>>, TError,{id: string;data: ActivateBreakGlassRequest}, TContext> => {
+
+const mutationKey = ['bffBreakGlassActivate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffBreakGlassActivate>>, {id: string;data: ActivateBreakGlassRequest}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  bffBreakGlassActivate(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffBreakGlassActivateMutationResult = NonNullable<Awaited<ReturnType<typeof bffBreakGlassActivate>>>
+    export type BffBreakGlassActivateMutationBody = ActivateBreakGlassRequest
+    export type BffBreakGlassActivateMutationError = void
+
+    /**
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスを発動する（所有者本人のみ。資料 1 件・理由必須・platform-admin を 1 人指名）
+ */
+export const useBffBreakGlassActivate = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffBreakGlassActivate>>, TError,{id: string;data: ActivateBreakGlassRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffBreakGlassActivate>>,
+        TError,
+        {id: string;data: ActivateBreakGlassRequest},
+        TContext
+      > => {
+      return useMutation(getBffBreakGlassActivateMutationOptions(options));
+    }
+    export type bffBreakGlassEndResponse200 = {
+  data: BreakGlassGrantDto
+  status: 200
+}
+
+export type bffBreakGlassEndResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffBreakGlassEndResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffBreakGlassEndResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffBreakGlassEndResponseSuccess = (bffBreakGlassEndResponse200) & {
+  headers: Headers;
+};
+export type bffBreakGlassEndResponseError = (bffBreakGlassEndResponse401 | bffBreakGlassEndResponse404 | bffBreakGlassEndResponse502) & {
+  headers: Headers;
+};
+
+export type bffBreakGlassEndResponse = (bffBreakGlassEndResponseSuccess | bffBreakGlassEndResponseError)
+
+export const getBffBreakGlassEndUrl = (id: string,) => {
+
+
+
+
+  return `/bff/private-notes/${id}/break-glass/end`
+}
+
+/**
+ * 終了日時は本人の終了か発動＋15 分の早いほう。指名された管理者を含む第三者は終えられない（404）。
+ * **write スコープの前段を置かない**（終了は露出を縮める向きであり、ポリシーの有無で止めない）。
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスを 15 分より前に終える（所有者本人のみ）
+ */
+export const bffBreakGlassEnd = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffBreakGlassEndResponse> => {
+
+  return bffFetch<bffBreakGlassEndResponse>(getBffBreakGlassEndUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffBreakGlassEndMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffBreakGlassEnd>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffBreakGlassEnd>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['bffBreakGlassEnd'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffBreakGlassEnd>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  bffBreakGlassEnd(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffBreakGlassEndMutationResult = NonNullable<Awaited<ReturnType<typeof bffBreakGlassEnd>>>
+
+    export type BffBreakGlassEndMutationError = void
+
+    /**
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスを 15 分より前に終える（所有者本人のみ）
+ */
+export const useBffBreakGlassEnd = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffBreakGlassEnd>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffBreakGlassEnd>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getBffBreakGlassEndMutationOptions(options));
+    }
+    export type bffBreakGlassAuditResponse200 = {
+  data: BreakGlassAuditEntryDto[]
+  status: 200
+}
+
+export type bffBreakGlassAuditResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffBreakGlassAuditResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffBreakGlassAuditResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffBreakGlassAuditResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffBreakGlassAuditResponseSuccess = (bffBreakGlassAuditResponse200) & {
+  headers: Headers;
+};
+export type bffBreakGlassAuditResponseError = (bffBreakGlassAuditResponse400 | bffBreakGlassAuditResponse401 | bffBreakGlassAuditResponse403 | bffBreakGlassAuditResponse502) & {
+  headers: Headers;
+};
+
+export type bffBreakGlassAuditResponse = (bffBreakGlassAuditResponseSuccess | bffBreakGlassAuditResponseError)
+
+export const getBffBreakGlassAuditUrl = (params?: BffBreakGlassAuditParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/bff/break-glass/audit?${stringifiedParams}` : `/bff/break-glass/audit`
+}
+
+/**
+ * 発動・終了・有効中の閲覧を 1 件ずつ、新しい順に返す。**資料の本文・題名は載らない**。
+ * 誰の行まで読めるかは文書サービスが判定する（BFF は人の主体であることだけを確かめる）。
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスの監査ログ（platform-admin は全件・本人は自分の資料の行だけ）
+ */
+export const bffBreakGlassAudit = async (params?: BffBreakGlassAuditParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffBreakGlassAuditResponse> => {
+
+  return bffFetch<bffBreakGlassAuditResponse>(getBffBreakGlassAuditUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffBreakGlassAuditQueryKey = (params?: BffBreakGlassAuditParams,) => {
+    return [
+    `/bff/break-glass/audit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getBffBreakGlassAuditQueryOptions = <TData = Awaited<ReturnType<typeof bffBreakGlassAudit>>, TError = void>(params?: BffBreakGlassAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffBreakGlassAudit>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffBreakGlassAuditQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffBreakGlassAudit>>> = ({ signal }) => bffBreakGlassAudit(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffBreakGlassAudit>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffBreakGlassAuditQueryResult = NonNullable<Awaited<ReturnType<typeof bffBreakGlassAudit>>>
+export type BffBreakGlassAuditQueryError = void
+
+
+/**
+ * @summary FR-19, UC-11, SC-19: 緊急アクセスの監査ログ（platform-admin は全件・本人は自分の資料の行だけ）
+ */
+
+export function useBffBreakGlassAudit<TData = Awaited<ReturnType<typeof bffBreakGlassAudit>>, TError = void>(
+ params?: BffBreakGlassAuditParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffBreakGlassAudit>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffBreakGlassAuditQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffPrivateNotePurgeResponse200 = {
   data: PurgePrivateNotesResponse
   status: 200
 }

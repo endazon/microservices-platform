@@ -37,5 +37,8 @@ internal static partial class PlatformUserMapper
         => ToDtoCore(user with { Attributes = RetentionAnchorAttributes.WithoutReserved(user.Attributes) });
 
     // 実体は source generator が生成する（6 プロパティすべて同名の 1:1）。
+    // ［2026-10-23 / [[IADR-0607]]］`ServiceAccountClientId` は部門の同期が機械の主体を見分ける内部の手掛かりであり、
+    // 応答 DTO には写さない（意図して落とす。RMG020 を黙らせるのではなく、写さないことを明示する）。
+    [MapperIgnoreSource(nameof(IdentityUser.ServiceAccountClientId))]
     private static partial PlatformUserDto ToDtoCore(IdentityUser user);
 }

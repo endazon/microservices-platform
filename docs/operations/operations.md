@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17]
-adrs: [ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131]
-iadrs: [IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531]
-specs: [20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models]
-issues: [#1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, planning#196, planning#524, planning#538, AST#346, planning#672, AST#1078, planning#712, planning#750, planning#741, AST#1289, AST#243, planning#783]
+ids: [NFR-20, NFR-06, FR-22, SC-13, SC-14, SC-16, FR-01, FR-02, FR-03, FR-04, FR-05, FR-10, FR-11, FR-13, FR-15, FR-16, SC-12, NFR-02, NFR-05, NFR-09, NFR-13, NFR-18, NFR-21, SC-01, SC-02, SC-10, SC-15, SC-22, UC-01, UC-04, UC-05, UC-07, FR-09, SC-17, FR-19, SC-09, FR-06, FR-17, NFR-17, NFR-29]
+adrs: [ADR-0052, ADR-0045, ADR-0012, ADR-0053, ADR-0141, ADR-0031, ADR-0010, ADR-0133, ADR-0107, ADR-0112, ADR-0125, ADR-0084, ADR-0124, ADR-0080, ADR-0122, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0011, ADR-0016, ADR-0017, ADR-0026, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0078, ADR-0079, ADR-0085, ADR-0095, ADR-0106, ADR-0111, ADR-0115, ADR-0074, ADR-0097, ADR-0113, ADR-0118, ADR-0116, ADR-0121, ADR-0036, ADR-0127, ADR-0013, ADR-0027, ADR-0123, ADR-0135, ADR-0023, ADR-0110, ADR-0033, ADR-0035, ADR-0083, ADR-0132, ADR-0086, ADR-0131, ADR-0140, ADR-0129]
+iadrs: [IADR-0637, IADR-0613, IADR-0607, IADR-0605, IADR-0602, IADR-0600, IADR-0599, IADR-0595, IADR-0593, IADR-0592, IADR-0571, IADR-0563, IADR-0562, IADR-0560, IADR-0559, IADR-0556, IADR-0554, IADR-0551, IADR-0549, IADR-0547, IADR-0536, IADR-0532, IADR-0261, IADR-0435, IADR-0528, IADR-0114, IADR-0526, IADR-0488, IADR-0516, IADR-0514, IADR-0513, IADR-0424, IADR-0504, IADR-0503, IADR-0502, IADR-0500, IADR-0492, IADR-0489, IADR-0486, IADR-0485, IADR-0484, IADR-0483, IADR-0482, IADR-0481, IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0248, IADR-0265, IADR-0284, IADR-0294, IADR-0304, IADR-0313, IADR-0318, IADR-0322, IADR-0327, IADR-0339, IADR-0345, IADR-0354, IADR-0367, IADR-0369, IADR-0370, IADR-0374, IADR-0377, IADR-0378, IADR-0382, IADR-0404, IADR-0420, IADR-0422, IADR-0432, IADR-0433, IADR-0453, IADR-0461, IADR-0466, IADR-0471, IADR-0472, IADR-0473, IADR-0470, IADR-0477, IADR-0480, IADR-0497, IADR-0498, IADR-0520, IADR-0519, IADR-0521, IADR-0525, IADR-0523, IADR-0522, IADR-0524, IADR-0531, IADR-0533, IADR-0552, IADR-0566, IADR-0567]
+specs: [20261026_2150_document-event-sequence-stage1b, 20261024_2066_ingestion-budget-opt-in-collections, 20261023_2132_pin-image-tags, 20261023_2140_ingestion-health-and-worker-probes, 20261023_2105_readiness-downstream-isolation, 20261023_2113_email-transient-retry, 20261023_2100_cross-replica-exclusion, 20261023_2101_ingestion-ordering-and-atomicity, 20261023_2097_first-series-zero-normal-alerts, 20261023_2043_dlq-instruments, 20261022_2044_alertmanager-mail-receiver, 20261020_1971_wiki-sync-write-gate, 20261017_1749_anthropic-official-sdk, 20261017_1746_s3-ndcg-latency-and-rerank-comparison, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261017_1255_graph-cluster-summary-grpc, 20261017_1903_drop-pre-5-5-claude-models, 20261017_1983_bulk-op-publish-recovery-without-log-ids, 20261017_1974_archive-ast-quote-snapshots, 20261017_1973_strip-untrusted-boundary-from-ast-documents, 20261016_1966_wiki-title-column-length, 20261016_1968_archive-counts-and-reindex-by-status, 20261016_1961_archive-effect-exclusion, 20261016_1931_archive-bodyless-pre-cutover-documents, 20261015_1858_pin-inner-image-digests, 20261015_1931_republish-created-after, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261014_1740_voyage-zero-retention-certification, 20261010_sc13-keycloak-theme-nocturne, 20261010_1881_grafana-alert-uid-length, 20261010_1872_anthropic-timeout-config, 20261009_1842_loki-tempo-front-auth, 20261009_1850_dept-sync-carry-over, 20261009_1783_dept-sync-poc-fix, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1818_sc12-idp-drift-detection, 20261009_1814_base-and-testcontainers-digest, 20261008_1822_infra-image-redeploy-window, 20261008_1787_infra-audit-digest-pin, 20261008_1811_ast-llmgw-ingress-netpol, 20261008_1756_ast-kb-ingress-netpol, 20261006_1764_voyage-key-wiring, 20261006_1762_republish-document-updated, 20261006_1760_qdrant-keyword-indexes, 20261006_1696_lift-kb-reader-prod-hold, 20261006_1755_ast-kb-reader-confidentiality-cap, 20261004_issue-1472_sc22-t40-live-procedure, 20261002_issue-1696_ast-kb-read-policy, 20261001_1709_backup-image-build-credential-helper, 20261001_issue-1709_backup-suspended-status, 20260928_issue-1683_vault-audit-to-observability, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1667_ast-stale-copies-enumeration, 20260928_issue-1676_adr0121-audit-followups, 20260928_issue-1615_content-abac-document-reads, 20260927_issue-1666_sc09-dynamic-binding-conditions, 20260927_issue-1665_owner-read-policy-guard-and-content-abac-gate, 20260927_issue-1617_t25-chance-red-rerun-and-monthly-summary, 20260927_issue-1605_checker-residual-precision, 20260926_issue-1595_grafana-check6-yaml-and-emptiness, 20260926_issue-1588_grafana-rule-verify-and-workflow-read-scopes, 20260926_1577_grafana-filter-evaluator-never-fires, 20260926_issue-1550_live-script-opt-in, 20260926_1544_reset-floor-zero-endpoint-alert, 20260926_deployment-name-population-scan, 20260926_issue-1435_wikijs-recreate-strategy, 20260925_1422_k8s-local-down-teardown-order, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260904_issue-1159_mesh-mtls-declaration-as-single-writer, 20260904_issue-1198_usage-event-subject-and-retention, 20260904_issue-1202_absent-series-slo-alerts, 20260905_issue-1203_analysis-ask-absent-companion, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260905_issue-1215_search-collection-gate, 20260906_issue-1245_nearby-mta-relay, 20260909_issue-1287_synthetic-monitor-launcher-gate, 20260909_issue-336_ndcg-harness-and-query-embedding-profile, 20260925_1499_object-storage-seaweedfs, 20260926_1543_reset-floor-replicas-pdb, 20260926_issue-1111_llm-budget-alert-configurable, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1557_department-domain-validation, 20260926_issue-1573_department-attribute-follows-group, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership, 20260927_issue-1664_owner-read-policy-seed-and-deploy-step, 20261006_1746_claude-rerank, 20261009_1841_disable-default-egress, 20261009_1843_pin-argocd-k3s-inspection-population, 20261009_1396_graph-edges-links-tags, 20261009_1844_sc12-interactive-public-client, 20261009_1840_secret-store-openbao, 20261009_1846_service-audience-validation, 20261009_1839_session-store-valkey, 20261009_1859_keycloak-26-upgrade, 20261010_1875_claude-5-5-models, 20261010_issue-1255-1517_east-west-rest-retirement, 20261015_1902_east-west-rest-residue, 20261016_1960_adr-0140-tier-b-residency-zdr, 20261020_1997_stream-idle-timeout, 20261020_1991_ingestion-budget-alert]
+issues: [#2150, #2066, #2132, #2105, #2113, #2100, #2101, #2097, #2043, #2044, #1971, #1749, #1903, #1983, #1974, #1973, #1966, #1968, #1960, #1961, #1931, #1908, #1740, #1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #1811, #1756, #1764, #1762, #1760, #1755, #1746, #1472, #1696, #1709, #1683, #1682, #1667, #1676, #1615, #1666, #1665, #1664, #1609, #1610, #1617, #1597, #1605, #1595, #1588, #1577, #1550, #1544, #1558, #1435, #1560, #1111, #1543, #1499, #1422, #458, #1088, #1108, #1110, #1159, #1411, #1198, #1202, #1203, #1204, #1215, #1233, #1245, #1287, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #336, #395, #438, #443, #455, #466, #532, #536, #546, #587, #66, #665, #674, #863, #88, #98, #992, #1557, #1573, #1841, #1858, #1843, #1396, #1844, #1840, #1846, #1839, #1859, #1875, #1255, #1517, #1902, #1997, #1991, AST#346, AST#1078, AST#1289, AST#243, planning#196, planning#524, planning#538, planning#672, planning#712, planning#750, planning#741, planning#783, planning#795]
 -->
 
 # 運用仕様書
@@ -38,12 +38,15 @@ issues: [#1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #
 | --- | --- |
 | 初回デプロイ・サービス単位のロールバック手順を知りたい | §デプロイ |
 | 同じタグで再デプロイしても新イメージが反映されない | §イメージ参照と再デプロイ安全性 |
+| イメージの版を固定する・前の版へ戻す・動いている版を確かめる | §イメージのタグの固定とロールバック |
 | Keycloak realm を編集したのに反映されない | §Keycloak realm（`microservices-platform-realm.json`）を更新したときの反映手順 |
+| ログイン画面・アカウント設定・リセットメールの見た目を変える・戻したい | §Keycloak テーマ（ログイン・アカウント設定・メール）の配備と切り戻し |
 | ローカル k8s（経路B）でデータを永続化したい | §経路B（ローカル k8s dev）の永続化 |
 | Wiki.js の初期セットアップ・OIDC 連携をしたい | §Wiki.js の起動・初期セットアップ・ヘルスチェック |
 | データソース定期同期を有効化・監視したい | §データソース定期同期の有効化と監視 |
 | 埋め込みプロバイダのゼロ保持・fail-closed 挙動を確認したい | §埋め込みプロバイダの設定・ゼロ保持・再索引 |
 | 経路B の LLM ゲートウェイへ埋め込み（Voyage）の鍵を入れる・届いたか確かめる | [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md) |
+| Claude（ティア B）の ZDR・データの所在・学習不使用がどう判定され、何を受け入れているかを知りたい | §LLM ゲートウェイの送信先ティア（Claude）の認定状況 |
 | LLM ゲートウェイの Claude 呼び出しの期限（既定 100 秒）を延ばしたい・呼び出し側の期限との関係を知りたい | §LLM ゲートウェイの Anthropic 呼び出しの期限 |
 | HPA/PDB でスケール・可用性を確保したい | §可用性・水平スケール |
 | アラートが実際にどこへ届くか（未配線の現状）を確認したい | §監視・アラート |
@@ -53,6 +56,7 @@ issues: [#1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #
 | 取引ユニットの KB の読み手のポリシーを投入する・投入済みか確かめる | §AST の KB の読み手のポリシーの投入 |
 | トークンの audience の検証を入れる・401 が全経路で出た | §トークンの audience の検証の導入 |
 | キャッシュ・セッションストア（Valkey）のパスワードを回す・戻す／Argo CD の前提／到達の制限の確かめ方 | §キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し |
+| 経路B の Loki のログを読む・日付とサービスを指定してファイルへ保全する・保持と永続化を確かめる | [`loki-log-read-runbook.md`](loki-log-read-runbook.md) |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---
@@ -75,8 +79,8 @@ issues: [#1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #
 | 配備方式 | GitOps。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
 | サービス間通信 | Istio STRICT mTLS。手順 `deploy/istio/README.md` |
 | 手順 | ① Secret 投入（`deploy/bootstrap/README.md`）② Istio 導入（`deploy/istio/README.md`）③ ArgoCD 登録（`deploy/argocd/README.md`）。以降は Git 更新で自動同期 |
-| デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
-| ロールバック | `argocd app rollback microservices-platform <revision>` もしくは Git revert（GitOps 原則） |
+| デプロイ（サービス単位） | 自製イメージのタグ（ビルドした git の sha）を Git の `deploy/argocd/application.yaml` の `helm.parameters`（全体は `global.image.tag`、サービス単位は `services.<name>.tag`）で更新 → Application を適用（下の §イメージのタグの固定とロールバック） |
+| ロールバック | 前の sha へタグを戻す（Git で値を戻して適用・経路B は `helm upgrade` に前の sha を渡す）。下の §イメージのタグの固定とロールバック |
 
 ### イメージ参照と再デプロイ安全性（非機能要件: 運用性/信頼性/再現性 / #320）
 
@@ -84,37 +88,90 @@ issues: [#1881, #1872, #1842, #1850, #1783, #1829, #1818, #1822, #1787, #1814, #
 の組合せだと、同名タグで再ビルド・再 push しても既存 Pod/Node のキャッシュにより再 pull されず
 **古いイメージが配信され続ける**。区分ごとに次の方針で再デプロイの確実性を担保する。
 
-#### 自製イメージ（`services.*`・`frontend`）— CD が一意タグ/digest を渡す
+#### 自製イメージ（`services.*`・`frontend`）— 不変のタグ（git の sha）を必ず渡す
 
-- chart 既定の `services.<name>.tag: latest` は **CD 上書き用のプレースホルダ**である。本番デプロイでは
-  **一意タグ（git SHA 等）または digest（`@sha256:...`）** を渡すこと。一意タグ/digest なら pod template が
-  毎回変わって自動 rollout され、`IfNotPresent` でも新イメージが pull される（stale を掴まない）。
+- 🔴 **chart は自製イメージのタグを持たない。** `global.image.tag`（全サービス共通）の既定は空で、**空なら `helm template` /
+  `helm upgrade` が描画で止まる**（「タグが無い」と告げる）。`latest` を明示しても、Docker のタグの形でない値でも止まる。
+  `latest` へ黙って倒すことはない（#2132）。サービスごとの上書きは `services.<name>.tag` / `frontend.tag`（既定は書かない）。
+- タグは**ビルドした版の不変のタグ**（git の sha）だけを渡す。同じタグの中身を差し替えない。タグが変われば Pod の template が
+  変わって入れ替わり、新しいタグはノードに無いので `IfNotPresent` でも取りに行く。
+- 🔴 **`--set` ではなく `--set-string` で渡す**（ArgoCD の parameters は `forceString: true`）。数字だけの sha は `--set` だと数として
+  読まれ、chart は文字列でない値を拒む。
+- `imagePullPolicy` は `global.image.pullPolicy`（既定 `IfNotPresent`）のまま変えない。タグが不変なら `Always` は要らない。
+  経路B（ローカル k3d）は `registry: k3d-local` の**擬似レジストリ**で、`Always` にすると存在しないレジストリへ pull しにいき
+  **Pod が起動不能**になる（取り込んだイメージ ＋ `IfNotPresent` が前提）。
+- 宣言（`pipeline.json`）の変更は pod template の `checksum/pipeline-config` アノテーションが変わって入れ替わるが、
+  これはイメージの更新を捕らえない。イメージの更新はタグを変えて行う。
+
+#### イメージのタグの固定とロールバック（デプロイの非機能要件 / #2132）
+
+**経路B（ローカル k8s。稼働 PoC）**
+
+- `scripts/k8s-local-up.sh` が作業ツリーの git の sha からタグを決め（変更のある作業ツリーは `<sha>-dirty-<差分の hash 8 桁>`）、
+  [2/7] で同じタグでビルド・取り込みし、[6/7] で `--set-string global.image.tag=<タグ>` を helm へ渡す。決まるタグは配備の前に
+  確かめられる（クラスタには触れない）:
 
   ```bash
-  # 例: BFF を現在の HEAD の短縮 SHA で独立デプロイする（他サービスは据え置き）
-  argocd app set microservices-platform \
-    --helm-set services.bff.tag=$(git rev-parse --short HEAD)
-  # values-<env>.yaml の services.bff.tag を更新して Git commit でも可（GitOps 原則）
+  bash scripts/lib/local-image-tag.sh            # 例: 3beebb65d0c1（変更があれば 3beebb65d0c1-dirty-1a2b3c4d）
   ```
 
-- `imagePullPolicy` は `global.image.pullPolicy` で **per-env に `Always` へ上書き可能**。ただし
-  **既定は `IfNotPresent` のまま**にする（既定を `Always` にしない）:
-  - 経路B（ローカル k3d）は `registry: k3d-local` の**擬似レジストリ**で、`Always` にすると存在しない
-    レジストリへ pull しにいき **Pod が起動不能**になる（local import ＋ `IfNotPresent` が前提。
-    `scripts/k8s-local-images.sh`）。
-  - 本番も毎回 registry へ問い合わせる pull 負荷が増える。**一意タグ運用なら `Always` は不要**。
-
-- **同名タグを再利用せざるを得ない場合**（ローカル再ビルド・緊急ホットフィックス等）は、キャッシュ済み
-  Pod を明示的に入れ替える:
+- 起動器を通さずにイメージだけを作り直して当てるとき（タグは同じ値を両方へ渡す）:
 
   ```bash
-  # ローカル: イメージ再ビルド/import 後に Pod を作り直して新イメージを反映
-  bash scripts/k8s-local-images.sh --live && kubectl -n microservices-platform rollout restart deployment/frontend-service
+  IMAGE_TAG="$(bash scripts/lib/local-image-tag.sh)"
+  IMAGE_TAG="$IMAGE_TAG" bash scripts/k8s-local-images.sh --live
+  helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+    --set-string "global.image.tag=$IMAGE_TAG"
   ```
 
-  宣言（`pipeline.json`）変更時は pod template の `checksum/pipeline-config` アノテーション
-  （`templates/deployment.yaml`）が変わり自動 rollout されるが、これは**イメージ更新は捕捉しない**。
-  イメージ更新は上記の一意タグ運用（推奨）か `rollout restart` で行う。
+- **ロールバック**: 前の版のタグを渡し直す。前のタグのイメージはノードに残っているので作り直さない。
+
+  ```bash
+  helm history msp -n microservices-platform                       # 版の履歴（REVISION と日時）
+  helm get values msp -n microservices-platform --revision <REV> -o json | jq -r '.global.image.tag'   # その版のタグ
+  helm upgrade msp deploy/helm/microservices-platform -n microservices-platform --reuse-values \
+    --set-string "global.image.tag=<前のタグ>"
+  # helm rollback msp <REV> -n microservices-platform でも同じタグへ戻る（ただし chart も値もその版へ戻る）
+  ```
+
+  ノードからイメージを消していた（`crictl rmi --prune` 等）ときは、その sha を checkout して `IMAGE_TAG=<前のタグ>` でビルドし直す。
+- 🔴 **初回の切り替え**（この変更より前の起動器で立てた稼働クラスタ）: 稼働リリースには `global.image.tag` が無い。新しい chart で
+  `--reuse-values` だけの `helm upgrade`（メッシュの mTLS の方式の切り替えなど）を先に流すと、描画で止まる（何も変わらない）。
+  **最初に `bash scripts/k8s-local-up.sh --live` を流してタグを入れる。** 以後は `--reuse-values` がタグを引き継ぐ。
+- ノードのイメージは版ごとに残る（`latest` の上書きと違い、古い版が消えない）。容量が逼迫したら、使われていないイメージを消す
+  （`docker exec k3d-<cluster>-server-0 crictl rmi --prune`。Rancher Desktop は `nerdctl --namespace k8s.io image prune -a`）。
+  直前の版はロールバック用に残す。
+
+**stg / prod（ArgoCD）**
+
+- タグの正は Git の `deploy/argocd/application.yaml` の `spec.source.helm.parameters` の `global.image.tag`（`forceString: true`）である。
+  既定の値は空で、空のままでは同期が描画の失敗（ComparisonError）で止まる（`latest` で配らない）。
+- **デプロイ**: ビルドした sha へ値を改める PR をマージし、Application を適用する（Application は ArgoCD の外から一度だけ
+  kubectl で入れたものなので、ファイルを改めただけでは ArgoCD に届かない）:
+
+  ```bash
+  kubectl apply -f deploy/argocd/application.yaml
+  argocd app get microservices-platform --show-params    # global.image.tag が新しい sha であること
+  ```
+
+  サービス単位で別の版にするときは、同じ parameters へ `services.<name>.tag`（`forceString: true`）を足す。
+  `argocd app set microservices-platform --helm-set-string global.image.tag=<sha>` でも変えられるが、🔴 **Git の値と食い違ったままに
+  しない** —— Application を kubectl で適用し直すと Git の値（空なら描画の失敗）へ戻る。使ったら同じ値を Git へも入れる。
+- **ロールバック**: 前の sha へ値を戻す PR（`git revert`）をマージして適用する。急ぐときは `argocd app set … --helm-set-string
+  global.image.tag=<前の sha>` で先に戻し、同じ値を Git へ入れる。`argocd app rollback microservices-platform <ID>` は自動同期
+  （`automated`）を有効にしたままでは使えない（ArgoCD が拒む）。
+
+**版の確認**（どの版が動いているか）
+
+```bash
+helm get values msp -n microservices-platform -o json | jq -r '.global.image.tag'      # 経路B: 宣言したタグ
+kubectl -n microservices-platform get deploy \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[0].image}{"\n"}{end}'   # 稼働のイメージ参照
+argocd app get microservices-platform --show-params                                   # ArgoCD: 宣言したタグ
+```
+
+宣言と稼働のずれは `node scripts/check-stack-ready.js --live` の G11 が検査する（稼働リリースの `global.image.tag` で chart を描き、
+稼働の Deployment のイメージ参照と突き合わせる。タグの宣言が無いリリースは失敗にする）。
 
 #### Third-party イメージ — 具体版タグ ＋ digest で固定（インフラ製品の選定基準の計画 ADR / #1787）
 
@@ -203,6 +260,48 @@ runtime state 保持（本 issue の目的）と realm 定義の再現性のト�
        --realm master --user admin --password admin
    # 例: 追加/変更したクライアントのみ partial import（realmPartialImport エンドポイント / 管理 UI「Partial import」）
    ```
+
+#### Keycloak テーマ（ログイン・アカウント設定・メール）の配備と切り戻し
+
+認証画面（ログイン・ワンタイムコード・パスワードリセット・必須アクション・エラー）・アカウント設定・リセットメールの見た目は、
+realm が名指すテーマ `platform`（`deploy/keycloak/themes/platform/{login,account,email}`）が SPA と同じデザイン（Nocturne）へ揃える。
+**テンプレートは複製しない** —— 親テーマ（ログイン＝`keycloak.v2`・アカウント＝`keycloak.v3`・メール＝`keycloak`）を継承し、
+CSS・最小のメッセージ・ロゴとメールの外枠だけを持つ。明暗は利用者の OS 設定（`prefers-color-scheme`）に従う
+（SPA の「表示」切替は別オリジンのため届かない。SPA の既定＝システムに従う、と同じ振る舞い）。
+
+| 何を変えるか | どこを直すか | 反映 |
+| --- | --- | --- |
+| 色・角丸・フォント | **SPA の共有 UI のトークン（`src/packages/ui` の `src` 直下の `styles.css`）だけ**を直し、`node scripts/gen-keycloak-theme-tokens.js` で `tokens.css` を再生成してコミットする | CI（static-checks）が `--check` で生成物との差分を止める。メール外枠とアカウントのロゴの直書きの色も、トークンの値以外を止める |
+| 部品の見た目 | `login/resources/css/platform.css`・`account/resources/css/platform.css`（16 進の色を書かない） | 下の「配備」 |
+| 文言（計画が文言を定めたものだけ） | `login/messages/messages_{ja,en}.properties` | 同上。「このデバイスを記憶（N日）」の N は realm の記憶期間と一致しないと `--check` が止める |
+| テーマ名 | realm JSON の `loginTheme` / `accountTheme` / `emailTheme` | realm の後追い（`deploy/local/keycloak-setup/reconcile-realm.sh`）が既存 realm へ当てる。親の実在（Keycloak の版ごと）は `check-realm-constraints.js` の検査 4 が見る |
+
+**配備**:
+
+- **compose**: テーマはディレクトリごとマウントされ、テーマ・テンプレートのキャッシュは無効（`KC_SPI_THEME_CACHE_*=false`）。
+  ファイルを直せば**再読み込みだけ**で効く。realm のテーマ名を変えたときは上の「反映手順」に従う。
+- **ローカル k8s（経路B）**: `bash scripts/k8s-local-up.sh` の [3/7] がテーマ配下の**全ファイル**から ConfigMap `keycloak-theme-platform`
+  を作り直す（キーは相対パスの `/` を `__` に置き換えたもの）。`deploy/local/infra/keycloak.yaml` の `items` にキーとパスを足す
+  （**ファイルを足したら items も足す**。集合の一致は `scripts/k8s-local-up.test.js` が止める）。
+  - **中身だけを変えたとき**: ConfigMap の更新は kubelet がマウントへ反映する（最大で約 1 分）。dev はテーマのキャッシュが無効なので
+    Pod の再起動は要らない。
+  - **ファイルを足した・消したとき**: `items` が変わるので Deployment の rollout が起きる（`kubectl -n platform-infra rollout status deploy/keycloak`）。
+  - **テーマ名（realm）を変えたとき**: `bash deploy/local/keycloak-setup/reconcile-realm.sh --check` で差分を確かめてから同スクリプトで当てる
+    （`k8s-local-up.sh` は既定で呼ぶ）。`--import-realm` は既存 realm を飛ばすので、realm JSON を直しただけでは稼働 realm は変わらない。
+- **確かめ方**: ログイン画面を開き、地の色が SPA と同じで、Keycloak の多角形の背景画像が出ていないこと。Keycloak のログに
+  `Failed to find … theme platform` が**出ていない**こと（親が解決できないと既定テーマへ黙って落ちる）。
+
+**切り戻し**（見た目が崩れた・画面が出ない）:
+
+1. **テーマだけを外す（最短・非破壊）**: 稼働 realm のテーマ名を既定へ戻す（管理コンソールの「Realm settings → Themes」か `kcadm`）。
+   ```bash
+   kubectl -n platform-infra exec deploy/keycloak -- /opt/keycloak/bin/kcadm.sh update realms/platform \
+     -s loginTheme=keycloak.v2 -s accountTheme=keycloak.v3 -s emailTheme=keycloak \
+     --server http://localhost:8080 --realm master --user "$KC_ADMIN" --password "$KC_ADMIN_PASSWORD"
+   ```
+   🔴 **realm の後追いを次に回すと宣言（`platform`）へ戻る。** 戻したままにするなら realm JSON も同じ値へ直してコミットする。
+   🔴 Keycloak の Pod で `kcadm.sh` を長く回さない（別 JVM がメモリ上限を食う。realm の後追いの注記）。1 回の更新に留める。
+2. **テーマの版を戻す**: 直前のコミットへ `deploy/keycloak/themes/platform/` を戻し、`k8s-local-up.sh`（または ConfigMap の作り直し）で配る。
 
 #### 永続化の確認（要 docker daemon）
 
@@ -501,6 +600,7 @@ CI の使い捨てスタックも使うため）。**手順を終えるまでは
   直そうとした全員が見送られたときは `all_skipped_changed` として数える。
   **アラート `DepartmentSyncNotCorrecting`（warning）** が、直近 1 時間に `failed` の利用者・`aborted` / `all_skipped_changed` の周期・
   全利用者の列挙の未完了（`department_sync.enumeration_incomplete.total`）のいずれかがあれば鳴る（同期が `Off` のときは系列が無く鳴らない）。
+  ［2026-10-23 / #2097］それぞれの**最初の 1 件**（計器の系列が初めて現れる）でも鳴る（デッドレター到達の警報と同じ初回の腕を各項に持つ）。
 - **利用者アカウント管理画面の部門欄**: ［2026-09-27 改訂］画面の部門欄は**部門グループの所属を変える**（選んだ部門グループへ入れ、ほかの部門グループから外す。
   「部門なし」はすべてから外す）。**属性 `department` は画面から書かない。** 属性は `Fix` の同期が次の周期で新しい部門グループへ追随させる
   （画面は追随するまで「属性は部門の同期で追随します（未反映）」と示す）。従前の「画面で変えた部門が次の周期で戻る」「部門グループに 1 つも属さない
@@ -524,7 +624,7 @@ CI の使い捨てスタックも使うため）。**手順を終えるまでは
     （「全利用者の列挙 未完了（消去なし）」）で分かる。部門グループにちょうど 1 つ属する人の是正はその周期も続く。
   - 消す直前にその人の所属を個別に読み直し、部門グループが見つかれば消さずに見送る（ログ「見送り（変更あり）」・計器 `skipped_changed`）。
   - **2 個以上の部門グループに属する利用者は、今回も触らない**（ログ「未解決（複数所属）」に出る。どれに合わせるかは決めていない）。
-  - **サービスアカウント（`service-account-` で始まる利用者）は消さない。**
+  - **サービスアカウントは消さない。** サービスアカウントかどうかは、Keycloak の管理 API が利用者をクライアントのサービスアカウントとして返すか（利用者表現の `serviceAccountClientId`）で決める。［2026-10-23］**利用者名の形（`service-account-` で始まる）では決めない** ——その形の名前を持つ人の利用者も同期の対象であり、部門グループに属さなければ属性が消える。
   - 消した人数は計器 `department_sync.users.total{department_sync.outcome="cleared"}` とログ「属性 department を消した」（IdP 内部 ID つき）で分かる。
   - 🔴 **有効化の前に `Report` で「部門グループに 1 つも属さない」の件数と対象を確かめる。** 部門グループを組む前の realm で `Fix` にすると、
     部門グループに入っていない人の部門が一斉に消える（その部門の資料が見えなくなる）。
@@ -812,8 +912,11 @@ MCP クライアント登録管理の画面の登録簿はその写しである�
   3. 下の「投入済みかの確かめ方」で、文書の条件が 2 キーになっていることと、分岐の形を確かめる。
 - **投入済みかの確かめ方**: `GET /authz/policies` で、上の形（`action`・利用者の条件・文書の条件の 2 キー）に一致する有効なポリシーが**ちょうど 1 件**あり、
   `projects` / `project` を条件に持つ有効なポリシーがほかに無いこと（名前では判定しない）。
-  効き目は、認可サービスの `POST /authz/scope` に読み手の名前（`service-account-ai-stock-trading-kb-reader`）と `action: read` を送り、
-  `granted` が `true` で、利用者名に束縛されない分岐が「`project ∈ {ai-stock-trading}` かつ `confidentiality ∈ {public, internal}`」の 1 本だけであることで確かめる。
+  効き目は、認可サービスの権限スコープ解決（gRPC `platform.authz.v1.AuthzScope/Resolve`。h2c の 8081。サービス呼び出し用のロールを持つ
+  s2s トークンが要る。［2026-10-16］REST の `POST /authz/scope` は撤去した）に読み手の名前（`service-account-ai-stock-trading-kb-reader`）と
+  `action: read` を送り（例: `grpcurl -plaintext -import-path src/platform/backend/Shared/Platform.Shared.Contracts/Protos
+  -proto platform/authz/v1/authz_scope.proto -H "authorization: Bearer <s2s トークン>" -d '{"user_id":"service-account-ai-stock-trading-kb-reader","action":"read"}'
+  authorization-service:8081 platform.authz.v1.AuthzScope/Resolve`）、`granted` が `true` で、利用者名に束縛されない分岐が「`project ∈ {ai-stock-trading}` かつ `confidentiality ∈ {public, internal}`」の 1 本だけであることで確かめる。
 - **切り戻し**: ポリシーを削除するか無効にする。読み手の検索は 0 件に戻る（取引判断は参考情報なしで続く）。消えたことを知らせる計器は持たない。
 - **本番の前提（ネットワーク）**: 本番の既定拒否の NetworkPolicy は、取引ユニットの名前空間からの通信を**既定で塞いでいる**。
   chart の値 `networkPolicy.fromAst` で、用途ごとに 1 本ずつ開ける（既定は 3 用途とも `enabled: false`）。
@@ -840,8 +943,8 @@ MCP クライアント登録管理の画面の登録簿はその写しである�
   - **LLM ゲートウェイを開ける前に確かめること**（書き手の内容の ABAC の門に当たる、閉じていると保存済みの組織データが漏れる門は無い。穴は保存済みの組織データを読む口ではない）:
     1. 取引ユニットの呼び出しの主体（基盤の認証基盤の `ai-stock-trading-llm-caller`。サービス呼び出し用のロールだけを持つ）の秘密が、
        認証基盤と取引ユニットの `ast-secrets`（`llm-auth-client-id` / `llm-auth-client-secret`）の両方に入っていること。
-       生成・埋め込みの口（`/complete`・`/complete/stream`・`/embed`）はどれもサービス呼び出し用のロールを要するので、無ければ穴を開けても 401 で、
-       取引ユニットは定型の散文・見送りへ縮退する。ヘルス・自己申告・OpenAPI の口（`/health/*`・`/internal/introspection`・`/openapi/v1.json`）は匿名だが、
+       生成の口（REST の `/complete`。［2026-10-16］`/complete/stream`・`/embed` の REST は撤去した）と gRPC の面はどれもサービス呼び出し用のロールを要するので、無ければ穴を開けても 401 で、
+       取引ユニットは定型の散文・見送りへ縮退する。ヘルス・OpenAPI の口（`/health/*`・`/openapi/v1.json`）は匿名だが（［2026-10-10］REST の自己申告 `/internal/introspection` は撤去した）、
        保存済みデータを返さない（KB の穴と同じ）。
     2. 費用の統制が働いていること。月次予算は用途ごとで（呼び出し元ごとではない）、取引ユニットの用途（`report-daily` / `report-weekly` / `report-monthly` /
        `trade-decision` / `trade-decision-screening`）も数える。上限は要求を止めずアラートだけで、金額が未設定のあいだは鳴らない
@@ -1010,9 +1113,9 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 
 | 機密区分 | 送信先ティア | モデル / 次元 | コレクション | 既定状態 |
 | --- | --- | --- | --- | --- |
-| public / internal | ティアB（Voyage・保護契約） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
+| public / internal | ティアB（Voyage。~~保護契約~~ ［2026-10-16］根拠は公開の規約と opt-out。所在は受け入れたリスク） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
 | confidential / restricted / 未指定・未知 | **埋め込まない**（どの送信先へも本文を送らない） | なし（ベクトルを持たない） | `knowledge_chunks_lexical`（語彙索引） | **常に有効**（全文索引だけ。キーワードとハイブリッドで現れ、意味検索には現れない） |
-| （opt-in）セルフホスト有効時 | ティアA（セルフホスト） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効。**有効にしても高機密文書は埋め込まれない**（上の行のまま。検索クエリと測定用） |
+| （opt-in）セルフホスト有効時 | ティアA（セルフホスト） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効。**有効にしても高機密文書は埋め込まれない**（上の行のまま。検索クエリと測定用）。［2026-10-17］**コレクションは有効にしたときだけ作る**（既定の取り込みは作らない。下の「空の Ruri のコレクションの後始末」） |
 | （検証スタック専用）全区分 | ティアA（決定的ローカル・プロセス内計算） | deterministic-hash-v1 / 1024 | `knowledge_chunks_deterministic_v1` | 無効＝**既定では存在しないのと同じ** |
 
 🔴 **3 行目は使い捨ての検証スタック専用である。** 表層の文字 3-gram をハッシュするだけで
@@ -1025,27 +1128,95 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
 
 - **Voyage AI（ティアB）のゼロ保持設定（必須・受け入れ基準）**: 本番データを流す前に、Voyage AI の
   組織設定で**学習利用のオプトアウト（ゼロ保持 / zero-day retention）を有効化**する。08_data-egress-policy
-  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
-  未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。
+  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を~~契約で~~確認し、確認できるまで本番文書を索引しない（［2026-10-16］確かめる手段は契約ではなく、公開の規約とアカウントの opt-out である。次の追記）。
+  ~~未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。~~
+  ［2026-10-16］未認定の間の止め方は、下の「未認定の環境へデプロイする場合」の 2 つの形による（Voyage の経路を止めるだけではゲートウェイが起動しない）。
+  ［2026-10-16］Voyage について確かめたのは契約ではなく、公開の規約とアカウントの opt-out である（契約書は無い）。
+  **［2026-10-14］認定した**（下の「ゼロ保持認定状況の記録」。オプトアウトは 2026-10-14 に実施済み）。所在（レジデンシー）だけは
+  規約に保証が無く、オーナーが受容した。
   - API キーは Secret 経由で投入する（コミットしない）。compose: `.env` の `VOYAGE_API_KEY`
     （`Embedding__Voyage__ApiKey`）。~~k8s は Secret（例 `embedding-voyage`、key=`api-key`）。~~
     **［2026-10-06］k8s（Helm）は Secret `llm-provider-credentials` のキー `voyage-api-key` を `Embedding__Voyage__ApiKey` へ渡す**
     （`optional: true`。本番像の `values.yaml` と経路B の `values-local.yaml` の両方。外部 LLM の鍵と同じ Secret）。
     経路B は Vault の KV `secret/msp/llm-provider-credentials` のプロパティ `voyage-api-key` を ESO が写す。
     鍵の入れ方と、値を表示せずに届いたことを確かめる手順は [`voyage-embedding-key-runbook.md`](voyage-embedding-key-runbook.md)。
-    **再索引の前に行う**（鍵が無いまま再発行すると、`public` / `internal` の文書は全件が再試行の後 DLQ へ行くだけになる）。
-  - キー未設定でも起動する（fail-open しない）。Voyage 呼び出しが失敗した文書は索引されないだけで、
+    ~~**再索引の前に行う**（鍵が無いまま再発行すると、`public` / `internal` の文書は全件が再試行の後 DLQ へ行くだけになる）。~~
+    **［2026-10-14］鍵が無いまま再発行しても DLQ へは行かない。** `public` / `internal` の文書は語彙索引へ全文だけの点（埋め込み待ち）として入り、
+    鍵を入れた後に取り込みサービスが自動で埋め直す（下の「埋め込みが使えない間の全文だけの点」）。意味検索に当てたいなら、鍵を先に入れるのが費用・手間とも少ない。
+  - キー未設定でも起動する（fail-open しない）。~~Voyage 呼び出しが失敗した文書は索引されないだけで、~~
+    ［2026-10-14］Voyage 呼び出しが失敗した `public` / `internal` の文書は、語彙索引へ全文だけの点（埋め込み待ち）として入る（上の追記）。いずれにしても、
     高機密文書の本文が外部へ出ることはない（ルーティングで候補にならないため）。
     ［2026-10-06］Secret にキーが無い（古い Secret）場合も起動する（`optional: true` で env を置かない）。
   - **ゼロ保持認定状況の記録（#303 受け入れ基準）**: 実環境構築前チェックリストの一項目として、契約でのゼロ保持
-    （学習不使用・レジデンシー含む）認定の可否をここに記録する。**現状: 未認定（2026-07-19 時点）**。
-    **［2026-10-06］未認定のまま（#1740）。オーナーは同日、認定の前に経路B（稼働の開発クラスタ）で Voyage の鍵を配線して使うことを受け入れた。**
-    本番相当の環境は従来どおり、認定まで本番文書を流さない。
+    （学習不使用・レジデンシー含む）認定の可否をここに記録する。~~**現状: 未認定（2026-07-19 時点）**。~~
+    ~~**［2026-10-06］未認定のまま。オーナーは同日、認定の前に経路B（稼働の開発クラスタ）で Voyage の鍵を配線して使うことを受け入れた。**~~
+    ~~本番相当の環境は従来どおり、認定まで本番文書を流さない。~~
+    **［2026-10-14］認定した（オーナーの認定・同日）。** 根拠と条件は次のとおりである。
+    - **照合した規約**: Voyage AI Terms of Service（**Last Updated: May 27, 2026**）。オーナーから受け取った版である
+      （本リポジトリは契約書を持たない）。
+    - **3 条件の照合**:
+
+      | 条件 | 規約の該当 | 判定 |
+      | --- | --- | --- |
+      | 学習に使わない | 第 3 条: 既定では Customer Content を学習・改善に使う利用許諾を与える（3(iii)）。Web サイトの opt-out で止められる | **opt-out で満たす** |
+      | ゼロ保持 | 第 3 条: opt-out の後に送った Customer Content は処理後ただちに削除される | **opt-out 以後は満たす** |
+      | データの所在（レジデンシー） | 所在を保証する条項は無い（個人データは DPA〔第 6 条〕が扱うが、所在の保証ではない） | **規約では満たさない。オーナーが受容した**（2026-10-14「今の状態を許容する」） |
+
+    - **opt-out の日時**: **2026-10-14 20:22 JST ごろ**（オーナーが Voyage AI の Web サイトで実施）。
+    - **opt-out の前に送った分**: 経路B で鍵を投入した後、LLM ゲートウェイの再起動（2026-10-14 11:18:57Z）から opt-out までに、
+      Voyage へ埋め込みの要求が **960 回**（すべて 200）送られた。第 3 条により、これらは学習に使われ得るまま残る。
+      中身は AST の情報収集の文書（公開ニュース・開示が中心）と DLQ からの再試行分とみる（推測）。
+      **オーナーは、学習に使われ得るものとして受容した。**
+    - **結論**: Voyage AI（ティアB）を、学習不使用・ゼロ保持を満たす送信先として**認定する**。所在の保証が無い点は
+      受け入れたリスクとして残る（計画のティアB 要件のうち所在だけは規約で担保されない）。
+      公開・社内（`public` / `internal`）の文書と検索クエリの埋め込みは、既定どおり Voyage へ送ってよい。
+    - **認定の射程**: opt-out は Voyage AI の**アカウントの設定**である。認定は、オーナーが opt-out を実施したアカウントの鍵に限る。
+      別のアカウントの鍵を使う環境は、同じ opt-out を確かめてから本番文書を流す。規約の版が改まったら、上の 3 条件を照合し直す。
+      ⚠️ **この射程は推論による。オーナーは未確認である**（規約の opt-out が Web サイトでの設定であることから導いた。安全側に倒した制約）。
     - ⚠️ **既定構成は Voyage 経路が有効**（`appsettings.json` の `voyage-managed`＝index 0 が `Enabled: true`。
       compose/Helm に既定の無効化上書きは無い）。したがって「未認定＝自動で停止」ではない。**未認定の環境へデプロイ
       する場合は、運用者が本番文書を流す前に明示的に Voyage 経路を無効化すること**（`Embedding__Routing__Endpoints__0__Enabled=false`。
-      compose は `.env`、k8s は values/`--set` で上書き）。本 PR は既定挙動（Voyage 有効）を変更しない（後方互換）。
-    - 実際の契約認定は稼働環境／調達手続き依存＝分離（フォローアップ #336）。
+      ~~compose は `.env`、k8s は values/`--set` で上書き~~）。本 PR は既定挙動（Voyage 有効）を変更しない（後方互換）。
+      ［2026-10-14］認定の後も、上の「認定の射程」の外（opt-out を確かめていないアカウントの鍵）の環境にはこの手順が当たる。
+      **［2026-10-16］手順を直した。** 🔴 **Voyage の経路を止めるだけでは LLM ゲートウェイが起動しない** —— 起動時の検証が、
+      `public` / `internal` と検索クエリを送れる有効なエンドポイント（ティア A か B）が 1 つも無い構成を落とすからである。
+      既定ではティア A（セルフホスト・決定的ローカル）はどちらも無効なので、上の 1 行だけを当てると、埋め込みだけでなく Claude の呼び出しを含むゲートウェイ全体が止まる。
+      また、従前は compose に Voyage の経路を止める口が無く、`.env` に書いても届かなかった。未認定の環境では次のどちらかを当てる。
+      1. **鍵を入れない（最も簡単）。** 鍵が空なら、ゲートウェイは Voyage へ HTTP を行わない。`public` / `internal` の文書は語彙索引へ全文だけの点（埋め込み待ち）として入り、
+         意味検索には現れない。opt-out を確かめた鍵を後で入れれば、取り込みサービスの常駐の器が待ちの点を自動で埋め直す
+         （仕組みと観測は下の「埋め込みが使えない間の全文だけの点」。試験 `EmbeddingPendingReembedderTests` の「埋め込めた点は主へ書いてから語彙索引の待ちの点を消す」「埋め込めなければ点を残し周期を打ち切る」）。
+         この形より前に鍵の無い間に取り込まれ、どこにも書かれなかった文書は、同節のとおり「`DocumentUpdated` の再発行」で埋め直す。
+         compose は `.env` の `VOYAGE_API_KEY` を空のままにし、k8s は Secret `llm-provider-credentials` に `voyage-api-key` を置かない。
+      2. **セルフホスト（ティア A）を有効にしたうえで Voyage の経路を止める。** 下の「セルフホストの有効化」を済ませてから止める。
+         compose は `.env` に `VOYAGE_EMBEDDING_ENABLED=false`（`Embedding__Routing__Endpoints__0__Enabled` へ渡る。既定 `true`）と
+         `SELFHOSTED_EMBEDDING_ENABLED=true`・`SELFHOSTED_EMBEDDING_URL` を与える。この口は `.env.example` に無いので、`.env` へ自分で次の 3 行を書く
+         （`docker compose --profile embedding up` でセルフホストの基盤も起こす）:
+
+         ```dotenv
+         VOYAGE_EMBEDDING_ENABLED=false
+         SELFHOSTED_EMBEDDING_ENABLED=true
+         SELFHOSTED_EMBEDDING_URL=http://embedding:80
+         ```
+
+         書いた値が届いたかは `docker compose config` の `llm-gateway` の environment で `Embedding__Routing__Endpoints__0__Enabled: "false"` を見る。
+         Helm は `embedding.enabled: true` に加え、`services.llmgateway.extraEnvAppend` に
+         `{name: Embedding__Routing__Endpoints__0__Enabled, value: "false"}` を足す（🔴 `extraEnv` に書くと本番既定の env が丸ごと置き換わるので、足すだけの `extraEnvAppend` を使う）。
+         Helm の形は、この値を `--set` で与えた描画（`helm template`）が通り、描画結果の `llmgateway` の env に `Embedding__Routing__Endpoints__0__Enabled: "false"` が載ることを確かめた
+         （2026-10-16・PR の AI レビューの実走）。当てる環境でも、描画結果で同じことを見てから適用する。
+         このとき `public` / `internal` の取り込みと検索クエリの埋め込みは、残る有効なエンドポイント（ティア A の Ruri）へ回る。
+         主コレクション（voyage）を読む検索がどう振る舞うかは、この形では確かめていない（確かめたのは起動の可否だけである）。
+      決定的ローカル（検証スタック専用）を有効にして起動だけを通す形は採らない（意味の近さを持たず、本番の検索には使えない）。
+    - ~~実際の契約認定は稼働環境／調達手続き依存＝分離（フォローアップ #336）。~~ ［2026-10-14］認定は上のとおり済んだ。
+    - **［2026-10-16］計画が、この認定をティアB の定義への例外として記録した。** 記録の要点は次のとおりである。
+      - **所在の保証が無い点は、計画のティアB の定義（ZDR・学習不使用・データレジデンシー／越境保証・監査可能）が挙げる条件の 1 つへの例外**として受け入れたリスクとした。
+        計画のティアB の定義そのものは改めていない。例外の射程は Voyage AI（と、下の Claude の節の推論の所在・ZDR の未締結）に限る。
+        **他の送信先をティアB として扱うときは、定義どおりに判定する。**
+      - **根拠は公開の規約とアカウントの opt-out だけである。** ティアB の呼び名は「保護契約済み外部API」だが、Voyage は個別の契約で守られているのではない。
+        規約の改定・アカウントの設定の変更・鍵の切り替えで前提が崩れ得て、これを自動で検知する手段は無い。
+      - 🔴 **「監査可能」の条件は照合していない**（計画に「監査可能」の定義が無い）。Voyage が監査可能の条件を満たすとは主張しない。定義が決まったら照合し直す。
+      - **認定の射程**（opt-out を実施したアカウントの鍵に限る）は、計画も**オーナーの確認が済むまでの安全側の推論**として認めた。確認の結果が違っても射程が広がる向きだけである。
+      - **判定の根拠はエンドポイント定義に無い。** `appsettings.json` の `voyage-managed` が持つのは `Tier: "B"` だけで、根拠（規約の版・保持・学習・所在・監査）を持たない
+        （計画は根拠をエンドポイント定義へ記録すると定めるが、未実装）。**それまでは本記録が暫定の手段である。**
 - **セルフホスト（ティアA / Ruri v3）の有効化**: 基盤（TEI / vLLM 等の OpenAI 互換 `/v1/embeddings`）を
   構築後、`SELFHOSTED_EMBEDDING_URL`（`Embedding__SelfHosted__BaseUrl`）と
   `SELFHOSTED_EMBEDDING_ENABLED=true`（`Embedding__Routing__Endpoints__1__Enabled`）を設定して有効化する。
@@ -1058,8 +1229,15 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
       と `Embedding__Routing__Endpoints__1__Enabled=true` を自動注入する（`services.llmgateway.selfHostedEmbedding`）。
     - compose: `docker compose --profile embedding up` で `embedding`（TEI）サービスを起動し、`.env` に
       `SELFHOSTED_EMBEDDING_URL=http://embedding:80` / `SELFHOSTED_EMBEDDING_ENABLED=true` を与える。
-    - 🔴 **検索側も同時に束ねる**（2026-09-26）: 検索サービスが Ruri のコレクションも読まないと、高機密の文書は
-      **索引されるが検索されない**。Helm は `embedding.enabled=true` で retrieval へ
+    - **［2026-10-17］取り込みも同じ条件で Ruri のコレクションを作る。** 既定の取り込みは voyage のコレクションだけを作る
+      （無効の配備に空の Ruri のコレクションを作らない）。Helm は `embedding.enabled=true` で取り込みへ
+      `Embedding__Collections__1__Name=<embedding.collection>` と `Embedding__Collections__1__VectorSize=<embedding.dimensions>`（既定 768）を描画する。
+      compose は下の `SEARCH_FUSED_COLLECTION` を取り込みも読む（同じ 1 つの値で検索と取り込みが動く）。
+      有効にしたら取り込みを再起動し、起動ログに `Failed to ensure Qdrant collection` の Error が無いことを確かめる。
+    - 🔴 **検索側も同時に束ねる**（2026-09-26）: ~~検索サービスが Ruri のコレクションも読まないと、高機密の文書は
+      **索引されるが検索されない**。~~ **［2026-10-17］理由が改まった。** 高機密の文書は Ruri のコレクションへ入らない（語彙索引へ行く。上の表）。
+      束ねる設定が要るのは、セルフホストへ回った `public` / `internal` の点（例 上の手順 (b) で Voyage を止めた構成）を検索で読むためである ——
+      束ねないと、それらの点は**索引されるが検索されない**。Helm は `embedding.enabled=true` で retrieval へ
       `Qdrant__FusedCollections__0=<embedding.collection>` を自動で描画する。compose は `.env` に
       `SEARCH_FUSED_COLLECTION=knowledge_chunks_ruri_v3` を与える。束ね方（順位で合成・スコアは比べない・
       権限フィルタは全コレクションに掛ける）は [ハイブリッド検索 機能仕様書](../functional/FR-03_hybrid-search.md) にある。
@@ -1067,8 +1245,11 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
       検索の readiness は主コレクションの索引しか見ない。
     - **稼働環境依存（分離）**: 実モデル（Ruri v3）の取得・GPU/CPU リソース・実埋め込み疎通・下記 nDCG@10 実測は
       稼働環境で行う。既定の image tag / モデル ID はプレースホルダであり、実運用前に稼働環境で固定する。
-  - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
-    （セルフホスト埋め込みの計画 ADR が求める事前 PoC の代替）。劣る場合は BGE-M3 へ切替（モデル別コレクション分離のため影響は局所）。
+  - ~~有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
+    （セルフホスト埋め込みの計画 ADR が求める事前 PoC の代替）。劣る場合は BGE-M3 へ切替（モデル別コレクション分離のため影響は局所）。~~
+    **［2026-10-17］この確認は当たらなくなった。** その計画 ADR は置き換えられ、実測のフォローアップは対象が無くなった（高機密の文書を埋め込まないため）。
+    今の計測の対象は、公開可能な標本での「全文のみ＋Claude の再順位付け」と「ハイブリッド（voyage）」の nDCG@10 の差であり、閾値は置かない。
+    セルフホストのモデルの A/B（下の表）は、opt-in の配備物を試すときの参考として残る。
     - **測定の道具と手順は `perf/ndcg/README.md`**（実体は `scripts/measure-search-ndcg.js`）。正解ラベル（qrels）の
       雛形・実行例・結果の読み方はそちらにある。**収集と集計が分かれており、保存した順位から集計だけを追試できる。**
   - **A/B のときは 2 つの設定を必ず対で切り替える**（片方だけ動かすと、**別モデルの空間へ問い合わせる**ことになる）。
@@ -1092,24 +1273,63 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
     fail-closed）は起動時バリデーション（`EmbeddingRoutingOptionsValidator` / `ValidateOnStart`）が
     fail-fast で検知し、LlmGateway は起動に失敗する（ログに不整合内容を出力）。ティア↔プロバイダの
     取り違え・必須項目欠落も同時に検証される。
-- **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: `/embed` は応答に `Retryable` を返す。
-  - **一時障害**（送信先の不調・タイムアウト・予期しない空応答など、`Retryable=true`）: 取り込み消費側
+- **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: 埋め込み（gRPC `LlmEmbedding/Embed`。［2026-10-16］REST の `/embed` は撤去した）は応答に `Retryable` を返す。
+  **［2026-10-14］取り込みの扱いは改まった（下の「埋め込みが使えない間の全文だけの点」）。** 以下の 2 項は改める前の記述であり、取り消し線の部分は今は当たらない。
+  - **一時障害**（送信先の不調・タイムアウト・予期しない空応答・鍵の未設定など、`Retryable=true`）: ~~取り込み消費側
     （`DocumentUpdatedConsumer`）は当該メッセージを**恒久スキップにせず例外を送出**し、MassTransit の
-    受信リトライ／(枯渇後) DLQ に回す。一括再索引中に Voyage が一時的に不調でもチャンクを取りこぼさない。
-    → 運用: DLQ を監視し、滞留があれば原因（Voyage 障害・鍵の未配線・URL 誤設定等）を解消して再発行する。
+    受信リトライ／(枯渇後) DLQ に回す。~~ **今は例外を送出せず、そのチャンクから後ろを語彙索引へ全文だけの点（理由 `transient`）として書く。**
+    DLQ には回らない。輸送の例外（ゲートウェイへ届かない）と呼び出しごとの時間切れは従来どおり再試行の後 DLQ へ回る。
     ［2026-10-06］取り込みは Wolverine へ移っており、DLQ は RabbitMQ の `wolverine-dead-letter-queue`（全サービスで共有）である
     （`*_error` は MassTransit の段の命名）。DLQ のメッセージは古い状態の写しなので再投入せず、下の「`DocumentUpdated` の再発行」で今の台帳から作り直す。
     → 注意（削除後・再構築前の空白期間）: 取り込みは冒頭で当該文書の既存チャンクを全モデル別コレクションから
-    削除してから再索引する（機密区分変更時の残存防止）。一時障害でリトライ枯渇→DLQ 送りとなった文書は、
-    **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく DLQ 再投入で回復する）。
-    このため DLQ 滞留は検索網羅性に直結する運用指標として監視し、速やかに再投入すること。
+    削除してから再索引する（機密区分変更時の残存防止）。輸送の例外・時間切れで再試行が枯渇して DLQ 送りとなった文書は、
+    **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく再発行で回復する）。
+    このため DLQ 滞留は検索網羅性に直結する運用指標として監視し、速やかに再発行すること。
+    ［2026-10-23 / #2043］再試行を使い切って DLQ へ入ったことは警報 `DeadLetterReached`（warning）が鳴らす（下の「デッドレター到達の警報」）。
   - **fail-closed / 恒久的理由**（次元不整合・プロバイダ未登録・外部経路の無効化など、`Retryable=false`。［2026-10-05］高機密文書は
     埋め込みを呼ばずに語彙索引へ行くので、ここへは来ない。ここへ来るのは public / internal の文書だけである）:
-    設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
-    （警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
+    ~~設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
+    （警告ログに機密区分を記録）。~~ **今は一時障害と同じく、語彙索引へ全文だけの点（理由 `rejected`）として書く**（警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
+- **［2026-10-14］埋め込みが使えない間の全文だけの点（埋め込み待ち）**: `public` / `internal` の文書の埋め込みが `Embedded=false` を返したら
+  （鍵の未設定・送信先の不調・経路の無効化・次元不整合）、取り込みはそのチャンクから後ろを**埋め込みを呼ばずに**語彙索引（`knowledge_chunks_lexical`）へ
+  全文だけで書き、点に `embedding_pending = true` と理由（`embedding_pending_reason` = `transient` / `rejected`）を載せる。
+  - **検索**: キーワードとハイブリッドのモードで当たる（ABAC・露出の判定は他の点と同じ）。**意味検索のモードでは当たらない**（語彙索引はベクトルを持たない）。
+  - **埋め直し**: 取り込みサービスの常駐の器が、起動直後と以後 `Ingestion__EmbeddingPending__IntervalSeconds`（既定 300 秒）ごとに待ちの点を数え、
+    1 周期に `Ingestion__EmbeddingPending__BatchSize`（既定 64）点まで埋め直す。埋め込めた点は主（`knowledge_chunks_voyage_3_5`）へ同じ ID で書いてから語彙索引の点を消す
+    （二重に残らない）。埋め込めなければその周期を最初の 1 点で打ち切る（鍵の無い間、1 周期の埋め込みの呼び出しは 1 回）。
+    鍵を入れた後は運用の操作は要らない。急ぐときは取り込みの Pod を作り直す（起動直後に 1 周期が走る）:
+    `kubectl -n microservices-platform rollout restart deploy/ingestion-service`。
+  - 🔴 **覆い隠さないための観測（0 が正常）**: ゲージ `ingestion_embedding_pending_points`（取り込みサービス。周期ごとに数えた待ちの点の数。数える前は系列なし）、
+    計数 `ingestion_embedding_pending_written_total{ingestion_embedding_pending_reason}` / `ingestion_embedding_pending_reembedded_total`。
+    **待ちが 0 でない周期は取り込みのログに Warning が 1 行出る**（`point(s) in the lexical index are awaiting embedding`）。0 でない値が続くなら埋め込みが使えていない
+    —— 鍵（[Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)）とゲートウェイのログを見る。Prometheus が無い環境でも、ログと Qdrant で読める:
+    ```console
+    kubectl -n microservices-platform logs deploy/ingestion-service | grep -E 'awaiting embedding' | tail -3
+    kubectl -n platform-infra run qdrant-pending --rm -i --restart=Never --image=curlimages/curl -- sh -c \
+      'curl -s -X POST http://qdrant:6333/collections/knowledge_chunks_lexical/points/count -H "content-type: application/json" \
+        -d "{\"exact\":true,\"filter\":{\"must\":[{\"key\":\"embedding_pending\",\"match\":{\"value\":true}}]}}"'
+    ```
+  - **既存分（この挙動より前に鍵の無い間に取り込まれ、どこにも書かれなかった文書）**: 新しい手段は無い。下の「`DocumentUpdated` の再発行」をそのまま使う
+    （鍵の有無を問わない。鍵が無ければ待ちの点として入り、鍵があれば主へ入る）。DLQ に溜まった `DocumentUpdated` は再投入しない（再発行が今の台帳から作り直す）。
+  - 高機密文書（語彙索引だけの文書）には印を付けない。埋め直しの対象にならず、埋め込みへ本文が渡ることもない。
+  - **［2026-10-17］語彙索引への書き込みにも総枠がある。** 高機密文書のチャンクと待ちの点の書き込みは、埋め込みの総枠と同じ値
+    （`Ingestion__EmbeddingBudgetSeconds`。既定 300 秒。待ちの点は埋め込みの輪の始めから続けて数える）を使い切ると残りを書かずに打ち切り、
+    **再試行せずデッドレターへ入る**（計器 `messaging.consumer.timeout` の `target="lexical-budget"`・取り込みのログに `exhausted its lexical-budget budget`）。
+    超えるのは見出しの極端に密な本文（例 見出しだけが並ぶ 1 MiB で約 26 万チャンク）で、地の文なら 16 MiB でも約 9,000 チャンクで収まる。
+    `DocumentUpdated` の再発行は同じ結果になるので、本文を分けるか、総枠と受け口の期限（`Ingestion__HandlerTimeoutSeconds`。起動時に収まりを検査する）を延ばす。
+    ［2026-10-24 / #2066］**総枠を構成で与えていなければ、既定の 300 秒はコレクション数に応じて縮む。** 削除はコレクション 1 本ごとに 2 回あり、受け口の期限は再試行の連鎖から 439 秒より上げられないため、
+    コレクションを足す opt-in（決定的ローカル埋め込み・Ruri）では総枠を「受け口の期限 − 総枠以外の項目 − 余白 5 秒」へ縮める（3 本で 280 秒・4 本で 260 秒。既定の 2 本は 300 秒）。
+    総枠を構成で与えたときは縮めず、式に収まらなければ取り込みが起動時に止まる（ログの `Unhandled exception. System.InvalidOperationException: 受け口 ingest の実行期限`）。
+  - **［2026-10-20 / #1991］総枠の使い切りは警報 `IngestionBudgetExhausted`（warning）が鳴らす。** 埋め込みの総枠（`embedding-budget`）・語彙索引の総枠（`lexical-budget`）の
+    どちらかを使い切った文書が直近 1 時間に 1 件でもあれば、5 分で鳴る（式は `sum by (messaging_timeout_target) ((m unless m offset 1h) or increase(m[1h])) > 0`。`m` は `messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget|lexical-budget"}`）。
+    ［2026-10-23 / #2097］**最初の 1 件（計器の系列が初めて現れる）でも鳴る** —— `increase` だけでは最初の 1 件が数えられず鳴らなかったので、1 時間前に無かった系列は計器の値そのものを採る腕を足した（下のデッドレター到達の警報と同じ形）。
+    ラベル `messaging_timeout_target` がどちらの総枠かを示す。総枠の使い切りは**再試行せずに** DLQ へ入るので、再試行を使い切った分だけを数える `DeadLetterReached` には現れない —— これが一部だけ索引された文書に気付く唯一の警報である（［2026-10-23 / #2043］従前の「デッドレターの滞留の警報は無い」は `DeadLetterReached` の追加で当たらなくなった）。
+    鳴ったら取り込みのログの `exhausted its … budget` で文書を特定し、上の手当て（本文を分ける・総枠を延ばす）の後に `DocumentUpdated` を再発行する。
+    呼び出しごとの時間切れ（`content` / `embedding` / `vector-store`）は再試行で回復し得るので、この警報に含めない。
 - **再索引手順（次元 1536→1024・モデル別コレクション移行）**:
   1. 取り込みサービスは起動時に不足コレクション（`knowledge_chunks_voyage_3_5` / `_ruri_v3`。
-     検証スタックでは `_deterministic_v1` も）を実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。
+     検証スタックでは `_deterministic_v1` も）を実次元で自動作成する（`QdrantBootstrapHostedService`）。
+     ［2026-10-17］`_ruri_v3` を作るのはセルフホストを有効にしたときだけである（上の配備物の項）。旧 `knowledge_chunks`（1536 次元）は使用しない。
   2. 全文書に対し `DocumentUpdated` を再発行する（原本→正規化→取り込みを再走）。取り込み冒頭で全モデル別
      コレクションから当該文書を削除してから再索引するため、決定的チャンク ID により冪等に再構築される。
      ［2026-10-06］**手段は下の「`DocumentUpdated` の再発行（再索引の手段）」**（`scripts/republish-document-updated.js`）。
@@ -1123,18 +1343,52 @@ Helm は `lexicalIndex.collection`、compose は `.env` の `SEARCH_LEXICAL_COLL
   - **［2026-10-05］語彙索引の導入後は、既に取り込まれた高機密文書（confidential・restricted・機密区分なし）に対して手順 2 を行う。**
     これらは従来どこにも索引されておらず、再発行するまで語彙索引にも入らない。語彙索引のコレクションは取り込みサービスが起動時に自動で作る。
     高機密文書だけを流すなら `--attr confidentiality=confidential` / `--attr confidentiality=restricted` で絞る（機密区分の無い文書は属性の一致では選べないので、全件か `--ids` で流す）。
+
+#### 空の Ruri のコレクションの後始末（2026-10-17）
+
+従前の取り込みは、セルフホストを有効にしていない配備でも起動のたびに Ruri のコレクション（`knowledge_chunks_ruri_v3`・768 次元）を作り、
+全文・2-gram・キーワードの索引を張り、文書の削除のたびに 1 回ずつ消しに行っていた。今の取り込みは作らない（上の配備物の項）。
+**既に作られたコレクションは自動では消えない。** 新しい取り込みはそのコレクションを読み書きせず、検索も既定では束ねない（`Qdrant__FusedCollections__0` は既定で空）ので、
+**残しておいても害は無い。リポジトリの手順では削除しない**（消すかは運用者の判断。消さなくてよい）。
+
+1. **セルフホストが無効であることを確かめる**（読み取りだけ）。取り込みと検索の env に Ruri の名前が無いこと:
+   ```console
+   kubectl -n microservices-platform get deploy ingestion-service retrieval-service \
+     -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.template.spec.containers[*].env[*]}{.name}={.value}{" "}{end}{"\n"}{end}' \
+     | grep -oE '[a-z-]+-service|Embedding__Collections__1__Name=[^ ]*|Qdrant__FusedCollections__0=[^ ]*'
+   ```
+   期待値: サービス名だけが出る（`Embedding__Collections__1__Name` も `Qdrant__FusedCollections__0` も出ない）。出るならセルフホストは有効であり、本節の対象外である。
+2. **コレクションが空であることを確かめる**（読み取りだけ）:
+   ```console
+   kubectl -n platform-infra run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \
+     'curl -s http://qdrant:6333/collections/knowledge_chunks_ruri_v3'
+   ```
+   期待値: `"points_count":0`（Ruri は稼働 PoC へ配備していない）。`404`（`Not found: Collection`）なら作られていない（何もしない）。
+   🔴 **`points_count` が 0 でない**なら、過去にセルフホストを有効にしていた。その点は文書の削除・機密区分の引き上げでもう消されない
+   （取り込みの残存防止削除の対象から外れた）。残したままセルフホストを再び有効にすると、検索が古い点を読む。
+   **再び有効にするときは、有効化の後に `DocumentUpdated` を全件再発行する**（下の節。取り込みが当該文書の点を全コレクションから消してから書き直す）。
+3. 新しい取り込みを展開した後、起動ログの成功（`Qdrant collections, full-text payload indexes ... ensured`）と、Error が無いことを確かめる（前の項の語彙索引の展開順序と同じ）。
+   コレクションの一覧から Ruri のコレクションが**増えない**（手順 2 の結果が変わらない）ことも確かめてよい。
+4. **消すと決めたとき**（任意。リポジトリの手順は削除を求めない）: 手順 1・2 の期待値が両方出たことを記録してから、運用者が手で
+   `DELETE /collections/knowledge_chunks_ruri_v3` を送る。消した後にセルフホストを有効にすると、取り込みの起動時に作り直される。
+
 #### `DocumentUpdated` の再発行（再索引の手段）
 
 射影（Qdrant の索引・Wiki.js・グラフ）は文書台帳の写しであり、作り直す手段は `DocumentUpdated` の再発行である。
 文書サービスの**管理者だけの口** `POST /documents/republish-updated` が、通常の発行の門を通して 1 ページずつ発行する
-（中身は通常の経路と同じ。台帳は書き換えない＝版も更新時刻も動かない）。量の制御・進捗・中断と再開・DLQ の監視は
+（中身は通常の経路と同じ。台帳の内容は書き換えない＝版も更新時刻も動かない。進むのは文書ごとの発行の連番だけである）。量の制御・進捗・中断と再開・DLQ の監視は
 駆動スクリプト `scripts/republish-document-updated.js` が持つ。**稼働クラスタへ当たる**ので `--live` が要る。
 
+［2026-10-26］発行は文書行の連番を進めるので、ページの確定は同じ文書への利用者の確定（編集・共有・論理削除など）と並行すると負け得る。
+口はページを読み直して 3 回までやり直し、それでも負けたら**そのページを 1 件も確定せずに** 409（`version_conflict` と `resumeCursor`＝負けたページの先頭）を返す。
+駆動スクリプトは 409 を他の失敗と同じく数え、同じカーソルで間を置いて再試行する（連続失敗の上限に達したら止まるので、`--resume` で続ける）。重複した発行は受け手の版の印が吸収する。
+
 **🔴 流す前に、埋め込み先があることを確かめる。** `public` / `internal` の文書は埋め込み（既定は Voyage）へ進む。
-LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われ、**全件が再試行の後 DLQ へ行くだけになる**
-（索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため）。
+LLM ゲートウェイに Voyage の鍵（`Embedding__Voyage__ApiKey`）が無いと、埋め込みは一時障害として扱われる。~~**全件が再試行の後 DLQ へ行くだけになる**~~
+［2026-10-14］今は DLQ へは行かず、語彙索引へ全文だけの点（埋め込み待ち）として入り、鍵の投入後に自動で埋め直される（上の「埋め込みが使えない間の全文だけの点」）。
+鍵が無いまま流すと、意味検索に当たるのは鍵の投入と埋め直しの後になる（~~索引には 1 点も入らない。取り込みは書く前に当該文書の点を消すため~~）。
 ［2026-10-06］チャート（経路B の値を含む）は、この鍵を Secret `llm-provider-credentials` のキー `voyage-api-key` から渡すよう配線してある（キーが無い・空でも起動する）。
-**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。ゼロ保持の認定は本節の上の注記のとおり未了）か、
+**鍵の値はチャートにもリポジトリにも無い。** 用意の仕方は、鍵の値を Vault へ入れて同期させる（手順は [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md)。課金が発生する。~~ゼロ保持の認定は本節の上の注記のとおり未了~~ ［2026-10-14］ゼロ保持の認定は済んだ。射程は本節の上の「ゼロ保持認定状況の記録」）か、
 **使い捨ての検証スタックに限り** `LOCALEMBED=1`（決定的ローカル埋め込み。意味的な近さは無い）で立てるかである。高機密文書（語彙索引だけ）は鍵が無くても入る。
 env の名前（`Embedding__Voyage__ApiKey`）は鍵が空でも下の確認に出るので、**値が入っていることは同 Runbook の手順 4（長さで測る）で確かめる。**
 
@@ -1168,10 +1422,35 @@ kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_queues -q nam
    node scripts/republish-document-updated.js --live --operator <あなたの名前> --reason "<理由>" --page-size 20 --sleep-ms 5000 --max-pages 50   # 控えめに区切る
    ```
    - 目安: 取り込みは 1 件ずつ外部の埋め込みを呼ぶので、2 万件規模は数時間かかる。ゲートウェイの埋め込みの速度制限やクラスタの負荷を見て `--page-size` / `--sleep-ms` を下げる。
-   - 絞り込み: `--attr <キー>=<値>`（完全一致・AND・繰り返し可）／`--ids <id,id,...>`（500 件まで）／`--created-before <ISO8601>`。
+   - 絞り込み: `--attr <キー>=<値>`（完全一致・AND・繰り返し可）／`--ids <id,id,...>`（500 件まで）／`--created-before <ISO8601>`／`--created-after <ISO8601>`。
      新規の走査は `createdBefore` を開始時刻に固定する（走査の途中で作られた文書は作成の経路で既に発行されているので選ばない）。
+     `--created-after` はこの時刻**以降**に作られた文書だけを選ぶ（両方を指定すると `after ≤ 作成時刻 < before` の区間。`after ≥ before` と不正な日時は止まる）。
+     口は下限を持たないので、駆動スクリプトが「この時刻の直前」を指す開始カーソルを合成して渡す。走査は古い順のまま、その位置から始まる。
+   - **［2026-10-15］オブジェクトストレージの切り替え（2026-09-26。旧ストレージの中身は破棄）より前に作られた文書は、本文が SeaweedFS に無い。**
+     そのまま全件を流すと、古い順に走査するので最初からこの分に当たり、取り込みが本文の取得（`NoSuchKey`）で失敗してカナリアで止まる。
+     **切り替え後の文書だけを流すときは `--created-after 2026-09-27T00:00:00Z` を付ける**（dry-run・本番とも同じ指定）。
+     dry-run は区間の件数と「より前の対象外」の件数を出す。切り替え前の文書の扱いは別途決める（本文が無いので再発行しても索引は作れない）。
+     ```console
+     node scripts/republish-document-updated.js --live --dry-run --operator <あなたの名前> --created-after 2026-09-27T00:00:00Z
+     node scripts/republish-document-updated.js --live --operator <あなたの名前> --reason "切り替え後の文書だけを再索引" --created-after 2026-09-27T00:00:00Z
+     ```
+     下限を付けずに作った状態ファイルが残っていると、新規の走査は「絞り込みが違う」と拒否される。退避するか `--state` で別のファイルを指定する
+     （`--resume` は状態ファイルの絞り込みを使い、`--created-after` を受け付けない）。
+     🔴 **［2026-10-16］`--created-after` は作成時刻で外すので、切り替え前でも本文が在る文書まで外れる**（10-16 の実測で切り替え前 5,803 件のうち 1,755 件は本文が在った）。
+     切り替え前の本文の無い文書は、下の「本文の無い切り替え前の文書のアーカイブ」でアーカイブする。**その後に、切り替え前の残りを状態で絞って再発行する**
+     （アーカイブ済みは状態が `archived` なので外れる。dry-run の「対象」が、アーカイブの dry-run の「本文が在る」の件数と合うことを確かめてから流す）:
+     ```console
+     node scripts/republish-document-updated.js --live --dry-run --operator <あなたの名前> --created-before 2026-09-27T00:00:00Z --status normalized
+     node scripts/republish-document-updated.js --live --operator <あなたの名前> --reason "切り替え前で本文の在る文書を再索引" --created-before 2026-09-27T00:00:00Z --status normalized
+     ```
+     10-16 はこの手順で、本文が残っている切り替え前の 1,755 件を `knowledge_chunks_voyage_3_5` へ再発行した。`--status` は 1 つの値の完全一致なので、
+     他の状態（`published` など）の文書が切り替え前に残っていれば、その状態でも同じく流す。
+     `--created-after` の走査の状態ファイルが残っていると絞り込みが違うので拒否される。`--state` で別のファイルを指定する。
    - 副作用: fan-out なので Wiki 同期（`published` / `normalized` の組織文書を Wiki.js へ書き直す）とグラフ同期（同じ更新時刻なら何もしない）も動く。
-3. **中断と再開**。状態（カーソル・**確かめた位置**・`createdBefore`・絞り込み・累計）は `./republish-document-updated.state.json`（`--state` で変更）に**ページごとに**書かれる。
+     Wiki 同期は Wiki.js へ 1 本ずつ書き込む（`Wiki__MaxParallelWrites`・既定 1・1〜4。**wiki-service の全レプリカで合わせた数**で、wiki-service の PostgreSQL のロックで数える。Wiki.js 2.5 は書き込みが並ぶと木の再構築が主キーで衝突するので、上げない）。
+     ［2026-10-23］書き込みの順番を待つ上限は `Wiki__WriteGateWaitSeconds`（未設定なら Wiki.js 1 回の期限の 2 倍＝ 30 秒）、受け口 1 通の上限は `Wiki__HandlerTimeoutSeconds`（既定 90 秒）である。待ちが上限を超えた通は再試行に回る（計器 `messaging.consumer.timeout{messaging.timeout.target=wiki-js-gate}`）。
+     内容の変わらないページと既に非公開のページは書き込まずに進むが、Wiki.js に無いページの作成は 1 件数秒〜約 9 秒（Wiki.js の CPU 0.5 のとき）かかり、取り込みより長く遅れる。
+3. **中断と再開**。状態（カーソル・**確かめた位置**・`createdBefore`・`createdAfter`・絞り込み・累計）は `./republish-document-updated.state.json`（`--state` で変更）に**ページごとに**書かれる。
    **確かめた位置**は、DLQ の確認を通り、かつ取り込みのキューが空だった時点のカーソルである（キューに残っている配信は、まだ DLQ へ行くかが決まっていない）。
    Ctrl-C・連続失敗（既定 3 回）・キューの待ちの超過・DLQ の増加で止まるときは、**状態のカーソルを確かめた位置へ戻して保存する** ——
    確かめていないページ（DLQ へ行った文書を含む）は `--resume` で**もう一度発行される**（再発行は冪等。埋め込みの費用はその分重なる）。止まった後の `--resume` はカナリアからやり直す。
@@ -1187,14 +1466,27 @@ kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl list_queues -q nam
 4. **確かめる**。取り込みのキューが空になってから、各コレクションの `points_count` が増えていること（読み取りだけ）:
    ```console
    kubectl -n platform-infra run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c \
-     'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical knowledge_chunks_ruri_v3; do curl -s http://qdrant:6333/collections/$c; echo; done'
+     'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical; do curl -s http://qdrant:6333/collections/$c; echo; done'
    ```
+   ［2026-10-17］既定の取り込みは Ruri のコレクションを作らないので外した。セルフホストを有効にした配備では `knowledge_chunks_ruri_v3` を足す。
+   ［2026-10-14］鍵の無い間に流した分は `knowledge_chunks_lexical` に入り（埋め込み待ち）、鍵の投入後の埋め直しで `knowledge_chunks_voyage_3_5` へ移る。待ちの件数は上の「埋め込みが使えない間の全文だけの点」の数え方で読む。
    `points_count` は文書数ではなくチャンク数である（本文の所在が無い文書は点を作らない。dry-run の「本文の所在が無い」件数を差し引いて読む）。
 
 **DLQ の扱い**: DLQ（`wolverine-dead-letter-queue`）は全サービスで共有している。再発行で増えたメッセージは古い状態の写しなので**再投入しない**。
 駆動スクリプトが DLQ の増加で止まったときは、状態のカーソルを確かめた位置へ戻してあるので、原因（埋め込み先・本文の取得）を直して `--resume` すれば
 DLQ へ行った文書を含む確かめていないページがもう一度発行される（冪等。`--resume` は DLQ の基準を今の深さへ取り直す）。中身を確かめずに DLQ を purge しない
 （確かめるときは `kubectl -n platform-infra port-forward svc/rabbitmq 15672` で管理画面を開く）。
+
+**デッドレター到達の警報**（［2026-10-23 / #2043］）: 受け口が自動再試行を使い切って DLQ へ送ったメッセージは、全サービス共通の計器
+`messaging.dead_letter`（Prometheus では `messaging_dead_letter_total`。ラベル `job`＝サービス・`messaging_message_type`＝メッセージ型・`error_type`＝例外の型）が 1 つ数え、
+警報 `DeadLetterReached`（warning）が直近 1 時間の前進 > 0 を 5 分で鳴らす。**通知のラベルにも `job`・`messaging_message_type`・`error_type` の 3 つが付く**（その組ごとに 1 通）。
+最初の 1 通（計器の系列が初めて現れる）は `increase` に現れないので、1 時間前に無かった系列は計器の値そのものを採って同じ警報で鳴らす（式は `sum by (job, messaging_message_type, error_type) ((messaging_dead_letter_total unless messaging_dead_letter_total offset 1h) or increase(messaging_dead_letter_total[1h])) > 0`）。
+［2026-10-23 / #2097］この判定は**系列ごと**に行う（従前は組ごとに行っており、再起動でプロセスが替わった後の 1 通目を、古いプロセスの系列が 1 時間前に在ったために落としていた）。
+**キュー名を見ない**ので、DLQ が共有 1 本（`wolverine-dead-letter-queue`）でも数え漏れない。鳴ったら、通知のラベル `job` のサービスのエラーログで、ラベル `error_type` の例外を手がかりに原因を特定して直し、
+`DocumentUpdated` / `DocumentDeleted` なら上の手順で文書を再発行する（DLQ の写しは再投入しない）。数えないものは 3 つある:
+取り込みの総枠の使い切り（再試行せずに入る。`IngestionBudgetExhausted` が鳴らす）・MassTransit に残る辺（`DocumentNormalized` の購読。既定の名前では `DocumentNormalized_error` へ入る。
+画面「変換ジョブ」のデッドレター標識が見える範囲ではないので、移行が済むまでは `rabbitmqctl list_queues name messages | grep _error` で人が見る）・
+試行番号が上限を超えて届いたメッセージと逆シリアル化の失敗（Wolverine の既定の移送で、計器を通らない。DLQ の写しを再投入しない運用ではほぼ生じない）。
 
 **口の仕様**（直接叩く場合。メッシュ内部・管理者のトークンが要る）: 要求は `dryRun`（必須）・`limit`（既定 100・1〜500）・`cursor`（前の応答の `nextCursor`）・
 `createdBefore`・`ids`（空の配列は 400。省略が全件）・`attributes`・`requestedBy`（100 文字まで）・`reason`（500 文字まで）。`requestedBy` / `reason` は記録だけに使う札で、
@@ -1210,6 +1502,248 @@ DLQ へ行った文書を含む確かめていないページがもう一度発�
     ヒットする**（項目の欠落で結果から落とすことはしない）。
   - **急ぐ必要は無いが、放置すると「更新日時の新しい順」が実質的に使えない**
     （日時を知らないチャンクが混ざり続けるため）。並び順の提供時期に合わせて実施すること。
+
+#### DLQ に溜まった Wiki 同期の失敗の再発行（Wiki 閲覧の要求 / #1966）
+
+Wiki 同期（wiki-service）が再試行を使い切って DLQ へ入れた文書は、原因を直した版を配備した後に、**DLQ から文書 ID を抜き出して `--ids` で再発行する**
+（DLQ の写しは古い状態なので再投入しない。上の「DLQ の扱い」）。2026-10-16 の PoC で DLQ にあった 14 件（表題が Wiki.js の列の長さ 255 文字を超え、
+`value too long for type character varying(255)` で拒まれたもの）がこれに当たる。
+
+- **前提**: 表題の切り詰め（Wiki.js へは 254 文字＋`…`）と、値の長さで拒まれたものを記録して ack する扱いを含む wiki-service を配備済みであること（マイグレーションは無い）。
+- 再発行は fan-out なので、取り込み・グラフ同期も動く（冪等）。件数が少ないのでカナリア（既定 10 件）と本走で終わる。
+
+```console
+# 1. DLQ を読む（ack_requeue_true なので消えない）。全サービスの分が混ざっている
+kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqadmin -f raw_json \
+  get queue=wolverine-dead-letter-queue ackmode=ack_requeue_true count=1000 > dlq.json
+jq length dlq.json                                   # DLQ の全件
+# 2. Wiki 同期の分だけ文書 ID を抜き出す（x-death の元のキューで選ぶ）。PoC では 14 件
+jq -r '.[] | select([.properties.headers["x-death"][]?.queue] | index("wiki-service.DocumentUpdated"))
+       | .payload | fromjson | (.DocumentId // .documentId)' dlq.json | sort -u > wiki-dlq-ids.txt
+wc -l < wiki-dlq-ids.txt
+#    原因の確認（任意）: 配備前のログに value too long の行があること
+kubectl -n microservices-platform logs deploy/wiki-service --since=24h | grep -c 'value too long for type'
+# 3. dry-run（matched が手順 2 の件数と一致すること）→ 再発行。状態ファイルは本件専用に分ける
+IDS=$(paste -sd, wiki-dlq-ids.txt)
+node scripts/republish-document-updated.js --live --dry-run --operator <名前> --ids "$IDS" --state ./republish-wiki-dlq.state.json
+node scripts/republish-document-updated.js --live --operator <名前> --reason "Wiki 同期の表題の長さを直した後の DLQ 分の再発行" \
+  --ids "$IDS" --state ./republish-wiki-dlq.state.json
+# 4. 確かめる（読み取りだけ）。ID ごとに同期の成功の行か、記録して ack した行のどちらかがあること
+kubectl -n microservices-platform logs deploy/wiki-service --since=1h > wiki-sync.log
+for id in $(cat wiki-dlq-ids.txt); do
+  grep -m1 -E "Synced document $id|Wiki sync $id: .*skipped without retry" wiki-sync.log || echo "MISSING $id"
+done
+```
+
+- **期待値**: 14 件とも `Synced document <ID> to Wiki.js` が出て、Wiki.js にページ `doc/<ID>` が `…` で終わる表題で載る。計数 `wiki_sync_truncated_total{field="title"}` が
+  およそ 14 増え、`wiki_sync_skipped_total{reason="value_too_long"}` は増えない（増えたら、その文書は表題以外の列〔タグ等〕が長い。Warning の行で文書を引く。
+  記録して ack しているので DLQ には入らない）。駆動スクリプトが DLQ の増加 0 を確かめて「完了」を出す。
+- **DLQ の古い写しの片付け**: DLQ は全サービスで共有しているので、**手順 1 の全件（`jq length`）が手順 2 の件数と一致したときだけ** `purge_queue` してよい
+  （`kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl purge_queue wolverine-dead-letter-queue`）。他のサービスの分が混ざっていれば purge せず残す
+  （再発行は済んでいるので、残った写しは再投入しない）。
+- 🔴 **Wiki.js（とその中の knex・pg）の版を上げたら、値の長さの判定の文言を確かめ直す。** 「値の長さで拒まれた」の判定は、Wiki.js が返す DB の message に
+  定型句 `value too long for type ` が含まれるかどうかだけで行う（Wiki.js は SQLSTATE を返さない）。文言が変わると、この失敗は再試行の後に DLQ へ戻る
+  （記録して ack しなくなる。取りこぼしではなく安全側の劣化で、DLQ の増加で気付ける）。確かめた版は wiki-service の試験が compose と Helm の digest で固定しており、
+  digest を変えると試験が赤になる。255 文字を超える題名（または長いタグ）の文書を 1 件同期させ、Warning の message に定型句が残ることを確かめてから、試験の digest を更新する。
+- `jq` の `fromjson` で失敗するとき（`payload_encoding` が `base64`）は `.payload | @base64d | fromjson` に替える。
+
+### 本文の無い切り替え前の文書のアーカイブ（文書管理の要求 / #1931）
+
+2026-09-26 のオブジェクトストレージの切り替えで旧ストレージの中身は破棄した。それより前に作られた文書は台帳に残るが、本文のオブジェクトが無い
+（取り込み・Wiki 同期のログに `body object missing (NoSuchKey)`）。これらを**既存の状態「アーカイブ」**へ移す一回限りの管理操作である
+（オーナー裁定 2026-10-15）。台帳と表題は残り、文書管理画面で「アーカイブ済み」として見分けられる。
+アーカイブした文書は検索・RAG・知識グラフ（AI 提案・クラスタ要約を含む）・Wiki・MCP の文書一覧に載らない（文書管理の機能仕様書「アーカイブの効果」。2026-10-16 の計画の裁定）。
+閲覧（文書詳細画面）には ABAC の範囲で残る。
+
+- 口: 文書サービスの `POST /documents/archive-bodyless`（管理者だけ。メッシュ内部）。駆動: `scripts/archive-bodyless-documents.js`（`--live` 必須）。
+- 対象: `createdAt < --created-before`（**必須**）かつ未アーカイブかつ本文の参照が `storage://` で、**本文のオブジェクトがキーの欠落（NoSuchKey）**の組織文書。
+  本文の有無は HEAD（と、HEAD が 404 のときだけ範囲 0-0 の GET）で確かめ、本文を読まない。バケットが無い・時間切れでは「無い」と言わず、そのページを 1 件もアーカイブしない。
+- 触らない: 本文が在る・期限以降・本文の参照が無い・個人資料・アーカイブ済み。2 回流しても 2 回目は何もしない。
+- 下流: 単票のアーカイブと同じイベントが出る。取り込みは本文を読まずに全コレクションから点を消す（計数 `ingestion_body_missing_total` は増えない）。
+  Wiki 同期はページを非公開化する。知識グラフはノードを作らず、在れば撤収する。
+  🔴 ここまでの下流の扱いは、アーカイブを見つかる面から外す変更（2026-10-16）を配備した後のものである。**それより前に一括アーカイブを流した**（または流したか不明な）ら、
+  下の「配備前にアーカイブした文書を外す（遡及）」を 1 回流す。
+
+```console
+# 1. dry-run（何も変えない）。5 つの内訳の合計が切り替え前の全件と一致すること
+#    ［2026-10-16 の実測］切り替え前の全件 5,803 件 ＝ アーカイブの対象（本文のオブジェクトが無い）4,046 ＋ 本文が在る 1,755 ＋ 本文の参照が無い 2（個人資料・既にアーカイブ済みは 0）
+node scripts/archive-bodyless-documents.js --live --dry-run --operator <名前> --created-before 2026-09-27T00:00:00Z
+# 2. カナリア（20 件）。取り込み・Wiki・グラフのキューが空になり DLQ が増えないこと（スクリプトが見る）。文書管理画面の「アーカイブ済み」が 20 増えること
+node scripts/archive-bodyless-documents.js --live --operator <名前> --reason "本文の無い切り替え前の文書（カナリア）" --created-before 2026-09-27T00:00:00Z --canary 20 --max-pages 1
+# 3. 全件（止まったら同じコマンドで再開）
+node scripts/archive-bodyless-documents.js --live --resume --operator <名前> --reason "本文の無い切り替え前の文書"
+# 4. 確認: dry-run をもう一度流し、「アーカイブの対象」が 0、「既にアーカイブ済み」が増えていること
+```
+
+［2026-10-16］PoC では、上の対象 4,046 件をオーナーの承認を受けてアーカイブした（DLQ は増えていない）。本文が在る 1,755 件はアーカイブせず、
+上の「`DocumentUpdated` の再発行（再索引の手段）」の、状態で絞った再発行で索引へ戻した。手順 4 の確認では「アーカイブの対象」が 0、「既にアーカイブ済み」が 4,046 増える。
+
+**口が 500 で止まったとき**: 保存の後の発行が途中で失敗していると、アーカイブ済みでイベントの出ていない文書が残り、再実行では拾われない。
+🔴 ログの ID では回収しない —— 口はページ全体を保存してから 1 件ずつ監査の行を出して発行するので、発行がページの途中で失敗すると、
+それより後の文書は台帳ではアーカイブ済みなのに監査の行（`Archived body-less document`）が出ていない。**母集合で再発行する**
+（status=archived のイベントを出し直す。受け手は本文を読まないので埋め込みの費用はかからず、冪等なので何度流してもよい）。次のどちらかを使う。
+
+(a) 状態と期限で絞る（既定。件数の上限は無い）。切り替え前のアーカイブ済み全件が対象になる（この口より前に単票でアーカイブした文書も含むが、害は無い）。
+
+```console
+# dry-run の「対象」が、一括アーカイブの dry-run の「既にアーカイブ済み」と同じ件数であること
+node scripts/republish-document-updated.js --live --dry-run --operator <名前> --created-before 2026-09-27T00:00:00Z --status archived \
+  --state ./republish-archive-bodyless-recovery.state.json
+node scripts/republish-document-updated.js --live --operator <名前> --reason "本文の無い文書の一括アーカイブの発行の回収" \
+  --created-before 2026-09-27T00:00:00Z --status archived --state ./republish-archive-bodyless-recovery.state.json
+```
+
+(b) この口がアーカイブした文書だけに絞る。台帳の版の注記（固定の文字列 `archived: body object missing (NoSuchKey) — … (#1931)`）から ID を引き、
+`--ids` の上限（500 件）ごとに分けて流す。最後の版がこの注記の文書だけを引くので、その後に再正規化された文書（別のイベントが出ている）は入らない。
+
+```console
+# 1. ID を引く（読み取りだけ）
+kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d document_svc -At -c \
+  "SELECT l.\"DocumentId\" FROM (SELECT DISTINCT ON (v.\"DocumentId\") v.\"DocumentId\", v.\"ChangeNote\" FROM \"DocumentVersions\" v
+     ORDER BY v.\"DocumentId\", v.\"Version\" DESC) l WHERE l.\"ChangeNote\" LIKE 'archived: body object missing (NoSuchKey)%(#1931)';" \
+  | sort -u > archive-bodyless-recovery-ids.txt
+wc -l < archive-bodyless-recovery-ids.txt
+# 2. 500 件ずつに分ける。dry-run で塊ごとの「対象」が塊の行数（最後の塊以外は 500）と一致することを確かめてから流す
+split -l 500 -d archive-bodyless-recovery-ids.txt archive-bodyless-recovery-ids.part.
+for f in archive-bodyless-recovery-ids.part.*; do
+  node scripts/republish-document-updated.js --live --dry-run --operator <名前> --ids "$(paste -sd, "$f")" || break
+done
+# 3. 塊ごとに状態ファイルを分けて流す（bash の配列を使う）。止まったら同じループを流し直す（状態ファイルの在る塊は --resume で続き、完了済みの塊は何もしない）
+for f in archive-bodyless-recovery-ids.part.*; do
+  st="./republish-$f.state.json"
+  if [ -f "$st" ]; then sel=(--resume); else sel=(--ids "$(paste -sd, "$f")"); fi
+  node scripts/republish-document-updated.js --live --operator <名前> --reason "本文の無い文書の一括アーカイブの発行の回収" "${sel[@]}" --state "$st" || break
+done
+```
+
+**配備前にアーカイブした文書を外す（遡及）**: アーカイブを見つかる面から外す変更は、その後に届く `DocumentUpdated` で効く。配備より前にアーカイブした文書
+（単票・一括とも）の点・ノードは、再発行を状態で絞って 1 回流すと消える。受け手は本文を読まないので、埋め込みの費用はかからない。冪等なので二重に流しても害は無い。
+
+```console
+# 0. 配備: document-service（再発行の口の状態の絞り込み・MCP の一覧）・ingestion-service・graph-service を同じリリースで出す（マイグレーションは無い）
+# 1. dry-run。「対象」がアーカイブ済みの件数と一致すること（文書管理画面の状態別の件数の「アーカイブ済み」と同じ）
+node scripts/republish-document-updated.js --live --dry-run --operator <名前> --status archived
+# 2. カナリア → 全件（止まったら --resume）。取り込み・Wiki・グラフのキューが空になり DLQ が増えないこと（スクリプトが見る）
+node scripts/republish-document-updated.js --live --operator <名前> --reason "アーカイブ済みを見つかる面から外す（遡及）" --status archived
+# 3. 確認（読み取りだけ）。アーカイブ済みの ID を 5 件ほど引き、索引の点とグラフのノードが 0 であること
+kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d document_svc -At -c \
+  "SELECT \"Id\" FROM \"Documents\" WHERE \"Status\" = 'archived' ORDER BY random() LIMIT 5;"
+kubectl -n platform-infra run qdrant-archived --rm -i --restart=Never --image=curlimages/curl -- sh -c \
+  'for c in knowledge_chunks_voyage_3_5 knowledge_chunks_lexical; do curl -s -X POST http://qdrant:6333/collections/$c/points/count \
+     -H "content-type: application/json" -d "{\"exact\":true,\"filter\":{\"must\":[{\"key\":\"document_id\",\"match\":{\"any\":[\"<ID1>\",\"<ID2>\"]}}]}}"; echo; done'
+kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d graph_svc -At -c \
+  "SELECT count(*) FROM graph_documents WHERE \"DocumentId\" IN ('<ID1>','<ID2>');"
+```
+
+期待値: 点の件数（`result.count`）が各コレクションで 0、ノードが 0。**陽性対照**として、アーカイブしていない文書の ID を同じ問い合わせに入れると件数が 1 以上になる
+（問い合わせが壊れているだけの 0 と区別する）。横断検索でアーカイブした文書の題名を引いて当たらないこと、文書詳細画面ではその文書を開けることも確かめる。
+撤収は事象の順序を見ない（アーカイブより前に出た更新が撤収の後に処理されると、その文書は再び載る）。**定期（例: 週次）に手順 3 で点 0・ノード 0 を確かめ直し、
+残っていれば `--status archived` の再発行をもう一度流す**（冪等。本文を読まないので費用はかからない）。
+
+**戻し方**: アーカイブ解除は製品の操作として持たない（2026-10-16 の計画の裁定）。戻し方は次の 2 つだけである。
+(a) データソースの再同期で同じ文書 ID が再正規化されると、状態は正規化済みへ戻る（データソース由来の文書に限る。公開は文書管理画面の別の操作。索引・グラフは通常の経路で載せ直す）。
+(b) 非常時に、台帳の版履歴から直前の状態を引き、台帳の状態だけを SQL で戻す（版の注記は固定の文字列。手順は実装の意思決定記録）。運用の非常手段であり、
+Wiki のページの非公開化も索引からの撤収も戻らない（戻すには、戻した文書の ID で `republish-document-updated.js --ids` を流す）。
+文書管理画面で人が作成した文書と機械クライアントが作成した文書は (b) だけである。
+
+### 株取引ユニットの相場スナップショット（Quote）のアーカイブ（文書管理の要求 / #1974）
+
+株取引ユニットは 2026-10-16 まで、5 分ごとに相場のスナップショット（属性 `kind = Quote`・表題 `{symbol} 現在値`）を保存していた（1 日に約 950 件）。
+旧い文書は索引に残り、銘柄の検索の候補を占め続ける。これらを**既存の状態「アーカイブ」**へ移す一回限りの管理操作である（消さない）。
+アーカイブした文書は検索・RAG の候補から外れ、文書管理画面で「アーカイブ済み」として見分けられる。**実行はオーナーの承認の後に行う。**
+
+- 口: 文書サービスの `POST /documents/archive-ast-quotes`（管理者だけ。メッシュ内部）。駆動: `scripts/archive-ast-quote-documents.js`（`--live` 必須。一括アーカイブと同じ本体）。
+- 対象: `project = ai-stock-trading` かつ `kind = Quote` の未アーカイブの組織文書（条件は口の側で固定）。触らない: 他の kind・他の project・個人資料・アーカイブ済み。
+- 下流: 単票のアーカイブと同じイベントが出る。取り込みは本文を読まずに全コレクションから点を消す（埋め込みの費用はかからない）。Wiki 同期はページを非公開化する。
+- 境界語の枠を剥がす操作（下の節）より**先に**流すと、そちらの対象（と埋め込みの費用）が減る。
+
+```console
+# 0. 配備: document-service だけ（マイグレーションは無い）
+# 1. dry-run（何も変えない）。ページごとに対象の文書 ID が並び、最後に件数が出る。件数をオーナーへ示して承認を受ける
+node scripts/archive-ast-quote-documents.js --live --dry-run --operator <名前> | tee quote-dry-run.txt
+# 2. カナリア（20 件）。取り込み・Wiki・グラフのキューが空になり DLQ が増えないこと（スクリプトが見る）。文書管理画面の「アーカイブ済み」が 20 増えること
+node scripts/archive-ast-quote-documents.js --live --operator <名前> --reason "AST の Quote のアーカイブ（カナリア）" --canary 20 --max-pages 1
+# 3. 全件（止まったら同じコマンドで再開）
+node scripts/archive-ast-quote-documents.js --live --resume --operator <名前> --reason "AST の Quote のアーカイブ"
+# 4. 確認: dry-run をもう一度流し「アーカイブの対象」が 0 件であること。台帳でも 0 件であること（読み取りだけ）
+node scripts/archive-ast-quote-documents.js --live --dry-run --operator <名前> | tail -2
+kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d document_svc -At -c \
+  "SELECT count(*) FROM \"Documents\" WHERE \"Status\" <> 'archived' AND \"Attributes\"->>'project' = 'ai-stock-trading' AND \"Attributes\"->>'kind' = 'Quote';"
+```
+
+**口が 500 で止まったとき**: 保存の後の発行が途中で失敗していると、アーカイブ済みでイベントの出ていない文書が残り、再実行では拾われない。
+🔴 ログの ID では回収しない —— 発行がページの途中で失敗すると、それより後の文書は台帳ではアーカイブ済みなのに監査の行（`Archived AST quote snapshot`）が出ていない。
+**母集合で再発行する**（アーカイブ済みの Quote 全件に status=archived のイベントを出し直す。受け手は本文を読まず、冪等なので何度流してもよい。件数の上限も無い）:
+
+```console
+node scripts/republish-document-updated.js --live --dry-run --operator <名前> --attr project=ai-stock-trading --attr kind=Quote --status archived
+node scripts/republish-document-updated.js --live --operator <名前> --reason "Quote のアーカイブの発行の回収" --attr project=ai-stock-trading --attr kind=Quote --status archived
+```
+
+### 株取引ユニットの文書から境界語の枠を剥がす（文書管理の要求 / #1973）
+
+株取引ユニットは 2026-10-16 まで、保存するニュースの表題と本文を `<<<UNTRUSTED_DATA` … `UNTRUSTED_DATA>>>` で囲んで保存していた。新しい保存は囲まれないが、
+旧い文書は文書管理画面・Wiki・MCP の一覧に境界語つきで出て、表題が約 37 字長く（Wiki.js の 255 字を超えるものがある）、索引の入力にも境界語が混ざる。
+その枠を台帳から剥がす一回限りの管理操作である。**実行はオーナーの承認の後に行う。**
+
+- 口: 文書サービスの `POST /documents/strip-untrusted-boundary`（管理者だけ。メッシュ内部）。駆動: `scripts/strip-untrusted-boundary.js`（`--live` 必須。一括アーカイブと同じ本体）。
+- 対象: `project = ai-stock-trading` の、アーカイブ済みでない組織文書のうち、表題か本文が枠の形のもの。剥がすのは先頭と末尾の枠（と隣の改行 1 つ）だけである。
+- 触らない: 他の project・個人資料・アーカイブ済み・枠の無い文書・中身の途中の境界語。状態・属性・タグは動かない。2 回流しても 2 回目は何もしない。
+- 下流: 単票の更新と同じイベントが出る。取り込みは索引を作り直す（**埋め込みの費用がかかる**。件数は dry-run で先に確かめる）。Wiki 同期は表題と本文を書き直す（同じページ）。
+  Quote の相場スナップショットを先にアーカイブすると、対象（と埋め込みの費用）が減る。
+- Wiki 同期の DLQ にある旧い表題のメッセージ（表題の長さで拒まれたもの）は、剥がした後の同期が新しいイベントで届くので、捨ててよい。
+
+```console
+# 0. 配備: document-service だけ（マイグレーションは無い）
+# 1. dry-run（何も変えない）。ページごとに対象の文書 ID が並び、最後に件数が出る。件数をオーナーへ示して承認を受ける
+node scripts/strip-untrusted-boundary.js --live --dry-run --operator <名前> | tee strip-dry-run.txt
+# 2. カナリア（20 件）。取り込み・Wiki・グラフのキューが空になり DLQ が増えないこと（スクリプトが見る）。対象の ID の表題が文書管理画面と Wiki で境界語なしになること
+node scripts/strip-untrusted-boundary.js --live --operator <名前> --reason "境界語の枠を剥がす（カナリア）" --canary 20 --max-pages 1
+# 3. 全件（止まったら同じコマンドで再開）
+node scripts/strip-untrusted-boundary.js --live --resume --operator <名前> --reason "境界語の枠を剥がす"
+# 4. 確認: dry-run をもう一度流し「枠を剥がす対象」が 0 件であること。台帳でも 0 件であること（読み取りだけ）
+node scripts/strip-untrusted-boundary.js --live --dry-run --operator <名前> | tail -6
+kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d document_svc -At -c \
+  "SELECT count(*) FROM \"Documents\" WHERE \"Status\" <> 'archived' AND \"Attributes\"->>'project' = 'ai-stock-trading' AND \"Title\" LIKE '<<<UNTRUSTED_DATA%';"
+```
+
+**口が 500 で止まったとき**: 保存の後の発行が途中で失敗していると、剥がし済みでイベントの出ていない文書が残り、再実行では拾われない（枠の形でなくなるため）。
+🔴 ログの ID では回収しない —— 口はページ全体を保存してから 1 件ずつ監査の行を出して発行するので、発行がページの途中で失敗すると、
+それより後の文書は台帳では剥がし済みなのに監査の行（`Stripped untrusted boundary from document`）が出ていない。**母集合で再発行する**
+（冪等。受け手は剥がした本文で作り直す）。次のどちらかを使う。
+
+(a) 版の注記で絞る（既定）。台帳の版の注記（固定の文字列 `untrusted-boundary stripped from title/body — … (#1973)`）から ID を引き、
+`--ids` の上限（500 件）ごとに分けて流す。最後の版がこの注記の文書だけを引くので、その後に更新・アーカイブされた文書（別のイベントが出ている）は入らない。
+埋め込み直すのは剥がした文書（発行できていた分を含む）だけなので、(b) より費用が小さい。
+
+```console
+# 1. ID を引く（読み取りだけ）
+kubectl -n platform-infra exec deploy/postgres -- psql -U postgres -d document_svc -At -c \
+  "SELECT l.\"DocumentId\" FROM (SELECT DISTINCT ON (v.\"DocumentId\") v.\"DocumentId\", v.\"ChangeNote\" FROM \"DocumentVersions\" v
+     ORDER BY v.\"DocumentId\", v.\"Version\" DESC) l WHERE l.\"ChangeNote\" LIKE 'untrusted-boundary stripped from title/body%(#1973)';" \
+  | sort -u > strip-recovery-ids.txt
+wc -l < strip-recovery-ids.txt
+# 2. 500 件ずつに分ける。dry-run で塊ごとの「対象」が塊の行数（最後の塊以外は 500）と一致することを確かめてから流す
+split -l 500 -d strip-recovery-ids.txt strip-recovery-ids.part.
+for f in strip-recovery-ids.part.*; do
+  node scripts/republish-document-updated.js --live --dry-run --operator <名前> --ids "$(paste -sd, "$f")" || break
+done
+# 3. 塊ごとに状態ファイルを分けて流す（bash の配列を使う）。止まったら同じループを流し直す（状態ファイルの在る塊は --resume で続き、完了済みの塊は何もしない）
+for f in strip-recovery-ids.part.*; do
+  st="./republish-$f.state.json"
+  if [ -f "$st" ]; then sel=(--resume); else sel=(--ids "$(paste -sd, "$f")"); fi
+  node scripts/republish-document-updated.js --live --operator <名前> --reason "境界語の枠を剥がした後の発行の回収" "${sel[@]}" --state "$st" || break
+done
+```
+
+(b) project で絞る（SQL を使えないとき）。株取引ユニットの文書の全件を再発行する（件数の上限は無い）。🔴 剥がしていない文書も**埋め込み直すので費用が大きい**。
+dry-run の件数をオーナーへ示してから流す。
+
+```console
+node scripts/republish-document-updated.js --live --dry-run --operator <名前> --attr project=ai-stock-trading --state ./republish-strip-recovery.state.json
+node scripts/republish-document-updated.js --live --operator <名前> --reason "境界語の枠を剥がした後の発行の回収" --attr project=ai-stock-trading \
+  --state ./republish-strip-recovery.state.json
+```
 
 ### 知識グラフの辺（明示リンクと共有タグ）の作り直しと、クラスタ数の測り方（知識グラフの要求 / #1396）
 
@@ -1267,8 +1801,10 @@ DLQ へ行った文書を含む確かめていないページがもう一度発�
   宛先は埋め込みと同じ LLM ゲートウェイ（`Services__LlmGateway`。`Services__LlmGatewayGrpc` が在れば gRPC）で、追加の配線は要らない。
   有効なとき introspection（構成情報）にポート `search-rerank` が載る。
 - 🔴 **有効化は越境の判断を伴う。** 候補の本文（1 件あたり最大 400 字・最大 20 件）が、`restricted` と機密区分が未指定・未知の文書を含めて
-  ティア B（Claude・ZDR）へ出る（計画が受け入れたリスク。追加統制は未定義）。守りは ZDR（用途 `rerank` は区分によらず ZDR 必須）・ABAC・
+  ~~ティア B（Claude・ZDR）へ出る~~ ［2026-10-16］ティア B（Claude）へ出る（計画が受け入れたリスク。追加統制は未定義）。守りは ZDR（用途 `rerank` は区分によらず ZDR 必須）・ABAC・
   個人資料の「AI の入力に含める」だけである。
+  🔴 **［2026-10-16］ここでの「ZDR 必須」はモデル単位の除外（`NonZdrModels`）とティア C の除外であり、組織の ZDR 契約を見ない。**
+  Claude の組織の ZDR は**未締結**であり、送った候補の本文は標準の保持（最長 30 日・米国）の下に置かれる（下の §LLM ゲートウェイの送信先ティア（Claude）の認定状況）。
 - **費用の目安**（単価表 `claude-haiku-5-5` $0.10 / $0.50 per 1M tokens。入力 100,000 トークン以下の段。再順位付けの入力は最大でも約 9,000 トークンで上段には届かない）:
   1 回 平均 約 $0.0006〜$0.001・最大 約 $0.0014（入力 約 9,000 トークン＋出力の上限 1,024 トークン）。1 日 1,000 検索で 約 $17〜$30／月。
   平均に幅があるのは、`claude-haiku-5-5` が既定で考える（思考のトークンも出力として課金される）ためで、ゲートウェイは用途 `rerank` に effort `low` を付けて絞る（`Llm__PurposeEffort__rerank`）。
@@ -1278,7 +1814,14 @@ DLQ へ行った文書を含む確かめていないページがもう一度発�
   合成監視の検索（`/bff/analysis/ask` 等）は内周の標識で見分けて再順位付けを呼ばない（費用に入らない）。
 - **用途のモデルを変えるとき**: `rerank` の割当モデルを ZDR 非対応（`NonZdrModels`）にすると、ゲートウェイは既定モデル
   （`claude-opus-5-5`）へ倒れる。ZDR の外へは出ないが、費用は約 40 倍になる（`claude-haiku-5-5` の下段 $0.10 / $0.50 に対し $4 / $20）。
+  ［2026-10-16］「ZDR の外へは出ない」はモデル単位の意味である（組織の ZDR は未締結。上の 🔴）。
 - 🔴 **有効化は #1746 の段 S5 で扱う**（検索 p95 の目標 1.5 秒と、再順位付けの往復〔期限 8 秒〕の扱いの裁定が前提）。
+- **［2026-10-17］有効化の前の計測（段 S3）**: 有効・無効の 2 構成で、検索精度（nDCG@10）と遅延（検索 p95・RAG 初回応答 p95）を測る手順は
+  [再順位付けの 2 構成での計測の Runbook](search-rerank-s3-measurement-runbook.md) にある（前提・Claude の課金回数の見積もり・切り替えと戻し・記録先）。
+- **警報の切り替え**（［2026-10-17 新設］）: 検索サービスは構成をゲージ `search_rerank_enabled`（1 = 有効・0 = 無効）で出し、検索 p95 の警報はこれで閾値を選ぶ。無効なら従来の 1.5 秒（`SearchLatencyP95High`）で鳴る。
+  有効にすると 1.5 秒の警報は外れ、代わりに `SearchRerankLatencyTargetUndefined` が 5 分で鳴る —— **有効時の検索 p95 の目標はまだ計画で定まっておらず、有効にする条件（計測が済み、目標値が裁定で定まること）を満たしていない**ことを知らせる。
+  目標値が定まったら、このルールを目標値つきの検索 p95 の警報へ置き換える（Prometheus・Grafana の経路 A/B の 4 か所）。
+  🔴 RAG 初回応答（5 秒）の警報は切り替えていない（有効にしても 5 秒のまま）。
 - **調整の口**（範囲外は既定へ倒れ、警告ログが出る）: `Rerank__CandidateCount`（既定 20・2〜50）・`Rerank__MaxCharsPerCandidate`（既定 400・50〜2000）・
   `Rerank__TimeoutSeconds`（既定 8・1〜30）・`Rerank__MaxOutputTokens`（既定 1024・64〜2048。2026-10-10 に 512 から引き上げ。
   `claude-haiku-5-5` は思考と本文の合算でこの上限を使うので、512 へ戻すと JSON が切れて元の順への縮退〔`unparseable`〕が増え得る）。
@@ -1289,6 +1832,33 @@ DLQ へ行った文書を含む確かめていないページがもう一度発�
   `refusal`（モデルの拒否）／`unparseable`（出力の形）。**どの理由でも検索は従来の並びで成功している**（並べ替えだけが抜ける）。
 - **戻す**: `Rerank__Enabled=false`（段の型が登録されなくなり、並びは従来どおり）。
 
+### LLM ゲートウェイの送信先ティア（Claude）の認定状況（LLM 送信先切替の要求 / データ越境統制）
+
+**［2026-10-16 新設］** 計画は、Claude（Anthropic。エンドポイント `claude-managed`・ティア B）の条件を提供元の公開の文書（2026-10-16 に確認）と照合し、
+次のとおり記録した。**ティア B の定義（ZDR・学習不使用・データレジデンシー／越境保証・監査可能）のうち、所在と ZDR を満たさないまま受け入れている。**
+
+| 条件 | 提供元の公開の文書 | 判定 |
+| --- | --- | --- |
+| 学習不使用 | 明示の許可が無い限り、学習に使わない | 規約上は満たす（機械による検査は無い） |
+| ゼロ保持（ZDR） | 組織ごとの契約（営業を通す）で有効になる。契約が無いと、入出力は受領から 30 日以内に削除される | 🔴 **満たさない（未締結と記録した）。期限付きで受け入れたリスク** |
+| データの所在 | 保存は米国。推論の場所は要求の `inference_geo` で決まり、既定の `"global"` では米国・欧州・アジア・豪州の一部の国のいずれかで動き得る。`"us"` で米国に固定できる（単価 1.1 倍）。日本は指定できない | **満たさない。受け入れたリスク** |
+| 監査可能 | 照合していない（計画に「監査可能」の定義が無い） | 未照合 |
+
+- 🔴 **組織の ZDR は未締結である。** 契約を結ぶまでは、Claude へ送った本文（`restricted` と機密区分が未指定・未知の文書の本文を含む）は
+  **最長 30 日、米国に保存される**。利用ポリシー違反として検知された会話は最長 2 年保持され得る（ZDR の有無によらない）。
+  - **受容者**: 利用者（オーナー）。**期限**: ZDR を締結するか、標準の保持を恒久的に受け入れるかを決めるまで。**その判断は本番運用への移行を判断する前に行う。**
+  - **送信は止めない**（`restricted` の送信を止めると、高機密の文書の再順位付けと回答生成が止まる）。
+- 🔴 **実装の「ZDR」はモデル単位である。** ゲートウェイの ZDR の要件（機密区分 `confidential` / `restricted`・未知区分、用途 `rerank`）は、
+  `NonZdrModels` に載るモデル（現在は空）とティア C を候補から外すだけで、**組織の契約を見ない**。本書・機能仕様書・セキュリティ仕様書の
+  「ZDR 必須」「ZDR 対応モデル」「ZDR の外へは出ない」は、この意味で読む。**ゼロ保持が働いていることを意味しない。**
+- **推論の所在**: ゲートウェイは `inference_geo` を指定しない。推論の場所は Anthropic の組織の workspace 設定（`default_inference_geo`・`allowed_inference_geos`）に従う。
+  **その設定値は確かめていない。** 指定できる値は `"us"` と `"global"` だけなので、どちらであっても受け入れた範囲（`"global"` が選び得る地域での推論と、米国での保存）の内に収まる。
+  - `"us"` への固定（Claude の全用途で単価 1.1 倍）は、ZDR の判断と同時に再検討する。［2026-10-17］利用許可集合は 5.5 系の 3 モデルだけになり、
+    `inference_geo` を受け付けない旧モデル（`claude-haiku-4-5` など 4.6 より前）は残っていない。固定する前に、5.5 系の 3 モデルが受け付けることを確かめる。
+- **判定の根拠はエンドポイント定義に無い。** `claude-managed` が持つのは `Tier`・`Models`・`NonZdrModels` などで、判定の根拠（契約・保持・学習・所在・監査）を持たない。
+  **それまでは本節が暫定の手段である。** ZDR の判断のときに、上の表を提供元の文書と照合し直す（確認日 2026-10-16）。
+- ZDR を締結したら、締結の日付をここへ記録し、上の表と 🔴 の項を改める（計画の側の記録も改まる）。
+
 ### LLM ゲートウェイの Anthropic 呼び出しの期限（LLM 送信先切替の要求 / #1872）
 
 LLM ゲートウェイが Claude（ティア B）を呼ぶときの HTTP の期限は、設定 `Llm:AnthropicTimeoutSeconds`（env `Llm__AnthropicTimeoutSeconds`）で決まる。
@@ -1298,8 +1868,10 @@ LLM ゲートウェイが Claude（ティア B）を呼ぶときの HTTP の期�
 | 既定 | **100 秒**（未設定のとき。従前の固定値と同じ） |
 | 受け付ける値 | 1〜2,147,483 の整数（秒） |
 | 不正な値（数値でない・小数・0 以下・上限超） | 既定の 100 秒で動く。起動は止めず、warn を 1 行出す（キー名と値を含む） |
-| 効く範囲 | Claude への呼び出しだけ（REST・gRPC とも）。セルフホスト・Copilot の経路には効かない。**一括 `/complete` では応答の全文が届くまで**に掛かる。**逐次 `/complete/stream` では最初の応答ヘッダが届くまで**にしか掛からない（ヘッダが届いた後の SSE の読み取りはこの期限で切れない） |
+| 効く範囲 | Claude への呼び出しだけ（REST・gRPC とも）。セルフホスト・Copilot の経路には効かない。**一括（REST の `/complete`・gRPC の `Complete`）では応答の全文を受信し終えるまで**に掛かる（［2026-10-17］公式 SDK へ移した後も同じ。SDK 自身の期限は応答ヘッダの到着までしか効かないので、プロバイダが呼び出し全体に同じ期限を掛けている。ヘッダの後に本文の受信が止まっても、この期限で切れる）。**逐次（gRPC の `CompleteStream`。［2026-10-16］REST の `/complete/stream` は撤去した）では最初の応答ヘッダが届くまで**にしか掛からない（ヘッダが届いた後のストリームの読み取りはこの期限で切れない。代わりに下の無通信の期限が掛かる） |
 
+- **ゲートウェイは Claude の呼び出しを再試行しない**（1 回送信。［2026-10-17］公式 SDK の既定の再試行 2 回を 0 にしている）。
+  1 呼び出しの最長はこの期限そのものであり、429・5xx・期限切れの再試行は呼び出し側の判断に残る。
 - 🔴 **呼び出し側の期限は、この値より短く保つ。** どれだけ待つかは呼び出し側が決める。呼び出し側の期限がこの値より長いと、
   **ゲートウェイが先に切る**（呼び出し側には上流の不調として返り、利用実績は計上されないが、プロバイダ側の課金は発生し得る）。
   呼び出し側の長い予算（期限と `max_tokens`）を生かすには、**この設定をそれより長く延ばす**。延ばさなければ、ゲートウェイの期限が隠れた上限になる。
@@ -1309,9 +1881,8 @@ LLM ゲートウェイが Claude（ティア B）を呼ぶときの HTTP の期�
   | --- | --- | --- |
   | 検索の再順位付け（検索サービス。`Rerank__TimeoutSeconds`） | 8 秒 | 短い |
   | 図のコード化（正規化変換。`Conversion:DiagramCodingTimeoutSeconds`） | 20 秒 | 短い |
-  | AI 分析の一括生成（AI 分析サービスの REST の `/complete`）・知識グラフの AI 提案とクラスタ要約（グラフサービスの REST。型付きクライアントに `Timeout` を置いていない） | 100 秒（`HttpClient` の既定） | 同じ（どちらが先に切れるかは決まらない） |
-  | AI 分析の逐次生成（検索チャット。REST の `/complete/stream`。応答ヘッダの到着で送信を終える） | 応答ヘッダが届くまで 100 秒（`HttpClient` の既定） | 両側とも応答ヘッダの到着までしか効かない。ヘッダ到着後の読み取りにはどちらの期限も掛からない |
-  | 🔴 AI 分析（一括・逐次）と知識グラフの AI 提案の **gRPC の経路**（`Services__LlmGatewayGrpc` を置いたとき。compose は ai-analysis と graph で置いている。クラスタ要約は REST だけ） | **期限なし**（呼び出しに deadline を付けていない。共通のクライアント登録も付けない） | 一括はゲートウェイの期限（既定 100 秒）が**唯一の上限**になる。逐次はゲートウェイの期限も応答ヘッダの到着までしか効かない |
+  | AI 分析の一括生成（AI 分析サービスの REST の `/complete`）・知識グラフの AI 提案（グラフサービスの REST。型付きクライアントに `Timeout` を置いていない。［2026-10-17］クラスタ要約は gRPC へ移り、この行から外れた） | 100 秒（`HttpClient` の既定） | 同じ（どちらが先に切れるかは決まらない） |
+  | 🔴 AI 分析（一括・逐次）と知識グラフの AI 提案・クラスタ要約の **gRPC の経路**（`Services__LlmGatewayGrpc` を置いたとき。compose は ai-analysis と graph で置いている。［2026-10-17］知識グラフのクラスタ要約もこの経路に移った） | **期限なし**（呼び出しに deadline を付けていない。共通のクライアント登録も付けない） | 一括はゲートウェイの期限（既定 100 秒）が**唯一の上限**になる。逐次はゲートウェイの期限も応答ヘッダの到着までしか効かない |
   | 取引判断（一次スクリーニング・本判断。取引ユニットの判断サービス。`LlmGateway:TimeoutSeconds`） | 30 秒 | 短い |
   | 日報の散文（取引ユニットの報告書サービス。`LlmGateway:TimeoutSecondsByKind:Daily`） | 30 秒 | 短い |
   | 🔴 **週報・月報の散文**（同。`LlmGateway:TimeoutSecondsByKind:{Weekly,Monthly}`。`HttpClient.Timeout` も種別の最大＝ 120 秒） | **120 秒** | **長い**。ゲートウェイが 100 秒で先に切り、報告書サービスは上流の不調としてプレースホルダの散文へ縮退する。実測（PoC）の出力は 931〜1,048 トークンで、いまは 100 秒に届いていない |
@@ -1320,7 +1891,14 @@ LLM ゲートウェイが Claude（ティア B）を呼ぶときの HTTP の期�
   **呼び出し側の期限を 100 秒以上へ延ばすとき・週報・月報の 120 秒を生かすときは、先にこの値をそれより長くする。**
 - 非ストリーミングの `/complete` は全文の生成を待つ。出力が 50〜80 トークン／秒なら、8,192 トークンには約 100〜165 秒かかる（thinking を含む）。
   `max_tokens` を上げる判断は [出力トークン実測の Runbook](llm-output-token-measurement-runbook.md) §5 で、期限と併せて行う。
-  逐次 `/complete/stream` は上のとおりヘッダの到着後は期限で切れないため、長い出力はストリーミング経路へ寄せればこの期限の頭打ちを避けられる。
+  逐次（gRPC の `CompleteStream`）は上のとおりヘッダの到着後は期限で切れないため、長い出力はストリーミング経路へ寄せればこの期限の頭打ちを避けられる。
+- **逐次の無通信の期限**（［2026-10-20 / #1997］）: 逐次では、上流から次のイベント（本文・思考のデルタ・終了理由など）が届かないまま
+  設定 `Llm:AnthropicStreamIdleTimeoutSeconds`（env `Llm__AnthropicStreamIdleTimeoutSeconds`）の秒数が過ぎると打ち切る。
+  **未設定なら上の `Llm:AnthropicTimeoutSeconds` と同じ値**（既定 100 秒）で、値の規則（範囲・不正値は warn 1 行）も同じである（不正値は `Llm:AnthropicTimeoutSeconds` の値へ倒れる）。
+  イベントの間だけを測るので、流れ続ける長い応答は切らない。逐次の呼び出し側（AI 分析の RAG の回答・BFF・SPA）は、どれも全体の期限を持たない（2026-10-20 の実測）。
+  これまでは、止まった上流を利用者が「停止」を押すまで握り続けていた。
+  期限切れは利用者に「呼び出し先が現在利用できません」として返り、`llm_completion_total{llm_result="upstream_error", llm_upstream_status="transport"}` が増え、
+  ゲートウェイのエラーログに設定キーの名前を含む `TimeoutException` が残る。延ばす・縮める設定の仕方は下と同じ。
 - **設定の仕方**: Helm は `services.llmgateway.extraEnv` に `Llm__AnthropicTimeoutSeconds` を足す（chart は値を置かない）。compose は llm-gateway の
   `environment` に同じ名前で足す。反映には Pod（コンテナ）の再起動が要る（値はプロセスの中で 1 回だけ読む —— 最初の Claude 呼び出しでクライアントが作られるときに読み、以後は読み直さない）。
 - **戻す**: env を消す（既定の 100 秒へ戻る）。
@@ -1335,7 +1913,7 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 | 既定 | `rerank: low` だけ（`appsettings.json`）。書かない用途は effort を送らず、提供元の既定になる（`claude-opus-5-5`・`claude-haiku-5-5` は `medium`、`claude-sonnet-5-5` は `high`） |
 | 受け付ける値 | `low` / `medium` / `high` / `xhigh` / `max`（大文字小文字は問わない） |
 | 不正な値 | **ゲートウェイが起動しない**（起動時の検証で落とす。実行時に送ると全件 400 になるため） |
-| 効く範囲 | Claude への呼び出しで、effort を受け付けるモデル（5.5 系・`claude-opus-5`・`claude-sonnet-5`・`claude-opus-4-8`）だけ。`claude-haiku-4-5` へは送らない（effort を 400 で拒む） |
+| 効く範囲 | Claude への呼び出しで、effort を受け付けるモデル（5.5 系の 3 つ。利用許可集合と同じ）だけ。対応集合に無いモデルへは送らない（［2026-10-17］旧世代は利用許可集合と対応集合の両方から外した） |
 
 - **設定の仕方**: env `Llm__PurposeEffort__<用途>`（例 `Llm__PurposeEffort__analysis=high`）。Helm は `services.llmgateway.extraEnv`、compose は llm-gateway の `environment` に足す。
   反映には Pod（コンテナ）の再起動が要る（値は起動時に読む）。
@@ -1343,6 +1921,31 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 - 🔴 **`claude-opus-5-5` の既定 effort は `medium` で、旧 `claude-opus-5` の既定（`high`）より 1 段低い。** AI 分析・月報・週報・クラスタ要約の品質が下がったと
   判断したときは、その用途に `high` を明示する（実測なしに一律で上げない）。
 - **戻す**: env を消す（`appsettings.json` の既定へ戻る）。
+
+### 利用者本人への通知のメール補助経路 —— 送信の失敗と再送（利用者本人への通知の要求 / #2113）
+
+通知サービスはアプリ内通知を永続化したあと、メールを outbox から定期処理（既定 5 分ごと）で送り出す。
+メールは補助経路であり、ここで何が起きてもアプリ内通知は届いている。送信の結末は監査ログの
+`notification.email.<結末>` と計器 `notification.email.total`（属性 `notification.outcome`）に必ず載る。
+
+| 失敗の種類 | 例 | 振る舞い |
+| --- | --- | --- |
+| **一過性** | リレーへの接続断・時間切れ・一時的な SMTP 応答 | `deferred` に戻し、次回時刻まで拾わない（理由 `transient:<理由語>`）。待ちは 5・10・20・40 分と倍々に伸び、1 時間で頭打ち。**試行の上限（既定 5 回）に達したものだけを `failed`**（理由 `retry-exhausted:<理由語>`）にし、計器 `notification.email.retry_exhausted` でも数える |
+| **恒久的** | **SMTP 未構成**（理由 `smtp-not-configured`）・宛先未解決（`recipient-address-unresolved`）・型で判別できない例外 | **即 `failed`。再試行しない**（構成は周期の間に変わらないので、送り直しても結果は同じ） |
+
+- 🔴 **SMTP のトランスポートと宛先の解決元は、まだ実装されていない**（利用者の裁定で見送り中。送信の実体は
+  未構成用のトランスポートである）。**したがって、メールの発火が 1 件でもあれば、その件数だけ監査ログの
+  `notification.email.failed`（理由 `smtp-not-configured` または `recipient-address-unresolved`）と
+  計器 `notification.email.total{notification.outcome="failed"}` が出続ける。これは障害ではなく既知の縮退である。**
+  未構成は恒久的な失敗として扱うので、同じ行が毎周期送り直されて件数が膨らむことは無い（1 行につき 1 回）。
+- **障害として読むのは `notification.email.retry_exhausted` の側である。** 0 でない値は、リレーの障害が再試行の窓
+  （既定で最初の失敗から約 75 分）より長く続いたことを示す。未構成の `failed` とは計器を分けてあるので、常時出る
+  未構成の線に埋もれない。
+- **設定**（env。反映には再起動が要る）: `Notification__EmailMaxSendAttempts`（初回を含む試行回数の上限。既定 5、
+  1 で再試行なし）・`Notification__EmailRetryBaseDelay`（既定 `00:05:00`）・`Notification__EmailRetryMaxDelay`（既定 `01:00:00`）。
+- **再試行は日次の送信上限を消費しない**（上限は「送れた件数」で数える）。期限つきの通知は、再試行待ちのあいだに期限を
+  過ぎれば `dropped`（理由 `deadline-passed`）として記録して捨てる。
+- **既に `failed` の行は遡及して再送しない。** 送り直したいときは、原因を直したあとで発火元から通知を出し直す。
 
 ## 可用性・水平スケール（HPA / PDB）（NFR / #197）
 
@@ -1360,15 +1963,23 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 - **レプリカ所有権**: HPA 対象サービスは Deployment に静的 `replicas` を持たず HPA が所有する
   （`deployment.yaml` は `scaling.services` に含まれるサービスの `replicas` を出力しない。値の綱引きを避ける）。
 - **ヘルスプローブ / ロールアウト**: 各 HTTP サービスは `readinessProbe`（`/health/ready`）・`livenessProbe`
-  （`/health/live`）を持ち、Deployment 既定の RollingUpdate（maxUnavailable による無停止更新）と PDB で
+  （`/health/live`）を持ち（**キュー駆動ワーカーの conversion / ingestion も同じ**。HPA の対象外であることとは別で、
+  probe の抑止はしない）、Deployment 既定の RollingUpdate（maxUnavailable による無停止更新）と PDB で
   更新時の可用性を担保する。
+  - **`/health/ready` が見るのは自プロセスが要求を捌くのに必須な依存だけである**（自分のデータストア・ブローカ等。
+    BFF ではセッションストア）。**下流サービスの疎通は入れない** —— 入れると下流 1 つの停止で呼び出し側の全レプリカが
+    NotReady になり、エッジから全画面が 503 になる（検索は継続し AI 回答だけを止める、という縮退と逆向き）。
+  - 下流の疎通は BFF と AI 分析サービスの **`/health/dependencies`**（probe ではない。常に 200 で、本文の
+    `status` と `entries` に下流ごとの `Healthy` / `Degraded` を出す）で確かめる。
+    例: `kubectl -n microservices-platform port-forward svc/bff-service 18080:8080` の上で `curl -s http://localhost:18080/health/dependencies`
+    （実行イメージは curl / wget を持たないので exec では引けない）。
 
 ### 適用対象（段階適用）
 
 | 区分 | サービス | HPA/PDB |
 | --- | --- | --- |
 | 要求処理（ステートレス） | bff / retrieval / authorization / aianalysis / document / datasource / dashboard / feedback / wiki / llmgateway | **有効**（min 2 / max 4 / PDB minAvailable 1） |
-| キュー駆動ワーカー | conversion / ingestion（`worker: true`） | 対象外（replicas 1 のまま） |
+| キュー駆動ワーカー | conversion / ingestion | 対象外（replicas 1 のまま） |
 | ステートフル | seaweedfs / wikijs / postgres / qdrant | 対象外（各自の可用性方針） |
 
 - **チャートの外にも PDB を持つ部品が 1 つある**: パスワードリセット申請の床の器（`platform-infra` の `reset-floor`。
@@ -1379,6 +1990,9 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 - ワーカー（conversion/ingestion）は RabbitMQ 競合コンシューマで水平化自体は可能だが、CPU ベース HPA が
   不適（キュー滞留がスケール指標）なため本段では対象外とし、負荷実測後に KEDA 等のキュー長ベース
   スケールを別途検討する。
+- 🔴 **［2026-10-23］ingestion を複数レプリカ・並行受信にする前に、取り込みの版の印の並行の限界を解消すること。**
+  版の印の読み書きは比較交換ではなく、同じ文書の 2 版を並行に取り込むと新しい版のチャンクが次の更新まで欠け得る
+  （既定の 1 レプリカ・Inline 受信では起きない。機能仕様書「取り込み」§順序と原子性）。
 - 対象の増減は `values.yaml` の `scaling.services` リストの変更（＋ GitOps 適用）のみで行う。
 
 ### 前提・確認事項
@@ -1404,6 +2018,9 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
   **［2026-08-30 更新 / #546］Alertmanager は compose・経路B の両方へ配備済みで、`alertmanagers.targets` も
   2 か所とも埋まっている。発火は Alertmanager まで届く**（実測。下記★）。**受信先＝メール/チャットは
   運用環境ごとに設定するもので、既定は `default-null`＝どこへも送らない**（設定漏れではなく既定）。
+  **［2026-10-22 更新 / #2044］経路B は宛先の Secret を与えるとメールが届く**（近接 MTA 経由の受信先を 1 本置いた。
+  宛先が空なら従来どおり `default-null`。compose は `default-null` のまま）。配備・試験警報の手順は
+  [`alertmanager-mail-receiver-runbook.md`](alertmanager-mail-receiver-runbook.md)。
 - **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
   が同じ 24 ルール（MCP クライアントの登録簿と IdP の照合の 2 件を足して数え直した。所有者の読み取りのポリシーの 2 件を足した時点は 22。［2026-09-26 / #1577］で数え直した。部門の同期の 1 件が足された後も 19 のままだった。
@@ -1488,7 +2105,7 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 > | # | 条件 | 状態 |
 > | ---: | --- | --- |
 > | 1 | `prometheus.yml`（compose・k8s の**両方**）の `alertmanagers.targets` に到達可能な Alertmanager がある | ✅ **満たした**（`/api/v1/alertmanagers` が `activeAlertmanagers` を 1 件返す） |
-> | 2 | Alertmanager 側に受信先（メール/チャット）が設定され、**テスト通知が実際に届いた** | 🔴 **満たしていない。** 既定は `default-null`＝どこへも送らない。**実環境の宛先は利用者が決める事柄**であり、実装側で代替値を置けない |
+> | 2 | Alertmanager 側に受信先（メール/チャット）が設定され、**テスト通知が実際に届いた** | 🟡 **［2026-10-22 / #2044］器は置いた（経路B・近接 MTA 経由のメール。宛先は Secret で与える）。到達の記録はまだ無い** —— PoC で [Runbook](alertmanager-mail-receiver-runbook.md) §3 の試験警報を流し、届いた記録を残した時点で満たす。以下は従前の記述: 🔴 **満たしていない。** 既定は `default-null`＝どこへも送らない。**実環境の宛先は利用者が決める事柄**であり、実装側で代替値を置けない |
 > | 3 | 下表のルールの発火が Alertmanager 経由で通知されることを**1 件以上、実際に確かめた** | ✅ **満たした**（`OtelCollectorDown` の発火が Alertmanager の `/api/v2/alerts` に `active` として現れた。**合成ルールではなく下表の実ルールである**） |
 >
 > **条件 2 が満たされるまで併存させる。** 本来は避けたい状態だが、**暫定側（Grafana）にも宛先が無い**ため
@@ -1504,10 +2121,13 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 | 可観測性パイプライン | `up{job="otel-collector"}`（唯一の scrape 対象） | ==0 が 2 分 | Alertmanager（critical） | 検出 5 分以内 |
 | サービス応答断（近似） | `rate(http_server_request_duration_seconds_count)` の途絶（`job` 別・直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
 | HTTP エラー率 | 5xx 率 = `http_server_request_duration_seconds_count{http_response_status_code=~"5.."}` 比率（`job` 別） | > 5% が 5 分 | Alertmanager（critical） | 可用性 99.9% |
-| 検索レイテンシ | retrieval-service p95（`http_server_request_duration_seconds_bucket`） | > 1.5（**秒**）が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
+| 検索レイテンシ | retrieval-service p95（`http_server_request_duration_seconds_bucket`） | > 1.5（**秒**）が 10 分。**再順位付けが無効な構成だけ**（ゲージ `search_rerank_enabled` が 1 の間は外れる。ゲージが無いときは無効として鳴る） | Alertmanager（warning） | 検索 p95 1.5s |
+| **検索の再順位付けの有効時の目標が未確定** — ［2026-10-17 新設］ | ゲージ `search_rerank_enabled{job="…retrieval-service"}`（1 = `Rerank__Enabled=true`・0 = 無効） | 1 が 5 分 | Alertmanager（warning） | 有効時の検索 p95（**値は計画で未確定**） |
 | **RAG 初回応答（SLO 判定）** | aianalysis `/analysis/ask/stream` の**初回トークンまでの時間**（`rag_answer_first_token_duration_seconds_bucket`）p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | **RAG 初回応答 p95 5s** |
 | RAG 応答完了（**傾向の観察に留める**） | aianalysis `/analysis/ask`（一括経路）の応答完了 p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | — （**判定に用いない**） |
 | **LLM 費用（用途別の月次予算）** — ［2026-09-26 / #1111］ | 直近 30 日の `llm_cost_total` ＞ ゲージ `llm_budget_monthly_limit`（用途・通貨ごと） | 超過が 5 分（**金額は未設定＝不活性**） | Alertmanager（warning） | — （費用の統制。金額が設定されるまでは Runbook の月次確認） |
+| **デッドレター到達** — ［2026-10-23 / #2043］ | `messaging_dead_letter_total` の直近 1 時間の前進、または 1 時間前に無かった系列の出現（サービス・メッセージ型・例外の型ごと） | > 0 が 5 分（**0 が正常**。自動再試行を使い切ったメッセージが DLQ へ入った） | Alertmanager（warning） | — （回復の取りこぼしの検出。§DLQ の扱い） |
+| **取り込みの総枠の使い切り** — ［2026-10-20 / #1991］ | `messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget\|lexical-budget"}` の直近 1 時間の前進 | > 0 が 5 分（**0 が正常**。使い切った文書は一部の点だけが検索に現れ、デッドレターへ入る） | Alertmanager（warning） | — （索引の欠けの検出。§埋め込みプロバイダ） |
 | **パスワードリセット申請の床の器（全滅）** — ［2026-09-26 / #1544］ | `up{job="reset-floor"}`（収集器が器の **Service** の `/metrics` を 30 秒ごとに取る。準備のできた器が 0 なら届かず 0） | ==0 が 2 分（**器が 1 つでも準備完了なら鳴らない**） | Alertmanager（critical） | 検出 5 分以内・可用性 99.9% |
 | **評価対象の不在** — 収集経路 | `absent(up{job="otel-collector"})` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
 | **評価対象の不在** — 全サービスの HTTP メトリクス | `absent(http_server_request_duration_seconds_count)` | 系列が無い状態が 5 分 | Alertmanager（warning） | 検出（**統制**） |
@@ -1891,6 +2511,9 @@ kubectl -n microservices-platform get peerauthentication microservices-platform-
 
 サービス間の gRPC（h2c・8081）の往復を稼働クラスタで PERMISSIVE / STRICT の両方について実測する手順（REST の east-west を退役させる前の観測点。#1255 / #1517）は
 [east-west gRPC（h2c）往復の実測 Runbook](east-west-grpc-h2c-roundtrip-measurement-runbook.md) にある。モードの切り替えは上と同じく `set_mesh_mtls_mode` だけを使う。
+［2026-10-10 / #1255・#1517］**REST の east-west は退役した。** gRPC の宛先（`Services__*Grpc`・`Introspection__Services__*`・`Mcp__Services__*`）が欠けた配備は、
+起動はするがその経路が `UNAVAILABLE` で縮退する（REST へは戻らない。縮退の WARN にステータスの詳細＝構成キーの名前が載る）。
+撤去した旧キー `Introspection__GrpcServices__*` / `Mcp__GrpcServices__*` が残っていると、BFF / MCP サーバーは起動を止める。
 
 ### 検索が全件 0 件になる（読み書き先コレクションの乖離・全文索引の欠落）（非機能要件: 可観測性 / #1215）
 
@@ -1995,7 +2618,7 @@ QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-fulltext-index.sh --
 | 実施時期 | **毎年 7 月**。計画が定めるのは「採用ライブラリの年次点検と同じ時期に行う」ことであり、7 月という月は、上の採用ライブラリの点検に合わせて本リポジトリが選んだ |
 | 契機（時期を待たずに行う） | ①イメージの**取得の失敗**（CI の結合テスト・integration-stack・経路 B の起動が pull で落ちた）②上流リポジトリの **archived** ③**ライセンス変更の告知** ④新しいインフラ製品の採用（選定時に同じ基準を当てる）⑤**基底イメージ**の上流のセキュリティ修正の告知（.NET の月例のサービシングリリース・node・caddy の修正版）—— 基準の点検は要らず、digest の解決し直しだけを行う |
 | 母集合 | 次の **3 つの和集合**。**手で列挙しない** —— ①②は機械的に引き、③は計画の決定から引く。自製イメージ（`microservices-platform/*`・`k3d-local/*`）は対象外。<br>① **`node scripts/check-image-digests.js --list`** の出力（製品ごとの tag・固定の有無・参照箇所）—— `deploy/` と `src/`（基底イメージ・Testcontainers）の参照<br>② **`scripts/` が chart・マニフェストで入れる製品** —— `--list` に現れない。`grep -nE 'helm upgrade --install\|kubectl apply .*https\|k3d cluster create' scripts/*.sh` で引き、chart の内側のイメージは `helm template`（同じ版・同じ values）で、上流マニフェストの内側は取得した YAML の `image:` で引く<br>③ **計画が前提として引く製品** —— 名指しで確定する ADR が無くても、計画の決定がその製品の存在を前提にしているもの（2026-10-09 時点では External Secrets Operator・Reloader。②にも現れる） |
-| 版の固定（`scripts/` の分） | ②の製品は**版で固定する**（chart の `--version`・release の URL・版のタグの URL・k3s のイメージ）。Argo CD は版のタグの URL（`ARGOCD_VERSION`。ブランチ名は起動前に拒否）、k3s は `K3S_IMAGE` の既定で固定する（k3d 経路。Rancher Desktop 経路は内蔵 k3s の版を Rancher Desktop の設定が決める）。Argo CD・k3s の固定は `scripts/k8s-local-up.test.js` と `scripts/scripts.repo.test.js` が見る。**chart・上流マニフェストの内側のイメージは digest で固定していない**（参照の行が本リポジトリに無い。2026-10-09 の追補の「残り」） |
+| 版の固定（`scripts/` の分） | ②の製品は**版で固定する**（chart の `--version`・release の URL・版のタグの URL・k3s のイメージ）。Argo CD は版のタグの URL（`ARGOCD_VERSION`。ブランチ名は起動前に拒否）、k3s は `K3S_IMAGE` の既定で固定する（k3d 経路。Rancher Desktop 経路は内蔵 k3s の版を Rancher Desktop の設定が決める）。Argo CD・k3s の固定は `scripts/k8s-local-up.test.js` と `scripts/scripts.repo.test.js` が見る。［2026-10-15 / #1858］**chart・上流マニフェストの内側のイメージも digest で固定した**: chart は values（`deploy/istio/istiod-values-local.yaml`・`deploy/local/vault/eso/external-secrets-values.yaml`・`deploy/local/reloader/values.yaml`）、上流マニフェストは kustomization の images 置換（`deploy/local/edge/cert-manager`・`deploy/argocd/install`）、k3s は `K3S_IMAGE` の既定が `tag@sha256:…` を持つ。これらは①の `--list` に現れる（`check-image-digests.js` が kustomization の `images:` と `scripts/*.sh` の `*_IMAGE` の既定も読む）。版の env（`ISTIO_VERSION` 等）は固定と同じ値しか受けない（版だけを変えると digest と食い違う）。**版を上げるときは版と tag・digest を対で改める**（`scripts/scripts.repo.test.js` が突き合わせ、`check-deploy-manifests.js` が kustomization の描画結果に tag だけのイメージが残っていないかを見る） |
 | 記録先 | **本節の「点検の記録」**（回ごとに日付つきの小見出しを足し、過去の回は消さない）。判断を伴う変更（差し替え・例外の追加）は実装 ADR に残す |
 | 逸脱時 | **基準 A・B・D を満たさない製品は差し替えずに記録し、計画へ環流する**（差し替えは計画の裁定。`/plan-feedback`）。基準 C で既定の外部通信が見つかったら、配備へ無効化を入れる issue を起こし、計画のデータ外部送信方針の統制表への追加を環流する |
 
@@ -2101,6 +2724,7 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 
 - 🟡 **chart・上流マニフェストの内側の 13 参照は digest で固定していない**（版で固定）。他の製品と同じく digest で固定するには、製品ごとに values の上書きか
   post-render が要る（Istio は注入のテンプレートにも及ぶ）。#1858 で扱う。それまでの暫定は版の固定と、上の B 列に記録した digest である（次回の点検で解決し直して突き合わせる）。
+  **［2026-10-15 / #1858］固定した**（下の「2026-10-15（`scripts/` が入れる製品の内側のイメージの digest 固定）」。B 列の digest は固定の実体へ移った）。
 - 🟡 Argo CD の `install.yaml` は git のタグで固定したが、タグの付け替えは検知しない（manifest のハッシュの照合は入れていない）。
 - 既存の k3d クラスタは作り直すまで版が変わらない（k3s のイメージは `cluster create` の時点で決まる）。
 
@@ -2229,8 +2853,41 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
   別の Pod から loki・tempo の口へ届かないことを確かめる。
 - 機械の検査: `scripts/scripts.repo.test.js`（2 段の宣言の一致と、1 か所ずつ壊した変異）・`scripts/k8s-local-up.test.js`（トークンの生成）。
 
+##### 2026-10-15（`scripts/` が入れる製品の内側のイメージの digest 固定。#1858）
+
+2026-10-08 の追補の「残り」の 1 つ目を解いた。基準 B の「同じタグの中身の差し替えを検知できない」は 6 製品とも解消した（上の追補の表は書き換えない）。
+
+- 母集合は追補と同じ 6 製品を、**配備と同じ版・同じ values で描画し直して**引いた。相異なる参照は **11**（Istio 2・ESO 1・Reloader 1・cert-manager 3・Argo CD 3・k3s 1）。
+  追補の「13」は数え方の差（ESO の 3 Deployment が同じ参照を使う等）であり、11 をすべて固定したので漏れは無い。
+  istiod の chart が同梱する gRPC・agentgateway の注入テンプレートの参照（`busybox` 等）は、本リポジトリが使わない注入の型であり Pod のイメージにならないので対象外とした。
+- digest は 2026-10-15 に匿名で 2 回解決して一致し、**追補の B 列の digest（前方 8 桁）とも全件一致した**（上流でタグの中身は差し替わっていなかった）。
+
+| 製品 | 固定の置き場 | 固定した参照 |
+| --- | --- | --- |
+| Istio | `deploy/istio/istiod-values-local.yaml`（`pilot.image`・`global.proxy.image`・`global.proxy_init.image`） | `registry.istio.io/release/pilot:1.30.4@sha256:c236c1df…`・`proxyv2:1.30.4@sha256:43b6aeab…`（注入の sidecar・init・gateway に効く） |
+| ESO | `deploy/local/vault/eso/external-secrets-values.yaml`（本体・webhook・cert-controller） | `ghcr.io/external-secrets/external-secrets:v2.8.0@sha256:24c0dd36…` |
+| Reloader | `deploy/local/reloader/values.yaml` | `ghcr.io/stakater/reloader:v1.4.22@sha256:def24800…` |
+| cert-manager | `deploy/local/edge/cert-manager/kustomization.yaml`（release の URL ＋ images 置換） | `quay.io/jetstack/cert-manager-{controller,webhook,cainjector}:v1.21.1@sha256:{416a2d76…,d8b3961b…,ccf6b919…}` |
+| Argo CD | `deploy/argocd/install/kustomization.yaml`（版のタグの URL ＋ images 置換） | `quay.io/argoproj/argocd:v3.5.4@sha256:49dff794…`・`ghcr.io/dexidp/dex:v2.45.1@sha256:8499afd6…`・`public.ecr.aws/docker/library/redis:8.2.3-alpine@sha256:08ad0b1d…` |
+| k3s | `scripts/k8s-local-up.sh` の `K3S_IMAGE` の既定 | `rancher/k3s:v1.35.4-k3s1@sha256:475e036b…` |
+
+- 確かめ方: chart は配備と同じ版の chart を `helm template` で描き、kustomization は `kubectl kustomize` で描いて、内側のイメージがすべて `tag@sha256:…` で
+  描かれることを見た。kustomization の描画は images 以外が上流の `install.yaml`・`cert-manager.yaml` と一致する（キーを整列した JSON の比較で差 0）。
+  k3s は k3d v5.8.3 が digest つきの参照を受けて pull・ノード起動まで進むことを手元で確かめた（その先は作業環境の制約で tag だけの参照でも同じ箇所で止まった）。
+- 機械の検査: `check-image-digests.js`（形・同じ repo:tag の食い違い）・`scripts/scripts.repo.test.js`（版と tag の対・変異）・
+  `check-deploy-manifests.js`（kustomization の描画結果に tag だけのイメージが無いこと）。
+- **稼働中のクラスタへの影響**: 中身は同じ（digest は追補の記録と一致）。参照の文字列が変わるので、次に起動器を流すと istiod・ESO・Reloader・cert-manager・
+  Argo CD の Pod が 1 回ずつ作り直される（再取得は不要）。インフラのイメージ参照を変える配備にあたるので、上の「デプロイ」の節の定めに従って引け後に流す。
+  k3s は既存クラスタでは変わらない（作り直したときだけ）。サイドカーは注入済みの Pod を作り直すまで旧い文字列のまま（中身は同じ）。
+
 ## 未決事項
 
+- **未認定の鍵の環境の手順 (b) の検索の挙動**（［2026-10-16］）: §埋め込みプロバイダ の「未認定の環境へデプロイする場合」の手順 (b)（Voyage の経路を止め、ティア A を有効にする）で、
+  主コレクション（voyage）を読む検索がどう振る舞うかは実測していない（確かめたのは起動の可否だけ）。**本番で当てる前に PoC で実測する。**
+- **Claude の ZDR（ゼロデータ保持）の締結**（［2026-10-16］）: 組織の ZDR は未締結であり、Claude へ送った本文は標準の保持（最長 30 日・米国。
+  利用ポリシー違反として検知された分は最長 2 年）の下にある。利用者（オーナー）が期限付きで受け入れている。**締結するか、標準の保持を恒久的に受け入れるかを、
+  本番運用への移行を判断する前に決める**（追跡は計画側の未決事項）。あわせて組織の workspace の推論の場所の設定値を確かめて記録する
+  （§LLM ゲートウェイの送信先ティア（Claude）の認定状況）。
 - **Alertmanager の受信先設定**: **［2026-08-30 更新 / #546］Alertmanager 本体は配備済みで、
   `alertmanagers.targets` は compose・k8s の 2 か所とも埋まっている**（発火が Alertmanager へ届くことは
   意図的に閾値を割って実測した）。**残っているのは受信先（メール/チャット）だけ**であり、
@@ -2238,6 +2895,8 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
   **暫定の通知先（Grafana 内蔵アラート）は #665 で配線済み**だが、**push 配信の宛先は依然として無い**
   （本書「監視・アラート」の★参照。気づく経路は Alertmanager / Grafana の画面を見ることだけ）。
   **受信先が設定されテスト通知が届いた時点で暫定経路を削除する**（併存させない。条件は同★）。**#546 で追跡している。**
+  **［2026-10-22 更新 / #2044］経路B に受信先の器を置いた**（宛先は Secret `alertmanager-mail` の `to`。空なら `default-null`）。
+  **残るのは PoC での宛先の投入と試験警報の到達の記録**であり、手順は [`alertmanager-mail-receiver-runbook.md`](alertmanager-mail-receiver-runbook.md)。
 - **LLM 費用の自動検知**: **配線はあるが、金額が未設定のため働いていない**（［2026-09-26 更新 / #1111］。
   従前ここは「無い」と書いていた。上限アラートは配線済みで、金額 `Llm:Budget:MonthlyLimits` は既定を持たず
   所有者が設定する。未設定のあいだアラートは評価対象を持たず発火しない。**残る未決は金額だけ**であり、
@@ -2254,8 +2913,9 @@ curl -sSI -H "Authorization: Bearer $TOKEN" \
 - **監視の stg/prod（k3s）展開**: Prometheus/Alertmanager を Helm（Operator 等）で配備し、`alerts.yml` 相当の
   ルールと通知を k3s にも展開する（**［2026-08-30 更新 / #546］現状は dev の 2 経路のみ**。
   本番像の chart には Prometheus / Alertmanager / Grafana のリソースが無い）。
-- **RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラート**: それぞれ RabbitMQ Prometheus プラグインの
+- **RabbitMQ キュー滞留・構成ドリフトのアラート**: それぞれ RabbitMQ Prometheus プラグインの
   exporter メトリクスと、ドリフト検出のカスタムメトリクス化が必要（`alerts.yml` 末尾に雛形をコメントで用意）。
+  ［2026-10-23 / #2043］デッドレターはここから外れた —— キュー名ではなくアプリの計器で見る警報 `DeadLetterReached` を置いた（§DLQ の扱い）。
 - **サービスダウンの厳密検知**: push（remote write）モデルのため per-service `up` が無く、メトリクス途絶での
   近似検知に留まる。blackbox exporter / k8s liveness による補完を検討する。
 - **合成監視（synthetic）**: **［2026-09-05 更新（2 度目）］標識と除外、配備物（opt-in）は入っており、

@@ -13,12 +13,93 @@
  *
  * 外部依存ゼロ（Node 標準モジュールのみ・bash は前提ツール）。実行: node scripts/k8s-local-up.test.js
  * scripts/scripts.test.js と同型の運用（各 opt-in ゲート個別ではなく共通の一括 smoke test）。
+ *
+ * NFR, #1910: 試験を CPU 数ぶんの子プロセスへ振り分けて並列に走らせる（下の「並列実行」節）。
+ *   K8S_UP_TEST_SHARDS=1 で従来どおり 1 プロセスの直列実行になる。
  */
 const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawnSync } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+
+// --- 並列実行（NFR, #1910） ---------------------------------------------------
+//
+// 時間のほぼすべては stub 下の `bash k8s-local-up.sh` の実行である（2026-10-12 実測: 251 回で全体の 97%）。
+// 1 回ごとは独立している（作業ディレクトリは毎回 mkdtemp・リポジトリへは書かない）が、ok() が同期の
+// spawnSync で 1 本ずつ回すため、CI（GitHub ホストランナー 4 vCPU）で 1 コアしか使っていなかった。
+// そこで親プロセスは自分自身を K8S_UP_TEST_SHARD=<i>/<n> で n 本起動し、各子は ok() の通し番号が
+// i（mod n）の試験だけを実行する。
+//
+// 🔴 検査は 1 本も減らさない。親は「各子の実行数の和 ＝ 試験の総数」かつ「全子が exit 0」を確かめ、
+//   どちらかが崩れたら赤にする（振り分けの取りこぼし・二重計上を黙って緑にしない）。
+// 🔴 名前が「前提」で**始まる**試験（ファイル冒頭の 2 件）は全子で実行する（計上は担当の子だけ）。下の「前提」節が
+//   言うとおり、ハーネスや実物の宣言が壊れたときに、無関係な試験より先にそこで落ちるためである。
+//   名前の途中に「前提」を含む試験（`#1850: 前提 —— …`・`#1159: G12 の前提 — …`・#1699 の 3 件）は対象にしない。
+//   いずれも自分の節だけの前提（リポジトリの values・テンプレート・バックアップの前提条件）を見る試験で、
+//   ハーネスの壊れを検出するものではない（壊れても他の節の試験は巻き込まれない）。
+// 🔴 試験の間で状態を受け渡さないこと（各子は自分の担当分しか実行しない）。トップレベルで runUp を呼んで
+//   複数の試験が共有する結果（DEFAULT など）は、各子が自分で作る。
+const SHARD_ENV = process.env.K8S_UP_TEST_SHARD;
+const SHARD = (() => {
+  if (!SHARD_ENV) return null;
+  const m = /^(\d+)\/(\d+)$/.exec(SHARD_ENV);
+  if (!m || Number(m[2]) < 1 || Number(m[1]) >= Number(m[2])) throw new Error(`K8S_UP_TEST_SHARD の形が不正: ${SHARD_ENV}（<i>/<n>・0 <= i < n）`);
+  return { index: Number(m[1]), count: Number(m[2]) };
+})();
+const SHARD_COUNT = (() => {
+  const v = process.env.K8S_UP_TEST_SHARDS;
+  if (v !== undefined && v !== '') {
+    if (!/^[1-9]\d*$/.test(v)) throw new Error(`K8S_UP_TEST_SHARDS は 1 以上の整数: ${v}`);
+    return Number(v);
+  }
+  const cpus = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  return Math.max(1, Math.min(cpus, 8));
+})();
+
+if (SHARD === null && SHARD_COUNT > 1) {
+  const RESULT_RE = /^K8S_UP_SHARD_RESULT passed=(\d+) total=(\d+)$/m;
+  const started = Date.now();
+  const children = Array.from({ length: SHARD_COUNT }, (_, i) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [__filename], {
+      env: { ...process.env, K8S_UP_TEST_SHARD: `${i}/${SHARD_COUNT}` },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('close', (code, signal) => resolve({ i, code, signal, out, err }));
+  }));
+  Promise.all(children).then((results) => {
+    let sum = 0;
+    const totals = new Set();
+    let failed = false;
+    for (const r of results) {
+      process.stdout.write(`--- shard ${r.i}/${SHARD_COUNT}\n${r.out.replace(RESULT_RE, '').trimEnd()}\n`);
+      if (r.err) process.stderr.write(r.err);
+      const m = RESULT_RE.exec(r.out);
+      if (r.code !== 0 || !m) {
+        failed = true;
+        process.stderr.write(`✗ shard ${r.i}/${SHARD_COUNT} が失敗した（exit=${r.code} signal=${r.signal}${m ? '' : '・結果行なし'}）\n`);
+        continue;
+      }
+      sum += Number(m[1]);
+      totals.add(Number(m[2]));
+    }
+    if (!failed && (totals.size !== 1 || sum !== [...totals][0])) {
+      failed = true;
+      process.stderr.write(`✗ 振り分けの計上が合わない: 実行の和=${sum} 総数=${[...totals].join(',')}\n`);
+    }
+    if (failed) {
+      process.exitCode = 1;
+      return;
+    }
+    process.stdout.write(`\n✓ ${sum} tests passed（${SHARD_COUNT} 並列・${((Date.now() - started) / 1000).toFixed(1)} 秒）\n`);
+  });
+  // 親は試験本体を実行しない（CommonJS のトップレベル return）。
+  return;
+}
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 // #953: `kind: HelmChartConfig` の宣言。**ハーネスの入力でもある**（下の helm-controller 模型が読む）。
@@ -69,7 +150,8 @@ const OPTIN_TOKENS = [
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
   'seed-tag-dictionary.js', //         TAGSEED (タグ辞書の初期投入, #1359)
   'embedding.deterministicLocal.enabled', // LOCALEMBED (決定的ローカル埋め込み, IADR-0313)
-  'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
+  // 'cert-manager' は外した（IADR-0591）: 基盤（platform-infra）のサーバ証明書のために既定の [4/7] で導入する。
+  //   既定で入ることは下の「IADR-0591」の試験が固定する。エッジ側の opt-in は次の 2 つ（edge/tls・edge-tls）が見る。
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
   'coredns-edge-hosts.yaml', //        LOCALEDGE (エッジ host の pod 側名前解決, IADR-0227)
@@ -279,7 +361,35 @@ const KUBECTL_STUB = [
   '  else printf "%s %s=%s\\n" "$4" "$k" "$(cat "$src")" >> "$STUB_LOG.secrets"; fi;; esac; done; fi',
   'prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && { printf "%s\\n" "$(cat "$a")" >> "$STUB_LOG.patches"; }; prev="$a"; done',
   // #1839 / IADR-0522: 既存のセッションストアの Secret（値は使い回す）。STUB_SESSION_STORE_EXISTING を与えたときだけ在るものとして返す。
+  // #2024 / IADR-0570: 試験アカウントの Secret e2e-accounts（platform-infra）。STUB_E2E_ACCOUNTS（「キー=base64」の改行区切り）を
+  //   与えたときだけ在るものとして返す（go-template の問い合わせにはその行を返す）。既定は無い ＝ 取り込み元から e2e 利用者を外す。
+  // NFR-18, IADR-0616 (#2195): ESO（Merge）の土台の Secret の有無（`-n platform-infra get secret <名> -o name`）。
+  //   STUB_ESO_BASE_SECRETS_EXISTING（空白区切りの名前）に挙げたものだけ在る。既定は無い ＝ 新規クラスタ（土台を作る）。
+  'case "$*" in "-n platform-infra get secret "*" -o name") n="${5:-}"; for e in ${STUB_ESO_BASE_SECRETS_EXISTING:-}; do [ "$e" = "$n" ] && exit 0; done; exit 1;; esac',
+  // IADR-0616: ESO の同期の模型。force-sync 注釈を付けると、その ExternalSecret の status.refreshTime が変わる（ESO が同期し直す）。
+  //   STUB_ESO_SYNC_STALLS（空白区切りの名前）に挙げたものは注釈を付けても変わらない（同期しない）。Ready は常に True。
+  'case "$*" in *" annotate externalsecret "*" force-sync="*" --overwrite") : > "$STUB_LOG.force-sync.$5";; esac',
+  'case "$*" in *" get externalsecret "*"{.status.refreshTime}"*) t=t0; [ -e "$STUB_LOG.force-sync.$5" ] && t=t1;',
+  '  for e in ${STUB_ESO_SYNC_STALLS:-}; do [ "$e" = "$5" ] && t=t0; done; printf "2026-10-24T00:00:00Z-%s" "$t"; exit 0;; esac',
+  'case "$*" in *" get externalsecret "*"{.status.conditions"*) printf "True"; exit 0;; esac',
+  'case "$*" in *"get secret e2e-accounts"*) [ -n "${STUB_E2E_ACCOUNTS:-}" ] || exit 1; case "$*" in *go-template*) printf "%s\\n" "$STUB_E2E_ACCOUNTS";; esac; exit 0;; esac',
   'case "$*" in *"get secret session-store-credentials"*) [ -n "${STUB_SESSION_STORE_EXISTING:-}" ] && printf "%s" "$STUB_SESSION_STORE_EXISTING" | base64; exit 0;; esac',
+  // IADR-0574: 既存の基盤の資格情報の Secret（keycloak-admin / rabbitmq の password）。STUB_*_EXISTING を与えたときだけ在るものとして返す。
+  'case "$*" in *"get secret keycloak-admin "*"{.data.password}"*) [ -n "${STUB_KEYCLOAK_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_KEYCLOAK_ADMIN_EXISTING" | base64; exit 0;; esac',
+  // NFR-16, IADR-0591: 基盤のルート CA（cert-manager/platform-infra-root-ca の ca.crt）。既定は在る（PEM の形のダミー）。
+  //   STUB_INFRA_CA_ABSENT=1 で読めない世界（空を返す）を作る（起動器が ConfigMap を作らずに止まることの陽性対照）。
+  // IADR-0591: 基盤のサーバ証明書（tls.crt）と、Deployment の雛形に刻んだ指紋。既定は証明書が在り、指紋は未記録（＝刻む）。
+  //   STUB_INFRA_TLS_STAMPED=1 で、今の証明書の指紋が既に刻まれている世界（＝何もしない）を作る。
+  'case "$*" in *"get secret postgres-tls "*|*"get secret rabbitmq-tls "*) printf "ZHVtbXk="; exit 0;; esac',
+  'case "$*" in *"get deploy postgres "*cert-sha256*|*"get deploy rabbitmq "*cert-sha256*) [ "${STUB_INFRA_TLS_STAMPED:-}" = "1" ] && printf "%s" "$(printf "%s" "ZHVtbXk=" | sha256sum | cut -c1-64)"; exit 0;; esac',
+  'case "$*" in *"get secret platform-infra-root-ca"*) [ "${STUB_INFRA_CA_ABSENT:-}" = "1" ] || printf "%s\\n" "-----BEGIN CERTIFICATE-----" "c3R1Yg==" "-----END CERTIFICATE-----" | base64 -w0; exit 0;; esac',
+  'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
+  // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
+  //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
+  // NFR-18, IADR-0590: AST の名前空間の注入ラベルと Pod の数。STUB_AST_INJECTION / STUB_AST_PODS（個数）を与えたときだけ返す（既定は無い）。
+  'case "$*" in *"get namespace ai-stock-trading"*"istio-injection"*) printf "%s" "${STUB_AST_INJECTION:-}"; exit 0;; esac',
+  'case "$*" in *"-n ai-stock-trading get pods --no-headers"*) for _ in $(seq 1 "${STUB_AST_PODS:-0}"); do echo "ast-pod 1/1 Running 0 1m"; done; exit 0;; esac',
+  'case "$*" in *"get namespace microservices-platform"*"istio-injection"*) [ "${STUB_MSP_INJECTION_FAIL:-}" = "1" ] && { echo "stub: the server is currently unable to handle the request" >&2; exit 1; }; printf "%s" "${STUB_MSP_INJECTION:-}"; exit 0;; esac',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
@@ -328,9 +438,20 @@ const KUBECTL_STUB = [
   // #1864 監査: STUB_REALM_RECONCILE_FAIL=1 で後追い Job を Failed にする（追随の失敗で helm の前に止まることの変異試験）。
   'if [ "${STUB_REALM_RECONCILE_FAIL:-}" = "1" ]; then case "$*" in *"get job keycloak-realm-reconcile"*conditions*) echo "Failed "; exit 0;; esac; fi',
   'case "$*" in *"get job"*conditions*) echo "Complete "; exit 0;; esac',
+  // IADR-0573: ブローカのユーザーの写し（Secret rabbitmq-users）。既定は全キーに値がある世界（base64 のダミー）。
+  //   STUB_RMQ_USERS_MISSING=1 で値が揃わない世界（同期の失敗）を作る（起動器が止まることの陽性対照）。
+  //   IADR-0577: この実行で起動器が作った Secret（ESO なしの経路）の値は、その後の問い合わせにそのまま返す（作った後に読む本物と同じ）。
+  'case "$*" in *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')";',
+  '  v="$(grep "^rabbitmq-users $k=" "$STUB_LOG.secrets" 2>/dev/null | tail -n 1 | cut -d= -f2-)";',
+  '  if [ -n "$v" ]; then printf "%s" "$v" | base64 -w0; elif [ "${STUB_RMQ_USERS_MISSING:-}" != "1" ]; then printf "ZHVtbXk="; fi; exit 0;; esac',
+  //   ブローカへの exec -i は本物と同じく標準入力（パスワード）を読み切る（読まずに閉じると送り手が SIGPIPE で落ちる）。
+  //   IADR-0577: 実機の rabbitmqctl（3.13）はパスワードを受けるコマンドで引数がちょうど 2 つのときだけ標準入力を開き、それ以外は
+  //   読み込みが返らずに止まる（統合スタックの実測）。模型は止まる代わりに 124（timeout と同じ）で返す。
+  'case "$*" in *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*) echo "rabbitmqctl: 標準入力を開かない形（実機では止まる）" >&2; exit 124;; esac',
+  'case "$*" in *"exec -i deploy/rabbitmq -- rabbitmqctl"*) cat >/dev/null; exit 0;; esac',
   // #1699: バックアップの CronJob の門の入力。CronJob のイメージは実物のマニフェストと同じ形の参照を返す。
   //   受取人の ConfigMap は STUB_BACKUP_RECIPIENTS（中身そのもの）を返す。既定（未設定）は空 ＝ 受取人なし。
-  'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.2-r0"; exit 0;; esac',
+  'case "$*" in *"get cronjob platform-backup-"*"containers[0].image"*) echo "k3d-local/platform-backup:pg16.15-age1.3.2-r1"; exit 0;; esac',
   'case "$*" in *"get configmap platform-backup-age-recipients"*recipients*) printf "%s" "${STUB_BACKUP_RECIPIENTS:-}"; exit 0;; esac',
   // #1699（PR #1700 監査 🟡3）: STUB_BACKUP_PATCH_FAIL=1 で CronJob の suspend の書き込みだけを失敗させる（API・RBAC の失敗）。
   'if [ "${STUB_BACKUP_PATCH_FAIL:-}" = "1" ]; then case "$*" in *"patch cronjob platform-backup-"*) echo "Error from server (Forbidden)" >&2; exit 1;; esac; fi',
@@ -347,6 +468,8 @@ const KUBECTL_STUB = [
  * @param {Record<string,string>} extraEnv opt-in などの追加環境変数
  * @returns {{ status: number|null, lines: string[], stdout: string, stderr: string }}
  */
+// NFR-20, IADR-0605 (#2132): runUp が既定で与える自製イメージのタグ（[2/7] のビルドと [6/7] の helm が同じ値を使うことを試験が見る）。
+const TEST_IMAGE_TAG = 'test0123456789ab';
 function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-smoke-'));
   const binDir = path.join(workdir, 'bin');
@@ -365,8 +488,20 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   write('kubectl', KUBECTL_STUB);
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
-  // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
-  write('node', PLAIN_STUB('node'));
+  // 投入器の呼び出しは記録スタブで足りる。
+  // ［IADR-0572 / GHSA-rh44-px44-p48q］dev の値の守りの対象を realm の宣言から導出する口
+  // （scripts/lib/dev-client-secret-targets.js）は本物の node へ渡す（導出の結果で起動器の振る舞いが決まるため）。
+  // #2024 / IADR-0570: [3/7] の取り込み元の差し込み（`reconcile-realm.js --render-import`）も本物の node で走らせる
+  //   （取り込み元の中身を試験が見る。Keycloak へは接続しない純粋な変換である）。
+  write('node', [
+    '#!/usr/bin/env bash',
+    // STUB_DEV_TARGETS_FAIL=1 … 導出が失敗する世界（node が無い・宣言が壊れている）。
+    `case "\${1:-}" in */scripts/lib/dev-client-secret-targets.js) [ "\${STUB_DEV_TARGETS_FAIL:-}" = "1" ] && exit 1; exec ${JSON.stringify(process.execPath)} "$@";; esac`,
+    'echo "node $*" >> "$STUB_LOG"',
+    `case " $* " in *" --render-import "*) exec ${JSON.stringify(process.execPath)} "$@";; esac`,
+    'exit 0',
+    '',
+  ].join('\n'));
   write('helm', HELM_STUB); // #1710: 既定は PLAIN_STUB と同じ振る舞い（リリース無し）
   write('docker', DOCKER_STUB);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
@@ -387,6 +522,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'ARGOCD',
     'LOCALEDGE',
     'ESO',
+    'ESO_FORCE_SYNC_TIMEOUT', // IADR-0616 (#2195): 依頼の後の同期を待つ期限。漏れていると停滞の試験が別の長さで走る
     'ABACSEED',
     'SEARCHSEED',
     'TAGSEED', // #1359: タグ辞書の門。漏れていると既定のバイト等価が崩れる
@@ -397,6 +533,13 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'HEADLAMP_OIDC_CLIENT_ID',
     'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
     'ARGOCD_VERSION', // #1843: Argo CD の版の上書き。漏れていると既定の版の検査が別の値で走る
+    // #1858 / IADR-0547: 版の env は固定と同じ値しか受けない。漏れていると起動前に止まり、全ての試験が別の形で走る
+    'ISTIO_VERSION',
+    'ESO_CHART_VERSION',
+    'RELOADER_CHART_VERSION',
+    'RELOADER_IMAGE_TAG',
+    'CERT_MANAGER_VERSION',
+    'ADMIN_EDGE', // IADR-0586: 管理ツールの集約入口の opt-in。漏れていると既定（経路を置かない）の試験が別の形で走る
     'RESET_FLOOR', // #1500: 床の経路を外す比較用の口（#1543: 本番の退路ではない）。漏れていると冒頭の検査・警告が既定と違う形で走る
     'BACKUP_AGE_RECIPIENTS_FILE', // #1560: バックアップの受取人。漏れていると既定で ConfigMap を作り直す
     'ISTIO', // #1710: メッシュの門。漏れていると既定のバイト等価が崩れる
@@ -408,6 +551,11 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'IDENTITY_ADMIN_CLIENT_SECRET',
     'MCP_CLIENT_ADMIN_CLIENT_SECRET',
     'SESSION_STORE_PASSWORD', // #1839: セッションストアのパスワード。漏れていると「乱数で作る」の既定が別の形で走る
+    // IADR-0574: 基盤の資格情報の明示・opt-in。漏れていると fail-closed の判定が既定と違う形で走る
+    'ALLOW_DEV_INFRA_CREDENTIALS',
+    'KEYCLOAK_ADMIN_PASSWORD',
+    'RABBITMQ_PASSWORD',
+    'IMAGE_TAG', // NFR-20, IADR-0605 (#2132): 自製イメージのタグの上書き。下で固定の値を与える（作業ツリーの状態に試験を依らせない）
   ]) {
     delete base[k];
   }
@@ -420,6 +568,13 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     // NFR, #1550: 起動器は明示の指定（--live か LIVE=1）が無ければ何もせずに終わる。ここは PATH のスタブの下で
     // 走らせる試験器なので指定を与える（拒否の経路は scripts.repo.test.js の #1550 節が固定する）。
     LIVE: '1',
+    // NFR-18, IADR-0574: 基盤の資格情報（Keycloak の管理者・RabbitMQ）は公知の既定値で作らない（指定が無ければ止まる）。
+    // この試験器は使い捨ての開発環境（CI の integration-stack / cutover-rehearsal と同じ）として opt-in を既定にする。
+    // 止まる経路は「IADR-0574」の節が ALLOW_DEV_INFRA_CREDENTIALS: '' で固定する。
+    ALLOW_DEV_INFRA_CREDENTIALS: '1',
+    // NFR-20, IADR-0605 (#2132): 自製イメージの不変のタグ。既定は git の sha（作業ツリーの状態で変わる）なので、試験は固定の値を与える。
+    //   git から作る経路は「#2132」の節が IMAGE_TAG: '' で走らせて固定する。
+    IMAGE_TAG: TEST_IMAGE_TAG,
     ...extraEnv,
   };
 
@@ -453,6 +608,22 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   return { status: r.status, lines, stdout: r.stdout || '', stderr: r.stderr || '', secrets, patches, realmImport, realmImportModes, valuesFiles };
 }
 
+// NFR, #1910: 複数の試験が共有する runUp の結果を、最初に読まれたときに 1 回だけ作る。
+// 並列実行（冒頭の節）では各子が担当分しか実行しないため、トップレベルで即時に作ると、どの試験も
+// 読まない子でも bash の実行が走る。読み手の側の書き方（`X.lines` / `X.status` など）は変えない。
+// 🔴 読み手は `X.prop` 形式のプロパティ参照に限る（列挙・スプレッド不可）。`Object.keys(X)`・`{ ...X }`・
+//   `JSON.stringify(X)` は列挙のトラップを転送してはいるが試験していないので、契約として保証しない。要るなら runUp を直接呼ぶ。
+function lazyRunUp(extraEnv) {
+  let value = null;
+  const get = () => (value === null ? (value = runUp(extraEnv)) : value);
+  return new Proxy({}, {
+    get: (_t, k) => get()[k],
+    has: (_t, k) => k in get(),
+    ownKeys: () => Reflect.ownKeys(get()),
+    getOwnPropertyDescriptor: (_t, k) => Object.getOwnPropertyDescriptor(get(), k),
+  });
+}
+
 // 採取ログから `k3d cluster create ...` の 1 行を取り出す（無ければ null）。
 function clusterCreateLine(lines) {
   return lines.find((l) => l.startsWith('k3d cluster create ')) || null;
@@ -462,8 +633,14 @@ const anyLineHas = (lines, needle) => lines.some((l) => l.includes(needle));
 // --- テストランナー（scripts.test.js と同型） --------------------------------
 
 let passed = 0;
+let okTotal = 0; // NFR, #1910: ok() の通し番号（＝試験の総数）。振り分けと親の突合に使う
 function ok(name, fn) {
+  const assigned = SHARD === null || okTotal % SHARD.count === SHARD.index;
+  okTotal++;
+  // 名前が「前提」で始まる試験は全子で実行する（上の「並列実行」節。`#NNNN: 前提` の節内の前提は含めない）。計上は担当の子だけ。
+  if (!assigned && !name.startsWith('前提')) return;
   fn();
+  if (!assigned) return;
   passed++;
   process.stdout.write(`  ok  ${name}\n`);
 }
@@ -489,7 +666,7 @@ ok('前提: traefik の宣言（実物）は現行 chart で反映が成立す�
     `${TRAEFIK_MANIFEST_REL} の宣言では反映が成立しない（#953 の門が落ちる）。` +
       ` ports.admin の port / expose の型を確認すること:\n${healthy.stdout}\n${healthy.stderr}`,
   );
-  assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '反映は成立したのに後続段へ進んでいない');
+  assert.ok(anyLineHas(healthy.lines, 'deploy/local/edge/tls'), '反映は成立したのに後続段（エッジ TLS）へ進んでいない');
 });
 
 // 既定（全 OFF）の cluster create 引数は現行とバイト等価（#331 の bash シミュレーションを CI 常設化）。
@@ -608,17 +785,37 @@ ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定�
 // [3/7] の realm ConfigMap（keycloak-realms）と同じ --from-file + --dry-run=client|apply の
 // 冪等パターンで、opt-in ではなく既定実行として自動生成する。
 
-ok('既定: keycloak-theme-platform ConfigMap が [3/7] で自動生成される（キー名が keycloak.yaml の items と対応）', () => {
+// IADR-0532: 期待集合は**実ファイルから**作る（テーマにファイルを足したのに配線を忘れる事故を止める）。
+// キー = テーマ直下からの相対パスの `/` を `__` に置き換えたもの（k8s-local-up.sh の生成規則の写し）。
+const THEME_DIR = 'deploy/keycloak/themes/platform';
+function themeFiles() {
+  const out = [];
+  const walk = (rel) => {
+    for (const ent of fs.readdirSync(path.join(REPO_ROOT, rel), { withFileTypes: true })) {
+      const child = `${rel}/${ent.name}`;
+      if (ent.isDirectory()) walk(child);
+      else out.push(child.slice(THEME_DIR.length + 1));
+    }
+  };
+  walk(THEME_DIR);
+  return out.sort();
+}
+const themeKey = (rel) => rel.split('/').join('__');
+
+ok('既定: keycloak-theme-platform ConfigMap が [3/7] でテーマ配下の全ファイルから自動生成される（IADR-0532）', () => {
   const line = DEFAULT.lines.find((l) => l.startsWith('kubectl create configmap keycloak-theme-platform '));
   assert.ok(line, 'keycloak-theme-platform の configmap create が発行されない');
-  for (const kv of [
-    'login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties',
-    'login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css',
-    'account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties',
-    'account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css',
-  ]) {
+  const files = themeFiles();
+  // 陽性対照: 0 件走査で緑にしない（login / account / email の 3 種別の theme.properties が在ること）。
+  for (const kind of ['login', 'account', 'email']) {
+    assert.ok(files.includes(`${kind}/theme.properties`), `${THEME_DIR}/${kind}/theme.properties が無い`);
+  }
+  for (const rel of files) {
+    const kv = `${themeKey(rel)}=${THEME_DIR}/${rel}`;
     assert.ok(line.includes(`--from-file=${kv}`), `--from-file=${kv} が無い: ${line}`);
   }
+  const issued = line.match(/--from-file=/g) || [];
+  assert.strictEqual(issued.length, files.length, `--from-file の数（${issued.length}）がテーマの実ファイル数（${files.length}）と違う`);
 });
 
 ok('既定: keycloak-theme-platform は realm ConfigMap と同型の dry-run|apply 冪等パターンで適用される', () => {
@@ -710,12 +907,20 @@ ok('#1144: 捕捉用 MTA は既定（env 未設定）で rollout を待つ —�
   assert.ok(/^\s*-\s*mailpit\.yaml\s*$/m.test(kust), 'deploy/local/infra/kustomization.yaml に mailpit.yaml が無い');
 });
 
-ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items キーが k8s-local-up.sh の生成キーと一致する', () => {
+ok('deploy/local/infra/keycloak.yaml: theme ConfigMap の items（キー → パス）がテーマの実ファイルの集合と一致する（IADR-0532）', () => {
   const infraKc = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/keycloak.yaml'), 'utf8');
-  for (const key of ['login-theme-properties', 'login-css', 'account-theme-properties', 'account-css']) {
-    assert.ok(infraKc.includes(`key: ${key}`), `keycloak.yaml の items に key: ${key} が無い`);
-  }
   assert.ok(infraKc.includes('name: keycloak-theme-platform'), 'keycloak.yaml が参照する ConfigMap 名が keycloak-theme-platform でない');
+  const items = [...infraKc.matchAll(/- key: (\S+)\n\s+path: (\S+)/g)]
+    .map((m) => [m[1], m[2]])
+    .filter(([k]) => k.includes('__') || /theme|css|ftl|svg/.test(k));
+  const files = themeFiles();
+  // 1 本ずつ: 実ファイルはすべて items にあり、キーとパスの対応が生成規則どおり。余分な items も無い。
+  for (const rel of files) {
+    assert.ok(items.some(([k, p]) => k === themeKey(rel) && p === rel), `keycloak.yaml の items に ${themeKey(rel)} → ${rel} が無い`);
+  }
+  for (const [k, p] of items) {
+    assert.ok(files.includes(p), `keycloak.yaml の items の ${k} → ${p} はテーマに実在しない（ConfigMap は optional: true なので、キーが無ければ Pod は起動したまま**そのファイルだけ黙ってマウントされない** —— 画面は親テーマの既定へ部分的に落ち、エラーにならない）`);
+  }
 });
 
 // --- apiserver OIDC フラグ不付与の回帰固定（IADR-0105 / #399） -----------------
@@ -1171,15 +1376,15 @@ ok('#953: 反映（traefik svc の admin=50000）が来なければ up は非 0 
     broken.lines.some((l) => l.includes(' wait ') && l.includes('--for=jsonpath') && l.includes('svc/traefik') && l.includes('50000')),
     `反映の待ち合わせ（kubectl wait --for=jsonpath ... svc/traefik）が発行されていない`,
   );
-  // **落ちる位置が原因の位置に近いこと。** 後続段（cert-manager）まで進んでから落ちるのでは、
+  // **落ちる位置が原因の位置に近いこと。** 後続段（エッジ TLS の tls overlay）まで進んでから落ちるのでは、
   // 何が壊れたのか読み取れない（従来は最後まで走り切って緑だった）。
-  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続の cert-manager 段まで進んでいる');
+  assert.ok(!anyLineHas(broken.lines, 'deploy/local/edge/tls'), '反映に失敗したのに後続のエッジ TLS 段まで進んでいる');
 });
 
 ok('#953: 対照 —— 反映が来れば LOCALEDGE=1 は従来どおり完走する（門が常に落ちる実装ではない）', () => {
   const healthy = runUp({ LOCALEDGE: '1' });
   assert.strictEqual(healthy.status, 0, `反映が来ているのに up が落ちた: ${healthy.stderr}`);
-  assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '正常系なのに後続段へ進んでいない（門を置く位置が誤っている）');
+  assert.ok(anyLineHas(healthy.lines, 'deploy/local/edge/tls'), '正常系なのに後続段へ進んでいない（門を置く位置が誤っている）');
 });
 
 // --- #953 第 2 次: **宣言そのもの**を変異させる（門と宣言を結ぶ） ---------------
@@ -1232,7 +1437,7 @@ ok('#953 第2次: 変異 —— expose を chart が受け付けない bool 形�
     '反映の待ち合わせが発行されていない（別の理由で落ちている）',
   );
   // 落ちる位置が原因の位置に近いこと。
-  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続の cert-manager 段まで進んでいる');
+  assert.ok(!anyLineHas(broken.lines, 'deploy/local/edge/tls'), '反映に失敗したのに後続のエッジ TLS 段まで進んでいる');
 });
 
 ok('#953 第2次: 実測の再現 —— 実物の宣言（map 形）＋ chart 25 は反映に失敗し up が落ちる', () => {
@@ -1240,7 +1445,7 @@ ok('#953 第2次: 実測の再現 —— 実物の宣言（map 形）＋ chart 2
   // **宣言は正しいのに版が古い**という向きも、同じ門が捕まえることを固定する。
   const broken = runUp({ LOCALEDGE: '1', STUB_TRAEFIK_CHART_MAJOR: '25' });
   assert.notStrictEqual(broken.status, 0, 'chart 25 で map 形の宣言が通ってしまった（実測と食い違う）');
-  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続段まで進んでいる');
+  assert.ok(!anyLineHas(broken.lines, 'deploy/local/edge/tls'), '反映に失敗したのに後続段まで進んでいる');
 });
 
 ok('#953 第2次: 陰性対照 —— bool 形 ＋ chart 25 は通る（「変異なら落ちる」模型ではない）', () => {
@@ -1271,7 +1476,12 @@ ok('#953 第2次: admin の port ずれ・ports.admin の消失も捕まえる',
 // k3d 同梱の版に浮いていた）。未設定でも `--image rancher/k3s:vX.Y.Z-k3sN` が付くこと、空を与えても浮かないことを固定する。
 ok('#1843: k3s の既定のイメージは版で固定されている（rancher/k3s:vX.Y.Z-k3sN。latest や空にしない）', () => {
   assert.ok(K3S_DEFAULT_IMAGE, 'k8s-local-up.sh に K3S_IMAGE="${K3S_IMAGE:-<既定>}" の行が無い（既定で固定していない）');
-  assert.match(K3S_DEFAULT_IMAGE, /^rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+$/, `既定が版で固定されていない: ${K3S_DEFAULT_IMAGE}`);
+  // #1858 / IADR-0547: 版のタグに index の digest を続ける（同じタグの中身の差し替えを入れない。ADR-0107 決定 3）。
+  assert.match(
+    K3S_DEFAULT_IMAGE,
+    /^rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+@sha256:[0-9a-f]{64}$/,
+    `既定が版と digest で固定されていない: ${K3S_DEFAULT_IMAGE}`,
+  );
 });
 
 ok('#1843: K3S_IMAGE 未設定でも cluster create に --image <既定の版> が付く', () => {
@@ -1304,9 +1514,61 @@ ok('K3S_IMAGE は LOCALEDGE=1 とも併用できる（ポートの切替を壊�
 
 // LOCALEDGE の argocd-ingress は「argocd namespace 存在時のみ」条件付き apply（fail-safe・ns 不在で失敗させない）。
 // 両分岐を固定する（肯定側=apply / 否定側=skip）。
-ok('LOCALEDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
-  const res = runUp({ LOCALEDGE: '1' }); // 既定 stub: get namespace argocd → exit 0（存在扱い）
+// ［2026-10-22 / IADR-0586］管理ツールの経路は ADMIN_EDGE=1 のときだけ置く。apply の肯定側は ADMIN_EDGE=1 で見る。
+ok('LOCALEDGE=1 ADMIN_EDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
+  const res = runUp({ LOCALEDGE: '1', ADMIN_EDGE: '1' }); // 既定 stub: get namespace argocd → exit 0（存在扱い）
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/edge/argocd-ingress.yaml'), 'ns 有なのに argocd-ingress が apply されない');
+});
+
+// --- NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口（admin(50000)）は既定で経路を置かない ----------------
+// 6 host（grafana / headlamp / vault / qdrant / wiki / argocd）の経路は ADMIN_EDGE=1（明示の opt-in）のときだけ置き、
+// それ以外では消す（以前の実行で置いた経路も再実行で閉じる）。入口（50000 の listener）は残る。実測は check-stack-ready.js の G4c。
+const ADMIN_TRAEFIK_FILES_0586 = ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
+const isAdminApply0586 = (l) => /^kubectl apply -f deploy\/local\/(edge\/(admin-ingress-|argocd-ingress)|edge-istio\/virtualservice-admin\.yaml)/.test(l);
+const isAdminDelete0586 = (f) => (l) => l === `kubectl delete -f ${f} --ignore-not-found=true`;
+
+ok('IADR-0586: LOCALEDGE=1 の既定は管理ツールの経路を置かず、置かれていれば消す（Traefik）', () => {
+  const r = runUp({ LOCALEDGE: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  assert.ok(!r.lines.some(isAdminApply0586), `既定で管理ツールの経路を置いた: ${r.lines.filter(isAdminApply0586).join(' / ')}`);
+  for (const f of ADMIN_TRAEFIK_FILES_0586) {
+    assert.ok(r.lines.some(isAdminDelete0586(`deploy/local/edge/${f}`)), `${f} を消していない（以前の実行の経路が残る）`);
+  }
+  assert.match(r.stdout, /50000 には経路を置いていない/, '既定で閉じていることを告げていない');
+});
+
+ok('IADR-0586: ADMIN_EDGE=1 のときだけ管理ツールの経路を置き、消さない（Traefik）', () => {
+  const r = runUp({ LOCALEDGE: '1', ADMIN_EDGE: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  for (const f of ADMIN_TRAEFIK_FILES_0586) {
+    assert.ok(anyLineHas(r.lines, `kubectl apply -f deploy/local/edge/${f}`), `${f} を置いていない`);
+    assert.ok(!r.lines.some(isAdminDelete0586(`deploy/local/edge/${f}`)), `${f} を消した`);
+  }
+  // 陰性対照: ADMIN_EDGE=0 は既定と同じ（置かない）
+  const r0 = runUp({ LOCALEDGE: '1', ADMIN_EDGE: '0' });
+  assert.ok(!r0.lines.some(isAdminApply0586), 'ADMIN_EDGE=0 で経路を置いた');
+});
+
+ok('IADR-0586: ADMIN_EDGE が 0 / 1 / 未指定 以外なら、クラスタに触る前に止まる', () => {
+  for (const v of ['yes', 'true', '2']) {
+    const r = runUp({ LOCALEDGE: '1', ADMIN_EDGE: v });
+    assert.notStrictEqual(r.status, 0, `ADMIN_EDGE=${v} で止まらなかった`);
+    assert.match(r.stderr, /ADMIN_EDGE は 1/, r.stderr.slice(-300));
+    assert.ok(!r.lines.some((l) => l.startsWith('k3d ') || l.startsWith('kubectl ') || l.startsWith('helm ')), `止まる前にクラスタへ触った: ${r.lines.slice(0, 3).join(' / ')}`);
+  }
+});
+
+ok('IADR-0586: Istio のエッジでも既定は管理ツールの経路を置かず消し、ADMIN_EDGE=1 のときだけ置く（istio-edge-up.sh へ値を渡す）', () => {
+  const VS = 'deploy/local/edge-istio/virtualservice-admin.yaml';
+  const closed = runUp({ ISTIO: '1', LOCALEDGE: '1' });
+  assert.strictEqual(closed.status, 0, closed.stderr.slice(-600));
+  assert.ok(closed.lines.some(isAdminDelete0586(VS)), '既定で Istio の管理ツールの経路を消していない');
+  assert.ok(!closed.lines.some(isAdminApply0586), '既定で管理ツールの経路を置いた');
+  const open = runUp({ ISTIO: '1', LOCALEDGE: '1', ADMIN_EDGE: '1' });
+  assert.ok(open.lines.includes(`kubectl apply -f ${VS}`), 'ADMIN_EDGE=1 で Istio の管理ツールの経路を置いていない（値が istio-edge-up.sh へ渡っていない）');
+  // 経路は overlay の後に当てる（overlay の拒否 msp-admin-deny と同時に居ても host の具体的な経路が勝つ）
+  const ov = open.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/edge-istio(-reset-floor)?$/.test(l));
+  assert.ok(ov >= 0 && ov < open.lines.indexOf(`kubectl apply -f ${VS}`), 'overlay より前に経路を当てた');
 });
 
 // ABACSEED=1: ABAC の属性辞書・ポリシーを dev 既定値で投入する（IADR-0133 / #517）。
@@ -1538,12 +1800,12 @@ ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort�
 });
 
 // IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し selfsigned→CA の 2 段で edge-tls を発行する。
-// 既定オフは上の OPTIN_TOKENS（'cert-manager' / 'deploy/local/edge/tls' / 'certificate/edge-tls'）で固定済み。
+// 既定オフは上の OPTIN_TOKENS（'deploy/local/edge/tls' / 'certificate/edge-tls'）で固定済み（cert-manager 自体は IADR-0591 で既定に入る）。
 ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待ってから tls overlay を当てる', () => {
   const { lines } = runUp({ LOCALEDGE: '1' });
   const idx = (needle) => lines.findIndex((l) => l.includes(needle));
 
-  const install = idx('cert-manager/releases/download/');
+  const install = idx('-k deploy/local/edge/cert-manager');
   const waitCrd = idx('condition=Established');
   const applyTls = idx('apply -k deploy/local/edge/tls');
   const waitCert = idx('certificate/edge-tls');
@@ -1561,15 +1823,110 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
 
   // 大 CRD の annotation 262144B 上限を避ける（IADR-0088 が ArgoCD で是正した先例）。
   assert.ok(
-    lines.some((l) => l.includes('cert-manager/releases/download/') && l.includes('--server-side')),
+    lines.some((l) => l.includes('-k deploy/local/edge/cert-manager') && l.includes('--server-side')),
     'cert-manager の apply が --server-side でない（大 CRD で 262144B 上限に当たる）',
   );
 
-  // バージョンは固定する（IADR-0088: 浮動タグを使わない）。
+  // バージョンは固定する（IADR-0088: 浮動タグを使わない）。#1858 / IADR-0547: 版の URL と内側のイメージの digest は
+  // kustomization が持つ（版の形・digest・版と tag の一致は scripts.repo.test.js と check-image-digests.js が見る）。
   assert.ok(
-    lines.some((l) => /cert-manager\/releases\/download\/v\d+\.\d+\.\d+\//.test(l)),
-    'cert-manager のバージョンが固定されていない',
+    lines.some((l) => l === 'kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager'),
+    'cert-manager を kustomization（版の URL ＋ digest の固定）から入れていない',
   );
+  assert.ok(!lines.some((l) => l.includes('cert-manager/releases/download/')), 'cert-manager の URL を直接 apply した（digest の固定を経ない）');
+});
+
+// NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）のサーバ証明書は**既定で**発行し、
+// 基盤の apply より前に Ready を待ち、CA を MSP・AST の名前空間へ helm より前に写す。
+ok('IADR-0591: 既定で cert-manager → infra-tls → 証明書 Ready → 基盤の apply → CA の写し（MSP・AST）→ helm の順に進む', () => {
+  const r = runUp({});
+  assert.strictEqual(r.status, 0, `既定の起動が落ちた: ${r.stderr}`);
+  const { lines } = r;
+  const idx = (pred) => lines.findIndex(pred);
+  const install = idx((l) => l === 'kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager');
+  const crd = idx((l) => l.includes('condition=Established') && l.includes('crd/certificates.cert-manager.io'));
+  const tls = idx((l) => l === 'kubectl apply -k deploy/local/infra-tls');
+  const rootReady = idx((l) => l.includes('wait --for=condition=Ready') && l.includes('certificate/platform-infra-root-ca'));
+  const leafReady = idx((l) => l.includes('-n platform-infra wait --for=condition=Ready')
+    && l.includes('certificate/postgres-tls') && l.includes('certificate/rabbitmq-tls'));
+  const infra = idx((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  const caMsp = idx((l) => l.startsWith('kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt='));
+  const caAst = idx((l) => l.startsWith('kubectl create configmap platform-infra-ca -n ai-stock-trading --from-file=ca.crt='));
+  const helm = idx((l) => l.startsWith('helm upgrade --install msp '));
+  for (const [name, at] of Object.entries({ install, crd, tls, rootReady, leafReady, infra, caMsp, caAst, helm })) {
+    assert.notStrictEqual(at, -1, `${name} が発行されていない`);
+  }
+  assert.ok(install < crd && crd < tls, 'CRD の Established を待つ前に infra-tls を当てている');
+  assert.ok(tls < rootReady && rootReady < leafReady, '証明書の Ready を apply の前に待っている');
+  assert.ok(leafReady < infra, '基盤（postgres / rabbitmq）を証明書の Ready より前に当てている（Secret が無いまま Pod が立つ）');
+  assert.ok(infra < caMsp && caMsp < helm && caAst < helm, 'CA の写しが helm の後になっている（検証つきの接続が CA 無しで起動する）');
+  assert.strictEqual(lines.filter((l) => l.includes('-k deploy/local/edge/cert-manager')).length, 1, 'cert-manager を 2 回以上当てた');
+  // 写すのは公開してよい ca.crt だけ（鍵は読まない）。
+  assert.ok(!lines.some((l) => l.includes('platform-infra-root-ca') && l.includes('tls\\.key')), 'ルート CA の鍵を読んでいる');
+});
+
+ok('IADR-0591: 基盤の apply の後、サーバ証明書の指紋が変わった（未記録の）Deployment だけを刻んで作り直し、同じなら何もしない', () => {
+  const fresh = runUp({});
+  assert.strictEqual(fresh.status, 0, fresh.stderr);
+  const infra = fresh.lines.findIndex((l) => /^kubectl apply -k deploy\/local\/infra(-persistence)?$/.test(l));
+  const rollout = fresh.lines.findIndex((l) => l.includes('-n platform-infra rollout status deploy/postgres'));
+  for (const d of ['postgres', 'rabbitmq']) {
+    const at = fresh.lines.findIndex((l) => l.startsWith(`kubectl -n platform-infra patch deploy ${d} --type merge -p `)
+      && l.includes('"platform-infra.tls/cert-sha256":"'));
+    assert.notStrictEqual(at, -1, `${d}: 指紋が未記録なのに刻んでいない（証明書を更新しても作り直されない）`);
+    assert.ok(infra < at && at < rollout, `${d}: 指紋を刻む位置が基盤の apply の後・rollout の待ちの前でない`);
+  }
+  assert.ok(!fresh.lines.some((l) => l.includes('patch deploy') && l.includes('ZHVtbXk=')), '証明書の中身を引数に載せた');
+  const same = runUp({ STUB_INFRA_TLS_STAMPED: '1' });
+  assert.strictEqual(same.status, 0, same.stderr);
+  assert.ok(!same.lines.some((l) => /patch deploy (postgres|rabbitmq) /.test(l)), '指紋が同じなのに作り直した（再実行のたびに基盤が落ちる）');
+});
+
+ok('IADR-0591: LOCALEDGE=1 でも cert-manager は 1 回だけ当て、エッジの tls overlay は基盤の後に従来どおり当てる', () => {
+  const r = runUp({ LOCALEDGE: '1' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.lines.filter((l) => l.includes('-k deploy/local/edge/cert-manager')).length, 1, 'cert-manager を 2 回当てた');
+  const tls = r.lines.findIndex((l) => l === 'kubectl apply -k deploy/local/infra-tls');
+  const edgeTls = r.lines.findIndex((l) => l.endsWith('apply -k deploy/local/edge/tls'));
+  assert.ok(tls !== -1 && edgeTls !== -1 && tls < edgeTls, '基盤の証明書とエッジの証明書の順が崩れた');
+});
+
+ok('IADR-0591: 基盤のルート CA を読めなければ、CA の写しも helm も行わずに止まる（検証の無い接続へ倒れない）', () => {
+  const r = runUp({ STUB_INFRA_CA_ABSENT: '1' });
+  assert.notStrictEqual(r.status, 0, 'CA を読めないのに起動が成功で返った');
+  assert.match(r.stderr, /platform-infra-root-ca の ca\.crt を読めない/);
+  assert.ok(!r.lines.some((l) => l.startsWith('kubectl create configmap platform-infra-ca')), 'CA を読めないのに ConfigMap を作った');
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade --install msp ')), 'CA を読めないのに helm へ進んだ');
+});
+
+ok('IADR-0591: 基盤のサーバ証明書の宣言 —— 名前は素の名前と FQDN、CA は基盤専用、Pod は Secret を非 optional でマウントする', () => {
+  const certs = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra-tls/certificates.yaml'), 'utf8');
+  const issuers = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra-tls/issuers.yaml'), 'utf8');
+  for (const svc of ['postgres', 'rabbitmq']) {
+    const doc = certs.split(/^---\s*$/m).find((d) => new RegExp(`^  name: ${svc}-tls$`, 'm').test(d));
+    assert.ok(doc, `${svc}-tls の Certificate が無い`);
+    const names = [...doc.matchAll(/^ {4}- (\S+)$/gm)].map((m) => m[1]).filter((n) => n.startsWith(svc));
+    assert.deepStrictEqual(names, [svc, `${svc}.platform-infra`, `${svc}.platform-infra.svc`, `${svc}.platform-infra.svc.cluster.local`],
+      `${svc} の dnsNames が素の名前と FQDN の 4 形でない`);
+    assert.match(doc, /^ {4}name: platform-infra-ca$/m, `${svc} の発行元が基盤の CA でない（エッジの CA を混ぜない）`);
+    assert.match(doc, /^  secretName: [a-z]+-tls$/m);
+    const manifest = fs.readFileSync(path.join(REPO_ROOT, `deploy/local/infra/${svc}.yaml`), 'utf8');
+    assert.match(manifest, new RegExp(`secretName: ${svc}-tls`), `${svc} の Pod が証明書の Secret をマウントしない`);
+    const vol = manifest.slice(manifest.indexOf(`secretName: ${svc}-tls`), manifest.indexOf(`secretName: ${svc}-tls`) + 80);
+    assert.doesNotMatch(vol.split('\n')[0] + vol.split('\n')[1], /optional:\s*true/, `${svc} の証明書の Secret が optional（平文だけで黙って立つ）`);
+  }
+  assert.match(issuers, /^  name: platform-infra-root-ca$/m);
+  assert.doesNotMatch(issuers, /local-edge/, '基盤の CA がエッジの issuer に依存している');
+  const pg = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/postgres.yaml'), 'utf8');
+  for (const a of ['ssl=on', 'ssl_cert_file=/etc/postgres-tls/tls.crt', 'ssl_key_file=/etc/postgres-tls/tls.key', 'ssl_min_protocol_version=TLSv1.2']) {
+    assert.ok(pg.includes(`- ${a}`), `postgres の引数に ${a} が無い`);
+  }
+  const mq = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/rabbitmq.yaml'), 'utf8');
+  for (const a of ['listeners.ssl.default = 5671', 'ssl_options.versions.1 = tlsv1.3', 'ssl_options.versions.2 = tlsv1.2']) {
+    assert.ok(mq.includes(a), `rabbitmq の TLS 設定に ${a} が無い`);
+  }
+  assert.match(mq, /- \{ name: amqps, port: 5671, targetPort: 5671 \}/, 'rabbitmq の Service に 5671 が無い');
+  assert.match(mq, /- \{ protocol: TCP, port: 5671 \}/, 'rabbitmq-ingress-clients に 5671 が無い（TLS の接続が時間切れになる）');
 });
 
 // IADR-0206 (#779): apiserver には触らない。IADR-0105 の除去を維持することが本子の受け入れ基準である
@@ -1722,12 +2079,57 @@ ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloa
   assert.ok(reloaderAt > nsAt, 'Reloader が入らない、または名前空間の作成より前にある');
   const reloader = res.lines[reloaderAt];
   assert.ok(/--version 2\.2\.17(\s|$)/.test(reloader), `Reloader の chart の版を pin していない: ${reloader}`);
-  assert.ok(/image\.tag=v1\.4\.22(\s|$)/.test(reloader), `Reloader の image を pin していない: ${reloader}`);
+  // #1858 / IADR-0547: image は values（tag@digest）が持つ。tag だけの --set image.tag は固定を外すので使わない。
+  assert.ok(reloader.includes('-f deploy/local/reloader/values.yaml'), `Reloader の image を values（tag@digest）で固定していない: ${reloader}`);
+  assert.ok(!/image\.tag=/.test(reloader), `Reloader の image を tag だけで上書きしている: ${reloader}`);
   assert.ok(reloader.includes('reloader.watchGlobally=false'), `Reloader がクラスタ全体を見る: ${reloader}`);
   assert.ok(
     reloader.includes('reloader.namespaces={microservices-platform,platform-infra,ai-stock-trading}'),
     `Reloader の見る名前空間が 3 つに限られていない: ${reloader}`,
   );
+});
+
+// NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: ESO=1 で BFF の共有シークレット（AST の OpenD 認証サイドカー宛て）を同期する。
+// 既定（ESO 未設定）では apply しない（ESO の CRD が無い）。手動の Secret も作らない（optional で、無ければ BFF は上流を呼ばない）。
+ok('ESO=1 (AST/IADR-0566): opend-auth-caller-secret の ExternalSecret を apply する・既定では apply しない', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml'),
+    'externalsecret-opend-auth-caller-secret.yaml が apply されない');
+  assert.ok(!anyLineHas(DEFAULT.lines, 'externalsecret-opend-auth-caller-secret.yaml'),
+    'ESO 未設定なのに opend-auth-caller-secret の ExternalSecret を apply している');
+  assert.ok(!anyLineHas(res.lines, 'create secret generic opend-auth-caller-secret'),
+    'opend-auth-caller-secret を手動 apply している（二重所有）');
+});
+
+// NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ESO=1 でブローカのユーザーの写しを同期し、宣言の全ユーザーを合わせる。
+//   既定（ESO 未設定）では何もしない。値が揃わなければ止まる。パスワードはコマンドの引数に載せない（標準入力）。
+ok('ESO=1 (IADR-0573): rabbitmq-users を apply し、宣言の全ユーザーを標準入力のパスワードで合わせる', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  const esAt = res.lines.findIndex((l) => l.includes('deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml'));
+  assert.ok(esAt >= 0, 'externalsecret-rabbitmq-users.yaml が apply されない');
+  assert.ok(!anyLineHas(DEFAULT.lines, 'externalsecret-rabbitmq-users.yaml'), 'ESO 未設定なのに rabbitmq-users を apply している');
+  const users = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/users.txt'), 'utf8')
+    .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).map((l) => l.trim().split(/\s+/)[0]);
+  assert.ok(users.length >= 18, `宣言のユーザーが少ない（読めていない）: ${users.length}`);
+  for (const u of users) {
+    const add = res.lines.findIndex((l) => l.includes('rabbitmqctl add_user ' + u) || l.includes('rabbitmqctl change_password ' + u));
+    assert.ok(add > esAt, `${u} を合わせていない、または ExternalSecret の apply より前にある`);
+    assert.ok(anyLineHas(res.lines, `rabbitmqctl -q set_permissions -p / ${u} .* .* .*`), `${u} の権限を設定していない`);
+    assert.ok(anyLineHas(res.lines, `rabbitmqctl authenticate_user ${u}`), `${u} の認証を確かめていない`);
+    // 引数はユーザー名で終わる（パスワードを引数に載せない）。
+    for (const l of res.lines.filter((x) => / (add_user|change_password|authenticate_user) /.test(x) && x.includes(` ${u}`))) {
+      assert.ok(l.trimEnd().endsWith(` ${u}`), `パスワードを引数に載せている疑い: ${l}`);
+    }
+  }
+  assert.ok(!res.lines.some((l) => /rabbitmqctl .*(delete_user|change_password|set_permissions|add_user) guest\b/.test(l)),
+    '既定のユーザー guest に触れている（移行の段 1 では触れない）');
+  assert.strictEqual(res.status, 0, res.stderr);
+});
+
+ok('ESO=1 (IADR-0573): ブローカのユーザーの値が揃わなければ止まる', () => {
+  const res = runUp({ VAULT: '1', ESO: '1', STUB_RMQ_USERS_MISSING: '1', RABBITMQ_USERS_TIMEOUT: '1' });
+  assert.notStrictEqual(res.status, 0, '値が揃わないのに起動器が進んだ');
+  assert.ok(/rabbitmq-users に次のユーザーの値が/.test(res.stderr), `理由を告げていない:\n${res.stderr.slice(-800)}`);
 });
 
 // IADR-0097 (#310) PR-2: ESO=1 で object-storage-credentials（IADR-0461。旧 minio-credentials）/wikijs-db/wikijs-sync も
@@ -1785,36 +2187,425 @@ ok('既定 (#1012): postgres-app を手動 apply する（ESO 未設定）', () 
   );
 });
 
-// NFR, ADR-0027 (#1022): rabbitmq-app（ブローカのパスワード・app 側）も postgres-app と同じ対にする。
-//
-// 🔴 **これは #1012 が事後に踏んだ欠陥の再発防止である**（IADR-0286 の 2026-08-28 追記）。
-// #1022 は appsettings.json から RabbitMq:ConnectionString を撤去し、helm の deployment.yaml が
-// rabbitmq-app を **非 optional** で参照するようにした。手動 apply を `ESO != 1` ブロックへ入れた以上、
-// **対応する ExternalSecret を必ず置く** —— 置き忘れると ESO=1 で供給元が 1 つも無くなり、
-// RabbitMQ を使う 7 サービス（document / datasource / conversion / ingestion / retrieval / wiki / graph）が
-// `CreateContainerConfigError` で起動しない。
-//
-// **横断の機械検査は依然として無い**（上の #1012 のコメントが 1 回目の記録）。同型が**もう一度**起きたら、
-// `ESO != 1` ブロック内の apply_secret を走査して `externalsecret-<name>.yaml` の実在と apply を突合する
-// 検査へ一般化すること。本件は「先例に倣って対を置いた」ケースであって、事故の 2 回目ではない。
-ok('ESO=1 (#1022): rabbitmq-app の ExternalSecret を apply・手動 apply はスキップ', () => {
+// NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: 基盤の 7 サービスのブローカの資格情報は
+// サービスごと（Secret msp-rabbitmq-users・キー = ユーザー名）。postgres-app と同じく「ESO=1 は ExternalSecret だけ・
+// それ以外は起動器だけ」の対にする（#1012 / #1022 が踏んだ「手動を止めたのに供給元を置かない」の再発防止。IADR-0286 追記）。
+// 全サービス共通の 1 組（rabbitmq-app）は、どちらの経路でも作らない。
+const USERS_0577 = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/users.txt'), 'utf8')
+  .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#')).map((l) => l.trim().split(/\s+/));
+const MSP_USERS_0577 = USERS_0577.filter((r) => r[1] === 'microservices-platform').map((r) => r[0]).sort();
+const keysOf0577 = (r, secret) => r.secrets.filter((l) => l.startsWith(`${secret} `)).map((l) => l.slice(secret.length + 1).split('=')[0]).sort();
+const valOf0577 = (r, secret, key) => r.secrets.filter((l) => l.startsWith(`${secret} ${key}=`)).map((l) => l.slice(`${secret} ${key}=`.length));
+
+ok('ESO=1 (IADR-0577): msp-rabbitmq-users の ExternalSecret を apply し、手動では作らない（rabbitmq-app はどこにも無い）', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
-  assert.ok(
-    anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml'),
-    'externalsecret-rabbitmq-app.yaml が apply されない（ESO=1 で rabbitmq-app の供給元が無くなる）',
-  );
-  assert.ok(
-    !anyLineHas(res.lines, 'create secret generic rabbitmq-app'),
-    'ESO=1 なのに rabbitmq-app を手動 apply している（二重所有）',
-  );
+  assert.strictEqual(res.status, 0, res.stderr.slice(-800));
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-msp-rabbitmq-users.yaml'),
+    'externalsecret-msp-rabbitmq-users.yaml が apply されない（ESO=1 で 7 サービスの供給元が無くなる）');
+  assert.deepStrictEqual(keysOf0577(res, 'msp-rabbitmq-users'), [], 'ESO=1 なのに msp-rabbitmq-users を手動で作った（二重所有）');
+  assert.deepStrictEqual(keysOf0577(res, 'rabbitmq-users'), [], 'ESO=1 なのに rabbitmq-users を手動で作った（二重所有）');
+  assert.deepStrictEqual(keysOf0577(res, 'ast-rabbitmq-users'), [], 'ESO=1 なのに ast-rabbitmq-users を手動で作った（取引ユニットの chart の ExternalSecret と二重所有）');
+  for (const r of [res, DEFAULT]) {
+    assert.ok(!anyLineHas(r.lines, 'externalsecret-rabbitmq-app.yaml'), '旧 rabbitmq-app の ExternalSecret を apply している');
+    assert.deepStrictEqual(keysOf0577(r, 'rabbitmq-app'), [], '旧 rabbitmq-app を作っている');
+  }
+  assert.ok(!fs.existsSync(path.join(REPO_ROOT, 'deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml')), '旧 ExternalSecret のマニフェストが残っている');
 });
 
-// 回帰: 既定（ESO 未設定）は rabbitmq-app を手動 apply する。
-ok('既定 (#1022): rabbitmq-app を手動 apply する（ESO 未設定）', () => {
-  assert.ok(
-    anyLineHas(DEFAULT.lines, 'create secret generic rabbitmq-app'),
-    'rabbitmq-app の手動 apply が無い（ESO 未設定では唯一の供給元）',
-  );
+ok('既定 (IADR-0577): ESO なしでも、ブローカ側（全ユーザー）と消費側（基盤のユーザーだけ）を同じ値で作り、helm の前に合わせる', () => {
+  assert.strictEqual(DEFAULT.status, 0, DEFAULT.stderr.slice(-800));
+  assert.ok(MSP_USERS_0577.length === 7, `基盤のユーザーが 7 件ではない（users.txt を読めていない）: ${MSP_USERS_0577}`);
+  assert.deepStrictEqual(keysOf0577(DEFAULT, 'rabbitmq-users'), USERS_0577.map((r) => r[0]).sort(), 'ブローカ側の写しが users.txt の全ユーザーではない');
+  assert.deepStrictEqual(keysOf0577(DEFAULT, 'msp-rabbitmq-users'), MSP_USERS_0577, '消費側が基盤のユーザーと 1 対 1 でない（AST のユーザーを渡していないか）');
+  for (const u of MSP_USERS_0577) {
+    assert.deepStrictEqual(valOf0577(DEFAULT, 'msp-rabbitmq-users', u), valOf0577(DEFAULT, 'rabbitmq-users', u), `${u} の値がブローカ側と食い違う`);
+  }
+  const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(helmAt > 0, 'helm upgrade が無い');
+  for (const u of USERS_0577.map((r) => r[0])) {
+    const at = DEFAULT.lines.findIndex((l) => l.includes(`rabbitmqctl add_user ${u}`) || l.includes(`rabbitmqctl change_password ${u}`));
+    assert.ok(at >= 0 && at < helmAt, `${u} を helm の前にブローカへ合わせていない`);
+  }
+  // 旧 rabbitmq-app は helm の後に片付ける（ExternalSecret を先に消す）。
+  const esDel = DEFAULT.lines.findIndex((l) => l.includes('delete externalsecret rabbitmq-app'));
+  const secDel = DEFAULT.lines.findIndex((l) => l.includes('delete secret rabbitmq-app'));
+  assert.ok(esDel > helmAt && secDel > esDel, '旧 rabbitmq-app を helm の後に ExternalSecret → Secret の順で片付けていない');
+});
+
+// NFR-18, IADR-0577（2026-10-22 追記）: ESO の無い経路では、取引ユニットの消費側（ai-stock-trading/ast-rabbitmq-users）も
+//   基盤の起動器が同じ値で作る。取引ユニットの chart の全 Worker が非 optional に読み、同ユニットの起動器は ESO の無い経路では
+//   作らずに止まる（値を持つのは基盤の写しだけ）。名前・接頭辞と取引ユニットの chart の既定の一致は scripts.repo.test.js が見る
+//   （本試験は submodule を取得しない CI の既定チェックアウトで走る）。
+const AST_USERS_0577 = USERS_0577.filter((r) => r[1] === 'ai-stock-trading').map((r) => r[0]).sort();
+ok('既定 (IADR-0577 2026-10-22 追記): ESO なしでは取引ユニットの消費側 ast-rabbitmq-users を ai-stock-trading に、ブローカ側と同じ値で helm の前に作る', () => {
+  assert.strictEqual(DEFAULT.status, 0, DEFAULT.stderr.slice(-800));
+  assert.ok(AST_USERS_0577.length === 11, `取引ユニットのユーザーが 11 件ではない（users.txt を読めていない）: ${AST_USERS_0577}`);
+  assert.deepStrictEqual(keysOf0577(DEFAULT, 'ast-rabbitmq-users'), AST_USERS_0577, '消費側が取引ユニットのユーザーと 1 対 1 でない');
+  for (const u of AST_USERS_0577) {
+    assert.deepStrictEqual(valOf0577(DEFAULT, 'ast-rabbitmq-users', u), valOf0577(DEFAULT, 'rabbitmq-users', u), `${u} の値がブローカ側と食い違う`);
+  }
+  const nsAt = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create namespace ai-stock-trading '));
+  const secAt = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create secret generic ast-rabbitmq-users -n ai-stock-trading '));
+  const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(nsAt >= 0 && secAt > nsAt && secAt < helmAt, `名前空間 → Secret → helm の順でない（ns=${nsAt} secret=${secAt} helm=${helmAt}）`);
+});
+
+ok('既定 (IADR-0577): 既存の値は保ち、無いユーザーにだけ乱数（48 桁の 16 進・ユーザーごとに別）を作る。値は出力にも引数にも出さない', () => {
+  // 既存（stub は全キーに同じダミーを返す）＝ 値を保つ。
+  for (const u of USERS_0577.map((r) => r[0])) assert.deepStrictEqual(valOf0577(DEFAULT, 'rabbitmq-users', u), ['dummy'], `${u} の既存の値を保っていない`);
+  // 無い ＝ 乱数。
+  const r = runUp({ STUB_RMQ_USERS_MISSING: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const vals = USERS_0577.map((x) => valOf0577(r, 'rabbitmq-users', x[0])[0]);
+  for (const v of vals) assert.match(v || '', /^[0-9a-f]{48}$/, '乱数の形が違う');
+  assert.strictEqual(new Set(vals).size, vals.length, 'ユーザー間で値が重なった');
+  for (const v of vals) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+    assert.ok(!r.lines.some((l) => l.includes(v)), '値がコマンドの引数に出た');
+  }
+});
+
+// NFR-18, IADR-0577: 合わせ（reconcile-users.sh）は rabbitmqctl へパスワードを「改行で終わる 1 行」で渡す。
+//   rabbitmqctl は 1 行（改行か EOF まで）を読む。改行が無いと EOF を待ち、kubectl exec -i 越しでは読み終わらずに止まり得る
+//   （統合スタックで起動器が [5/7] で止まった実測）。模型は改行で終わらない入力を「止まった」として 124 で返す。
+ok('IADR-0577: reconcile-users.sh はパスワードを改行で終わる 1 行で渡し（値そのものは変えない）、1 回の呼び出しに上限を持つ', () => {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-0577-'));
+  const bin = path.join(H, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), [
+    '#!/usr/bin/env bash',
+    'echo "kubectl $*" >> "$STUB_H/log"',
+    'case "$*" in',
+    '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')"; printf "v-%s" "$k" | base64 -w0; exit 0;;',
+    '  *"rabbitmqctl -q list_users"*) printf "[]"; exit 0;;',
+    '  *"rabbitmqctl -q add_user "*|*"rabbitmqctl -q change_password "*|*"rabbitmqctl -q authenticate_user "*)',
+    '    echo "noinput ${*: -1}" >> "$STUB_H/log"; exit 124;;',
+    '  *"rabbitmqctl add_user "*|*"rabbitmqctl change_password "*|*"rabbitmqctl authenticate_user "*)',
+    '    a="$*"; set -- ${a#*rabbitmqctl }; [ "$#" -eq 2 ] || { echo "noinput $*" >> "$STUB_H/log"; exit 124; }',
+    '    in="$(cat; printf x)"; in="${in%x}"',
+    '    case "$in" in *$\'\\n\') ;; *) echo "stdin-not-line ${*: -1}" >> "$STUB_H/log"; exit 124;; esac',
+    '    [ "${in%$\'\\n\'}" = "v-${*: -1}" ] || { echo "stdin-value-changed ${*: -1}" >> "$STUB_H/log"; exit 1; }',
+    '    exit 0;;',
+    'esac',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'users.txt'), '# 宣言\nmsp-document x y msp/rabbitmq-users\nast-audit x y ai-stock-trading/rabbitmq-users\n');
+  fs.writeFileSync(path.join(H, 'log'), '');
+  const script = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh');
+  const r = spawnSync('bash', [script], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H,
+    RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' } });
+  const log = fs.readFileSync(path.join(H, 'log'), 'utf8');
+  fs.rmSync(H, { recursive: true, force: true });
+  assert.ok(!/noinput/.test(log), `パスワードを渡すコマンドの引数が 2 つでない（rabbitmqctl が標準入力を開かず止まる）:\n${log}`);
+  assert.ok(!/stdin-not-line/.test(log), `パスワードを改行で終わらせずに渡した（kubectl exec -i 越しで止まり得る）:\n${log}`);
+  assert.ok(!/stdin-value-changed/.test(log), `渡した値が Secret の値と違う:\n${log}`);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(/ブローカのサービスごとのユーザー: 2 件（apply/.test(r.stdout), r.stdout);
+  assert.ok(!/v-msp-document|v-ast-audit/.test(`${r.stdout}${r.stderr}`), '値が出力に出た');
+  const src = fs.readFileSync(script, 'utf8');
+  assert.ok(/timeout "\$CTL_TIMEOUT" kubectl -n "\$INFRA_NS" exec -i deploy\/rabbitmq/.test(src), '1 回の呼び出しに上限が無い（止まると起動器ごと止まる）');
+});
+
+// NFR, #2200: 「在るか」の判定（list_users の一覧に宣言のユーザーが在るか）は、一致が早い大きな一覧でも反転しない。
+//   旧い形（`printf '%s\n' "$existing" | grep -Fxq`）は pipefail の下で、grep が一致で読むのをやめると printf が SIGPIPE で落ち、
+//   在るユーザーを「無い」と読んだ（CI で偶発。一覧がパイプの容量より大きいと必ず起きる）。宣言のユーザーを一覧の先頭に置き、
+//   後ろに大きな詰め物を足して、--check と apply を何度か回す。変異（旧い形へ戻した写し）は同じ入力で必ず落ちる。
+function reconcile2200(scriptText, mode) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-2200-'));
+  try {
+    const bin = path.join(H, 'bin');
+    fs.mkdirSync(bin);
+    const filler = Array.from({ length: 20000 }, (_, i) => `{"user":"filler-${String(i).padStart(6, '0')}","tags":[]}`).join(',');
+    fs.writeFileSync(path.join(H, 'list.json'), `[{"user":"msp-document","tags":[]},{"user":"ast-audit","tags":[]},${filler}]`);
+    fs.writeFileSync(path.join(bin, 'kubectl'), [
+      '#!/usr/bin/env bash',
+      'case "$*" in',
+      '  *"get secret rabbitmq-users"*) printf "dg==" ; exit 0;;',
+      '  *"rabbitmqctl -q list_users"*) cat "$STUB_H/list.json"; exit 0;;',
+      '  *"rabbitmqctl add_user "*) cat >/dev/null; echo "add ${*: -1}" >> "$STUB_H/log"; exit 0;;',
+      '  *"rabbitmqctl change_password "*) cat >/dev/null; echo "change ${*: -1}" >> "$STUB_H/log"; exit 0;;',
+      // 実物と同じく標準入力（パスワードの 1 行）を読み切る（読まずに閉じると書き手が SIGPIPE で落ちる＝別の反転になる）。
+      '  *"rabbitmqctl authenticate_user "*) cat >/dev/null; exit 0;;',
+      'esac',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    fs.writeFileSync(path.join(H, 'users.txt'), 'msp-document x y msp/rabbitmq-users\nast-audit x y ai-stock-trading/rabbitmq-users\n');
+    const script = path.join(H, 'reconcile-users.sh');
+    fs.writeFileSync(script, scriptText);
+    const results = [];
+    for (let i = 0; i < 5; i++) {
+      fs.writeFileSync(path.join(H, 'log'), '');
+      const r = spawnSync('bash', mode === 'check' ? [script, '--check'] : [script], { encoding: 'utf8', env: { ...process.env,
+        PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' } });
+      results.push({ status: r.status, out: `${r.stdout}${r.stderr}`, log: fs.readFileSync(path.join(H, 'log'), 'utf8') });
+    }
+    return results;
+  } finally {
+    fs.rmSync(H, { recursive: true, force: true });
+  }
+}
+ok('#2200: reconcile-users.sh の「在るか」は一致が早い大きな一覧でも反転しない（--check は揃っている・apply は change_password）', () => {
+  const RECONCILE = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh');
+  const src = fs.readFileSync(RECONCILE, 'utf8');
+  for (const r of reconcile2200(src, 'check')) assert.strictEqual(r.status, 0, `--check が揃っているのに落ちた:\n${r.out.slice(-400)}`);
+  for (const r of reconcile2200(src, 'apply')) {
+    assert.strictEqual(r.status, 0, r.out.slice(-400));
+    assert.deepStrictEqual(r.log.trim().split('\n').sort(), ['change ast-audit', 'change msp-document'], `在るユーザーを add_user した:\n${r.log}`);
+  }
+  // 変異: 旧い形（printf | grep -Fxq）へ戻すと、同じ入力で判定が反転する。
+  const old = src.replace(/grep -Fxq -- "\$u" <<<"\$existing"/g, `printf '%s\\n' "$existing" | grep -Fxq -- "$u"`);
+  assert.notStrictEqual(old, src, '変異が空振りしている');
+  assert.ok(reconcile2200(old, 'check').some((r) => r.status !== 0), '旧い形の --check の反転を再現できない（試験が検出力を持たない）');
+  assert.ok(reconcile2200(old, 'apply').some((r) => /add /.test(r.log) || r.status !== 0), '旧い形の apply の反転を再現できない');
+});
+
+// NFR-18, IADR-0577: 既定のユーザーの無効化（deploy/local/rabbitmq-setup/disable-default-user.sh）。
+//   ブローカの状態（ユーザー・接続・Secret）を持つ模型の kubectl で、「確かめてからだけ消す」と「印を先に置く」を試す。
+//   模型: $H/users（在るユーザー）・$H/conns（接続のユーザー）・$H/default（Secret rabbitmq の username）・
+//         $H/rmq-users（Secret rabbitmq-users の「キー=値」）・$H/log（呼び出しの順）。
+const DISABLE_0577 = path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/disable-default-user.sh');
+const KUBECTL_MODEL_0577 = [
+  '#!/usr/bin/env bash',
+  'H="$STUB_H"',
+  'echo "kubectl $*" >> "$H/log"',
+  'json() { printf "["; sed \'s/.*/{"user":"&","tags":[]}/\' "$1" | paste -sd, - | tr -d "\\n"; printf "]"; }',
+  'case "$*" in',
+  '  *"get secret rabbitmq -o"*) [ -s "$H/default" ] && base64 -w0 < "$H/default"; exit 0;;',
+  '  *"get secret rabbitmq-users"*) k="$(printf "%s" "$*" | sed -n \'s/.*index \\.data "\\([^"]*\\)".*/\\1/p\')";',
+  '    v="$(grep "^$k=" "$H/rmq-users" | cut -d= -f2-)"; [ -n "$v" ] && printf "%s" "$v" | base64 -w0; exit 0;;',
+  '  *"rabbitmqctl -q list_users"*) [ -e "$H/fail-list_users" ] && exit 1; json "$H/users"; exit 0;;',
+  '  *"rabbitmqctl -q list_connections"*) [ -e "$H/fail-list_connections" ] && exit 1; json "$H/conns"; exit 0;;',
+  '  *"rabbitmqctl -q authenticate_user "*) exit 124;;',
+  '  *"rabbitmqctl authenticate_user "*) cat >/dev/null; grep -Fxq -- "${*: -1}" "$H/users"; exit $?;;',
+  '  *"rabbitmqctl -q delete_user "*) grep -Fxv -- "${*: -1}" "$H/users" > "$H/users.new" || true; mv "$H/users.new" "$H/users"; exit 0;;',
+  '  *"create configmap"*) exit 0;;',
+  '  *"apply -f -"*) cat >/dev/null; exit 0;;',
+  'esac',
+  'exit 0',
+  '',
+].join('\n');
+function disable0577({ users, conns = [], defaultUser = 'brokeradmin', args = [], failing = [] }) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'disable-0577-'));
+  const bin = path.join(H, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'kubectl'), KUBECTL_MODEL_0577, { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'users'), users.map((u) => `${u}\n`).join(''));
+  fs.writeFileSync(path.join(H, 'conns'), conns.map((u) => `${u}\n`).join(''));
+  fs.writeFileSync(path.join(H, 'default'), defaultUser);
+  fs.writeFileSync(path.join(H, 'rmq-users'), USERS_0577.map((r) => `${r[0]}=v-${r[0]}\n`).join(''));
+  fs.writeFileSync(path.join(H, 'log'), '');
+  for (const f of failing) fs.writeFileSync(path.join(H, `fail-${f}`), '');
+  const r = spawnSync('bash', [DISABLE_0577, ...args], {
+    encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_TIMEOUT: '1' },
+  });
+  const out = { status: r.status, stdout: r.stdout, stderr: r.stderr,
+    log: fs.readFileSync(path.join(H, 'log'), 'utf8').split('\n').filter(Boolean),
+    users: fs.readFileSync(path.join(H, 'users'), 'utf8').split('\n').filter(Boolean) };
+  fs.rmSync(H, { recursive: true, force: true });
+  return out;
+}
+const ALL_0577 = USERS_0577.map((r) => r[0]);
+const flagAt0577 = (r) => r.log.findIndex((l) => /create configmap rabbitmq-default-user --from-literal=disabled=true/.test(l));
+const delAt0577 = (r) => r.log.findIndex((l) => / delete_user /.test(l));
+
+// NFR, #2194: Windows の Git Bash（MSYS2）は、ネイティブの kubectl.exe へ渡す引数のうち `/` で始まるものを Git の導入先のパスへ
+//   書き換える（`/` → `C:/Program Files/Git/`）。模型の kubectl は、書き換えを止める変数（MSYS_NO_PATHCONV=1 か MSYS2_ARG_CONV_EXCL=*）が
+//   無ければ受け取った引数をそのように書き換えてから記録する。vhost の `/` がそのまま届くこと・他の呼び出しに変数を広げないことを見る。
+function reconcile2194(scriptText) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'reconcile-2194-'));
+  try {
+    const bin = path.join(H, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'kubectl'), [
+      '#!/usr/bin/env bash',
+      'conv=1; [ "${MSYS_NO_PATHCONV:-}" = "1" ] && conv=0; [ "${MSYS2_ARG_CONV_EXCL:-}" = "*" ] && conv=0',
+      'args=(); for a in "$@"; do if [ "$conv" = "1" ] && [ "${a#/}" != "$a" ]; then a="C:/Program Files/Git${a}"; fi; args+=("$a"); done',
+      'set -- "${args[@]}"',
+      'case "$*" in',
+      '  *"get secret rabbitmq-users"*) printf "dg=="; exit 0;;',
+      '  *"rabbitmqctl -q list_users"*) printf "[]"; exit 0;;',
+      '  *"rabbitmqctl -q set_permissions "*) shift 9; [ "$1" = "-p" ] && printf "vhost=%s conv=%s\\n" "$2" "$conv" >> "$STUB_H/log"; exit 0;;',
+      '  *"rabbitmqctl "*) [ "$conv" = "0" ] && echo "unexpected-noconv $*" >> "$STUB_H/log"; cat >/dev/null; exit 0;;',
+      'esac',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    fs.writeFileSync(path.join(H, 'users.txt'), 'msp-document x y msp/rabbitmq-users\n');
+    fs.writeFileSync(path.join(H, 'log'), '');
+    const script = path.join(H, 'reconcile-users.sh');
+    fs.writeFileSync(script, scriptText);
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_USERS_FILE: path.join(H, 'users.txt'), RABBITMQ_USERS_TIMEOUT: '1' };
+    delete env.MSYS_NO_PATHCONV;
+    delete env.MSYS2_ARG_CONV_EXCL;
+    const r = spawnSync('bash', [script], { encoding: 'utf8', env });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, log: fs.readFileSync(path.join(H, 'log'), 'utf8') };
+  } finally {
+    fs.rmSync(H, { recursive: true, force: true });
+  }
+}
+ok('#2194: Git Bash の引数の書き換えの下でも、reconcile-users.sh の vhost の「/」はそのまま届く（書き換えを止めるのはその呼び出しだけ）', () => {
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/rabbitmq-setup/reconcile-users.sh'), 'utf8');
+  const r = reconcile2194(src);
+  assert.strictEqual(r.status, 0, r.out.slice(-400));
+  assert.deepStrictEqual(r.log.trim().split('\n'), ['vhost=/ conv=0'], `vhost が書き換わった／他の呼び出しに変数が広がった:\n${r.log}`);
+  // 変異: 呼び出しの前の変数を外すと、模型の書き換えで vhost が Git の導入先のパスになる（#2194 の実測の形）。
+  const old = src.replace("MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rmqctl set_permissions", 'rmqctl set_permissions');
+  assert.notStrictEqual(old, src, '変異が空振りしている');
+  assert.deepStrictEqual(reconcile2194(old).log.trim().split('\n'), ['vhost=C:/Program Files/Git/ conv=1'], '模型が書き換えを再現していない（試験が検出力を持たない）');
+});
+
+ok('IADR-0577: 全ユーザーが認証でき、既定のユーザーの接続が無ければ、印を先に置いてから既定のユーザーを消す', () => {
+  const r = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['msp-document', 'ast-audit'] });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!r.users.includes('brokeradmin'), '既定のユーザーが残った');
+  assert.deepStrictEqual(r.users.sort(), [...ALL_0577].sort(), 'サービスのユーザーまで消した');
+  assert.ok(flagAt0577(r) >= 0 && flagAt0577(r) < delAt0577(r), '印（ConfigMap）を消す前に置いていない（消した直後の再起動で既定のユーザーが戻る）');
+  assert.ok(r.log.some((l) => /delete_user brokeradmin$/.test(l)), '名前を Secret から読んで消していない');
+  assert.ok(!/v-msp-|v-ast-/.test(`${r.stdout}${r.stderr}${r.log.join('\n')}`), '値が出力か引数に出た');
+});
+
+ok('IADR-0577: 既定のユーザーの接続が 1 本でも残れば消さない（exit 3・印も置かない）', () => {
+  const r = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['msp-document', 'brokeradmin'] });
+  assert.strictEqual(r.status, 3, r.stderr);
+  assert.ok(r.users.includes('brokeradmin'), '接続が残るのに消した');
+  assert.strictEqual(flagAt0577(r), -1, '消していないのに印を置いた（次の再起動で消える）');
+  assert.ok(/既定のユーザーの接続が 1 本ある/.test(r.stderr), r.stderr);
+});
+
+ok('IADR-0577: 接続・ユーザーの列挙が失敗したら「無い」と読まずに止める（消さない・印も置かない。fail-closed）', () => {
+  // 接続の列挙の失敗を「0 本」と読むと、切り替わっていないサービスが残るまま既定のユーザーを消す。
+  const conns = disable0577({ users: [...ALL_0577, 'brokeradmin'], conns: ['brokeradmin'], failing: ['list_connections'] });
+  assert.strictEqual(conns.status, 1, conns.stderr);
+  assert.ok(conns.users.includes('brokeradmin'), '接続を列挙できないのに消した');
+  assert.strictEqual(flagAt0577(conns), -1, '接続を列挙できないのに印を置いた');
+  assert.strictEqual(delAt0577(conns), -1);
+  assert.ok(/接続を列挙できない/.test(conns.stderr), conns.stderr);
+  // ユーザーの列挙の失敗を「既に無い」と読むと、既定のユーザーが残ったまま印だけを置く。
+  for (const args of [[], ['--check']]) {
+    const users = disable0577({ users: [...ALL_0577, 'brokeradmin'], failing: ['list_users'], args });
+    assert.strictEqual(users.status, 1, `${args}: ${users.stderr}`);
+    assert.strictEqual(flagAt0577(users), -1, 'ユーザーを列挙できないのに印を置いた');
+    assert.ok(/ユーザーを列挙できない/.test(users.stderr), users.stderr);
+  }
+});
+
+ok('IADR-0577: 宣言のユーザーが 1 人でも欠ければ消さない（exit 1・印も置かない）', () => {
+  const r = disable0577({ users: [...ALL_0577.filter((u) => u !== 'msp-graph'), 'brokeradmin'] });
+  assert.strictEqual(r.status, 1, r.stderr);
+  assert.ok(r.users.includes('brokeradmin'));
+  assert.strictEqual(flagAt0577(r), -1);
+  assert.ok(/msp-graph\(無い\)/.test(r.stderr), `欠けたユーザーを名指していない:\n${r.stderr}`);
+});
+
+ok('IADR-0577: 既定のユーザーの名前が読めなければ何もしない。既に無ければ印だけ置く。--check は残っていれば 1', () => {
+  const noName = disable0577({ users: [...ALL_0577, 'brokeradmin'], defaultUser: '' });
+  assert.strictEqual(noName.status, 1);
+  assert.ok(noName.users.includes('brokeradmin') && flagAt0577(noName) === -1 && delAt0577(noName) === -1);
+  const gone = disable0577({ users: ALL_0577 });
+  assert.strictEqual(gone.status, 0, gone.stderr);
+  assert.ok(flagAt0577(gone) >= 0 && delAt0577(gone) === -1, '既に無いのに消しに行った、または印を置かない');
+  const chkPresent = disable0577({ users: [...ALL_0577, 'brokeradmin'], args: ['--check'] });
+  assert.strictEqual(chkPresent.status, 1);
+  assert.ok(chkPresent.users.includes('brokeradmin') && flagAt0577(chkPresent) === -1, '--check が書いた');
+  assert.strictEqual(disable0577({ users: ALL_0577, args: ['--check'] }).status, 0);
+});
+
+ok('IADR-0577: 起動器は最後に無効化を試み、できなければ WARN で通す（切り替わっていない接続を起動器が切らない）', () => {
+  const at = DEFAULT.lines.findIndex((l) => l.includes('get secret rabbitmq -o go-template'));
+  const helmAt = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(at > helmAt && helmAt > 0, '無効化を helm の後に試していない');
+  assert.strictEqual(DEFAULT.status, 0);
+  assert.ok(/ブローカの既定のユーザーを無効化していない/.test(DEFAULT.stderr), 'できなかったことを告げていない');
+});
+
+// NFR-18, IADR-0577: ブローカの起動の直後の復元（deploy/local/infra/rabbitmq.yaml の postStart。ブローカは永続化していない）。
+const BROKER_0577 = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/rabbitmq.yaml'), 'utf8');
+const BOOT_0577 = (() => {
+  const m = BROKER_0577.match(/\n  restore-users\.sh: \|\n((?:    .*\n|\n)+)/);
+  assert.ok(m, 'rabbitmq.yaml に restore-users.sh が無い');
+  return m[1].split('\n').map((l) => l.replace(/^    /, '')).join('\n');
+})();
+function boot0577({ files = {}, flag = null, addFails = [], changeFails = [], startupFails = false, cookie = true }) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'boot-0577-'));
+  const bin = path.join(H, 'bin');
+  const dir = path.join(H, 'users');
+  fs.mkdirSync(bin); fs.mkdirSync(dir);
+  for (const [k, v] of Object.entries(files)) fs.writeFileSync(path.join(dir, k), v);
+  if (flag !== null) fs.writeFileSync(path.join(H, 'flag'), flag);
+  if (cookie) fs.writeFileSync(path.join(H, 'cookie'), 'c');
+  fs.writeFileSync(path.join(H, 'boot.sh'), BOOT_0577);
+  fs.writeFileSync(path.join(bin, 'rabbitmqctl'), [
+    '#!/bin/sh',
+    // 実機の rabbitmqctl（3.13）の起動スクリプトを写す: パスワードを受けるコマンドは、引数がちょうど 2 つのときだけ標準入力を開く。
+    'cmd="$1"; [ "$cmd" = "-q" ] && cmd="$2"',
+    'in=""; case "$cmd" in add_user|change_password|authenticate_user)',
+    '  if [ "$#" -ne 2 ]; then echo "$* <noinput>" >> "$STUB_H/calls"; exit 124; fi; in="$(cat)";; esac',
+    'echo "$* <$in>" >> "$STUB_H/calls"',
+    'u="$3"; [ "$1" = "-q" ] || u="$2"',
+    'case "$cmd" in',
+    `  await_startup) [ "${startupFails ? 1 : 0}" = 1 ] && exit 1; exit 0;;`,
+    `  add_user) case " ${addFails.join(' ')} " in *" $u "*) exit 1;; esac;;`,
+    `  change_password) case " ${changeFails.join(' ')} " in *" $u "*) exit 1;; esac;;`,
+    'esac',
+    'exit 0',
+    '',
+  ].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(H, 'calls'), '');
+  const r = spawnSync('sh', [path.join(H, 'boot.sh')], { encoding: 'utf8', env: { ...process.env,
+    PATH: `${bin}:${process.env.PATH}`, STUB_H: H, RABBITMQ_BOOT_USERS_DIR: dir, RABBITMQ_BOOT_FLAG: path.join(H, 'flag'),
+    RABBITMQ_BOOT_TRIES: '2', RABBITMQ_BOOT_COOKIE: path.join(H, 'cookie'), RABBITMQ_BOOT_LOG: path.join(H, 'boot.log'), RABBITMQ_DEFAULT_USER: 'brokeradmin' } });
+  const out = { status: r.status, calls: fs.readFileSync(path.join(H, 'calls'), 'utf8').split('\n').filter(Boolean),
+    log: fs.existsSync(path.join(H, 'boot.log')) ? fs.readFileSync(path.join(H, 'boot.log'), 'utf8') : '' };
+  fs.rmSync(H, { recursive: true, force: true });
+  return out;
+}
+
+ok('IADR-0577: 起動の直後に Secret の全ユーザーを作り直す（値は標準入力・権限と空のタグ）。印が無ければ既定のユーザーは残す', () => {
+  const r = boot0577({ files: { 'msp-document': 'pw-d', 'ast-audit': 'pw-a' } });
+  assert.strictEqual(r.status, 0);
+  for (const [u, pw] of [['msp-document', 'pw-d'], ['ast-audit', 'pw-a']]) {
+    assert.ok(r.calls.includes(`add_user ${u} <${pw}>`), `${u} を標準入力の値で作っていない:\n${r.calls.join('\n')}`);
+    assert.ok(r.calls.includes(`-q set_permissions -p / ${u} .* .* .* <>`), `${u} の権限`);
+    assert.ok(r.calls.includes(`-q set_user_tags ${u} <>`), `${u} のタグ`);
+  }
+  assert.ok(!r.calls.some((c) => / delete_user /.test(c)), '印が無いのに既定のユーザーを消した');
+  assert.ok(!/pw-d|pw-a/.test(r.log), '値を記録に出した');
+  assert.ok(!r.calls.some((c) => /<noinput>/.test(c)), `パスワードを渡すコマンドの引数が 2 つでない（実機では止まる）:\n${r.calls.join('\n')}`);
+});
+
+ok('IADR-0577: 印があり全ユーザーが揃えば既定のユーザーを消す。1 人でも揃わない・Secret が空なら消さない。常に 0 で終わる', () => {
+  const ok1 = boot0577({ files: { 'msp-document': 'a', 'msp-wiki': 'b' }, flag: 'true', addFails: ['msp-wiki'] });
+  assert.ok(ok1.calls.includes('change_password msp-wiki <b>'), '在るユーザーを change_password で合わせていない');
+  assert.ok(ok1.calls.includes('-q delete_user brokeradmin <>'), '印に従って消していない');
+  const partial = boot0577({ files: { 'msp-document': 'a', 'msp-wiki': 'b' }, flag: 'true', addFails: ['msp-wiki'], changeFails: ['msp-wiki'] });
+  assert.strictEqual(partial.status, 0);
+  assert.ok(!partial.calls.some((c) => / delete_user /.test(c)), '揃っていないのに消した（サービスが繋がらなくなる）');
+  const empty = boot0577({ flag: 'true' });
+  assert.ok(!empty.calls.some((c) => / delete_user /.test(c)), 'Secret が空なのに消した');
+  const offFlag = boot0577({ files: { 'msp-document': 'a' }, flag: 'false' });
+  assert.ok(!offFlag.calls.some((c) => / delete_user /.test(c)), '印が true でないのに消した');
+  const down = boot0577({ files: { 'msp-document': 'a' }, flag: 'true', startupFails: true });
+  assert.strictEqual(down.status, 0, '起動を待てないときにコンテナを落とす');
+  assert.ok(!down.calls.some((c) => / (add_user|delete_user) /.test(c)), '起動を待てないのに書いた');
+});
+
+ok('IADR-0577: 復元はサーバが cookie を作るまで rabbitmqctl を呼ばない（先に呼ぶと root の所有で cookie を作り、サーバが読めずに落ちる）', () => {
+  const r = boot0577({ files: { 'msp-document': 'a' }, flag: 'true', cookie: false });
+  assert.strictEqual(r.status, 0, '復元の失敗でコンテナを止めた');
+  assert.deepStrictEqual(r.calls, [], `cookie が無いのに rabbitmqctl を呼んだ:\n${r.calls.join('\n')}`);
+  assert.ok(/cookie が現れない/.test(r.log), r.log);
+  assert.ok(/su-exec "\$owner" rabbitmqctl/.test(BOOT_0577), 'root のまま cookie の所有者以外で rabbitmqctl を呼ぶ経路を閉じていない');
+});
+
+ok('IADR-0577: ブローカの manifest は復元を postStart で呼び、Secret と印の ConfigMap を optional でマウントする', () => {
+  assert.ok(/postStart:\s*\n\s*exec:\s*\n\s*command: \["\/bin\/sh", "\/opt\/rabbitmq-boot\/restore-users\.sh"\]/.test(BROKER_0577), 'postStart が復元を呼ばない');
+  assert.ok(/name: users\n\s*secret: \{ secretName: rabbitmq-users, optional: true/.test(BROKER_0577), 'rabbitmq-users を optional でマウントしていない');
+  assert.ok(/configMap: \{ name: rabbitmq-default-user, optional: true \}/.test(BROKER_0577), '印の ConfigMap を optional でマウントしていない');
+  assert.ok(/mountPath: \/etc\/rabbitmq-default-user/.test(BROKER_0577) && /\/etc\/rabbitmq-default-user\/disabled/.test(BOOT_0577), '印のパスが食い違う');
+  const dis = fs.readFileSync(DISABLE_0577, 'utf8');
+  assert.ok(/FLAG_CM="\$\{RABBITMQ_DEFAULT_USER_FLAG:-rabbitmq-default-user\}"/.test(dis) && /--from-literal=disabled=true/.test(dis), '印の名前・キーが食い違う');
 });
 
 // FR-05, FR-09, SC-17, IADR-0301/IADR-0329 (#1101): identity-admin-oidc（SC-17 の変更を Keycloak
@@ -1935,9 +2726,12 @@ ok('#1102: 起動器から一度も apply されない ExternalSecret マニフ�
 // kcadm 手順へ進むときに、**未同期の NotFound を踏まない**ためである —— 未同期の NotFound は
 // 「配線が無い」ときと**同じ見え方**をするので、本 issue の欠陥そのものと区別がつかない。
 // 理由が違うぶん「rollout 対象に無いのだから待ちも要らない」と後任に削られやすい。ここで固定する。
-ok('#1102: eso_wait が platform-infra の keycloak-smtp を待つ（rollout ではなく案内の実行可能性のため）', () => {
+// ［IADR-0616 / #2195］待ち方は Ready から「依頼の後の同期」（eso_force_sync_wait）へ強めた。Ready は前回の同期で既に True なので、
+//   [3/7] が土台を置いた後でも素通りする。依頼の後の同期は Ready（同期の成立）も併せて確かめる。
+ok('#1102: platform-infra の keycloak-smtp の同期を待つ（rollout ではなく案内の実行可能性のため）', () => {
   assert.ok(
-    anyLineHas(EMITTED_LINES, 'wait --for=condition=Ready externalsecret/keycloak-smtp'),
+    anyLineHas(EMITTED_LINES, 'annotate externalsecret keycloak-smtp force-sync=')
+      && anyLineHas(EMITTED_LINES, 'get externalsecret keycloak-smtp -o jsonpath={.status.conditions[?(@.type=="Ready")].status}'),
     'ESO=1 で keycloak-smtp の SecretSynced 待ちが発行されていない'
       + ' —— 案内文と runbook が `up` 直後に NotFound を返しうる（infra_sync を確認せよ）',
   );
@@ -1952,7 +2746,8 @@ ok('#1102: eso_wait が platform-infra の keycloak-smtp を待つ（rollout で
 // 対象の env は apply_secret の呼び出しから引く（書き写さない）。
 ok('#1793: Secret の値（env）はどの kubectl の引数にも載らず、ファイル経由で同じ値が届く', () => {
   const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
-  const statements = src.replace(/\\\n/g, ' ').split('\n').filter((l) => /^\s*apply_secret\s/.test(l));
+  // IADR-0616 (#2195): ESO（Merge）の土台は apply_eso_merge_base_secret（apply_secret を包む）から置く。同じ母集合に入れる。
+  const statements = src.replace(/\\\n/g, ' ').split('\n').filter((l) => /^\s*apply_(?:eso_merge_base_)?secret\s/.test(l));
   assert.ok(statements.length >= 20, `apply_secret の呼び出しを読めない（${statements.length} 件）`);
   const vars = new Set(['ARGOCD_OIDC_CLIENT_SECRET']);
   for (const st of statements) for (const m of st.matchAll(/"[A-Za-z0-9._-]+=\$\{([A-Z0-9_]+):-/g)) vars.add(m[1]);
@@ -2096,7 +2891,8 @@ ok('ARGOCD=1: argocd namespace と application manifest を apply', () => {
 // 適用されなければならない。一方、小さい Application/AppProject は変更最小の原則で
 // client-side のまま（--server-side が波及していないことも固定＝回帰ガード）。
 // #1843 / IADR-0519: URL は版のタグ（`stable` ブランチを直接 apply しない。計画 ADR-0135 決定 2）。
-const ARGOCD_INSTALL_RE = /argo-cd\/([^/\s"']+)\/manifests\/install\.yaml/;
+// #1858 / IADR-0547: URL と内側のイメージの digest は kustomization（deploy/argocd/install）が持ち、起動器は -k で当てる。
+const ARGOCD_INSTALL_RE = /-k deploy\/argocd\/install(\s|$)/;
 ok('ARGOCD=1: install は server-side・Application/AppProject は client-side（--server-side 非波及）', () => {
   const res = runUp({ ARGOCD: '1' });
   const installLine = res.lines.find((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
@@ -2109,18 +2905,37 @@ ok('ARGOCD=1: install は server-side・Application/AppProject は client-side�
   assert.ok(!appLine.includes('--server-side'), `Application/AppProject に --server-side が波及した: ${appLine}`);
 });
 
-ok('#1843: ARGOCD=1 の install は版のタグの URL（stable ブランチを apply しない）', () => {
+ok('#1843・#1858: ARGOCD=1 の install は kustomization（版のタグの URL ＋ digest）を -n argocd で当てる（URL を直接 apply しない）', () => {
   const res = runUp({ ARGOCD: '1' });
   const installs = res.lines.filter((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
   assert.strictEqual(installs.length, 1, `install の apply 行が 1 本でない:\n${installs.join('\n')}`);
-  const ref = ARGOCD_INSTALL_RE.exec(installs[0])[1];
-  assert.match(ref, /^v\d+\.\d+\.\d+$/, `Argo CD の URL が版のタグでない（${ref}）: ${installs[0]}`);
+  assert.strictEqual(installs[0], 'kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install');
+  assert.ok(!anyLineHas(res.lines, 'manifests/install.yaml'), 'install.yaml の URL を直接 apply した（digest の固定を経ない）');
 });
 
-ok('#1843: ARGOCD_VERSION の上書きは URL に効く', () => {
-  const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'v3.4.9' });
-  assert.ok(anyLineHas(res.lines, 'argo-cd/v3.4.9/manifests/install.yaml'), '上書きした版の URL で apply していない');
+// #1858 / IADR-0547: 版は内側のイメージの digest と対で決まる。固定と同じ値は受け、違う値は何もせずに止まる。
+ok('#1858: ARGOCD_VERSION を固定と同じ値で与えても通常どおり進む', () => {
+  const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'v3.5.4' });
+  assert.strictEqual(res.status, 0, `固定と同じ値で止まった: ${res.stderr}`);
+  assert.ok(res.lines.some((l) => ARGOCD_INSTALL_RE.test(l)), 'install を apply していない');
 });
+
+for (const [name, value] of [
+  ['ARGOCD_VERSION', 'v3.4.9'],
+  ['ISTIO_VERSION', '1.31.0'],
+  ['ESO_CHART_VERSION', '2.9.0'],
+  ['RELOADER_CHART_VERSION', '2.2.18'],
+  ['CERT_MANAGER_VERSION', 'v1.21.2'],
+  ['RELOADER_IMAGE_TAG', 'v1.4.23'],
+]) {
+  ok(`#1858: ${name} を固定と違う値（${value}）で与えると、何もせずに非 0 で止まる（版だけ変えると digest と食い違う）`, () => {
+    const res = runUp({ ARGOCD: '1', ISTIO: '1', VAULT: '1', ESO: '1', LOCALEDGE: '1', [name]: value });
+    assert.notStrictEqual(res.status, 0, `${name}=${value} で正常終了した（固定した digest と違う版が入る）`);
+    assert.ok(res.stderr.includes(name), `stderr に ${name} の案内が無い: ${res.stderr}`);
+    assert.ok(/IADR-0547/.test(res.stderr), 'stderr に根拠（IADR-0547）の案内が無い');
+    assert.ok(!anyLineHas(res.lines, 'k3d cluster create'), '拒否の前にクラスタを作った（判定は副作用より前）');
+  });
+}
 
 ok('#1843: ARGOCD_VERSION にブランチ名（stable）を与えると、何もせずに非 0 で止まる', () => {
   const res = runUp({ ARGOCD: '1', ARGOCD_VERSION: 'stable' });
@@ -2230,12 +3045,12 @@ ok('up-script: ESO chart 版が pin されている（helm install に --version
   assert.ok(idx >= 0, 'ESO の helm upgrade --install 行が見つからない');
   const block = text.slice(idx, idx + 240); // 継続行を含む同一コマンドの範囲
   assert.ok(/--version\s/.test(block), 'ESO の helm install に --version（版 pin）が無い＝latest 追従');
-  // 既定 pin（固定版）が存在すること（ESO_CHART_VERSION の既定値 or 直書きの固定版）。
+  // 既定 pin（固定版）が存在すること。#1858 / IADR-0547: 版は冒頭の pin_version が決め、内側のイメージは values が持つ。
   assert.ok(
-    /ESO_CHART_VERSION="\$\{ESO_CHART_VERSION:-\d+\.\d+\.\d+\}"/.test(text) ||
-      /--version\s+"?\d+\.\d+\.\d+/.test(block),
-    'ESO chart の固定版（ESO_CHART_VERSION 既定 or 直書き）が無い',
+    /^pin_version ESO_CHART_VERSION \d+\.\d+\.\d+ /m.test(text) || /--version\s+"?\d+\.\d+\.\d+/.test(block),
+    'ESO chart の固定版（pin_version ESO_CHART_VERSION or 直書き）が無い',
   );
+  assert.ok(block.includes('-f deploy/local/vault/eso/external-secrets-values.yaml'), 'ESO の内側のイメージを values（tag@digest）で固定していない');
 });
 
 // IADR-0103 (#354): ARGOCD=1 は argocd ns へ keycloak の ExternalName エイリアスを apply する。
@@ -3089,6 +3904,124 @@ ok('#780: Keycloak の Ingress は同 namespace の edge-tls を使い、後段�
     '後段が keycloak:8080 でない');
 });
 
+// --- NFR-18, IADR-0575 (GHSA-rh44-px44-p48q): エッジは Keycloak の管理面（/admin・/realms/master）を出さない ----------------------
+// 宣言を読んで経路の選ばれ方を模型で再現し、(1) 管理面はエッジで拒む (2) 利用者が使う realm の経路（ログイン・トークン・
+// アカウントコンソール・テーマの資源・discovery）は従来どおり Keycloak へ届く、を Traefik / Istio の両エッジで固定する。
+// 実測は scripts/check-stack-ready.js の G4b（エッジ越しの curl。CI の integration-stack）。
+const { parseDocuments: parseYaml0575 } = require(path.join(REPO_ROOT, 'scripts', 'lib', 'yaml-subset.js'));
+const REALM_NAME_0575 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8')).realm;
+const ADMIN_PATHS_0575 = ['/admin', '/admin/', '/admin/master/console/', '/admin/realms/platform/users',
+  '/realms/master', '/realms/master/', '/realms/master/.well-known/openid-configuration', '/realms/master/protocol/openid-connect/token',
+  '/realms/master/login-actions/reset-credentials', '/realms/master/account/'];
+const USER_PATHS_0575 = [`/realms/${REALM_NAME_0575}`, `/realms/${REALM_NAME_0575}/.well-known/openid-configuration`,
+  `/realms/${REALM_NAME_0575}/protocol/openid-connect/auth`, `/realms/${REALM_NAME_0575}/protocol/openid-connect/token`,
+  `/realms/${REALM_NAME_0575}/protocol/openid-connect/certs`, `/realms/${REALM_NAME_0575}/login-actions/authenticate`,
+  `/realms/${REALM_NAME_0575}/login-actions/reset-credentials`, `/realms/${REALM_NAME_0575}/account/`,
+  `/realms/${REALM_NAME_0575}/account/linked-accounts`, '/resources/abc12/login/platform/css/login.css', '/realms/ai-stock-trading/protocol/openid-connect/auth',
+  '/realms/masterpiece/account/'];
+const deny0575 = readAt(EDGE_DIR, 'keycloak-admin-deny.yaml');
+
+/** k8s の Ingress（pathType Prefix は要素単位）× Traefik の優先（ルールの長いものが勝つ）の模型。勝った Ingress の名前を返す。 */
+function traefikRoute0575(ingresses, host, reqPath) {
+  const prefixMatch = (p, req) => p === '/' || req === p || req.startsWith(`${p.replace(/\/$/, '')}/`);
+  let best = null;
+  for (const ing of ingresses) {
+    for (const rule of ing.spec.rules || []) {
+      if (rule.host !== host) continue;
+      for (const pth of rule.http.paths) {
+        assert.strictEqual(pth.pathType, 'Prefix', `${ing.metadata.name}: pathType が Prefix でない（模型の前提）`);
+        if (prefixMatch(pth.path, reqPath) && (!best || pth.path.length > best.len)) best = { name: ing.metadata.name, len: pth.path.length };
+      }
+    }
+  }
+  return best && best.name;
+}
+
+ok('IADR-0575: Traefik のエッジ — 管理面は拒否の Ingress（全拒否の中間処理）が受け、利用者の realm の経路は keycloak-edge が受ける', () => {
+  assert.ok(/^\s*-\s*keycloak-admin-deny\.yaml\s*$/m.test(EDGE_KUST), 'edge の kustomization に keycloak-admin-deny.yaml が無い（適用されない）');
+  const docs = parseYaml0575(deny0575);
+  const mw = docs.find((d) => d.kind === 'Middleware');
+  const ing = docs.find((d) => d.kind === 'Ingress');
+  assert.ok(mw && ing, 'Middleware と Ingress の両方が無い');
+  assert.strictEqual(mw.apiVersion, 'traefik.io/v1alpha1');
+  assert.deepStrictEqual(Object.keys(mw.spec), ['ipAllowList'], '中間処理が全拒否の ipAllowList だけでない');
+  assert.deepStrictEqual(mw.spec.ipAllowList.sourceRange, ['255.255.255.255/32'], '許す送信元が「誰でもない 1 アドレス」でない');
+  assert.strictEqual(ing.metadata.namespace, mw.metadata.namespace);
+  assert.strictEqual(ing.metadata.annotations['traefik.ingress.kubernetes.io/router.middlewares'],
+    `${mw.metadata.namespace}-${mw.metadata.name}@kubernetescrd`, '拒否の Ingress が中間処理を参照していない');
+  assert.strictEqual(ing.metadata.annotations['traefik.ingress.kubernetes.io/router.entrypoints'], 'websecure', '利用者の入口（websecure）と違う');
+  const all = [parseYaml0575(KEYCLOAK_INGRESS).find((d) => d.kind === 'Ingress'), ing];
+  for (const p of ADMIN_PATHS_0575) assert.strictEqual(traefikRoute0575(all, 'keycloak.localhost', p), 'keycloak-edge-admin-deny', `${p} が拒否に当たらない`);
+  for (const p of USER_PATHS_0575) assert.strictEqual(traefikRoute0575(all, 'keycloak.localhost', p), 'keycloak-edge', `利用者の経路 ${p} が Keycloak へ届かない`);
+  // 陰性対照: 拒否の Ingress を外すと管理面は Keycloak へ届く（模型が拒否を見ている）
+  assert.strictEqual(traefikRoute0575([all[0]], 'keycloak.localhost', '/admin/'), 'keycloak-edge');
+});
+
+/** Istio の HTTP route（先勝ち。uri の prefix は文字列の前方一致、exact は完全一致）の模型。勝った route を返す。 */
+function istioRoute0575(http, reqPath, method = 'GET') {
+  return http.find((r) => (r.match || [{}]).some((m) => {
+    if (m.method && m.method.exact !== method) return false;
+    const u = m.uri || {};
+    if (u.exact !== undefined) return reqPath === u.exact;
+    if (u.prefix !== undefined) return reqPath.startsWith(u.prefix);
+    if (u.regex !== undefined) return new RegExp(`^(?:${u.regex})$`).test(reqPath);
+    return true;
+  }));
+}
+
+ok('IADR-0575: Istio のエッジ — 先頭の route が管理面を 403 で拒み、利用者の realm の経路は Keycloak へ届く（リセット申請の床を入れても）', () => {
+  const vs = parseYaml0575(readAt(REPO_ROOT, 'deploy', 'local', 'edge-istio', 'virtualservice-app.yaml')).find((d) => d.kind === 'VirtualService' && d.metadata.name === 'msp-keycloak-edge');
+  assert.ok(vs, 'msp-keycloak-edge が無い');
+  assert.strictEqual(vs.spec.http[0].name, 'keycloak-admin-surface-deny', '先頭の route が拒否でない（Istio は先勝ち）');
+  assert.strictEqual(vs.spec.http[0].directResponse.status, '403');
+  // 床の overlay（既定）を模型に当てる: /spec/http/1 へ入れる
+  const overlay = readAt(REPO_ROOT, 'deploy', 'local', 'edge-istio-reset-floor', 'kustomization.yaml');
+  assert.ok(/op: add\n\s+path: \/spec\/http\/1\n/.test(overlay), '床を拒否の直後（/spec/http/1）へ入れていない');
+  const floorRegex = (/regex:\s*"([^"]+)"/.exec(overlay) || [])[1];
+  assert.ok(floorRegex, '床の正規表現を読めない');
+  const floor = { name: 'reset-credentials-floor', match: [{ method: { exact: 'POST' }, uri: { regex: floorRegex.replace(/^\^/, '') } }], route: [{ destination: { host: 'reset-floor' } }] };
+  for (const http of [vs.spec.http, [vs.spec.http[0], floor, ...vs.spec.http.slice(1)]]) {
+    for (const p of ADMIN_PATHS_0575) {
+      for (const m of ['GET', 'POST']) assert.strictEqual((istioRoute0575(http, p, m) || {}).name, 'keycloak-admin-surface-deny', `${m} ${p} が拒否に当たらない`);
+    }
+    for (const p of USER_PATHS_0575) {
+      const r = istioRoute0575(http, p);
+      assert.ok(r && r.route && /keycloak\.platform-infra/.test(r.route[0].destination.host), `利用者の経路 ${p} が Keycloak へ届かない`);
+    }
+  }
+  // 床は利用者の realm の申請の POST にだけ当たる（拒否の後ろでも効く）
+  const withFloor = [vs.spec.http[0], floor, ...vs.spec.http.slice(1)];
+  assert.strictEqual(istioRoute0575(withFloor, `/realms/${REALM_NAME_0575}/login-actions/reset-credentials`, 'POST').name, 'reset-credentials-floor');
+  // 陰性対照: 床を先頭へ入れる（従来の /spec/http/0）と master の申請の POST が床を通って Keycloak へ届く
+  assert.strictEqual(istioRoute0575([floor, ...vs.spec.http], '/realms/master/login-actions/reset-credentials', 'POST').name, 'reset-credentials-floor');
+});
+
+ok('IADR-0575: chart のエッジ（edge.oidc.enabled）は /realms/ の転送より前に master を 403 で拒む', () => {
+  const tpl = readAt(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'templates', 'edge.yaml');
+  const denyAt = tpl.indexOf('name: keycloak-master-realm-deny');
+  const fwdAt = tpl.indexOf('- uri: { prefix: /realms/ }');
+  const oidcAt = tpl.indexOf('{{- if .Values.edge.oidc.enabled }}');
+  assert.ok(denyAt > oidcAt && oidcAt >= 0, '拒否が oidc の分岐の中に無い');
+  assert.ok(fwdAt > denyAt, '拒否が /realms/ の転送より後ろにある（先勝ちで master が届く）');
+  const block = tpl.slice(denyAt, fwdAt);
+  assert.ok(/- uri: \{ exact: \/realms\/master \}/.test(block) && /- uri: \{ prefix: \/realms\/master\/ \}/.test(block) && /status: 403/.test(block), '拒否の match・応答が違う');
+});
+
+ok('IADR-0575: 手順書・スクリプトは管理面（/admin・/realms/master）をエッジ host（keycloak.localhost）越しに引かない', () => {
+  // 拒否の後は、エッジ越しの管理面の URL を案内する手順は壊れる（403）。port-forward か in-cluster の URL を使う。
+  const r = spawnSync('git', ['grep', '-n', '-E', 'keycloak\\.localhost(:[0-9]+)?/(admin|realms/master)', '--', 'docs', 'deploy', 'scripts', '.github',
+    ':!scripts/*.test.js', ':!scripts/check-stack-ready.js'], { cwd: REPO_ROOT, encoding: 'utf8' });
+  assert.ok(r.status === 1 || r.status === 0, r.stderr);
+  assert.strictEqual((r.stdout || '').trim(), '', `エッジ越しに管理面を引く箇所がある:\n${r.stdout}`);
+});
+
+ok('IADR-0575: KC_HOSTNAME_ADMIN を置かない（Admin REST のトークンの発行者を変えない）。管理者の経路（port-forward 越しの Admin REST）は README にある', () => {
+  const kc = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/KC_HOSTNAME_ADMIN/.test(kc), 'KC_HOSTNAME_ADMIN がある（in-cluster の Admin REST が拒まれ得る）');
+  const readme = readAt(EDGE_DIR, 'README.md');
+  assert.ok(/kubectl -n platform-infra port-forward svc\/keycloak 8080:8080/.test(readme) && /http:\/\/localhost:8080\/admin\/realms\//.test(readme), 'README に管理者の経路が無い');
+});
+
 ok('#780: coredns-custom は k3s の import 先へ置き、coredns ConfigMap 自体は触らない', () => {
   const cm = docsOf(COREDNS_CUSTOM, 'ConfigMap')[0];
   assert.ok(cm, 'ConfigMap ドキュメントが無い');
@@ -3246,8 +4179,9 @@ const HELM_UPGRADE_RE = /helm upgrade --install msp deploy\/helm\/microservices-
 ok('LOCALEMBED 未設定: helm upgrade の引数に --set が 1 つも足されない', () => {
   const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
   assert.ok(line, 'helm upgrade --install msp の行が無い');
+  // #2132 / IADR-0605: 自製イメージのタグ（--set-string global.image.tag）は opt-in ではなく常に 1 つ付く。それを除いて数える。
   assert.ok(
-    !line.includes('--set'),
+    !line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').includes('--set'),
     `既定なのに --set が付いている（バイト等価が崩れている）: ${line}`,
   );
 });
@@ -3341,14 +4275,44 @@ function chartEmbeddingCollection() {
   return (/^ {2}collection:\s*(\S+)\s*$/m.exec(CHART_VALUES.slice(at)) || [])[1];
 }
 
-ok('IADR-0467: embedding.collection がゲートウェイ・取り込みの Ruri コレクション名と一致する', () => {
+ok('IADR-0467: embedding.collection・dimensions がゲートウェイの Ruri のエンドポイントと一致する', () => {
   assert.ok(RURI_ENDPOINT, 'appsettings.json に selfhosted-embedding のエンドポイントが無い');
   const collection = chartEmbeddingCollection();
   assert.strictEqual(collection, RURI_ENDPOINT.Collection,
     'values.yaml の embedding.collection がゲートウェイの Ruri コレクションと食い違う（検索が空のコレクションを読む）');
-  assert.ok(
-    INGESTION_APPSETTINGS.Embedding.Collections.some((c) => c.Name === collection),
-    '取り込みが作るコレクション（Embedding:Collections）に embedding.collection が無い');
+  const e = CHART_VALUES.search(/^embedding:\s*$/m);
+  const dims = (/^ {2}dimensions:\s*(\d+)\s*$/m.exec(CHART_VALUES.slice(e)) || [])[1];
+  assert.strictEqual(Number(dims), RURI_ENDPOINT.Dimensions,
+    'values.yaml の embedding.dimensions がゲートウェイの Ruri の次元と食い違う（取り込みが別の次元でコレクションを作る）');
+});
+
+// FR-02, ADR-0127 決定 5, IADR-0085 (#1746 段 S4): 既定の取り込みは Ruri のコレクションを作らない。
+// opt-in（Helm embedding.enabled・compose SEARCH_FUSED_COLLECTION）のときだけ、ゲートウェイ・検索と同じ条件で作らせる。
+ok('IADR-0085 (#1746 段 S4): 既定の取り込み（appsettings.json）は Ruri のコレクションを宣言しない', () => {
+  const names = INGESTION_APPSETTINGS.Embedding.Collections.map((c) => c.Name);
+  assert.deepStrictEqual(names, ['knowledge_chunks_voyage_3_5'],
+    '取り込みの既定に voyage 以外がある（無効の配備に空のコレクションが作られる）');
+  assert.ok(!names.includes(chartEmbeddingCollection()), '既定に Ruri のコレクションが残っている');
+});
+
+ok('IADR-0085 (#1746 段 S4): Helm は embedding.enabled のときだけ取り込みへ Ruri のコレクションを描く', () => {
+  const at = CHART_DEPLOYMENT.indexOf('if and (eq $name "ingestion") $.Values.embedding.enabled');
+  assert.ok(at !== -1, 'ingestion に embedding.enabled 条件の分岐が無い（既定で作るか、opt-in でも作らない）');
+  const block = CHART_DEPLOYMENT.slice(at, CHART_DEPLOYMENT.indexOf('{{- end }}', at));
+  assert.ok(block.includes('- name: Embedding__Collections__1__Name'), 'Embedding__Collections__1__Name が無い');
+  assert.ok(block.includes('$.Values.embedding.collection'), '名前が embedding.collection から来ていない');
+  assert.ok(block.includes('- name: Embedding__Collections__1__VectorSize'), 'Embedding__Collections__1__VectorSize が無い');
+  assert.ok(block.includes('$.Values.embedding.dimensions'), '次元が embedding.dimensions から来ていない');
+  // 添字 1 を描くのはこの分岐だけ（決定的ローカル埋め込みは添字 2）。
+  assert.strictEqual(CHART_DEPLOYMENT.split('Embedding__Collections__1__Name').length - 1, 1,
+    '添字 1 が別の分岐でも描かれている');
+});
+
+ok('IADR-0085 (#1746 段 S4): compose の取り込みは検索と同じ SEARCH_FUSED_COLLECTION で Ruri のコレクションを作る（既定空）', () => {
+  assert.match(COMPOSE_YAML, /^\s+Embedding__Collections__1__Name: \$\{SEARCH_FUSED_COLLECTION:-\}\s*$/m,
+    'docker-compose.yml の取り込みに Embedding__Collections__1__Name（既定空・検索と同じ変数）が無い');
+  const vs = (/^\s+Embedding__Collections__1__VectorSize: "(\d+)"\s*$/m.exec(COMPOSE_YAML) || [])[1];
+  assert.strictEqual(Number(vs), RURI_ENDPOINT.Dimensions, 'compose の次元がゲートウェイの Ruri の次元と食い違う');
 });
 
 ok('IADR-0467: retrieval の束ねる配線は embedding.enabled と同じ条件でだけ描画される', () => {
@@ -3540,6 +4504,71 @@ ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で�
   assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
 });
 
+// --- NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口の宣言（静的）-----------------------------------------
+// 宣言を読み、Envoy の host の選び方（完全一致 ＞ 接尾辞のワイルドカード）の模型で、既定（拒否だけ）と opt-in（拒否 ＋ 6 host）の
+// 両方で各 host がどこへ行くかを固定する。
+/** Envoy の virtual host の選び方の模型（完全一致が先、次に最長の `*.` 接尾辞）。勝った VirtualService の名前を返す。 */
+function envoyHost0586(vsList, host) {
+  const exact = vsList.find((v) => v.spec.hosts.includes(host));
+  if (exact) return exact.metadata.name;
+  let best = null;
+  for (const v of vsList) {
+    for (const h of v.spec.hosts) {
+      if (h.startsWith('*.') && host.endsWith(h.slice(1)) && (!best || h.length > best.len)) best = { name: v.metadata.name, len: h.length };
+    }
+  }
+  return best && best.name;
+}
+
+ok('IADR-0586: 管理ツールの経路は kustomization に含めず、Istio の 50000 には既定の拒否（*.localhost の 403）だけが居る', () => {
+  for (const f of ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']) {
+    assert.ok(!new RegExp(`^\\s*-\\s*${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm').test(EDGE_KUST), `edge の kustomization が ${f} を含む（既定で置かれる）`);
+  }
+  assert.ok(!/^\s*-\s*virtualservice-admin\.yaml\s*$/m.test(EDGE_ISTIO_KUST), 'edge-istio の kustomization が virtualservice-admin.yaml を含む（既定で置かれる）');
+  assert.ok(/^\s*-\s*virtualservice-admin-deny\.yaml\s*$/m.test(EDGE_ISTIO_KUST), 'edge-istio の kustomization に既定の拒否が無い');
+  const deny = parseYaml0575(readAt(EDGE_ISTIO_DIR, 'virtualservice-admin-deny.yaml'));
+  assert.strictEqual(deny.length, 1);
+  const d = deny[0];
+  assert.strictEqual(d.kind, 'VirtualService');
+  assert.deepStrictEqual(d.spec.gateways, ['istio-system/msp-admin-edge'], '拒否が 50000 の Gateway に載っていない');
+  const gw = parseYaml0575(EDGE_ISTIO_GW).find((x) => x.metadata && x.metadata.name === 'msp-admin-edge');
+  assert.deepStrictEqual(d.spec.hosts, gw.spec.servers[0].hosts, '拒否の host が Gateway の host と違う（覆わない host が残る）');
+  assert.strictEqual(d.spec.http.length, 1);
+  assert.strictEqual(String(d.spec.http[0].directResponse.status), '403');
+  assert.ok(!d.spec.http[0].route && !d.spec.http[0].match, '拒否が後段へ転送するか、条件つきになっている');
+});
+
+ok('IADR-0586: 既定はどの管理ツールの host も拒否に当たり、opt-in では各 host が自分の経路に当たる（Traefik と Istio の host は一致）', () => {
+  const admin = parseYaml0575(EDGE_ISTIO_VS_ADMIN).filter((x) => x.kind === 'VirtualService');
+  const deny = parseYaml0575(readAt(EDGE_ISTIO_DIR, 'virtualservice-admin-deny.yaml'));
+  const istioHosts = admin.flatMap((v) => v.spec.hosts).sort();
+  const traefikHosts = ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']
+    .flatMap((f) => parseYaml0575(readAt(EDGE_DIR, f)).filter((x) => x.kind === 'Ingress'))
+    .flatMap((i) => i.spec.rules.map((r) => r.host)).sort();
+  assert.deepStrictEqual(istioHosts, traefikHosts, 'Traefik と Istio で管理ツールの host がずれている（G4c は Istio の宣言から走査する）');
+  assert.strictEqual(istioHosts.length, 6);
+  for (const h of istioHosts) {
+    assert.strictEqual(envoyHost0586(deny, h), 'msp-admin-deny', `既定で ${h} が拒否に当たらない`);
+    const owner = admin.find((v) => v.spec.hosts.includes(h)).metadata.name;
+    assert.strictEqual(envoyHost0586([...deny, ...admin], h), owner, `opt-in で ${h} が自分の経路に当たらない（拒否が勝っている）`);
+  }
+  assert.strictEqual(envoyHost0586([...deny, ...admin], 'other.localhost'), 'msp-admin-deny', '知らない host が拒否に当たらない');
+  // 陰性対照: 拒否が無ければ既定で host は何にも当たらない（模型が拒否を見ている）
+  assert.strictEqual(envoyHost0586([], 'grafana.localhost'), null);
+});
+
+ok('IADR-0586: 切り戻し（istio-edge-down.sh）も Istio の管理ツールの経路を消し、Traefik の経路は ADMIN_EDGE に従う', () => {
+  assert.ok(ISTIO_EDGE_DOWN.includes('kubectl delete -f deploy/local/edge-istio/virtualservice-admin.yaml --ignore-not-found=true'),
+    'overlay の外に置いた Istio の管理ツールの経路を消していない（切り戻し後も残る）');
+  assert.ok(/^admin_edge_traefik$/m.test(ISTIO_EDGE_DOWN), 'Traefik へ戻すときに ADMIN_EDGE を見ていない');
+  assert.ok(!/kubectl apply -f deploy\/local\/edge\/argocd-ingress\.yaml/.test(ISTIO_EDGE_DOWN), '切り戻しが argocd の経路を無条件に置く');
+  for (const src of [ISTIO_EDGE_UP, ISTIO_EDGE_DOWN]) {
+    const v = src.indexOf('admin_edge_validate');
+    const firstKubectl = src.search(/^\s*kubectl /m);
+    assert.ok(v > 0 && v < firstKubectl, 'ADMIN_EDGE の検めがクラスタに触る前に無い');
+  }
+});
+
 // ---------------------------------------------------------------------------
 // FR-20 / #1154 / IADR-0348: Obsidian プラグインの同期プロトコルをエッジから外へ出す 1 本。
 //
@@ -3625,6 +4654,55 @@ ok('#1154: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も�
     /app:\s*\{\{\s*\.Values\.edge\.privateNotesSync\.service\s*\}\}/,
     'NetworkPolicy の podSelector が route の行き先と同じ単一情報源から描画されていない（ドリフトする）',
   );
+});
+
+// ---------------------------------------------------------------------------
+// FR-16 / #2045 / IADR-0594: 外部 AI エージェントの入口（/mcp）。3 つのエッジ（本番チャート・経路 B の Istio・経路 B の Traefik）が
+// 同じ契約（exact /mcp ＋ prefix /mcp/ → mcp-service:8080・rewrite 無し・catch-all より前）を持つこと。
+// 🔴 `prefix: /mcp`（文字列の前方一致）は同じポートの管理 REST /mcp-clients まで外へ出すので、その形が現れた瞬間に落とす。
+// 稼働のエッジで 401 / 200 / 「管理 REST に届かない」を測るのは統合スタックの門（check-mcp-client-provisioning.js の M13）である。
+// 本番チャートの L7 の門・評価は helm-edge-mcp-entry.test.js が持つ。
+// ---------------------------------------------------------------------------
+const FRONTEND_ING_CODE = stripYamlComments(FRONTEND_ING_YAML);
+
+ok('#2045: /mcp の経路が 3 つのエッジにあり、exact /mcp ＋ /mcp/ 配下で mcp-service へ振る', () => {
+  assert.match(EDGE_ISTIO_VS_APP_CODE,
+    /- uri: \{ exact: \/mcp \}\n\s*- uri: \{ prefix: \/mcp\/ \}\n\s*route:\n\s*- destination:\n\s*host: mcp-service\.microservices-platform\.svc\.cluster\.local\n\s*port:\n\s*number: 8080/,
+    'Istio の overlay に exact /mcp ＋ prefix /mcp/ → mcp-service:8080 の route が無い（外部 AI エージェントが届かない。#2045）');
+  assert.match(CHART_EDGE_CODE,
+    /- uri: \{ exact: \/mcp \}\n\s*- uri: \{ prefix: \/mcp\/ \}\n\s*route:\n\s*- destination:\n\s*host: \{\{ \.Values\.edge\.mcp\.service \| quote \}\}/,
+    '本番チャートに exact /mcp ＋ prefix /mcp/ → edge.mcp.service の route が無い');
+  assert.match(FRONTEND_ING_CODE,
+    /- path: \/mcp\n\s*pathType: Exact\n\s*backend:\n\s*service:\n\s*name: mcp-service\n\s*port:\n\s*number: 8080\n\s*- path: \/mcp\/\n\s*pathType: Prefix\n\s*backend:\n\s*service:\n\s*name: mcp-service/,
+    'Traefik の Ingress に Exact /mcp ＋ Prefix /mcp/ → mcp-service:8080 が無い');
+});
+
+ok('#2045: /mcp の文字列前置（/mcp-clients まで飲む形）を、どのエッジも使っていない', () => {
+  for (const [name, src] of [['istio overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    assert.ok(!/prefix:\s*\/mcp\s*(\}|$)/m.test(src), `${name} が prefix: /mcp を使っている（/mcp-clients まで外へ出る）`);
+    assert.ok(!src.includes('/mcp-clients'), `${name} が /mcp-clients をエッジへ出している`);
+  }
+  assert.ok(!/- path: \/mcp\n\s*pathType: Prefix/.test(FRONTEND_ING_CODE), 'Traefik の Ingress が /mcp を Prefix で出している');
+  assert.ok(!FRONTEND_ING_CODE.includes('/mcp-clients'), 'Traefik の Ingress が /mcp-clients を出している');
+});
+
+ok('#2045: /mcp の route は catch-all より前にあり、rewrite を張らない', () => {
+  for (const [name, src] of [['istio overlay', EDGE_ISTIO_VS_APP_CODE], ['chart', CHART_EDGE_CODE]]) {
+    const at = src.indexOf('exact: /mcp }');
+    const catchAllAt = src.search(/prefix:\s*\/\s*(\}|$)/m);
+    assert.ok(at > 0 && catchAllAt > 0 && at < catchAllAt, `${name} の /mcp の route が catch-all より後ろにある（SPA に吸われる）`);
+    assert.ok(!/\brewrite:/.test(src), `${name} が rewrite を張っている`);
+  }
+  const ingAt = FRONTEND_ING_CODE.indexOf('- path: /mcp\n');
+  const ingCatchAll = FRONTEND_ING_CODE.search(/- path: \/\n/);
+  assert.ok(ingAt > 0 && ingCatchAll > ingAt, 'Traefik の Ingress の /mcp が catch-all より後ろにある');
+});
+
+ok('#2045: 本番像の既定は opt-in（false）で、NetworkPolicy の穴も同じ条件でしか開かない', () => {
+  assert.match(CHART_VALUES, /^ {2}mcp:\n {4}enabled: false\n {4}service: mcp-service\n {4}port: 8080/m, 'values.yaml の edge.mcp の既定が false でない');
+  assert.match(stripYamlComments(CHART_NETPOL),
+    /if\s+\.Values\.edge\.mcp\.enabled[\s\S]{0,900}name:\s*allow-edge-ingress-to-mcp/,
+    'NetworkPolicy の穴が edge.mcp.enabled で条件付けられていない');
 });
 
 ok('#782: 切り戻しは mTLS を先に緩める（入口だけ戻して 502 のままにしない）', () => {
@@ -3765,13 +4843,15 @@ const isEdgeApply = (l) => l === EDGE_APPLY;
 const isTraefikWait = (l) => l.startsWith('kubectl ') && l.includes('--for=jsonpath') && l.includes('svc/traefik');
 const isTraefikCoreDns = (l) => l.includes('apply -f deploy/local/aliases/coredns-edge-hosts.yaml');
 const isArgocdIngress = (l) => l.includes('apply -f deploy/local/edge/argocd-ingress.yaml');
+// IADR-0586: argocd の経路は ADMIN_EDGE に従って置く（apply）か消す（delete）。Traefik の段で扱ったかを見るときはどちらでもよい。
+const isArgocdIngressHandled = (l) => /^kubectl (apply|delete) -f deploy\/local\/edge\/argocd-ingress\.yaml/.test(l);
 const isServiceOff = (l) => l.includes('apply -f deploy/local/edge-istio/traefik-service-off.yaml');
 const isGatewayInstall = (l) => l.startsWith('helm upgrade --install istio-ingressgateway ');
 const isHelmChartConfigProbe = (l) =>
   l.startsWith('kubectl ') && l.includes('get helmchartconfig traefik') && l.includes('valuesContent');
 
-const EDGE_FRESH = runUp({ ISTIO: '1', LOCALEDGE: '1' });
-const EDGE_MIGRATED = runUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
+const EDGE_FRESH = lazyRunUp({ ISTIO: '1', LOCALEDGE: '1' });
+const EDGE_MIGRATED = lazyRunUp({ ISTIO: '1', LOCALEDGE: '1', STUB_EDGE_ON_ISTIO: '1' });
 
 ok('#1691: 移行済み（HelmChartConfig traefik が service.enabled: false）なら Traefik へ戻さず、待たずに完走する', () => {
   const r = EDGE_MIGRATED;
@@ -3780,7 +4860,7 @@ ok('#1691: 移行済み（HelmChartConfig traefik が service.enabled: false）�
   assert.ok(!r.lines.some(isEdgeApply), `HelmChartConfig を Service ありへ戻した: ${EDGE_APPLY}`);
   assert.ok(!r.lines.some(isTraefikWait), 'Traefik の反映待ち（wait svc/traefik）を走らせた');
   assert.ok(!r.lines.some(isTraefikCoreDns), 'pod 側の *.localhost を Traefik へ向ける CoreDNS を当てた');
-  assert.ok(!r.lines.some(isArgocdIngress), 'Traefik しか読まない argocd-ingress を当てた');
+  assert.ok(!r.lines.some(isArgocdIngressHandled), 'Traefik しか読まない argocd-ingress を扱った');
   // Istio の入口も使うエッジ TLS は飛ばさない（ClusterIssuer local-edge-ca は istio-edge-up.sh の前提）。
   assert.ok(r.lines.some((l) => l.endsWith('apply -k deploy/local/edge/tls')), 'エッジ TLS（cert-manager）まで飛ばした');
   assert.match(r.stdout, /Istio Ingress Gateway へ移し済み/, '飛ばしたことを告げていない');
@@ -3809,7 +4889,7 @@ ok('#1691: 未移行なら従来どおり（Traefik を当て、反映を待ち�
   const apply = at(isEdgeApply, EDGE_APPLY);
   const wait = at(isTraefikWait, 'wait svc/traefik');
   const dns = at(isTraefikCoreDns, 'Traefik 向け CoreDNS');
-  const argo = at(isArgocdIngress, 'argocd-ingress');
+  const argo = at(isArgocdIngressHandled, 'argocd-ingress（ADMIN_EDGE に従う apply / delete。IADR-0586）');
   const off = at(isServiceOff, 'istio-edge-up.sh の traefik-service-off');
   assert.ok(probe < apply && apply < wait && wait < dns && dns < argo && argo < off, '従来の順序が崩れている');
   assert.ok(!r.stdout.includes('移し済み'), '未移行なのに「移し済み」と告げた');
@@ -3939,17 +5019,54 @@ ok('#1710: 明示が勝つ（現行 STRICT でも ISTIO_MTLS_MODE=PERMISSIVE な
   assert.strictEqual(mtlsOf(failOk), 'STRICT');
 });
 
-ok('#1710: 初回（リリースが無い）＋ 未指定 → 従来どおり PERMISSIVE。メッシュ未宣言のリリースもチャート既定の STRICT を拾わない', () => {
+// NFR-18, IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: 初回の既定は STRICT（従前は PERMISSIVE）。LOCALEDGE=1 の初回は入口を移すまで
+//   [6/7] で PERMISSIVE を宣言し、istio-edge-up.sh [5/5] が STRICT へ上げる（IADR-0377 決定 2 の段取りはそのまま）。
+const DEFAULT_STRICT_INFO = /INFO: mesh\.mtlsMode は既定の STRICT を宣言します/;
+ok('#1710 / IADR-0590: 初回（リリースが無い）＋ 未指定 → 既定の STRICT（LOCALEDGE=1 は入口を移した後で上げる）。メッシュ未宣言のリリースも同じ', () => {
   const fresh = runUp({ ISTIO: '1', LOCALEDGE: '1' });
   assert.strictEqual(fresh.status, 0, `起動器が止まった:\n${fresh.stderr.slice(-600)}`);
-  assert.strictEqual(mtlsOf(fresh), 'PERMISSIVE');
+  assert.strictEqual(mtlsOf(fresh), 'PERMISSIVE', '入口がまだ Traefik の段で STRICT を宣言した（502。IADR-0377 決定 2）');
+  assert.strictEqual(promotedOf(fresh), 'STRICT', 'IADR-0590 の後退: 初回の既定が STRICT へ上がらない（PERMISSIVE のまま残る）');
+  assert.match(fresh.stdout, DEFAULT_STRICT_INFO, '既定の STRICT を宣言したことを告げていない');
   assert.ok(fresh.lines.some((l) => l.startsWith('helm list ')), 'リリースの有無を確かめていない');
   assert.ok(!fresh.lines.some((l) => l.startsWith('helm get values')), 'リリースが無いのに values を読んだ');
   assert.doesNotMatch(fresh.stdout, INHERIT_INFO, '初回なのに引き継ぎを告げた');
-  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。メッシュ未宣言は初回と同じく PERMISSIVE。
+  // ISTIO=1 単独（入口は port-forward。昇格の口が無い）の初回は [6/7] がそのまま STRICT を宣言する。
+  const alone = runUp({ ISTIO: '1' });
+  assert.strictEqual(alone.status, 0, `起動器が止まった:\n${alone.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(alone), 'STRICT', 'IADR-0590 の後退: ISTIO=1 単独の初回が STRICT でない');
+  // ISTIO 無しで立てた既存リリース（values-local.yaml の mesh.enabled: false のまま）。メッシュ未宣言は初回と同じく既定の STRICT。
   const noMesh = runUp({ ISTIO: '1', STUB_HELM_VALUES: 'mesh:\n  enabled: false\nnamespace:\n  create: false\n' });
   assert.strictEqual(noMesh.status, 0, `メッシュ未宣言のリリースで止まった:\n${noMesh.stderr.slice(-600)}`);
-  assert.strictEqual(mtlsOf(noMesh), 'PERMISSIVE', 'メッシュを宣言していないリリースからモードを引き継いだ');
+  assert.strictEqual(mtlsOf(noMesh), 'STRICT', 'メッシュ未宣言のリリースが既定の STRICT にならない');
+  assert.doesNotMatch(noMesh.stdout, INHERIT_INFO, 'メッシュを宣言していないリリースからモードを引き継いだ');
+});
+
+ok('IADR-0590: 引き継いだ PERMISSIVE は上げも下げもしないが、緩めた状態が続いていることを毎回告げる（STRICT なら告げない）', () => {
+  const perm = runUp({ ISTIO: '1', STUB_HELM_VALUES: helmValues('PERMISSIVE') });
+  assert.strictEqual(perm.status, 0, `起動器が止まった:\n${perm.stderr.slice(-600)}`);
+  assert.strictEqual(mtlsOf(perm), 'PERMISSIVE', '引き継ぎが黙って STRICT へ上げた（#1710 の逆向き）');
+  assert.match(perm.stderr, /WARN: mTLS は PERMISSIVE のままです（既定は STRICT/, '緩めた状態の継続を告げていない');
+  assert.match(perm.stderr, /ISTIO_MTLS_MODE=STRICT を付けて再実行/, '上げ方を示していない');
+  const strict = runUp({ ISTIO: '1', STUB_HELM_VALUES: helmValues('STRICT') });
+  assert.doesNotMatch(strict.stderr, /WARN: mTLS は \S+ のままです/, 'STRICT なのに緩めた状態を告げた');
+});
+
+ok('IADR-0590: STRICT で AST の名前空間に Pod が居て注入ラベルが無ければ告げる（止めない）。注入済み・Pod 無し・PERMISSIVE は告げない', () => {
+  const WARN_AST = /WARN: mTLS は STRICT ですが、名前空間 ai-stock-trading に注入ラベル（istio-injection=enabled）がありません（Pod 2 個）/;
+  const outside = runUp({ ISTIO: '1', STUB_AST_PODS: '2' });
+  assert.strictEqual(outside.status, 0, `告げるだけのはずが止まった:\n${outside.stderr.slice(-600)}`);
+  assert.match(outside.stderr, WARN_AST, 'メッシュ外の AST から届かなくなることを告げていない');
+  assert.ok(outside.lines.includes("kubectl get namespace ai-stock-trading -o jsonpath={.metadata.labels.istio-injection}"),
+    `注入ラベルの読み先が違う: ${outside.lines.filter((l) => l.includes('ai-stock-trading')).join(' | ')}`);
+  const injected = runUp({ ISTIO: '1', STUB_AST_PODS: '2', STUB_AST_INJECTION: 'enabled' });
+  assert.doesNotMatch(injected.stderr, /WARN: mTLS は STRICT ですが/, '注入済みなのに告げた');
+  const none = runUp({ ISTIO: '1' });
+  assert.doesNotMatch(none.stderr, /WARN: mTLS は STRICT ですが/, 'AST の Pod が無いのに告げた');
+  const perm = runUp({ ISTIO: '1', ISTIO_MTLS_MODE: 'PERMISSIVE', STUB_AST_PODS: '2' });
+  assert.doesNotMatch(perm.stderr, /WARN: mTLS は STRICT ですが/, 'PERMISSIVE なのに告げた');
+  const noMesh = runUp({ STUB_AST_PODS: '2' });
+  assert.ok(!noMesh.lines.some((l) => l.startsWith('kubectl get namespace ai-stock-trading -o jsonpath')), 'メッシュ無しで AST の注入ラベルを読んだ');
 });
 
 ok('#1710: 読めない（helm list / get values の失敗・mtlsMode 欠落・値域外）＋ 未指定 → [2/7] の前に止まり、明示を告げる', () => {
@@ -4034,6 +5151,37 @@ const readsHelm = (r) => r.lines.some((l) => l.startsWith('helm list ') || l.sta
 const touchedCluster = (r) => r.lines.some((l) => l.startsWith('docker build ') || HELM_UPGRADE_RE.test(l)
   || l.startsWith('kubectl label namespace') || l.startsWith('helm upgrade --install istio'));
 const NO_MESH_VALUES = 'mesh:\n  enabled: false\nnamespace:\n  create: false\n';
+
+// NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission のラベル（チャートの namespace.yaml と同じ規則）。
+const PSA_LABEL_RE = /^kubectl label namespace microservices-platform pod-security\.kubernetes\.io\//;
+ok('IADR-0583: 既定（注入なし）は enforce=baseline・warn / audit=restricted を [5/7] の Namespace 作成の後・helm の前に貼る', () => {
+  const lines = DEFAULT.lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/enforce=baseline pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted --overwrite']);
+  const at = DEFAULT.lines.findIndex((l) => PSA_LABEL_RE.test(l));
+  const ns = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create namespace microservices-platform '));
+  const helmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('helm upgrade --install msp '));
+  assert.ok(ns >= 0 && ns < at && at < helmIdx, `順序が違う: ns=${ns} label=${at} helm=${helmIdx}`);
+});
+
+ok('IADR-0583: ISTIO=1・注入ラベルが残る Namespace では enforce を外す（istio-init が baseline を満たさない）', () => {
+  for (const env of [{ ISTIO: '1' }, { ISTIO: '0', STUB_MSP_INJECTION: 'enabled' }]) {
+    const r = runUp(env);
+    assert.strictEqual(r.status, 0, `起動器が止まった（${JSON.stringify(env)}）:\n${r.stderr.slice(-600)}`);
+    const lines = r.lines.filter((l) => PSA_LABEL_RE.test(l));
+    assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite'], JSON.stringify(env));
+  }
+});
+
+ok('IADR-0583: 注入ラベルを読めない（API の失敗）ときは「ラベルなし」と見なさず enforce を貼らない・失敗をログに出す', () => {
+  const r = runUp({ ISTIO: '0', STUB_MSP_INJECTION_FAIL: '1' });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const lines = r.lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.deepStrictEqual(lines, ['kubectl label namespace microservices-platform pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite']);
+  assert.match(r.stderr, /注入ラベルを読めなかった（kubectl の終了コード 1）.*enforce は貼らない/, '失敗をログに出していない');
+  // 陰性対照: 同じ条件で失敗が無ければ（ラベルなし）enforce=baseline を貼る（判定が失敗の有無で分かれている）。
+  const plain = runUp({ ISTIO: '0' }).lines.filter((l) => PSA_LABEL_RE.test(l));
+  assert.match(plain[0], /enforce=baseline/);
+});
 
 ok('#1713: 未指定 ＋ 現行 mesh true（STRICT）→ [6/7] は mesh.enabled=true・STRICT を保ち、Istio の段も通る', () => {
   const r = runUp({ STUB_HELM_VALUES: helmValues('STRICT') });
@@ -4478,7 +5626,7 @@ ok('SYNTHETIC 未設定: 合成監視が 1 バイトも現れない（既定オ�
   }
 });
 
-const SYNTHETIC_ON = runUp({ SYNTHETIC: '1' });
+const SYNTHETIC_ON = lazyRunUp({ SYNTHETIC: '1' });
 
 ok('SYNTHETIC=1: 標識の許可集合が除外の 3 サービスすべてへ与えられる', () => {
   assert.strictEqual(SYNTHETIC_ON.status, 0, `非0終了: ${SYNTHETIC_ON.stderr}`);
@@ -4599,7 +5747,7 @@ ok('#1564: 既定では platform-backup のイメージもビルドし、k3d へ
   assert.ok(!/WARN: k3d-local\/platform-backup/.test(DEFAULT.stderr), '成功したのに WARN を出した');
 });
 
-const BACKUP_BUILD_FAILS = runUp({ STUB_DOCKER_BUILD_FAIL: 'platform-backup' });
+const BACKUP_BUILD_FAILS = lazyRunUp({ STUB_DOCKER_BUILD_FAIL: 'platform-backup' });
 
 ok('🔴 #1564: platform-backup のイメージだけビルドに失敗しても、起動器は最後まで進んで 0 で終わる', () => {
   assert.strictEqual(
@@ -4646,7 +5794,7 @@ ok('🔴 #1564 / #1689: 版の解決に失敗したとき（ミラーの 404）�
 });
 
 // 2026-09-28 の稼働クラスタでの実ログ（#1689）。資格情報ヘルパーがメタデータの取得で失敗した。
-const BACKUP_BUILD_FAILS_CREDS = runUp({
+const BACKUP_BUILD_FAILS_CREDS = lazyRunUp({
   STUB_DOCKER_BUILD_FAIL: 'platform-backup',
   STUB_DOCKER_BUILD_FAIL_LOG: [
     '#2 [internal] load metadata for docker.io/library/postgres:16.15-alpine3.24@sha256:7218',
@@ -4671,7 +5819,7 @@ ok('🔴 #1689 / #1709: 資格情報ヘルパーの失敗（error getting creden
 });
 
 // sha256 の不一致は「同じ版の中身が変わった」であり、版を上げて上書きしてよいものではない —— 判別不能の代表に使う。
-const BACKUP_BUILD_FAILS_UNKNOWN = runUp({
+const BACKUP_BUILD_FAILS_UNKNOWN = lazyRunUp({
   STUB_DOCKER_BUILD_FAIL: 'platform-backup',
   STUB_DOCKER_BUILD_FAIL_LOG: [
     '/tmp/tmp.x/age-1.3.1-r6.apk: FAILED',
@@ -4841,8 +5989,8 @@ ok('#1688: チャートは `rollingUpdate: null` に頼らない（SSA では既
   }
 });
 
-const RECREATE_FRESH = runUp({});
-const RECREATE_EXISTING = runUp({ STUB_LIVE_ROLLINGUPDATE: 'wiki-js' });
+const RECREATE_FRESH = lazyRunUp({});
+const RECREATE_EXISTING = lazyRunUp({ STUB_LIVE_ROLLINGUPDATE: 'wiki-js' });
 
 ok('#1688: 既存リリース（wiki-js に rollingUpdate が残る）では helm upgrade の前に strategy を Recreate へ寄せる', () => {
   const r = RECREATE_EXISTING;
@@ -5003,6 +6151,8 @@ for (const major of ['4', '3']) {
     const ci = runUp({ ...v, ISTIO: '1', LOCALEDGE: '1', ABACSEED: '1', SEARCHSEED: '1', LOCALEMBED: '1' });
     assert.strictEqual(ci.status, 0, `#1714 の再発: ISTIO=1 の初回が止まった:\n${ci.stderr.slice(-600)}`);
     assert.strictEqual(mtlsOf(ci), 'PERMISSIVE');
+    // NFR-18, IADR-0590: 入口を移した後で既定の STRICT へ上がる（統合スタックは STRICT で門を測る）。
+    assert.strictEqual(promotedOf(ci), 'STRICT', 'IADR-0590 の後退: CI の形が STRICT へ上がらない');
   });
   ok(`#1722: helm v${major} 相当 — 宣言あり（STRICT）は引き継ぎ、宣言なしは外したまま`, () => {
     const declared = runUp({ ...v, STUB_HELM_VALUES: helmValues('STRICT') });
@@ -5044,8 +6194,18 @@ for (const major of ['4', '3']) {
 // reconcile-realm.sh が共有）。ここでは (1) 真理値表を関数そのもので (2) 起動器の実走で「書き込みの前に止まる」を
 // (3) CI の 2 本（integration-stack / cutover-rehearsal）の context が許可集合に入る（陽性対照）を (4) 後追い Job へ判定が渡る、を固定する。
 const DEV_GUARD_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh');
-const DEV_GUARDED = ['identity-admin', 'reset-gate', 'mcp-client-admin'];
-const devValueOf = (client) => `${client}-dev-secret-change-me`;
+// ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する。試験は判定器とは別に、宣言から独立に数える
+// （サービスアカウントを持つ・機密・宣言が secret を持つ）。当初の 3 つは必ず含む（陽性対照）。
+const REALM_1830 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
+const deriveGuarded1830 = (realm) => realm.clients
+  .filter((c) => c.serviceAccountsEnabled === true && c.publicClient !== true && typeof c.secret === 'string' && c.secret !== '')
+  .map((c) => c.clientId).sort();
+const DEV_GUARDED = deriveGuarded1830(REALM_1830);
+const devValueOf = (client) => REALM_1830.clients.find((c) => c.clientId === client).secret;
+const clientSecretOf1830 = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
+const { envNameOf: envNameOf1830 } = require(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-targets.js'));
+/** 対象全部に dev 以外の値を与える env（excepts に挙げたクライアントは与えない） */
+const allCustomEnv1830 = (excepts = []) => Object.fromEntries(DEV_GUARDED.filter((c) => !excepts.includes(c)).map((c) => [envNameOf1830(c), customOf(c)]));
 // 試験用の「dev ではない値」。鍵の形を避け（gitleaks）、実行時に組む。
 const customOf = (client) => ['probe', '1830', client].join('-');
 const isDevContext1830 = (ctx) => /^(k3d-.+|kind-.+|rancher-desktop|docker-desktop)$/.test(ctx);
@@ -5057,7 +6217,7 @@ function decideAll(cases) {
     `out="$(dev_client_secret_decide ${q(c.ctx)} ${q(c.override)} ${c.args.map(q).join(' ')})" && rc=0 || rc=$?`,
     `printf '%s\\t%s\\t%s\\n' ${i} "$rc" "$(printf '%s' "$out" | tr '\\n' ' ')"`,
   ].join('\n')).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\ndev_client_secret_load_targets\n${body}`], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, `判定器が実行できない: ${r.stderr}`);
   return r.stdout.split('\n').filter(Boolean).map((l) => {
     const [i, rc, out] = l.split('\t');
@@ -5116,33 +6276,52 @@ ok('#1830: 複数のクライアントでは dev の値になるものだけを�
 const secretOf = (r, name) => r.secrets.filter((l) => l.startsWith(`${name} client-secret=`)).map((l) => l.slice(`${name} client-secret=`.length));
 const wroteAnything = (r) => r.secrets.length > 0 || r.lines.some((l) => / apply -f|helm upgrade|kubectl create /.test(l));
 
-ok('#1830: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに 3 クライアントを名指して止まる', () => {
+ok('#1830/IADR-0572: dev ではない context・env 未設定 → [1/7] の直後、何も書かないうちに対象のクライアント全部を名指して止まる', () => {
   for (const env of [{ STUB_KUBE_CONTEXT: 'prod-shared' }, { STUB_KUBE_CONTEXT: '' }, { STUB_KUBE_CONTEXT_FAIL: '1' }]) {
     const r = runUp(env);
     assert.notStrictEqual(r.status, 0, `${JSON.stringify(env)}: 止まらなかった`);
     assert.ok(!wroteAnything(r), `${JSON.stringify(env)}: 書いてから止まった:\n${r.lines.filter((l) => / apply -f|create /.test(l)).join('\n')}`);
-    assert.ok(/identity-admin, reset-gate, mcp-client-admin/.test(r.stderr), `${JSON.stringify(env)}: 名指していない:\n${r.stderr}`);
+    assert.ok(r.stderr.includes(`止める: ${DEV_GUARDED.join(', ')}\n`), `${JSON.stringify(env)}: 名指していない:\n${r.stderr}`);
     assert.ok(/ALLOW_DEV_CLIENT_SECRETS=1/.test(r.stderr) && /RESET_GATE_CLIENT_SECRET/.test(r.stderr), '対処（env・上書き）を告げていない');
     // #1834（issue AC3）: 止めたときに、稼働中の dev の値の確かめ方（--check-dev-secrets）も告げる。
     assert.ok(/bash deploy\/local\/keycloak-setup\/reconcile-realm\.sh --check-dev-secrets/.test(r.stderr), `確認の手順（--check-dev-secrets）を告げていない:\n${r.stderr}`);
-    assert.ok(!r.stderr.includes('-dev-secret-change-me'), '値を出力した');
+    for (const c of DEV_GUARDED) assert.ok(!r.stderr.includes(devValueOf(c)), `${c} の値を出力した`);
   }
 });
 
-ok('#1830: dev ではない context でも、3 つに dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
-  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
-  for (const c of DEV_GUARDED) env[`${c.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`] = customOf(c);
-  const r = runUp(env);
+ok('#1830/IADR-0572: dev ではない context でも、対象全部に dev 以外の値を与えれば進み、その値で作る（陽性対照・値は出力しない）', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830() });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
-  for (const c of DEV_GUARDED) {
-    assert.deepStrictEqual(secretOf(r, `${c}-oidc`), [customOf(c)], `${c}-oidc が与えた値で作られていない`);
-    assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
+  for (const [c, name] of [['identity-admin', 'identity-admin-oidc'], ['reset-gate', 'reset-gate-oidc'], ['mcp-client-admin', 'mcp-client-admin-oidc'],
+    ['bff', 'bff-oidc'], ['retrieval-service', 'retrieval-service-token']]) {
+    assert.deepStrictEqual(secretOf(r, name), [customOf(c)], `${name} が与えた値で作られていない`);
+  }
+  for (const c of DEV_GUARDED) assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
+});
+
+ok('#1830/IADR-0572: 当初の 3 つだけに値を与えても、dev ではない context では残りを名指して止まる（対象を広げた変異の検出）', () => {
+  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
+  for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin']) env[envNameOf1830(c)] = customOf(c);
+  const r = runUp(env);
+  assert.notStrictEqual(r.status, 0, '3 つだけで通った（対象が広がっていない）');
+  assert.ok(!wroteAnything(r), '書いてから止まった');
+  const rest = DEV_GUARDED.filter((c) => !['identity-admin', 'reset-gate', 'mcp-client-admin'].includes(c));
+  assert.ok(rest.length > 0 && rest.includes('bff') && rest.includes('abac-seeder'), `前提: 3 つ以外の対象が導出されている: ${rest.join(', ')}`);
+  assert.ok(r.stderr.includes(`止める: ${rest.join(', ')}\n`), `残りを名指していない:\n${r.stderr}`);
+  assert.ok(/BFF_OIDC_CLIENT_SECRET/.test(r.stderr) && /ABAC_SEED_CLIENT_SECRET/.test(r.stderr), `env の名前（例外の 2 つ）を告げていない:\n${r.stderr}`);
+});
+
+ok('#1830/IADR-0572: 対象を導出できない（node が失敗する）ときは、dev の context でも何も書かずに止まる（守れないまま進まない）', () => {
+  for (const ctx of ['k3d-testcluster', 'prod-shared']) {
+    const r = runUp({ STUB_KUBE_CONTEXT: ctx, STUB_DEV_TARGETS_FAIL: '1' });
+    assert.notStrictEqual(r.status, 0, `${ctx}: 導出できないのに進んだ`);
+    assert.ok(!wroteAnything(r), `${ctx}: 書いてから止まった`);
+    assert.ok(/dev の値の守りの対象を realm の宣言/.test(r.stderr), `${ctx}: 理由を告げていない:\n${r.stderr.slice(-600)}`);
   }
 });
 
 ok('#1830: 1 つだけ dev の値と同じ値を与えても止まり、そのクライアントだけを名指す', () => {
-  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', IDENTITY_ADMIN_CLIENT_SECRET: devValueOf('identity-admin'),
-    RESET_GATE_CLIENT_SECRET: customOf('reset-gate'), MCP_CLIENT_ADMIN_CLIENT_SECRET: customOf('mcp-client-admin') });
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830(), IDENTITY_ADMIN_CLIENT_SECRET: devValueOf('identity-admin') });
   assert.notStrictEqual(r.status, 0, '止まらなかった');
   assert.ok(!wroteAnything(r), '書いてから止まった');
   assert.ok(/止める: identity-admin$/m.test(r.stderr), `identity-admin だけを名指していない:\n${r.stderr}`);
@@ -5161,20 +6340,18 @@ ok('#1830: ALLOW_DEV_CLIENT_SECRETS=1 は大きく警告して通す。1 以外�
 // ［2026-10-09 / #1834 / IADR-0518］ESO=1 でも 3 つとも見る。取り込み元の Secret が ESO の有無によらず 3 つの env から作られ、
 //   bootstrap.sh（Vault の種の判定）は Keycloak の初回の取り込み（[4/7]）より後に走るため、従来の「reset-gate だけ」では
 //   止まる前に Keycloak が dev の値で identity-admin / mcp-client-admin を作っていた。
-ok('#1830/#1834: ESO=1 でも 3 クライアントを見る（取り込み元の Secret が env から作られ、bootstrap より前に Keycloak が取り込むため）', () => {
-  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', RESET_GATE_CLIENT_SECRET: customOf('reset-gate') });
-  assert.notStrictEqual(ng.status, 0, 'reset-gate だけ与えて止まらなかった');
+ok('#1830/#1834: ESO=1 でも対象全部を見る（取り込み元の Secret が env から作られ、bootstrap より前に Keycloak が取り込むため）', () => {
+  const ng = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', ...allCustomEnv1830(['identity-admin', 'mcp-client-admin']) });
+  assert.notStrictEqual(ng.status, 0, '2 つを与えずに止まらなかった');
   assert.ok(!wroteAnything(ng), '書いてから止まった');
   assert.ok(/止める: identity-admin, mcp-client-admin$/m.test(ng.stderr), `identity-admin と mcp-client-admin を名指していない:\n${ng.stderr}`);
-  const env = { STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1' };
-  for (const c of DEV_GUARDED) env[`${c.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`] = customOf(c);
-  const ok1 = runUp(env);
-  assert.strictEqual(ok1.status, 0, `陽性対照: 3 つ与えて止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
+  const ok1 = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', VAULT: '1', ESO: '1', ...allCustomEnv1830() });
+  assert.strictEqual(ok1.status, 0, `陽性対照: 全部与えて止まった（スタブの Vault では KV が在る＝bootstrap も通る）:\n${ok1.stderr.slice(-800)}`);
 });
 
 ok('#1830 陽性対照: 既定（k3d の context）は従来どおり dev の値で 3 つを作り、警告も出さない', () => {
   assert.strictEqual(DEFAULT.status, 0);
-  for (const c of DEV_GUARDED) assert.deepStrictEqual(secretOf(DEFAULT, `${c}-oidc`), [devValueOf(c)], `${c}-oidc が dev の値でない`);
+  for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin', 'bff']) assert.deepStrictEqual(secretOf(DEFAULT, `${c}-oidc`), [devValueOf(c)], `${c}-oidc が dev の値でない`);
   assert.ok(!/ALLOW_DEV_CLIENT_SECRETS|dev の許可集合/.test(DEFAULT.stderr), '既定で守りの文言が出た');
   assert.ok(DEFAULT.lines.includes('kubectl config current-context'), '陽性対照: context を読んでいる');
   for (const ctx of ['rancher-desktop', 'docker-desktop', 'kind-poc']) {
@@ -5206,6 +6383,165 @@ ok('#1830: 3 本の呼び出し元は同じ判定器を source し、自前の�
     const code = src.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
     assert.ok(!/k3d-\*|rancher-desktop\)|docker-desktop\)/.test(code), `${f} が許可集合を自前で持っている`);
   }
+});
+
+// --- NFR-18, ADR-0124 決定 1, IADR-0572 (GHSA-rh44-px44-p48q): 対象を realm の宣言から導出する ---------------------------------------
+/** 判定器を source し、与えた realm（省略時は既定の宣言）から対象を読んで、続く bash を走らせる。 */
+function guardWith(realmFile, script, env = {}) {
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_load_targets \${2:+"$2"}\n${script}`, 'guard-0570', DEV_GUARD_LIB, realmFile || ''], {
+    encoding: 'utf8', env: { PATH: process.env.PATH || '', ...env },
+  });
+  return { status: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
+}
+
+ok('IADR-0572: 判定器の対象は realm の宣言から導出した集合（SA を持つ機密クライアント全部）と一致し、判定器は clientId を並べない', () => {
+  const r = guardWith('', 'printf "%s" "$DEV_CLIENT_SECRET_GUARDED"');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(r.stdout.split(' '), DEV_GUARDED, '判定器の対象が宣言から独立に数えた集合と違う');
+  for (const c of ['identity-admin', 'reset-gate', 'mcp-client-admin', 'bff', 'abac-seeder', 'synthetic-monitor', 'ai-stock-trading-owner']) {
+    assert.ok(DEV_GUARDED.includes(c), `陽性対照: ${c} が対象に無い`);
+  }
+  // 陰性対照: SA を持たない機密クライアント（道具の OIDC）と公開クライアントは入らない
+  for (const c of ['wiki-js', 'grafana', 'argocd', 'account-console']) assert.ok(!DEV_GUARDED.includes(c), `${c} が対象に入った`);
+  // 宣言の値・env の名前は表から引く（宣言と一致する）
+  const t = guardWith('', DEV_GUARDED.map((c) => `printf '%s\\t%s\\n' "$(dev_client_secret_env_name ${c})" "$(dev_client_secret_dev_value ${c})"`).join('\n'));
+  assert.strictEqual(t.status, 0, t.stderr);
+  assert.deepStrictEqual(t.stdout.trim().split('\n'), DEV_GUARDED.map((c) => `${envNameOf1830(c)}\t${devValueOf(c)}`));
+  assert.deepStrictEqual(['bff', 'abac-seeder', 'reset-gate', 'ai-stock-trading-svc'].map(envNameOf1830),
+    ['BFF_OIDC_CLIENT_SECRET', 'ABAC_SEED_CLIENT_SECRET', 'RESET_GATE_CLIENT_SECRET', 'AI_STOCK_TRADING_SVC_CLIENT_SECRET'], 'env の名前の規則・例外が違う');
+  // 判定器に clientId の手書きの集合が無い（コメントを除くコード）
+  const code = fs.readFileSync(DEV_GUARD_LIB, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/identity-admin|mcp-client-admin|reset-gate/.test(code), '判定器のコードに clientId が並んでいる（手で並べた集合）');
+});
+
+ok('IADR-0572 変異: 宣言へ SA を持つ機密クライアントを足すと判定器を触らずに対象へ入り、SA を外す・公開にする・secret を消すと外れる', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'realm-0570-'));
+  try {
+    const probe = { clientId: 'probe-new-sa', enabled: true, publicClient: false, serviceAccountsEnabled: true, secret: ['probe', 'new', 'sa', 'declared'].join('-') };
+    const write = (name, mutate) => {
+      const realm = JSON.parse(JSON.stringify(REALM_1830));
+      realm.clients.push(mutate({ ...probe }));
+      const file = path.join(dir, `${name}.json`);
+      fs.writeFileSync(file, `${JSON.stringify(realm, null, 2)}\n`);
+      return file;
+    };
+    const added = write('added', (c) => c);
+    const names = (file) => guardWith(file, 'printf "%s" "$DEV_CLIENT_SECRET_GUARDED"').stdout.split(' ');
+    assert.ok(names(added).includes('probe-new-sa'), '足したクライアントが対象に入らない（入れ漏れ）');
+    // 判定: dev ではない context で env 未設定なら名指して止まる。与えれば通る。
+    const deny = guardWith(added, 'dev_client_secret_decide prod "" "probe-new-sa=" || true');
+    assert.deepStrictEqual(deny.stdout.trim().split('\n'), ['deny', 'probe-new-sa']);
+    const clean = guardWith(added, 'dev_client_secret_decide prod "" "probe-new-sa=probe-value-0570"');
+    assert.strictEqual(clean.stdout.trim(), 'clean');
+    const same = guardWith(added, `dev_client_secret_decide prod "" "probe-new-sa=${probe.secret}" || true`);
+    assert.deepStrictEqual(same.stdout.trim().split('\n'), ['deny', 'probe-new-sa'], '宣言の値と同じ値を通した');
+    // 取り込み元: env（既定の規則の名前）を与えれば差し替わる
+    const imp = guardWith(added, `dev_client_secret_realm_for_import "${added}"`, { PROBE_NEW_SA_CLIENT_SECRET: 'probe-value-0570' });
+    assert.strictEqual(imp.status, 0, imp.stderr);
+    assert.strictEqual(clientSecretOf1830(JSON.parse(imp.stdout), 'probe-new-sa'), 'probe-value-0570', '足したクライアントを取り込み元で差し替えない');
+    for (const [name, mutate] of [
+      ['no-sa', (c) => ({ ...c, serviceAccountsEnabled: false })],
+      ['public', (c) => ({ ...c, publicClient: true })],
+      ['no-secret', (c) => { const { secret, ...rest } = c; return rest; }],
+    ]) {
+      assert.ok(!names(write(name, mutate)).includes('probe-new-sa'), `${name}: 対象に入った`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）の client secret を稼働の Secret に置く ---------------------------
+ok('IADR-0576: 起動器は ESO の有無によらず Secret platform-infra/abac-seeder-oidc を作る（既定は宣言の値・env を与えればその値）', () => {
+  assert.strictEqual(DEFAULT.status, 0);
+  assert.deepStrictEqual(secretOf(DEFAULT, 'abac-seeder-oidc'), [devValueOf('abac-seeder')], '既定（dev の context）で宣言の値の Secret が無い');
+  assert.ok(DEFAULT.lines.some((l) => / -n platform-infra /.test(l) && /kubectl create secret generic abac-seeder-oidc /.test(l)), '置き場が platform-infra でない');
+  const given = runUp({ ABAC_SEED_CLIENT_SECRET: customOf('abac-seeder') });
+  assert.strictEqual(given.status, 0, given.stderr.slice(-600));
+  assert.deepStrictEqual(secretOf(given, 'abac-seeder-oidc'), [customOf('abac-seeder')]);
+  assert.ok(!`${given.stdout}${given.stderr}`.includes(customOf('abac-seeder')), '値を出力した');
+  const eso = runUp({ VAULT: '1', ESO: '1' });
+  assert.strictEqual(eso.status, 0, eso.stderr.slice(-600));
+  assert.deepStrictEqual(secretOf(eso, 'abac-seeder-oidc'), [devValueOf('abac-seeder')], 'ESO=1 で手動の Secret を作っていない（Merge の土台）');
+  assert.ok(eso.lines.includes('kubectl apply -f deploy/local/vault/eso/externalsecret-abac-seeder-oidc.yaml'), 'ESO=1 で ExternalSecret を当てていない');
+  const es = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'vault', 'eso', 'externalsecret-abac-seeder-oidc.yaml'), 'utf8');
+  assert.ok(/creationPolicy: Merge/.test(es) && /key: msp\/abac-seeder-oidc/.test(es) && /namespace: platform-infra/.test(es), 'ExternalSecret の形が違う');
+});
+
+// --- NFR-18, IADR-0616 (#2195): ESO（Merge）の土台の Secret を dev の値で上書きせず、投入器の前に「依頼の後の同期」を待つ ---------------
+const ESO_BASE_SECRETS = ['keycloak-smtp', 'reset-gate-oidc', 'abac-seeder-oidc'];
+const createdSecret = (r, name) => r.lines.some((l) => l.startsWith(`kubectl create secret generic ${name} -n platform-infra `));
+const forceSyncLine = (r, name) => r.lines.findIndex((l) => new RegExp(`^kubectl -n platform-infra annotate externalsecret ${name} force-sync=\\d+ --overwrite$`).test(l));
+/** 起動器の写しを scripts/ に置いて走らせる（ROOT は $0 から決まる）。変異が空振りしていれば落とす。 */
+function runMutatedUp(env, mutate) {
+  const src = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
+  const out = mutate(src);
+  assert.notStrictEqual(out, src, '変異が実物と同一（置換が空振りしている）');
+  const rel = path.join('scripts', `.k8s-local-up.mutant-2195-${process.pid}.sh`);
+  fs.writeFileSync(path.join(REPO_ROOT, rel), out);
+  try {
+    return runUp(env, { script: rel });
+  } finally {
+    fs.rmSync(path.join(REPO_ROOT, rel), { force: true });
+  }
+}
+
+ok('IADR-0616: ESO=1 で土台の Secret が既に在れば、起動器は dev の値（env を与えてもその値）で上書きしない', () => {
+  const env = { VAULT: '1', ESO: '1', STUB_ESO_BASE_SECRETS_EXISTING: ESO_BASE_SECRETS.join(' '), ABAC_SEED_CLIENT_SECRET: customOf('abac-seeder') };
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  for (const name of ESO_BASE_SECRETS) {
+    assert.ok(!createdSecret(r, name), `${name} を既存の値の上へ置き直した`);
+    assert.ok(r.stdout.includes(`keep platform-infra/${name}（ESO=1`), `${name} を触らなかったことを出していない`);
+  }
+  assert.deepStrictEqual(secretOf(r, 'abac-seeder-oidc'), [], '既存の Secret の上へ値を書いた');
+  assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf('abac-seeder')), '値を出力した');
+  // 対照: 他の土台（基盤の postgres 等。IADR-0099）は従来どおり毎回置く。
+  assert.ok(createdSecret(r, 'postgres') && createdSecret(r, 'keycloak-admin'), '基盤の Secret の手動 apply が消えた（IADR-0099）');
+  // 変異: 判定を外して常に置く形（#2195 の前の形）へ戻すと、既存の値を dev の値で上書きする。
+  const m = runMutatedUp(env, (src) => src.replace('if [ "${ESO:-}" = "1" ] && kubectl -n "$1" get secret "$2" -o name >/dev/null 2>&1; then', 'if false; then'));
+  assert.strictEqual(m.status, 0, m.stderr.slice(-600));
+  assert.ok(ESO_BASE_SECRETS.every((n) => createdSecret(m, n)), '変異を見逃した（上書きが観測できない）');
+});
+
+ok('IADR-0616: 土台が無ければ ESO=1 でも作り（Merge は作らない）、ESO が無い経路は在っても従来どおり置く', () => {
+  const fresh = runUp({ VAULT: '1', ESO: '1' });
+  assert.strictEqual(fresh.status, 0, fresh.stderr.slice(-600));
+  for (const name of ESO_BASE_SECRETS) assert.ok(createdSecret(fresh, name), `新規クラスタで ${name} の土台を作っていない`);
+  const noEso = runUp({ STUB_ESO_BASE_SECRETS_EXISTING: ESO_BASE_SECRETS.join(' ') });
+  assert.strictEqual(noEso.status, 0, noEso.stderr.slice(-600));
+  for (const name of ESO_BASE_SECRETS) assert.ok(createdSecret(noEso, name), `ESO の無い経路で ${name} を置かなくなった（値の持ち主は起動器）`);
+  assert.ok(!noEso.lines.some((l) => / annotate externalsecret /.test(l)), 'ESO の無い経路で同期を依頼した');
+});
+
+ok('IADR-0616: ESO=1 は 3 つの ExternalSecret に同期を依頼し、依頼の後の同期を待ってから投入器を走らせる', () => {
+  const r = runUp({ VAULT: '1', ESO: '1', ABACSEED: '1', STUB_ESO_BASE_SECRETS_EXISTING: ESO_BASE_SECRETS.join(' ') });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-600));
+  const seeder = r.lines.findIndex((l) => /^node \S*scripts\/seed-abac-policies\.js/.test(l));
+  assert.ok(seeder >= 0, '投入器が走っていない（前提）');
+  for (const name of ESO_BASE_SECRETS) {
+    const apply = r.lines.indexOf(`kubectl apply -f deploy/local/vault/eso/externalsecret-${name}.yaml`);
+    const sync = forceSyncLine(r, name);
+    assert.ok(apply >= 0 && sync > apply, `${name}: ExternalSecret を当てた後に同期を依頼していない`);
+    assert.ok(sync < seeder, `${name}: 投入器の後に同期を依頼している`);
+    assert.ok(r.stdout.includes(`synced platform-infra/${name}（依頼の後の同期）`), `${name}: 依頼の後の同期を確かめていない`);
+  }
+  // 停滞: 依頼しても同期しなければ、期限で warn を出して続ける（best-effort。起動器は止めない）。
+  const stalled = runUp({ VAULT: '1', ESO: '1', STUB_ESO_SYNC_STALLS: 'abac-seeder-oidc', ESO_FORCE_SYNC_TIMEOUT: '1' });
+  assert.strictEqual(stalled.status, 0, stalled.stderr.slice(-600));
+  assert.ok(stalled.stdout.includes('warn: platform-infra/abac-seeder-oidc が依頼の後に同期しません'), '停滞を warn にしていない');
+  assert.ok(!stalled.stdout.includes('synced platform-infra/abac-seeder-oidc（依頼の後の同期）'), '同期していないのに synced と出した');
+  // 変異: Ready だけを待つ形（#2195 の前の形）へ戻すと、同期を依頼しない（前回の Ready で素通りする）。
+  const m = runMutatedUp({ VAULT: '1', ESO: '1' }, (src) => src.replace('  eso_force_sync_wait "$INFRA_NS" keycloak-smtp reset-gate-oidc abac-seeder-oidc\n', '  eso_wait "$INFRA_NS" keycloak-smtp reset-gate-oidc abac-seeder-oidc\n'));
+  assert.strictEqual(m.status, 0, m.stderr.slice(-600));
+  assert.ok(ESO_BASE_SECRETS.every((n) => forceSyncLine(m, n) < 0), '変異を見逃した');
+});
+
+ok('IADR-0572: 表に無いクライアント・表を読んでいないときの判定は止める側に倒れる（値を比べられない）', () => {
+  const unknown = guardWith('', 'dev_client_secret_decide prod "" "not-in-realm=probe-value-0570" || true');
+  assert.deepStrictEqual(unknown.stdout.trim().split('\n'), ['deny', 'not-in-realm']);
+  const r = spawnSync('bash', ['-c', `. "$1"; dev_client_secret_decide prod "" "reset-gate=probe-value-0570" || true`, 'x', DEV_GUARD_LIB], { encoding: 'utf8' });
+  assert.deepStrictEqual(r.stdout.trim().split('\n'), ['deny', 'reset-gate'], '表を読まずに通した');
 });
 
 // 後追い Job の起動器（reconcile-realm.sh）だけを kubectl のスタブの下で走らせ、Job へ渡したマニフェスト（apply -f - の標準入力）を読む。
@@ -5273,7 +6609,7 @@ ok('#1830: reconcile-realm.sh --check-dev-secrets は別名の Job を RECONCILE
 // (5) 壊れた宣言・JSON を壊す値で止まる、を固定する。
 const PLATFORM_REALM_PATH = path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json');
 const PLATFORM_REALM_SRC = fs.readFileSync(PLATFORM_REALM_PATH, 'utf8');
-const envNameOf1834 = (client) => `${client.toUpperCase().replace(/-/g, '_')}_CLIENT_SECRET`;
+const envNameOf1834 = envNameOf1830;
 // IADR-0524 (#1859): 取り込み元のキー（＝取り込み先のファイル名）は `<realm 名>-realm.json`（Keycloak 26 の起動条件）。
 const IMPORT_KEY_1859 = 'platform-realm.json';
 const importedRealm = (r) => {
@@ -5281,6 +6617,13 @@ const importedRealm = (r) => {
   assert.ok(raw, `取り込み元の Secret に ${IMPORT_KEY_1859} が無い（キー: ${Object.keys(r.realmImport).join(', ')}）`);
   return { raw, json: JSON.parse(raw) };
 };
+// #2024 / IADR-0570: 試験アカウント e2e-*（資格情報がプレースホルダ `${E2E_…}` の利用者）。Secret e2e-accounts が無ければ取り込み元から外れる。
+const isE2ePlaceholderUser2024 = (u) => JSON.stringify(u.credentials || []).includes('${E2E_');
+const PLATFORM_REALM_WITHOUT_E2E = (() => {
+  const r = JSON.parse(PLATFORM_REALM_SRC);
+  r.users = r.users.filter((u) => !isE2ePlaceholderUser2024(u));
+  return r;
+})();
 const clientSecretOf = (realm, clientId) => (realm.clients.find((c) => c.clientId === clientId) || {}).secret;
 /** 3 クライアントの secret を宣言の値へ戻した realm（差し替え以外が何も変わっていないことを比べる用） */
 const withDeclaredSecrets = (realm) => {
@@ -5289,13 +6632,15 @@ const withDeclaredSecrets = (realm) => {
   return copy;
 };
 
-ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak-realm-import で、中身は宣言とバイト等価（陽性対照・CI の 2 本と同じ形）', () => {
+ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak-realm-import で、中身は宣言から試験アカウントを外しただけ（陽性対照・CI の 2 本と同じ形。#2024）', () => {
   assert.strictEqual(DEFAULT.status, 0);
   const creates = DEFAULT.lines.filter((l) => /^kubectl create (secret generic|configmap) keycloak-realm-import /.test(l));
   assert.deepStrictEqual(creates.map((l) => l.split(' ').slice(0, 5).join(' ')), ['kubectl create secret generic keycloak-realm-import'],
     `取り込み元が Secret として 1 回だけ作られていない:\n${creates.join('\n')}`);
   assert.ok(/ -n platform-infra /.test(creates[0]) && /--dry-run=client -o yaml/.test(creates[0]), '名前空間・冪等の形が違う');
-  assert.strictEqual(importedRealm(DEFAULT).raw.trimEnd(), PLATFORM_REALM_SRC.trimEnd(), '既定で取り込み元の中身が宣言と違う');
+  // ［2026-10-21 / #2024 / IADR-0570］Secret e2e-accounts が無い既定では、プレースホルダの利用者だけが外れる（他はバイト等価）。
+  assert.strictEqual(importedRealm(DEFAULT).raw.trimEnd(), JSON.stringify(PLATFORM_REALM_WITHOUT_E2E, null, 2), '既定で取り込み元の中身が宣言（試験アカウントを除く）と違う');
+  assert.ok(!importedRealm(DEFAULT).raw.includes('${E2E_'), '取り込み元にプレースホルダが残った（公知の文字列がパスワードになる）');
   assert.ok(!/env の値で secret を渡す/.test(DEFAULT.stderr), '既定で差し替えの告知が出た');
   // 宣言の ConfigMap は残る（後追い Job・申請の門の読み手）。取り込み元は infra の apply（[4/7]）より前に作る。
   const cmIdx = DEFAULT.lines.findIndex((l) => l.startsWith('kubectl create configmap keycloak-realms '));
@@ -5305,21 +6650,22 @@ ok('#1834: 既定（k3d・env 未設定）— 取り込み元は Secret keycloak
   assert.ok(secIdx < infraIdx, '取り込み元が infra の apply（Keycloak の起動）より後に作られている');
 });
 
-ok('#1834: dev 以外の context で 3 つの env を与える → 取り込み元の 3 クライアントの secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
-  const env = { STUB_KUBE_CONTEXT: 'prod-shared' };
-  for (const c of DEV_GUARDED) env[envNameOf1834(c)] = customOf(c);
-  const r = runUp(env);
+ok('#1834/IADR-0572: dev 以外の context で対象全部の env を与える → 取り込み元の対象の secret は env の値、ほかは宣言のまま（値は出力・引数に出ない）', () => {
+  const r = runUp({ STUB_KUBE_CONTEXT: 'prod-shared', ...allCustomEnv1830() });
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   const { json } = importedRealm(r);
   for (const c of DEV_GUARDED) assert.strictEqual(clientSecretOf(json, c), customOf(c), `${c} の secret が env の値でない`);
-  assert.deepStrictEqual(withDeclaredSecrets(json), JSON.parse(PLATFORM_REALM_SRC), '3 つの secret 以外も変わっている');
-  assert.ok(/env の値で secret を渡す: identity-admin, reset-gate, mcp-client-admin（値は表示しない）/.test(r.stderr), `差し替えの告知が無い:\n${r.stderr.slice(-800)}`);
+  assert.deepStrictEqual(withDeclaredSecrets(json), PLATFORM_REALM_WITHOUT_E2E, '対象の secret 以外も変わっている');
+  assert.ok(r.stderr.includes(`env の値で secret を渡す: ${DEV_GUARDED.join(', ')}（値は表示しない）`), `差し替えの告知が無い:\n${r.stderr.slice(-800)}`);
   for (const c of DEV_GUARDED) {
     assert.ok(!`${r.stdout}${r.stderr}`.includes(customOf(c)), `${c} の値が出力に出た`);
     assert.ok(!r.lines.some((l) => l.includes(customOf(c))), `${c} の値がコマンドの引数に出た`);
   }
-  // 消費側（*-oidc）と取り込み元が同じ値（invalid_client の食い違いが無い）
-  for (const c of DEV_GUARDED) assert.deepStrictEqual(secretOf(r, `${c}-oidc`), [clientSecretOf(json, c)], `${c}: 消費側と取り込み元が食い違う`);
+  // 消費側（起動器が作る Secret）と取り込み元が同じ値（invalid_client の食い違いが無い）
+  for (const [c, name] of [['identity-admin', 'identity-admin-oidc'], ['reset-gate', 'reset-gate-oidc'], ['mcp-client-admin', 'mcp-client-admin-oidc'],
+    ['bff', 'bff-oidc'], ['document-service', 'document-service-token']]) {
+    assert.deepStrictEqual(secretOf(r, name), [clientSecretOf(json, c)], `${c}: 消費側と取り込み元が食い違う`);
+  }
 });
 
 ok('#1834: dev の context でも env を与えたクライアントだけ差し替える（どの context でも env が勝つ）', () => {
@@ -5327,7 +6673,7 @@ ok('#1834: dev の context でも env を与えたクライアントだけ差し
   assert.strictEqual(r.status, 0, r.stderr.slice(-800));
   const { json } = importedRealm(r);
   assert.strictEqual(clientSecretOf(json, 'reset-gate'), customOf('reset-gate'));
-  for (const c of ['identity-admin', 'mcp-client-admin']) assert.strictEqual(clientSecretOf(json, c), devValueOf(c), `${c} を差し替えた（env は無い）`);
+  for (const c of DEV_GUARDED.filter((x) => x !== 'reset-gate')) assert.strictEqual(clientSecretOf(json, c), devValueOf(c), `${c} を差し替えた（env は無い）`);
   assert.ok(/env の値で secret を渡す: reset-gate（値は表示しない）/.test(r.stderr), '告知が reset-gate だけを名指していない');
 });
 
@@ -5351,6 +6697,82 @@ ok('#1834: keycloak.yaml は取り込み元を Secret keycloak-realm-import か�
   assert.ok(!/configMap/.test(vol[1]), 'realms ボリュームが ConfigMap を参照している');
   assert.ok(/- name: realms\n\s+mountPath: \/opt\/keycloak\/data\/import\n\s+readOnly: true/.test(KEYCLOAK_INFRA_YAML), '取り込みの置き場へ読み取り専用でマウントしていない');
   assert.ok(!/name: keycloak-realms\b/.test(KEYCLOAK_INFRA_YAML), 'keycloak.yaml が宣言の ConfigMap を参照している');
+});
+
+// --- NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報を Secret e2e-accounts から取り込み元へ差し込む ----------------
+const E2E_NAMES_2024 = (() => {
+  const names = [];
+  for (const u of JSON.parse(PLATFORM_REALM_SRC).users) {
+    for (const m of JSON.stringify(u.credentials || []).matchAll(/\$\{(E2E_[A-Z0-9_]+)\}/g)) if (!names.includes(m[1])) names.push(m[1]);
+  }
+  return names;
+})();
+// 試験用の値（実値ではない。鍵の形を避けて実行時に組み立てる）。パスワードは realm の passwordPolicy を満たす形。
+const e2eValueOf2024 = (name) => (name.endsWith('_TOTP_SECRET')
+  ? `Probe${name.replace(/[^A-Z]/g, '').slice(0, 10)}2024abcdefghij`
+  : ['Probe', name.replace(/[^A-Z]/g, '').toLowerCase(), '2024'].join('-'));
+const e2eStub2024 = (names) => names.map((n) => `${n}=${Buffer.from(e2eValueOf2024(n)).toString('base64')}`).join('\n');
+
+ok('#2024: 前提 — 宣言の試験アカウントは 6 名・12 個のプレースホルダ', () => {
+  assert.strictEqual(E2E_NAMES_2024.length, 12, E2E_NAMES_2024.join(', '));
+  assert.strictEqual(JSON.parse(PLATFORM_REALM_SRC).users.filter(isE2ePlaceholderUser2024).length, 6);
+});
+
+ok('#2024: Secret e2e-accounts が揃えば、取り込み元の 6 名は値を差し込まれ、プレースホルダが残らない（値は出力・引数に出ない）', () => {
+  const r = runUp({ STUB_E2E_ACCOUNTS: e2eStub2024(E2E_NAMES_2024) });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const { raw, json } = importedRealm(r);
+  assert.ok(!raw.includes('${E2E_'), 'プレースホルダが残った');
+  const users = json.users.filter((u) => u.username.startsWith('e2e-'));
+  assert.deepStrictEqual(users.map((u) => u.username),
+    ['e2e-user', 'e2e-operator', 'e2e-admin', 'e2e-noaccess', 'e2e-revocable', 'e2e-trading-owner']);
+  const pw = users.find((u) => u.username === 'e2e-trading-owner').credentials.find((c) => c.type === 'password');
+  assert.strictEqual(pw.value, e2eValueOf2024('E2E_TRADING_OWNER_PASSWORD'));
+  const otp = users.find((u) => u.username === 'e2e-user').credentials.find((c) => c.type === 'otp');
+  assert.deepStrictEqual(JSON.parse(otp.secretData), { value: e2eValueOf2024('E2E_USER_TOTP_SECRET') });
+  assert.ok(/試験アカウントを e2e-accounts から差し込む: e2e-user, /.test(r.stderr), `告知が無い:\n${r.stderr.slice(-600)}`);
+  // PR #2048 の AI レビュー: base64 の末尾の単独の `=` を落とさない（落とすと base64 -d が invalid input を出す）。
+  assert.ok(E2E_NAMES_2024.some((n) => /[^=]=$/.test(Buffer.from(e2eValueOf2024(n)).toString('base64'))), '前提: 末尾が単独の = の値が無い');
+  assert.ok(!/invalid input/.test(r.stderr), `base64 の復号に失敗した:\n${r.stderr.slice(-600)}`);
+  for (const n of E2E_NAMES_2024) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(e2eValueOf2024(n)), `${n} の値が出力に出た`);
+    assert.ok(!r.lines.some((l) => l.includes(e2eValueOf2024(n))), `${n} の値がコマンドの引数に出た`);
+  }
+});
+
+ok('#2024: 一部しか無ければ、揃った利用者だけを差し込み、欠けた利用者は名前と欠けたキーだけを告げて外す', () => {
+  const r = runUp({ STUB_E2E_ACCOUNTS: e2eStub2024(['E2E_USER_PASSWORD', 'E2E_USER_TOTP_SECRET', 'E2E_ADMIN_PASSWORD']) });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const { raw, json } = importedRealm(r);
+  assert.ok(!raw.includes('${E2E_'), 'プレースホルダが残った');
+  assert.deepStrictEqual(json.users.filter((u) => u.username.startsWith('e2e-')).map((u) => u.username), ['e2e-user']);
+  assert.ok(/skipped {3}user e2e-admin — e2e-accounts から差し込めない: E2E_ADMIN_TOTP_SECRET: 無い/.test(r.stderr), r.stderr.slice(-800));
+  assert.ok(!r.stderr.includes(e2eValueOf2024('E2E_ADMIN_PASSWORD')), '値を出力した');
+});
+
+ok('#2024: ESO=1 は ExternalSecret e2e-accounts を当て、同期したら realm の後追いをもう一度走らせる', () => {
+  const r = runUp({ VAULT: '1', ESO: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const applyIdx = r.lines.indexOf('kubectl apply -f deploy/local/vault/eso/externalsecret-e2e-accounts.yaml');
+  assert.ok(applyIdx >= 0, 'ExternalSecret e2e-accounts を apply していない');
+  const waitIdx = r.lines.findIndex((l) => /wait --for=condition=Ready externalsecret\/e2e-accounts/.test(l) && / -n platform-infra /.test(` ${l} `));
+  assert.ok(waitIdx > applyIdx, '同期を待っていない（apply の後）');
+  const reconciles = r.lines.map((l, i) => [l, i]).filter(([l]) => /delete job keycloak-realm-reconcile /.test(l)).map(([, i]) => i);
+  assert.ok(reconciles.length >= 2 && reconciles[reconciles.length - 1] > waitIdx, `同期の後に後追いを走らせていない: ${reconciles} / wait=${waitIdx}`);
+  // ESO なしでは当てない（ExternalSecret の CRD が無い）
+  assert.ok(!DEFAULT.lines.some((l) => l.includes('externalsecret-e2e-accounts.yaml')), 'ESO なしで ExternalSecret を当てた');
+});
+
+ok('#2024: ExternalSecret e2e-accounts は platform-infra・Owner・msp/e2e-accounts で、キーは宣言のプレースホルダ・プロパティはその小文字（3 つの集合が一致）', () => {
+  const es = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/vault/eso/externalsecret-e2e-accounts.yaml'), 'utf8');
+  assert.match(es, /^ {2}name: e2e-accounts\n {2}namespace: platform-infra$/m);
+  assert.match(es, /^ {4}name: e2e-accounts\n {4}creationPolicy: Owner$/m);
+  const pairs = [...es.matchAll(/- secretKey: (\S+)\n\s+remoteRef:\n\s+key: (\S+)\n\s+property: (\S+)/g)].map((m) => [m[1], m[2], m[3]]);
+  assert.deepStrictEqual(pairs.map((p) => p[0]).sort(), [...E2E_NAMES_2024].sort(), 'Secret のキーが宣言のプレースホルダと一致しない');
+  for (const [k, key, prop] of pairs) {
+    assert.strictEqual(key, 'msp/e2e-accounts', k);
+    assert.strictEqual(prop, k.toLowerCase().replace(/_/g, '-'), k);
+  }
 });
 
 /** 差し替えの関数を bash で直接呼ぶ（env を与えて）。 */
@@ -5471,6 +6893,123 @@ ok('#1839: 旧 Redis（認証なし）を消し、Valkey の起動を待つ（ES
   assert.ok(applyAt >= 0 && deleteAt > applyAt, `順序が違う: apply=${applyAt} delete=${deleteAt}`);
 });
 
+// --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報を公知の既定値で作らない（fail-closed） ----------
+// 判定は scripts/lib/infra-credentials.sh（k8s-local-up.sh・bootstrap.sh が共有）。値は実行時に組む（gitleaks）。
+const credOf0573 = (r, secret, key) => r.secrets.filter((l) => l.startsWith(`${secret} ${key}=`)).map((l) => l.slice(`${secret} ${key}=`.length));
+const custom0573 = (what) => ['probe', '0573', what].join('-');
+const NO_OPT_IN_0573 = { ALLOW_DEV_INFRA_CREDENTIALS: '' };
+const INFRA_LIB_0573 = path.join(REPO_ROOT, 'scripts', 'lib', 'infra-credentials.sh');
+
+ok('IADR-0574: 判定の真理値表 — 明示（無し / 開発用の値 / 別の値）× 既存（無し / 開発用の値 / 別の値）× opt-in（無し / 1 / true）', () => {
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const cases = [];
+  for (const name of ['KEYCLOAK_ADMIN_PASSWORD', 'RABBITMQ_PASSWORD']) {
+    const dev = name === 'KEYCLOAK_ADMIN_PASSWORD' ? 'admin' : 'guest';
+    for (const [ek, ev] of [['none', ''], ['dev', dev], ['custom', custom0573('e')]]) {
+      for (const [xk, xv] of [['none', ''], ['dev', dev], ['custom', custom0573('x')]]) {
+        for (const opt of ['', '1', 'true']) cases.push({ name, ek, ev, xk, xv, opt });
+      }
+    }
+  }
+  const body = cases.map((c, i) => `ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_decide ${q(c.name)} ${q(c.ev)} ${q(c.xv)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
+  assert.strictEqual(got.length, cases.length);
+  const tally = {};
+  for (const [i, rc, verdict] of got) {
+    const c = cases[Number(i)];
+    let want;
+    if (c.ek === 'custom') want = 'explicit';
+    else if (c.ek === 'none' && c.xk === 'custom') want = 'existing';
+    else want = c.opt === '1' ? 'dev' : 'deny';
+    assert.strictEqual(verdict, want, `${JSON.stringify(c)}: 判定が違う（${verdict}）`);
+    assert.strictEqual(Number(rc), want === 'deny' ? 1 : 0, `${JSON.stringify(c)}: 終了コードが違う`);
+    tally[want] = (tally[want] || 0) + 1;
+  }
+  for (const k of ['explicit', 'existing', 'dev', 'deny']) assert.ok(tally[k] > 0, `判定 ${k} が 1 度も現れない`);
+});
+
+ok('IADR-0574: 指定も既存の Secret も無く opt-in も無ければ、[1/7] の直後・何も書かずに 2 つを名指して止まる（値を出さない）', () => {
+  for (const ctx of ['k3d-testcluster', 'prod-shared']) {
+    const r = runUp({ ...NO_OPT_IN_0573, STUB_KUBE_CONTEXT: ctx, ALLOW_DEV_CLIENT_SECRETS: '1' });
+    assert.notStrictEqual(r.status, 0, `${ctx}: 止まらなかった`);
+    assert.ok(!wroteAnything(r), `${ctx}: 書いてから止まった`);
+    assert.ok(!r.lines.some((l) => /k8s-local-images|docker build/.test(l)), `${ctx}: [2/7] のビルドへ進んでから止まった`);
+    assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD（Secret keycloak-admin\/password）, RABBITMQ_PASSWORD（Secret rabbitmq\/password）/.test(r.stderr),
+      `${ctx}: 名指していない:\n${r.stderr.slice(-800)}`);
+    assert.ok(/ALLOW_DEV_INFRA_CREDENTIALS=1/.test(r.stderr), '対処（opt-in）を告げていない');
+  }
+});
+
+ok('IADR-0574: 明示の値（開発用でない）で作る。opt-in も警告も要らない（値は出力しない）', () => {
+  const env = { ...NO_OPT_IN_0573, KEYCLOAK_ADMIN_PASSWORD: custom0573('kc'), RABBITMQ_PASSWORD: custom0573('mq') };
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), [custom0573('kc')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), [custom0573('mq')]);
+  // IADR-0577: サービスは既定のユーザーで名乗らない（全サービス共通の rabbitmq-app は作らず、ブローカの値を消費側へ配らない）。
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [], '旧 rabbitmq-app を作った');
+  assert.ok(!r.secrets.some((l) => l.startsWith('msp-rabbitmq-users ') && l.endsWith(`=${custom0573('mq')}`)), 'ブローカの既定のユーザーの値を消費側へ配った');
+  assert.ok(!/ALLOW_DEV_INFRA_CREDENTIALS/.test(r.stderr), '明示なのに opt-in の警告が出た');
+  for (const v of [custom0573('kc'), custom0573('mq')]) {
+    assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+    assert.ok(!r.lines.some((l) => l.includes(v)), '値がコマンドの引数に出た');
+  }
+});
+
+ok('IADR-0574: 指定が無くても、既存の Secret が開発用でない値を持てばそれを使う（再実行で稼働中の値を戻さない）', () => {
+  const r = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: custom0573('kc-old'), STUB_RABBITMQ_EXISTING: custom0573('mq-old') });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), [custom0573('kc-old')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), [custom0573('mq-old')]);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [], '旧 rabbitmq-app を作った（IADR-0577）');
+  assert.ok(r.lines.some((l) => l.includes('get secret keycloak-admin')), '陽性対照: 既存の Secret を読んでいる');
+  // 明示は既存に勝つ
+  const both = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: custom0573('kc-old'), KEYCLOAK_ADMIN_PASSWORD: custom0573('kc-new'),
+    STUB_RABBITMQ_EXISTING: custom0573('mq-old') });
+  assert.strictEqual(both.status, 0, both.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(both, 'keycloak-admin', 'password'), [custom0573('kc-new')]);
+});
+
+ok('IADR-0574: 既存の Secret・明示の値が開発用の値と同じなら止める（opt-in が無ければ）', () => {
+  const existingDev = runUp({ ...NO_OPT_IN_0573, STUB_KEYCLOAK_ADMIN_EXISTING: 'admin', STUB_RABBITMQ_EXISTING: custom0573('mq-old') });
+  assert.notStrictEqual(existingDev.status, 0, '既存の開発用の値を黙って使い続けた');
+  assert.ok(!wroteAnything(existingDev), '書いてから止まった');
+  assert.ok(/止める（何も作らない）: KEYCLOAK_ADMIN_PASSWORD（Secret keycloak-admin\/password）$/m.test(existingDev.stderr), existingDev.stderr.slice(-600));
+  const explicitDev = runUp({ ...NO_OPT_IN_0573, KEYCLOAK_ADMIN_PASSWORD: custom0573('kc'), RABBITMQ_PASSWORD: 'guest' });
+  assert.notStrictEqual(explicitDev.status, 0, '開発用の値の明示を通した');
+  assert.ok(/止める（何も作らない）: RABBITMQ_PASSWORD（Secret rabbitmq\/password）$/m.test(explicitDev.stderr), explicitDev.stderr.slice(-600));
+});
+
+ok('IADR-0574: opt-in（ALLOW_DEV_INFRA_CREDENTIALS=1）だけが開発用の値を許し、大きく警告する。1 以外（true）は opt-in にならない', () => {
+  const r = runUp({ ALLOW_DEV_INFRA_CREDENTIALS: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(r, 'keycloak-admin', 'password'), ['admin']);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq', 'password'), ['guest']);
+  assert.deepStrictEqual(credOf0573(r, 'rabbitmq-app', 'password'), [], '旧 rabbitmq-app を作った（IADR-0577。サービスは開発用の値でも名乗らない）');
+  assert.ok(/!!! WARNING: k8s-local-up\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1 により、基盤の資格情報を公知の開発用の値で作る: KEYCLOAK_ADMIN_PASSWORD, RABBITMQ_PASSWORD/.test(r.stderr),
+    `警告が無い:\n${r.stderr.slice(0, 800)}`);
+  const t = runUp({ ALLOW_DEV_INFRA_CREDENTIALS: 'true' });
+  assert.notStrictEqual(t.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
+});
+
+ok('IADR-0574: 起動器の Secret の作成に公知の既定値の代わりが残っていない（${…:-admin} / ${…:-guest} の形が無い）', () => {
+  const src = fs.readFileSync(UP_SCRIPT, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.ok(!/\$\{KEYCLOAK_ADMIN_PASSWORD:-/.test(src), 'KEYCLOAK_ADMIN_PASSWORD の既定値が残っている');
+  assert.ok(!/\$\{RABBITMQ_PASSWORD:-/.test(src), 'RABBITMQ_PASSWORD の既定値が残っている');
+  assert.ok(/^\. "\$ROOT\/scripts\/lib\/infra-credentials\.sh"$/m.test(src), '判定器を読んでいない');
+});
+
+ok('IADR-0574 陽性対照: CI の integration-stack / cutover-rehearsal は使い捨てのスタックとして起動器の呼び出しすべてに opt-in を付ける', () => {
+  for (const wf of ['integration-stack.yml', 'cutover-rehearsal.yml']) {
+    const src = fs.readFileSync(path.join(REPO_ROOT, '.github', 'workflows', wf), 'utf8').split('\n');
+    const ups = src.map((l, i) => [l, i]).filter(([l]) => l.includes('bash scripts/k8s-local-up.sh --live'));
+    assert.ok(ups.length > 0, `${wf}: 起動器の呼び出しが無い`);
+    for (const [, i] of ups) assert.ok(/^\s*ALLOW_DEV_INFRA_CREDENTIALS=1 /.test(src[i - 1]), `${wf}:${i + 1}: 起動器の呼び出しに opt-in が無い（CI が止まる）`);
+  }
+});
+
 ok('#1860 監査指摘 2: パスワードを変えたら Valkey → BFF の順に作り直し、変えなければ作り直さない', () => {
   const existingValue = ['dummy', '1860', 'old'].join('-');
   const rotatedValue = ['dummy', '1860', 'new'].join('-');
@@ -5538,7 +7077,8 @@ const DEPT_INFO_CARRY = /INFO: 部門属性の同期（DepartmentAttributeSync__
 const DEPT_INFO_EXPLICIT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は (\S+)（明示: DEPT_SYNC_MODE）/;
 const DEPT_INFO_DEFAULT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は既定（DEPT_SYNC_MODE 未指定・現行に値なし。何も足さない/;
 const DEPT_INFO_OFF = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は Off（明示: DEPT_SYNC_MODE=Off/;
-const LEGACY_UPGRADE = 'helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml';
+// #2132 / IADR-0605: 既定の [6/7] は自製イメージのタグ（runUp が与える TEST_IMAGE_TAG）を 1 つだけ渡す。
+const LEGACY_UPGRADE = `helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml --set-string global.image.tag=${TEST_IMAGE_TAG}`;
 
 ok('#1850 P1: 未指定 ＋ 現行 Fix → [6/7] は Fix を宣言し直す（黙って Off へ戻さない）・引き継ぎを告げる・一時ファイルは消す', () => {
   const r = runUp({ STUB_HELM_VALUES: deptValues(modeEntry('Fix')) });
@@ -5705,4 +7245,57 @@ ok('#1850: 前提 —— リポジトリの values（チャート既定・values
   assert.strictEqual(look(probe), 'rc=1\n- name: Probe\n  value: x\n', '実物の values の authorization の extraEnvAppend を判定器が読めていない');
 });
 
-process.stdout.write(`\n✓ ${passed} tests passed\n`);
+// ---- NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージの不変のタグ ----------------------------------------
+// chart はタグ（global.image.tag）が無いと描画を落とす。起動器は冒頭でタグを決めて export し、[2/7] のビルド・取り込みと
+// [6/7] の helm が同じ値を使う。latest は使わない。
+const IMAGE_TAG_SET = (tag) => `--set-string global.image.tag=${tag}`;
+const selfBuiltBuilds = (lines) => lines.filter((l) => l.startsWith('docker build ') && / -t k3d-local\/microservices-platform\//.test(l));
+const tagOfUpgrade = (lines) => {
+  const line = lines.find((l) => HELM_UPGRADE_RE.test(l));
+  return line ? (line.match(/--set-string global\.image\.tag=(\S+)/) || [])[1] : undefined;
+};
+
+ok('#2132: [6/7] の helm へ自製イメージのタグを --set-string で 1 つ渡し、[2/7] のビルド・取り込みは同じタグ（latest は 0 件）', () => {
+  const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.strictEqual((line.match(/global\.image\.tag=/g) || []).length, 1, `タグの指定が 1 つでない: ${line}`);
+  assert.ok(line.includes(IMAGE_TAG_SET(TEST_IMAGE_TAG)), `helm にタグを渡していない: ${line}`);
+  const builds = selfBuiltBuilds(DEFAULT.lines);
+  assert.ok(builds.length >= 19, `自製イメージのビルドが ${builds.length} 件しかない`);
+  for (const b of builds) assert.ok(b.includes(`:${TEST_IMAGE_TAG} `), `helm と違うタグでビルドした: ${b}`);
+  const imp = DEFAULT.lines.find((l) => l.startsWith('k3d image import '));
+  assert.ok(imp, 'k3d image import が無い');
+  const imported = imp.split(/\s+/).filter((t) => t.startsWith('k3d-local/microservices-platform/'));
+  assert.strictEqual(imported.length, builds.length, '作ったイメージを全部取り込んでいない');
+  assert.ok(imported.every((t) => t.endsWith(`:${TEST_IMAGE_TAG}`)), `取り込みのタグが違う: ${imported.join(' ')}`);
+  assert.ok(!DEFAULT.lines.some((l) => /k3d-local\/microservices-platform\/\S+:latest\b/.test(l)), 'latest のイメージを作った／取り込んだ');
+});
+
+ok('#2132: IMAGE_TAG 未指定は作業ツリーの git の sha（変更があれば -dirty-<8 桁>）で、ビルドと helm が同じ値', () => {
+  const r = runUp({ IMAGE_TAG: '' });
+  assert.strictEqual(r.status, 0, `起動器が止まった:\n${r.stderr.slice(-600)}`);
+  const tag = tagOfUpgrade(r.lines);
+  assert.match(tag || '', /^[0-9a-f]{12,40}(-dirty-[0-9a-f]{8})?$/, `git の sha の形でない: ${tag}`);
+  const env = { ...process.env };
+  delete env.IMAGE_TAG;
+  const expected = spawnSync('bash', ['scripts/lib/local-image-tag.sh'], { cwd: REPO_ROOT, env, encoding: 'utf8' }).stdout.trim();
+  assert.strictEqual(tag, expected, 'local-image-tag.sh の値と違う');
+  for (const b of selfBuiltBuilds(r.lines)) assert.ok(b.includes(`:${tag} `), `helm と違うタグでビルドした: ${b}`);
+});
+
+ok('#2132: IMAGE_TAG=latest・タグの形でない値は、クラスタにもイメージにも触れる前に止まる', () => {
+  for (const [bad, reason] of [['latest', /latest は使えません/], ['a/b', /Docker のタグの形ではありません/]]) {
+    const r = runUp({ IMAGE_TAG: bad });
+    assert.notStrictEqual(r.status, 0, `IMAGE_TAG=${bad} で止まらなかった`);
+    assert.match(r.stderr, reason);
+    const wrote = r.lines.filter((l) => /^(k3d cluster create|k3d image import|docker build|helm upgrade|kubectl (apply|create|label|patch|delete))/.test(l));
+    assert.deepStrictEqual(wrote, [], `IMAGE_TAG=${bad} で副作用へ進んだ`);
+  }
+});
+
+if (SHARD === null) {
+  process.stdout.write(`\n✓ ${passed} tests passed\n`);
+} else {
+  // 親が突合する結果行（親はこの行を出力から外して表示する）
+  process.stdout.write(`K8S_UP_SHARD_RESULT passed=${passed} total=${okTotal}\n`);
+}

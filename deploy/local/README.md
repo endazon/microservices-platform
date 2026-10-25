@@ -25,6 +25,28 @@
 MSP chart はインフラを**デプロイせず**素のサービス名（`postgres` 等）で参照するため、infra を
 `platform-infra` に置き、各アプリ namespace に ExternalName エイリアスを張って名前解決させる。
 
+### 基盤との通信の TLS（段 1・IADR-0591。Refs GHSA-j4qv-2w99-xg5p）
+
+- **cert-manager は既定で入る**（`[4/7]` の先頭。従来は `LOCALEDGE=1` のときだけ）。基盤専用の CA（`cert-manager/platform-infra-root-ca`。
+  エッジの CA とは別）が `platform-infra/postgres-tls`・`rabbitmq-tls` を発行し（`deploy/local/infra-tls`）、Ready を待ってから基盤を当てる。
+- postgres は TLS（1.2 以上）を受け、rabbitmq は 5671 に TLS の受け口を足す。**段 1 では平文（5432 の非 TLS・5672）も残す** ——
+  取引ユニット（AST）と基盤の他のクライアント（Keycloak の DB・Wiki.js・バックアップ）が切り替えるまでの併存である。
+- 基盤（MSP）のサービスは DB へ `SSL Mode=VerifyFull`＋基盤の CA、ブローカへ `amqps`（5671）で繋ぐ。CA は `[5/7]` が ConfigMap
+  `platform-infra-ca`（`ca.crt` だけ）として **MSP と AST の名前空間**へ写す（AST の接続は変えない）。
+- 確かめ方:
+  ```bash
+  kubectl -n platform-infra exec deploy/postgres -c postgres -- psql -U postgres -Atc \
+    "select a.usename, s.ssl, count(*) from pg_stat_activity a join pg_stat_ssl s using (pid) where a.backend_type='client backend' group by 1,2"
+  kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl -q list_connections user ssl
+  # 期待値: kp（MSP の *_svc）と msp-* は TLS（t / true）。ai・ast-*・sa は段 1 では平文（f / false）のまま
+  ```
+- 証明書の更新: cert-manager は期限（1 年）の 30 日前に更新する。postgres / rabbitmq は起動時にしか読まないので、起動器は Pod の雛形へ
+  証明書の指紋（注釈 `platform-infra.tls/cert-sha256`）を刻み、変わっていれば作り直す。**更新の後、期限までに一度は起動器を再実行する。**
+- 再実行の影響: 初めて段 1 を当てる再実行では postgres と rabbitmq が作り直される（ブローカは永続化していないので未配送のメッセージは失われる）。
+  **取引の閉場後に行う。**
+- 切り戻し（基盤のサービスだけを平文へ戻す）: `global.db.tls.enabled=false`・`global.messaging.tls.enabled=false` を helm へ与え、
+  `values-local.yaml` の egress の宛先 `rabbitmq` の `ports` を `[5672]` へ戻す。
+
 ## 必要ツール（Windows）
 
 k8s ランタイムは **2 択**。スクリプトは `nerdctl`/`k3d` の有無で自動判定する（`K8S_LOCAL_RUNTIME=rancher|k3d` で明示指定可）。
@@ -36,7 +58,7 @@ k8s ランタイムは **2 択**。スクリプトは `nerdctl`/`k3d` の有無�
 
 **B. Docker Desktop + k3d**
 ```powershell
-winget install Docker.DockerDesktop   # WSL2 backend・メモリ 8GB+ 推奨
+winget install Docker.DockerDesktop   # WSL2 backend・メモリは下の「稼働ホストの前提」
 winget install Kubernetes.kubectl
 winget install k3d                    # 無ければ choco install k3d
 winget install Helm.Helm
@@ -44,14 +66,122 @@ winget install Helm.Helm
 
 > どちらも実体は k3s（ADR-0008）。A は内蔵 k3s をそのまま、B は k3d が k3s-in-docker を作る。
 
+**どちらでも Node.js 22 が要る**（`winget install OpenJS.NodeJS.LTS`）。`k8s-local-up.sh` は [3/7] で realm の取り込み元を作るときに
+`node` で試験アカウントのプレースホルダを処理する（無いと止まる。下の「試験アカウント（e2e-*）」）。
+また起動器（`scripts/k8s-local-up.sh`）と Vault の種（`deploy/local/vault/eso/bootstrap.sh`）は、dev の値の守りの対象を realm の宣言から
+`node scripts/lib/dev-client-secret-targets.js` で導出する。node が無いと、守れないまま進まないよう起動の最初で止まる（IADR-0572）。
+
+## 稼働ホストの前提（メモリ・電源。Issue #1919）
+
+MSP と AST を 1 台に載せて**常用する**ホスト（PoC の稼働ホスト）の前提である。使い捨ての検証スタックにも同じ値でよい。
+**推測で置いた値には「推測」と書いた。** Pod ごとの実測（`kubectl top pod`）が揃ったら、この節と各 Pod の requests / limits を見直す。
+
+### 必要なメモリ
+
+| 項目 | 値 | 根拠 |
+| --- | --- | --- |
+| **VM（WSL2）に割り当てるメモリ** | **24 GB**（推奨） | 下の「limits の合計」の必須＋ESO 所有の経路（24,608 Mi＝約 24.0 GiB）にほぼ等しい。全 Pod が同時に limits へ達しても VM に収まる線である |
+| 既定（物理の 50%）での不足 | 物理 31 GB → 上限 約 15.5 GiB | 実測（2026-10-14）: `kubectl top node` が 13,349 Mi / allocatable 15,890 Mi（86%）で張り付き、3 日で 4 回 VM が停止・一斉再起動した |
+| ホストの物理メモリ | 32 GB 以上（推測） | VM に 24 GB を渡した残り（約 7 GB）で Windows とブラウザを動かす |
+
+requests / limits の合計（`helm template` と `kubectl kustomize` の描画を合計した静的な値。コンテナ単位・replicas を掛けた値）:
+
+| 束 | 中身 | requests | limits | limits の無いコンテナ |
+| --- | --- | --- | --- | --- |
+| 必須 | MSP チャート（values-local）18・infra（`PERSIST` 既定）13・AST チャート（values-local・OpenD 込み）13・cert-manager 3（IADR-0591 で既定へ移った） | 6,056 Mi | 24,096 Mi | 3（上流 manifest の既定） |
+| ESO 所有の経路（AST の既定） | `VAULT=1`（OpenBao 1）・`ESO=1`（ESO 3・Reloader 1） | +128 Mi | +512 Mi | 4（上流チャートの既定） |
+| **必須＋ESO 所有の経路（計）** | 上の 2 行の和（常用の構成） | **6,184 Mi** | **24,608 Mi** | 7 |
+| opt-in の全部 | `OBSERVABILITY=1` 7・`ISTIO=1`（istiod・ingress gateway・サイドカー 18）・`HEADLAMP=1` 1・Argo CD 7 | +2,112 Mi | +8,448 Mi | 7（上流 manifest の既定） |
+
+CPU の合計（同じ描画から。上の `processors` の根拠）:
+
+| 束 | requests | limits |
+| --- | --- | --- |
+| 必須（MSP チャート 1,850m・infra 695m・AST チャート 660m） | 3,205m | 23,750m |
+| ＋ESO 所有の経路（OpenBao 50m。ESO・Reloader は requests 無し） | 3,255m | 24,250m |
+| ＋opt-in の全部（可観測性 245m・Istio 240m・Headlamp 50m） | 3,790m | 31,950m |
+
+- **requests の合計（必須＋ESO で 6,184 Mi＝約 6.0 GiB）は実使用量（13.3 GiB）の半分に満たない。** requests は実際の使用量を表していないので、
+  必要メモリは requests ではなく **limits の合計と実測**で見積もる。
+- **Pod の外の使用量は上の表に入っていない**: k3s（apiserver・kubelet）・containerd・イメージのビルド（`nerdctl build` は同じ VM の中で走る）。
+  合わせて 1〜3 GiB 程度と見込む（推測）。
+- 上流のコンポーネント（ESO・Reloader・Argo CD・cert-manager）と k3s 同梱のもの（Traefik など）は limits を持たないものがあり、上限なく伸びうる。
+
+### `.wslconfig` の推奨値
+
+Rancher Desktop（Windows）は VM のメモリと CPU を自前の設定画面では持たず、**WSL2 の `%USERPROFILE%\.wslconfig` に従う**。
+ファイルが無いと WSL2 の既定（メモリ＝物理の 50%・swap＝メモリの 25%・CPU＝全論理プロセッサ）になる。
+
+```ini
+[wsl2]
+memory=24GB
+swap=8GB
+# processors は書かない（全論理プロセッサ）。絞る場合も 4 以上にする（推測）
+```
+
+| キー | 推奨 | 理由 |
+| --- | --- | --- |
+| `memory` | `24GB` | 上の「必要なメモリ」 |
+| `swap` | `8GB` | VM の中の Pod の外のプロセス（ビルド・k3s）の山を逃がす（推測）。k8s の Pod は既定で swap を使わないので、Pod の OOM はこれでは防げない |
+| `processors` | 指定しない | CPU の requests の合計は必須＋ESO で約 3.3 コア（3,255m。内訳は下の CPU の表）。全論理プロセッサを渡し、各 Pod の limits で抑える。絞る場合も 4 以上（推測） |
+
+`autoMemoryReclaim` などほかのキーは、効果を測っていないのでこの節では変えない。
+
+### 反映の手順（閉場中に行う）
+
+🔴 **反映の間はクラスタが止まる**（AST の損切り S1 も止まる）。米国の通常取引時間の外で行う。
+
+```powershell
+# 1. Rancher Desktop を終了する（トレイのアイコン → Quit。ウィンドウを閉じるだけでは VM は止まらない）
+# 2. %USERPROFILE%\.wslconfig を上の内容で作る（既にあれば [wsl2] の節を直す）
+notepad "$env:USERPROFILE\.wslconfig"
+# 3. WSL の VM を止める（全ディストリビューションが止まる）
+wsl --shutdown
+wsl --list --running        # 一覧にディストリビューションが 1 つも出なくなるまで待つ（表示の文言は Windows の言語設定で変わる）
+# 4. （任意）WSL を更新する
+wsl --version
+wsl --update
+# 5. Rancher Desktop を起動し、ノードが Ready になるのを待つ
+kubectl --context rancher-desktop get nodes
+```
+
+確認（反映されたと言える条件）:
+
+```powershell
+wsl -l -v                                                              # ディストリビューション名を確かめる（Rancher Desktop の既定は rancher-desktop）
+wsl -d rancher-desktop -- grep -E 'MemTotal|SwapTotal' /proc/meminfo   # MemTotal が約 24 GB、SwapTotal が約 8 GB
+kubectl describe node | Select-String -Pattern 'memory:'               # Capacity / Allocatable の memory が約 24 GiB
+kubectl top node                                                       # 使用率が下がっている
+```
+
+### 電源（スリープと休止を無効にする）
+
+**スリープ・休止の間もクラスタは止まる。** 電源接続時のスリープと休止を「なし」にする（管理者でなくてよい）。
+
+```powershell
+powercfg /change standby-timeout-ac 0     # 電源接続時のスリープ: なし
+powercfg /change hibernate-timeout-ac 0   # 電源接続時の休止: なし
+```
+
+- 画面では「設定」→「システム」→「電源」で、電源接続時のスリープを「なし」にする。
+- ノート PC なら、カバーを閉じたときの動作（電源接続時）も「何もしない」にする:
+  `powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0` の後に `powercfg /setactive SCHEME_CURRENT`。
+- 米国株の取引時間中に Windows Update で再起動させない設定と、Rancher Desktop のログオン時の自動起動は、AST リポジトリ（`endazon/ai-stock-trading`）の
+  `docs/operations/host-liveness-monitor-runbook.md`（ホスト側の死活監視の Runbook）の手順 5・6 にある。VM のメモリ上限の手順も同じ Runbook の手順 7 に置いた。
+
 ## 起動（Git Bash 推奨。1 コマンド）
 
 ```bash
-bash scripts/k8s-local-up.sh --live          # クラスタ作成→build/import→secret→infra→MSP chart→alias
+ALLOW_DEV_INFRA_CREDENTIALS=1 bash scripts/k8s-local-up.sh --live   # 使い捨ての手元の環境（下の注）。クラスタ作成→build/import→secret→infra→MSP chart→alias
 kubectl get pods -A
 kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
 ```
+
+> **Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない**（IADR-0574。fail-closed）。起動器は
+> `KEYCLOAK_ADMIN_PASSWORD` / `RABBITMQ_PASSWORD` の明示 ＞ 既存の Secret（`platform-infra` の `keycloak-admin` / `rabbitmq`）の値の順に使い、
+> どちらも無い（または開発用の値と同じ）なら何も作らずに止まる。**使い捨ての開発環境だけ** `ALLOW_DEV_INFRA_CREDENTIALS=1` で開発用の値を許す
+> （警告を出す）。残すクラスタでは開発用ではない値を env で与える（一度作れば、次からは既存の Secret の値を使う）。
 
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 
@@ -75,7 +205,7 @@ OBSERVABILITY=1 bash scripts/k8s-local-up.sh --live   # Prometheus/Loki/Tempo/Gr
 VAULT=1         bash scripts/k8s-local-up.sh --live   # 秘匿管理 OpenBao（Vault API 互換。既定は raft ストレージ＋PVC で永続化・PERSIST=0 で -dev）+ ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh --live   # ArgoCD install + Application 適用（MSP/AST）
 PERSIST=0       bash scripts/k8s-local-up.sh --live   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
-LOCALEDGE=1     bash scripts/k8s-local-up.sh --live   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
+LOCALEDGE=1     bash scripts/k8s-local-up.sh --live   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（経路は ADMIN_EDGE=1 のときだけ。下記 edge 節）
 ESO=1           bash scripts/k8s-local-up.sh --live   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
 SYNTHETIC=1     bash scripts/k8s-local-up.sh --live   # 合成監視の常駐プローブ（60 秒・LLM を呼ばない。ADR-0079 決定 1・#1287。下記「合成監視」節）
 ```
@@ -130,6 +260,8 @@ PERSIST=0 bash scripts/k8s-local-up.sh --live
 - 🔴 **永続化した Postgres と Vault は日次でバックアップされる**（#1560 / [IADR-0471](../../.ai-context/adr/IADR-0471_platform-infra-encrypted-daily-backup.md)）。
   `infra-persistence` が [`platform-backup/postgres`](platform-backup/postgres/) を、`vault-persistence` が [`platform-backup/vault`](platform-backup/vault/) を取り込み、
   CronJob が JST 12:00 / 12:15 に age の**公開鍵**で暗号化して本機の C: と E:（`/mnt/c`・`/mnt/e/platform-infra-backups`）へ置く。
+  Vault の回は raft の整合したスナップショットを専用の SA の k8s auth で取る（#1868 / [IADR-0548](../../.ai-context/adr/IADR-0548_openbao-raft-snapshot-backup-k8s-auth.md)）。
+  その role とポリシーは起動スクリプトが [`platform-backup/vault/bootstrap.sh`](platform-backup/vault/bootstrap.sh) で毎回入れる。
   **受取人の ConfigMap `platform-backup-age-recipients` と保管先の目印 `.platform-backup-target` を用意するまでは、
   何も書かずに毎日失敗する**（fail-closed）。受取人は `BACKUP_AGE_RECIPIENTS_FILE=<ファイル>` を与えた起動でだけ作り直す。
   準備・確認・リストア試験（`scripts/backup-restore-drill.sh`）は [`docs/operations/platform-infra-backup-runbook.md`](../../docs/operations/platform-infra-backup-runbook.md)。
@@ -188,6 +320,8 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
   **seed 利用者の存在**／サービスアカウント利用者のロールと属性。client の `secret` は**client を作るときにだけ**宣言（開発用の値）で入れ、
   既存の client では比べず・書かない（#1682。認証基盤と Vault を対で回した値を戻さないため。回し方は
   [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md)）。
+- **試験アカウント（`e2e-*`）**: 資格情報は宣言のプレースホルダへ Secret `e2e-accounts` の値を差し込んで作る。差し込めなければ作らない
+  （drift にも数えない）。作った後は下の「既存の人間の利用者」と同じく触らない（回し方は「試験アカウント（e2e-*）」の節）。
 - **触らない層**（実行時が正）: **既存の人間の利用者**の資格情報・属性・ロール・グループ・`requiredActions`・セッション、
   `smtpServer`（[運用 Runbook](../../docs/operations/keycloak-smtp-relay-setup-runbook.md) が入れる実行時状態）。
   宣言に無い余剰の実体（client / role / group / 利用者）も消さない。
@@ -207,18 +341,41 @@ up を再実行すれば届く**（単独でも `bash deploy/local/keycloak-setu
 既に在る KV は env を渡しても書き換わらない —— 認証基盤・データストアと対になる秘密を回すのは
 [対になる秘密のローテーション](../../docs/operations/paired-secret-rotation-runbook.md) の手順である。
 
+🔴 **`VAULT=1 ESO=1` の再実行では、`keycloak-smtp`・`reset-gate-oidc`・`abac-seeder-oidc`（platform-infra）を起動器が置き直さない**（IADR-0616・#2195）。
+既に在る Secret の値は Vault → ESO が持つ。起動器は ESO の段で同期を依頼し（force-sync）、依頼の後の同期を待ってから投入器と門・近接 MTA を動かす。
+**`warn: platform-infra/<名> が依頼の後に同期しません` が出たら、その後の投入器の WARN（401）を疑う。** その Secret は古い値のままかもしれない。
+`kubectl -n platform-infra get externalsecret <名>` が `SecretSynced` で、`status.refreshTime` が warn の後の時刻になったことを確かめる
+（同期しないなら `kubectl -n platform-infra describe externalsecret <名>` で理由を見る）。そのうえで投入器を流し直す
+（例: `node scripts/seed-abac-policies.js --live`。検索・タグの投入器も同じ）。
+
+🔴 **ブローカ（RabbitMQ）のサービスごとのユーザー**（IADR-0573・IADR-0577）: `VAULT=1 ESO=1` のとき、bootstrap が KV
+`msp/rabbitmq-users`・`ai-stock-trading/rabbitmq-users` を無いときだけ乱数で作り、起動器が
+`deploy/local/rabbitmq-setup/reconcile-users.sh` でブローカへユーザーと権限を合わせる（表は同じディレクトリの `users.txt`。値は表示しない）。
+ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-users`（全ユーザー）と `microservices-platform/msp-rabbitmq-users`
+（基盤の 7 ユーザー）と `ai-stock-trading/ast-rabbitmq-users`（取引ユニットの 11 ユーザー。同ユニットの chart の各 Worker が読む）を
+既存の値＞乱数で作り、helm の前に同じスクリプトで合わせる（取引ユニットの起動器は ESO の無い経路ではこの Secret を作らず、無ければ止まる）。基盤の 7 サービスは
+`msp-<サービス名>` で名乗る（helm の `global.messaging.credentialsSecretName` / `usernamePrefix`）。
+確認は `bash deploy/local/rabbitmq-setup/reconcile-users.sh --check`。値を回すときは KV を書き換えてから同じスクリプトを回す。
+ブローカは永続化していないので、再起動の直後に Secret `rabbitmq-users` からユーザーを作り直す（`rabbitmq.yaml` の postStart）。
+既定のユーザー（下表の `RABBITMQ_USER`）は起動器の最後に `deploy/local/rabbitmq-setup/disable-default-user.sh` が消す ——
+宣言の全ユーザーが認証でき、既定のユーザーの接続が 1 本も無いときだけ消し、消せなければ WARN で通す（`--check` で状態を読む）。
+消した後は印（ConfigMap `platform-infra/rabbitmq-default-user`）に従い、再起動のたびに消し直す。管理 UI へ既定のユーザーで入れなくなるので、
+ブローカの操作は `kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl …` で行う。戻すときはスクリプト冒頭の手順。
+ブローカへの到達は NetworkPolicy `rabbitmq-ingress-clients`（`deploy/local/infra/rabbitmq.yaml`）が `users.txt` の Pod だけに絞る。
+ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
+
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |
 | `PG_PASSWORD` | `platform-infra/postgres.password` | `postgres` | Postgres 管理 |
-| `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ 利用者名（#1022。**helm の `global.messaging.user` と揃えること**） |
-| `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` ＋ `microservices-platform/rabbitmq-app.password` | `guest` | RabbitMQ（#1022 でアプリ側 Secret を追加。ブローカと同値） |
+| `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ の既定のユーザー名（#1022。ブローカの初期化だけに使う。サービスは名乗らない＝IADR-0577） |
+| `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` | `guest` | RabbitMQ の既定のユーザーのパスワード（アプリ側の共通の Secret `rabbitmq-app` は IADR-0577 で撤去） |
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
 | `OBJECT_STORAGE_ACCESS_KEY`/`OBJECT_STORAGE_SECRET_KEY` | `microservices-platform/object-storage-credentials` | `objectstorage-dev` / `objectstorage-dev-secret` | オブジェクトストレージ（SeaweedFS。chart 参照。旧名 `MINIO_*` / `minio-credentials`・IADR-0461） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
 | `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
 | `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |
 | `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線） |
-| `VOYAGE_API_KEY` | `microservices-platform/llm-provider-credentials.voyage-api-key` | 空=埋め込みが失敗し索引に入らない（DLQ） | MSP LLM Gateway の埋め込み（values-local が `Embedding__Voyage__ApiKey` へ配線。#1764）。**値を env で渡すより Runbook の手順で Vault へ入れる**（[埋め込みの鍵の配線](../../docs/operations/voyage-embedding-key-runbook.md)） |
+| `VOYAGE_API_KEY` | `microservices-platform/llm-provider-credentials.voyage-api-key` | 空=埋め込みが失敗する（public / internal は語彙索引へ全文だけで入り、鍵の投入後に自動で埋め直される。#1908） | MSP LLM Gateway の埋め込み（values-local が `Embedding__Voyage__ApiKey` へ配線。#1764）。**値を env で渡すより Runbook の手順で Vault へ入れる**（[埋め込みの鍵の配線](../../docs/operations/voyage-embedding-key-runbook.md)） |
 
 > `llm-provider-credentials` は values-local の `services.llmgateway.extraEnv` で LlmGateway の
 > `Llm__ApiKey`（`anthropic-api-key`）と `Embedding__Voyage__ApiKey`（`voyage-api-key`。optional）に注入される。
@@ -255,6 +412,87 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 > **PVC が空の状態から `--import-realm` すると import 自体が失敗する**潜在バグだった
 > （PVC 永続化で再 import が常にスキップされていたため無自覚に隠れていた。#780 第2段の
 > realm 作り直しで顕在化・実測）。
+
+## 試験アカウント（e2e-*。E2E 専用・人は使わない）
+
+稼働中の PoC へ Playwright の E2E を流すための専用アカウントである。**人のアカウント（`admin` / `developer` / `poc-*`）を E2E から使わない**
+（役割ごとに 1 アカウント。権限の否定系は「隣の役割」で見る）。宣言は realm JSON にあり、後追い Job が既存の realm にも足す。
+
+| ユーザー名 | realm ロール | グループ（＝属性） | 用途 |
+| --- | --- | --- | --- |
+| `e2e-user` | なし | `/clearance/internal`, `/department/engineering` | 一般利用者。管理画面の陰性・AST の閲覧者の陰性 |
+| `e2e-operator` | `platform-operator` | `/clearance/internal`, `/department/engineering` | 運用者画面の陽性。管理者画面の陰性 |
+| `e2e-admin` | `platform-admin`, `platform-operator` | `/clearance/restricted`, `/department/engineering` | 管理者画面の陽性 |
+| `e2e-noaccess` | なし | `/clearance/public` のみ | ABAC の拒否の対照（検索・文書で何も見えない） |
+| `e2e-revocable` | なし | `/clearance/internal` のみ | セッション失効・無効化の被験者（`e2e-admin` が有効へ戻す） |
+| `e2e-trading-owner` | `trading-owner` | `/clearance/internal`, `/department/engineering` | AST の所有者（取引の画面の陽性） |
+
+- `trading-owner` は realm `platform` のロールである（連結配備の認証は `platform` に一本化済み）。`e2e-user` は持たない。
+- **MFA は外さない。** `CONFIGURE_TOTP` の代わりに TOTP の OTP 資格情報を宣言で持つ（初回の登録画面が挟まらない）。
+- 🔴 **資格情報の値はリポジトリに無い。** realm JSON はプレースホルダ `${E2E_<ROLE>_PASSWORD}` / `${E2E_<ROLE>_TOTP_SECRET}` だけを持つ。
+
+### 値の置き場
+
+| 置き場 | 名前 |
+| --- | --- |
+| OpenBao の KV `secret/msp/e2e-accounts` | `e2e-<role>-password` / `e2e-<role>-totp-secret`（12 個。`<role>` は `user` / `operator` / `admin` / `noaccess` / `revocable` / `trading-owner`） |
+| ESO の ExternalSecret `platform-infra/e2e-accounts`（[`vault/eso/externalsecret-e2e-accounts.yaml`](vault/eso/externalsecret-e2e-accounts.yaml)）→ Secret `platform-infra/e2e-accounts` | `E2E_<ROLE>_PASSWORD` / `E2E_<ROLE>_TOTP_SECRET`（`<ROLE>` は大文字・`-` は `_`） |
+
+- 読み手は realm の後追い Job（`envFrom`。無くても起動する）と、Keycloak の取り込み元を作る `k8s-local-up.sh` の [3/7]。E2E の runner も同じ Secret を読む。
+- **Secret が無い・欠ける・値が検査に落ちる利用者は作らない**（後追いの出力に `skipped   user e2e-… — e2e-accounts から差し込めない: <キー>: <理由>` が出る。
+  値は出ない）。検査はパスワードが realm の `passwordPolicy`（12 文字以上・3 種類以上の文字）を満たすこと、TOTP の秘密が英数 20〜64 文字であること。
+- TOTP の秘密は Keycloak がそのまま持つ**生の文字列**である。認証アプリ・E2E が使う base32 はその UTF-8 バイト列の base32
+  （`scripts/lib/totp.js` の `base32Encode` を通してから `totp` に渡す）。
+- Vault の種（`vault/eso/bootstrap.sh`）は入れない。**`VAULT=1 ESO=1` でも、KV を入れるまで試験アカウントは作られない**（他の機能には影響しない）。
+
+### 入れる（初回）
+
+`VAULT=1 ESO=1` で起動済みのクラスタで、値を生成して KV へ流す（**端末に値を出さない**。生成器は標準出力が端末だと止まる）。
+
+```bash
+node scripts/gen-e2e-accounts.js | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+  'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put -cas=0 secret/msp/e2e-accounts -'
+```
+
+`-cas=0` は「無いときだけ作る」。既に在れば失敗する（上書きは下の回転の手順）。
+
+### 反映する
+
+`VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live` を再実行すれば、ESO の同期の後に後追いが試験アカウントを足す。up を回さずに当てるときは:
+
+```bash
+kubectl -n platform-infra annotate externalsecret e2e-accounts force-sync="$(date +%s)" --overwrite
+kubectl -n platform-infra wait --for=condition=Ready externalsecret/e2e-accounts --timeout=60s
+bash deploy/local/keycloak-setup/reconcile-realm.sh   # 期待: applied   user.create  e2e-user …（6 名）
+```
+
+### 確かめる
+
+```bash
+kubectl -n platform-infra get externalsecret,secret e2e-accounts   # 期待: READY=True・STATUS=SecretSynced・DATA=12
+bash deploy/local/keycloak-setup/reconcile-realm.sh --check        # 期待: skipped の行が無い・最終行が drift=0
+# 6 桁を出す（値は表示しない。出るのは 6 桁だけ）
+kubectl -n platform-infra get secret e2e-accounts -o 'jsonpath={.data.E2E_USER_TOTP_SECRET}' | base64 -d \
+  | node -e 'const t=require("./scripts/lib/totp.js");let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(t.totp(t.base32Encode(d))))'
+```
+
+ブラウザで `https://localhost/` から `e2e-user` でログインし、パスワード（Secret の `E2E_USER_PASSWORD`）と上の 6 桁で入れること、
+`e2e-trading-owner` だけが `/trading/` の所有者の画面を開けることを見る。
+
+### 回転（四半期ごと。漏えいの疑いがあれば即時）
+
+後追いは**作った後の利用者の資格情報を書き換えない**（人の seed 利用者と同じく実行時が所有する）。回すときは KV を変え、利用者を消して作り直す。
+
+1. 新しい値で KV を上書きする（`-cas=0` を付けない）:
+   ```bash
+   node scripts/gen-e2e-accounts.js | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
+     'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put secret/msp/e2e-accounts -'
+   ```
+2. ESO を同期させる（上の「反映する」の `annotate` と `wait`）。
+3. Keycloak の Admin REST（管理面はエッジに出ない。`kubectl -n platform-infra port-forward svc/keycloak 8080:8080` のうえで master realm の管理者のトークンを取り、`GET http://localhost:8080/admin/realms/platform/users?search=e2e-` で引いて `DELETE …/users/<id>`。IADR-0575・`deploy/local/edge/README.md`「Keycloak の管理コンソール」）で **`e2e-` で始まる 6 名だけ**を削除する。
+   人のアカウントは消さない。`kcadm.sh` を Keycloak の Pod で exec しない（本体が OOMKilled になる）。
+4. `bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
+5. 値を写した先（GitHub Actions の secrets・runner の `.env.e2e`・保存済みの storageState）を捨てて取り直す。
 
 ## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）
 
@@ -651,15 +889,22 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **永続化は既定オン**: Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` なら Prometheus/Loki/Tempo/Grafana も PVC 永続化する
   （上記「永続化」節・IADR-0082 / IADR-0210 / IADR-0369）。`PERSIST=0` で emptyDir（使い捨てスタック専用）。
   `VAULT=1` の Vault も PVC 永続化する（`deploy/local/vault-persistence`・IADR-0457）。rabbitmq / valkey / otel は揮発のまま。
-- **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
-  エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
-  `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときも **mTLS の既定は PERMISSIVE** である（IADR-0307 決定 4）。
+- **Istio/mTLS/ingress の NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
+  エッジ `/bff/*` ルーティング等）は不変。
+  **egress（外向き通信）の既定拒否は当てる**（NFR-18 / IADR-0589。`networkPolicy.egress`）—— 段 1 は外へ出ない Pod（`networkPolicy.egress.workloads`）だけで、
+  名前解決（kube-dns）・同じ名前空間・platform-infra の宣言した宛先（postgres・rabbitmq・keycloak・otel-collector・qdrant）にだけ届く。
+  BFF・LLM ゲートウェイ・データソース・Wiki.js などは段 2 で当てる（それまでは従前のまま）。サービスを足す・宛先を変えるときは
+  `deploy/local/values-local.yaml` の `networkPolicy.egress` をそろえる（`scripts/helm-egress-network-policy.test.js` が突き合わせる）。
+  効いているかは `kubectl -n microservices-platform run egress-probe-$RANDOM --rm -i --restart=Never --image="$(grep -m1 -oE 'busybox:[^ ]+@sha256:[0-9a-f]{64}' deploy/local/infra/inotify-sysctl.yaml)" --labels=app=egress-probe --annotations=sidecar.istio.io/inject=false -- sh -c 'sleep 20; nc -z -w 5 keycloak.platform-infra.svc.cluster.local 8080 && echo open || echo closed'`
+  で確かめる（`closed` が期待値。ラベルを `app=egress-probe-control` に替えると `open`）。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
+  `ISTIO=1`（＋ `LOCALEDGE=1`）で有効化したときの **mTLS の既定は STRICT** である（IADR-0590。従前の既定 PERMISSIVE〔IADR-0307 決定 4〕を改めた）。
+  `LOCALEDGE=1` の初回は入口を Istio Ingress Gateway へ移した後で STRICT へ上がる。緩めるのは `ISTIO_MTLS_MODE=PERMISSIVE` の明示だけである。
   **`ISTIO` は 3 値**（`1`＝入れる／`0`＝外す／未指定＝現行の helm の宣言を引き継ぐ。#1713 / IADR-0488）——
-  メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し・PERMISSIVE）。
+  メッシュで動いているクラスタを `ISTIO` 無しで再実行してもメッシュ宣言は外れず、mTLS モードも引き継ぐ（初回だけがメッシュ無し。メッシュを入れた初回は STRICT）。
   外すのは `ISTIO=0` の明示だけで、未指定のまま現行を読めなければ起動の前に止まる（詳細は `deploy/istio/README.md`）。
-  🔴 **STRICT へ上げると `ai-stock-trading`（サイドカー無し）から MSP への平文が全断する** ——
+  🔴 **STRICT の間、`ai-stock-trading`（サイドカー無し）から MSP への平文は届かない** ——
   ナレッジ保存・日報の LLM 生成・取引判断の LLM 呼び出しが RST で落ちる（#1159 実測。逆向きは落ちない）。
-  AST を mesh へ入れるまで（AST#627）既定は PERMISSIVE のままにする。
+  AST を mesh へ入れてから STRICT にする（手順は `deploy/istio/README.md`「STRICT の前提」。起動器は AST の Pod が居て注入ラベルが無いと WARN を出す）。
   **モードは `scripts/lib/mesh-mtls-mode.sh` の `set_mesh_mtls_mode`（helm 経由）でしか書かない** ——
   `kubectl patch` で書くと以後の `helm upgrade` が恒久的に失敗する（IADR-0377。乖離は
   `node scripts/check-stack-ready.js --live` の G12 が落とす）。
@@ -679,23 +924,42 @@ kubectl create configmap keycloak-realms -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 # IADR-0518 (#1834): Keycloak の取り込み元（keycloak.yaml がマウントする。無いと Pod が起動しない）。
 # 手で作るときは宣言のまま（dev の値）になる。dev 以外のクラスタでは手で作らず k8s-local-up.sh を使う
-# （identity-admin / reset-gate / mcp-client-admin の secret を env の値へ差し替えて作る）。
+# （サービスアカウントを持つ機密クライアントの secret を env の値へ差し替えて作る。対象は宣言から導出する。IADR-0572）。
 kubectl create secret generic keycloak-realm-import -n platform-infra \
   --from-file=microservices-platform-realm.json=deploy/keycloak/microservices-platform-realm.json
 
-# #438: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# #438 / IADR-0532: realm.json の loginTheme/accountTheme/emailTheme=platform を解決するテーマ実体
 # （k8s-local-up.sh 経由なら自動生成される。ここは手動でステップ実行する場合の再現用）。
 # 作成しないまま Pod を起動しても keycloak.yaml 側は optional: true のため落ちないが、
 # その場合ログイン画面が「テーマが見つからない」で 500 になる。
-kubectl create configmap keycloak-theme-platform -n platform-infra \
-  --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
-  --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \
-  --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
-  --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
+# テーマ配下の全ファイルを載せる。キーは相対パスの `/` を `__` に置き換えたもの（keycloak.yaml の items と同じ規則）。
+theme_args=()
+while IFS= read -r f; do
+  rel="${f#deploy/keycloak/themes/platform/}"
+  theme_args+=(--from-file="${rel//\//__}=$f")
+done < <(find deploy/keycloak/themes/platform -type f | LC_ALL=C sort)
+kubectl create configmap keycloak-theme-platform -n platform-infra "${theme_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# IADR-0591: 基盤のサーバ証明書（cert-manager を先に入れ、CRD の Established を待つ。k8s-local-up.sh の install_cert_manager と同じ）
+kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
+kubectl wait --for=condition=Established --timeout=120s crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
+kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+kubectl apply -k deploy/local/infra-tls
+kubectl -n platform-infra wait --for=condition=Ready --timeout=120s certificate/postgres-tls certificate/rabbitmq-tls
 kubectl apply -k deploy/local/infra                                  # infra
+# 基盤の CA を MSP の名前空間へ写す（helm の各サービスが非 optional でマウントする）
+kubectl create namespace microservices-platform --dry-run=client -o yaml | kubectl apply -f -
+ca="$(mktemp)"
+kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > "$ca"
+kubectl create configmap platform-infra-ca -n microservices-platform --from-file=ca.crt="$ca" \
+  --dry-run=client -o yaml | kubectl apply -f -
+rm -f "$ca"
+# NFR-20 / #2132: 自製イメージは不変のタグ（git の sha）で作り、同じタグを helm へ渡す（chart はタグが無いと描画で止まる。latest は拒む）
+IMAGE_TAG="$(bash scripts/lib/local-image-tag.sh)"
+IMAGE_TAG="$IMAGE_TAG" bash scripts/k8s-local-images.sh --live
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
+  -n microservices-platform --create-namespace -f deploy/local/values-local.yaml \
+  --set-string "global.image.tag=$IMAGE_TAG"
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 ```

@@ -3,22 +3,23 @@ title: ワンタイムコード（OTP／多要素認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-15
-updated: 2026-08-28
+updated: 2026-10-10
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
-adrs: [ADR-0026]
-iadrs: [IADR-0197, IADR-0261]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local, 20260828_issue-439_sc16-account-settings]
+adrs: [ADR-0026, ADR-0031]
+iadrs: [IADR-0197, IADR-0261, IADR-0532]
+specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
 issues: [#438]
 -->
 
 # 画面仕様書: ワンタイムコード（OTP／多要素認証）
 
-> **realm 設定に加え、Keycloak テーマ（ブランド適用の CSS）を実装した。** テーマ実体は
-> `deploy/keycloak/themes/platform/login/`（`parent=keycloak` を継承し、テンプレートは複製せず
-> CSS のみ追加する方式）。**docker-compose 環境・k8s ローカル環境（`deploy/local/`）とも
+> **realm 設定に加え、Keycloak テーマ（SPA と同じデザイン）を実装した。** テーマ実体は
+> `deploy/keycloak/themes/platform/login/`（親は Keycloak 26 の既定ログインテーマ（PatternFly 5）。テンプレートは複製せず、
+> SPA のデザイントークンから生成した色と CSS・最小のメッセージだけを持つ方式。2026-10-10 に親を改めた ——
+> 旧来の親（PatternFly 3 の旧テーマ）の上では Keycloak の既定の見た目のままだった）。**docker-compose 環境・k8s ローカル環境（`deploy/local/`）とも
 > 配線済みである**（k8s ローカルの ConfigMap 生成は 2026-08-28 に自動化した。残件は本書 §未決事項）。
 
 ## 起点となる計画書（トレーサビリティ）

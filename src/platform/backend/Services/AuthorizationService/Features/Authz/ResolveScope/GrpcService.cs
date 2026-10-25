@@ -10,11 +10,10 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 namespace AuthorizationService.Features.Authz.ResolveScope;
 
 // FR-05, NFR-09, ADR-0004, ADR-0029, ADR-0075, IADR-0379 (#1201): 権限スコープ解決の **gRPC 面**（参照実装）。
-// REST の `POST /authz/scope`（Endpoint.cs）と**同じ評価器**（AbacEvaluator.ResolveScope）を呼ぶ —— 評価器を
-// 2 つにしない。REST と gRPC は並走し、**並走中の正は REST** である（IADR-0379）。
+// 評価器（AbacEvaluator.ResolveScope）を呼ぶ。［2026-10-10 / #1255・[[IADR-0533]]］east-west の呼び出し元は gRPC だけになり、
+// ［2026-10-15 / #1902］REST の `POST /authz/scope`（旧 Endpoint.cs）は撤去した。権限スコープ解決の面はこれだけである。
 //
-// 🔴 **ServiceCaller を要求する。** REST の `/scope` は「サービス間呼び出しのため管理者限定にしない」として
-// 認可を掛けていない（メッシュの mTLS が第一防御）。gRPC の面では**呼び出し側サービス自身の資格情報**
+// 🔴 **ServiceCaller を要求する。** **呼び出し側サービス自身の資格情報**
 // （client credentials の JWT・`platform-service` ロール）を要求し、利用者のトークンでは通さない
 // （通すと「利用者が直接呼んだ」と区別できず、confused deputy になる）。
 // 利用者の文脈（user_id / 属性 / action）は本文で運ぶ。deny-by-default は変わらない ——
@@ -37,7 +36,7 @@ public sealed class AuthzScopeGrpcService(
 
     public override async Task<ResolveScopeResponse> Resolve(ResolveScopeRequest request, ServerCallContext context)
     {
-        // 空文字は read（REST の AccessScopeRequest.Action の既定値と同じ）。
+        // 空文字は read（`AccessScopeRequest.Action` の既定値と同じ）。
         var action = string.IsNullOrEmpty(request.Action) ? PolicyAction.Read : request.Action;
         if (!PolicyAction.IsValid(action))
             throw new RpcException(new Status(
@@ -45,12 +44,12 @@ public sealed class AuthzScopeGrpcService(
                 $"action は {string.Join(" / ", PolicyAction.All)} のいずれかである必要があります。"));
 
         // 🔴 **計画 ADR-0088 決定 1 / [[IADR-0413]] (#1333): 属性は IdP から引き直す。**
-        // 本文の `request.UserAttributes` は評価に用いない —— REST 面と**同じ 1 つの点**を通る。
+        // 本文の `request.UserAttributes` は評価に用いない —— 引き直しは `ScopeUserAttributeSource` の 1 点を通る。
         // **契約からフィールドを消してはいない**（[[IADR-0379]] 決定 2 が削除を破壊的変更と定める）。
         // 保証するのは「評価に用いないこと」である。
         var lookup = await users.ResolveAsync(request.UserId, context.CancellationToken);
         if (lookup.Outcome == ScopeUserAttributeSource.Outcome.Unavailable)
-            // 🔴 **「引けなかった」は status である**（REST 面の 503 と同値）。
+            // 🔴 **「引けなかった」は status である**（撤去した REST 面の 503 と同値）。
             // 呼び出し元は `RpcException` を deny へ縮退するので fail-closed は保たれる。
             throw new RpcException(new Status(
                 StatusCode.Unavailable, "利用者属性を身元プロバイダから取得できませんでした。"));
@@ -59,7 +58,7 @@ public sealed class AuthzScopeGrpcService(
         var policies = await db.Policies.Where(p => p.IsActive).ToListAsync(context.CancellationToken);
         // 「居ない」は**応答**である（deny を応答で返す。status にしない）。
         // FR-19, 計画 ADR-0036 D-03, ADR-0098 決定 1, [[IADR-0447]] (#1447):
-        // `${current_groups}` の束縛値は REST 面と**同じ点**（`ScopeUserAttributeSource`）が出す。
+        // `${current_groups}` の束縛値は属性と**同じ点**（`ScopeUserAttributeSource`）が出す。
         // 🔴 **契約（proto）は変えない** —— 束縛は評価器の内側で完結する（[[IADR-0379]] 決定 2）。
         var scope = lookup.Outcome == ScopeUserAttributeSource.Outcome.Found
             ? AbacEvaluator.ResolveScope(req, policies, action, lookup.Groups)

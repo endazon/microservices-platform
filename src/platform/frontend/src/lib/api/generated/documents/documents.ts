@@ -23,11 +23,14 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BffDocumentListParams,
   CreateDocumentRequest,
   DocumentContentDto,
   DocumentDto,
+  DocumentListPageDto,
   DocumentVersionDto,
   InvalidTransitionDto,
+  ProblemDetails,
   UpdateDocumentRequest,
   ValidationProblemDetails,
   VersionConflictDto
@@ -56,8 +59,13 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
 };
 
 export type bffDocumentListResponse200 = {
-  data: DocumentDto[]
+  data: DocumentListPageDto
   status: 200
+}
+
+export type bffDocumentListResponse400 = {
+  data: void
+  status: 400
 }
 
 export type bffDocumentListResponse401 = {
@@ -70,21 +78,33 @@ export type bffDocumentListResponse403 = {
   status: 403
 }
 
+export type bffDocumentListResponse502 = {
+  data: ProblemDetails
+  status: 502
+}
+
 export type bffDocumentListResponseSuccess = (bffDocumentListResponse200) & {
   headers: Headers;
 };
-export type bffDocumentListResponseError = (bffDocumentListResponse401 | bffDocumentListResponse403) & {
+export type bffDocumentListResponseError = (bffDocumentListResponse400 | bffDocumentListResponse401 | bffDocumentListResponse403 | bffDocumentListResponse502) & {
   headers: Headers;
 };
 
 export type bffDocumentListResponse = (bffDocumentListResponseSuccess | bffDocumentListResponseError)
 
-export const getBffDocumentListUrl = () => {
+export const getBffDocumentListUrl = (params?: BffDocumentListParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/bff/documents`
+  return stringifiedParams.length > 0 ? `/bff/documents?${stringifiedParams}` : `/bff/documents`
 }
 
 /**
@@ -97,11 +117,28 @@ export const getBffDocumentListUrl = () => {
  * `RequireRole anyOf={[Admin, Operator]}` で絞られていたが、**API は無認証でも通っていた**。
  * **同じ `/bff/documents` でも `{id}` 以下（SC-03 の文書詳細）は認証のみ**である ——
  * あちらは SC-01 の出典クリックから一般利用者が遷移する。
+ *
+ * ［2026-10-14 / #1923・#1897］**ページで返す**（IADR-0537）。並びは更新日時の降順・同時刻は ID の降順。
+ * - 送り方は**オフセット**（`offset` / `limit`）。`limit` は既定 50、1〜100 に丸める。`offset` が総件数以上なら `items` は空。
+ * - 🔴 **`total` は利用者の ABAC スコープで絞った後の件数だけである。** 権限外の文書は `items` にも `total` にも入らず、
+ *   ページの境界も変えない（存在秘匿）。後段の続きの印はこの口の外へ出さない。
+ * - 後段（文書サービス）から一覧を引き切れないとき（途中のページを含む）は **502**（ProblemDetails。運用画面の一覧 `/bff/datasources`・`/bff/conversion/jobs` と同じ向き）を返す。
+ *   空のページ・部分の件数へは畳まない（本当の 0 件と区別できなくなる。#1897）。本文は中立の文言だけで、文書の有無も件数も載せない。
+ * - 許可ポリシーが無い（見える文書が無い）ときは `items` が空・`total` が 0 のページを返す（deny-by-default。従前どおり）。
+ *
+ * ［2026-10-15 / #1923 段 2］**並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）**。並べ替えは文書サービスが行い、
+ * 絞り込みは ABAC で絞った後に当てる。`total` は絞り込み後、`unfilteredTotal` と `statusCounts` は絞り込み前（いずれも ABAC 後）の数。
+ *
+ * ［2026-10-17 / #1923］**タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲**を同じ作法で当てる。
+ * どれも省略可で、省略は従前の応答と同じ。`sourceCounts` / `projectCounts` も絞り込み前（ABAC 後）の数。
+ *
+ * ［2026-10-20 / #1993］**このページの文書の索引の状態（`indexStatuses`）**を添える。ページを切り出した後に、ページの文書の ID だけを
+ * 取り込み側へ 1 回で問い合わせる（権限外の文書の状態は引かない）。取り込み側から引けなければ全件 `unknown` で、一覧は失敗しない。
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
-export const bffDocumentList = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {
+export const bffDocumentList = async (params?: BffDocumentListParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {
 
-  return bffFetch<bffDocumentListResponse>(getBffDocumentListUrl(),
+  return bffFetch<bffDocumentListResponse>(getBffDocumentListUrl(params),
   {
     ...options,
     method: 'GET'
@@ -114,23 +151,23 @@ export const bffDocumentList = async ( options?: Parameters<typeof bffFetch>[1])
 
 
 
-export const getBffDocumentListQueryKey = () => {
+export const getBffDocumentListQueryKey = (params?: BffDocumentListParams,) => {
     return [
-    `/bff/documents`
+    `/bff/documents`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getBffDocumentListQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export const getBffDocumentListQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void | ProblemDetails>(params?: BffDocumentListParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getBffDocumentListQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getBffDocumentListQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffDocumentList>>> = ({ signal }) => bffDocumentList({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffDocumentList>>> = ({ signal }) => bffDocumentList(params, { signal, ...requestOptions });
 
 
 
@@ -140,19 +177,19 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type BffDocumentListQueryResult = NonNullable<Awaited<ReturnType<typeof bffDocumentList>>>
-export type BffDocumentListQueryError = void
+export type BffDocumentListQueryError = void | ProblemDetails
 
 
 /**
  * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 
-export function useBffDocumentList<TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export function useBffDocumentList<TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void | ProblemDetails>(
+ params?: BffDocumentListParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getBffDocumentListQueryOptions(options)
+  const queryOptions = getBffDocumentListQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -298,6 +335,9 @@ export const getBffDocumentDetailUrl = (id: string,) => {
 }
 
 /**
+ * FR-19, ADR-0036 D-08（#2046）: 緊急アクセスで指名された platform-admin は、有効な間だけ対象の個人資料 1 件を
+ * この口で開ける。可否は文書サービスが要求ごとに発動記録で判定し（閲覧を 1 件ずつ監査ログへ記録する）、
+ * BFF は許可も拒否も足さない。応答に共有先の写し（`sharedWith`）は載らない。
  * @summary FR-06, SC-03: 文書詳細（スコープ外・不在は同じ 404）
  */
 export const bffDocumentDetail = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentDetailResponse> => {
@@ -414,7 +454,8 @@ export const getBffDocumentUpdateUrl = (id: string,) => {
 
 /**
  * `expectedVersion` が現在版と異なれば lost update を防ぐため **409** で拒否する。
- * 409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`。
+ * 照合の後に別の更新が版を進めた場合も（`expectedVersion` の有無を問わず）保存が負けて **409** になる（黙って上書きしない）。
+ * 409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`（`expectedVersion` は要求に無ければ null）。
  * @summary FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）
  */
 export const bffDocumentUpdate = async (id: string,
@@ -497,10 +538,15 @@ export type bffDocumentDeleteResponse404 = {
   status: 404
 }
 
+export type bffDocumentDeleteResponse409 = {
+  data: void
+  status: 409
+}
+
 export type bffDocumentDeleteResponseSuccess = (bffDocumentDeleteResponse204) & {
   headers: Headers;
 };
-export type bffDocumentDeleteResponseError = (bffDocumentDeleteResponse401 | bffDocumentDeleteResponse403 | bffDocumentDeleteResponse404) & {
+export type bffDocumentDeleteResponseError = (bffDocumentDeleteResponse401 | bffDocumentDeleteResponse403 | bffDocumentDeleteResponse404 | bffDocumentDeleteResponse409) & {
   headers: Headers;
 };
 
@@ -592,10 +638,20 @@ export type bffDocumentContentResponse404 = {
   status: 404
 }
 
+export type bffDocumentContentResponse413 = {
+  data: ProblemDetails
+  status: 413
+}
+
+export type bffDocumentContentResponse502 = {
+  data: ProblemDetails
+  status: 502
+}
+
 export type bffDocumentContentResponseSuccess = (bffDocumentContentResponse200) & {
   headers: Headers;
 };
-export type bffDocumentContentResponseError = (bffDocumentContentResponse401 | bffDocumentContentResponse404) & {
+export type bffDocumentContentResponseError = (bffDocumentContentResponse401 | bffDocumentContentResponse404 | bffDocumentContentResponse413 | bffDocumentContentResponse502) & {
   headers: Headers;
 };
 
@@ -610,8 +666,13 @@ export const getBffDocumentContentUrl = (id: string,) => {
 }
 
 /**
- * ABAC 判定後にオブジェクトストレージ（`storage://`）からサーバサイドで読み取る。
- * ストレージ未配備・URI 未設定時はプレースホルダ本文へ縮退する（500 にしない）。
+ * ABAC 判定（詳細と同じ）の後、本文を文書サービスから受け取って返す。BFF はオブジェクトストレージを読まない。
+ * 本文を返せないときは**案内文を 200 で返さない**（#1905）:
+ * - 本文の参照が無い・本文のオブジェクトが無い … **404**（ProblemDetails。`type` は `urn:microservices-platform:problem:document-body-unavailable`、`reason` は `not_stored` / `missing`）
+ * - 本文が上限（16 MiB・UTF-8）を超える … **413**（ProblemDetails。`sizeBytes` / `limitBytes`。切り詰めない）
+ * - 文書サービスから本文を受け取れない … **502**（ProblemDetails）
+ * 不在・スコープ外の 404 は本文を持たない（存在秘匿。理由を言わない）。
+ * 緊急アクセス（#2046）で詳細が開けた指名された platform-admin は本文も開ける（文書サービスが判定し、本文の閲覧として記録する）。
  * @summary FR-06, SC-03: 文書本文（正規化 Markdown）
  */
 export const bffDocumentContent = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentContentResponse> => {
@@ -636,7 +697,7 @@ export const getBffDocumentContentQueryKey = (id: string,) => {
     }
 
 
-export const getBffDocumentContentQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentContent>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export const getBffDocumentContentQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void | ProblemDetails>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentContent>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -655,14 +716,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type BffDocumentContentQueryResult = NonNullable<Awaited<ReturnType<typeof bffDocumentContent>>>
-export type BffDocumentContentQueryError = void
+export type BffDocumentContentQueryError = void | ProblemDetails
 
 
 /**
  * @summary FR-06, SC-03: 文書本文（正規化 Markdown）
  */
 
-export function useBffDocumentContent<TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void>(
+export function useBffDocumentContent<TData = Awaited<ReturnType<typeof bffDocumentContent>>, TError = void | ProblemDetails>(
  id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentContent>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

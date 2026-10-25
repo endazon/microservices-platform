@@ -37,7 +37,7 @@ public class GraphDocumentSyncConsumerTests
                 NullLogger<LinkEdgeSynchronizer>.Instance),
             new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-            NullLogger<GraphDocumentSyncConsumer>.Instance);
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
 
     // 本文が取れない（ストレージ未配備）。**辺を一切触らない**側の縮退。
     private sealed class NoBodyReader : IGraphContentReader
@@ -219,6 +219,122 @@ public class GraphDocumentSyncConsumerTests
 
         await Consumer(db).Handle(OrganizationWithExposure(true, T0.AddMinutes(2)), ct);
         NodeOf(db, DocA).Should().NotBeNull("除外 → 含めるでノードを作り直す");
+    }
+
+    // ── FR-19, 計画 ADR-0142 決定 1・4, IADR-0636 (#2138): 個人資料の論理削除（撤収の形）と復元 ──────
+    //
+    // 撤収の形は DocumentService の唯一の発行点と同じ関数（`DocumentExposure.WithAllExcluded`）で作る。論理削除・復元は版を進めない（同じ T0）。
+
+    private static DocumentUpdated Withdrawn(DocumentUpdated ev)
+        => ev with { Attributes = DocumentExposure.WithAllExcluded(ev.Attributes) };
+
+    [Fact]
+    public async Task 個人資料を論理削除するとノードが撤収され_同じ版の復元で作り直される()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        var note = SharedNote(["bob"]);
+
+        await Consumer(db).Handle(note, ct);
+        NodeOf(db, DocA).Should().NotBeNull("陽性対照: 削除の前は共有先のグラフに出る");
+
+        await Consumer(db).Handle(Withdrawn(note), ct);
+        NodeOf(db, DocA).Should().BeNull("論理削除はノードの撤収まで及ぶ（共有先の SC-18・MCP のグラフ系ツールから外れる）");
+
+        await Consumer(db).Handle(note, ct);
+        NodeOf(db, DocA).Should().NotBeNull("復元で元の露出のまま作り直す（ADR-0142 決定 4）");
+        NodeOf(db, DocA)!.Attributes.Should().ContainKey(DocumentAttributeEncoding.SharedWithKey);
+    }
+
+    // 撤収は却下済み AI 提案を消さない（削除イベントの担当）。消すと、復元した資料で却下したはずの提案がよみがえる。
+    [Fact]
+    public async Task 論理削除の撤収は却下済みの提案を残す()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        var rejected = await SeedRejectedAsync(db, sourceFpAtRejection: "fp-1", ct);
+
+        await Consumer(db).Handle(Withdrawn(Event(docId: DocA)), ct);
+
+        NodeOf(db, DocA).Should().BeNull("前提: 撤収した");
+        db.AiSuggestions.Single(x => x.Id == rejected.Id).State.Should().Be(SuggestionState.Rejected);
+    }
+
+    // ADR-0142 決定 5・フォローアップ 1: 撤収の後に完全削除しても、グラフの削除の伝播は失敗しない（ノードは既に無い）。
+    // 撤収が残した却下済みの提案は、完全削除で消える（削除イベントの担当）。
+    [Fact]
+    public async Task 論理削除の撤収の後の完全削除は失敗せず却下済みの提案も消す()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        var rejected = await SeedRejectedAsync(db, sourceFpAtRejection: "fp-1", ct);
+        await Consumer(db).Handle(Withdrawn(Event(docId: DocA)), ct);
+        NodeOf(db, DocA).Should().BeNull("前提: 撤収した");
+
+        var purge = new GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer(
+            db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db),
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer>.Instance);
+        var act = () => purge.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
+
+        await act.Should().NotThrowAsync();
+        db.AiSuggestions.Any(x => x.Id == rejected.Id).Should().BeFalse("完全削除は却下済みの提案まで消す（ADR-0057）");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: 無関係のノードは残る");
+    }
+
+    // ── FR-06, FR-17, FR-18, 計画 ADR-0141 決定 2・3, [[IADR-0551]] 決定 3 (#1961): アーカイブした文書 ──────
+    //
+    // アーカイブした文書はグラフ（SC-18・MCP のグラフ系ツール・AI 提案・クラスタ要約）に載せない。判定は台帳の状態。
+
+    private static DocumentUpdated Archived(Guid docId, DateTimeOffset at)
+        => Event(docId: docId, updatedAt: at) with { Status = DocumentArchival.ArchivedStatus };
+
+    // 🔴 アーカイブ済みはノードを作らない（一括の対象の表題だけのノードも作らない）。陽性対照: 同じ器の公開済みはノードになる。
+    [Fact]
+    public async Task アーカイブ済みの文書はノードを作らない()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+
+        await Consumer(db).Handle(Archived(DocA, T0), ct);
+        await Consumer(db).Handle(Event(docId: DocB), ct);
+
+        NodeOf(db, DocA).Should().BeNull("アーカイブした文書はグラフに載せない（ADR-0141 決定 2）");
+        db.TermProfiles.Any(p => p.DocumentId == DocA).Should().BeFalse("類似度候補の材料も作らない");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: 公開済みの文書はノードになる");
+    }
+
+    // 🔴 公開済み → アーカイブでノードと辺（共有タグの辺）を撤収する。AI 提案の候補・クラスタの母集合（ノード）からも外れる。
+    [Fact]
+    public async Task アーカイブするとノードと辺が撤収され_相手のノードは残る()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        await EdgeTypeSeed.EnsureSeededAsync(db, ct); // 共有タグの辺は既定の関連型で作る（型が無いと辺ができない）
+
+        await Consumer(db).Handle(Event(docId: DocA), ct);
+        await Consumer(db).Handle(Event(docId: DocB, title: "文書B"), ct);
+        db.Edges.Any(e => e.SourceDocumentId == DocA || e.TargetDocumentId == DocA)
+            .Should().BeTrue("陽性対照: 同じタグ（ops）を持つ 2 文書の間に共有タグの辺がある");
+
+        await Consumer(db).Handle(Archived(DocA, T0.AddMinutes(1)), ct);
+
+        NodeOf(db, DocA).Should().BeNull("アーカイブはノードの撤収まで及ぶ");
+        db.Edges.Any(e => e.SourceDocumentId == DocA || e.TargetDocumentId == DocA)
+            .Should().BeFalse("アーカイブした文書に触れる辺を残さない（近傍・探索に出ない）");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: アーカイブしていない相手のノードは残る");
+    }
+
+    // 戻し方 (a)（再正規化で `normalized` に戻る）では、通常の経路でノードを作り直す。
+    [Fact]
+    public async Task アーカイブ済みから正規化済みへ戻るとノードを作り直す()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+
+        await Consumer(db).Handle(Archived(DocA, T0), ct);
+        await Consumer(db).Handle(Event(docId: DocA, updatedAt: T0.AddMinutes(1)) with { Status = "normalized" }, ct);
+
+        NodeOf(db, DocA).Should().NotBeNull();
     }
 
     // ── デノーマライズ（ADR-0033 決定 2）と AbacNodeFilter の実効 ──────────────

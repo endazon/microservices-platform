@@ -18,7 +18,7 @@
          Wolverine のハンドラ束は実行時にコード生成・コンパイルされるため、RuntimeCompilation が
          無いとビルドは緑のままホスト起動時にだけ落ちる（IADR-0217。Knowledge.IntegrationTests と同じ理由）。 -->
     <PackageReference Include="WolverineFx.RuntimeCompilation" />
-    <!-- FR-15 (#142): /internal/introspection の到達性を WebApplicationFactory で検証する。 -->
+    <!-- FR-15 (#142): 自己申告（gRPC 面と DI の申告）を WebApplicationFactory で検証する（REST の面は #1517 で撤去）。 -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <!-- IADR-0043: 変換ジョブ EF ストアを InMemory provider で単体・結合検証する。 -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />

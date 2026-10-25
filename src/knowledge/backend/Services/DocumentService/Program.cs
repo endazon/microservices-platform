@@ -6,6 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
 using DocumentService.Infrastructure.ExternalServices;
 using DocumentService.Infrastructure.Messaging;
+using DocumentService.Features.BreakGlass;
 using DocumentService.Features.Documents;
 using DocumentService.Features.Documents.AddTag;
 using DocumentService.Features.Documents.Create;
@@ -38,6 +39,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Wolverine;
 using Wolverine.RabbitMQ;
 using Knowledge.Contracts.Dtos;
@@ -131,36 +133,14 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // - 定期処理（90 日 purge・版刈り取り・通知検知）
 builder.Services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger,
     Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger>();
-builder.Services.AddHttpClient(
-    DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.ClientName,
-    c =>
-    {
-        c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
-            ?? "http://notification-service:8080");
-        // 🔴 既定の 100 秒のままにしない —— 受け口が応答しないとき、同期 push や完全削除の
-        // 要求がその間止まる（fail-open は「落ちない」だけでなく「待たせない」ことも要る）。
-        c.Timeout = DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.SendTimeout;
-    });
-// FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4・5, [[IADR-0412]] 決定 5,
-// [[IADR-0419]] (#1255): 通知の送出の east-west gRPC 版。
-// **並走中の正は REST である。** `Services:NotificationServiceGrpc`（h2c のアドレス。例:
-// http://notification-service:8081）が構成されたときだけ生成クライアントが登録され、
-// そのときだけ `GrpcPrivateNoteNotifier` を選ぶ（無ければ上の HTTP 版のまま。
-// 戻すのは構成を外すだけでよく、コードは変えない）。
-// 🔴 **REST の名前付きクライアントは常に登録したままにする** —— 切替は「どちらの
-// `IPrivateNoteNotifier` を採るか」だけであり、片方の配線を消すと戻せなくなる。
+// FR-22, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 4, [[IADR-0412]] 決定 5,
+// [[IADR-0419]], [[IADR-0533]] (#1255): 通知の送出は east-west gRPC だけで行う
+// （［2026-10-10］REST の `HttpPrivateNoteNotifier`〔`POST /internal/notifications`〕は撤去した）。
+// `Services:NotificationServiceGrpc` が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、
+// fail-open で送られない（エラーログと計器 `notification.dispatch.total` に「不達」で残る）。
 builder.Services.AddNotificationIngressGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(
-        builder.Configuration[NotificationIngressGrpcClientExtensions.AddressKey]))
-{
-    builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
-        DocumentService.Infrastructure.ExternalServices.GrpcPrivateNoteNotifier>();
-}
-else
-{
-    builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
-        DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier>();
-}
+builder.Services.AddScoped<DocumentService.Domain.Ports.IPrivateNoteNotifier,
+    DocumentService.Infrastructure.ExternalServices.GrpcPrivateNoteNotifier>();
 // FR-06, FR-19, ADR-0057 決定 1, IADR-0296: 削除の伝播先①（オブジェクトストレージの本文・資産）。
 // 台帳から逆引きして消すため DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurger>();
@@ -168,6 +148,13 @@ builder.Services.AddScoped<DocumentService.Features.Documents.DocumentObjectPurg
 // **REST の 4 端点と east-west gRPC の面（DocumentReadGrpcService）が同じ実体を通る**
 // （判定器を 2 つにしない）。DbContext と同じ scoped にする。
 builder.Services.AddScoped<DocumentReadUseCase>();
+// FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの閲覧の判定点（`DocumentReadUseCase.FindForViewAsync` ＝ `GetForViewAsync` だけが呼ぶ。gRPC は要求の旗が立つときだけ。[[IADR-0611]]）。
+// 有効性は発動記録と注入した時計で判定する（試験は偽の時計へ差し替える）。
+builder.Services.AddScoped<DocumentService.Features.BreakGlass.BreakGlassViewGate>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+// FR-06, UC-03, SC-03, ADR-0014, [[IADR-0544]] (#1905): 現行版の本文の読み取り（gRPC `GetDocumentContent` の本体）。
+// 読めるかの判定は上の `DocumentReadUseCase` を通る。
+builder.Services.AddScoped<DocumentService.Features.Documents.GetContent.DocumentContentUseCase>();
 // FR-19, NFR-09, 計画 ADR-0086 決定 1, ADR-0119 決定 3, [[IADR-0476]] 追記 (#1628): gRPC `DocumentRead` の本文の
 // 利用者文脈を信じる呼び出し元（クライアント識別子の許可集合）。**未構成なら `bff` だけ。構成したら置き換える。**
 // 配列でなく 1 つの値が書かれていたら起動を止める（静かに既定へ戻さない）。
@@ -175,7 +162,7 @@ DocumentService.Features.Documents.DocumentReadRelayOptions.ThrowIfScalar(builde
 builder.Services.Configure<DocumentService.Features.Documents.DocumentReadRelayOptions>(
     builder.Configuration.GetSection(DocumentService.Features.Documents.DocumentReadRelayOptions.SectionName));
 // FR-05, FR-18, SC-05, ADR-0063 決定 1〜3, ADR-0065 決定 2, 計画 ADR-0086 決定 1, [[IADR-0410]] (#1255):
-// タグ反映の**本体**。🔴 **REST の端点と east-west gRPC の rpc が同じ関数を通る**（判定器を 2 つにしない）。
+// タグ反映の**本体**。east-west gRPC の rpc が呼ぶ（［2026-10-15 / #1902］REST `POST /documents/{id}/tags` は撤去した。判定器は輸送の側に持たない）。
 builder.Services.AddScoped<AddDocumentTagUseCase>();
 // FR-05, FR-18, NFR-09, 計画 ADR-0086 決定 1, [[IADR-0410]] 追記 1 (#1636): gRPC `DocumentTagWrite/AddTag` の本文の
 // 利用者文脈（とロール）を信じる呼び出し元。**未構成なら `graph-service` だけ。構成したら置き換える。**
@@ -272,9 +259,22 @@ builder.Services.AddHostedService<DocumentService.Features.Documents.ContentAbac
 builder.Services.AddScoped<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceService>();
 // NFR-16, ADR-0117, [[IADR-0530]] 決定 3 (#1887): 計測専用の前倒し（`PrivateNotes:Maintenance:InitialRunDelaySeconds`）は
 // **解決時に**構成から読む（テストホストが差し込む構成は Build 時に載る）。未設定なら従前どおり（初回は 1 周期後）。
+// 🔴 FR-19, FR-22, [[IADR-0599]] 決定 5 (#2100): 定期処理の単一実行（リース）。document-service は HPA（minReplicas 2）で、
+// ローリング更新の maxSurge でも新旧 2 pod が同時に生きる。リースを取れたレプリカだけが周期を回す。
+// IsRelational はプロバイダ判定のみで DB 接続しないため、起動時にスコープを張って安全に評価できる（GraphService の [[IADR-0299]] 決定 3 と同じ）。
+builder.Services.AddSingleton<DocumentService.Domain.Ports.IPrivateNoteMaintenanceLeaseCoordinator>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+    if (!db.Database.IsRelational())
+        return DocumentService.Infrastructure.Persistence.NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance;
+    return new DocumentService.Infrastructure.Persistence.PostgresPrivateNoteMaintenanceLeaseCoordinator(
+        connStr, sp.GetRequiredService<ILogger<DocumentService.Infrastructure.Persistence.PostgresPrivateNoteMaintenanceLeaseCoordinator>>());
+});
 builder.Services.AddHostedService(sp =>
     new DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService(
         sp.GetRequiredService<IServiceScopeFactory>(),
+        sp.GetRequiredService<DocumentService.Domain.Ports.IPrivateNoteMaintenanceLeaseCoordinator>(),
         sp.GetRequiredService<ILogger<DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService>>())
     {
         InitialRunDelay = DocumentService.Features.PrivateNotes.Maintenance.PrivateNoteMaintenanceHostedService
@@ -327,6 +327,7 @@ builder.Services.AddMassTransit(x =>
 builder.Services.AddScoped<IDocumentDeletedPublisher, WolverineDocumentDeletedPublisher>();
 // ADR-0027 / E3b: DocumentUpdated の発行も Wolverine へ（IDocumentUpdatedPublisher）。
 // MassTransit に残るのは DocumentNormalized の購読（辺 E2）だけになった。
+// FR-06, ADR-0027 §決定, IADR-0608 (#2168): 発行は `CommitAsync` の中で、更新の確定と同じトランザクション（Transactional Outbox）に載る。
 builder.Services.AddScoped<IDocumentUpdatedPublisher, WolverineDocumentUpdatedPublisher>();
 builder.Host.UseWolverine(opts =>
 {
@@ -336,7 +337,7 @@ builder.Host.UseWolverine(opts =>
     // （E1 の DataSourceService＝発行のみ、と同じ形）。
     opts.Discovery.DisableConventionalDiscovery();
 
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+    opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision();
 
     // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0314]]: **外向きの経路を宣言する。**
     // これが無いと `No routes can be determined for Envelope ...` を info ログへ 1 行出して
@@ -346,6 +347,11 @@ builder.Host.UseWolverine(opts =>
 
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
+
+    // FR-06, FR-19, ADR-0027 §決定, ADR-0057 決定 1・3, IADR-0604 (#2042): Transactional Outbox。
+    // `DocumentDeleted` は削除の確定と同じトランザクションで Outbox の表（`wolverine` スキーマ）へ書かれ、確定の後に送られる。
+    // 🔴 **接続文字列は DbContext と同じもの**（envelope の INSERT は DbContext の接続で走る）。表は起動時に Wolverine が作る。
+    opts.UsePlatformTransactionalOutbox(connStr);
 });
 
 var app = builder.Build();
@@ -370,15 +376,15 @@ app.MapDocumentEndpoints();
 // 🔴 **書き込み・本文・共有の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
 app.MapGrpcService<DocumentReadGrpcService>();
 // FR-05, FR-18, NFR-09, NFR-16, SC-03, SC-05, ADR-0029, ADR-0063, ADR-0075, 計画 ADR-0086 決定 1・3,
-// [[IADR-0044]], [[IADR-0379]], [[IADR-0410]] (#1255): タグ反映の gRPC 面。REST と**同じ本体**
+// [[IADR-0044]], [[IADR-0379]], [[IADR-0410]] (#1255): タグ反映の gRPC 面（［2026-10-15 / #1902］反映口はこれだけ）。**本体**
 // （`AddDocumentTagUseCase`）を呼ぶ。呼び出し側サービスの資格情報（ServiceCaller ポリシー）を
 // 要求する —— 承認者本人のトークンでは通らない（利用者文脈は本文で運ぶ）。
 // 🔴 **書き込みの面は読み取りの面と別である**（`document_read.proto` は「書き込みの口は無い」と宣言している）。
 app.MapGrpcService<DocumentTagWriteGrpcService>();
 // FR-18, NFR-09, NFR-16, SC-09, ADR-0029, ADR-0043, ADR-0063 決定 2, ADR-0075,
 // [[IADR-0364]] 決定 2, [[IADR-0379]], [[IADR-0412]] (#1255): タグ辞書読み取りの gRPC 面。
-// REST `GET /internal/tags/names` と**同じ問い合わせ**（`TagNamesEndpoint.ReadNamesAsync`）を通る。
-// 🔴 REST の受け口は認証を持たないが、gRPC 面は ServiceCaller を要求する（**狭まる向き**）。
+// 問い合わせ本体は `TagNamesQuery.ReadNamesAsync`（［2026-10-15 / #1902］REST `GET /internal/tags/names` は撤去した）。
+// 🔴 gRPC 面は ServiceCaller を要求する（撤去した REST の受け口は認証を持たなかった）。
 // 🔴 **書き込み・使用件数・文書の口はこの面に出さない**（呼び出し元が要らないものを面へ出さない）。
 app.MapGrpcService<TagDictionaryGrpcService>();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
@@ -387,6 +393,8 @@ app.MapTagDictionaryEndpoints();
 app.MapDocumentShareEndpoints();
 // FR-19, SC-19: 個人資料のライフサイクル（一覧・作成・削除・復元・完全削除・露出・容量）。
 app.MapPrivateNoteEndpoints();
+// FR-19, UC-11, SC-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動・終了・状態・監査ログの読み取り。
+app.MapBreakGlassEndpoints();
 // FR-20, SC-20: 同期端末とトークン（発行・再発行・失効）。
 app.MapSyncDeviceEndpoints();
 // FR-20, SC-20 主要素 3, ADR-0037 決定 3・4, #1442: 同期対象範囲（同期設定）。

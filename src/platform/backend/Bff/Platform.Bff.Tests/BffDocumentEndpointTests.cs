@@ -3,6 +3,7 @@ using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using System.Net;
 using System.Net.Http.Json;
+using Pb = Knowledge.Contracts.Grpc.Document.V1;
 
 namespace Platform.Bff.Tests;
 
@@ -21,6 +22,8 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         _factory.ScopeFilters = [];
         _factory.ScopeBranches = null;
         _factory.DocumentStatusCode = HttpStatusCode.OK;
+        _factory.StubContentState = Pb.DocumentContentState.Available;
+        _factory.StubContentThrows = null;
     }
 
     // ── #989 段 3（FR-19, IADR-0253 決定 1）: BFF の実 HTTP 経路でも分岐（Branches）が効く ──
@@ -118,7 +121,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         var resp = await _factory.CreateClient().GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
+        var body = (await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken))!.Items;
         body.Should().ContainSingle(d => d.Title == "経費規程 2025");
         body.Should().NotContain(d => d.Title == "取締役会議事録");
     }
@@ -130,7 +133,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         var resp = await _factory.CreateClient().GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken);
+        var body = (await resp.Content.ReadFromJsonAsync<DocumentListPageDto>(TestContext.Current.CancellationToken))!.Items;
         body!.Should().BeEmpty();
     }
 
@@ -141,8 +144,9 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<DocumentContentDto>(TestContext.Current.CancellationToken);
-        // ストレージ未配備（Null クライアント）のため本文はプレースホルダへ縮退し、タイトルを含む。
-        body!.Markdown.Should().Contain("経費規程 2025");
+        // ［2026-10-15 / #1905・[[IADR-0544]]］本文は文書サービスから gRPC で受け取る（BFF はストレージを読まない）。
+        // 以前はストレージ未配備で案内文へ縮退していた（「タイトルを含む」で緑になっていた）。本文そのものを比べる。
+        body!.Markdown.Should().Be(_factory.StubContentMarkdown);
         body.SourceUri.Should().Be("storage://bucket/expense.md");
     }
 
@@ -225,26 +229,30 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         list!.Should().HaveCount(2);
     }
 
-    // NFR-09, FR-19, 計画 ADR-0119 決定 3 (#1614): 🔴 **REST の読み取り 4 口（一覧・詳細・版の一覧・特定版）は
-    // 利用者の資格情報を後段へ中継する。** 後段の読み取りは認証を要するので、中継が切れると 401 になり
-    // （BFF は 404 秘匿・空一覧へ畳むので画面からは「文書が無い」に見える）、所有者が自分の個人資料も開けない。
-    // スタブは資格情報を見ずに 200 を返すため、**伝播したこと自体を観測する**（見ないと中継を落としても緑のまま）。
+    // NFR-09, FR-19, 計画 ADR-0119 決定 3, ADR-0086 決定 1 (#1614), [[IADR-0533]] (#1255): 🔴 **読み取り 4 口（一覧・詳細・
+    // 版の一覧・特定版）は利用者を本文の利用者文脈で運び、利用者のトークンは後段へ載せない。** 運ばないと後段は BFF 自身
+    // （機械の主体）として読み、所有者が自分の個人資料も開けない（BFF は 404 秘匿・空一覧へ畳むので「文書が無い」に見える）。
+    // ［2026-10-10］REST の並走（利用者の `Authorization` を中継）は撤去した。
     [Fact]
-    public async Task RestReads_ForwardTheCallersAuthorizationToDocumentService()
+    public async Task Reads_carry_the_caller_as_the_user_context_and_not_the_token()
     {
         _factory.DocumentReadForwardedAuthorization.Clear();
+        _factory.GrpcUserContexts.Clear();
         var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "reader");
         client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer reader-jwt");
 
         (await client.GetAsync("/bff/documents", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync(DetailPath, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
         (await client.GetAsync($"{DetailPath}/versions/3", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        // ［2026-10-15 / #1905・[[IADR-0544]]］本文も同じ面で読む（利用者文脈を運ぶ。運ばないと所有者が自分の個人資料の本文を読めない）。
+        (await client.GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
 
-        var id = BffTestFactory.StubDocumentId;
-        _factory.DocumentReadForwardedAuthorization.Keys.Should().Contain(
-            ["/documents", $"/documents/{id}", $"/documents/{id}/versions", $"/documents/{id}/versions/3"]);
-        _factory.DocumentReadForwardedAuthorization.Values.Should().OnlyContain(a => a == "Bearer reader-jwt",
-            "読み取りのどの経路でも利用者の資格情報が後段へ届く");
+        _factory.GrpcUserContexts.Keys.Should().Contain(["ListDocuments", "GetDocument", "ListVersions", "GetVersion", "GetDocumentContent"]);
+        foreach (var rpc in new[] { "ListDocuments", "GetDocument", "ListVersions", "GetVersion", "GetDocumentContent" })
+            _factory.GrpcUserContexts[rpc].Should().Be("reader", $"{rpc} は呼び出し元の利用者を運ぶ");
+        _factory.DocumentReadForwardedAuthorization.Values.Should().OnlyContain(a => a == null,
+            "利用者のトークンは east-west の面を通らない");
     }
 }

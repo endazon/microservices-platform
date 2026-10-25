@@ -70,6 +70,10 @@ public class PipelineRecomposeTests
                 .AddLogging()
                 .AddPlatformConsumerTimeouts()
                 .AddSingleton(WikiSyncTimeouts.Default)
+                .AddSingleton(new WikiJsWriteGate(WikiJsWriteGate.DefaultMaxParallelWrites))
+                // #1934 / [[IADR-0541]]: 恒久的な失敗の計数（本番の Program.cs と同じ登録）。
+                .AddMetrics()
+                .AddSingleton<WikiService.Common.Observability.WikiSyncSkippedMetrics>()
                 .AddDbContext<WikiDbContext>(o => o.UseInMemoryDatabase(dbName))
                 .AddSingleton<IWikiJsClient, NoopWikiJsClient>()
                 .AddSingleton<IWikiContentReader, NoopContentReader>()

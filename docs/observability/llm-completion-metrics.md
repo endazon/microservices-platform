@@ -3,15 +3,15 @@ title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測
 type: observability-spec
 status: in-progress
 created: 2026-07-28
-updated: 2026-10-08
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, NFR-19]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038, ADR-0044]
-iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374]
-specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability]
-issues: [#380, #786, #787, #863, #1091, #1819]
+iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0374, IADR-0114, IADR-0535, IADR-0533, IADR-0562, IADR-0564, IADR-0601]
+specs: [20260905_issue-1091_llm-upstream-status-axis, 20261008_1819_gateway-sentfalse-observability, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261017_1749_anthropic-official-sdk, 20261020_2000_extra-text-block-drop-count, 20261023_2116_llm-stream-usage-on-abort]
+issues: [#380, #786, #787, #863, #1091, #1819, #1917, #1902, #1749, #2000, #2047, #2116]
 -->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
@@ -28,7 +28,7 @@ issues: [#380, #786, #787, #863, #1091, #1819]
 | --- | --- |
 | Meter 名 | `microservices-platform.llm-gateway`（サービス名と一致） |
 | 計器 | `llm.completion.total`（`Counter<long>`・単位 `{completion}`） |
-| 発行元 | `LlmGateway` の `/complete`・`/complete/stream`（**全終了経路**） |
+| 発行元 | `LlmGateway` の一括（`/complete`・gRPC `Complete`）と逐次（gRPC `CompleteStream`）（**全終了経路**） |
 | 収集経路 | OTel SDK → OTLP（`Otlp:Endpoint`）→ Collector → Prometheus |
 | Prometheus 側の名前 | `llm_completion_total`（OTel の Prometheus 変換規則による） |
 
@@ -36,13 +36,20 @@ issues: [#380, #786, #787, #863, #1091, #1819]
 
 | 属性 | 値域 | 意味 |
 | --- | --- | --- |
-| `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback` | **送信可否の軸**（送信可否統制の `Sent` に対応）。`fallback` は #863 で追加（下記） |
+| `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback` / `cancelled` | **送信可否の軸**（送信可否統制の `Sent` に対応）。`fallback` は #863 で追加（下記）。`cancelled` は逐次応答を呼び出し側が取り消した（下記） |
 | `llm.stop_reason` | `end_turn` / `max_tokens` / `refusal` / `stop_sequence` / `tool_use` / `other` / `none` | **モデル側の終了理由**（`Sent` とは独立した軸） |
 | `llm.purpose` | `Llm:Routing:PurposeModels` のキー ＋ `default` ＋ `other` | 用途 |
 | `llm.model` | route 結果のモデル / `none` | 実際に選択されたモデル |
 | `llm.provider` | `claude` / `selfhosted` / `copilot` / `none` | 呼び出し先プロバイダ |
 | `llm.confidentiality` | `public` / `internal` / `confidential` / `restricted` | 入力の最高機密区分 |
 | `llm.upstream_status` | `none` / `rate_limited` / `client_error` / `server_error` / `transport` / `other` | **上流が返したものの軸**（`llm.result` と直交する）。#1091 で追加（下記） |
+
+**［2026-10-23 追記］** `llm.result=cancelled` は、逐次応答（gRPC `CompleteStream`）を**呼び出し側が取り消した**
+（利用者の停止・接続の切断）呼び出しである。送信は成立していたが応答を受け取り切っていないので `sent` には入れず、
+上流の失敗ではないので `upstream_error` にも入れない（利用者の停止で上流障害の率のアラートが誤発火しないようにする）。
+応答の `failureKind` ではない（取り消した呼び出し側へ返す応答は無い）。取り消しまでに判明したトークンの扱いは
+[利用実績の仕様書](llm-usage-and-cost-metrics.md) の「逐次応答が途中で終わったときの扱い」が定める。
+取り消しの後に届いた例外は型を問わず `cancelled` に入り、取り消しを伴わない取り消し例外（HTTP の期限切れ等）は上流の失敗として `upstream_error` に入る。
 
 **［2026-10-08 追記］** `llm.result` の未送信の 3 値（`egress_denied` / `provider_missing` / `upstream_error`）は、
 応答の `failureKind` と**同じ文字列**である（計器の定数は応答の契約の定数を引く）。計器の無い環境
@@ -212,6 +219,40 @@ Prometheus は**起きていないラベル値を 0 として持たない**。�
 sum(increase(llm_completion_total{llm_upstream_status="rate_limited"}[7d]))
 # 陽性対照: 同じ期間に計器そのものが動いていたか（これが空なら上の空には意味が無い）
 sum(increase(llm_completion_total{llm_upstream_status="none"}[7d]))
+```
+
+## 応答 content ブロックの除去件数（`llm.anthropic.content_blocks_dropped`・#1917）
+
+Claude の非ストリーミング応答の content のうち、本文（`text` ブロック）に使わずに捨てたブロックの件数である
+（規定は LLM 送信先切替の機能仕様書 §Claude の呼び出し（公式 SDK）と応答 content ブロックの扱い）。
+［2026-10-17］SDK を公式 `Anthropic` へ移すまでは「旧 SDK が解釈できないブロックを解析前に除去した件数」だった。
+数える場所はプロバイダへ移ったが、計器の名前・属性・値域は変えていない（系列は連続する）。
+
+| 項目 | 値 |
+| --- | --- |
+| Meter 名 | `microservices-platform.llm-gateway`（上と同じ） |
+| 計器 | `llm.anthropic.content_blocks_dropped`（`Counter<long>`・単位 `{block}`）。**捨てたブロック 1 個につき 1** |
+| Prometheus 側の名前 | `llm_anthropic_content_blocks_dropped_total` |
+| 属性 | `llm.content_block_type` = `thinking` / `redacted_thinking` / `text` / `other`（**4 値に閉じる**。型名は上流が決める非有界な値なので、想定内の 2 型と `text` 以外は `other` へ集約する。`text` は 2026-10-20 に追加） |
+
+- 5.5 系は 3 モデルとも thinking を無効にできないため、**`thinking` が増え続けるのは通常の形**である。
+  ログは debug へ下げ、件数はこの計器で読む（1 応答 1 行の warn は、PoC の 7 時間で 685 行になり本物の警告を埋めた）。
+- **`other` の出現は応答形状の変化**（API が新しいブロック型を返し始めた）を表す。同時にゲートウェイの warn
+  （想定外の型名を構造化値 `UnexpectedTypes` に載せる）が出るので、型の原文はログで確かめる。
+- 除去の結果 `content` が空になった応答も warn が出る（型を問わない）。計器は除去したブロックを数えるだけで、
+  空になったかどうかは属性に持たない。
+
+- **`text` は本文に使わなかった 2 個目以降の `text` ブロック**である（本文には先頭の 1 個だけを使い、連結しない）。
+  0 であるのが通常で、出たら同時にゲートウェイの warn（構造化値 `UsedTextLength` / `DroppedTextBlocks` / `DroppedTextLengths`。
+  文字数だけで本文は載せない）が出る。先頭が短く 2 個目が長ければ、本文（構造化出力の JSON 等）が 2 個目に入っていた疑いがある。
+
+```promql
+# 2 個目以降の text ブロックの除去（0 であるのが通常）
+sum(increase(llm_anthropic_content_blocks_dropped_total{llm_content_block_type="text"}[1d]))
+# 想定外の型の除去（0 であるのが通常）
+sum(increase(llm_anthropic_content_blocks_dropped_total{llm_content_block_type="other"}[1d]))
+# 型別の除去件数の推移
+sum by (llm_content_block_type) (rate(llm_anthropic_content_blocks_dropped_total[1h]))
 ```
 
 ## しきい値の方針（アラート）

@@ -13,9 +13,8 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // [[IADR-0397]], [[IADR-0401]], [[IADR-0402]], [[IADR-0408]], [[IADR-0410]] (#1255):
 // 近傍展開ポートの **gRPC 版**。
 //
-// **並走中の正は REST である。** 本実装は `Services:GraphServiceGrpc` が構成されたときだけ
-// 登録され（`AddGraphNeighborsGrpcClient`）、無ければ `GraphServiceNeighborExpander` のままである。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の兄弟実装は撤去し、本実装が唯一の輸送である**（[[IADR-0379]] 決定 5
+// 「並走中の正は REST」を反転）。宛先が構成されていなければ生成クライアントは常に `UNAVAILABLE` を受け取り、下の縮退の枝へ落ちる。
 //
 // 🔴 **権限伝播は「利用者文脈を本文で運ぶ」へ変わった**（計画 `ADR-0086` 決定 1）。
 // 従前は利用者の `Authorization` ヘッダを転送していた（方式 A）。メタデータに載るのは
@@ -45,6 +44,12 @@ public sealed class GrpcGraphNeighborExpander(
     ILogger<GrpcGraphNeighborExpander> logger)
     : IGraphNeighborExpander
 {
+    // FR-04, ADR-0035 決定 2 (#970): 辺の型の重みは**辞書の実値**を使う。
+    // 🔴 **フォールバックは中庸（0.5 = GraphService の `EdgeType.DefaultWeight` と同値）。**
+    // 使うのは 2 つの縮退だけである —— ①辞書が引けない ②辺の型が辞書に無い。**いずれも警告を出し、静かに無差別へ落ちない。**
+    // ［2026-10-10 / #1255・[[IADR-0533]]］撤去した REST 実装（`GraphServiceNeighborExpander`）から移した（値は変えていない）。
+    internal const double FallbackEdgeWeight = 0.5;
+
     public async Task<GraphNeighborhood> ExpandAsync(
         IReadOnlyList<Guid> seedDocumentIds, int hops, SearchUserContext user,
         CancellationToken ct = default)
@@ -69,7 +74,8 @@ public sealed class GrpcGraphNeighborExpander(
                 + "pass to GraphService as request-body context (a graph call without a user "
                 + "degrades to an empty result for every hop, which is indistinguishable from an "
                 + "empty graph)");
-            return GraphNeighborhood.Empty;
+            // ［2026-10-11 / #1871］[[IADR-0534]]: 呼べなかった —— 応答の縮退の印（`graph-expand-failed`）へ写す。
+            return GraphNeighborhood.Unavailable;
         }
 
         var userContext = ToUserContext(user);
@@ -80,10 +86,14 @@ public sealed class GrpcGraphNeighborExpander(
         var views = await Task.WhenAll(
             seedDocumentIds.Select(id => FetchAsync(id, hops, userContext, ct)));
 
+        // FR-03, NFR-06, [[IADR-0534]] (#1871): 近傍のどれか・辞書が引けなかったら**縮退**である（警告を出した枝と同じ集合）。
+        // 辞書に無い型（データの食い違い）は縮退に数えない —— 辞書は引けており、その辺だけがフォールバック重みになる。
+        var degraded = weights is null || views.Any(v => v is null);
+
         // 辺は識別子で重複排除する（起点が複数あると同じ辺を複数回持ち帰る）。
         var edges = new Dictionary<Guid, GraphNeighborEdge>();
         var unknownTypes = new HashSet<Guid>();
-        foreach (var edge in views.SelectMany(v => v))
+        foreach (var edge in views.SelectMany(v => v ?? []))
         {
             if (!Guid.TryParse(edge.Id, out var id)
                 || !Guid.TryParse(edge.SourceDocumentId, out var source)
@@ -91,11 +101,11 @@ public sealed class GrpcGraphNeighborExpander(
                 || !Guid.TryParse(edge.EdgeTypeId, out var edgeTypeId))
                 continue;
 
-            var weight = GraphServiceNeighborExpander.FallbackEdgeWeight;
+            var weight = FallbackEdgeWeight;
             if (weights is not null && !weights.TryGetValue(edgeTypeId, out weight))
             {
                 unknownTypes.Add(edgeTypeId);
-                weight = GraphServiceNeighborExpander.FallbackEdgeWeight;
+                weight = FallbackEdgeWeight;
             }
 
             edges.TryAdd(id, new GraphNeighborEdge(source, target, weight));
@@ -105,9 +115,9 @@ public sealed class GrpcGraphNeighborExpander(
             logger.LogWarning(
                 "Graph re-ranking met {Count} edge type(s) missing from the edge-type catalog; "
                 + "their edges fall back to weight {Weight}",
-                unknownTypes.Count, GraphServiceNeighborExpander.FallbackEdgeWeight);
+                unknownTypes.Count, FallbackEdgeWeight);
 
-        return new GraphNeighborhood([.. edges.Values]);
+        return new GraphNeighborhood([.. edges.Values]) { Degraded = degraded };
     }
 
     // 辞書（型識別子 → 重み）を取る。**失敗は検索そのものを落とさない** —— 全辺フォールバック
@@ -139,13 +149,14 @@ public sealed class GrpcGraphNeighborExpander(
         {
             logger.LogWarning(ex,
                 "Edge-type catalog is unreachable; re-ranking falls back to weight {Weight} for "
-                + "every edge", GraphServiceNeighborExpander.FallbackEdgeWeight);
+                + "every edge", FallbackEdgeWeight);
             return null;
         }
     }
 
     // 1 起点ぶんの近傍を取る。**失敗は検索そのものを落とさない**。
-    private async Task<IReadOnlyList<Pb.NeighborEdge>> FetchAsync(
+    // ［2026-10-11 / #1871］[[IADR-0534]]: 失敗は `null`（`found=false` の空と分ける。縮退の印の根拠）。
+    private async Task<IReadOnlyList<Pb.NeighborEdge>?> FetchAsync(
         Guid documentId, int hops, Pb.UserContext user, CancellationToken ct)
     {
         try
@@ -181,7 +192,7 @@ public sealed class GrpcGraphNeighborExpander(
             logger.LogWarning(ex,
                 "Graph neighbors request for {DocumentId} failed; continuing without graph expansion",
                 documentId);
-            return [];
+            return null;
         }
     }
 
@@ -218,13 +229,14 @@ public static class GraphNeighborsGrpcClientExtensions
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "GraphServiceGrpc";
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］**常に登録する。** 構成が無ければ、生成クライアントを常に `UNAVAILABLE` を返す
+    // 呼び出し器の上に組む（REST の兄弟実装は撤去した。呼び出し元は「届かない」の枝へ落ちる）。
     public static IServiceCollection AddGraphNeighborsGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.GraphNeighbors.GraphNeighborsClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。本サービスは既に LlmGateway 宛のチャネルを持つ ——

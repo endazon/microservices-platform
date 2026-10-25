@@ -15,7 +15,7 @@ import {
 // 「値集合から 1 値落としても画面テストは 1 件も落ちない」ことを実測した。画面テストは
 // 「その値がモックデータに含まれていたか」しか見ないため、間接被覆では欠落を検出できない。
 
-function text(label: ReturnType<typeof driftKindLabel>): string {
+function text(label: string | ReturnType<typeof hadDriftLabel>): string {
   return typeof label === 'string' ? label : i18n._(label);
 }
 
@@ -36,14 +36,9 @@ describe('driftView (SC-11)', () => {
     expect([...DRIFT_SEVERITIES]).toEqual(['Warning', 'Info']);
   });
 
-  it.each([
-    ['MissingApply', '適用漏れ（宣言にあり実効に無い）'],
-    ['UndeclaredSubscription', '宣言に無い購読'],
-    ['StaleStage', '古い段の残留'],
-    ['BindingMismatch', '接続の不一致'],
-    ['Unverifiable', '検証不能（担当サービスへ到達できない）'],
-  ])('maps the drift kind %s to a readable label', (kind, label) => {
-    expect(text(driftKindLabel(kind))).toBe(label);
+  // ［2026-10-24 / #2022・IADR-0620］計画 §SC-11（Q29）: 種別は契約の値のまま出す（日本語に訳さない）。
+  it.each([...DRIFT_KINDS])('shows the drift kind %s as the contract value', (kind) => {
+    expect(text(driftKindLabel(kind))).toBe(kind);
   });
 
   // 未知の種別を握り潰さない（`—` や「不明」へ丸めない）。契約が 6 つ目を返したら画面で気付ける。
@@ -52,10 +47,11 @@ describe('driftView (SC-11)', () => {
   });
 
   // INDEX 決定 21: 色だけで意味を持たせない。tone とテキストが必ず対で決まる。
+  // ［2026-10-24 / #2022・IADR-0620］深刻度の文言も契約の値のまま。写すのは tone（色 ＋ 固定アイコン）だけ。
   it.each([
-    ['Warning', '警告', 'warning'],
-    ['Info', '情報', 'neutral'],
-  ])('maps the severity %s to a labelled badge', (severity, label, tone) => {
+    ['Warning', 'Warning', 'warning'],
+    ['Info', 'Info', 'neutral'],
+  ])('maps the severity %s to a badge that keeps the contract value', (severity, label, tone) => {
     const view = driftSeverityView(severity);
     expect(text(view.label)).toBe(label);
     expect(view.tone).toBe(tone);

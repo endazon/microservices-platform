@@ -222,6 +222,53 @@ function podSpecOf(doc) {
 const asArray = (x) => (Array.isArray(x) ? x : []);
 const asString = (x) => (x === null || x === undefined ? '' : String(x));
 
+/** 描画結果の ConfigMap を「名前空間/名前 → data」で引けるようにする。 */
+function configMapIndex(docs) {
+  const configMaps = new Map();
+  for (const d of docs) {
+    if (d && d.kind === 'ConfigMap' && d.metadata?.name) {
+      configMaps.set(`${d.metadata.namespace ?? ''}/${d.metadata.name}`, d.data || {});
+    }
+  }
+  return configMaps;
+}
+
+/**
+ * コンテナのプロセスから見える設定（要点 1）: env・`command` + `args`・マウントされたファイル（ConfigMap を volume → volumeMount で辿る）。
+ * マウント元の ConfigMap が描画結果に無いときは `problems` に積む（要点 4。判定できない）。
+ * `observability-front-guard.js`（#1867）も同じ見え方で製品の待ち受けを読む。
+ */
+function containerView(doc, c, configMaps) {
+  const problems = [];
+  const pod = podSpecOf(doc) || {};
+  const ns = doc.metadata?.namespace ?? '';
+  const volumes = new Map(asArray(pod.volumes).map((v) => [v.name, v]));
+  const env = new Map();
+  for (const e of asArray(c.env)) env.set(e.name, e.value === undefined && e.valueFrom ? '<valueFrom>' : asString(e.value));
+  const args = [...asArray(c.command), ...asArray(c.args)].map(asString);
+  const files = new Map();
+  for (const m of asArray(c.volumeMounts)) {
+    const vol = volumes.get(m.name);
+    if (!vol || !vol.configMap) continue;
+    const data = configMaps.get(`${ns}/${vol.configMap.name}`);
+    if (!data) {
+      problems.push(`マウント元の ConfigMap ${vol.configMap.name} が同じ描画結果に無い（判定できない）`);
+      continue;
+    }
+    const items = asArray(vol.configMap.items);
+    const entries = items.length > 0 ? items.map((it) => [it.path, data[it.key]]) : Object.entries(data);
+    for (const [p, text] of entries) {
+      if (text === undefined || text === null) continue;
+      if (m.subPath) {
+        if (p === m.subPath) files.set(m.mountPath, asString(text));
+      } else {
+        files.set(path.posix.join(m.mountPath, p), asString(text));
+      }
+    }
+  }
+  return { view: { image: asString(c.image), env, args, files }, problems };
+}
+
 /**
  * 描画済みの k8s マニフェスト（複数文書）を検査する。
  * @returns {{ problems: string[], found: Map<string, number> }}
@@ -238,46 +285,18 @@ function checkRenderedManifests(yamlText, label) {
     if (hit.length > 0) problems.push(`${label}: 描画結果を読めない（${e.message}）。${hit.map((p) => p.name).join(' / ')} の無効化を判定できない`);
     return { problems, found };
   }
-  const configMaps = new Map();
-  for (const d of docs) {
-    if (d && d.kind === 'ConfigMap' && d.metadata?.name) {
-      configMaps.set(`${d.metadata.namespace ?? ''}/${d.metadata.name}`, d.data || {});
-    }
-  }
+  const configMaps = configMapIndex(docs);
   for (const d of docs) {
     const pod = podSpecOf(d);
     if (!pod) continue;
-    const ns = d.metadata?.namespace ?? '';
-    const volumes = new Map(asArray(pod.volumes).map((v) => [v.name, v]));
     for (const c of [...asArray(pod.initContainers), ...asArray(pod.containers)]) {
       const product = productOf(c.image);
       if (!product) continue;
       found.set(product.name, (found.get(product.name) || 0) + 1);
       const where = `${label}: ${d.kind}/${d.metadata?.name ?? '?'} のコンテナ ${c.name ?? '?'}（${product.name}）`;
-      const env = new Map();
-      for (const e of asArray(c.env)) env.set(e.name, e.value === undefined && e.valueFrom ? '<valueFrom>' : asString(e.value));
-      const args = [...asArray(c.command), ...asArray(c.args)].map(asString);
-      const files = new Map();
-      for (const m of asArray(c.volumeMounts)) {
-        const vol = volumes.get(m.name);
-        if (!vol || !vol.configMap) continue;
-        const data = configMaps.get(`${ns}/${vol.configMap.name}`);
-        if (!data) {
-          problems.push(`${where}: マウント元の ConfigMap ${vol.configMap.name} が同じ描画結果に無い（判定できない）`);
-          continue;
-        }
-        const items = asArray(vol.configMap.items);
-        const entries = items.length > 0 ? items.map((it) => [it.path, data[it.key]]) : Object.entries(data);
-        for (const [p, text] of entries) {
-          if (text === undefined || text === null) continue;
-          if (m.subPath) {
-            if (p === m.subPath) files.set(m.mountPath, asString(text));
-          } else {
-            files.set(path.posix.join(m.mountPath, p), asString(text));
-          }
-        }
-      }
-      for (const p of product.check({ image: asString(c.image), env, args, files })) problems.push(`${where}: ${p}`);
+      const { view, problems: viewProblems } = containerView(d, c, configMaps);
+      problems.push(...viewProblems.map((p) => `${where}: ${p}`));
+      for (const p of product.check(view)) problems.push(`${where}: ${p}`);
     }
   }
   return { problems, found };
@@ -538,11 +557,16 @@ module.exports = {
   MAILPIT_MIN_VERSION,
   checkRenderedManifests,
   checkCompose,
+  splitComposeServices,
   checkTestcontainers,
   collectCsFiles,
   checkRunCommands,
   collectRunCommandFiles,
   missingProducts,
   flagValue,
+  yamlGet,
+  podSpecOf,
+  configMapIndex,
+  containerView,
   parseIni,
 };

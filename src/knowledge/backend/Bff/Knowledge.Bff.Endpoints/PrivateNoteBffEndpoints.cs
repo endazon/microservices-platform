@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using System.Net.Http;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Knowledge.Bff.Endpoints;
 
@@ -248,6 +249,10 @@ public static class PrivateNoteBffEndpoints
                 httpFactory, http, ct))
             .WithName("BffSyncConflictResolve").Produces<ResolveSyncConflictResponse>();
 
+        // FR-19, UC-11, SC-19, ADR-0036 D-08, [[IADR-0611]] (#2046): 緊急アクセスの発動・終了・状態・監査ログ。
+        // 認可の姿が上の 1〜5 と違う（BFF でも本人の資料かを確かめる二重の守り）ので別ファイルに置く。
+        app.MapBreakGlassBffEndpoints();
+
         return app;
     }
 
@@ -266,7 +271,7 @@ public static class PrivateNoteBffEndpoints
         HttpMethod method, string path, object? body,
         IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
-        var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, BffScopeAction.Write, ct);
+        var scope = await BffScopeResolver.ResolveAsync(http, BffScopeAction.Write, ct);
         if (scope is null)
             return Results.Forbid(); // write 許可ポリシー無し＝変更不可（deny-by-default）
 
@@ -291,6 +296,8 @@ public static class PrivateNoteBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "DocumentService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
     }

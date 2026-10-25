@@ -2,14 +2,15 @@ using Knowledge.Bff.Endpoints.Documents;
 using Knowledge.Bff.Endpoints.Search;
 using Knowledge.Bff.Endpoints.Secrets;
 using Knowledge.Bff.Endpoints.Usage;
-using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using Platform.Bff.Composition;
+using Platform.Bff.Foundation.Http;
 using Platform.Bff.Foundation.Secrets;
 using Platform.Bff.Foundation.Session;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 const string ServiceName = "microservices-platform.bff";
 
@@ -20,30 +21,38 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 // NFR-18, IADR-0522: セッションストアのヘルスチェック用の接続（下の AddRedis）。構成は使う時に読む。
-var sessionStoreHealthConnection = new Lazy<StackExchange.Redis.IConnectionMultiplexer>(
-    () => StackExchange.Redis.ConnectionMultiplexer.Connect(BffSessionOptions.From(builder.Configuration).SessionStoreConfiguration()),
-    LazyThreadSafetyMode.PublicationOnly);
+// NFR-07, [[IADR-0633]] (#2242): 失敗を覚えない遅延は鍵リングと同じ置き場（SessionStoreConnection）から作る。
+var sessionStoreHealthConnection = SessionStoreConnection.Lazy(
+    () => StackExchange.Redis.ConnectionMultiplexer.Connect(BffSessionOptions.From(builder.Configuration).SessionStoreConfiguration()));
 builder.Services.AddPlatformHealthChecks()
     // NFR-18, ADR-0131, IADR-0522 (#1839): セッションストアの疎通。接続先とパスワードはセッションと同じ
     // `BffSession` の値から組む（ヘルスチェック専用の `Redis:ConnectionString` は廃した —— 置き場が 2 つだと
     // 認証を足したときに片方だけ通る状態を作れる）。
     // 構成はオブジェクトのまま渡す（文字列へ戻すとパスワードの `,` `=` が区切りとして誤読される。#1860 監査指摘 5）。
     // 接続は失敗を記憶しない遅延（PublicationOnly）にする —— 初回の疎通失敗を以後ずっと返し続けないため。
+    //
+    // NFR-06, ADR-0032, ADR-0052 決定 4, [[IADR-0602]] (#2105): **readiness に残すのはセッションストアだけである。**
+    // セッションの実体・DataProtection の鍵リング・SC-22 の書き込み記録を持つ BFF 自身の状態の置き場であり、
+    // 届かなければこのレプリカはどの利用者の要求も捌けない（ログインもできない）。
     .AddRedis(
         _ => sessionStoreHealthConnection.Value,
-        tags: ["ready"])
+        tags: [HealthCheckExtensions.ReadyTag])
+    // NFR-06, [[IADR-0602]] (#2105): 🔴 **下流 4 サービスの疎通は readiness に入れない**（`dependencies` タグ・
+    // `/health/dependencies` で報告だけする）。従前は `ready` タグで、下流 1 つの停止で BFF の全レプリカが
+    // NotReady になり、エッジから**全画面が 503** になっていた —— NFR-06（検索は継続し AI 回答のみ一時停止）と逆向き。
+    // 下流の不調は各エンドポイントが 502 / 縮退表示で返す。失敗は Degraded として報告する（Unhealthy にしない）。
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),
-        "retrieval-service", tags: ["ready"])
+        "retrieval-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:AiAnalysisService"] ?? "http://aianalysis-service:5004") + "/health/live"),
-        "aianalysis-service", tags: ["ready"])
+        "aianalysis-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:FeedbackService"] ?? "http://feedback-service:5008") + "/health/live"),
-        "feedback-service", tags: ["ready"])
+        "feedback-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:DashboardService"] ?? "http://dashboard-service:5009") + "/health/live"),
-        "dashboard-service", tags: ["ready"]);
+        "dashboard-service", failureStatus: HealthStatus.Degraded, tags: [HealthCheckExtensions.DependenciesTag]);
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
 
@@ -80,24 +89,28 @@ builder.Services.AddOpenTelemetry()
     // Meter 名は BFF のサービス名と同じなので収集対象そのものは増えない。
     .WithMetrics(metrics => metrics.AddMeter(UsageEventMetrics.MeterName));
 
+// NFR-19, [[IADR-0603]] (#2104): 後段の不達・時間切れを畳んだ件数（`bff.downstream.failure.total`）。
+// Meter 名は上と同じ BFF のサービス名なので、収集の宣言（AddMeter）は上の 1 行で足りる（試験が一致を固定する）。
+builder.Services.AddBffDownstreamFailureMetrics();
+
 // FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
 //
-// 🔴 **クライアントは 2 本ある。混ぜてはならない**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。
+// 🔴 **認可サービスへの経路は 2 本ある。混ぜてはならない**（計画 ADR-0088 決定 2 / [[IADR-0413]] / #1333）。
 //
-// | 用途 | クライアント | 資格情報 | 呼び出し先 |
+// | 用途 | 経路 | 資格情報 | 呼び出し先 |
 // | --- | --- | --- | --- |
-// | ABAC スコープ解決 | `AuthzScopeHttpClient.ClientName` | **BFF 自身の s2s** | `/authz/scope`（`ServiceCaller`） |
-// | 管理面の代理（属性辞書・利用者管理） | `"AuthorizationService"` | **利用者の `Authorization` を転送** | `/authz/*`（`AdminOnly`） |
+// | ABAC スコープ解決 | east-west gRPC `AuthzScope/Resolve`（`AddAuthzScopeGrpcClient`） | **BFF 自身の s2s** | `ServiceCaller` |
+// | 管理面の代理（属性辞書・利用者管理） | 名前つき HttpClient `"AuthorizationService"` | **利用者の `Authorization` を転送** | `/authz/*`（`AdminOnly`） |
 //
 // 意味論が逆なので、**1 本にまとめると管理面へ s2s が乗るか、スコープ解決へ利用者の資格が乗る**。
-// PR #1332（[[IADR-0412]]）が解いたのと同型の危険であり、これで 2 回目である（[[IADR-0141]]）。
-builder.Services.AddPlatformAuthzScopeHttpClient(builder.Configuration);
+//
+// NFR-09, ADR-0029, ADR-0075, 計画 ADR-0089 決定 1, [[IADR-0379]] 決定 4, [[IADR-0533]] (#1201, #1255):
+// ［2026-10-10］**スコープ解決の REST（`POST /authz/scope`）の並走は撤去した。** 宛先 `Services:AuthorizationServiceGrpc` が
+// 構成されていなければ、生成クライアントは常に `UNAVAILABLE` を受け取り、`BffScopeResolver` は deny-by-default（null）へ倒れる。
+// 🔴 **配備は宛先を必ず与えること**（helm・compose とも `Services__AuthorizationServiceGrpc` を BFF に描画する）。
 builder.Services.AddHttpClient("AuthorizationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
         ?? "http://authorization-service:5005"));
-// NFR-09, ADR-0029, ADR-0075, IADR-0379 (#1201): 同じ解決を gRPC でも呼べるようにする（参照実装・opt-in）。
-// `Services:AuthorizationServiceGrpc`（h2c アドレス）が在るときだけ登録され、BffScopeResolver がこちらを使う。
-// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。並走中の正は REST。
 builder.Services.AddAuthzScopeGrpcClient(builder.Configuration);
 builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
@@ -160,10 +173,10 @@ builder.Services.AddHttpClient("WikiService", c =>
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:5001"));
-// FR-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0402 (#1255):
-// 文書台帳の**読み取り 4 口**を gRPC でも呼べるようにする（opt-in）。
-// `Services:DocumentServiceGrpc`（h2c アドレス）が在るときだけ登録され、DocumentBffEndpoints が使う。
-// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。並走中の正は REST。
+// FR-06, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0402, [[IADR-0533]] (#1255):
+// 文書台帳の**読み取り 4 口**は east-west gRPC だけで呼ぶ（［2026-10-10］REST の並走は撤去した）。
+// `Services:DocumentServiceGrpc`（h2c アドレス）が無ければ常に `UNAVAILABLE` を受け取る（[[IADR-0533]] 決定 2）。
+// 資格情報は BFF 自身の s2s トークン（`ServiceToken:*`。利用者の JWT ではない）。利用者の文脈は本文で運ぶ。
 //
 // 🔴 **移せるのは読み取りだけである。** 同じ named client を使う書き込み経路（作成・更新・公開・
 // アーカイブ・削除・個人資料・タグ辞書）は**利用者の資格情報を後段へ運び**、後段が
@@ -172,14 +185,21 @@ builder.Services.AddDocumentReadGrpcClient(builder.Configuration);
 
 // FR-04, FR-05, NFR-09, NFR-16, ADR-0029, ADR-0075, 計画 ADR-0086 決定 1,
 // IADR-0379, IADR-0410, IADR-0416, IADR-0417 (#1255):
-// 権限内属性値の照会（SC-01 / SC-08 の対象範囲フィルタの供給源）を gRPC でも呼べるようにする（opt-in）。
-// `Services:RetrievalServiceGrpc`（h2c アドレス）が在るときだけ登録され、SearchBffEndpoints が使う。
-// 資格情報は BFF 自身の s2s トークン（利用者の JWT ではない）。並走中の正は REST。
+// 権限内属性値の照会（SC-01 / SC-08 の対象範囲フィルタの供給源）は east-west gRPC だけで呼ぶ
+// （［2026-10-10 / [[IADR-0533]]］REST `POST /search/attribute-values` の並走は撤去した）。
+// `Services:RetrievalServiceGrpc`（h2c アドレス）が無ければ常に `UNAVAILABLE` を受け取る（候補は空へ縮退）。
+// 資格情報は BFF 自身の s2s トークン（利用者の JWT ではない）。
 //
 // 🔴 **検索（`/bff/search`）は移らない。** 二段検索の近傍展開が利用者の転送トークンで動いており
 // （ADR-0087 決定 1 の「経路 1 は利用者の同一性の唯一の供給路」）、文脈の受け渡しを直す前に
 // s2s へ替えると**展開が黙って空になる**。属性値の照会には近傍展開が無い。
 builder.Services.AddAttributeValuesGrpcClient(builder.Configuration);
+
+// FR-06, SC-05, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379, IADR-0565 (#1993):
+// 文書管理の一覧の索引の状態（取り込み側の `knowledge.ingestion.v1.DocumentIndexStatus`）を east-west gRPC で引く。
+// `Services:IngestionServiceGrpc`（h2c アドレス）が無ければ常に `UNAVAILABLE` を受け取り、状態は「不明」へ縮退する（一覧は失敗させない）。
+// 資格情報は BFF 自身の s2s トークン。渡すのは ABAC を通った窓の中の文書の ID だけである。
+builder.Services.AddDocumentIndexStatusGrpcClient(builder.Configuration);
 
 // FR-12, UC-06, SC-07: 変換ジョブ管理の集約用（管理者・運用者限定）。ワーカーの HTTP サーフェスは 8080。
 builder.Services.AddHttpClient("ConversionService", c =>
@@ -212,9 +232,9 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:MarketMonitorService"]
         ?? "http://market-monitor-service:8080"));
 
-// FR-06, ADR-0014/ADR-0015（Superseded by ADR-0106）: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
-// 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
-builder.Services.AddPlatformObjectStorage(builder.Configuration);
+// ADR-0014, [[IADR-0544]] (#1905), [[IADR-0558]] (#1941): 🔴 **BFF はオブジェクトストレージを持たない**（`AddPlatformObjectStorage` を呼ばない）。
+// 文書の本文は文書サービスから east-west gRPC（`DocumentRead.GetDocumentContent`）で、変換ジョブの図画像は変換サービスの
+// `GET /jobs/{id}/figures/{figureId}/image` の中継で受け取る。BFF へストレージの資格情報を配線しない。
 
 // NFR, ADR-0032 / IADR-0251 / IADR-0273 / #439 第 3 段: BFF セッション（Token Handler）。
 // **既定の認証スキームは振り分け（BffSmart）である**（3b①）—— `Authorization: Bearer` が
@@ -234,6 +254,10 @@ var app = builder.Build();
 // 🔴 IADR-0433 決定 3: allowlist を読めなければここで例外になり、BFF は起動しない（fail-closed）。
 app.EnsureSecretItemCatalogLoaded();
 
+// NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 全応答のセキュリティヘッダ。**最初に置く** —— 認証・CSRF の
+// 短絡（401 / 403）の応答にも付ける。
+app.UseMiddleware<BffResponseSecurityHeadersMiddleware>();
+
 app.UsePlatformMiddleware();
 
 // ADR-0032 §決定 / IADR-0251 決定 1: CSRF 対策の 2 枚目の壁。
@@ -245,6 +269,8 @@ app.UseMiddleware<CsrfHeaderMiddleware>();
 // CSRF 検査の**後**に置く —— 拒否されたリクエストにトークンを付けない）。
 app.UseMiddleware<SessionTokenPropagationMiddleware>();
 app.MapPlatformHealthChecks();
+// NFR-06, [[IADR-0602]] (#2105): 下流の疎通の報告口（probe ではない。常に 200 で本文に状態）。
+app.MapPlatformDependencyHealthChecks();
 app.MapOpenApi();
 
 // FR-14, IADR-0063: BFF エンドポイントは合成点（BffEndpointComposition）経由で一括登録する。

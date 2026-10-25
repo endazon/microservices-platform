@@ -33,13 +33,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
     [Fact]
     public async Task Introspection_endpoint_reports_convert_step()
     {
-        var client = _factory.CreateClient();
-
-        var res = await client.GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(
-            TestContext.Current.CancellationToken);
+        // ［2026-10-10 / #1517・[[IADR-0533]]］REST の自己申告の面（GET /internal/introspection）は撤去した。
+        // 申告の中身は gRPC 面が返すのと同じ DI の 1 つ（`ServiceIntrospectionDto`）から読む。
+        var report = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         report.Should().NotBeNull();
         report!.Service.Should().Be("conversion-service");
         report.Steps.Should().ContainSingle(s => s.Name == "convert")
@@ -84,16 +80,16 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
             Bearer(TestUserTokens.Issue("service-account-bff", ["platform-service"])), cancellationToken: ct);
         asService.Should().NotBeNull();
 
-        // 対照: REST の面は従来どおり資格情報なしで申告を返す（門を持たない口）。
+        // ［2026-10-10 / #1517・[[IADR-0533]]］REST の面（門を持たない口）は撤去した。資格情報なしでは 404 である。
         var rest = await _factory.CreateClient().GetAsync("/internal/introspection", ct);
-        rest.StatusCode.Should().Be(HttpStatusCode.OK);
+        rest.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
-        // FR-15, IADR-0462 決定 4 (#1537): 収集器と同じ写しで戻した gRPC の申告は REST の申告と同じである。
-        var restReport = await rest.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(ct);
+        // FR-15, IADR-0462 決定 4 (#1537): 収集器と同じ写しで戻した gRPC の申告は DI の 1 つの申告と同じである。
+        var diReport = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         var grpcReport = IntrospectionGrpcMapping.ToDto(asService);
         grpcReport.Service.Should().Be("conversion-service", "空の service は収集器が到達不能へ落とす");
         grpcReport.Steps.Should().ContainSingle(s => s.Name == "convert", "対照: 申告が空のまま一致しているのではない");
-        grpcReport.Should().BeEquivalentTo(restReport!, o => o.WithStrictOrdering());
+        grpcReport.Should().BeEquivalentTo(diReport, o => o.WithStrictOrdering());
     }
 
     public sealed class Factory : WebApplicationFactory<Program>
@@ -119,6 +115,9 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 // 落とさないと、テストごとに実 RabbitMQ への接続再試行（実測 20 回・約 135 秒）が走り、
                 // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
                 services.DisableAllExternalWolverineTransports();
+                // FR-12, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（Transactional Outbox）を
+                // PostgreSQL へ向ける。器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
+                services.DisableAllWolverineMessagePersistence();
 
                 // NFR-09, ADR-0109 決定 3, IADR-0465 (#1520): 門は本物の JwtBearer で判定する（検証鍵だけ差し替え）。
                 TestUserTokens.UseStaticJwtBearer(services);

@@ -11,8 +11,8 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // FR-04, FR-11, NFR-02, NFR-09, NFR-16, ADR-0010, ADR-0029, ADR-0044, ADR-0075, ADR-0076 決定 4・5,
 // IADR-0354, IADR-0378, IADR-0379, IADR-0397, IADR-0400 (#1255): テキスト生成の **east-west gRPC 輸送**。
 //
-// **並走中の正は REST である。** 本クラスは `Services:LlmGatewayGrpc` が構成されたときだけ登録され
-// （Program.cs）、無ければ HttpLlmCompletionTransport がそのまま使われる。戻すのは構成を外すだけでよい。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**テキスト生成の輸送は本クラスだけである**（REST の兄弟実装 `HttpLlmCompletionTransport` は撤去した）。
+// 宛先 `Services:LlmGatewayGrpc` が構成されていなければ、生成クライアントは常に `UNAVAILABLE` を受け取り、下の縮退の枝へ落ちる。
 //
 // 🔴 **`CompleteStream` はサーバストリーミングであり、届いた 1 メッセージをその場で yield する**
 // （IADR-0400 決定 1）。ここで溜めると、gRPC 側で server-streaming を選んだ意味が消え、

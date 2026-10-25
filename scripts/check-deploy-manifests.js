@@ -35,6 +35,21 @@
  *    判定は `lib/product-egress-defaults.js`（描画した chart・overlay に加え、compose・Testcontainers・手順書とスクリプトの
  *    `docker run` も見る）。**これらはツールが無くても見る**（helm / kubectl が要らない）。
  *    走査全体で製品が 1 つも見つからなければ失敗にする（要点 2 と同じ。照合が壊れて 0 件になったときに緑を返さない）。
+ *
+ * 6. **描画結果の外部イメージが digest で固定されていることも見る**（ADR-0107 決定 3 / IADR-0547 / #1858）。
+ *    `check-image-digests.js` はリポジトリの字面（values・kustomization の `images:`）を読むが、上流のマニフェストを
+ *    `resources:` の URL で読む overlay（cert-manager・Argo CD）では、上流が版の更新でイメージを**足した**とき
+ *    `images:` に項目が無いまま tag だけで描かれる。字面では見えないので、描画した結果に同じ判定（自製は対象外）を当てる。
+ *
+ * 7. **描画結果に Loki・Tempo が現れたら、前段の認証と到達の制限（NetworkPolicy）の両方が同じ描画結果に揃っていることも見る**
+ *    （ADR-0133 決定 3 / #1867）。本番像の chart には現時点で両製品が無く「対象なし」で通る。chart へ足す PR が前段なしで
+ *    入るのを止めるための検査である。判定は `lib/observability-front-guard.js`（名前では通さない。前段のイメージ・Secret・
+ *    製品の loopback 待ち・Service の宛先・NetworkPolicy の名指しと許可の和）。経路 B（deploy/local/observability）が陽性対照で、
+ *    **走査全体で Loki・Tempo が 1 度も判定されなければ失敗にする**（要点 2 と同じ。識別が壊れて 0 件になったときに緑を返さない）。
+ *
+ * 8. **compose がホストへ出す口（`ports:`）が、すべてループバック（127.0.0.1）に限られていることも見る**（IADR-0587 /
+ *    GHSA-j4qv-2w99-xg5p）。判定は `lib/compose-host-ports.js`（短い形式・流れ形式・長い形式の `host_ip`・`network_mode: host`）。
+ *    **ツールが無くても見る。** 走査全体で口が 1 件も数えられなければ失敗にする（要点 2 と同じ）。
  */
 
 'use strict';
@@ -43,6 +58,11 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const egress = require('./lib/product-egress-defaults');
+const imageDigests = require('./check-image-digests');
+const obsFront = require('./lib/observability-front-guard');
+const hostPorts = require('./lib/compose-host-ports');
+// NFR-20, IADR-0605 (#2132): chart は自製イメージのタグが無いと描画を落とす。描くだけの検査は固定の値を渡す。
+const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEPLOY_DIR = 'deploy';
@@ -162,8 +182,18 @@ function run(bin, args, cwd = REPO_ROOT, input = undefined) {
  * `-strict`（未知フィールドも違反にする）・`-summary`（件数の要約を出す）。
  * `-ignore-missing-schemas` は使わない —— 要点 4（未知の CRD は fail-closed）。
  */
+/**
+ * スキーマを照合しない kind（理由つき。足すときは理由を書く）。
+ * - `CustomResourceDefinition`（#1858 / IADR-0547 決定 4）: CRD という kind **そのもの**のスキーマは、既定のカタログ
+ *   （yannh/kubernetes-json-schema）にも CRD カタログ（datreeio）にも無い（2026-10-15 に両方 404 を実測）。
+ *   上流のマニフェストを丸ごと読む overlay（cert-manager・Argo CD）が CRD を同梱するため、ここを落とすと検査が恒久的に赤になる。
+ *   CRD の定義は上流の字面のままで（kustomize は images 以外を変えない）、apiserver が apply の時点で検証する。
+ *   **CRD で定義された kind のリソース（Certificate・ExternalSecret 等）は従前どおり照合し、無ければ fail-closed のまま**である。
+ */
+const SKIP_SCHEMA_KINDS = ['CustomResourceDefinition'];
+
 function validateSchema(yaml, cwd = REPO_ROOT) {
-  const args = ['-strict', '-summary'];
+  const args = ['-strict', '-summary', '-skip', SKIP_SCHEMA_KINDS.join(',')];
   for (const loc of SCHEMA_LOCATIONS) args.push('-schema-location', loc);
   return run('kubeconform', args, cwd, yaml);
 }
@@ -200,6 +230,37 @@ function checkEgressWithoutTools(repoRoot) {
   return { failures, found, testcontainersBuilders: tc.builders, runCommands: manual.commands };
 }
 
+/**
+ * 要点 8（IADR-0587）: compose のホストへ出す口がループバックに限られていること。ツールは要らない。
+ * 走査全体で口が 1 件も数えられなければ失敗にする（空の母集合を緑にしない）。
+ */
+function checkComposeHostPortsAll(repoRoot) {
+  const failures = [];
+  let count = 0;
+  for (const rel of discoverComposeFiles(repoRoot)) {
+    const r = hostPorts.checkComposeHostPorts(fs.readFileSync(path.join(repoRoot, rel), 'utf8'), rel, egress.splitComposeServices);
+    count += r.count;
+    failures.push(...r.problems.map((p) => `ホストへ出す口がループバックに限られていない: ${p}`));
+  }
+  if (count === 0) failures.push(`compose（${DEPLOY_DIR}/docker-compose*.yml）のホストへ出す口（ports:）が 0 件だった。走査が壊れている可能性がある。`);
+  return { failures, count };
+}
+
+/**
+ * 要点 6: 描画結果（複数文書の YAML）の `image:` のうち、自製でも digest つきでもないものを返す。
+ * 判定は check-image-digests.js と同じ（`extractRefs` の `image:` の読み方・自製の判定・digest の形）。
+ */
+function undigestedRenderedImages(yaml, label) {
+  return [
+    ...new Set(
+      imageDigests
+        .extractRefs(`${label}.rendered.yaml`, yaml)
+        .map((r) => r.ref)
+        .filter((ref) => !imageDigests.isSelfBuilt(ref) && !/@sha256:[0-9a-f]{64}$/.test(ref)),
+    ),
+  ];
+}
+
 /** 検査本体。結果オブジェクトを返す（プロセスは終了させない — 自己試験から呼べるようにするため）。 */
 function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const overlays = discoverOverlays(repoRoot);
@@ -207,10 +268,19 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const failures = [];
   const notices = [];
   const egressFound = [];
+  const obsFound = new Map();
   const renderedEgress = (yaml, label) => {
+    // 要点 7（#1867）: Loki・Tempo が現れたら前段と NetworkPolicy の両方。
+    const front = obsFront.checkObservabilityFront(yaml, label);
+    failures.push(...front.problems);
+    for (const [k, v] of front.found) obsFound.set(k, (obsFound.get(k) || 0) + v);
     const r = egress.checkRenderedManifests(yaml, label);
     failures.push(...r.problems.map((p) => `既定の外部通信が止まっていない: ${p}`));
     egressFound.push(r.found);
+    // 要点 6（#1858）: 描画結果の外部イメージの digest。
+    for (const ref of undigestedRenderedImages(yaml, label)) {
+      failures.push(`描画結果に digest で固定されていないイメージがある: ${label}: ${ref}（kustomization の images: か values で tag@sha256 に固定する。IADR-0547）`);
+    }
   };
 
   // 要点 2: 0 件走査で緑を返さない。
@@ -226,6 +296,8 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   const offline = checkEgressWithoutTools(repoRoot);
   failures.push(...offline.failures);
   egressFound.push(...offline.found);
+  // 要点 8（IADR-0587）: compose のホストへ出す口はループバックに限る（ツール無しで見る）。
+  failures.push(...checkComposeHostPortsAll(repoRoot).failures);
 
   // 要点 3: ツール不在は fail-closed。
   const missing = REQUIRED_TOOLS.filter((b) => !hasTool(b));
@@ -250,7 +322,7 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   for (const c of charts) {
     // 既定の values（引数なし）に加え、ci/*.yaml の各 values でも同じ 3 段を回す（#1287）。
     for (const valuesFile of [null, ...discoverChartCiValues(c, repoRoot)]) {
-      const extra = valuesFile ? ['-f', valuesFile] : [];
+      const extra = [...(valuesFile ? ['-f', valuesFile] : []), ...RENDER_IMAGE_TAG_ARGS];
       const label = valuesFile ? `${c}（-f ${valuesFile}）` : c;
       const lint = run('helm', ['lint', c, ...extra], repoRoot);
       if (!lint.ok) failures.push(`helm lint が失敗した: ${label}\n${lint.out}`);
@@ -286,6 +358,14 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
         ' イメージの照合が壊れたか、製品を外した。外したなら lib/product-egress-defaults.js の PRODUCTS から除くこと。',
     );
   }
+  // 要点 7 / 要点 2: Loki・Tempo が走査全体で 1 度も判定されなければ失敗（経路 B が陽性対照。識別が壊れて 0 件のときに緑を返さない）。
+  const obsMissing = obsFront.TARGETS.map((t) => t.name).filter((n) => !obsFound.get(n));
+  if (obsMissing.length > 0) {
+    failures.push(
+      `前段と到達の制限の検査（#1867）で ${obsMissing.join(' / ')} が 1 度も判定されなかった（chart・overlay のどこにも無い）。` +
+        ' イメージの識別（lib/observability-front-guard.js の TARGETS）が壊れたか、経路 B の overlay から外した。',
+    );
+  }
   if (offline.testcontainersBuilders === 0) {
     failures.push('Testcontainers の new QdrantBuilder( が 0 件だった（走査が壊れたか、試験を外した。外したなら本検査を見直すこと）。');
   }
@@ -318,6 +398,30 @@ function selfTest() {
     mk('deploy/local/vault/kustomization.yaml', 'resources: []\n');
     const found = discoverOverlays(tmp);
     assert.deepStrictEqual(found, ['deploy/local/edge', 'deploy/local/edge/tls', 'deploy/local/vault']);
+  });
+
+  ok('#1858 要点 6: 描画結果の tag だけの外部イメージを拾い、digest つき・自製・テンプレート外の行は拾わない', () => {
+    const D = 'sha256:' + 'a'.repeat(64);
+    const yaml = [
+      'kind: Deployment',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      containers:',
+      `        - image: quay.io/a/ctl:v1@${D}`,
+      '        - image: quay.io/a/new:v1',
+      '        - image: microservices-platform/bff:latest',
+      '---',
+      'kind: Deployment',
+      'spec:',
+      '  template:',
+      '    spec:',
+      '      initContainers:',
+      '        - image: "quay.io/a/new:v1"',
+      '',
+    ].join('\n');
+    assert.deepStrictEqual(undigestedRenderedImages(yaml, 'deploy/x'), ['quay.io/a/new:v1']);
+    assert.deepStrictEqual(undigestedRenderedImages(`image: quay.io/a/ctl:v1@${D}\n`, 'deploy/x'), []);
   });
 
   ok('走査は Chart.yaml を持つディレクトリを拾い、charts/（依存の展開先）は除外する', () => {
@@ -384,6 +488,190 @@ function selfTest() {
     assert.ok(r.failures.some((f) => f.includes('kubeconform')), 'kubeconform 不在が失敗理由に出ていない');
   });
 
+  // ---- 要点 7（#1867）: Loki・Tempo の前段（条件 1）と到達の制限（条件 2）。陰性・陽性対照を合成の描画と実物の描画の両方で固定する。
+  const NS = 'microservices-platform';
+  /** 合成の描画: 製品（loopback 待ちの config）＋任意で前段・NetworkPolicy・Service。opts で 1 か所ずつ壊す。 */
+  const obsFixture = (prod, { front = true, netpol = true, secret = true, listen = '127.0.0.1', svcTarget = 'http', from = 'narrow' } = {}) => {
+    const upPort = prod === 'loki' ? 3101 : 3201;
+    const svcPort = prod === 'loki' ? 3100 : 3200;
+    const docs = [
+      ['apiVersion: v1', 'kind: ConfigMap', 'metadata:', `  name: ${prod}-config`, `  namespace: ${NS}`, 'data:', '  config.yaml: |',
+        '    server:', `      http_listen_address: ${listen}`, `      http_listen_port: ${upPort}`, `      grpc_listen_address: ${listen}`].join('\n'),
+      ['apiVersion: apps/v1', 'kind: Deployment', 'metadata:', `  name: ${prod}`, `  namespace: ${NS}`, 'spec:', '  selector:', `    matchLabels: { app: ${prod} }`,
+        '  template:', '    metadata:', `      labels: { app: ${prod} }`, '    spec:', '      containers:',
+        `        - name: ${prod}`, `          image: grafana/${prod}:1.0.0`, `          args: ["-config.file=/etc/${prod}/config.yaml"]`,
+        ...(prod === 'tempo' ? ['          ports:', '            - { containerPort: 4317, name: otlp-grpc }'] : []),
+        '          volumeMounts:', `            - { name: config, mountPath: /etc/${prod} }`,
+        ...(front ? ['        - name: proxy', '          image: caddy:2.11-alpine', '          ports:', `            - { containerPort: ${svcPort}, name: http }`,
+          ...(secret ? ['          env:', '            - name: TOKEN', '              valueFrom:', '                secretKeyRef: { name: obs-gate, key: reader }'] : [])] : []),
+        '      volumes:', '        - name: config', '          configMap:', `            name: ${prod}-config`].join('\n'),
+      ['apiVersion: v1', 'kind: Service', 'metadata:', `  name: ${prod}`, `  namespace: ${NS}`, 'spec:', `  selector: { app: ${prod} }`, '  ports:',
+        `    - { name: http, port: ${svcPort}, targetPort: ${svcTarget} }`].join('\n'),
+    ];
+    if (netpol) {
+      const peer = from === 'narrow' ? ['        - podSelector:', '            matchLabels: { app: grafana }'] : from === 'all-pods' ? ['        - podSelector: {}'] : ['        - ipBlock:', '            cidr: 0.0.0.0/0'];
+      const rule = from === 'none' ? ['    - ports:', `        - { protocol: TCP, port: ${svcPort} }`] : ['    - from:', ...peer];
+      docs.push(['apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', `  name: ${prod}-ingress`, `  namespace: ${NS}`, 'spec:', '  podSelector:',
+        `    matchLabels: { app: ${prod} }`, '  policyTypes: [Ingress]', '  ingress:', ...rule].join('\n'));
+    }
+    return docs.join('\n---\n') + '\n';
+  };
+  const front = (yaml) => obsFront.checkObservabilityFront(yaml, 'fixture');
+  const has = (r, re) => r.problems.some((p) => re.test(p));
+
+  for (const prod of ['loki', 'tempo']) {
+    ok(`#1867 ${prod}: 前段も NetworkPolicy も無い → 赤（条件 1・2 の両方）`, () => {
+      const r = front(obsFixture(prod, { front: false, netpol: false }));
+      assert.ok(has(r, /条件 1/) && has(r, /条件 2/), r.problems.join('\n'));
+    });
+    ok(`#1867 ${prod}: 前段だけ → 赤（条件 2）`, () => {
+      const r = front(obsFixture(prod, { netpol: false }));
+      assert.ok(has(r, /条件 2/) && !has(r, /条件 1/), r.problems.join('\n'));
+    });
+    ok(`#1867 ${prod}: NetworkPolicy だけ → 赤（条件 1）`, () => {
+      const r = front(obsFixture(prod, { front: false }));
+      assert.ok(has(r, /条件 1/) && !has(r, /条件 2/), r.problems.join('\n'));
+    });
+    ok(`#1867 ${prod}: 両方 → 緑（判定した数を返す）`, () => {
+      const r = front(obsFixture(prod));
+      assert.deepStrictEqual(r.problems, []);
+      assert.strictEqual(r.found.get(prod), 1);
+    });
+    // 名前だけで通さない（1 か所ずつ壊す）
+    for (const [what, opts, re] of [
+      ['前段が Secret を受け取らない（素通しのプロキシ）', { secret: false }, /条件 1.*Secret/],
+      ['製品が 0.0.0.0 で待つ（前段を迂回できる）', { listen: '0.0.0.0' }, /条件 1.*loopback でない/],
+      ['Service の宛先が前段の口でない', { svcTarget: prod === 'loki' ? 3101 : 3201 }, /条件 1.*Service\//],
+      ['NetworkPolicy の from が podSelector: {}（同じ名前空間の全 Pod）', { from: 'all-pods' }, /条件 2.*広い/],
+      ['NetworkPolicy の from が ipBlock 0.0.0.0/0', { from: 'ip' }, /条件 2.*ipBlock/],
+      ['NetworkPolicy の規則に from が無い（全ての送り元から届く）', { from: 'none' }, /条件 2.*from が無い/],
+    ]) {
+      ok(`#1867 ${prod}: ${what} → 赤`, () => {
+        const r = front(obsFixture(prod, opts));
+        assert.ok(has(r, re), r.problems.join('\n') || '(問題なし)');
+      });
+    }
+  }
+
+  ok('#1867: コンテナ名を gate にしても、イメージがプロキシでなければ前段と数えない（名前で通さない）', () => {
+    const y = obsFixture('loki').replace('caddy:2.11-alpine', 'busybox:1.36').replace('- name: proxy', '- name: gate');
+    assert.ok(has(front(y), /条件 1.*前段.*無い/));
+  });
+
+  ok('#1867: 名指しの NetworkPolicy があっても、Pod を選ぶ別の広い NetworkPolicy があれば赤（許可の和）／NotIn で外せば緑', () => {
+    const wide = (notIn) => ['apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', '  name: allow-intra-namespace', `  namespace: ${NS}`, 'spec:',
+      '  podSelector:', '    matchExpressions:', '      - key: app', '        operator: NotIn', `        values: [${notIn}]`, '  policyTypes: [Ingress]',
+      '  ingress:', '    - from:', '        - podSelector: {}'].join('\n');
+    assert.ok(has(front(`${obsFixture('loki')}---\n${wide('seaweedfs')}\n`), /allow-intra-namespace.*広い/));
+    assert.deepStrictEqual(front(`${obsFixture('loki')}---\n${wide('seaweedfs, loki')}\n`).problems, []);
+  });
+
+  ok('#1867: 名指しでない NetworkPolicy（podSelector: {} の既定拒否）だけでは条件 2 を満たさない', () => {
+    const y = obsFixture('loki', { netpol: false }) + ['---', 'apiVersion: networking.k8s.io/v1', 'kind: NetworkPolicy', 'metadata:', '  name: default-deny', `  namespace: ${NS}`,
+      'spec:', '  podSelector: {}', '  policyTypes: [Ingress]', ''].join('\n');
+    assert.ok(has(front(y), /名指しで選ぶ/));
+  });
+
+  ok('#1867: 対象なし（Loki・Tempo のイメージが無い描画）は何も言わず、promtail・loki 以外の名前は対象にしない', () => {
+    const r = front(['apiVersion: apps/v1', 'kind: Deployment', 'metadata:', '  name: x', 'spec:', '  template:', '    spec:', '      containers:',
+      '        - name: a', '          image: grafana/promtail:3.0.0', '        - name: b', '          image: example/lokiish:1', ''].join('\n'));
+    assert.deepStrictEqual([r.problems, [...r.found]], [[], []]);
+    assert.strictEqual(obsFront.imageSegment('registry:5000/mirror/loki:3.0.0@sha256:' + 'a'.repeat(64)), 'loki');
+  });
+
+  // 実物の描画（ツールが在る環境だけ。CI の deploy-manifests ジョブは helm / kubectl を入れている）。
+  if (hasTool('helm')) {
+    ok('#1867 実物の chart: 既定と ci/*.yaml の全派生で「対象なし」（陰性対照）、Loki・Tempo を足すと前段・NetworkPolicy・両方の 4 通りで期待どおり', () => {
+      const chart = discoverCharts()[0];
+      for (const valuesFile of [null, ...discoverChartCiValues(chart)]) {
+        const r = run('helm', ['template', 'ci-check', chart, ...RENDER_IMAGE_TAG_ARGS, ...(valuesFile ? ['-f', valuesFile] : [])]);
+        assert.ok(r.ok, r.out);
+        const base = front(r.out);
+        assert.deepStrictEqual([base.problems, [...base.found]], [[], []], `${valuesFile || '既定'} に Loki・Tempo が既に居る`);
+      }
+      const rendered = run('helm', ['template', 'ci-check', chart, ...RENDER_IMAGE_TAG_ARGS]).out;
+      assert.ok(/values: \[seaweedfs\]/.test(rendered), '前提: chart の allow-intra-namespace が NotIn [seaweedfs] で描かれる');
+      for (const prod of ['loki', 'tempo']) {
+        const add = (opts) => `${rendered}\n---\n${obsFixture(prod, opts)}`;
+        assert.ok(has(front(add({ front: false, netpol: false })), /条件 1/) && has(front(add({ front: false, netpol: false })), /条件 2/));
+        assert.ok(has(front(add({ netpol: false })), /条件 2/), `${prod} 前段だけが赤にならない`);
+        assert.ok(has(front(add({ front: false })), /条件 1/), `${prod} NetworkPolicy だけが赤にならない`);
+        // 両方を足しても、chart の allow-intra-namespace（同じ名前空間の全 Pod から）が選んでいる限り赤（許可の和）。
+        assert.ok(has(front(add({})), /allow-intra-namespace.*広い/), `${prod} 両方でも allow-intra-namespace の穴を見逃した`);
+        const excluded = add({}).replace('values: [seaweedfs]', `values: [seaweedfs, ${prod}]`);
+        assert.deepStrictEqual(front(excluded).problems, [], `${prod} 両方＋allow-intra-namespace から外す、が緑にならない`);
+      }
+    });
+  }
+  if (hasTool('kubectl')) {
+    ok('#1867 実物の経路 B（deploy/local/observability）: 緑（陽性対照）／前段のコンテナ・NetworkPolicy を外すと赤（変異）', () => {
+      const r = run('kubectl', ['kustomize', 'deploy/local/observability']);
+      assert.ok(r.ok, r.out);
+      const base = front(r.out);
+      assert.deepStrictEqual(base.problems, []);
+      assert.deepStrictEqual([base.found.get('loki'), base.found.get('tempo')], [1, 1]);
+      const noNetpol = r.out.split(/^---\n/m).filter((d) => !/^kind: NetworkPolicy$/m.test(d)).join('---\n');
+      assert.ok(has(front(noNetpol), /loki.*条件 2/) && has(front(noNetpol), /tempo.*条件 2/));
+      const noGate = r.out.replace(/image: caddy:/g, 'image: busybox:');
+      assert.ok(has(front(noGate), /loki.*条件 1/) && has(front(noGate), /tempo.*条件 1/));
+    });
+  }
+
+  ok('IADR-0587 要点 8: 実物の compose はホストへ出す口が全件ループバック（陽性対照）／1 件から 127.0.0.1 を外すと赤（変異）', () => {
+    const r = checkComposeHostPortsAll(REPO_ROOT);
+    assert.deepStrictEqual(r.failures, []);
+    assert.ok(r.count >= 2, `口を数えられていない（${r.count} 件）`);
+    const rel = discoverComposeFiles(REPO_ROOT)[0];
+    const text = fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8');
+    const mutated = text.replace('"127.0.0.1:5000:8080"', '"5000:8080"');
+    assert.notStrictEqual(mutated, text, '前提: BFF の口が "127.0.0.1:5000:8080" で書かれている');
+    const m = hostPorts.checkComposeHostPorts(mutated, rel, egress.splitComposeServices);
+    assert.strictEqual(m.count, r.count);
+    assert.strictEqual(m.problems.length, 1, m.problems.join('\n'));
+    assert.match(m.problems[0], /サービス bff: "5000:8080" がループバックに限られていない/);
+  });
+
+  ok('IADR-0587 要点 8: 短い形式・流れ形式・長い形式・network_mode を形ごとに判定する（読めない形は赤）', () => {
+    const judge = (svcLines) => hostPorts.checkComposeHostPorts(['services:', '  s:', ...svcLines, ''].join('\n'), 'c.yml', egress.splitComposeServices);
+    const green = (lines, count) => {
+      const r = judge(lines);
+      assert.deepStrictEqual(r.problems, [], lines.join('\n'));
+      assert.strictEqual(r.count, count, lines.join('\n'));
+    };
+    const red = (lines, re) => {
+      const r = judge(lines);
+      assert.ok(r.problems.some((p) => re.test(p)), `${lines.join('\n')}\n→ ${r.problems.join(' / ') || '(問題なし)'}`);
+    };
+    green(['    ports:', '      - "127.0.0.1:5432:5432"  # コメント', "      - '127.0.0.1:1:2'", '      - 127.0.0.1::8080'], 3);
+    green(['    ports: ["127.0.0.1:1:1", "127.0.0.1:2:2"]'], 2);
+    green(['    ports:', '      - target: 8080', '        published: "5000"', '        host_ip: 127.0.0.1'], 1);
+    green(['    ports:', '      - { target: 80, published: 8080, host_ip: "127.0.0.1" }'], 1);
+    green(['    expose:', '      - "8080"'], 0);
+    red(['    ports:', '      - "5432:5432"'], /"5432:5432" がループバックに限られていない/);
+    red(['    ports:', '      - 5432:5432'], /ループバックに限られていない/);
+    red(['    ports:', '      - "8080"'], /"8080" がループバックに限られていない/);
+    red(['    ports:', '      - "0.0.0.0:1:1"'], /ループバックに限られていない/);
+    red(['    ports:', '      - "${BIND_IP:-127.0.0.1}:1:1"'], /ループバックに限られていない/);
+    red(['    ports:', '      - "127.0.0.1:8080"'], /形を読めない/);
+    red(['    ports: ["1:1"]'], /"1:1" がループバックに限られていない/);
+    red(['    ports: "1:1"'], /ports: の形を読めない/);
+    red(['    ports:', '      - target: 8080', '        published: "5000"'], /host_ip が 無い/);
+    red(['    ports:', '      - target: 8080', '        host_ip: 0.0.0.0'], /host_ip が 0\.0\.0\.0/);
+    red(['    ports:', '      - { target: 80, published: 8080 }'], /host_ip が 無い/);
+    red(['    ports:', '      - published: 8080', '        host_ip: 127.0.0.1'], /target が無い/);
+    red(['    ports:', '    image: x'], /ports: に項目が無い/);
+    red(['    network_mode: host'], /network_mode: host/);
+  });
+
+  ok('IADR-0587 要点 8: 口を 1 件も数えられない compose（空の母集合）は赤', () => {
+    mk('deploy/docker-compose.yml', 'services:\n  s:\n    image: x\n    expose:\n      - "8080"\n');
+    const r = checkComposeHostPortsAll(tmp);
+    assert.strictEqual(r.count, 0);
+    assert.ok(r.failures.some((f) => /ports:）が 0 件だった/.test(f)), r.failures.join('\n'));
+    fs.rmSync(path.join(tmp, 'deploy', 'docker-compose.yml'));
+    assert.ok(checkComposeHostPortsAll(tmp).failures.some((f) => /0 件だった/.test(f)), 'compose が無い走査でも赤');
+  });
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(`[check-deploy-manifests] self-test OK: ${n} 件`);
 }
@@ -419,6 +707,8 @@ function main() {
     `[check-deploy-manifests] OK: chart ${r.charts.length} 件 / overlay ${r.overlays.length} 件が` +
       `レンダリングでき、スキーマにも適合する。描画結果・compose・Testcontainers で` +
       ` ${egress.PRODUCTS.map((p) => p.name).join(' / ')} の既定の外部通信が止まっている（#1841）。` +
+      ` Loki・Tempo は現れた描画で前段と NetworkPolicy の両方が揃っている（#1867）。` +
+      ` compose のホストへ出す口はループバックに限られている（IADR-0587）。` +
       `\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
   );
 }
@@ -428,6 +718,7 @@ if (require.main === module) main();
 module.exports = {
   check,
   checkEgressWithoutTools,
+  checkComposeHostPortsAll,
   discoverComposeFiles,
   discoverOverlays,
   discoverCharts,

@@ -19,6 +19,7 @@ import type {
 import type {
   DocumentContentDto,
   DocumentDto,
+  DocumentListPageDto,
   DocumentVersionDto
 } from '../bff.schemas';
 
@@ -37,7 +38,7 @@ import {
 export { getBffDocumentListResponseMock, getBffDocumentCreateResponseMock, getBffDocumentDetailResponseMock, getBffDocumentUpdateResponseMock, getBffDocumentContentResponseMock, getBffDocumentVersionsResponseMock, getBffDocumentVersionResponseMock, getBffDocumentPublishResponseMock, getBffDocumentArchiveResponseMock } from './documents.faker';
 
 
-export const getBffDocumentListMockHandler = (overrideResponse?: DocumentDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<DocumentDto[]> | DocumentDto[]), options?: RequestHandlerOptions) => {
+export const getBffDocumentListMockHandler = (overrideResponse?: DocumentListPageDto | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<DocumentListPageDto> | DocumentListPageDto), options?: RequestHandlerOptions) => {
   return http.get('*/bff/documents', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
 
 

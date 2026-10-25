@@ -15,7 +15,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 // ■ 資格情報: 呼び出し側（BFF）自身の s2s トークンを `CreatePlatformChannel` の CallCredentials で付ける。
 //   利用者のトークンは載せない（この経路は定期処理であり、利用者文脈を 1 バイトも持たない）。
 //
-// ■ 🔴 **失敗の畳み方は REST と同じ**（`HttpEffectiveConfigCollector.CollectOneAsync`）。
+// ■ 🔴 **失敗の畳み方は撤去した REST の収集と同じ**（旧 `HttpEffectiveConfigCollector.CollectOneAsync`）。
 //   全 status・s2s トークン取得失敗・期限切れ・空の申告を「到達不能」（null）へ隔離する ——
 //   収集器の出力は「申告を得た / 得られなかった」の 2 値であり、ドリフト検出はそれで
 //   適用漏れと到達不能を分ける（IADR-0029）。**移行の不変条件は「挙動を変えない」である。**

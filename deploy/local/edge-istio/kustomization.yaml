@@ -19,5 +19,7 @@ kind: Kustomization
 resources:
   - gateway.yaml
   - virtualservice-app.yaml
-  - virtualservice-admin.yaml
+  # NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路（virtualservice-admin.yaml）は含めない。
+  #   scripts/lib/admin-edge.sh が ADMIN_EDGE=1 のときだけ当てる。既定は下の拒否（403）だけが 50000 に居る。
+  - virtualservice-admin-deny.yaml
   - coredns-edge-hosts.yaml

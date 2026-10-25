@@ -5,6 +5,7 @@ using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 // #1446: 方向・結果・失敗理由の値集合は契約（`SyncDirections` / `SyncOutcomes` /
 // `SyncFailureReasons`）が持つ。**後段とBFFと画面で同じ値を使う**ので、ここへ写さない。
 using Knowledge.Contracts.Dtos;
@@ -19,7 +20,7 @@ namespace DocumentService.Features.ObsidianSync.Push;
 //
 // **［#1184］本文の書き込みは「露出 3 トグルのうち 1 つでも ON」のときだけ `DocumentUpdated` を
 // 発行する**（ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4。門は
-// `DocumentEndpoints.PublishUpdatedIfIndexableAsync` 1 か所）。**新規作成は必ず 3 つとも OFF
+// `DocumentEndpoints.PublishUpdatedIfIndexableAsync` 1 か所。確定込みの入口 `SaveChangesAndPublishUpdatedIfIndexableAsync` から呼ぶ）。**新規作成は必ず 3 つとも OFF
 // である**（`PrivateNoteDefaults`）ため、初回 push は何も発行しない —— 索引に存在しない状態を
 // 既定として構造的に守る（[[IADR-0270]] 決定 5 が守っていた性質は、門の形で残る）。
 internal static class PushNoteEndpoint
@@ -117,11 +118,11 @@ internal static class PushNoteEndpoint
                 SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
                     added: 1, updated: 0, deleted: 0, now,
                     extra: $"count=1 versions={req.Edits.Count}");
-                await db.SaveChangesAsync(ct);
+                // FR-20, ADR-0027 §決定, IADR-0608 (#2168): 資料の保存と発行（門を通れば）を 1 トランザクションで確定する
+                // （Transactional Outbox）。使用量の再計算は確定の後のまま。
+                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
                 await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
                 await db.SaveChangesAsync(ct);
-
-                await PublishIfExposedAsync(bus, db, doc, ct);
 
                 return Results.Created($"/private-notes/sync/notes/{id}",
                     new PushNoteResponse(id, doc.Version, lastHash, lastBytes));
@@ -201,15 +202,25 @@ internal static class PushNoteEndpoint
                 SyncAuditRecorder.Success(db, audit, owner, device, SyncOps.Push,
                     added: 0, updated: 1, deleted: 0, now,
                     extra: $"count=1 versions={req.Edits.Count}");
-                await db.SaveChangesAsync(ct);
+                // FR-20, ADR-0027 §決定, IADR-0608 (#2168): 版の保存と発行（門を通れば）を 1 トランザクションで確定する
+                // （Transactional Outbox）。競合を閉じる・使用量の再計算は確定の後のまま。
+                // FR-02, [[IADR-0597]] / IADR-0637 (#2150): `baseVersion` の照合は読んだ時点の比較であり、照合と確定の間に
+                // 別の確定（Touch する更新、または Touch しない状態の変化 —— 共有・露出・論理削除・復元）が入れば確定ごと負ける。
+                // 500 にせず #2103 と同じ 409 `version_conflict` を返す（プラグインは読み直して再送する）。
+                try
+                {
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
+                }
+                catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+                {
+                    return await DocumentVersionConflict.AfterLostSaveAsync(db, doc.Id, baseVersion, ct);
+                }
                 // #1442, ADR-0037 決定 7: 正しい `baseVersion` で書けた＝**プラグイン側で解決済み**。
                 // 未解決のまま残っている競合を `client` で閉じる（利用者が選んだわけではないので
                 // 3 択のどれでもない値を使う）。閉じないと SC-20 に解決済みの競合が残り続ける。
                 await SyncConflictRecorder.CloseAsync(db, storage, owner, doc.Id, now, ct);
                 await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
                 await db.SaveChangesAsync(ct);
-
-                await PublishIfExposedAsync(bus, db, doc, ct);
 
                 return Results.Ok(new PushNoteResponse(doc.Id, doc.Version, lastHash, lastBytes));
             }
@@ -253,15 +264,6 @@ internal static class PushNoteEndpoint
         if (source is null) return [];
         var sourceDoc = await db.Documents.FindAsync([source.DocumentId], ct);
         return sourceDoc is null ? [] : [.. sourceDoc.Tags];
-    }
-
-    // FR-19, ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4 (#1184): 本文の書き込みを索引の生産側へ流す門。
-    // **判定は `DocumentExposure.IsIndexable`（唯一の述語）**であり、条件を書き下さない。
-    private static async Task PublishIfExposedAsync(IDocumentUpdatedPublisher bus,
-        DocumentDbContext db, Document doc, CancellationToken ct)
-    {
-        var names = await TagResolver.NamesAsync(db, ct);
-        await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, ct);
     }
 
     // ADR-0050 (#911): 計算の実体は DocumentBodyIntake.Fingerprint（1 か所に集める）。

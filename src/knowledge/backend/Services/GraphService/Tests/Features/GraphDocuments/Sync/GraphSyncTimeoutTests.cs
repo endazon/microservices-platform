@@ -35,7 +35,7 @@ public class GraphSyncTimeoutTests
             NullLogger<LinkEdgeSynchronizer>.Instance),
         new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
         ConsumerTimeoutsForTests.Calls(), new GraphSyncTimeouts(contentRead),
-        NullLogger<GraphDocumentSyncConsumer>.Instance);
+        NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
 
     // 指紋が変わる（＝本文を読みに行く）更新イベント。
     private static DocumentUpdated Event() => new(Doc, "時間切れの試験", "published", "storage://b/c.md",

@@ -286,6 +286,16 @@ export interface TagInUseProblem {
   usageCount: number;
 }
 
+export type SearchResponseDegradedReasonsItem = typeof SearchResponseDegradedReasonsItem[keyof typeof SearchResponseDegradedReasonsItem];
+
+
+export const SearchResponseDegradedReasonsItem = {
+  'embed-failed': 'embed-failed',
+  'fused-embed-failed': 'fused-embed-failed',
+  'graph-expand-failed': 'graph-expand-failed',
+  'rerank-failed': 'rerank-failed',
+} as const;
+
 export type SearchResultDtoAttributes = {[key: string]: string};
 
 /**
@@ -325,6 +335,19 @@ export interface SearchResponse {
   results: SearchResultDto[];
   totalHits: number;
   elapsedMs: number;
+  /**
+     * FR-03, NFR-06（#1871）: 部品（埋め込み・グラフ展開・再順位付け）のどれかが働かず、結果がその分だけ劣化して返ったか。
+     * `degradedReasons` が空でないことと一致する。権限が無いのか該当が無いのかは表さない
+     * （deny・空クエリ・BFF 側の空応答への縮退は `false` のまま）。構成で無効な段は縮退に数えない。
+     */
+  degraded: boolean;
+  /**
+     * 縮退の理由（固定語彙・重複なし・この列挙の順）。本文・URL・資格情報・例外メッセージは載せない。
+     * `embed-failed`＝主コレクションのクエリ埋め込みが空（hybrid は語彙検索のみ、semantic は 0 件）／
+     * `fused-embed-failed`＝追加コレクションの埋め込みが空／`graph-expand-failed`＝近傍展開が働かない／
+     * `rerank-failed`＝再順位付けを元の順へ戻した。
+     */
+  degradedReasons: SearchResponseDegradedReasonsItem[];
 }
 
 /**
@@ -449,15 +472,6 @@ export interface AiAnswerDto {
      * 回答生成ごとに自動採番される（`FeedbackRequest.answerId` へ渡す）。
      */
   answerId: string;
-}
-
-export type AccessScopeRequestUserAttributes = {[key: string]: string};
-
-export interface AccessScopeRequest {
-  userId: string;
-  userAttributes: AccessScopeRequestUserAttributes;
-  /** ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。 `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で 従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、 書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を deny へ縮退させる）。 */
-  action?: string;
 }
 
 /**
@@ -601,6 +615,16 @@ export interface DocumentDto {
      * **項目を持たない旧応答は「指紋不明」として読む。**
      */
   contentFingerprint?: string | null;
+  /**
+     * FR-06, SC-05 (#1923): 取り込み元のデータソースの表示名（台帳の写し。データソースの改名は次の同期まで遡及しない）。
+     * 直接投入・画面からの作成では `null`。**項目を持たない旧応答は「データソースなし」として読む。**
+     */
+  dataSourceName?: string | null;
+  /**
+     * FR-06, SC-05 (#1923): 原本の所在（API の書き手が渡した元の URL など。AST の収集ではニュース・開示の出典）。
+     * 書き手の申告であり検証していない。画面は `http(s)` のときだけリンクにする。
+     */
+  originalUri?: string | null;
 }
 
 /**
@@ -614,8 +638,62 @@ export interface DocumentPageDto {
 }
 
 /**
- * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後にオブジェクトストレージ
- * （`storage://`）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
+ * 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+ */
+export type DocumentListPageDtoStatusCounts = {[key: string]: number};
+
+/**
+ * データソースの鍵ごとの件数（#1923 の残り）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）。
+ * 鍵は `ds:<dataSourceName>`（データソースの取り込み）→ `col:<属性 source>`（機械の収集）→ `report`（`kind` と `periodKey` を持つ確定報告書）→ `manual` の順で 1 つに決まる。
+ */
+export type DocumentListPageDtoSourceCounts = {[key: string]: number};
+
+/**
+ * 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）
+ */
+export type DocumentListPageDtoProjectCounts = {[key: string]: number};
+
+/**
+ * FR-06, SC-05 (#1993): **このページの文書（`items`）の索引の状態**（文書 ID → 値）。鍵は `items` の ID だけ（ABAC を通った文書だけを取り込み側へ問い合わせる）。
+ * `indexed`（ベクトルか語彙索引に点がある）・`embedding_pending`（埋め込み待ちの点がある）・`not_indexed`（点が無い）・`unknown`（取り込み側から引けなかった）。
+ * 引けなくても一覧は 200 で返り、全件 `unknown` になる。**項目を持たない旧応答は全件「不明」として読む。**
+ */
+export type DocumentListPageDtoIndexStatuses = {[key: string]: 'indexed' | 'embedding_pending' | 'not_indexed' | 'unknown'};
+
+/**
+ * FR-06, SC-05 (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ（`Knowledge.Contracts/Dtos/DocumentDto.cs`）。
+ * `offset` / `limit` は BFF が丸めた後の値。🔴 件数はどれも ABAC スコープで絞った後の数（権限外の文書を数えない）。
+ */
+export interface DocumentListPageDto {
+  items: DocumentDto[];
+  /** ABAC で絞った後の総件数 */
+  total: number;
+  /** このページの先頭の位置（丸めた後） */
+  offset: number;
+  /** 1 ページの件数（丸めた後） */
+  limit: number;
+  /** 表題・状態の絞り込みを当てる前の件数（ABAC で絞った後）。絞り込みが無ければ `total` と同じ */
+  unfilteredTotal: number;
+  /** 状態（`DocumentDto.status` の生値）ごとの件数。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前） */
+  statusCounts: DocumentListPageDtoStatusCounts;
+  /**
+     * データソースの鍵ごとの件数（#1923 の残り）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前）。
+     * 鍵は `ds:<dataSourceName>`（データソースの取り込み）→ `col:<属性 source>`（機械の収集）→ `report`（`kind` と `periodKey` を持つ確定報告書）→ `manual` の順で 1 つに決まる。
+     */
+  sourceCounts: DocumentListPageDtoSourceCounts;
+  /** 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `unfilteredTotal` と同じ（ABAC 後・絞り込み前） */
+  projectCounts: DocumentListPageDtoProjectCounts;
+  /**
+     * FR-06, SC-05 (#1993): **このページの文書（`items`）の索引の状態**（文書 ID → 値）。鍵は `items` の ID だけ（ABAC を通った文書だけを取り込み側へ問い合わせる）。
+     * `indexed`（ベクトルか語彙索引に点がある）・`embedding_pending`（埋め込み待ちの点がある）・`not_indexed`（点が無い）・`unknown`（取り込み側から引けなかった）。
+     * 引けなくても一覧は 200 で返り、全件 `unknown` になる。**項目を持たない旧応答は全件「不明」として読む。**
+     */
+  indexStatuses: DocumentListPageDtoIndexStatuses;
+}
+
+/**
+ * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後に文書サービスから受け取り
+ * （本文の実体はオブジェクトストレージ `storage://`）、閲覧を許可された呼び出し元にのみ払い出す。
  */
 export interface DocumentContentDto {
   id: string;
@@ -1542,41 +1620,6 @@ export interface DriftReportDto {
 }
 
 /**
- * 機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない
- */
-export type EmbedApiRequestConfidentiality = typeof EmbedApiRequestConfidentiality[keyof typeof EmbedApiRequestConfidentiality] | null;
-
-
-export const EmbedApiRequestConfidentiality = {
-  public: 'public',
-  internal: 'internal',
-  confidential: 'confidential',
-  restricted: 'restricted',
-} as const;
-
-/**
- * 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定
- */
-export type EmbedApiRequestPurpose = typeof EmbedApiRequestPurpose[keyof typeof EmbedApiRequestPurpose];
-
-
-export const EmbedApiRequestPurpose = {
-  index: 'index',
-  query: 'query',
-} as const;
-
-export interface EmbedApiRequest {
-  /** 埋め込み対象テキスト（取り込みは本文全量を送るため機密区分で越境判定） */
-  text: string;
-  /** 機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない */
-  confidentiality?: EmbedApiRequestConfidentiality;
-  /** 用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定 */
-  purpose?: EmbedApiRequestPurpose;
-  /** 検索クエリ（purpose=query）が読むコレクション。越境判定と有効化の篩を通った候補をそのコレクションの送信先へ絞るだけで、許可されていない区分を開くことはない。index では無視する。省略時は従来どおり優先度順に選ぶ */
-  targetCollection?: string | null;
-}
-
-/**
  * embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す
  */
 export interface EmbedApiResponse {
@@ -2045,6 +2088,61 @@ export interface CreateShareRequest {
 }
 
 /**
+ * FR-19, UC-11, SC-19, ADR-0036 D-08: 緊急アクセスの発動。所有者本人だけが送れる。
+ * `reason` は必須（空白だけは不可・500 文字以内）。`nomineeUserId` は閲覧を許す platform-admin 1 人の利用者名。
+ */
+export interface ActivateBreakGlassRequest {
+  /** @nullable */
+  reason?: string | null;
+  /** @nullable */
+  nomineeUserId?: string | null;
+}
+
+/**
+ * FR-19, SC-19: 発動記録 1 件（所有者本人へ返す形）。`active` / `endsAt` は応答の時点の写しであり、
+ * **閲覧の許可の根拠にしない**（残り時間の表示にだけ使う）。`endsAt` は本人の終了か発動＋15 分の早いほう。
+ */
+export interface BreakGlassGrantDto {
+  id: string;
+  documentId: string;
+  nomineeUserId: string;
+  reason: string;
+  activatedAt: string;
+  expiresAt: string;
+  /** @nullable */
+  endedAt?: string | null;
+  endsAt: string;
+  active: boolean;
+}
+
+/**
+ * FR-19, SC-19: 資料 1 件の緊急アクセスの状態。有効な発動が無ければ `active` は null。
+ */
+export interface BreakGlassStatusResponse {
+  active?: BreakGlassGrantDto | null;
+}
+
+/**
+ * FR-19, SC-19, ADR-0036 D-08: 監査ログ 1 行（`operation` は `activate` / `end` / `view`）。
+ * `viewTarget` は閲覧の行だけ（`document` / `content`）。**資料の本文・題名は運ばない**。
+ */
+export interface BreakGlassAuditEntryDto {
+  id: string;
+  grantId: string;
+  occurredAt: string;
+  operation: string;
+  actorUserId: string;
+  documentId: string;
+  ownerUserId: string;
+  nomineeUserId: string;
+  reason: string;
+  activatedAt: string;
+  endsAt: string;
+  /** @nullable */
+  viewTarget?: string | null;
+}
+
+/**
  * FR-20, SC-20 主要素 6, ADR-0037 決定 9, ADR-0099 決定 5: 同期履歴 1 行（本人の同期監査ログの投影）。
  * `direction` は `push`（端末→サーバ。作成・更新・削除・改名）/ `pull`（サーバ→端末）。
  * 内訳は 1 回の同期操作で動いた件数（現行プロトコルは 1 操作 1 資料なので合計は 0 か 1）。
@@ -2462,6 +2560,104 @@ q?: string;
 limit?: number;
 };
 
+export type BffDocumentListParams = {
+/**
+ * 先頭から飛ばす件数（ABAC で絞った後の並びで数える）。既定 0。負・数でない値は 400
+ * @minimum 0
+ */
+offset?: number;
+/**
+ * 1 ページの件数。既定 50。1〜100 に丸める（範囲外もエラーにしない）。数でない値は 400
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+/**
+ * 並べ替え（キーが同値なら ID）。既定は更新日時の新しい順。未知の値は 400
+ */
+sort?: BffDocumentListSort;
+/**
+ * 表題の部分一致（大文字小文字を区別しない。検索の索引を使わない）。前後の空白は除き、空は無指定。200 文字を超えると 400
+ * @maxLength 200
+ */
+q?: string;
+/**
+ * 状態（公開ライフサイクル）で絞る。未知の値は 400
+ */
+status?: BffDocumentListStatus;
+/**
+ * タブ。`collected` は機械の収集（データソースの鍵が `col:`）、`curated` はそれ以外（人の文書・報告書・データソースの取り込み）。未知の値は 400
+ */
+origin?: BffDocumentListOrigin;
+/**
+ * データソースの鍵（`sourceCounts` の鍵と同じ語彙）の完全一致。300 文字を超えると 400（`sourceCounts` の鍵も 300 文字で切ってあるので、件数に出た鍵は必ず受理される）
+ * @maxLength 300
+ */
+source?: string;
+/**
+ * 機密区分で絞る。未知の値は 400
+ */
+confidentiality?: BffDocumentListConfidentiality;
+/**
+ * タグの表示名の完全一致。100 文字を超えると 400
+ * @maxLength 100
+ */
+tag?: string;
+/**
+ * 属性 `project` の値の完全一致。`(none)` は属性 `project` を持たない文書。100 文字を超えると 400（`projectCounts` の鍵も 100 文字で切ってあるので、件数に出た鍵は必ず受理される）
+ * @maxLength 100
+ */
+project?: string;
+/**
+ * 保存日（作成日時）の範囲の始め（含む）。ISO 8601 の日時。オフセットの無い値は UTC。壊れた値は 400
+ */
+createdFrom?: string;
+/**
+ * 保存日（作成日時）の範囲の終わり（含まない）。ISO 8601 の日時。`createdFrom` 以下なら 400
+ */
+createdBefore?: string;
+};
+
+export type BffDocumentListSort = typeof BffDocumentListSort[keyof typeof BffDocumentListSort];
+
+
+export const BffDocumentListSort = {
+  'updated-desc': 'updated-desc',
+  'updated-asc': 'updated-asc',
+  'created-desc': 'created-desc',
+  'created-asc': 'created-asc',
+  'title-asc': 'title-asc',
+  'title-desc': 'title-desc',
+} as const;
+
+export type BffDocumentListStatus = typeof BffDocumentListStatus[keyof typeof BffDocumentListStatus];
+
+
+export const BffDocumentListStatus = {
+  draft: 'draft',
+  normalized: 'normalized',
+  published: 'published',
+  archived: 'archived',
+} as const;
+
+export type BffDocumentListOrigin = typeof BffDocumentListOrigin[keyof typeof BffDocumentListOrigin];
+
+
+export const BffDocumentListOrigin = {
+  curated: 'curated',
+  collected: 'collected',
+} as const;
+
+export type BffDocumentListConfidentiality = typeof BffDocumentListConfidentiality[keyof typeof BffDocumentListConfidentiality];
+
+
+export const BffDocumentListConfidentiality = {
+  public: 'public',
+  internal: 'internal',
+  confidential: 'confidential',
+  restricted: 'restricted',
+} as const;
+
 export type BffConversionJobListParams = {
 /**
  * 状態で絞り込む（`queued` / `processing` / `succeeded` / `failed`。「失敗のみ」フィルタの実体）
@@ -2554,6 +2750,15 @@ export const BffGraphSuggestionsKind = {
   link: 'link',
   tag: 'tag',
 } as const;
+
+export type BffBreakGlassAuditParams = {
+documentId?: string;
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+};
 
 export type BffUserLookupParams = {
 /**

@@ -8,15 +8,15 @@ namespace RetrievalService.Features.McpTools.Declare;
 // ［2026-09-27 追記 / #1611］実行口（`McpTools/Execute`）も `McpToolDeclarationSource.Declare` を**読む**（要求のツールが自分の申告に
 // 在るかの突合）。申告を組むのは本操作だけであり、実行口は結果を引くだけなので置き場は変えない。
 
-// FR-16, ADR-0024 §2, [[IADR-0292]]: `GET /internal/mcp-tools` が返す自己申告の形。
+// FR-16, ADR-0024 §2, [[IADR-0292]]: gRPC `McpToolDeclarations/Declare` が返す自己申告の形（［2026-10-10 / #1517］REST の `GET /internal/mcp-tools` は撤去した）。
 //
 // 🔴 **契約は新設していない。** McpServer の `Domain/McpToolContracts.cs` の**ワイヤ形式に
 // そのまま合わせた写し**である。共有化しない理由（ユニット外参照の制約と、
 // `Platform.Shared.Contracts` への昇格が本 issue の領域外であること）は [[IADR-0292]] 決定 3。
 //
 // ［2026-09-26 追記 / #1515］昇格は gRPC の契約（proto `platform.mcp.v1`。`Platform.Shared.Contracts`）で行った
-// （[[IADR-0462]] の「経路 ④-a への適用」）。本ファイルは REST の受け口（並走中の正）が使う写しとして残り、
-// REST の退役（#1517）で消える。gRPC の面（`GrpcService.cs`）は同じ `McpToolDeclarationSource.Declare` を proto へ写す。
+// （[[IADR-0462]] の「経路 ④-a への適用」）。本ファイルは申告の源（`McpToolDeclarationSource`）の型として残る。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の受け口 `GET /internal/mcp-tools` は撤去した（#1517）。gRPC の面（`GrpcService.cs`）は同じ `McpToolDeclarationSource.Declare` を proto へ写す。
 // ［2026-09-27 追記 / #1516］🔴 **`endpoint`（申告の実行先 URL）を外した** —— 計画 ADR-0117 決定 1 により規約は 5 項目である。
 // 実行先は McpServer が「申告したサービス（`service`）＋ツール名（`name`）」で決め、申告に URL を載せない
 // （載せると、あるサービスが別のサービスの内部経路を自分のツールとして申告できる）。URL を作る理由が無くなったので、

@@ -18,7 +18,7 @@ namespace DocumentService.Tests.Infrastructure.ExternalServices;
 // FR-19, FR-20, FR-21, FR-22, NFR-09, NFR-16, NFR-19, ADR-0029, ADR-0037 決定 6・17・18,
 // ADR-0045 決定 8, ADR-0075, [[IADR-0215]] 決定 3・5-b, [[IADR-0270]] 決定 6, [[IADR-0379]],
 // [[IADR-0408]], [[IADR-0412]] 決定 5, [[IADR-0417]] 決定 9, [[IADR-0419]] (#1255):
-// 通知の送出の gRPC 実装が、**REST 実装と同じ枝・同じ副作用**であることを固定する。
+// 通知の送出の gRPC 実装が、**旧 REST 実装と同じ枝・同じ副作用**であることを固定する（REST 実装は [[IADR-0533]] で撤去した）。
 //
 // 🔴 ここが本スライスの不変条件そのものである —— 輸送を替えたときに
 // **「届かないと業務処理が止まる」**（fail-open が壊れる）か
@@ -236,13 +236,12 @@ public class GrpcPrivateNoteNotifierTests
         names.Should().NotIntersectWith(freeText);
     }
 
-    // ── 3. 期限（REST と同じ値を参照する） ──────────────────────────────────
+    // ── 3. 期限 ──────────────────────────────────
 
-    // 🔴 T-09: 送出 1 回あたりの期限は **`HttpPrivateNoteNotifier.SendTimeout` をそのまま引く** ——
-    // 値を書き写すと片方だけ動いたときに気付けない。既定の 100 秒のままだと、受け口が応答しない間
-    // 同期 push や完全削除の要求が止まる（fail-open は「待たせない」ことも要る）。
+    // 🔴 T-09: 送出 1 回あたりの期限は **`GrpcPrivateNoteNotifier.SendTimeout`**（[[IADR-0533]] で REST 側から移した）。
+    // 既定の無期限・100 秒のままだと、受け口が応答しない間、同期 push や完全削除の要求が止まる（fail-open は「待たせない」ことも要る）。
     [Fact]
-    public async Task 送出の期限は_REST_と同じ値である()
+    public async Task 送出の期限は100秒より短い上限である()
     {
         var (metrics, probe) = NewProbe();
         using var _ = probe;
@@ -253,28 +252,25 @@ public class GrpcPrivateNoteNotifierTests
             "owner-a", Kind, Occurred, ct: TestContext.Current.CancellationToken);
 
         fake.LastOptions.Deadline.Should().Be(
-            now.UtcDateTime.Add(HttpPrivateNoteNotifier.SendTimeout));
-        HttpPrivateNoteNotifier.SendTimeout.Should().BeLessThan(TimeSpan.FromSeconds(100));
+            now.UtcDateTime.Add(GrpcPrivateNoteNotifier.SendTimeout));
+        GrpcPrivateNoteNotifier.SendTimeout.Should().BeLessThan(TimeSpan.FromSeconds(100));
     }
 
-    // ── 4. 切替は構成の有無だけである ────────────────────────────────────────
+    // ── 4. 宛先の構成 ────────────────────────────────────────
 
-    // 🔴 T-10: `Services:NotificationServiceGrpc` が無ければ生成クライアントを**1 つも登録しない** ——
-    // 登録の有無で `Program.cs` が REST 実装と gRPC 実装を選ぶ（並走中の正は REST。
-    // 戻すのは構成を外すだけでコードは変えない）。
-    //
-    // 🔴 **`Program.cs` の DI をテストホストの構成で切り替えて測ることはできない。**
-    // 選択は組み立て時（`builder.Configuration[...]`）に行われ、`WebApplicationFactory` が
-    // 差し込む構成は Build 時に載るためである。したがって**登録関数そのもの**を対で固定する。
+    // 🔴 T-10: `Services:NotificationServiceGrpc` が無ければ、生成クライアントは **UNAVAILABLE を返す呼び出し器**の上に組まれる
+    // （[[IADR-0533]] 決定 2。REST の並走は撤去済みなので、未構成は「届かない」と同じ枝＝計器の `unreachable` へ倒す）。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public async Task 宛先が未設定なら届かない宛先として登録する()
     {
-        var services = new ServiceCollection()
-            .AddNotificationIngressGrpcClient(new ConfigurationBuilder().Build());
+        using var sp = new ServiceCollection()
+            .AddNotificationIngressGrpcClient(new ConfigurationBuilder().Build())
+            .BuildServiceProvider();
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.NotificationIngress.NotificationIngressClient),
-            "未設定なら何も登録しない（REST のまま）");
+        var client = sp.GetRequiredService<Pb.NotificationIngress.NotificationIngressClient>();
+        var act = async () => await client.AcceptAsync(new Pb.AcceptRequest(),
+            cancellationToken: TestContext.Current.CancellationToken);
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.Unavailable);
     }
 
     [Fact]

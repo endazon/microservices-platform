@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-10-09
+updated: 2026-10-24
 author: claude
 ---
 <!-- trace:
-ids: [FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22, NFR-28, NFR-29]
-adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110, ADR-0111, ADR-0112, ADR-0113, ADR-0114, ADR-0115, ADR-0116, ADR-0117, ADR-0118, ADR-0119, ADR-0120, ADR-0121, ADR-0122, ADR-0123, ADR-0124, ADR-0125, ADR-0126, ADR-0127, ADR-0128, ADR-0017, ADR-0129, ADR-0130, ADR-0131, ADR-0132, ADR-0133, ADR-0134, ADR-0135]
+ids: [FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-17, SC-18, SC-19, SC-20, SC-22, NFR-28, NFR-29, NFR-30]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058, ADR-0059, ADR-0060, ADR-0061, ADR-0062, ADR-0063, ADR-0064, ADR-0065, ADR-0066, ADR-0067, ADR-0068, ADR-0069, ADR-0070, ADR-0071, ADR-0072, ADR-0073, ADR-0074, ADR-0075, ADR-0076, ADR-0077, ADR-0078, ADR-0079, ADR-0080, ADR-0081, ADR-0087, ADR-0088, ADR-0093, ADR-0094, ADR-0095, ADR-0096, ADR-0098, ADR-0099, ADR-0101, ADR-0102, ADR-0103, ADR-0104, ADR-0105, ADR-0106, ADR-0107, ADR-0108, ADR-0109, ADR-0110, ADR-0111, ADR-0112, ADR-0113, ADR-0114, ADR-0115, ADR-0116, ADR-0117, ADR-0118, ADR-0119, ADR-0120, ADR-0121, ADR-0122, ADR-0123, ADR-0124, ADR-0125, ADR-0126, ADR-0127, ADR-0128, ADR-0017, ADR-0129, ADR-0130, ADR-0131, ADR-0132, ADR-0133, ADR-0134, ADR-0135, ADR-0022, ADR-0025, ADR-0136, ADR-0137, ADR-0138, ADR-0139, ADR-0140, ADR-0141, ADR-0142, ADR-0143, ADR-0144]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228, IADR-0423, IADR-0450]
-specs: [20261009_1838_plan-range-adr-0135, 20261007_1769_plan-range-adr-0129, 20261005_1748_plan-range-adr-0128, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_1612_plan-adr-range-0119, 20260926_1527_nfr-numbering-to-28, 20260926_1565_plan-adr-range-0115, 20260926_1553_plan-adr-range-0114, 20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
-issues: [#1838, #1769, #1748, #1682, #1676, #1663, #1612, #1527, #1565, #1553, #1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#577, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661, planning#662, planning#664, planning#666, planning#669, planning#672, planning#675, planning#677, planning#679, planning#680, planning#681, planning#683, planning#684, planning#745, planning#750, planning#751]
+specs: [20261024_2186_plan-range-adr-0144-and-nfr-30-a11y-refs, 20261016_1961_archive-effect-exclusion, 20261015_1916_plan-range-adr-0139, 20261009_1838_plan-range-adr-0135, 20261007_1769_plan-range-adr-0129, 20261005_1748_plan-range-adr-0128, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1676_adr0121-audit-followups, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_1612_plan-adr-range-0119, 20260926_1527_nfr-numbering-to-28, 20260926_1565_plan-adr-range-0115, 20260926_1553_plan-adr-range-0114, 20260926_1542_plan-adr-range-0113, 20260926_1519_plan-adr-range-0110, 20260925_1496_plan-adr-range-0107, 20260925_1487_plan-adr-range-0105]
+issues: [#2186, #2184, #2015, #1961, #1916, #1838, #1769, #1748, #1682, #1676, #1663, #1612, #1527, #1565, #1553, #1542, #1541, #1526, #1519, #1496, #1487, #1470, #1411, #1451, #1409, #1417, #1333, #1203, #1060, #449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475, planning#498, planning#505, planning#506, planning#509, planning#510, planning#514, planning#515, planning#516, planning#517, planning#518, planning#520, planning#521, planning#524, planning#525, planning#526, planning#527, planning#528, planning#529, planning#530, planning#531, planning#532, planning#538, planning#546, planning#549, planning#551, planning#553, planning#564, planning#567, planning#577, planning#591, planning#627, planning#628, planning#630, planning#633, planning#634, planning#635, planning#636, planning#639, planning#640, planning#648, planning#649, planning#650, planning#651, planning#652, planning#653, planning#654, planning#655, planning#656, planning#657, planning#658, planning#659, planning#660, planning#661, planning#662, planning#664, planning#666, planning#669, planning#672, planning#675, planning#677, planning#679, planning#680, planning#681, planning#683, planning#684, planning#745, planning#750, planning#751, planning#769, planning#770, planning#783, planning#784, planning#795, planning#798, planning#814, planning#834, planning#835, planning#836, planning#837, planning#841]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,81 @@ issues: [#1838, #1769, #1748, #1682, #1676, #1663, #1612, #1527, #1565, #1553, #
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-10-24・同日 2 回目］ADR `0001..0141` → `0001..0144`（3 件）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22`／`NFR-01..30` は不動（5 種すべてを引き直した）。
+計画リポジトリの `origin/main`（`aa27f28`）で測った。前回 ADR を引き直した回の出典（`fc61ca3`）からの `07_adr/` の差分で、`status:` 行の変化は追加ファイルの `+status: Accepted` 3 件だけである。
+直前の回（下の `NFR` の回）が書いた「`ADR` は 2 件遅れている」は、本回で解消した。その後に 1 件増えて、遅れは 3 件になっていた。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0142 | `Accepted` | 論理削除した個人資料は検索・グラフ・AI 入力・MCP のツール検索・Wiki から外し、共有先は開けない。復元で元の露出に戻す |
+| 0143 | `Accepted` | AI 入力の利用者単位の既定は、新しく作る個人資料の初期値とする |
+| 0144 | `Accepted` | 緊急アクセスは本人同意型の管理者の閲覧とする（本人が資料 1 件と管理者 1 人を指名する。閲覧だけで、1 件ずつ記録する） |
+
+**出典は計画リポジトリの導出器の実測である。** `origin/main` を作業ツリーに触れずに展開し、`node tools/doc-checks/gen-plan-ranges.js --check` を走らせて
+「宣言 [1, 144] / 実物 [1, 144]・欠番なし」を得た（NFR は参考行で実物 [1, 30]）。
+
+#### 契機
+
+起票時の数え（`a47c050` 時点の `0001..0143`）の後に、0144 がマージされた。他人の数えを転記せず、着手時に引き直した（規則 10）。
+同じ作業で、アクセシビリティの意味で引いていた要求番号の誤参照も直した。0142 は宣言の遅れの窓で既に実装の注記から引かれていた。本回で値域に入った。
+
+### ［2026-10-24］`NFR-01..29` → `NFR-01..30`
+
+**動いたのは `NFR` だけである**（本回は `NFR` だけを引き直した）。`FR-01..22`／`UC-01..11`／`SC-01..22` は不動。
+計画リポジトリの `origin/main`（`a47c050`）で、要求一覧の行頭の `NFR-xx` を数えて測った（30 件・`NFR-01`〜`NFR-30`・欠番なし）。
+アクセシビリティ区分へ `NFR-30`（WCAG 2.2 レベル AA への適合）が 1 行増えた。§4 の内訳と、規範を固定する回帰テストの文字列も追随させた。
+🔴 **`ADR` は本回では引き直していない。** 同じ `origin/main` の `07_adr/` は `0001..0143` であり、宣言 `0001..0141` は 2 件遅れている。
+引き直しは定期の突合（週次の棚卸し）の側で扱う。
+
+#### 契機
+
+E-10（axe を全画面へ広げる作業）が起点 ID に `NFR-30` を使い、入口の宣言 `NFR-01`〜`NFR-29` が計画の実物に遅れていることが分かった（AI レビューの指摘）。
+最初はその作業の変更に入れたが、AI レビューが `.claude/` を統合ブランチ版へ戻した作業ツリーで回す試験と衝突して外した。
+レビューの判定を直す変更（同じ head の CI の結果を代わりの根拠にする）と同じ変更で入れ直した。
+
+### ［2026-10-16］ADR `0001..0139` → `0001..0141`（2 件）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22`／`NFR-01..29` は不動（5 種すべてを引き直した）。
+計画リポジトリの `origin/main`（`fc61ca3`）で測った。前回の出典（`a321adb`）からの `07_adr/` の差分で、`status:` 行の変化は追加ファイルの `+status: Accepted` 2 件だけである。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0140 | `Accepted` | 埋め込みと Claude の所在を受け入れたリスクとし、Claude のゼロ保持の未締結を期限付きで受け入れる |
+| 0141 | `Accepted` | アーカイブした文書は検索・RAG・グラフ・Wiki・MCP の一覧に載せない。アーカイブの解除は製品の操作として持たない |
+
+**出典は計画リポジトリの導出器の実測である。** `origin/main` の作業ツリーで `node tools/doc-checks/gen-plan-ranges.js --check` を走らせ、
+「宣言 [1, 141] / 実物 [1, 141]・欠番なし」を得た（NFR は参考行で実物 [1, 29]）。
+
+#### 契機
+
+アーカイブの効果の実装が 0141 を起点 ID に引くため、その作業の中で引き直した（遅れの窓では 0140・0141 を引く件名・trace ブロックが CI に拒否される）。
+`NFR` の採番は今回動いておらず、§4 の内訳と回帰テストの固定文字列は追随不要である（規則 10 で引き直して確かめた）。
+
+### ［2026-10-15］ADR `0001..0135` → `0001..0139`（4 件）
+
+**動いたのは `ADR` だけである。** `FR-01..22`／`UC-01..11`／`SC-01..22`／`NFR-01..29` は不動（5 種すべてを引き直した）。
+計画リポジトリの `origin/main`（`a321adb`）で測った。前回の出典（`2b08fbe`）からの `07_adr/` の差分で、`status:` 行の変化は追加ファイルの `+status: Accepted` 4 件だけである
+（既存の 0010・0022・0025・0033・0035・0038・0044・0046・0061・0086・0088・0089・0107・0109・0121・0124・0129・0130・0132・0134 は本文が変わったが状態は動いていない。0138 が部分改定した 0022・0025・0038 も `Accepted` のままである）。
+要求一覧（認証・認可の非機能要件、個人資料・リンクの要求、トレーサビリティ表の本文）と画面一覧は本文が変わったが**採番は動いていない**。
+
+| 計画 ADR | 状態 | 内容 |
+| --- | --- | --- |
+| 0136 | `Accepted` | platform の API はトークンの audience を検証する。共有の audience を正当な呼び出し元のクライアントだけに載せ、受理する値はサービスごとの構成に持つ。MCP クライアント向けの audience は流用しない（0109 決定 3・0134 決定 1 の補完） |
+| 0137 | `Accepted` | 同じタグを持つ文書どうしの辺を追認する。出所は自動抽出の内訳とし、タグあたりの上限 50 はハブ次数の上限に連動する暫定値とし、構造から件数の下限が推せることを受容し、辺の根拠のタグは知識グラフの画面で出す（0033 決定 4・6・10 の補完） |
+| 0138 | `Accepted` | Claude のモデル割当を 5.5 系へ切り替える。単価はプロンプト長の段まで引き、effort は原則だけ定める（0025・0022・0038 の部分改定、0044・0129 の補完） |
+| 0139 | `Accepted` | 露出 3 属性は組織文書にも効く。3 つとも除外の組織文書は取り込み・検索・RAG・グラフ・Wiki・MCP の一覧に載せず、閲覧は ABAC に従う（0061 の補完） |
+
+**出典は計画リポジトリの導出器の実測である。** `origin/main` の作業ツリーで `node tools/doc-checks/gen-plan-ranges.js --check` を走らせ、
+「宣言 [1, 139] / 実物 [1, 139]・欠番なし」を得た（NFR は参考行で実物 [1, 29]）。
+
+#### 契機
+
+計画側で 2026-10-09〜10 に 0136〜0139 がマージされ、宣言が実物より 4 件遅れた（遅れの窓では 0136〜0139 を引く件名・trace ブロックが CI に拒否される）。
+2026-10-13 の週次棚卸しがこの遅れを自動起票した。
+`NFR` の採番は今回動いておらず、§4 の内訳と回帰テストの固定文字列は追随不要である（規則 10 で引き直して確かめた）。
 
 ### ［2026-10-09］ADR `0001..0129` → `0001..0135`（6 件）
 
@@ -910,7 +985,7 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 
 ## 4. `NFR` に採番が付いた経緯
 
-**入口の規範は「`NFR-01`〜`NFR-29` を新規参照から使う」「該当する `NFR-xx` が無いメタ作業は無採番のまま」である。**
+**入口の規範は「`NFR-01`〜`NFR-30` を新規参照から使う」「該当する `NFR-xx` が無いメタ作業は無採番のまま」である。**
 **以下が、採番が付いた理由と計画側の実測である。**
 
 計画側が**非機能要件へ `NFR-01`〜`NFR-27` の ID 列を付与した**。**従前 NFR は「区分名」しか持たず、
@@ -920,8 +995,10 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 追加された。** 入口の宣言は 2026-09-26 に `NFR-01`〜`NFR-28` へ広げた（それまでは `NFR-01`〜`NFR-27` のままだった）。
 **さらに 2026-10-06 に `NFR-29`（性能区分。Claude の再順位付けが有効な場合のレイテンシ。値は pending）が追加された。**
 入口の宣言は 2026-10-07 に `NFR-01`〜`NFR-29` へ広げた。
+**さらに 2026-10-22 に `NFR-30`（アクセシビリティ区分。WCAG 2.2 レベル AA への適合）が追加された**（計画側の環流の裁定）。
+入口の宣言は 2026-10-24 に `NFR-01`〜`NFR-30` へ広げた（#2015）。
 
-現在の内訳（29 件・欠番なし）:
+現在の内訳（30 件・欠番なし）:
 
 | 区分 | 番号 | 件数 |
 | --- | --- | ---: |
@@ -931,13 +1008,14 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 | セキュリティ | 09〜18・28 | 11 |
 | 運用・保守 | 19〜21 | 3 |
 | 拡張性 | 22〜26 | 5 |
+| アクセシビリティ | 30 | 1 |
 
 > **★ 「メタ作業は無採番のまま」を足した根拠**（#688。該当する番号が無いメタ作業は無採番のままとする実装 ADR）:
-> **`NFR-01`〜`29` は 29 件すべてが稼働する製品の要件**である（性能 / 可用性 / スケーラビリティ /
+> **`NFR-01`〜`30` は 30 件すべてが稼働する製品の要件**である（性能 / 可用性 / スケーラビリティ /
 > セキュリティ / 運用・保守 / 拡張性）。**「運用・保守」の 3 件も対象は稼働中のシステム**であり、
 > **文書・規約の統制を扱う番号は 1 件も無い。**（根拠を足した時点は 27 件。2026-09-09 に加わった
 > `NFR-28` もセキュリティ区分の製品要件であり、結論は変わらない。2026-10-06 に加わった `NFR-29` も性能区分の製品要件であり、
-> 結論は変わらない。）
+> 結論は変わらない。2026-10-22 に加わった `NFR-30` も利用者が操作する画面の製品要件であり、結論は変わらない。）
 
 ## 関連
 

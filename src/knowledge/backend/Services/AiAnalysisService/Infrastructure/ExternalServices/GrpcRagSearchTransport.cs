@@ -14,9 +14,9 @@ namespace AiAnalysisService.Infrastructure.ExternalServices;
 // [[IADR-0415]], [[IADR-0416]], [[IADR-0426]] (#1255):
 // RAG の検索呼び出しの **east-west gRPC 輸送**。
 //
-// **並走中の正は REST である。** 本実装は `Services:RetrievalServiceGrpc` が構成されたときだけ
-// 登録され（`AddRetrievalSearchGrpcClient`）、無ければ `HttpRagSearchTransport` のままである。
-// 戻すのは構成を外すだけでよい（コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**検索の輸送は本実装だけである**（REST `POST /search` の兄弟実装 `HttpRagSearchTransport` は撤去した。
+// [[IADR-0379]] 決定 5「並走中の正は REST」を反転）。宛先 `Services:RetrievalServiceGrpc` が構成されていなければ、
+// 生成クライアントは常に `UNAVAILABLE` を返す呼び出し器の上に組まれ（`UnconfiguredGrpcDestination`）、下の縮退の枝へ落ちる。
 //
 // 🔴 **利用者の JWT はメタデータへ載せない**（`ADR-0086` 決定 1 / [[IADR-0379]] 決定 4）。
 // 載るのは**本サービス自身の s2s トークン**だけであり、利用者の文脈（`user_id` / 属性 / `action`）は
@@ -141,13 +141,13 @@ public static class RetrievalSearchGrpcClientExtensions
     /// <summary>宛先ごとにチャネルを分けるための DI キー（下の 🔴 を参照）。</summary>
     public const string ChannelKey = "RetrievalServiceGrpc";
 
-    // 構成が無ければ**何も登録しない** —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ。
+    // ［2026-10-10 / #1255・[[IADR-0533]]］**常に登録する。** 構成が無ければ常に `UNAVAILABLE` を返す呼び出し器の上に組む（[[IADR-0533]] 決定 2）。
     public static IServiceCollection AddRetrievalSearchGrpcClient(
         this IServiceCollection services, IConfiguration config)
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services.TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.DocumentSearch.DocumentSearchClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。本サービスは既に認可サービス宛のチャネルを

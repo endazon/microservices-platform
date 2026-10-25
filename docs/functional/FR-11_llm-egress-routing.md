@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
-adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
-iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531]
-specs: [20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models]
-issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783]
+adrs: [ADR-0138, ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
+iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533, IADR-0528, IADR-0562, IADR-0564, IADR-0566, IADR-0601]
+specs: [20261017_1749_anthropic-official-sdk, 20261017_1903_drop-pre-5-5-claude-models, 20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261020_2000_extra-text-block-drop-count, 20261020_1997_stream-idle-timeout, 20261023_2116_llm-stream-usage-on-abort]
+issues: [#2116, #1749, #1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, #2000, #1997, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -54,15 +54,24 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | `restricted` | 可 | 可（追加統制下） | 不可 |
 | 未知・未指定 | 可（セルフホストのみ） | 不可 | 不可 |
 
+> **［2026-10-16］ティア B の呼び名「保護契約済み外部API」は計画の定義（ZDR・学習不使用・データレジデンシー／越境保証・監査可能）の名称であり、
+> 現在のティア B の送信先がそれをすべて満たすことを意味しない。** 計画は、Claude（`claude-managed`）について**組織の ZDR を未締結**（期限付きで受け入れたリスク）、
+> **推論の所在**を受け入れたリスク、Voyage（埋め込み）について**所在**を受け入れたリスクとし、いずれも「監査可能」は未照合と記録した。
+> エンドポイント定義は `Tier` だけを持ち、判定の根拠を持たない。記録は運用仕様書の「LLM ゲートウェイの送信先ティア（Claude）の認定状況」と「ゼロ保持認定状況の記録」にある。
+
 ### 用途別モデル解決（`ResolveModel`）
 
 - 優先順位: ① 明示 `Model` 要求が**適格モデル**なら採用 → ② `PurposeModels[purpose]` が適格なら採用 → ③ エンドポイントの `DefaultModel`（適格なら）→ ④ 適格モデル先頭。適格モデルが無ければ空文字を返し送信拒否へ縮退。
 - **ZDR（ゼロデータ保持）によるモデル除外（既定モデル改定の実装 ADR と 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデルを候補から除外する。
   **［2026-08-18 更新 / #850・分析用途のモデル割当の計画 ADR］既定の `NonZdrModels` は空である** —— 同 ADR 決定 2 により `claude-fable-5` を `Models`（利用許可集合）から外したため、列挙する対象が無くなった。
   **除外機構そのものは残す**（非 ZDR モデルを将来再び許可集合へ入れるときの唯一の統制点であり、単体カバレッジは `LlmRouterTests` の合成 config が持つ）。
+  🔴 **［2026-10-16］本仕様書の「ZDR の要件」「ZDR 対応モデル」「ZDR の外へは出ない」は、モデル単位の除外（`NonZdrModels`）とティア C の除外を指す。**
+  ゲートウェイは組織の ZDR 契約を見ない。Claude の組織の ZDR は未締結であり、ZDR を要件とする区分・用途でも、送った本文は提供元の標準の保持（最長 30 日・米国）の下にある
+  （運用仕様書「LLM ゲートウェイの送信先ティア（Claude）の認定状況」）。
 - **［2026-10-10］Claude の割当は全用途で 5.5 系である**（利用者裁定。`claude-opus-5` → `claude-opus-5-5`・`claude-sonnet-5` → `claude-sonnet-5-5`・
   `claude-haiku-4-5` → `claude-haiku-5-5`。取引判断の 2 層を含む。fable 系は引き続き用いない）。以下の値は切替後の現行値である。
-  旧 3 モデルは**切り戻しのために利用許可集合と単価表へ残す**（割当には使わない）。各用途の割当の根拠（どの層を充てるか）は従前の決定のままで、
+  **［2026-10-17］旧世代のモデルは利用許可集合・単価表・effort の対応集合から外した**（計画の裁定。切替時は切り戻しのために残していた。
+  切り戻しの手段は無く、5.5 系が使えないときは 5.5 系の中のフォールバックだけで受ける）。各用途の割当の根拠（どの層を充てるか）は従前の決定のままで、
   変わったのは各層のモデルの版である。5.5 系は 3 モデルとも thinking（adaptive）が既定で有効で、**無効にできない** ——
   思考の量は用途別の effort（後掲）で絞る。
 - 既定設定（`appsettings.json`。LLM ゲートウェイ・モデル選定の各計画 ADR と、既定モデル改定・既定 `max_tokens` 引き上げ・RAG 回答の追随・報告書の用途分離とモデル改定を定めた各実装 ADR による）:
@@ -117,11 +126,11 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 - **用途別 effort（`Llm:PurposeEffort`。2026-10-10）**: 用途 → effort（`low` / `medium` / `high` / `xhigh` / `max`）の対応を設定で持ち、
   Claude への要求本文の `output_config.effort` に載せる。**既定は `rerank: low` だけ**で、書かない用途は effort を送らない（提供元の既定。
   opus-5-5・haiku-5-5 は `medium`、sonnet-5-5 は `high`）。`rerank` は検索のたびに呼ばれ、呼び出し側の期限が 8 秒と短いため思考を絞る。
-  - 送るのは effort を受け付けるモデル（5.5 系・`claude-opus-5`・`claude-sonnet-5`・`claude-opus-4-8`）だけである。`claude-haiku-4-5` は
-    effort を 400 で拒むので、切り戻しで用途を戻しても送らない。
+  - 送るのは effort を受け付けるモデル（5.5 系の 3 つ。利用許可集合と同じ）だけである。対応集合に無いモデルへは、用途に設定があっても送らない
+    （effort を 400 で拒むモデルへ設定 1 つで全件 400 にしない。［2026-10-17］旧世代は対応集合からも外した）。
   - 値域外の値は**起動時に落とす**（実行時に送ると全件 400 になり、呼び出し側には上流の失敗としか見えない）。
-  - SDK（`Anthropic.SDK` 4.0.0）は effort を送る口を持たないので、`AnthropicClient` へ渡す `HttpClient` の最も外側の委譲ハンドラ
-    （`AnthropicRequestShapingHandler`）が要求本文へ足す。呼び出し側が明示した effort は上書きしない。
+  - 送り方は公式 SDK（NuGet `Anthropic`）の `MessageCreateParams.OutputConfig.Effort` である（［2026-10-17］旧 `Anthropic.SDK` 4.0.0 には口が無く、
+    `HttpClient` の委譲ハンドラが要求本文へ足していた。SDK の移行でハンドラは撤去した）。
   - **5.5 系で 400 になる要求キー（`temperature` / `top_p` / `top_k` / `thinking` / `tool_choice`）と assistant の先頭埋め（prefill）は送らない。**
     出ていく要求本文にこれらが無いことを試験で固定する。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。
@@ -141,7 +150,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 既定値 | `analysis: ["claude-sonnet-5-5"]` / `diagram-coding: ["claude-haiku-5-5"]` / `default: ["claude-sonnet-5-5"]` / `rag-answer: ["claude-haiku-5-5"]` / `report-monthly: ["claude-sonnet-5-5"]` / `report-weekly: ["claude-sonnet-5-5"]` / `report-daily: ["claude-haiku-5-5"]` / `graph-suggestion: ["claude-haiku-5-5"]` / `graph-cluster-summary: ["claude-sonnet-5-5"]` の 9 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
-| 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
+| 適用範囲 | **一括（`/complete`・gRPC `Complete`）のみ**（逐次の gRPC `CompleteStream` は実装しない。REST の `/complete/stream` は 2026-10-16 に撤去） |
 | 鎖の適格性 | ルーターが `Models`（利用許可集合）と ZDR 除外（`NonZdrModels`）を第 1 候補と同じ規則で適用し、外れた候補は warn ログを出して鎖から落とす（同計画 ADR の決定 5） |
 
 - **429 は再試行であってフォールバックではない**（分析用途のモデル割当の計画 ADR 決定 4）。429 を「モデルが利用不能」と
@@ -150,6 +159,9 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   **429 の再試行そのもの（回数・バックオフ・`Retry-After`）は未実装**である —— 計画側が方針を
   定めておらず、決めていない方針を実装が発明しないため（用途別フォールバックの実装 ADR §フォローアップ 1）。
   現行の 429 の挙動は従来どおり `Sent=false` の縮退である。
+  **［2026-10-17］SDK 自身の再試行も 0 にしている**（公式 SDK の既定は 2 回で 429・5xx も再試行する）。既定のままだと、決めていない
+  再試行の形を SDK の版が決めることになり、フォールバック鎖と掛け算になり、1 呼び出しの最長が期限の数倍になって
+  「呼び出し側の期限 < ゲートウェイの期限」（運用仕様書）が崩れる。
 - **`trade-decision` と `trade-decision-screening` は鎖を持たない。** 別モデルで下した取引判断・その一次
   スクリーニングは再現性・監査可能性を失った別物である（`AST/ADR-0011`・`AST/ADR-0017` 決定2 と、取引判断の
   ピン留め・二段判断の層別用途登録の各実装 ADR）。設定に鎖が足されたら落ちるテストで両用途とも固定する。
@@ -165,7 +177,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
-- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, `DefaultModel` は `claude-opus-5-5`, Models は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5` / `claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5` の 8 モデル（**5.5 系の 3 つを 2026-10-10 に追加し、旧モデルは切り戻しと明示要求の呼び出し側のために残す**）。**`claude-fable-5` は分析用途のモデル割当の計画 ADR 決定 2 により除去済み**・#850）、
+- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, `DefaultModel` は `claude-opus-5-5`, Models は `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5` の 3 モデルだけ（**［2026-10-17］旧世代 5 つ〔`claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5`〕を外した**。旧 ID を明示の `Model` で要求しても許可集合の外として扱われ、用途の割当、無ければ `DefaultModel` へ落ちる）。**`claude-fable-5` は分析用途のモデル割当の計画 ADR 決定 2 により除去済み**・#850）、
   `selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
 - セルフホスト（OpenAI 互換 `/v1/chat/completions`）は LLM ゲートウェイの計画 ADR のとおり**後付け可能**とし、既定は無効エンドポイント（`Llm:SelfHosted:BaseUrl` 未設定時は利用不可）。
 - GitHub Copilot（最難関の別経路。LLM ゲートウェイの計画 ADR と既定モデル改定の実装 ADR）は `CopilotProvider`（OpenAI 互換 `/chat/completions`）で追加。送信先ティア（08_data-egress-policy の契約条件）が未確定のため**安全側でティアC・既定無効**とし、確定後に設定で有効化・ティア再判定する。
@@ -230,7 +242,7 @@ OpenAI 互換 API を呼ぶプロバイダ（`SelfHostedProvider`＝ティアA /
 ### 可観測性（終了理由のメトリクス）
 
 補完 1 回ごとにカウンタ `llm.completion.total` を計上する（補完の終了理由をカウンタ 1 本で計上する実装 ADR / #395）。
-送信可否（`llm.result` = `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback`）と終了理由
+送信可否（`llm.result` = `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback` / `cancelled`）と終了理由
 （`llm.stop_reason`）を**別属性**として持つため、「送信していない」と「送ったがモデルが拒否した」を
 取り違えずに拒否率を求められる。**送信していない経路も計上する**（分母が欠けると拒否率が過大に見える）。
 属性値はすべて有限集合へ丸め、未知の終了理由・未定義の用途は `other` へ集約する（原文はログ側が保持する）。
@@ -265,7 +277,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 下流へ渡ると、本文の非空を根拠に処理を進める呼び出し側（AST 取引判断など）で fail-safe が破れる。
 `max_tokens` の途中結果は正当な観測対象であり破棄しない。
 
-ストリーミング（`/complete/stream`）では終了理由が末尾の `message_delta` で確定するため、
+ストリーミング（逐次。gRPC `CompleteStream`）では終了理由が末尾の `message_delta` で確定するため、
 既に送出したデルタは撤回できない。`done` イベントの `stopReason` を見て表示を破棄・注記するのは
 呼び出し側の責務である。`RagOrchestrator` は末尾へ拒否である旨のトークンを追記し、部分本文が
 既に流れている場合は空行で区切る（フロントは token を 1 つの文字列へ連結し `white-space: pre-wrap`
@@ -282,7 +294,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 | `FailureKind` | 文字列（null 可） | `egress_denied` / `provider_missing` / `upstream_error`。`Sent=true` では null |
 | `UpstreamStatusCode` | 整数（null 可） | `FailureKind="upstream_error"` で上流が HTTP 状態を返したときの状態コード（429・5xx など）。輸送の失敗・他の原因・`Sent=true` では null |
 
-- 一括（`/complete`）の応答と、逐次（`/complete/stream`）の `done` イベントの両方に載る。gRPC でも同じ項目を運ぶ
+- 一括（`/complete`）の応答と、逐次（gRPC `CompleteStream`。2026-10-16 に REST の `/complete/stream` は撤去）の `done` メッセージの両方に載る。gRPC でも同じ項目を運ぶ
   （proto3 に null は無いので、空文字と 0 が「無い」を表す）。
 - 語彙はメトリクスの `llm.result` と同じ文字列である。**閉じた列挙にはしない**（`StopReason` と同じ理由）。
   知らない値は「原因不明の `Sent=false`」として扱えばよい。
@@ -295,23 +307,38 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 用途は呼び出し側の自由文字列なので、ログへは制御文字を落としてから載せる。
 要約は次の発生時に出る（発生が止まった後の残りの件数は出ない）。
 
-### 応答 content ブロックの未知型は解析前に除去する（SDK の fail-closed を止める）
+### Claude の呼び出し（公式 SDK）と応答 content ブロックの扱い
 
-Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロックの判別子を列挙で分岐し、
-**`text` / `image` / `tool_use` / `tool_result` 以外**を受け取ると `JsonException: Unknown type <型>` を
-投げる。未知型が 1 個混ざるだけで配列全体＝**応答全体**が失われるため、拡張思考（`thinking`）が
-既定で有効な現行の割当モデル（`claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5`。2026-10-10 以降は Haiku も thinking を返す。**#850 以降 `claude-fable-5` は含まれない**）では
-非ストリーミング `/complete` が全件失敗する。
+Claude プロバイダは公式 SDK（NuGet `Anthropic`。計画の技術スタックが指定）で呼ぶ。［2026-10-17］までは第三者製の
+`Anthropic.SDK` 4.0.0 を使い、その欠落（`thinking` 等の判別子に無い content ブロックが 1 個混ざるだけで**応答全体**を失う・
+effort を送れない）を `HttpClient` の委譲ハンドラ（既知型の許可リストで解析前に除去する・要求本文へ effort を足す）で補っていた。
+公式 SDK は判別子に無い型も例外にせず保持し、effort を型として送れるので、ハンドラは撤去した。
 
-そこで `AnthropicClient` へ渡す `HttpClient` に委譲ハンドラを挟み、**既知型の許可リスト**で
-未知ブロックを解析前に除去する（Anthropic 応答の未知 content ブロックを許可リストで除去する実装 ADR）。
-拒否リストで型名を列挙しないため、将来 API が追加するブロック型にも更新なしで耐える。
+**SDK の既定をそのまま使わない値**（生成点 `AnthropicClientFactory` の 1 か所で固定し、試験で固定する）:
 
-- 対象は **2xx かつ `application/json`** のみ。非 2xx は SDK の例外整形へ委ね、SSE
-  （`text/event-stream`）は触らない（ストリーム経路は未知型を素通しでき壊れていない）。
-- **既知型だけの応答は 1 バイトも触らない**（サニタイズ自体が本文を変える経路を既定で持たない）。
-- 全ブロックが未知なら例外にせず `content` 空へ縮退し、既存の空応答分岐（呼び出し側の安全既定）へ合流する。
-- 除去したブロック型は warn ログに残す（**型名のみ**。本文は載せない）。
+| 項目 | SDK の既定 | ゲートウェイの値 | 理由 |
+| --- | --- | --- | --- |
+| 再試行 | 2 回（429・408・409・5xx・接続失敗・期限切れ） | **0**（旧 SDK と同じ 1 回送信） | 前掲「用途別フォールバック」の 429 の項 |
+| 期限 | `max_tokens` から算出（非ストリーム 30 秒〜10 分・ストリーム 10 分〜1 時間） | **`Llm:AnthropicTimeoutSeconds`**（既定 100 秒。一括は全文の受信まで〔SDK の期限はヘッダの到着までなので、プロバイダが呼び出し全体に同じ期限を掛ける〕、逐次は応答ヘッダの到着まで）。［2026-10-20］逐次はこれに加え、**イベントの間の無通信**に `Llm:AnthropicStreamIdleTimeoutSeconds`（未設定は `Llm:AnthropicTimeoutSeconds` の解決値）を掛ける。長く流れ続ける応答は切らず、止まった上流だけを切る。期限切れは `upstream_error`（上流状態 `transport`）へ縮退する | 呼び出し側との内外関係（運用仕様書） |
+| 送信先・資格情報 | 環境変数 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` を読む | 本番 URL を明示・`AuthToken` なしを明示（API キーは `Llm:ApiKey`） | 送信先が設定の外で変わらないように |
+
+**SDK の例外はプロバイダの外へ出さない。** 公式 SDK は非 2xx で `HttpRequestException` ではない独自の例外を投げる。
+プロバイダが `HttpRequestException`（状態コード付き。送信の失敗は状態なし）へ包み直すので、フォールバックの判定器と
+上流状態の計器（後掲）は SDK を知らずに、全プロバイダを同じ形で読む。包み直さないと 400 系のフォールバックも 429 の区別も
+**例外もログも出ないまま**効かなくなる。
+
+**本文は先頭の `text` ブロックから取る。** それ以外のブロック（`thinking` / `redacted_thinking` / `server_tool_use` / 将来型 / 型名の無い要素）は
+本文に使わずに捨て、型名を記録する（**型名のみ**。本文は載せない）。段階は形で分ける（#1917）:
+
+- `thinking` / `redacted_thinking` だけを捨て、本文（`text` ブロック）が残る → **debug**（5.5 系では毎応答の通常の形）。
+- それ以外の型を捨てた → **warn**（想定外の型名を載せる）。
+- 本文が 1 個も無い → **warn**（型を問わない。本文が失われたことに気づけるように）。例外にはせず空の本文として返し、
+  既存の空応答分岐（呼び出し側の安全既定）へ合流する。
+- 2 個目以降の `text` ブロックも本文に使わない（**連結しない**。呼び出し側の解析は本文 1 個を前提にする）。黙って捨てず、
+  **warn** を 1 行出す（先頭の文字数・捨てた個数・捨てた各ブロックの文字数。本文は載せない）。
+- 捨てた件数は計器 `llm.anthropic.content_blocks_dropped`（型 `thinking` / `redacted_thinking` / `text` / `other`）で数える
+  （LLM 補完メトリクスの可観測性仕様書）。ストリームは数えない（本文デルタ `text_delta` だけを流し、思考のデルタは流さない。
+  ストリームは全ブロックの本文デルタを区切りなしで流すので、一括と違い実質は連結になる）。
 
 本節は content の解釈に関する規定であり、送信可否（`Sent`）・終了理由（`StopReason`）の
 軸（前節）とは独立である。`refusal` の本文破棄は thinking の有無に関わらず維持される。
@@ -335,6 +362,7 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 終了理由がメトリクス（`llm.completion.total`）として継続的に観測でき、拒否・上限到達・正常終了・送信拒否・呼び出し失敗が相互に区別できる。属性のカーディナリティは有限。
 - [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない。
 - [x] SDK が解釈できない content ブロック型（`thinking` 等）が含まれても応答全体を失わず、本文テキストと既知ブロックを取得できる。未知の将来型でも同様。
+- [x] Claude の呼び出しは公式 SDK で行い、SDK の既定を変える値（再試行 0・期限は `Llm:AnthropicTimeoutSeconds`・送信先と資格情報の明示）が本番の配線で効く。SDK の例外は状態コード付きの `HttpRequestException` としてフォールバックの判定器と計器へ届く（400 系はフォールバック、429・5xx はしない。`ClaudeProviderSdkRiskTests`・`AnthropicClientWiringTests`）。
 - [x] 用途 `analysis` の第 1 候補（`claude-opus-5-5`）が HTTP 400 系で失敗したとき、`claude-sonnet-5-5` へフォールバックして応答が返る（#863 / 分析用途のモデル割当の計画 ADR 決定 3 / 用途別フォールバックの実装 ADR）。
 - [x] **429 ではフォールバックしない**（429 は再試行であってフォールバックではない。#863 / 分析用途のモデル割当の計画 ADR 決定 4）。5xx・ステータス不明の失敗も同様に従来の縮退へ落ちる。
 - [x] フォールバックの発火が `llm.completion.total{llm_result="fallback"}` として観測でき、見送った候補と実際に使った候補が `llm.model` で区別できる（#863 / 分析用途のモデル割当の計画 ADR 決定 6）。
@@ -382,7 +410,7 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
   （用途別フォールバックの実装 ADR §フォローアップ 1・#863）。
 - ~~**`default` / `rag-answer` のフォールバック第 2 候補**~~ **［2026-08-21 解決］計画側の裁定により確定し、
   `PurposeFallbackModels` へ登録済みである**（上の「用途別フォールバック」節）。
-  **残るのは 1 点** —— `rag-answer` はストリーム経路（`/complete/stream`）の用途であり、
+  **残るのは 1 点** —— `rag-answer` はストリーム経路（逐次。gRPC `CompleteStream`）の用途であり、
   **鎖を持つ用途がストリーム経路へ来ることが現に起きるようになった**。ストリーム経路をフォールバックの射程に
   含めるかは、途中まで流した本文の扱いという別の決定を要するため未確定である（用途別フォールバックの実装 ADR 決定 4）。
   現状はフォールバックせず、鎖が設定されている事実を warn ログで残すに留める。

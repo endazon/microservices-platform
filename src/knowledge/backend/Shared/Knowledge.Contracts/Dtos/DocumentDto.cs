@@ -35,6 +35,15 @@ public record DocumentDto
     // 本文を投入した呼び出し側は送った本文から同じ値を計算して「保存済みの本文が最新か」を判定できる。
     // **既定は null**（末尾追加・既定値付き。項目を持たない旧応答は「指紋不明」として読める）。
     public string? ContentFingerprint { get; init; }
+    // FR-06, SC-05, [[IADR-0561]] (#1923): **取り込み元のデータソースの表示名**（台帳の `Document.DataSourceName` の写し。
+    // 表示名の複写であり、データソースの改名は次の同期まで遡及しない）。直接投入・画面からの作成では null。
+    // 文書管理の一覧がデータソースで絞り込み・数えるための材料（BFF の `DocumentListSources`）。
+    // **既定は null**（末尾追加・既定値付き。項目を持たない旧応答は「データソースなし」として読める）。
+    public string? DataSourceName { get; init; }
+    // FR-06, SC-05, [[IADR-0561]] (#1923): **原本の所在**（台帳の `Document.OriginalUri`。API の書き手が渡した元の URL ——
+    // AST の収集ではニュース・開示の出典）。🔴 書き手の申告であり検証していない。画面は `http(s)` のときだけリンクにする。
+    // **既定は null**（末尾追加・既定値付き）。
+    public string? OriginalUri { get; init; }
 }
 
 // FR-06, NFR-08 (#1575): `GET /documents/page` の応答（組織文書の絞り込み・ページング）。
@@ -43,6 +52,43 @@ public record DocumentPageDto
 {
     public List<DocumentDto> Items { get; init; } = [];
     public string? NextCursor { get; init; }
+}
+
+// FR-06, SC-05, [[IADR-0537]] (#1923): `GET /bff/documents`（文書管理の一覧）の 1 ページ。
+// 並びは要求の並べ替え（既定は更新日時の降順。同値は ID。［2026-10-15 / [[IADR-0545]]］）。
+// `Offset` / `Limit` は BFF が丸めた後の値である（要求の値ではない）。
+// 🔴 **件数はどれも利用者の ABAC スコープで絞った後の数だけである**（権限外の文書は数えない。IADR-0009 の存在秘匿）。
+//   `Total` は窓の母数（ABAC ∧ 利用者の絞り込み〔表題・状態。［2026-10-17 / [[IADR-0561]]］データソース・機密区分・タグ・プロジェクト・保存日・タブ〕）、
+//   `UnfilteredTotal` と `StatusCounts`（［2026-10-17］`SourceCounts` / `ProjectCounts` も）は利用者の絞り込みを当てる前の数。
+public record DocumentListPageDto
+{
+    public List<DocumentDto> Items { get; init; } = [];
+    public int Total { get; init; }
+    public int Offset { get; init; }
+    public int Limit { get; init; }
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 絞り込み（表題・状態）を当てる前の件数（ABAC で絞った後）。絞り込みが無ければ `Total` と同じ。
+    public int UnfilteredTotal { get; init; }
+    // FR-06, SC-05, [[IADR-0545]] (#1923): 状態（`DocumentDto.Status` の生値）ごとの件数。集合は `UnfilteredTotal` と同じ（合計が一致する）。
+    public Dictionary<string, int> StatusCounts { get; init; } = [];
+    // FR-06, SC-05, [[IADR-0561]] (#1923): データソースの鍵（`DocumentListSources.KeyOf`）ごとの件数。集合は `UnfilteredTotal` と同じ。
+    public Dictionary<string, int> SourceCounts { get; init; } = [];
+    // FR-06, SC-05, [[IADR-0561]] (#1923): 属性 `project` の値ごとの件数（持たない文書は `(none)`）。集合は `UnfilteredTotal` と同じ。
+    public Dictionary<string, int> ProjectCounts { get; init; } = [];
+    // FR-06, SC-05, [[IADR-0565]] (#1993): **窓の中の文書（`Items`）の索引の状態**（文書 ID の文字列 → `DocumentIndexStatuses` の値）。
+    // 🔴 鍵は `Items` の ID だけである（ABAC を通った文書だけを取り込み側へ問い合わせる。権限外の文書の状態は引かない）。
+    // 取り込み側から引けなければ全件 `unknown`（一覧そのものは失敗させない）。
+    // **既定は空**（末尾追加・既定値付き。項目を持たない旧応答は全件「不明」として読める）。
+    public Dictionary<string, string> IndexStatuses { get; init; } = [];
+}
+
+// FR-06, SC-05, [[IADR-0565]] 決定 1・4 (#1993): 文書管理の一覧の索引の状態の値（`DocumentListPageDto.IndexStatuses` の値の語彙）。
+// 3 値は取り込み側（`knowledge.ingestion.v1.IndexStatus`）の写し、`unknown` は BFF が「引けなかった」を表す 4 つ目の値である。
+public static class DocumentIndexStatuses
+{
+    public const string Indexed = "indexed";
+    public const string EmbeddingPending = "embedding_pending";
+    public const string NotIndexed = "not_indexed";
+    public const string Unknown = "unknown";
 }
 
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト

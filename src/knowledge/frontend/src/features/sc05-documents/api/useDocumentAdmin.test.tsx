@@ -79,6 +79,23 @@ describe('SC-05 invalidation reaches SC-03 (IADR-0135 決定 3)', () => {
     expect(invalidated(queryClient, [documentsKey, ...sc03Keys])).toEqual([true, true, true, true]);
   });
 
+  // FR-06, IADR-0537（#1923）: 一覧はページごとのキー（`['/bff/documents', { offset, limit }]`）で引く。
+  // 一覧キーでの無効化は**どのページにも**届く（表示中でないページも古いまま残さない）。
+  it('reaches every page of the list through the list key', async () => {
+    const queryClient = createAppQueryClient();
+    const pages = [
+      getBffDocumentListQueryKey({ offset: 0, limit: 50 }),
+      getBffDocumentListQueryKey({ offset: 50, limit: 50 }),
+      getBffDocumentListQueryKey({ offset: 0, limit: 25 }),
+    ];
+    for (const key of pages)
+      queryClient.setQueryData(key, { items: [], total: 0, offset: 0, limit: 50 });
+
+    await queryClient.invalidateQueries({ queryKey: documentsKey });
+
+    expect(invalidated(queryClient, pages)).toEqual([true, true, true]);
+  });
+
   // 列挙が**実際に配線されている**ことまで見る（キーの一覧だけを直しても意味がないため）。
   it.each([
     ['publish', (a: ReturnType<typeof useDocumentActions>) => a.publish],

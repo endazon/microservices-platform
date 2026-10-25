@@ -9,13 +9,8 @@ namespace RetrievalService.Infrastructure.ExternalServices;
 // FR-03, ADR-0092 決定 1・2, [[IADR-0467]] (#336): 束ねる追加コレクションの**組み立て**（合成点から呼ぶ）。
 //
 // 1 コレクション = 「そのコレクションを読む Qdrant 実装」＋「そのコレクションを名乗って埋める客体」。
-// 埋め込みの輸送は主と同じ選び方に従う（`Services:LlmGatewayGrpc` が在れば gRPC、無ければ REST）——
-// **主と追加で輸送が割れると、片方の経路だけで照合や資格情報の付け方が違う状態が作れてしまう。**
-//
-// 🔴 **REST は主と同じ名前つきクライアント**（`LlmGatewayEmbeddingService.HttpClientName`）から作る。
-// 宛先と s2s トークンの付け方（`AddLlmGatewayServiceToken`）を 2 か所に書かないためである。
-// **要求ごとに作る**（Scoped）—— 型つきクライアントと同じく、`HttpClient` を単一インスタンスに
-// 抱え込まない（ハンドラの入れ替えを殺さない）。
+// 埋め込みの輸送は主と同じ east-west gRPC（`LlmEmbedding/Embed`）である（［2026-10-10 / #1255・[[IADR-0533]]］REST の並走は撤去した）。
+// 生成クライアントは主と同じ 1 つ（宛先・s2s トークン）を使う —— 宛先と資格情報の付け方を 2 か所に書かない。
 internal static class FusedCollectionsComposition
 {
     //
@@ -23,7 +18,7 @@ internal static class FusedCollectionsComposition
     // 束ねる**（`LexicalOnly = true`・埋め込みの客体は `NoQueryEmbedding`）。読み方（ABAC・全文・復元）は
     // 主と 1 行も違わない `QdrantVectorStore` である。null は語彙索引を束ねない（試験・旧来の呼び出し）。
     internal static FusedCollections Build(
-        IServiceProvider sp, IReadOnlyList<string> names, bool useGrpc, string? lexicalCollection = null)
+        IServiceProvider sp, IReadOnlyList<string> names, string? lexicalCollection = null)
     {
         if (names.Count == 0 && lexicalCollection is null)
             return FusedCollections.None;
@@ -36,15 +31,9 @@ internal static class FusedCollectionsComposition
         foreach (var name in names)
         {
             var target = new QueryEmbeddingTarget(name, NamedInRequest: true);
-            IEmbeddingService embed = useGrpc
-                ? new LlmGatewayGrpcEmbeddingService(
-                    sp.GetRequiredService<Pb.LlmEmbedding.LlmEmbeddingClient>(), target,
-                    sp.GetService<ILogger<LlmGatewayGrpcEmbeddingService>>())
-                : new LlmGatewayEmbeddingService(
-                    sp.GetRequiredService<IHttpClientFactory>()
-                        .CreateClient(LlmGatewayEmbeddingService.HttpClientName),
-                    target,
-                    sp.GetService<ILogger<LlmGatewayEmbeddingService>>());
+            IEmbeddingService embed = new LlmGatewayGrpcEmbeddingService(
+                sp.GetRequiredService<Pb.LlmEmbedding.LlmEmbeddingClient>(), target,
+                sp.GetService<ILogger<LlmGatewayGrpcEmbeddingService>>());
 
             items.Add(new FusedCollection(
                 name, QdrantVectorStore.ForCollection(client, name, storeLogger, metrics), embed));

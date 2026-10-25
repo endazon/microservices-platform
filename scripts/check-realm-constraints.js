@@ -38,6 +38,10 @@
  * **ブランド適用だけが静かに外れる**。styles が挙げる css の欠落も同型で、404 を出すだけでログインは成功する。
  * したがって「テーマを実装した」ことは realm.json の 1 行では担保されず、実体との突合が要る。
  * 併せて parent の宣言（テンプレート非複製の方針）と、言語切替に要る i18n 設定も静的に確かめる。
+ * ［2026-10-10 / IADR-0532］parent が**その版の Keycloak に実在するか**も確かめる（KEYCLOAK_BUILTIN_THEMES）。
+ *   24 → 26.7.4（IADR-0524）で account 型の `keycloak` テーマが消え、`parent=keycloak` の account テーマは
+ *   「Failed to find ACCOUNT theme platform, using built-in themes」で**素の既定へ黙って落ちていた**（実測）。
+ *   宣言の有無だけを見ていた本検査はそれを通していた。対象の種別に `emailTheme` も加えた。
  *
  * 検査5: MFA が実効的に強制されているか、監査イベントが記録されるか（#438・IADR-0294）。
  * 背景: IADR-0197 が検査 3 を置いた時点で、同 IADR 自身が 2 つの未達を明記して #438 へ送っていた。
@@ -62,8 +66,8 @@
  *
  * 検査7: **人のトークンを無人の主体と読ませる宣言**が無いか（#1589・#1587 の監査）。
  * 背景: BFF の Bearer 受理は `MachinePrincipal.IsMachine`（IADR-0420）だけで呼び出し元を振り分ける。判定は
- * 「利用者名が `service-account-` で始まる」か「利用者名が無くクライアント識別がある」の 2 腕であり、
- * 許可集合を持たない。だから **`service-account-*` という名前の人の利用者**と、**`profile` を既定スコープに
+ * クライアント識別（azp など）を前提に、「利用者名が `service-account-<そのクライアント識別>` と一致する」か「利用者名が無い」の
+ * 2 腕であり（IADR-0606）、許可集合を持たない。利用者名は判定の手掛かりの 1 つなので、宣言の側でも守る（多層防御）。だから **`service-account-*` という名前の人の利用者**と、**`profile` を既定スコープに
  * 持たない標準フローのクライアント**（人のトークンに preferred_username が乗らない）はどちらも、人を機械として
  * 通す。詳細は collectMachineJudgementGaps の注記。稼働中の realm で作られる利用者は宣言の外（運用の注意書き）。
  * #1596 で足したもの: デバイスグラント・CIBA・直接アクセスもログイン経路として数える／軽量アクセストークンの
@@ -96,6 +100,27 @@
  *   - **要確認**（#1864 監査）: 人のログインの口（`humanLoginGrants`）とサービスアカウントを両方持ち、`bff` でないクライアントは
  *     「呼び出し元だから載せる」とは決められない（人のトークンにも載る）。スコープの有無によらず要確認として名指す。
  *
+ * 検査10: **アカウントコンソール（SC-16）が動く構成の欠落**（#1894・IADR-0546）。
+ * 背景: realm import が `clientScopes` を明示すると Keycloak は組み込みのスコープを作らず、自分で作る `account-console` には
+ *   **スコープが 1 つも付かない**（`basic` が無い → トークンに `sub` が無い）。import で作られる利用者は既定ロールを受け取らず
+ *   `account` の `manage-account` を持たない。共有の `roles` スコープはレルムロールしか載せないので `resource_access` も無い。
+ *   **realm import もログインも成功し、アカウントコンソールだけが 401 / 403 で「何らかの問題が発生しました」になる**（Keycloak 26.7.4 で実測）。
+ *   宣言で直すには `account` と `account-console` を**対で**宣言する（片方だけだと import が重複で落ちるか、組み込みの作成が丸ごと飛ぶ）。
+ *   見るもの: 対の宣言 / `account-console` の既定スコープ（`basic`・`profile`）・`fullScopeAllowed=false`・audience 解決と
+ *   `account` のロールだけを載せる写像 / `account` の `view-profile`・`manage-account` / スコープの割当（`clientScopeMappings`）/
+ *   既定ロールの合成 / 人の seed 利用者の割当。共有の `roles` スコープを広げる直し方は採らない（他のクライアントのトークンが変わる）。
+ *   ［2026-10-25 追記 / #2245 / IADR-0524 の追記］`account-console` の `webOrigins` が**ちょうど** `["+"]` であることを求める（余分な origin は公開クライアントの CORS の許可を広げる）。エッジ（TLS 終端）の後ろで転送ヘッダを
+ *   読ませないので、Keycloak から見た要求の origin は `http://…` になり、ブラウザの `Origin: https://…` と一致しない。`webOrigins` が空だと
+ *   token の交換が CORS の `Invalid origin`（403・イベントなし）で落ち、アカウントコンソールが「何らかの問題が発生しました」になる。
+ *
+ * 検査11: **Keycloak が自分で付けるクライアントスコープを宣言に書いていないか**（NFR・#2208・IADR-0618）。
+ * 背景: Keycloak 26 はサービスアカウントを持つ client の作成・更新（PUT）のたびに既定スコープ `service_account` を足す。
+ *   reconcile-realm.js はこれを**宣言の外（Keycloak の所有）**として、稼働側の余剰に数えない（`--check` を落とさない）。
+ *   宣言にも書くと所有が二重になり、宣言が `clientScopes` を明示する realm では import がスコープの実体を作らず
+ *   割当が宙に浮く（reconcile が `scope がまだ無い` の deferred を出し続ける）。境界は reconcile と同じ定数
+ *   （`KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES`）で引き、clients の既定・任意スコープ、realm の既定、`clientScopes` の
+ *   宣言のどこにも書かないことを求める。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -103,13 +128,32 @@
  */
 const fs = require('fs');
 const path = require('path');
+// #2208 / IADR-0618: Keycloak が自分で付けるスコープの境界は reconcile-realm.js と同じ定数を読む（単一情報源）。
+const { KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const REALM_DIR = 'deploy/keycloak';
 // テーマ実体の置き場（IADR-0261 決定 1）。realm の宣言と突き合わせる。
 const THEME_ROOT = 'deploy/keycloak/themes';
 // realm のテーマ宣言フィールド → テーマ種別のディレクトリ名。
-const THEME_FIELDS = { loginTheme: 'login', accountTheme: 'account' };
+const THEME_FIELDS = { loginTheme: 'login', accountTheme: 'account', emailTheme: 'email' };
+// Keycloak 本体が同梱するテーマ（種別ごと）。**版に依存する**ので、Keycloak を上げたら配布物の
+// `META-INF/keycloak-themes.json`（lib/lib/main の org.keycloak.keycloak-themes-<版>.jar と
+// org.keycloak.keycloak-account-ui-<版>.jar）で引き直す。下は 26.7.4（IADR-0524 / IADR-0532 で実測）。
+//   keycloak-themes: base = admin/account/login/email、keycloak = login/common/email/welcome、keycloak.v2 = login
+//   keycloak-account-ui: keycloak.v3 = account
+// 🔴 `keycloak` は 26 では account 型を持たない（24 までの v1/v2 アカウントコンソールは撤去済み）。
+const KEYCLOAK_VERSION_FOR_THEMES = '26.7.4';
+const KEYCLOAK_BUILTIN_THEMES = {
+  login: ['base', 'keycloak', 'keycloak.v2'],
+  account: ['base', 'keycloak.v3'],
+  email: ['base', 'keycloak'],
+};
+// 上の表を実測した版と、実際に起動するイメージの版を結ぶ（#1893 監査）。表は版に依存するのに、
+// イメージのタグだけを上げると表は古いまま緑を出し続ける（親テーマの解決の検査が静かに空回りする）。
+// 起動するイメージの宣言はこの 2 箇所である（compose と k8s ローカル）。どちらかのタグが定数と違えば落とす。
+const KEYCLOAK_IMAGE_MANIFESTS = ['deploy/docker-compose.yml', 'deploy/local/infra/keycloak.yaml'];
+const KEYCLOAK_IMAGE_RE = /^\s*(?:-\s*)?image:\s*["']?quay\.io\/keycloak\/keycloak:([^@"'\s]+)/gm;
 // Keycloak の該当カラムはいずれも varchar(255)。閾値は 1 箇所に集約する。
 const MAX_LEN = 255;
 
@@ -472,6 +516,21 @@ function isServiceAccountUser(user) {
   return typeof (user && user.serviceAccountClientId) === 'string' && user.serviceAccountClientId !== '';
 }
 
+// ［2026-10-21 / #2024 / IADR-0570］利用者が**宣言で TOTP の OTP 資格情報を持つ**か（試験アカウント e2e-*）。
+// 既定 browser フローの OTP サブフローは Conditional（`Condition - user configured`）で、OTP を持つ利用者には必ず OTP を問う。
+// だから `CONFIGURE_TOTP` が無くても MFA は効いている（付けると 2 つ目の OTP の登録画面が挟まり、自動の試験が通れない）。
+// 判定は Keycloak が作る形そのもの: type `otp`・credentialData の subType `totp`・secretData の value が空でない（値は見ない。
+// プレースホルダ `${E2E_…}` のままでよい —— 差し込めない利用者は reconcile-realm.js が作らない）。
+function declaresTotpCredential(user) {
+  const parse = (v) => { try { return typeof v === 'string' ? JSON.parse(v) : null; } catch { return null; } };
+  return ((user && user.credentials) || []).some((c) => {
+    if (!c || c.type !== 'otp') return false;
+    const data = parse(c.credentialData);
+    const secret = parse(c.secretData);
+    return !!data && data.subType === 'totp' && !!secret && typeof secret.value === 'string' && secret.value !== '';
+  });
+}
+
 // realm から「MFA が実効的に強制されていない／監査イベントが残らない」箇所を { path, detail } で列挙する。
 // 純粋関数。対象 realm（既定 `platform`）以外は検査しない —— 別プロジェクトの realm は ADR-0026 の射程外。
 function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
@@ -495,7 +554,7 @@ function collectMfaAuditGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
       continue;
     }
     if (user && user.enabled === false) continue; // 無効な利用者はログインできないので対象外
-    if (!hasTotp) {
+    if (!hasTotp && !declaresTotpCredential(user)) {
       gaps.push({
         path: `realm.users[${name}].requiredActions`,
         detail: `${MFA_REQUIRED_ACTION} が含まれていません。requiredActions プロバイダ側の defaultAction は`
@@ -601,6 +660,16 @@ function collectThemeGaps(realm, reader, themeRoot = THEME_ROOT) {
     const parent = /^\s*parent\s*=\s*(\S+)\s*$/m.exec(text);
     if (!parent) {
       gaps.push({ path: props, detail: 'parent= の宣言がない。継承しないテーマは Keycloak 本体のテンプレート更新（セキュリティ修正・新フロー）から切り離される' });
+    } else {
+      // parent は本体の同梱テーマか、同じ置き場の自前テーマ（同じ種別の実体を持つもの）でなければ解決できない。
+      const builtin = KEYCLOAK_BUILTIN_THEMES[kind] || [];
+      const own = reader.exists(`${themeRoot}/${parent[1]}/${kind}/theme.properties`);
+      if (!builtin.includes(parent[1]) && !own) {
+        gaps.push({
+          path: props,
+          detail: `parent=${parent[1]} は Keycloak ${KEYCLOAK_VERSION_FOR_THEMES} に ${kind} 型として実在しない（同梱: ${builtin.join(' / ')}）。Keycloak は既定テーマへ黙って落ちる`,
+        });
+      }
     }
     const styles = /^\s*styles\s*=\s*(.+?)\s*$/m.exec(text);
     if (styles) {
@@ -623,6 +692,35 @@ function collectThemeGaps(realm, reader, themeRoot = THEME_ROOT) {
     }
     if (supported.length < 2) {
       gaps.push({ path: 'supportedLocales', detail: `internationalizationEnabled が true なのに supportedLocales が ${supported.length} 件しかない（切替先が無い）` });
+    }
+  }
+  return gaps;
+}
+
+// 同梱テーマの表（KEYCLOAK_BUILTIN_THEMES）を実測した版と、起動するイメージのタグの食い違いを列挙する。
+// マニフェストが無い・Keycloak のイメージ宣言が無い・タグが読めない場合も**黙って通さず**齟齬として返す
+// （0 件走査を緑にしない）。返り値は [{ path, detail }]。
+function collectKeycloakVersionGaps(reader, {
+  manifests = KEYCLOAK_IMAGE_MANIFESTS,
+  expected = KEYCLOAK_VERSION_FOR_THEMES,
+} = {}) {
+  const gaps = [];
+  const redo = `同梱テーマの表（KEYCLOAK_BUILTIN_THEMES）を新しい版の配布物の META-INF/keycloak-themes.json で引き直してから KEYCLOAK_VERSION_FOR_THEMES を合わせること`;
+  for (const rel of manifests) {
+    if (!reader.exists(rel)) {
+      gaps.push({ path: rel, detail: `Keycloak のイメージを宣言するマニフェストが無い（版の突合ができない）。置き場を変えたなら KEYCLOAK_IMAGE_MANIFESTS を直すこと` });
+      continue;
+    }
+    const text = reader.read(rel);
+    const tags = [...text.matchAll(KEYCLOAK_IMAGE_RE)].map((m) => m[1]);
+    if (tags.length === 0) {
+      gaps.push({ path: rel, detail: `quay.io/keycloak/keycloak のイメージタグが読めない（版の突合ができない）。${redo}` });
+      continue;
+    }
+    for (const tag of tags) {
+      if (tag !== expected) {
+        gaps.push({ path: rel, detail: `イメージタグ ${tag} が同梱テーマの表を実測した版 ${expected} と違う。${redo}` });
+      }
     }
   }
   return gaps;
@@ -1179,11 +1277,15 @@ function checkRealmServiceAccountRolesText(text, opts) {
 //
 // NFR-09, ADR-0032, IADR-0429 決定 3, IADR-0420: BFF の Bearer 受理は、呼び出し元が
 // **無人の主体か**を `MachinePrincipal.IsMachine` だけで決める（`BearerCallerPolicy`）。判定は
-// **トークンが名乗る形**だけで行い、許可集合を構成に持たない（IADR-0420 の決定）。その 2 つの腕は:
-//   腕 A: 利用者名（preferred_username）が `service-account-` で始まる
-//   腕 B: 利用者名が**無く**、クライアント識別のクレーム（azp など）がある
+// **トークンが名乗る形**だけで行い、許可集合を構成に持たない（IADR-0420 の決定）。クライアント識別のクレーム（azp など）を
+// 前提に（IADR-0606 決定 1）、その 2 つの腕は:
+//   腕 A: 利用者名（preferred_username）が `service-account-<クライアント識別>` と一致する（IADR-0606 決定 2。従前は接頭辞だけ）
+//   腕 B: 利用者名が**無い**
+// ［2026-10-23 / IADR-0607］腕 B の前提（人がログインするクライアントのトークンには利用者名が載る）は下の (2)・(2')・(2'') が守る。
+//   宣言の外で作られる人のログインのクライアント（SC-12 の有人 MCP クライアント）は、McpServer の作成後の読み戻しが
+//   既定スコープの `profile` を確かめる（KeycloakServiceAccountProvisioner.PublicClientViolations）。
 // したがって、次のどちらかが realm の宣言に入ると、**人のトークンが機械として Bearer 受理を通り得る**:
-//   (1) `service-account-` で始まる名前の**人の利用者**を作る（腕 A が人を機械と読む）
+//   (1) `service-account-` で始まる名前の**人の利用者**を作る（腕 A の手掛かりの一方を人が持つ。IADR-0606 後も宣言で止める）
 //   (2) 標準フロー（人がログインする経路）のクライアントが `profile` を既定スコープに持たない
 //       （人のトークンに preferred_username が乗らず、azp は必ず乗るので腕 B が人を機械と読む）
 // どちらも realm import は成功し、ログインも画面も動くため E2E では気付けない。**宣言で止める。**
@@ -1595,6 +1697,132 @@ function checkRealmPlatformAudienceText(text, opts) {
   return collectPlatformAudienceGaps(JSON.parse(text), opts);
 }
 
+// --- 検査10: アカウントコンソール（SC-16）の構成（#1894・IADR-0546） ------------------------------
+const ACCOUNT_CLIENT = 'account';
+const ACCOUNT_CONSOLE_CLIENT = 'account-console';
+// 利用者が SC-16 を使うのに要る account のロール（Keycloak が実行時に作る利用者へ既定ロールで与える 2 つ）。
+const ACCOUNT_SELF_SERVICE_ROLES = Object.freeze(['view-profile', 'manage-account']);
+// account API は aud に account、resource_access.account.roles に manage-account（閲覧は view-profile でも可）を求める。
+const ACCOUNT_CONSOLE_REQUIRED_SCOPES = Object.freeze(['basic', 'profile']);
+
+function collectAccountConsoleGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  if (!realm || realm.realm !== realmName) return [];
+  const gaps = [];
+  const gap = (p, detail) => gaps.push({ path: p, detail });
+  const clients = realm.clients || [];
+  const account = clients.find((c) => c && c.clientId === ACCOUNT_CLIENT);
+  const consoleClient = clients.find((c) => c && c.clientId === ACCOUNT_CONSOLE_CLIENT);
+  if (!account || !consoleClient) {
+    if (account || consoleClient) {
+      gap(`clients[${account ? ACCOUNT_CONSOLE_CLIENT : ACCOUNT_CLIENT}]`,
+        `${ACCOUNT_CLIENT} と ${ACCOUNT_CONSOLE_CLIENT} は対で宣言する（${ACCOUNT_CONSOLE_CLIENT} だけだと import が組み込みとの重複で落ち、${ACCOUNT_CLIENT} だけだと組み込みの ${ACCOUNT_CONSOLE_CLIENT} が作られない）`);
+    } else {
+      gap(`clients[${ACCOUNT_CONSOLE_CLIENT}]`,
+        `宣言が無い。clientScopes を明示した import では組み込みの ${ACCOUNT_CONSOLE_CLIENT} にスコープが 1 つも付かず（basic が無い → sub が無い）、アカウントコンソールの API が 401 になる`);
+    }
+    return gaps;
+  }
+  const scopesByName = new Map((realm.clientScopes || []).filter(Boolean).map((sc) => [sc.name, sc]));
+  const defaults = consoleClient.defaultClientScopes || [];
+  for (const name of ACCOUNT_CONSOLE_REQUIRED_SCOPES) {
+    if (!defaults.includes(name)) {
+      gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].defaultClientScopes`, `${name} が無い（basic は sub、profile は利用者名。無いと account API が 401 になるか、画面が「匿名」と出る）`);
+    } else if (!scopesByName.has(name)) {
+      gap(`clientScopes[${name}]`, `${ACCOUNT_CONSOLE_CLIENT} の既定スコープ ${name} が realm に定義されていない`);
+    }
+  }
+  const basic = scopesByName.get('basic');
+  if (basic && !(basic.protocolMappers || []).some((m) => m && m.protocolMapper === 'oidc-sub-mapper' && String(mapperConfig(m)['access.token.claim']) === 'true')) {
+    gap('clientScopes[basic]', 'sub をアクセストークンへ出す写像（oidc-sub-mapper・access.token.claim=true）が無い');
+  }
+  // ［2026-10-25 / #2245］token の交換（ブラウザから同一 origin の fetch）は CORS の検査を受ける。`+` は redirect URI から frontend の origin を作る。
+  // 🔴 ちょうど ["+"] を求める（公開クライアントなので、余分な origin を足すと CORS の許可がそのぶん広がる。#2246 のレビュー）。
+  const webOrigins = consoleClient.webOrigins || [];
+  if (!(webOrigins.length === 1 && webOrigins[0] === '+')) {
+    gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].webOrigins`, `ちょうど ["+"] でない（${JSON.stringify(webOrigins)}）。`
+      + '+ が無いと、エッジ（TLS 終端）の後ろでは要求の origin が http になりブラウザの Origin（https）と一致しないので、token の交換が 403（Invalid origin・イベントなし）で落ちる。'
+      + '+ 以外を足すと、公開クライアントの CORS の許可がそのぶん広がる（#2245）');
+  }
+  if (consoleClient.fullScopeAllowed !== false) {
+    gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].fullScopeAllowed`, 'false でない。利用者の全ロール（platform-admin 等）がアカウントコンソールのトークンへ載る（載せるのはスコープの割当で許した account のロールだけ）');
+  }
+  // 写像はクライアント直付けか既定スコープの中（Keycloak は両方を足し合わせる）。
+  const mappers = [...(consoleClient.protocolMappers || []),
+    ...defaults.flatMap((n) => ((scopesByName.get(n) || {}).protocolMappers || []))].filter(Boolean);
+  if (!mappers.some((m) => m.protocolMapper === 'oidc-audience-resolve-mapper')) {
+    gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].protocolMappers`, 'audience 解決（oidc-audience-resolve-mapper）が無い。aud に account が入らず account API が 401 になる');
+  }
+  const roleMapper = mappers.find((m) => m.protocolMapper === 'oidc-usermodel-client-role-mapper'
+    && String(mapperConfig(m)['access.token.claim']) === 'true'
+    && /^resource_access\.\$\{client_id\}\.roles$/.test(String(mapperConfig(m)['claim.name'] || '')));
+  if (!roleMapper) {
+    gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].protocolMappers`, 'client ロールを resource_access.${client_id}.roles へ出す写像が無い。manage-account がトークンに載らず account API が 403 になる');
+  } else if (mapperConfig(roleMapper)['usermodel.clientRoleMapping.clientId'] !== ACCOUNT_CLIENT) {
+    gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].protocolMappers[${roleMapper.name || '?'}]`, `client ロールの写像が ${ACCOUNT_CLIENT} に絞られていない（usermodel.clientRoleMapping.clientId=${ACCOUNT_CLIENT}）`);
+  }
+  const accountRoles = new Map((((realm.roles || {}).client || {})[ACCOUNT_CLIENT] || []).map((r) => [r && r.name, r]));
+  for (const name of ACCOUNT_SELF_SERVICE_ROLES) {
+    if (!accountRoles.has(name)) gap(`roles.client.${ACCOUNT_CLIENT}`, `${name} が無い（${ACCOUNT_CLIENT} を宣言すると組み込みのロールは作られない）`);
+  }
+  const mapping = (((realm.clientScopeMappings || {})[ACCOUNT_CLIENT]) || []).find((m) => m && m.client === ACCOUNT_CONSOLE_CLIENT);
+  if (!mapping || !(mapping.roles || []).includes('manage-account')) {
+    gap(`clientScopeMappings.${ACCOUNT_CLIENT}`, `${ACCOUNT_CONSOLE_CLIENT} に manage-account のスコープの割当が無い（fullScopeAllowed=false なのでトークンに載らない）`);
+  }
+  const defaultRoleName = realm.defaultRole && realm.defaultRole.name;
+  const defaultRole = defaultRoleName && ((realm.roles || {}).realm || []).find((r) => r && r.name === defaultRoleName);
+  const defaultAccount = (((defaultRole || {}).composites || {}).client || {})[ACCOUNT_CLIENT] || [];
+  if (!defaultRoleName || !defaultRole) {
+    gap('defaultRole', `既定ロールの宣言が無い（${ACCOUNT_CLIENT} を宣言すると組み込みの合成が作られず、実行時に作る利用者が SC-16 を使えない）`);
+  } else if (!ACCOUNT_SELF_SERVICE_ROLES.every((n) => defaultAccount.includes(n))) {
+    gap(`roles.realm[${defaultRoleName}].composites.client.${ACCOUNT_CLIENT}`, `${ACCOUNT_SELF_SERVICE_ROLES.join('・')} が無い（実行時に作る利用者が SC-16 を使えない）`);
+  }
+  for (const u of realm.users || []) {
+    if (!u || isServiceAccountUser(u)) continue;
+    const viaDefault = defaultRoleName && (u.realmRoles || []).includes(defaultRoleName);
+    const direct = ((u.clientRoles || {})[ACCOUNT_CLIENT]) || [];
+    if (!viaDefault && !ACCOUNT_SELF_SERVICE_ROLES.every((n) => direct.includes(n))) {
+      gap(`users[${u.username}].clientRoles.${ACCOUNT_CLIENT}`, `${ACCOUNT_SELF_SERVICE_ROLES.join('・')} が無い（import で作る利用者は既定ロールを受け取らない）`);
+    }
+  }
+  return gaps;
+}
+
+function checkRealmAccountConsoleText(text, opts) {
+  return collectAccountConsoleGaps(JSON.parse(text), opts);
+}
+
+// --- 検査11: Keycloak が自分で付けるクライアントスコープを宣言に書かない（#2208・IADR-0618） ------------
+// reconcile-realm.js は KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES の組を稼働側の余剰に数えない（Keycloak の所有）。
+// 宣言にも書くと所有が二重になるので、宣言のどこにも現れないことを求める（realm を問わない）。
+function collectAutoAssignedScopeGaps(realm) {
+  if (!realm) return [];
+  const names = Object.keys(KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES);
+  const gaps = [];
+  const why = 'Keycloak が自分で付けるスコープ（サービスアカウントの client の作成・更新のたびに足す）。reconcile-realm.js は'
+    + '稼働側にあっても余剰と見なさないので、宣言には書かない（所有を二重にしない。import でスコープの実体が作られず割当が宙に浮く）';
+  for (const c of Array.isArray(realm.clients) ? realm.clients : []) {
+    if (!c) continue;
+    for (const field of ['defaultClientScopes', 'optionalClientScopes']) {
+      for (const name of Array.isArray(c[field]) ? c[field] : []) {
+        if (names.includes(name)) gaps.push({ path: `realm.clients[${c.clientId || '«無名»'}].${field}`, detail: `${name} がある。${why}` });
+      }
+    }
+  }
+  for (const key of ['defaultDefaultClientScopes', 'defaultOptionalClientScopes']) {
+    for (const name of Array.isArray(realm[key]) ? realm[key] : []) {
+      if (names.includes(name)) gaps.push({ path: `realm.${key}`, detail: `${name} がある。${why}` });
+    }
+  }
+  for (const sc of Array.isArray(realm.clientScopes) ? realm.clientScopes : []) {
+    if (sc && names.includes(sc.name)) gaps.push({ path: `realm.clientScopes[${sc.name}]`, detail: `${sc.name} を宣言している。${why}` });
+  }
+  return gaps;
+}
+
+function checkRealmAutoAssignedScopesText(text) {
+  return collectAutoAssignedScopeGaps(JSON.parse(text));
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -1638,6 +1866,8 @@ function checkFiles(relPaths) {
       machineGaps: checkRealmMachineJudgementText(text),
       secretGaps: checkRealmDeclaredSecretsText(text),
       audienceGaps: checkRealmPlatformAudienceText(text),
+      accountConsoleGaps: checkRealmAccountConsoleText(text),
+      autoScopeGaps: checkRealmAutoAssignedScopesText(text),
     });
   }
   return results;
@@ -1888,14 +2118,15 @@ function selfTest() {
     exists: (rel) => Object.prototype.hasOwnProperty.call(files, rel),
     read: (rel) => files[rel],
   });
-  const okTheme = 'parent=keycloak\nimport=common/keycloak\n\nstyles=css/login.css css/platform.css\n';
+  const okTheme = 'parent=keycloak.v2\nimport=common/keycloak\n\nstyles=css/styles.css css/platform.css\n';
+  const okAccountTheme = 'parent=keycloak.v3\n\nstyles=css/platform.css\n';
   const themedRealm = {
     loginTheme: 'platform', accountTheme: 'platform',
     internationalizationEnabled: true, supportedLocales: ['ja', 'en'], defaultLocale: 'ja',
   };
   const fullFiles = {
     'deploy/keycloak/themes/platform/login/theme.properties': okTheme,
-    'deploy/keycloak/themes/platform/account/theme.properties': okTheme,
+    'deploy/keycloak/themes/platform/account/theme.properties': okAccountTheme,
   };
 
   cases.push({
@@ -1906,7 +2137,7 @@ function selfTest() {
     name: 'テーマ: realm が指すのに実体が無いと検出する（既定テーマへ黙って落ちる事故）',
     pass: (() => {
       const g = collectThemeGaps(themedRealm, fakeReader({
-        'deploy/keycloak/themes/platform/account/theme.properties': okTheme,
+        'deploy/keycloak/themes/platform/account/theme.properties': okAccountTheme,
       }));
       return g.length === 1 && g[0].path === 'loginTheme';
     })(),
@@ -1918,6 +2149,29 @@ function selfTest() {
         'deploy/keycloak/themes/platform/login/theme.properties': 'styles=css/platform.css\n',
       }));
       return g.length === 2 && g.some((x) => /parent=/.test(x.detail)) && g.some((x) => /styles の/.test(x.detail));
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: parent がその版の Keycloak に無い種別を検出する（26.7.4 の account に keycloak は無い。IADR-0532）',
+    pass: (() => {
+      const g = collectThemeGaps({ accountTheme: 'platform' }, fakeReader({
+        'deploy/keycloak/themes/platform/account/theme.properties': 'parent=keycloak\n',
+      }));
+      return g.length === 1 && /実在しない/.test(g[0].detail);
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: parent が自前テーマ（同じ置き場・同じ種別の実体あり）なら解決できる',
+    pass: collectThemeGaps({ loginTheme: 'platform' }, fakeReader({
+      'deploy/keycloak/themes/platform/login/theme.properties': 'parent=corp\n',
+      'deploy/keycloak/themes/corp/login/theme.properties': 'parent=keycloak.v2\n',
+    })).length === 0,
+  });
+  cases.push({
+    name: 'テーマ: emailTheme も実体を突き合わせる（宣言だけで実体が無いと検出）',
+    pass: (() => {
+      const g = collectThemeGaps({ emailTheme: 'platform' }, fakeReader({}));
+      return g.length === 1 && g[0].path === 'emailTheme';
     })(),
   });
   cases.push({
@@ -1951,9 +2205,35 @@ function selfTest() {
       if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
       const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
       // 実データ側が「そもそも宣言していない」状態で緑になるのを防ぐ（0 件走査の門）。
-      if (realm.loginTheme !== 'platform' || realm.accountTheme !== 'platform') return false;
+      if (realm.loginTheme !== 'platform' || realm.accountTheme !== 'platform' || realm.emailTheme !== 'platform') return false;
       return collectThemeGaps(realm, diskReader()).length === 0;
     })(),
+  });
+
+  // 同梱テーマの表を実測した版とイメージタグの突合（#1893 監査）。
+  const kcImage = (tag) => `services:\n  keycloak:\n    image: quay.io/keycloak/keycloak:${tag}@sha256:${'0'.repeat(64)}\n`;
+  const kcManifests = ['a.yml', 'b.yaml'];
+  cases.push({
+    name: 'テーマの版: 両マニフェストのタグが表の版と一致すれば齟齬なし（陽性対照）',
+    pass: collectKeycloakVersionGaps(fakeReader({ 'a.yml': kcImage('26.7.4'), 'b.yaml': `      containers:\n        - name: keycloak\n          image: quay.io/keycloak/keycloak:26.7.4\n` }), { manifests: kcManifests, expected: '26.7.4' }).length === 0,
+  });
+  cases.push({
+    name: 'テーマの版: 片方のタグだけ上げると検出する（表の引き直しを促す）',
+    pass: (() => {
+      const g = collectKeycloakVersionGaps(fakeReader({ 'a.yml': kcImage('26.8.0'), 'b.yaml': kcImage('26.7.4') }), { manifests: kcManifests, expected: '26.7.4' });
+      return g.length === 1 && g[0].path === 'a.yml' && /26\.8\.0/.test(g[0].detail) && /引き直/.test(g[0].detail);
+    })(),
+  });
+  cases.push({
+    name: 'テーマの版: タグが読めない・マニフェストが無いと黙って通さない（fail-loud）',
+    pass: (() => {
+      const g = collectKeycloakVersionGaps(fakeReader({ 'a.yml': 'services:\n  keycloak:\n    image: example/other:1\n' }), { manifests: kcManifests, expected: '26.7.4' });
+      return g.length === 2 && g[0].path === 'a.yml' && /読めない/.test(g[0].detail) && g[1].path === 'b.yaml' && /無い/.test(g[1].detail);
+    })(),
+  });
+  cases.push({
+    name: 'テーマの版: 実データの 2 マニフェストのタグが表の版と一致する（実データ・ラチェット）',
+    pass: collectKeycloakVersionGaps(diskReader()).length === 0,
   });
 
   // --- 検査5（MFA の実効的な強制・監査イベント。#438 / IADR-0294）------------------
@@ -1990,6 +2270,33 @@ function selfTest() {
   cases.push({
     name: 'MFA: 変異 1 — 対話利用者から CONFIGURE_TOTP を外すと 1 件',
     pass: collectMfaAuditGaps(mutate((c) => { c.users[0].requiredActions = []; })).length === 1,
+  });
+  // #2024 / IADR-0570: 宣言で TOTP の OTP 資格情報を持つ利用者（試験アカウント）は CONFIGURE_TOTP が無くても落とさない。
+  const declaredOtp = (credentialData, secretData) => ({
+    username: 'e2e-x', enabled: true,
+    credentials: [
+      { type: 'password', value: '${E2E_X_PASSWORD}', temporary: false },
+      { type: 'otp', secretData, credentialData },
+    ],
+  });
+  const totpData = JSON.stringify({ subType: 'totp', digits: 6, counter: 0, period: 30, algorithm: 'HmacSHA1' });
+  cases.push({
+    name: 'MFA: 陽性対照（#2024）— 宣言で TOTP の OTP 資格情報を持つ利用者は CONFIGURE_TOTP が無くても落とさない',
+    pass: collectMfaAuditGaps(mutate((c) => { c.users.push(declaredOtp(totpData, JSON.stringify({ value: '${E2E_X_TOTP_SECRET}' }))); })).length === 0,
+  });
+  cases.push({
+    name: 'MFA: 変異（#2024）— OTP がパスワードだけ・subType が totp でない・secretData の value が空・JSON でない、はそれぞれ 1 件',
+    pass: [
+      (u) => { u.credentials = [u.credentials[0]]; },
+      (u) => { u.credentials[1].credentialData = JSON.stringify({ subType: 'hotp' }); },
+      (u) => { u.credentials[1].secretData = JSON.stringify({ value: '' }); },
+      (u) => { u.credentials[1].secretData = '{'; },
+      (u) => { u.credentials[1].type = 'password'; },
+    ].every((breakIt) => collectMfaAuditGaps(mutate((c) => {
+      const u = declaredOtp(totpData, JSON.stringify({ value: '${E2E_X_TOTP_SECRET}' }));
+      breakIt(u);
+      c.users.push(u);
+    })).length === 1),
   });
   cases.push({
     name: 'MFA: 変異 2 — requiredActions キーごと消しても 1 件（未設定と空配列を同じに扱う）',
@@ -2960,6 +3267,67 @@ function selfTest() {
     })(),
   });
 
+  // 検査10（#1894・IADR-0546）: 実データから切り出し、欠落を 1 つずつ入れて赤になることを確かめる。
+  const acRealm = () => JSON.parse(fs.readFileSync(path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json'), 'utf8'));
+  const acMut = (f) => { const r = acRealm(); f(r); return collectAccountConsoleGaps(r); };
+  const acClient = (r, id = 'account-console') => r.clients.find((c) => c.clientId === id);
+  const acHas = (gs, re) => gs.length >= 1 && gs.some((g) => re.test(`${g.path} ${g.detail}`));
+  cases.push({ name: '🔴 検査10: 実データの realm は 0 件（陰性対照。人の seed 利用者が 4 人以上いる＝0 件の走査を緑にしない）', pass:
+    acMut(() => {}).length === 0 && acRealm().users.filter((u) => !isServiceAccountUser(u)).length >= 4 });
+  cases.push({ name: '検査10: account-console と account の宣言が両方無いと赤（現行の不具合の形）', pass:
+    acHas(acMut((r) => { r.clients = r.clients.filter((c) => !['account', 'account-console'].includes(c.clientId)); }), /宣言が無い/) });
+  cases.push({ name: '検査10: 片方だけの宣言は赤（import の重複・組み込みの作成の飛び）', pass:
+    acHas(acMut((r) => { r.clients = r.clients.filter((c) => c.clientId !== 'account'); }), /対で宣言/)
+    && acHas(acMut((r) => { r.clients = r.clients.filter((c) => c.clientId !== 'account-console'); }), /対で宣言/) });
+  cases.push({ name: '検査10: account-console の既定スコープから basic / profile を外すと赤', pass:
+    acHas(acMut((r) => { acClient(r).defaultClientScopes = ['profile']; }), /basic/)
+    && acHas(acMut((r) => { acClient(r).defaultClientScopes = ['basic']; }), /profile/) });
+  cases.push({ name: '検査10: basic スコープの sub の写像が無いと赤', pass:
+    acHas(acMut((r) => { r.clientScopes.find((x) => x.name === 'basic').protocolMappers = []; }), /oidc-sub-mapper/) });
+  cases.push({ name: '検査10（#2245）: account-console の webOrigins がちょうど ["+"] でなければ赤（空・+ 以外・欄ごと削除・+ に余分な origin を足す）', pass:
+    acHas(acMut((r) => { acClient(r).webOrigins = []; }), /webOrigins/)
+    && acHas(acMut((r) => { acClient(r).webOrigins = ['https://keycloak.localhost']; }), /Invalid origin/)
+    && acHas(acMut((r) => { delete acClient(r).webOrigins; }), /webOrigins/)
+    && acHas(acMut((r) => { acClient(r).webOrigins = ['+', 'https://evil.example']; }), /CORS の許可/) });
+  cases.push({ name: '検査10: fullScopeAllowed を外す（未設定＝true）と赤', pass:
+    acHas(acMut((r) => { delete acClient(r).fullScopeAllowed; }), /fullScopeAllowed/) });
+  cases.push({ name: '検査10: audience 解決・client ロールの写像を外すと赤／写像が account に絞られていないと赤', pass:
+    acHas(acMut((r) => { acClient(r).protocolMappers = acClient(r).protocolMappers.filter((m) => m.protocolMapper !== 'oidc-audience-resolve-mapper'); }), /audience/)
+    && acHas(acMut((r) => { acClient(r).protocolMappers = acClient(r).protocolMappers.filter((m) => m.protocolMapper !== 'oidc-usermodel-client-role-mapper'); }), /resource_access/)
+    && acHas(acMut((r) => { delete acClient(r).protocolMappers.find((m) => m.protocolMapper === 'oidc-usermodel-client-role-mapper').config['usermodel.clientRoleMapping.clientId']; }), /絞られていない/) });
+  cases.push({ name: '検査10: 写像を既定スコープ側に置けば通る（クライアント直付けに限らない）', pass: acMut((r) => {
+    const c = acClient(r);
+    const moved = c.protocolMappers;
+    c.protocolMappers = [];
+    r.clientScopes.push({ name: 'account-console-mappers', protocol: 'openid-connect', protocolMappers: moved });
+    c.defaultClientScopes = [...c.defaultClientScopes, 'account-console-mappers'];
+  }).length === 0 });
+  cases.push({ name: '検査10: account のロール・スコープの割当・既定ロールの合成が欠けると赤', pass:
+    acHas(acMut((r) => { r.roles.client.account = r.roles.client.account.filter((x) => x.name !== 'manage-account'); }), /roles\.client\.account/)
+    && acHas(acMut((r) => { r.clientScopeMappings.account = []; }), /clientScopeMappings/)
+    && acHas(acMut((r) => { delete r.defaultRole; }), /defaultRole/)
+    && acHas(acMut((r) => { r.roles.realm.find((x) => x.name === r.defaultRole.name).composites.client.account = ['view-profile']; }), /composites/) });
+  cases.push({ name: '検査10: 人の seed 利用者から account のロールを外すと赤／既定ロールを realmRoles に持てば通る／サービスアカウントは見ない', pass:
+    acHas(acMut((r) => { delete r.users.find((u) => u.username === 'poc-user').clientRoles; }), /users\[poc-user\]/)
+    && acMut((r) => { const u = r.users.find((x) => x.username === 'poc-user'); delete u.clientRoles; u.realmRoles = [r.defaultRole.name]; }).length === 0
+    && acMut((r) => { for (const u of r.users) if (isServiceAccountUser(u)) delete u.clientRoles; }).length === 0 });
+  cases.push({ name: '検査10: platform 以外の realm は見ない', pass: acMut((r) => { r.realm = 'other'; r.clients = []; }).length === 0 });
+
+  // 検査11（#2208・IADR-0618）: 実データは 0 件。宣言のどこへ service_account を書いても赤。他のスコープ名は見ない。
+  const asRealm = () => JSON.parse(fs.readFileSync(path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json'), 'utf8'));
+  const asMut = (f) => { const r = asRealm(); f(r); return collectAutoAssignedScopeGaps(r); };
+  const asSa = (r) => r.clients.find((c) => c.clientId === 'abac-seeder');
+  cases.push({ name: '🔴 検査11: 実データの realm は 0 件（陰性対照。サービスアカウントの client が 20 件以上＝0 件の走査を緑にしない）', pass:
+    asMut(() => {}).length === 0 && asRealm().clients.filter((c) => c.serviceAccountsEnabled === true).length >= 20 });
+  cases.push({ name: '検査11: client の既定・任意スコープ、realm の既定、clientScopes の宣言に service_account を書くと赤（各 1 件）', pass:
+    asMut((r) => { asSa(r).defaultClientScopes.push('service_account'); }).length === 1
+    && asMut((r) => { asSa(r).optionalClientScopes = ['service_account']; }).length === 1
+    && asMut((r) => { r.defaultDefaultClientScopes = ['service_account']; }).length === 1
+    && asMut((r) => { r.defaultOptionalClientScopes = ['service_account']; }).length === 1
+    && asMut((r) => { r.clientScopes.push({ name: 'service_account', protocol: 'openid-connect' }); }).length === 1 });
+  cases.push({ name: '検査11: 自動付与でないスコープ名は見ない（宣言の全集合の検査は reconcile 側）', pass:
+    asMut((r) => { asSa(r).defaultClientScopes.push('email'); r.clientScopes.push({ name: 'service-account' }); }).length === 0 });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -2997,11 +3365,16 @@ function main() {
   const totalMachineGaps = results.reduce((n, r) => n + r.machineGaps.length, 0);
   const totalSecretGaps = results.reduce((n, r) => n + r.secretGaps.length, 0);
   const totalAudienceGaps = results.reduce((n, r) => n + r.audienceGaps.length, 0);
+  const totalAccountConsoleGaps = results.reduce((n, r) => n + r.accountConsoleGaps.length, 0);
+  const totalAutoScopeGaps = results.reduce((n, r) => n + r.autoScopeGaps.length, 0);
+  // 同梱テーマの表の版とイメージタグの突合は realm に依らないので、ファイルごとではなく 1 回だけ見る。
+  const versionGaps = collectKeycloakVersionGaps(diskReader());
   if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0
     && totalMfaGaps === 0 && totalMailGaps === 0 && totalRelayGaps === 0
     && totalServerUrlGaps === 0 && totalConcealGaps === 0 && totalSaRoleGaps === 0
-    && totalMachineGaps === 0 && totalSecretGaps === 0 && totalAudienceGaps === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱はありません。`);
+    && totalMachineGaps === 0 && totalSecretGaps === 0 && totalAudienceGaps === 0
+    && totalAccountConsoleGaps === 0 && totalAutoScopeGaps === 0 && versionGaps.length === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬・MFA / 監査イベントの欠落・送出経路（近接 MTA / 捕捉用 MTA）の逸脱・近接 MTA の受け入れ規則の逸脱・到達し得ないサーバ間 URL・SC-15 の存在秘匿の破れ・サービスアカウントの管理権限の天井超え・人を無人の主体と読ませる宣言（service-account- 接頭辞の人の利用者 / 利用者が利用者名を選べる宣言 / profile を既定に持たないログイン経路のクライアント / 利用者名以外から出す preferred_username / 利用者名の落ちる軽量アクセストークン）・開発用の形でない client シークレット・platform の audience を載せるクライアントの範囲の逸脱・アカウントコンソール（SC-16）の構成の欠落・Keycloak が自分で付けるクライアントスコープの宣言・同梱テーマの表の版と Keycloak イメージタグの食い違いはありません。`);
     process.exit(0);
   }
 
@@ -3167,6 +3540,38 @@ function main() {
       + '\n要件の起点は #1846（計画への環流は planning#770）、実装側の記録は IADR-0523 です。');
   }
 
+  if (totalAccountConsoleGaps > 0) {
+    console.error(`[check-realm-constraints] アカウントコンソール（SC-16）の構成の欠落 ${totalAccountConsoleGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.accountConsoleGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\nrealm import もログインも成功し、アカウントコンソールだけが 401 / 403 になります（E2E のログインでは気付けません）。'
+      + '\n既存の realm へは deploy/local/keycloak-setup/reconcile-realm.sh が当てます。起票は #1894、実装側の記録は IADR-0546 です。');
+  }
+
+  if (totalAutoScopeGaps > 0) {
+    console.error(`[check-realm-constraints] Keycloak が自分で付けるクライアントスコープの宣言 ${totalAutoScopeGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.autoScopeGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\n境界の定数は deploy/local/keycloak-setup/reconcile-realm.js の KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES です。'
+      + '\n起票は #2208、実装側の記録は IADR-0618 です。');
+  }
+
+  if (versionGaps.length > 0) {
+    console.error(`[check-realm-constraints] 同梱テーマの表（Keycloak ${KEYCLOAK_VERSION_FOR_THEMES} で実測）と起動する Keycloak イメージの版の食い違い ${versionGaps.length} 件を検出しました:`);
+    for (const g of versionGaps) {
+      console.error(`\n  ${g.path}: ${g.detail}`);
+    }
+    console.error('\n🔴 Keycloak を上げたら、同梱テーマの表（KEYCLOAK_BUILTIN_THEMES）を新しい版で引き直してください。'
+      + '\n表が古いままだと、本体から消えた parent を「実在する」と判定し、Keycloak が既定テーマへ黙って落ちても緑のままになります。'
+      + '\n引き直しの手順は表の直上の注記、実装側の記録は IADR-0532 です。');
+  }
+
   process.exit(1);
 }
 
@@ -3183,6 +3588,10 @@ module.exports = {
   checkRealmPolicyText,
   collectThemeGaps,
   checkRealmThemeText,
+  KEYCLOAK_BUILTIN_THEMES,
+  collectKeycloakVersionGaps,
+  KEYCLOAK_VERSION_FOR_THEMES,
+  KEYCLOAK_IMAGE_MANIFESTS,
   isServiceAccountUser,
   collectMfaAuditGaps,
   checkRealmMfaAuditText,
@@ -3206,6 +3615,11 @@ module.exports = {
   checkRealmDeclaredSecretsText,
   collectPlatformAudienceGaps,
   checkRealmPlatformAudienceText,
+  collectAccountConsoleGaps,
+  checkRealmAccountConsoleText,
+  collectAutoAssignedScopeGaps,
+  checkRealmAutoAssignedScopesText,
+  ACCOUNT_SELF_SERVICE_ROLES,
   PLATFORM_AUDIENCE,
   PLATFORM_AUDIENCE_SCOPE,
   DEV_SECRET_PATTERNS,

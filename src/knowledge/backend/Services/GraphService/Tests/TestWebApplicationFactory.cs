@@ -17,8 +17,8 @@ namespace GraphService.Tests;
 // FR-17: GraphService の統合テスト用ホスト。
 //
 // ABAC スコープは差し替え可能にする（既定は「条件無しで全許可」）。認可サービスへの実通信は
-// 行わない —— GraphAccessResolver 自体の deny-closed 縮退は GraphAccessResolverTests が
-// HttpMessageHandler 層で直接試験する。
+// 行わない —— GraphAccessResolver 自体の deny-closed 縮退は GraphAccessResolverGrpcTests が
+// 生成クライアントの偽物で直接試験する。
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
     // 各テストクラスで DB を分離するための一意名（InMemory）。
@@ -38,8 +38,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     //
     // **反映先（`IDocumentTagWriter`）は記録するスタブ**である —— 呼ばれた文書 ID・タグ値を残し、
     // 応答は `TagWriter.Outcome` で差し替える（辞書外・後段の拒否・不達を再現する）。
-    // 実 HTTP アダプタ（`HttpDocumentTagWriter`）の写像は `HttpDocumentTagWriterTests` が
-    // `HttpMessageHandler` 層で直接試験する。
+    // 実アダプタ（`GrpcDocumentTagWriter`）の写像は `GrpcDocumentTagWriterTests` が
+    // 生成クライアントの偽物で直接試験する（［2026-10-10 / #1255］REST のアダプタは撤去した）。
     public RecordingTagWriter TagWriter { get; } = new();
 
     // **辞書（`ITagDictionaryReader`）**。既定は「引けた・空」ではなく **null（引けなかった）**にする ——

@@ -53,6 +53,8 @@
       "Bash(dotnet restore:*)",
       "Bash(dotnet --version)",
       "Bash(dotnet --info)",
+      "Bash(helm lint:*)",
+      "Bash(helm template:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(gh issue create:*)",

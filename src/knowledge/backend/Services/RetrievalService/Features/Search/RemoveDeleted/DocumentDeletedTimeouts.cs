@@ -20,7 +20,8 @@ public sealed record DocumentDeletedTimeouts(TimeSpan VectorStore, int Collectio
     public static DocumentDeletedTimeouts Default { get; } =
         new(TimeSpan.FromSeconds(DefaultVectorStoreSeconds), CollectionCount: 2);
 
-    // `fusedCollectionCount` は主に加えて束ねる追加コレクションの数（`Qdrant:FusedCollections` ＋ 語彙索引 1 本。#1746）。
+    // `fusedCollectionCount` は主に加えて消すコレクションの数（`Qdrant:FusedCollections` ＋ 語彙索引 1 本。#1746。
+    // ［2026-10-25 / #2137］＋ 取り込みが書くが検索が読まないコレクション `WrittenCollections`）。
     public static DocumentDeletedTimeouts From(IConfiguration configuration, int fusedCollectionCount)
     {
         var timeouts = new DocumentDeletedTimeouts(

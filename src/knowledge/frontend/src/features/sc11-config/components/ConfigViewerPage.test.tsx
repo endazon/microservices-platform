@@ -170,7 +170,8 @@ describe('ConfigViewerPage (SC-11)', () => {
     mockApi();
     await renderPage();
 
-    expect(await screen.findByText('接続の不一致')).toBeInTheDocument();
+    // ［2026-10-24 / IADR-0620］種別は契約の値のまま（計画 §SC-11・Q29）。
+    expect(await screen.findByText('BindingMismatch')).toBeInTheDocument();
     expect(screen.getByText('宣言 64 / 実効 32（手動変更の疑い）')).toBeInTheDocument();
     // ヘッダの全体状態（色 ＋ アイコン ＋ テキスト）。
     expect(screen.getByText('ドリフト 1 件')).toBeInTheDocument();
@@ -295,7 +296,7 @@ describe('ConfigViewerPage (SC-11)', () => {
     await renderPage();
 
     await screen.findByText('構成情報は利用できません。');
-    expect(screen.queryByText('接続の不一致')).not.toBeInTheDocument();
+    expect(screen.queryByText('BindingMismatch')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('table', { name: '構成バージョン履歴の一覧' }),
     ).not.toBeInTheDocument();

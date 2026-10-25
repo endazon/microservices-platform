@@ -12,7 +12,9 @@ internal static class GetDocumentEndpoint
     {
         g.MapGet("/{id:guid}", async (Guid id, HttpContext http, DocumentReadUseCase reads, CancellationToken ct) =>
         {
-            var doc = await reads.GetAsync(DocumentReadPrincipal.FromUser(http.User), id, ct);
+            // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): SC-03 の閲覧の口なので、緊急アクセスの判定を含む形を通す。
+            var doc = await reads.GetForViewAsync(DocumentReadPrincipal.FromUser(http.User), id,
+                Knowledge.Contracts.Dtos.BreakGlassViewTargets.Document, ct);
             return doc is null ? Results.NotFound() : Results.Ok(doc);
         });
     }

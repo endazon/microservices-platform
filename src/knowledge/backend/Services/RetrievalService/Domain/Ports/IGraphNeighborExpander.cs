@@ -21,6 +21,7 @@ public interface IGraphNeighborExpander
 {
     // 起点集合から hops ホップの近傍を取り、**辺の集合**として返す。
     // 失敗（下流不達・資格情報なし）は例外にせず空を返す —— 検索そのものは成立させる。
+    // ［2026-10-11 / #1871］[[IADR-0534]]: 失敗したときは `GraphNeighborhood.Degraded` を立てる（応答の縮退の印へ写る）。
     Task<GraphNeighborhood> ExpandAsync(
         IReadOnlyList<Guid> seedDocumentIds,
         int hops,
@@ -43,4 +44,12 @@ public sealed record GraphNeighborEdge(Guid SourceDocumentId, Guid TargetDocumen
 public sealed record GraphNeighborhood(IReadOnlyList<GraphNeighborEdge> Edges)
 {
     public static readonly GraphNeighborhood Empty = new([]);
+
+    // FR-03, NFR-06, ADR-0035, [[IADR-0534]] (#1871): **展開が働かなかったか**（近傍・辞書が引けない・利用者文脈が無く呼べない）。
+    // 実装は失敗を例外にせず空（またはフォールバック重み）で返すので、「グラフに何も無い」と見分けるためにここで運ぶ。
+    // 🔴 起点が見えない・無い（`found=false`）は縮退ではない（存在秘匿。異常ではない）。
+    public bool Degraded { get; init; }
+
+    // 呼べなかった・引けなかったときの空。
+    public static readonly GraphNeighborhood Unavailable = new([]) { Degraded = true };
 }

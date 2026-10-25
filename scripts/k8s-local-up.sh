@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
 # IADR-0066: MSP+AST 連結ローカル k8s(k3d) dev 環境の起動オーケストレーション。
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
-#   ただし dev 以外の kube context では、レルム管理のロールを持つ 3 クライアント（identity-admin / reset-gate / mcp-client-admin）の
-#   secret を dev の値で作らずに止まる（IADR-0517 / #1830。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
+#   ただし dev 以外の kube context では、サービスアカウントを持つ機密クライアント（realm の宣言から導出する）の
+#   secret を dev の値で作らずに止まる（IADR-0517 / #1830・IADR-0572。上書きは ALLOW_DEV_CLIENT_SECRETS=1）。
+#   ただし Keycloak の管理者・RabbitMQ のブローカのパスワードは公知の既定値で作らない（IADR-0574。fail-closed）——
+#   KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD を与えるか、既存の Secret の値を使う。使い捨ての開発環境だけ
+#   ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す（警告を出す）。
 #
 #   bash scripts/k8s-local-up.sh --live [cluster-name]   # --live か LIVE=1 が無ければ何もしない（#1550）
 #
-# 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
+# 前提ツール: docker / k3d / kubectl / helm / node（scripts/README や docs/operations 参照）。
+#   node は dev の値の守りの対象を realm の宣言から導出するのに使う（IADR-0572。無ければ [1/7] の直後で止まる）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
 #   OBJECT_STORAGE_ACCESS_KEY / OBJECT_STORAGE_SECRET_KEY（IADR-0461。旧 MINIO_*）/ WIKIJS_DB_PASSWORD / WIKIJS_SYNC_APIKEY / ANTHROPIC_API_KEY / VOYAGE_API_KEY（#1764。埋め込み） /
-#   RABBITMQ_USER（#1022。helm の global.messaging.user と揃えること）/
+#   RABBITMQ_USER（#1022。ブローカの既定のユーザー名。サービスは名乗らない＝IADR-0577 でサービスごとのユーザーへ移した）/
 #   WIKIJS_OIDC_CLIENT_SECRET（#1127。WIKIJS_OIDC=1 のときだけ使う。realm の wiki-js client と揃えること）/
 #   KEYCLOAK_ADMIN_USER（IADR-0369。既定 admin。Keycloak と realm 後追い Job が同じ Secret から読む）/
 #   SYNTHETIC_MONITOR_CLIENT_SECRET（#1287。SYNTHETIC=1 のときだけ使う。realm の synthetic-monitor client と揃えること）
 #   RESET_GATE_CLIENT_SECRET / IDENTITY_ADMIN_CLIENT_SECRET / MCP_CLIENT_ADMIN_CLIENT_SECRET（#1830。dev 以外の kube context では必須）
+#   ［IADR-0572］dev 以外の kube context では、サービスアカウントを持つ機密クライアント全部の secret の env が必須（名前の一覧は
+#   `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2`。既定の規則は
+#   `<CLIENT_ID の大文字・- を _>_CLIENT_SECRET`、例外は bff＝BFF_OIDC_CLIENT_SECRET・abac-seeder＝ABAC_SEED_CLIENT_SECRET）
 #   SESSION_STORE_PASSWORD（#1839。セッションストア Valkey の認証。未指定なら既存の Secret の値、無ければ初回だけ乱数で作る）
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
+# 管理ツールの集約入口（LOCALEDGE=1 の admin(50000)）の経路は **既定で置かない**（IADR-0586）。置くときだけ ADMIN_EDGE=1。
 # 永続化と一緒に、Postgres / Vault の日次バックアップ CronJob（age 暗号化・クラスタ外 2 か所。IADR-0471 / #1560）も入る。
 #   受取人（age の公開鍵）は BACKUP_AGE_RECIPIENTS_FILE=<ファイル> を与えたときだけ ConfigMap にする（既定の再実行で上書きしない）。
 # リセット申請の床（SC-15）は **既定オン**（ADR-0097 決定 2 / #1500）。器は infra と一緒に必ず立ち、
@@ -58,19 +66,40 @@ case "${DEPT_SYNC_MODE:-}" in
   ''|Off|Report|Fix) ;;
   *) echo "ERROR: DEPT_SYNC_MODE は Off・Report・Fix・未指定（現行を引き継ぐ。初回は何も足さない）のいずれかです: '${DEPT_SYNC_MODE}'" >&2; exit 1 ;;
 esac
+# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): ADMIN_EDGE は管理ツールの集約入口（admin(50000)）に経路を置くかの明示の opt-in。
+#   1＝置く / 0・未指定＝置かない（既定。以前の実行で置いた経路も消す）。読むのは LOCALEDGE=1 の段と istio-edge-up.sh。
+#   0 / 1 以外は RESET_FLOOR と同じく最初に落とす。
+# shellcheck source=scripts/lib/admin-edge.sh
+. "$(dirname "$0")/lib/admin-edge.sh" || exit 3
+admin_edge_validate || exit 1
 
-# NFR, 計画 ADR-0135 決定 2, IADR-0519 (#1843): Argo CD は**版のタグの URL**から入れる（`stable` ブランチを直接 apply しない）。
-#   既定は `stable` が 2026-10-09 に指していた版（v3.5.4。両 URL の install.yaml はバイト一致を実測）。上書きは ARGOCD_VERSION。
-#   🔴 **版のタグ（vX.Y.Z）以外は拒否する** —— `stable` / `master` を与えると固定が外れる。RESET_FLOOR と同じく最初に落とす。
-ARGOCD_VERSION="${ARGOCD_VERSION:-v3.5.4}"
-if [ "${ARGOCD:-}" = "1" ] && ! [[ "$ARGOCD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "ERROR: ARGOCD_VERSION は版のタグ（例 v3.5.4）で与えてください（ブランチ名では版が固定されない。IADR-0519）: '${ARGOCD_VERSION}'" >&2
+# NFR, 計画 ADR-0135 決定 2 / ADR-0107 決定 3, IADR-0519 (#1843)・IADR-0547 (#1858): `scripts/` が入れる製品の版を固定する。
+#   版は内側のイメージの digest の固定（下の各ファイル）と**対**で決まる。上書きの env は固定と同じ値のときだけ受け、
+#   違えば何もする前に止める（lib/pin-version.sh。#1843 の「ARGOCD_VERSION はブランチ名を拒否する」もここで止まる）。
+#   🔴 版を上げるときは、ここの版と置き場のファイルの tag・digest を対で改める（scripts/scripts.repo.test.js が突き合わせる）。
+#   k3s は参照全体を K3S_IMAGE で与える（版と digest を一緒に変える）ので、ここではなく [1/7] の既定が持つ。
+# shellcheck source=scripts/lib/pin-version.sh
+. "$(dirname "$0")/lib/pin-version.sh" || exit 3
+pin_version ISTIO_VERSION 1.30.4 deploy/istio/istiod-values-local.yaml
+pin_version ESO_CHART_VERSION 2.8.0 deploy/local/vault/eso/external-secrets-values.yaml
+pin_version RELOADER_CHART_VERSION 2.2.17 deploy/local/reloader/values.yaml
+pin_version CERT_MANAGER_VERSION v1.21.1 deploy/local/edge/cert-manager/kustomization.yaml
+pin_version ARGOCD_VERSION v3.5.4 deploy/argocd/install/kustomization.yaml
+# Reloader のイメージは values（tag@digest）が持つ。従前の RELOADER_IMAGE_TAG（tag だけで上書き）は固定を外すので受けない。
+if [ -n "${RELOADER_IMAGE_TAG:-}" ]; then
+  echo "ERROR: RELOADER_IMAGE_TAG は廃止した（IADR-0547）。Reloader のイメージは deploy/local/reloader/values.yaml が tag@digest で持つ。" >&2
   exit 1
 fi
 
 CLUSTER="${1:-msp-ast-dev}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージの不変のタグ（git の sha。変更のある作業ツリーは差分の hash つき）。
+#   [2/7] のビルド（k8s-local-images.sh は export した IMAGE_TAG を使う）と [6/7] の helm（--set-string global.image.tag）が同じ値を使う。
+#   chart はタグが無いと描画を落とす（latest へ倒さない）。決められなければ何もする前に止める。上書きは IMAGE_TAG=<不変のタグ>。
+. "$ROOT/scripts/lib/local-image-tag.sh" || exit 3
+IMAGE_TAG="$(resolve_local_image_tag "$ROOT")" || exit 1
+export IMAGE_TAG
 INFRA_NS="platform-infra"
 MSP_NS="microservices-platform"
 
@@ -100,6 +129,63 @@ apply_secret() ( # ns name key=val [key=val...]
   done
   kubectl create secret generic "$name" -n "$ns" "${args[@]}" \
     --dry-run=client -o yaml | kubectl apply -f -
+)
+
+# NFR-18, IADR-0616 (#2195): ESO（creationPolicy: Merge）が値を持つ Secret の「土台」を置く。
+#   ESO=1 で Secret が既に在れば**触らない**（値は Vault → ESO が持つ。dev の値で上書きすると、ESO が次に同期するまで
+#   ＝最大 refreshInterval の間、読み手〔投入器・門・近接 MTA〕が dev の値で名乗る。稼働 PoC で投入器 3 つが 401 になった）。
+#   無ければ従来どおり作る（Merge は Secret を作らないので、新規クラスタでは土台が要る）。ESO 以外の経路は従来どおり毎回置く。
+#   対象は値が Vault の種と一致する保証の無い 3 つ（keycloak-smtp・reset-gate-oidc・abac-seeder-oidc）。基盤の 3 つ（postgres 等）は
+#   seed と同じ値なので従来どおり（IADR-0099）。値の確かめは ESO ブロックの eso_force_sync_wait が行う。
+#   判定は Secret の有無だけで行う（値は読まない＝起動器が秘密の値を比べない。IADR-0616 の選択肢 2 を採らない理由）。そのため
+#   Vault の当該 KV がまだ dev の値（例: keycloak-smtp の SMTP の実値が未投入で、bootstrap の種のまま）なら、Secret も dev の値のまま残る。
+#   これは IADR-0616「結果・残る制約」の範囲内である（値の正は Vault。実値は SC-22 か Vault の KV で入れる）。
+apply_eso_merge_base_secret() { # ns name key=val [key=val...]
+  if [ "${ESO:-}" = "1" ] && kubectl -n "$1" get secret "$2" -o name >/dev/null 2>&1; then
+    echo "    keep $1/$2（ESO=1・既存の Secret の値は Vault → ESO が持つ。dev の値で上書きしない。IADR-0616）"
+    return 0
+  fi
+  apply_secret "$@"
+}
+
+# NFR-18, IADR-0577: ESO を使わない経路のブローカのサービスごとの資格情報（[5/7] から呼ぶ）。
+#   platform-infra/rabbitmq-users ＝ users.txt の全ユーザー（ブローカ側の写し。reconcile-users.sh と起動の直後の復元が読む）
+#   microservices-platform/msp-rabbitmq-users ＝ そのうち microservices-platform のユーザー（helm の各サービスが自分のキーを読む）
+#   ai-stock-trading/ast-rabbitmq-users ＝ そのうち ai-stock-trading のユーザー（取引ユニットの chart の各 Worker が自分のキーを読む。
+#     名前は同 chart の global.rabbitmq.credentialsSecretName の既定。ESO の無い経路では取引ユニットの起動器は作らず、
+#     無ければ helm の前で止まる＝値を持つ基盤の起動器が用意する。名前空間は冪等に作る。IADR-0577 の 2026-10-22 追記）
+#   値は「既存の写しの値 ＞ 乱数（48 桁の 16 進。bootstrap.sh の種と同じ形）」。値は端末にも引数にも出さない（ファイル経由）。
+AST_NS="ai-stock-trading"
+AST_RABBITMQ_USERS_SECRET="ast-rabbitmq-users"
+rabbitmq_users_secrets_without_eso() (
+  umask 077
+  d="$(mktemp -d)"
+  trap 'rm -rf "$d"' EXIT
+  mkdir -p "$d/infra" "$d/msp" "$d/ast"
+  grep -v '^[[:space:]]*#' "$ROOT/deploy/local/rabbitmq-setup/users.txt" | awk 'NF >= 2 { print $1, $2 }' > "$d/users"
+  infra_args=(); msp_args=(); ast_args=()
+  while read -r u ns; do
+    kubectl -n "$INFRA_NS" get secret rabbitmq-users -o "go-template={{with index .data \"$u\"}}{{.}}{{end}}" 2>/dev/null \
+      | base64 -d > "$d/infra/$u" 2>/dev/null || true
+    if [ ! -s "$d/infra/$u" ]; then
+      od -An -tx1 -N24 /dev/urandom | tr -d ' \n' > "$d/infra/$u"
+    fi
+    infra_args+=(--from-file="$u=$d/infra/$u")
+    if [ "$ns" = "$MSP_NS" ]; then
+      cp "$d/infra/$u" "$d/msp/$u"
+      msp_args+=(--from-file="$u=$d/msp/$u")
+    elif [ "$ns" = "$AST_NS" ]; then
+      cp "$d/infra/$u" "$d/ast/$u"
+      ast_args+=(--from-file="$u=$d/ast/$u")
+    fi
+  done < "$d/users"
+  kubectl create secret generic rabbitmq-users -n "$INFRA_NS" "${infra_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl create secret generic msp-rabbitmq-users -n "$MSP_NS" "${msp_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  if [ "${#ast_args[@]}" -gt 0 ]; then
+    kubectl create namespace "$AST_NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    kubectl create secret generic "$AST_RABBITMQ_USERS_SECRET" -n "$AST_NS" "${ast_args[@]}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  fi
+  echo "    rabbitmq-users（${#infra_args[@]} 件）・msp-rabbitmq-users（${#msp_args[@]} 件）・${AST_RABBITMQ_USERS_SECRET}（${#ast_args[@]} 件）を用意した（既存の値＞乱数。値は表示しない）"
 )
 
 echo "==> [1/7] cluster"
@@ -135,13 +221,16 @@ if [ "$RUNTIME" = "k3d" ]; then
   # ［2026-10-09 / #1843・計画 ADR-0135 決定 2・IADR-0519］**既定で固定する**（従前は与えたときだけ固定し、既定は k3d 同梱の版
   # だった）。版の情報源はこの既定 1 か所であり、CI のワークフローは値を持たない（同じ値を 2 か所に持つと片側だけ動く）。
   # 上書きは K3S_IMAGE（空でも既定へ戻る＝浮動にはできない）。Rancher Desktop 経路は内蔵 k3s の版を使う（下の else）。
+  # ［2026-10-15 / #1858・IADR-0547］既定は `tag@sha256:<index digest>`（同じタグの中身の差し替えを入れない。ADR-0107 決定 3）。
+  #   k3d v5.8.3 が digest つきの参照を受けて pull・起動することは手元で実測した（作業仕様書 20261015_1858）。
+  #   K3S_IMAGE は参照全体の上書きであり、与えた人が版と digest を一緒に決める（tag だけで与えれば固定は外れる。運用者の明示の選択）。
   # **理由は「バージョンを揃えたいから」ではない。揃っていないことが静かに素通りするからである。**
   # k3d の既定 k3s（5.7.4 では v1.30.4）が同梱する traefik chart は 25.0.3 で、そこでは `expose` が bool
   # であり、deploy/local/edge/traefik-entrypoint.yaml の map 形式（chart 26 以降）は型不一致で reconcile に
   # 失敗する。ところが `kubectl apply` は成功するため **admin(50000) が立たないまま本スクリプトは EXIT=0 で
   # 返る**（実測: GitHub ホストランナー / run 32554867883）。構造そのもの（reconcile 失敗が伝わらない）は
   # #953 で別途扱う。ここは「pin が外れたことに気づける」ための口である。
-  K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1}"
+  K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1@sha256:475e036b3fd595472c13ec708c148ffd95459d5f9e40e6df76ba4d5b27098570}"
   CREATE_ARGS+=(--image "$K3S_IMAGE")
   if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
     k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
@@ -167,10 +256,30 @@ fi
 #   止まる前に Keycloak が dev の値で 2 つを作っていた。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-dev_secret_args=("identity-admin=${IDENTITY_ADMIN_CLIENT_SECRET:-}" "reset-gate=${RESET_GATE_CLIENT_SECRET:-}"
-  "mcp-client-admin=${MCP_CLIENT_ADMIN_CLIENT_SECRET:-}")
+# ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
+#   手で並べず宣言から導出する（dev_client_secret_load_targets）。env の名前は判定器が持つ（dev_client_secret_env_name）。
+#   [3/7] の取り込み元は同じ集合を env の値へ差し替えるので、dev ではない context では全部に env が要る。
+dev_client_secret_load_targets || exit 1
+dev_secret_args=()
+for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
+  dev_secret_env="$(dev_client_secret_env_name "$dev_secret_client")"
+  dev_secret_args+=("${dev_secret_client}=${!dev_secret_env:-}")
+done
 dev_client_secret_guard "k8s-local-up.sh" "${dev_secret_args[@]}" || exit 1
-unset dev_secret_args
+unset dev_secret_args dev_secret_client dev_secret_env
+
+# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を
+#   公知の開発用の値で作らない（fail-closed）。** 判定は scripts/lib/infra-credentials.sh の 1 本（bootstrap.sh と共有）。
+#   選び方: 明示（KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD）＞ 既存の Secret（platform-infra の keycloak-admin / rabbitmq）の値
+#   ＞ 止める。開発用の値と同じものは指定が無いのと同じ扱い。使い捨ての開発環境だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す。
+#   置き場所は context が確定した直後・Secret を 1 つも書く前（既存の Secret を読むのでクラスタが要る）・[2/7] の長いビルドより前。
+#   選んだ値は export する（[3/7] の Secret・ESO の段の bootstrap.sh が同じ値を使う）。
+# shellcheck source=scripts/lib/infra-credentials.sh
+. "$ROOT/scripts/lib/infra-credentials.sh"
+infra_cred_existing() { # <Secret 名> <キー> → 既存の値（無ければ空）。値は出力しない（呼び出し側が変数へ受ける）
+  kubectl -n "$INFRA_NS" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null | base64 -d 2>/dev/null || true
+}
+infra_cred_resolve "k8s-local-up.sh" infra_cred_existing || exit 1
 
 # NFR, ADR-0021, IADR-0317 (#1691): **入口がすでに Istio Ingress Gateway へ移っているかを、クラスタの状態で読む。**
 #   前回の istio-edge-up.sh が HelmChartConfig kube-system/traefik を `service.enabled: false`
@@ -207,7 +316,8 @@ fi
 #   [6/7] は --reuse-values 無しで helm upgrade する。以前は ISTIO 未指定を「メッシュ無し」と読み、values-local.yaml の
 #   mesh.enabled: false が当たって、メッシュで動いているクラスタの宣言（PeerAuthentication・AuthorizationPolicy・注入）を
 #   再実行のたびに**黙って**外していた（#1713）。ISTIO_MTLS_MODE を付けない再実行が STRICT を PERMISSIVE へ戻したのと同じ型（#1710）。
-#   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は PERMISSIVE）。
+#   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は STRICT）。
+#   ［2026-10-23 / IADR-0590（Refs GHSA-j4qv-2w99-xg5p）］mTLS の初回の既定は PERMISSIVE から STRICT へ変えた（下の [6/7] の注記）。
 #   - ISTIO 未指定 × メッシュ宣言あり → ISTIO=1 として以降を進める（明示と同じ段: コントロールプレーン・注入・LOCALEDGE なら Istio の入口）。
 #     ISTIO_MTLS_MODE も未指定なら同じ読みからモードを引き継ぐ。外すのは ISTIO=0 の明示だけである。
 #   - ISTIO=0 はメッシュの判定のためには読まない（従来の「ISTIO 無し」と同じ経路。既定のバイト等価はこちらへ移した）。
@@ -255,10 +365,15 @@ if [ -z "${ISTIO:-}" ] || { [ "$ISTIO" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ];
     ISTIO=1
     echo "    INFO: メッシュ（mesh.enabled: true）は現行を引き継ぎます（ISTIO 未指定。外すなら ISTIO=0）"
   fi
-  # mesh_rc=1（リリースが無い・メッシュ未宣言＝初回）は何もしない: ISTIO 未指定はメッシュ無し、ISTIO=1 は PERMISSIVE で入る（下の [6/7]）。
+  # mesh_rc=1（リリースが無い・メッシュ未宣言＝初回）は何もしない: ISTIO 未指定はメッシュ無し、ISTIO=1 は既定の STRICT で入る（下の [6/7]）。
   if [ "${ISTIO:-}" = "1" ] && [ -z "${ISTIO_MTLS_MODE:-}" ] && [ "$mesh_rc" = "0" ]; then
     ISTIO_MTLS_MODE="$mesh_current"
     echo "    INFO: mesh.mtlsMode は現行の ${mesh_current} を引き継ぎます（ISTIO_MTLS_MODE 未指定）"
+    # NFR-18, IADR-0590: 引き継ぎは黙って上げも下げもしない（#1710）。ただし緩めた状態が続いていることは毎回告げる。
+    if [ "$mesh_current" != "STRICT" ]; then
+      echo "WARN: mTLS は ${mesh_current} のままです（既定は STRICT。サイドカーの無い呼び出し元からの平文も受け付けます）。" >&2
+      echo "      STRICT へ上げるには ISTIO_MTLS_MODE=STRICT を付けて再実行してください（前提は deploy/istio/README.md「STRICT の前提」）。" >&2
+    fi
   fi
 fi
 
@@ -331,13 +446,13 @@ kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f
 apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 # NFR, #1022: ブローカ自身の資格情報（利用者名・パスワード）を Secret 由来にする。
 # deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
-# ⚠️ RABBITMQ_USER を変えるときは helm の global.messaging.user も併せて上書きすること
-#    （app 側の接続文字列は chart が組む）。AST chart は自前の guest:guest を持つ（#1022 §申し送り）。
-apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:-guest}"
+# NFR-18, IADR-0577: サービスはこのユーザーで名乗らない（サービスごとのユーザー。users.txt）。既定のユーザーはブローカの
+#    初期化にだけ使い、最後の段（disable-default-user.sh）で全サービスの切り替えを確かめてから消す。
+apply_secret "$INFRA_NS" rabbitmq        "username=${RABBITMQ_USER:-guest}" "password=${RABBITMQ_PASSWORD:?}"  # IADR-0574: 値は [1/7] の直後で決めた
 # IADR-0369 (#1088): 管理者名も Secret に持つ。deploy/local/infra/keycloak.yaml（KEYCLOAK_ADMIN）と
 # realm 後追い Job（deploy/local/keycloak-setup/realm-reconcile-job.yaml の KC_ADMIN_USER）が同じキーを読む
 # ＝管理者名の単一情報源。ESO の externalsecret-keycloak-admin.yaml は Merge なので password だけ供給しても壊れない。
-apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+apply_secret "$INFRA_NS" keycloak-admin  "username=${KEYCLOAK_ADMIN_USER:-admin}" "password=${KEYCLOAK_ADMIN_PASSWORD:?}"  # IADR-0574
 # NFR-18, ADR-0131 決定 4 の 2, IADR-0522 (#1839): キャッシュ・セッションストア（Valkey）の認証パスワード。
 # deploy/local/infra/valkey.yaml が**非 optional** に読み、空なら起動しない（fail-closed）。BFF も同じ値を読む
 # （[5/7] で MSP ns へ同じ値を置く。helm の services.bff.session.storeExistingSecret）。ESO=1 でも手で置く
@@ -381,6 +496,7 @@ apply_secret "$INFRA_NS" session-store-credentials "password=$session_store_pass
 #   from / user / password は**空**（実環境の値が供給されるまでの fail-safe。runbook §2 の長さ判定が依る）。
 # ESO=1 のときは externalsecret-keycloak-smtp.yaml が creationPolicy: Merge で同じ Secret へ Vault の値を
 # 上書きする（keycloak-admin と同じ形。手動 apply を保持したまま実値へ差し替わる）。
+# ［IADR-0616 / #2195］ESO=1 で既に在れば上書きしない（apply_eso_merge_base_secret。reset-gate-oidc・abac-seeder-oidc も同じ）。
 SMTP_CAPTURE_HOST='mailpit.platform-infra.svc.cluster.local'
 smtp_host="${SMTP_HOST:-$SMTP_CAPTURE_HOST}"
 if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
@@ -388,7 +504,7 @@ if [ "$smtp_host" = "$SMTP_CAPTURE_HOST" ]; then
 else
   smtp_port_default='587';  smtp_starttls_default='true'
 fi
-apply_secret "$INFRA_NS" keycloak-smtp \
+apply_eso_merge_base_secret "$INFRA_NS" keycloak-smtp \
   "host=$smtp_host" \
   "port=${SMTP_PORT:-$smtp_port_default}" \
   "starttls=${SMTP_STARTTLS:-$smtp_starttls_default}" \
@@ -401,8 +517,15 @@ apply_secret "$INFRA_NS" keycloak-smtp \
 #    **窓（実在利用者だけ 500）は開いたまま**になる。起動しないほうが気付ける。
 # realm 側の宣言値（deploy/keycloak/microservices-platform-realm.json の reset-gate.secret）と
 # **同じ既定**にする。ズレると Keycloak の token 端点が invalid_client を返す（wikijs-oidc と同じ罠）。
-apply_secret "$INFRA_NS" reset-gate-oidc \
+apply_eso_merge_base_secret "$INFRA_NS" reset-gate-oidc \
   "client-secret=${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}"
+# NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
+#   読み手はホストの投入器（seed-*.js）と運用スクリプト（republish・archive）で、実行時にこの Secret を読む（realm の宣言の値へは落ちない）。
+#   ESO の有無によらず作る（ESO=1 では externalsecret-abac-seeder-oidc.yaml が Merge で Vault の値を重ねる。reset-gate-oidc と同じ形）。
+#   ［IADR-0616 / #2195］ESO=1 で既に在れば上書きしない（apply_eso_merge_base_secret）。
+#   値は env（ABAC_SEED_CLIENT_SECRET）か宣言の値。dev ではない context で env が無ければ [1/7] の直後の判定が止める（IADR-0572）。
+apply_eso_merge_base_secret "$INFRA_NS" abac-seeder-oidc \
+  "client-secret=${ABAC_SEED_CLIENT_SECRET:-$(dev_client_secret_dev_value abac-seeder)}"
 
 # 門のスクリプト本体（deploy/mail-relay/reset-gate.js）。テーマ・realm reconcile と同型で
 # **--from-file の ConfigMap** にする（kustomize は root 外ファイルを参照できないため）。
@@ -441,8 +564,8 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # NFR-18, ADR-0124 決定 1, IADR-0518 (#1834): Keycloak の `--import-realm`（空の PVC の初回・realm を消した後の再起動）の**取り込み元**。
-#   deploy/local/infra/keycloak.yaml が /opt/keycloak/data/import へマウントする。中身は上と同じ realm ファイルだが、レルム管理のロールを
-#   持つ 3 クライアント（identity-admin / reset-gate / mcp-client-admin）は、env（*_CLIENT_SECRET）を与えたものだけ宣言の dev の値を
+#   deploy/local/infra/keycloak.yaml が /opt/keycloak/data/import へマウントする。中身は上と同じ realm ファイルだが、サービスアカウントを
+#   持つ機密クライアント（宣言から導出する。IADR-0572。当初は 3 つ）は、env（*_CLIENT_SECRET 等）を与えたものだけ宣言の dev の値を
 #   env の値へ差し替える（判定器 dev_client_secret_realm_for_import。対象・env の名前・宣言の値の単一情報源）。env が無ければ宣言のまま
 #   （dev の context の既定は従来と同じ中身）。🔴 実の secret を含み得るので **ConfigMap ではなく Secret** にする。値は apply_secret が
 #   0700 の一時ディレクトリの 0600 のファイル経由で渡し、必ず消す（#1793。どのプロセスの引数にも載らない）。
@@ -450,6 +573,30 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
 #   realm 名が食い違うと起動しない（`File name / realm name mismatch`。実測）。宣言のファイル名（microservices-platform-realm.json）と
 #   ConfigMap `keycloak-realms` のキーは変えない（読み手は後追いの Job と門で、ファイル名を realm 名と突き合わせない）。
 realm_import_mp="$(dev_client_secret_realm_for_import deploy/keycloak/microservices-platform-realm.json)" || exit 1
+# NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報（宣言はプレースホルダ `${E2E_…}` だけ）を差し込む（envsubst の役）。
+#   値の出どころは Secret platform-infra/e2e-accounts（OpenBao → ESO）。在ればキー（E2E_*）を**このサブシェルの変数**へ読み、env として
+#   `reconcile-realm.js --render-import`（後追い Job と同じ差し込みの口）へ渡す。値はどのプロセスの引数にも載らない（#1793）。
+#   🔴 無い・欠ける・検査に落ちる利用者は取り込み元から**外す**（Keycloak の取り込みは未解決の `${…}` をそのまま残すので、
+#   外さないと公知の文字列がパスワードになる）。新規クラスタでは ESO がまだ無いので外れる。ESO ブロックが同期の後に後追いを当て直す。
+realm_import_mp="$(
+  set -e
+  if ! command -v node >/dev/null 2>&1; then
+    echo "ERROR: node が無い。realm の取り込み元から試験アカウントのプレースホルダを外せないので止める（Node 22 を入れる。#2024）" >&2
+    exit 1
+  fi
+  if kubectl -n "$INFRA_NS" get secret e2e-accounts >/dev/null 2>&1; then
+    # 1 行は「キー=base64」。🔴 `IFS='=' read k v` で割らない —— base64 の末尾の単独の `=` が落ちる（PR #2048 の AI レビュー）。
+    while IFS= read -r e2e_line; do
+      e2e_key="${e2e_line%%=*}"
+      e2e_b64="${e2e_line#*=}"
+      case "$e2e_key" in E2E_[A-Z0-9_]*) ;; *) continue ;; esac
+      e2e_val="$(printf '%s' "$e2e_b64" | base64 -d)"
+      export "$e2e_key=$e2e_val"
+    done < <(kubectl -n "$INFRA_NS" get secret e2e-accounts \
+      -o go-template='{{range $k, $v := .data}}{{$k}}={{$v}}{{"\n"}}{{end}}')
+  fi
+  printf '%s' "$realm_import_mp" | node "$ROOT/deploy/local/keycloak-setup/reconcile-realm.js" --render-import
+)" || exit 1
 realm_import_args=("platform-realm.json=${realm_import_mp}")
 if [ -f "$ast_realm" ]; then
   realm_import_args+=("ai-stock-trading-realm.json=$(< "$ast_realm")")
@@ -457,18 +604,21 @@ fi
 apply_secret "$INFRA_NS" keycloak-realm-import "${realm_import_args[@]}"
 unset realm_import_mp realm_import_args
 
-# IADR-0261 (#438): realm.json の loginTheme/accountTheme=platform を解決するテーマ実体
+# IADR-0261 (#438) / IADR-0532 (SC-13〜16): realm.json の loginTheme/accountTheme/emailTheme=platform を解決するテーマ実体
 # （deploy/keycloak/themes/platform/）を ConfigMap 化する。deploy/local/infra/keycloak.yaml 側は
 # `optional: true` の fail-safe 参照のため、この ConfigMap が無くても Pod は起動するが、その場合
-# ログイン画面が「テーマが見つからない」500 になる（従来は deploy/local/README.md「手動でステップ
-# 実行する場合」の手動コマンドが必須だった。本行で自動配線し、手動手順の必要を無くす）。
-# キー名・items の対応は keycloak.yaml のマウント定義と一致させる（単一情報源はテーマ実ファイル）。
-kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" \
-  --from-file=login-theme-properties=deploy/keycloak/themes/platform/login/theme.properties \
-  --from-file=login-css=deploy/keycloak/themes/platform/login/resources/css/platform.css \
-  --from-file=account-theme-properties=deploy/keycloak/themes/platform/account/theme.properties \
-  --from-file=account-css=deploy/keycloak/themes/platform/account/resources/css/platform.css \
+# ログイン画面が「テーマが見つからない」500 になる。
+# IADR-0532: テーマ配下の**全ファイル**を列挙して載せる（ファイルを足すたびにここを直さない）。キーは相対パスの `/` を `__` に
+# 置き換えたもの（ConfigMap のキーは `/` を持てない。ファイル名の `_`〔messages_ja 等〕と区別するため 2 個）。
+# keycloak.yaml の items（キー → パス）はこの規則の写しで、集合の一致は scripts/k8s-local-up.test.js が実ファイルから固定する。
+theme_args=()
+while IFS= read -r theme_file; do
+  theme_rel="${theme_file#deploy/keycloak/themes/platform/}"
+  theme_args+=(--from-file="${theme_rel//\//__}=${theme_file}")
+done < <(find deploy/keycloak/themes/platform -type f | LC_ALL=C sort)
+kubectl create configmap keycloak-theme-platform -n "$INFRA_NS" "${theme_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
+unset theme_args theme_file theme_rel
 
 # NFR-21, IADR-0471 (#1560): 日次バックアップ（deploy/local/platform-backup。永続化 overlay が取り込む）の受取人＝age の**公開鍵**。
 # 🔴 kustomize の外に置き、**与えられたときだけ**作り直す —— 既定の再実行で占位へ戻さないため（CronJob 側は optional で、
@@ -482,6 +632,92 @@ if [ -n "${BACKUP_AGE_RECIPIENTS_FILE:-}" ]; then
     --from-file=recipients.txt="$BACKUP_AGE_RECIPIENTS_FILE" \
     --dry-run=client -o yaml | kubectl apply -f -
 fi
+
+# IADR-0206 (#779) → IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: cert-manager の導入。従来は LOCALEDGE=1 の段だけが呼んだが、
+#   基盤（platform-infra）のサーバ証明書が既定で要るようになったので [4/7] の先頭でも呼ぶ（2 回目以降は何もしない）。
+# --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
+# 順序が要る: CRD が Established になる前に Certificate を apply すると "no matches for kind Certificate" で落ちる。
+# バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。
+# ［2026-10-15 / #1858・IADR-0547］release の URL と内側の 3 イメージの digest は kustomization が持つ
+#   （kustomize の images 置換）。版は冒頭の pin_version が決め、CERT_MANAGER_VERSION は同じ値しか受けない。
+CERT_MANAGER_READY=""
+install_cert_manager() {
+  [ -n "$CERT_MANAGER_READY" ] && return 0
+  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (基盤 TLS・エッジ TLS。IADR-0591 / IADR-0206・digest は IADR-0547)"
+  kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
+  kubectl wait --for=condition=Established --timeout=120s \
+    crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
+  kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
+  kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+  CERT_MANAGER_READY=1
+}
+
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤のサーバ証明書（postgres-tls / rabbitmq-tls）を発行する。
+#   postgres / rabbitmq の Pod は証明書の Secret を非 optional でマウントするので、基盤の apply より**前**に Ready を待つ。
+#   失敗したら止める（平文だけの基盤を黙って立てない）。
+INFRA_CA_CONFIGMAP="platform-infra-ca"
+apply_infra_tls() {
+  install_cert_manager
+  echo "    -> 基盤のサーバ証明書（deploy/local/infra-tls。IADR-0591）"
+  local attempt applied=""
+  # webhook が Ready でも数秒は TLS ハンドシェイクを拒むことがあるため、apply は数回試す（冪等）。
+  for attempt in 1 2 3 4 5; do
+    if kubectl apply -k deploy/local/infra-tls; then applied=1; break; fi
+    echo "    WARN: infra-tls overlay の apply に失敗（cert-manager webhook 待ち・試行 ${attempt}/5）" >&2
+    sleep 5
+  done
+  if [ -z "$applied" ]; then
+    echo "ERROR: 基盤のサーバ証明書（deploy/local/infra-tls）を当てられない。平文だけの基盤は立てない（IADR-0591）。" >&2
+    exit 1
+  fi
+  kubectl -n cert-manager wait --for=condition=Ready --timeout=120s certificate/platform-infra-root-ca
+  kubectl -n "$INFRA_NS" wait --for=condition=Ready --timeout=120s certificate/postgres-tls certificate/rabbitmq-tls
+}
+
+# IADR-0591: 基盤の CA（cert-manager/platform-infra-root-ca の ca.crt。公開してよい証明書だけで、鍵は写さない）を、
+#   クライアントが居る名前空間へ ConfigMap platform-infra-ca として写す。helm の各サービスが /etc/platform-infra-ca へマウントし、
+#   接続の検証（DB は Root Certificate、ブローカは信頼ストアへの追加）に使う。毎回上書きする（CA を作り直したら追随する）。
+#   読めなければ止める —— 無いまま進むと、検証つきの接続が全サービスで失敗する。
+publish_infra_ca() { # <namespace>
+  local ns="$1" pem
+  pem="$(kubectl -n cert-manager get secret platform-infra-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d)" || pem=""
+  case "$pem" in
+    *"BEGIN CERTIFICATE"*) ;;
+    *)
+      echo "ERROR: cert-manager/platform-infra-root-ca の ca.crt を読めない。$ns/$INFRA_CA_CONFIGMAP を作れない（IADR-0591）。" >&2
+      exit 1
+      ;;
+  esac
+  kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  local f
+  f="$(mktemp)"
+  printf '%s\n' "$pem" > "$f"
+  kubectl create configmap "$INFRA_CA_CONFIGMAP" -n "$ns" --from-file=ca.crt="$f" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  rm -f "$f"
+}
+
+# IADR-0591: postgres / rabbitmq はサーバ証明書を起動時にしか読まない（init コンテナが写す）。cert-manager が証明書を更新したら
+#   （期限の 30 日前）、次の起動器の実行で作り直されるように、Pod の雛形へ証明書の指紋を注釈として刻む。指紋が同じなら何もしない。
+#   値（証明書）は表示しない。読めなければ刻まずに告げる（証明書の Ready は apply_infra_tls が待った後なので、通常は起きない）。
+INFRA_TLS_STAMP_KEY="platform-infra.tls/cert-sha256"
+stamp_infra_tls_restart() {
+  local d data sha cur
+  for d in postgres rabbitmq; do
+    data="$(kubectl -n "$INFRA_NS" get secret "$d-tls" -o jsonpath='{.data.tls\.crt}' 2>/dev/null)" || data=""
+    if [ -z "$data" ]; then
+      echo "WARN: $INFRA_NS/$d-tls の tls.crt を読めない。証明書の指紋を刻まない（更新しても $d は作り直されない。IADR-0591）" >&2
+      continue
+    fi
+    sha="$(printf '%s' "$data" | sha256sum | cut -c1-64)"
+    cur="$(kubectl -n "$INFRA_NS" get deploy "$d" -o "jsonpath={.spec.template.metadata.annotations.platform-infra\.tls/cert-sha256}" 2>/dev/null)" || cur=""
+    if [ "$cur" != "$sha" ]; then
+      echo "    -> $d: サーバ証明書の指紋が変わった（または未記録）。作り直す（IADR-0591）"
+      kubectl -n "$INFRA_NS" patch deploy "$d" --type merge \
+        -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"$INFRA_TLS_STAMP_KEY\":\"$sha\"}}}}}"
+    fi
+  done
+}
 
 echo "==> [4/7] apply in-cluster infra"
 # IADR-0082 (#324) / IADR-0210 (#787) → IADR-0369 (#1088): 永続化オーバーレイ（Keycloak/Postgres/Qdrant を
@@ -505,7 +741,9 @@ else
   fi
   echo "    [PERSIST 既定] Keycloak(realm+runtime state)/Postgres/Qdrant(embeddings) を PVC 永続化（local-path）"
 fi
+apply_infra_tls
 kubectl apply -k "$INFRA_KUSTOMIZE"
+stamp_infra_tls_restart
 # NFR-18, ADR-0131, IADR-0522 (#1839): 旧 Redis（認証なし）を消す。kustomize の apply は宣言から消えたリソースを
 # 刈らないので、ここで消さないと既存クラスタに**認証なしのストアが残り続ける**（基準 D の穴が塞がらない）。
 kubectl -n "$INFRA_NS" delete deployment/redis service/redis --ignore-not-found
@@ -563,6 +801,27 @@ fi
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
+# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission の水準（チャートの namespace.yaml と同じ規則）。
+#   経路B は values-local.yaml が namespace.create=false のため、チャートは Namespace のラベルを貼らない。ここで貼る。
+#   warn / audit は restricted。enforce は baseline —— ただし ISTIO=1 では外す（注入される istio-init が NET_ADMIN / NET_RAW を
+#   要し、baseline を満たさない）。注入ラベルが残っている Namespace も同じ扱いにする（ISTIO=0 の再実行は注入ラベルを
+#   外さないので、istiod が残っていれば注入は続く）。ISTIO の有無を切り替えた再実行でも食い違わないよう、外す側も明示する。
+#   🔴 注入ラベルが読めない（API の失敗）ときは「ラベルなし」と見なさず、enforce を貼らない側に倒す（失敗はログに出す）。
+#   ラベルが無いだけなら jsonpath は空文字で 0 を返すので、両者は終了コードで区別できる。
+msp_injection_rc=0
+msp_injection="$(kubectl get namespace "$MSP_NS" -o jsonpath='{.metadata.labels.istio-injection}')" || msp_injection_rc=$?
+if [ "$msp_injection_rc" != "0" ]; then
+  echo "WARN: Namespace $MSP_NS の注入ラベルを読めなかった（kubectl の終了コード $msp_injection_rc）。注入の有無が分からないため enforce は貼らない（warn / audit だけ貼る。IADR-0583）。" >&2
+fi
+if [ "${ISTIO:-}" = "1" ] || [ "$msp_injection" = "enabled" ] || [ "$msp_injection_rc" != "0" ]; then
+  kubectl label namespace "$MSP_NS" pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/enforce- --overwrite
+else
+  kubectl label namespace "$MSP_NS" pod-security.kubernetes.io/enforce=baseline pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted --overwrite
+fi
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤の CA を、基盤へ繋ぐクライアントの名前空間へ写す（helm の [6/7] より前）。
+#   AST の名前空間にも置く（取引ユニットの chart が TLS へ切り替える段で読む。置くだけで、AST の接続は変えない）。
+publish_infra_ca "$MSP_NS"
+publish_infra_ca "$AST_NS"
 # ［IADR-0461 決定 5 / #1499］MinIO Console の OIDC client secret（minio-oidc。IADR-0093）の作成はここにあったが
 # 撤去した。オブジェクトストレージは SeaweedFS へ差し替え、管理 Console を持たない（ADR-0106 決定 6）。
 # NFR, SC-13, ADR-0026/ADR-0032, IADR-0251/IADR-0273/IADR-0316 (#1107): BFF セッション（Token Handler）の
@@ -661,11 +920,16 @@ if [ "${ESO:-}" != "1" ]; then
   # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
   # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
   apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:-kp}"
-  # NFR, ADR-0027, #1022: ブローカのパスワード（app 側）。**appsettings.json から接続文字列を撤去した**ため、
-  # これが無いと RabbitMQ を使う 7 サービスは起動時に落ちる（helm の deployment.yaml が
-  # global.messaging.existingSecret を **非 optional** な secretKeyRef で参照する）。
-  # dev 既定は step 3 のブローカ側と同値（env RABBITMQ_PASSWORD で両方を上書きする）。
-  apply_secret "$MSP_NS" rabbitmq-app "password=${RABBITMQ_PASSWORD:-guest}"
+  # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: ブローカのサービスごとのユーザー。
+  #   ESO を使わない経路でも共通の 1 組へ戻さない —— ブローカ側の写し（platform-infra/rabbitmq-users）と消費側
+  #   （microservices-platform/msp-rabbitmq-users）を、既存の値＞乱数で作り、ブローカへ合わせてから helm へ進む
+  #   （helm の deployment.yaml が各サービスのキーを **非 optional** な secretKeyRef で読む。無ければ起動しない）。
+  rabbitmq_users_secrets_without_eso
+  echo "    ブローカのサービスごとのユーザーを合わせる（ESO なし・deploy/local/rabbitmq-setup/users.txt・IADR-0577）"
+  if ! bash "$ROOT/deploy/local/rabbitmq-setup/reconcile-users.sh"; then
+    echo "ERROR: ブローカのサービスごとのユーザーを合わせられない。bash deploy/local/rabbitmq-setup/reconcile-users.sh で再実行できる" >&2
+    exit 1
+  fi
   apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
   # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
   # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。
@@ -691,12 +955,16 @@ fi
 # 🔴 **[6/7] より前に置く。** アプリチャートは PeerAuthentication / DestinationRule を
 #   レンダリングするので、CRD が無いまま helm upgrade すると apply がその時点で失敗する。
 #
-# 🔴 **初回は PERMISSIVE で入る。** STRICT へは ISTIO_MTLS_MODE=STRICT で明示的に移す。
+# 🔴 **初回の既定は STRICT である**（NFR-18, ADR-0005, IADR-0590。Refs GHSA-j4qv-2w99-xg5p）。緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ。
+#   ［2026-10-23］従前（IADR-0307 決定 4 / IADR-0377 決定 3）は初回を PERMISSIVE で入り、STRICT は明示の opt-in だった。
 #   ［2026-10-01 / #1710］ISTIO_MTLS_MODE を付けない**再実行**は現行の mesh.mtlsMode を引き継ぐ（[2/7] の前の判定。IADR-0487）。
-#   PERMISSIVE へ戻すのも ISTIO_MTLS_MODE=PERMISSIVE の明示だけである。
-#   いきなり STRICT にすると、サイドカーの入っていない platform-infra（postgres / keycloak /
-#   rabbitmq / qdrant / valkey …）との通信と、注入前の Pod からの通信が**同時に**壊れる。
-#   段取りは「注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT」である。
+#   STRICT が効くのは**メッシュの Pod が受ける側**だけである（PeerAuthentication は受信の規則）。platform-infra（postgres /
+#   keycloak / rabbitmq / qdrant / valkey …）**へ出る**通信は auto-mTLS が平文へ落とすので STRICT の影響を受けない。
+#   受ける側の例外はメッシュ外の認可サーバからのバックチャネルログアウト 1 本だけ（下の 2 枚組）。
+#   段取り「注入 → 全 Pod Ready → STRICT」は、LOCALEDGE=1 の初回なら下の降格（入口を移した後に STRICT）が、
+#   ISTIO=1 単独の初回なら「注入ラベルを helm より前に貼る」（Pod は最初からサイドカー付きで生まれる）が満たす。
+#   メッシュ無しで立てたクラスタへ ISTIO=1 を足した再実行だけは、下の rollout restart の間に限り、注入前の Pod から注入後の
+#   Pod への平文が落ちる（作り直しが終われば消える。IADR-0590 §結果）。
 ISTIO_MESH_ARGS=""
 if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio service mesh (control plane)"
@@ -704,9 +972,9 @@ if [ "${ISTIO:-}" = "1" ]; then
   helm repo update istio >/dev/null
   # base = CRD とクラスタ共通のリソース。istiod = コントロールプレーン。
   helm upgrade --install istio-base istio/base \
-    -n istio-system --create-namespace --version "${ISTIO_VERSION:-1.30.4}" --wait --timeout 5m
+    -n istio-system --create-namespace --version "$ISTIO_VERSION" --wait --timeout 5m
   helm upgrade --install istiod istio/istiod \
-    -n istio-system --version "${ISTIO_VERSION:-1.30.4}" \
+    -n istio-system --version "$ISTIO_VERSION" \
     -f deploy/istio/istiod-values-local.yaml --wait --timeout 10m
   # CRD が Established になるまで待つ（apply の競合を避ける。cert-manager と同じ作法）。
   for crd in peerauthentications.security.istio.io destinationrules.networking.istio.io \
@@ -733,8 +1001,13 @@ if [ "${ISTIO:-}" = "1" ]; then
   #   入口は既に Envoy であり、降格の理由（入口がメッシュ外の Traefik）が無い。再実行のたびに STRICT → PERMISSIVE → STRICT と緩めない。
   #   #1710: ↑ が成り立つのは ISTIO_MTLS_MODE が決まっているときである。未指定の再実行は [2/7] の前の判定が
   #   現行の mesh.mtlsMode を ISTIO_MTLS_MODE へ引き継ぐので、ここで空が残るのはリリースが無い・メッシュ未宣言（初回）だけ
-  #   ＝ 下の既定 PERMISSIVE は**初回の値**であって、再実行の降格ではない（IADR-0487）。
-  ISTIO_MTLS_MODE_AT_INSTALL="${ISTIO_MTLS_MODE:-PERMISSIVE}"
+  #   ＝ 下の既定は**初回の値**であって、再実行の昇格・降格ではない（IADR-0487）。
+  #   NFR-18, IADR-0590: 初回の値は STRICT（従前は PERMISSIVE）。決めた値は istio-edge-up.sh [5/5] へも同じ変数で渡る。
+  if [ -z "${ISTIO_MTLS_MODE:-}" ]; then
+    ISTIO_MTLS_MODE="STRICT"
+    echo "    INFO: mesh.mtlsMode は既定の STRICT を宣言します（初回・メッシュ未宣言。緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ）"
+  fi
+  ISTIO_MTLS_MODE_AT_INSTALL="$ISTIO_MTLS_MODE"
   if [ "${LOCALEDGE:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ] && [ "$EDGE_ON_ISTIO" != "1" ]; then
     ISTIO_MTLS_MODE_AT_INSTALL="PERMISSIVE"
   fi
@@ -743,8 +1016,8 @@ if [ "${ISTIO:-}" = "1" ]; then
   #   ＝ istioInjection=true にしても注入ラベルが誰にも適用されない。ここで明示的に貼る。
   #   （本番像は namespace.create=true なのでチャートが貼る。同じ結果を 2 経路で担保する。）
   kubectl label namespace "$MSP_NS" istio-injection=enabled --overwrite
-  echo "    mTLS モード: ${ISTIO_MTLS_MODE:-PERMISSIVE}（STRICT へ移すには ISTIO_MTLS_MODE=STRICT で再実行）"
-  if [ "$ISTIO_MTLS_MODE_AT_INSTALL" != "${ISTIO_MTLS_MODE:-PERMISSIVE}" ]; then
+  echo "    mTLS モード: ${ISTIO_MTLS_MODE}（緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ）"
+  if [ "$ISTIO_MTLS_MODE_AT_INSTALL" != "$ISTIO_MTLS_MODE" ]; then
     echo "    （この段では ${ISTIO_MTLS_MODE_AT_INSTALL}。STRICT への昇格は入口を移した後 = istio-edge-up.sh の [5/5]）"
   fi
 fi
@@ -766,6 +1039,7 @@ if [ "${LOCALEMBED:-}" = "1" ]; then
   LOCALEMBED_ARGS="--set embedding.deterministicLocal.enabled=true"
 fi
 echo "==> [6/7] helm upgrade --install (values-local)"
+echo "    image tag: ${IMAGE_TAG}（ロールバックは前のタグで helm upgrade。docs/operations/operations.md §イメージのタグの固定とロールバック）"
 # NFR, IADR-0210 決定 7, #1688: **後から Recreate へ変えた Deployment は、既存リリースに RollingUpdate の既定値
 #   （spec.strategy.rollingUpdate）が残っている。** Helm 4 の SSA はそれを消さず（チャートの `rollingUpdate: null` でも
 #   消えないことを実測）、`type: Recreate` と同居して upgrade 全体が落ちる。helm の前に冪等な patch で寄せる。
@@ -787,8 +1061,12 @@ if [ -n "$DEPT_SYNC_DECLARE" ]; then
 fi
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
+  -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
+# NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける
+#   （ExternalSecret を先に消す。残すと ESO が Secret を作り直す。ESO の CRD が無いクラスタでは何もしない）。
+kubectl -n "$MSP_NS" delete externalsecret rabbitmq-app --ignore-not-found >/dev/null 2>&1 || true
+kubectl -n "$MSP_NS" delete secret rabbitmq-app --ignore-not-found >/dev/null
 # NFR-18, IADR-0522（#1860 監査指摘 2）: セッションストアのパスワードを変えたときだけ、Valkey（[4/7]）の**後に**
 #   BFF を作り直す（env は Pod の起動時にしか読まれない。helm upgrade は BFF のテンプレートを変えない）。
 if [ -n "$session_store_rotated" ]; then
@@ -814,7 +1092,7 @@ if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio sidecar injection (rollout restart)"
   kubectl -n "$MSP_NS" rollout restart deployment
   # #1088 実測（空の namespace から ISTIO=1 ＋ ESO=1 で立てたとき）: ESO が供給する Secret（postgres-app /
-  # rabbitmq-app / bff-oidc / identity-admin-oidc …）は**この後**の ESO ブロックで初めて作られるため、ここで
+  # msp-rabbitmq-users / bff-oidc / identity-admin-oidc …）は**この後**の ESO ブロックで初めて作られるため、ここで
   # Pod の Ready を待つと CreateContainerConfigError のまま 10 分待って up 全体が落ちる。既存クラスタへの
   # 再実行（Secret が残っている）では表面化しなかった。待ちは best-effort にし、**fail-closed の門は
   # check-stack-ready.js の G1**（Deployment の available と Pod の Ready）に置く。
@@ -889,6 +1167,18 @@ vault_openbao_migration_gate() {
   esac
 }
 
+# NFR-21, NFR-18, IADR-0548 (#1868): 秘匿管理の日次バックアップ（CronJob platform-backup-vault）が raft のスナップショットを
+# 取るための k8s auth の role と最小のポリシー（sys/storage/raft/snapshot の read だけ）を入れる。**永続化の overlay を当てて
+# unseal を待った後に毎回呼ぶ**（VAULT ブロックと ESO ブロックの当て直し。冪等）。ESO の有無によらない —— 入れないと
+# バックアップの Job がログインできず、毎日の回が失敗する。root トークンは vault Pod の中でだけ使う（Job へは渡さない）。
+# 失敗しても起動は止めない（秘匿管理そのものは動いている）。WARN を出し、バックアップの Job の失敗として見えるに任せる。
+platform_backup_vault_bootstrap() {
+  if ! bash deploy/local/platform-backup/vault/bootstrap.sh; then
+    echo "WARN: 秘匿管理のバックアップの認証（deploy/local/platform-backup/vault/bootstrap.sh）を入れられませんでした。" >&2
+    echo "WARN:   CronJob platform-backup-vault はログインできずに失敗します。docs/operations/platform-infra-backup-runbook.md §1 の 5 を見て再実行してください。" >&2
+  fi
+}
+
 if [ "${VAULT:-}" = "1" ]; then
   echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
   # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
@@ -915,8 +1205,12 @@ if [ "${VAULT:-}" = "1" ]; then
     echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
     vault_openbao_migration_gate
   fi
+  VAULT_PERSIST_APPLIED=0
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
+    if [ "$VAULT_KUSTOMIZE" = "deploy/local/vault-persistence" ]; then
+      VAULT_PERSIST_APPLIED=1
+    fi
   else
     echo "    WARN: external-secrets.io CRD 未導入のため ClusterSecretStore/Vault は skip。" >&2
     echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用（非永続・再起動で揮発）:" >&2
@@ -925,6 +1219,9 @@ if [ "${VAULT:-}" = "1" ]; then
   # 永続化版は readinessProbe（vault status＝unseal 済み）を持つ。ここで待たないと、後段の ESO bootstrap が
   # unseal 前に `kubectl exec` して "Vault is sealed" で落ちる。-dev（PERSIST=0）は probe が無く即座に返る。
   kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+  if [ "$VAULT_PERSIST_APPLIED" = "1" ]; then
+    platform_backup_vault_bootstrap
+  fi
 fi
 
 # IADR-0096 (#310): Vault＋ESO で secret を Pod へ自動供給する（本番同等・k8s auth）。opt-in（既定オフ・fail-safe）。
@@ -942,12 +1239,14 @@ if [ "${ESO:-}" = "1" ]; then
   # #310 フォローアップ（本 fix）: chart 版を **pin** する。latest 追従だと、v1beta1 の提供を停止し v1 を GA と
   # する版（例 2.x）を掴んだ瞬間、deploy/local/vault/eso/*.yaml（本 fix で external-secrets.io/v1 へ移行済み）が
   # 参照する API と CRD の served バージョンが乖離し、"no matches for kind ... in version" で apply が失敗する。
-  # 既定は v1 を GA 提供する安定版（動作実証済み）。上書きは ESO_CHART_VERSION で可能（同じく v1 提供版を選ぶこと）。
-  ESO_CHART_VERSION="${ESO_CHART_VERSION:-2.8.0}"
+  # 既定は v1 を GA 提供する安定版（動作実証済み）。
+  # ［2026-10-15 / #1858・IADR-0547］版は冒頭の pin_version が決め（ESO_CHART_VERSION は同じ値しか受けない）、
+  #   内側のイメージは values（tag@digest）が持つ。版を上げるときは両方を対で改める。
   helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
   helm repo update external-secrets >/dev/null 2>&1 || true
   helm upgrade --install external-secrets external-secrets/external-secrets \
     --version "$ESO_CHART_VERSION" \
+    -f deploy/local/vault/eso/external-secrets-values.yaml \
     -n external-secrets --create-namespace --set installCRDs=true --wait
   # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
   kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml
@@ -962,17 +1261,16 @@ if [ "${ESO:-}" = "1" ]; then
   # (3) Stakater Reloader: Secret が変わったら、注釈（secret.reloader.stakater.com/reload）を持つ Deployment を作り直す
   #     （env の secretKeyRef は Pod 起動時に 1 度だけ解決される。IADR-0103）。**chart と image を pin する**（ESO と同じ理由）。
   #     🔴 見る名前空間を 3 つに限る（watchGlobally=false ＋ namespaces ＝ 各名前空間の Role。クラスタ全体の Secret を読ませない）。
-  #     上書きは RELOADER_CHART_VERSION / RELOADER_IMAGE_TAG（chart の既定の image と合わせること）。
-  RELOADER_CHART_VERSION="${RELOADER_CHART_VERSION:-2.2.17}"
-  RELOADER_IMAGE_TAG="${RELOADER_IMAGE_TAG:-v1.4.22}"
+  #     ［2026-10-15 / #1858・IADR-0547］chart の版は冒頭の pin_version、image は values（tag@digest）が持つ
+  #     （従前の --set image.tag は tag だけで digest を持てないので外した。RELOADER_IMAGE_TAG は冒頭で拒否する）。
   helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
   helm repo update stakater >/dev/null 2>&1 || true
   helm upgrade --install reloader stakater/reloader \
     --version "$RELOADER_CHART_VERSION" \
+    -f deploy/local/reloader/values.yaml \
     -n reloader --create-namespace \
     --set reloader.watchGlobally=false \
     --set "reloader.namespaces={$MSP_NS,$INFRA_NS,ai-stock-trading}" \
-    --set image.tag="$RELOADER_IMAGE_TAG" \
     --wait
   # IADR-0457 (#1479): 🔴 新規クラスタでは上の VAULT ブロックの時点で ESO の CRD が無く、Vault は -dev（非永続）の
   # フォールバックで立っている。ESO を入れた「後」にここで永続化オーバーレイを当て直し、unseal を待ってから seed する
@@ -981,6 +1279,7 @@ if [ "${ESO:-}" = "1" ]; then
     vault_openbao_migration_gate
     kubectl apply -k deploy/local/vault-persistence
     kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+    platform_backup_vault_bootstrap
   fi
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
@@ -994,9 +1293,9 @@ if [ "${ESO:-}" = "1" ]; then
   # NFR, ADR-0002 (#1012): サービス DB のパスワード。手動 apply は上の `ESO != 1` ブロックで
   # スキップされるので、**これが唯一の供給元**である（欠けると DB を持つ全サービスが起動しない）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres-app.yaml
-  # NFR, ADR-0027 (#1022): ブローカのパスワード（app 側）。手動 apply は上の `ESO != 1` ブロックで
-  # スキップされるので、**これが唯一の供給元**である（欠けると RabbitMQ を使う 7 サービスが起動しない）。
-  kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-app.yaml
+  # NFR-18, IADR-0577（旧 #1022 の rabbitmq-app）: 基盤の 7 サービスのサービスごとの資格情報（消費側の写し）。手動の作成は
+  # 上の `ESO != 1` ブロックでスキップされるので、**これが唯一の供給元**である（欠けると RabbitMQ を使う 7 サービスが起動しない）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-msp-rabbitmq-users.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   # IADR-0098 (#310) PR-3: OIDC client secret 群。grafana/vault/headlamp-oidc は platform-infra ns（MSP ns の minio-oidc は IADR-0461 で撤去）。
@@ -1007,6 +1306,9 @@ if [ "${ESO:-}" = "1" ]; then
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
+  # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: BFF が AST の OpenD 認証サイドカーへ名乗る共有シークレット。
+  # 値は Vault ai-stock-trading/opend-auth（AST の chart と同じキー）。無ければ Secret が作られず、BFF は起動したまま上流を呼ばない。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml
   # #1101: SC-17 の Keycloak Admin REST 反映に使う client secret。手動 apply は上の `ESO != 1`
   # ブロックでスキップされるので、**これが唯一の供給元**である（欠けると authorization-service Pod が
   # 起動しない）。常時供給。
@@ -1035,6 +1337,11 @@ if [ "${ESO:-}" = "1" ]; then
   fi
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
+    # NFR-21, IADR-0571 (#2044): 警報メールの宛先。**bootstrap は seed しない**（宛先に dev の既定は無い）。
+    # KV（secret/msp/alertmanager-mail の to）が無いあいだは SecretSyncedError のまま Secret を作らず、
+    # Alertmanager は default-null へ落ちて起動する（＝「宛先が未供給」が ExternalSecret の状態に見える）。
+    # 同期を待たない（KV が無い既定で待ちが毎回タイムアウトするため）。下の rollout が前回までに同期した値を読む。
+    kubectl apply -f deploy/local/vault/eso/externalsecret-alertmanager-mail.yaml
   fi
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
@@ -1044,6 +1351,9 @@ if [ "${ESO:-}" = "1" ]; then
   # （所有・再作成しない）。値は seed=step3 と完全一致のため Pod 再起動や PVC 初期化済み DB の不整合は起きない。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
+  # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーのパスワード（ブローカ側の写し）。
+  #   読み手は下の reconcile-users.sh だけ（同期を待ってからユーザーと権限を合わせる）。種は bootstrap.sh が乱数で入れる。常時 apply。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # SC-15, FR-22, ADR-0026/ADR-0045 決定 6 ＋ ADR-0078 決定 2, IADR-0332 / IADR-0404 (#1102 / #1245):
   # 近接 MTA が読む上流の接続条件。**手動 apply は step [3/7] で保持済み**（dev 既定。ESO の有無によらず作る）。
@@ -1058,6 +1368,8 @@ if [ "${ESO:-}" = "1" ]; then
   # **手動 apply は step [3/7] で保持済み**（ESO の有無によらず作る。無いと門が起動しない）。
   # ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の値をマージするのみ。
   kubectl apply -f deploy/local/vault/eso/externalsecret-reset-gate-oidc.yaml
+  # NFR-18, IADR-0576: 投入器の主体の client secret（手動 apply は [3/7] で保持済み。Merge で Vault の値を重ねる）。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-abac-seeder-oidc.yaml
   # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1 (#1287): 合成監視のプローブが client_credentials で
   # 名乗るための client secret。**SYNTHETIC=1 のときだけ apply する**（wikijs-oidc と同じ形。
   # 立てていないゲートの ExternalSecret を作ると `get secret` が NotFound を返して運用者を惑わす）。
@@ -1065,16 +1377,20 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${SYNTHETIC:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
   fi
+  # NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報。読み手は realm の後追い Job（envFrom・optional）と
+  #   [3/7] の取り込み元。**Vault の種は入れない**（KV `secret/msp/e2e-accounts` は運用者が deploy/local/README.md の手順で入れる）。
+  #   KV が無い間は同期に失敗して Secret が出来ず、e2e 利用者は作られない（他の機能には影響しない）。常時 apply。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-e2e-accounts.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
-  msp_es="llm-provider-credentials object-storage-credentials postgres-app rabbitmq-app wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
+  # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app（IADR-0577 で msp-rabbitmq-users へ置き換え・本数は不変）、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7、IADR-0573 で rabbitmq-users を追加し 7 → 8、IADR-0576 で abac-seeder-oidc を追加し 8 → 9 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
+  msp_es="llm-provider-credentials object-storage-credentials postgres-app msp-rabbitmq-users wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
   [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
-  infra_es="postgres rabbitmq keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc"
-  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
+  infra_es="postgres rabbitmq rabbitmq-users keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts abac-seeder-oidc"
+  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc alertmanager-mail"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/object-storage-credentials/postgres-app/rabbitmq-app/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
-  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
+  echo "    ESO: llm/object-storage-credentials/postgres-app/msp-rabbitmq-users/wikijs-db/wikijs-sync（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc/keycloak-smtp/reset-gate-oidc/e2e-accounts/abac-seeder-oidc、および有効ゲートの grafana/headlamp-oidc（infra ns）と wikijs-oidc（MSP ns）を"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret $msp_es"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
@@ -1099,6 +1415,39 @@ if [ "${ESO:-}" = "1" ]; then
         || echo "      warn: $ns/$es が SecretSynced になりません（rollout は継続）"
     done
   }
+  # NFR-18, IADR-0616 (#2195): 同期を**依頼して**、その依頼の後の同期が済むまで待つ。
+  #   `condition=Ready` だけでは足りない —— 前回の実行の同期で Ready は既に True なので、[3/7] で Secret を置き直した後でも
+  #   待たずに通り、読み手（投入器・門・近接 MTA）が置き直した値で名乗る（稼働 PoC で投入器 3 つが 401。#2195）。
+  #   force-sync 注釈（ESO は値が変わると同期し直す）を付ける前の `status.refreshTime` を控え、それが変わり、かつ Ready が True に
+  #   なるまで待つ（時刻を解釈しない＝date の方言に依らない。控えた後の同期は全て [3/7] より後である）。
+  #   best-effort（期限〔ESO_FORCE_SYNC_TIMEOUT 秒・既定 90〕を過ぎたら warn して続ける。eso_wait と同じ）。
+  eso_force_sync_wait() { # ns externalsecret-name [name...]
+    local ns="$1"; shift
+    local es before now ready deadline
+    for es in "$@"; do
+      before="$(kubectl -n "$ns" get externalsecret "$es" -o jsonpath='{.status.refreshTime}' 2>/dev/null || true)"
+      if ! kubectl -n "$ns" annotate externalsecret "$es" "force-sync=$(date +%s)" --overwrite >/dev/null 2>&1; then
+        echo "      warn: $ns/$es に同期を依頼できません（続行）"
+        continue
+      fi
+      deadline=$((SECONDS + ${ESO_FORCE_SYNC_TIMEOUT:-90}))
+      while :; do
+        now="$(kubectl -n "$ns" get externalsecret "$es" -o jsonpath='{.status.refreshTime}' 2>/dev/null || true)"
+        ready="$(kubectl -n "$ns" get externalsecret "$es" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+        if [ -n "$now" ] && [ "$now" != "$before" ] && [ "$ready" = "True" ]; then
+          echo "      synced $ns/$es（依頼の後の同期）"
+          break
+        fi
+        if [ "$SECONDS" -ge "$deadline" ]; then
+          # IADR-0616「結果」: この warn の後の投入器の WARN（401）は、古い値で名乗った疑いがある。手順は deploy/local/README.md §機密情報。
+          echo "      warn: $ns/$es が依頼の後に同期しません（読み手は置き直した値で名乗り得る。続行）"
+          echo "            投入器の WARN（401）が出たら、kubectl -n $ns get externalsecret $es で同期を確かめてから投入器を流し直す（deploy/local/README.md）"
+          break
+        fi
+        sleep 2
+      done
+    done
+  }
   # #1255: retrieval / ingestion の s2s 資格情報。**env(secretKeyRef) で読む Pod がある**ので
   # rollout の前に同期を待つ（待たずに restart すると新 Pod も供給前の Secret を掴む。IADR-0103）。
   # #1817: mcp-client-admin-oidc も同じ理由で待つ（mcp-service が env で読む。下の rollout の対象に既に居る）。
@@ -1121,11 +1470,26 @@ if [ "${ESO:-}" = "1" ]; then
   # 他と同じく best-effort（warn を出して継続。実値が空でも同期自体は成立する）。
   # #1245 PR-C: reset-gate-oidc も **rollout のために待つ**（門が env で読む。同期前に restart すると
   # 新しい門も供給前の値をつかみ、401 を打ち続ける＝**窓が開いたまま**になる。IADR-0103）。
-  infra_sync="keycloak-smtp reset-gate-oidc"
+  # IADR-0576: abac-seeder-oidc も待つ（この後の投入器が Secret から読む。同期前に読むと [3/7] の値で名乗る）。
+  # ［IADR-0616 / #2195］この 3 つは [3/7] が土台を置く（Merge）ので、Ready ではなく「依頼の後の同期」を待つ（eso_force_sync_wait）。
+  eso_force_sync_wait "$INFRA_NS" keycloak-smtp reset-gate-oidc abac-seeder-oidc
+  infra_sync=""
   [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
   # shellcheck disable=SC2086
   [ -n "$infra_sync" ] && eso_wait "$INFRA_NS" $infra_sync
+  # NFR-10, IADR-0570 (#2024): e2e-accounts が同期したら realm の後追いを**もう一度**当てる —— 上の（helm の前の）後追いは
+  #   ESO より前に走るので、新規クラスタの初回では Secret がまだ無く e2e 利用者を外している。冪等（在れば何もしない）。
+  #   KV を入れていなければ同期しないので待ちは短くし、案内だけ出す。失敗は WARN（届いたかは check-stack-ready.js の G9 が見る）。
+  if kubectl -n "$INFRA_NS" wait --for=condition=Ready externalsecret/e2e-accounts \
+    --timeout="${E2E_ACCOUNTS_SYNC_TIMEOUT:-30s}" >/dev/null 2>&1; then
+    echo "      synced $INFRA_NS/e2e-accounts → 試験アカウントを realm へ当てる"
+    bash "$ROOT/deploy/local/keycloak-setup/reconcile-realm.sh" \
+      || echo "    WARN: 試験アカウントの後追いに失敗（bash deploy/local/keycloak-setup/reconcile-realm.sh で再実行できる）" >&2
+  else
+    echo "      note: $INFRA_NS/e2e-accounts が同期しない（KV secret/msp/e2e-accounts が無い）。試験アカウントは作らない" \
+      "（使うときは deploy/local/README.md の「試験アカウント（e2e-*）」）"
+  fi
 
   # 2) 供給後の値で env を作り直す。対象＝**ESO 管理 Secret を env(secretKeyRef) で参照する Deployment**。
   #      seaweedfs         : object-storage-credentials（S3 の管理者資格情報。IADR-0461）
@@ -1145,6 +1509,15 @@ if [ "${ESO:-}" = "1" ]; then
   #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
   #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く
   #    bootstrap が CLI で読むため rollout 不要。
+  # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカにサービスごとのユーザーと権限を作る・合わせる（冪等。移行の段 1）。
+  #   既定のユーザーと、それを使う既存の接続には触れない（各サービスの切り替えは消費側の段。既定のユーザーの無効化はその後）。
+  #   🔴 合わせられなければ止める（後の段で消費側が切り替えた瞬間に接続できなくなるのを、ここで先に見せる）。
+  echo "    ブローカのサービスごとのユーザーを合わせる（deploy/local/rabbitmq-setup/users.txt・IADR-0573）"
+  if ! bash "$ROOT/deploy/local/rabbitmq-setup/reconcile-users.sh"; then
+    echo "ERROR: ブローカのサービスごとのユーザーを合わせられない。bash deploy/local/rabbitmq-setup/reconcile-users.sh で再実行できる" >&2
+    exit 1
+  fi
+
   for d in seaweedfs llmgateway-service wiki-service wiki-js retrieval-service ingestion-service \
            aianalysis-service graph-service conversion-service datasource-service mcp-service \
            document-service; do
@@ -1164,6 +1537,9 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${OBSERVABILITY:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
       && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"
+    # IADR-0571 (#2044): 警報メールの宛先は initContainer が Pod 起動時に描画する。供給後の値で作り直す。
+    kubectl -n "$INFRA_NS" rollout restart deploy/alertmanager >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/alertmanager" || echo "      skip $INFRA_NS/alertmanager（未デプロイ）"
   fi
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl -n "$INFRA_NS" rollout restart deploy/headlamp >/dev/null 2>&1 \
@@ -1187,9 +1563,11 @@ if [ "${ARGOCD:-}" = "1" ]; then
   # ため大 CRD が通る。--force-conflicts は旧 client-side 実行済みクラスタ再実行時の field 所有権競合を
   # server-side manager が奪取して冪等・再実行安全にする（本ブートストラップは install manifest の再適用を
   # 前提とし、ArgoCD 自身が同 CRD を自己管理下に置いた後の再実行は想定しない）。
-  # IADR-0519 (#1843): URL は版のタグ（ARGOCD_VERSION。冒頭で形を検査済み）。従前の `stable` は取得のたびに中身が変わり得た。
-  echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519)"
-  kubectl apply --server-side --force-conflicts -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
+  # IADR-0519 (#1843): URL は版のタグ。従前の `stable` は取得のたびに中身が変わり得た。
+  # ［2026-10-15 / #1858・IADR-0547］URL と内側の 3 イメージ（argocd・dex・redis）の digest は kustomization が持つ
+  #   （kustomize の images 置換）。版は冒頭の pin_version が決め、ARGOCD_VERSION は同じ値しか受けない。
+  echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519・digest は IADR-0547)"
+  kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
   kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
@@ -1381,26 +1759,15 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
     kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
     kubectl -n kube-system rollout restart deploy/coredns
     kubectl -n kube-system rollout status deploy/coredns --timeout=120s
-    # argocd namespace が存在するときのみ、argocd 用の管理ツール Ingress を追加適用する
-    # （ns 不在時に失敗させない fail-safe。ArgoCD は ARGOCD=1 の別 opt-in で作成される）。
-    if kubectl get namespace argocd >/dev/null 2>&1; then
-      kubectl apply -f deploy/local/edge/argocd-ingress.yaml
-    fi
+    # NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路（admin(50000)）は ADMIN_EDGE=1 のときだけ置き、それ以外では消す。
+    #   argocd 用の Ingress は従来どおり argocd namespace が在るときだけ扱う（ns 不在時に失敗させない fail-safe）。
+    admin_edge_traefik
   fi
 
-  # IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
+  # IADR-0206 (#779): エッジ TLS 終端。selfsigned→CA の 2 段で
   # ルート CA（Secret cert-manager/local-edge-root-ca）と葉証明書（Secret edge-tls）を作る。
-  # --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
-  # 順序が要る: CRD が Established になる前に tls/ を apply すると "no matches for kind Certificate" で落ちる。
-  # バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。ESO と同じく
-  # env で上書きできるが、既定は動作を実測した版を置く。上書き時も CRD の apiVersion 差に注意すること。
-  CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.21.1}"
-  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0206)"
-  kubectl apply --server-side --force-conflicts -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
-  kubectl wait --for=condition=Established --timeout=120s \
-    crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
-  kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
-  kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+  # cert-manager 自体は [4/7] の基盤の証明書（IADR-0591）のために導入済み（install_cert_manager は 2 回目以降は何もしない）。
+  install_cert_manager
   # webhook が Ready でも数秒は TLS ハンドシェイクを拒むことがあるため、apply は数回試す（冪等）。
   for attempt in 1 2 3 4 5; do
     kubectl apply -k deploy/local/edge/tls && break
@@ -1422,7 +1789,11 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
 
   echo "    platform フロント: https://localhost/ (443・cert-manager 発行 edge-tls。80 は https へ恒久リダイレクト)"
   echo "    ルート CA の取り出し: kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d"
-  echo "    管理ツール(50000・https): https://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
+  if [ "${ADMIN_EDGE:-}" = "1" ]; then
+    echo "    管理ツール(50000・https・ADMIN_EDGE=1): https://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
+  else
+    echo "    管理ツール: 50000 には経路を置いていない（既定。IADR-0586）。入り方は kubectl port-forward（deploy/local/edge/README.md「管理ツールへの入り方」）"
+  fi
   echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
 
   # ADR-0021, #782: エッジを Istio Ingress Gateway へ移す（ISTIO=1 と併用したときだけ）。
@@ -1439,16 +1810,31 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   #   [2/5] は Service が既に無いので即座に通り、Gateway・経路・CoreDNS・mTLS を当て直して現状を確かめる。
   if [ "${ISTIO:-}" = "1" ]; then
     echo "==> [opt-in] エッジを Istio Ingress Gateway へ移す (ADR-0021 / #782)"
-    ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"
+    ADMIN_EDGE="${ADMIN_EDGE:-}" ISTIO_MTLS_MODE="${ISTIO_MTLS_MODE:-}" bash "$ROOT/scripts/istio-edge-up.sh"
     echo "    切り戻し（1 コマンド）: bash scripts/istio-edge-down.sh --live"
   fi
 fi
 
 # 🔴 ISTIO=1 だけで LOCALEDGE=1 が無いと、エッジは port-forward のままである。
-#   その状態で ISTIO_MTLS_MODE=STRICT にすると mesh 内へ入る経路が無くなる（気付きにくい）。
+#   ［2026-10-23 / IADR-0590］port-forward は STRICT でも届く（Pod の loopback へ入り、受信のサイドカーを通らない。手元の
+#   k3s v1.35.4 ＋ Istio 1.30.4 で実測 200）。ブラウザのエッジ経路（*.localhost の 80/443）は無いままなので告げる。
 if [ "${ISTIO:-}" = "1" ] && [ "${LOCALEDGE:-}" != "1" ]; then
-  echo "WARN: ISTIO=1 ですが LOCALEDGE=1 がありません。エッジは Istio Ingress Gateway へ移りません。" >&2
-  echo "      STRICT へ上げる前に LOCALEDGE=1 を併用してください（ADR-0021 / #782）。" >&2
+  echo "WARN: ISTIO=1 ですが LOCALEDGE=1 がありません。エッジは Istio Ingress Gateway へ移りません（入口は port-forward のまま）。" >&2
+  echo "      ブラウザのエッジ経路が要るなら LOCALEDGE=1 を併用してください（ADR-0021 / #782）。" >&2
+fi
+
+# NFR-18, ADR-0005, IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: STRICT の間、サイドカーの無い呼び出し元からメッシュの Pod への
+#   平文は受け手のサイドカーが切る。経路B で MSP を呼ぶメッシュ外の名前空間は AST（別リポジトリの chart が配備する）である。
+#   AST の Pod が居て、その名前空間に注入ラベルが無いなら告げる（止めない —— 緩める判断は ISTIO_MTLS_MODE=PERMISSIVE の明示で行う）。
+#   AST をメッシュへ入れる手順は deploy/istio/README.md「STRICT の前提」。
+if [ "${ISTIO:-}" = "1" ] && [ "${ISTIO_MTLS_MODE:-}" = "STRICT" ]; then
+  ast_injection="$(kubectl get namespace "$AST_NS" -o jsonpath='{.metadata.labels.istio-injection}' 2>/dev/null || true)"
+  ast_pods="$(kubectl -n "$AST_NS" get pods --no-headers 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${ast_pods:-0}" != "0" ] && [ "$ast_injection" != "enabled" ]; then
+    echo "WARN: mTLS は STRICT ですが、名前空間 ${AST_NS} に注入ラベル（istio-injection=enabled）がありません（Pod ${ast_pods} 個）。" >&2
+    echo "      ${AST_NS} から ${MSP_NS} への呼び出しは届きません。AST をメッシュへ入れる（deploy/istio/README.md「STRICT の前提」）か、" >&2
+    echo "      入れるまでの間だけ ISTIO_MTLS_MODE=PERMISSIVE を明示して再実行してください。" >&2
+  fi
 fi
 
 # IADR-0133 (#517): ABAC の属性辞書とポリシーを dev 既定値で投入する。ポリシーが 0 件だと
@@ -1631,6 +2017,16 @@ if [ "${PERSIST:-1}" != "0" ]; then
   if [ "$backup_missing_image" = "1" ] || [ "$backup_missing_recipients" = "1" ] || [ "$backup_patch_failed" = "1" ]; then
     echo "WARN:   前提を揃えて再実行すると有効に戻ります（docs/operations/platform-infra-backup-runbook.md）。" >&2
   fi
+fi
+
+# NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: 移行の段 3 の最後 —— ブローカの既定のユーザーを無効化する。
+#   消すのは、宣言の全ユーザーが認証でき、かつ既定のユーザーの接続が 1 本も無いときだけ（disable-default-user.sh が確かめる）。
+#   🔴 確かめられないときは消さずに WARN で通す（切り替わっていないサービスの接続を、起動器が切らない）。
+echo "==> ブローカの既定のユーザーを無効化する（全サービスの切り替えを確かめてから / IADR-0577）"
+if bash "$ROOT/deploy/local/rabbitmq-setup/disable-default-user.sh"; then
+  :
+else
+  echo "WARN: ブローカの既定のユーザーを無効化していない。切り替えを確かめてから bash deploy/local/rabbitmq-setup/disable-default-user.sh を再実行する" >&2
 fi
 
 echo ""

@@ -167,18 +167,19 @@ public class GrpcRagSearchTransportTests
         (await act.Should().NotThrowAsync()).Subject.Should().BeEmpty();
     }
 
-    // 🔴 T-07: **切替は構成の有無だけである。** `Services:RetrievalServiceGrpc` が無ければ
-    // 生成クライアントを**1 つも登録しない** —— 登録の有無で `Program.cs` が REST 輸送と
-    // gRPC 輸送を選ぶ（並走中の正は REST。戻すのは構成を外すだけでコードは変えない）。
+    // 🔴 T-07: **宛先が無ければ UNAVAILABLE を返す呼び出し器の上に組む**（[[IADR-0533]] 決定 2）。
+    // REST の並走は撤去済みなので、未構成は「届かない」と同じ枝（検索 0 件への縮退）へ倒す。
     [Fact]
-    public void 宛先が未設定なら生成クライアントを登録しない()
+    public async Task 宛先が未設定なら届かない宛先として登録する()
     {
-        var services = new ServiceCollection()
-            .AddRetrievalSearchGrpcClient(new ConfigurationBuilder().Build());
+        using var sp = new ServiceCollection()
+            .AddRetrievalSearchGrpcClient(new ConfigurationBuilder().Build())
+            .BuildServiceProvider();
 
-        services.Should().NotContain(
-            d => d.ServiceType == typeof(Pb.DocumentSearch.DocumentSearchClient),
-            "未設定なら何も登録しない（REST のまま）");
+        var client = sp.GetRequiredService<Pb.DocumentSearch.DocumentSearchClient>();
+        var act = async () => await client.SearchAsync(new Pb.SearchRequest(), cancellationToken: TestContext.Current.CancellationToken);
+        (await act.Should().ThrowAsync<RpcException>()).Which.Status.Detail
+            .Should().Contain(RetrievalSearchGrpcClientExtensions.AddressKey);
     }
 
     [Fact]

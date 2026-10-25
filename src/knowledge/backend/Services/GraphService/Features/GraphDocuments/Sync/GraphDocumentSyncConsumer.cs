@@ -64,6 +64,7 @@ public class GraphDocumentSyncConsumer(
     TagEdgeSynchronizer tagEdges,
     ConsumerCallTimeouts calls,
     GraphSyncTimeouts timeouts,
+    ITagEdgeLocks locks,
     ILogger<GraphDocumentSyncConsumer> logger) : IPipelineStep<DocumentUpdated>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -74,15 +75,40 @@ public class GraphDocumentSyncConsumer(
     // 🔴 [[IADR-0521]] 決定 7 (#1396): **1 通を 1 つのトランザクションに収める。** 共有タグの差分の排他
     // （`ITagEdgeLocks`）はトランザクションの寿命で持ち、所属・件数の読み取りから保存までを覆う。
     // 確定するまで排他は解けない（同じタグへ同時に入った他の通は、確定した行を読んでから差分を取る）。
+    //
+    // 🔴 FR-17, FR-19, IADR-0639 決定 1・2 (#2150 / #2251): **順序の門。** 文書の排他を先に取り、版の印（墓石）を読む。印より厳密に古い
+    // 更新（同じ時刻で連番が小さいものを含む）は何もせずに ack する。撤収・削除の後に遅れて届いた古い更新でノードを作り直さず、
+    // 古い撤収で新しいノードを消さない。反映したら（撤収を含む）同じトランザクションで印を進める。
+    // 排他は既存の文書の排他（`ITagEdgeLocks.LockDocumentAsync`。トランザクションの寿命）であり、後段の差分でもう一度取っても再入で済む。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
         await using var tx = await GraphSyncTransaction.BeginAsync(db, ct);
-        await ApplyAsync(ev, ct);
+        await locks.LockDocumentAsync(ev.DocumentId, ct);
+        var mark = await db.SyncMarks.FirstOrDefaultAsync(m => m.DocumentId == ev.DocumentId, ct);
+        if (GraphSyncOrdering.IsStaleUpdate(mark, ev.UpdatedAt, ev.Sequence))
+        {
+            logger.LogInformation(
+                "Skipped stale DocumentUpdated for {DocumentId} (event={EventAt:o}/{EventSequence} applied={AppliedAt:o}/{AppliedSequence} deleted={Deleted})",
+                ev.DocumentId, ev.UpdatedAt, ev.Sequence, mark!.AppliedAt, mark.AppliedSequence, mark.Deleted);
+            return;
+        }
+
+        if (await ApplyAsync(ev, ct))
+        {
+            if (mark is null)
+            {
+                mark = GraphDocumentSyncMark.For(ev.DocumentId);
+                db.SyncMarks.Add(mark);
+            }
+            mark.RecordUpdated(ev.UpdatedAt, ev.Sequence);
+            await db.SaveChangesAsync(ct);
+        }
         if (tx is not null)
             await tx.CommitAsync(ct);
     }
 
-    private async Task ApplyAsync(DocumentUpdated ev, CancellationToken ct)
+    // 反映したか（撤収を含む）を返す。移行前（印が無い）のノードより古い更新は従前どおり `TryApply` が拒み、false を返す（印を進めない）。
+    private async Task<bool> ApplyAsync(DocumentUpdated ev, CancellationToken ct)
     {
         // 🔴 FR-19, ADR-0061 決定 1・3・4 / [[IADR-0396]] 決定 4・5 (#1184): **グラフの門。**
         //
@@ -96,8 +122,22 @@ public class GraphDocumentSyncConsumer(
         // 明示した組織文書（#1879 / [[IADR-0529]]）はノードを作らない・既存のノードを撤収する。
         if (!DocumentExposure.IsGraphAllowed(ev.Attributes))
         {
-            await WithdrawAsync(ev.DocumentId, ct);
-            return;
+            await WithdrawAsync(ev.DocumentId, "the graph exposure toggle is off", ct);
+            return true;
+        }
+
+        // 🔴 FR-06, FR-17, FR-18, 計画 ADR-0141 決定 2・3, [[IADR-0551]] 決定 3 (#1961): **アーカイブの門。**
+        //
+        // アーカイブした文書はグラフ（SC-18・MCP のグラフ系ツール・AI 提案・クラスタ要約）に載せない。露出の門と同じく
+        // **ノードを作らない・既存のノードを撤収する**（辺・共有タグの複製も同じ手順で片付く）。AI 提案の候補とクラスタの母集合は
+        // `graph_documents`（ノード）なので、ノードが無くなれば両方から外れる。端点のノードが無い既存の提案は一覧に出ない（deny-closed）。
+        //
+        // 判定は `DocumentArchival.IsArchived`（台帳の状態）。取り込み・Wiki・MCP の一覧と同じ関数である。
+        // 本文を読む前に置く（一括の対象は本文が無い。表題だけのノードを作らない —— ADR-0141 決定 5 のグラフの行の暫定を解く）。
+        if (DocumentArchival.IsArchived(ev.Status))
+        {
+            await WithdrawAsync(ev.DocumentId, "the document is archived", ct);
+            return true;
         }
 
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == ev.DocumentId, ct);
@@ -125,7 +165,7 @@ public class GraphDocumentSyncConsumer(
                 logger.LogInformation(
                     "Skipped stale DocumentUpdated for {DocumentId} (event={EventAt:o} held={HeldAt:o})",
                     ev.DocumentId, ev.UpdatedAt, node.UpdatedAt);
-                return;
+                return false;
             }
         }
 
@@ -194,6 +234,7 @@ public class GraphDocumentSyncConsumer(
             ev.DocumentId, attributes.Count, reinstated,
             linkSync.Extracted, linkSync.Added, linkSync.Removed, linkSync.Unresolved,
             relinked.Count, tagSync.Tags, tagSync.Added, tagSync.Removed, tagSync.HubTags, termProfile);
+        return true;
     }
 
     // 🔴 FR-19, FR-20, ADR-0036 D-06, ADR-0098 決定 1, ADR-0061 決定 5,
@@ -234,7 +275,7 @@ public class GraphDocumentSyncConsumer(
     //
     // ［[[IADR-0521]] / #1396］**タグの複製も消す**（`GraphDocumentRemoval`）。残すと撤収した文書がタグの件数に
     // 数えられ続け、上限の判定（ハブ）を狂わせる。同名の文書を指していた他文書のリンクの作り直しも同じ手順で行う。
-    private async Task WithdrawAsync(Guid documentId, CancellationToken ct)
+    private async Task WithdrawAsync(Guid documentId, string reason, CancellationToken ct)
     {
         var node = await db.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, ct);
         var hasEdges = await db.Edges
@@ -249,9 +290,8 @@ public class GraphDocumentSyncConsumer(
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Withdrew graph document {DocumentId} ({Edges} edge(s), relinked={Relinked}): "
-            + "the graph exposure toggle is off",
-            documentId, removal.EdgesRemoved, removal.Relinked);
+            "Withdrew graph document {DocumentId} ({Edges} edge(s), relinked={Relinked}): {Reason}",
+            documentId, removal.EdgesRemoved, removal.Relinked, reason);
     }
 
     // 当該文書を端点とする却下済み提案について、**現在の**両端指紋で解除判定を行う。

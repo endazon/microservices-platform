@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace Knowledge.Bff.Endpoints;
 
@@ -244,6 +245,8 @@ public static class GraphBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "GraphService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             // 後段へ到達できない。**成功へ縮退しない** —— 承認できていないのに承認済みと
             // 見えるのが最悪である（辺が生まれたと誤認したまま棚卸しが進む）。
             return Results.StatusCode(StatusCodes.Status502BadGateway);
@@ -291,6 +294,8 @@ public static class GraphBffEndpoints
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
+            // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
+            BffDownstreamFailure.Report(http, "GraphService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             // 後段へ到達できない。**空応答へ縮退しない** —— グラフが「空」と「引けない」は
             // 利用者にとって別の意味であり、空を返すと「関係が無い」と読めてしまう。
             return Results.StatusCode(StatusCodes.Status502BadGateway);

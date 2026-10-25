@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-03, FR-05, FR-21, UC-01, SC-01, SC-02, NFR, ADR-0016, ADR-0017, ADR-0127, IADR-0009, IADR-0025, IADR-0085, IADR-0252, IADR-0255, IADR-0256, IADR-0284]
 author: claude
 created: 2026-08-30
-updated: 2026-10-05
+updated: 2026-10-11
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-model-routing.md
   - planning:projects/microservices-platform/07_adr/ADR-0017_embedding-model-selection.md
@@ -74,6 +74,10 @@ RetrievalService 不達）のどれが起きても 0 件になり、門が落ち
 応答へ「なぜ空か」を載せない —— 権限が無いのか該当が無いのかを利用者に区別させないことが
 `SearchBffEndpoints` の設計意図であり、そこは変えない。**縮退の観測は応答の外側（ログ）に既にある**
 （`WarnEmbeddingUnavailable` / `RoutingReason`）。案 3 は別 issue として残す。
+
+［2026-10-11 追記 / #1871］**「応答へ『なぜ空か』を載せない」は [IADR-0534](./IADR-0534_search-response-degraded-signal.md) が、
+理由の範囲を部品の健全性（埋め込み・グラフ展開・再順位付け）に限って、縮退の印を応答に載せることに改めた（部分 supersede）。**
+権限が無いのか該当が無いのかを区別させない線は変えない。印の出方と残余（`graph-expand-failed` と露出）は IADR-0534 §存在秘匿との関係・§結果。
 
 ### 決定 2: 埋め込みは**ティアA の決定的プロバイダ**で供給する
 

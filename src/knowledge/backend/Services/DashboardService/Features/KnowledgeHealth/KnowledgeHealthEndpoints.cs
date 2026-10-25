@@ -1,4 +1,3 @@
-using DashboardService.Features.KnowledgeHealth.Report;
 using DashboardService.Features.KnowledgeHealth.View;
 
 namespace DashboardService.Features.KnowledgeHealth;
@@ -22,8 +21,9 @@ namespace DashboardService.Features.KnowledgeHealth;
 // ここで用意するのは集計と統制であり、表示ではない。
 //
 // ADR-0065 決定 2 / ADR-0068 決定 1: 各操作の処理は `Features/KnowledgeHealth/<操作>/` に居る。
-// **ここに残すのは、操作をまたいで共有されるもの**だけである —— 閲覧側の route group と、
-// 受け口を `app` 直下へ登録する順序。**受け口は `/internal/...` にあり group の外である。**
+// **ここに残すのは、操作をまたいで共有されるもの**だけである —— 閲覧側の route group。
+// ［2026-10-15 / #1902・[[IADR-0533]] 追記］観測値の受け口は gRPC 面（`Report/GrpcService.cs`）だけである ——
+// 無認証の REST（`POST /internal/knowledge-health/observations`）は、生産者（graph の H-1）が gRPC だけになったので撤去した。
 public static class KnowledgeHealthEndpoints
 {
     public static IEndpointRouteBuilder MapKnowledgeHealthEndpoints(this IEndpointRouteBuilder app)
@@ -31,7 +31,6 @@ public static class KnowledgeHealthEndpoints
         var g = app.MapGroup("/dashboard/knowledge-health").WithTags("KnowledgeHealth");
 
         KnowledgeHealthViewEndpoint.Map(g);
-        ReportKnowledgeHealthEndpoint.Map(app);
 
         return app;
     }

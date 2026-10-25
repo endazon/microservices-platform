@@ -20,8 +20,8 @@ namespace Platform.Bff.Tests;
 // [[IADR-0402]], [[IADR-0410]], [[IADR-0416]], [[IADR-0417]] (#1255):
 // `/bff/attribute-values` を east-west gRPC へ振り替える切替と、その縮退を固定する。
 //
-// 🔴 **既定は REST（正）である。** 切替は `Services:RetrievalServiceGrpc` の有無だけで決まり、
-// 未設定なら gRPC クライアントは DI に 1 つも入らない（戻すのは構成を外すだけ）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の並走は撤去した。器（`BffTestFactory`）の既定のクライアントも gRPC であり、
+// 器の HTTP スタブへの橋渡しの上に組まれている。本クラスは DI へ直接差し込む呼び出し器で個々の振る舞いを測る。
 public class BffAttributeValuesGrpcTests : IClassFixture<BffTestFactory>
 {
     private readonly BffTestFactory _factory;
@@ -38,14 +38,20 @@ public class BffAttributeValuesGrpcTests : IClassFixture<BffTestFactory>
 
     // ── 登録の門（構成でしか切り替わらないこと） ─────────────────────────────────
 
-    // 🔴 未設定なら**何も登録しない**。REST が正であることの実体はこの 1 行である。
+    // 🔴 ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］未設定でも**登録する**（REST へ戻る経路はもう無い）。
+    // 生成クライアントは常に `UNAVAILABLE` を返す呼び出し器の上に組まれる。
     [Fact]
-    public void Registration_is_a_no_op_without_the_grpc_address()
+    public async Task Registration_without_the_grpc_address_answers_unavailable()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddAttributeValuesGrpcClient(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
 
-        services.Should().NotContain(d => d.ServiceType == typeof(AttributeValuesGrpcClient));
+        provider.GetService<AttributeValuesGrpcClient>().Should().NotBeNull();
+        var raw = provider.GetRequiredService<Pb.AttributeValues.AttributeValuesClient>();
+        raw.Should().NotBeNull();
+        provider.GetService<GrpcChannel>().Should().BeNull("宛先が無ければチャネルは張らない");
     }
 
     // 陽性対照: アドレスが在れば登録される（上だけだと「常に何もしない」実装でも緑になる）。
@@ -175,16 +181,16 @@ public class BffAttributeValuesGrpcTests : IClassFixture<BffTestFactory>
     // 既定（gRPC 未登録）では後段 HTTP スタブが呼ばれる。gRPC を登録すると**呼ばれない**。
     // 「gRPC が答えた」ことは、HTTP スタブが 500 を返す設定にしても 200 が返ることで示す。
     [Fact]
-    public async Task Values_use_grpc_when_registered_and_do_not_touch_the_rest_stub()
+    public async Task Values_use_the_registered_grpc_client_and_do_not_touch_the_bridge_stub()
     {
         _factory.AttributeValuesStatusCode = HttpStatusCode.InternalServerError;
 
-        // 陰性対照: gRPC が無ければ後段の 500 がそのまま透過する。
-        var viaRest = await _factory.CreateClient().PostAsJsonAsync("/bff/attribute-values",
+        // 陰性対照: 器の既定（HTTP スタブへの橋渡し）では後段の 500 が 502 になる（空配列へ畳まない）。
+        var viaBridge = await _factory.CreateClient().PostAsJsonAsync("/bff/attribute-values",
             new { key = "tags" }, TestContext.Current.CancellationToken);
-        viaRest.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        viaBridge.StatusCode.Should().Be(HttpStatusCode.BadGateway);
 
-        // 陽性: gRPC が在れば REST を触らずに 200。
+        // 陽性: 差し込んだ gRPC の呼び出し器が答えれば 200（器の HTTP スタブは触らない）。
         var stub = new StubAttributeValuesInvoker { Values = ["社内", "規程"] };
         var resp = await GrpcClient(stub).PostAsJsonAsync("/bff/attribute-values",
             new { key = "tags" }, TestContext.Current.CancellationToken);

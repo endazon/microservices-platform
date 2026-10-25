@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-10-10
+updated: 2026-10-22
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
-specs: [20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
+iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
+specs: [20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
 issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
 -->
 
@@ -36,10 +36,10 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 
 | 群 | 何か | 件数 | 本書の節 |
 | --- | --- | ---: | --- |
-| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 17 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
-| 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `rabbitmq-app` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 7 | [手順 2](#手順-2-群-2データストアの資格情報) |
+| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9、投入器の主体 1（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 18 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
+| 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 6 | [手順 2](#手順-2-群-2データストアの資格情報) |
 
-> **同じ性質だが保管先に無いもの**: 認証基盤の `abac-seeder`（開発用の投入器だけが使う）と `argocd`（`argocd-secret` を起動器が直接書く）。
+> **同じ性質だが保管先に無いもの**: `argocd`（`argocd-secret` を起動器が直接書く）。［2026-10-22］`abac-seeder` は保管先（`msp/abac-seeder-oidc`）へ移した（下の 1-0 の表）。
 > 保管先に置き場が無いので本書の対象外だが、回すときは同じ順序（相手を変えてから消費側を作り直す）で行う。
 
 ### 回した値が戻らないこと（前提）
@@ -50,7 +50,7 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 | --- | --- |
 | 認証基盤の realm の宣言（`deploy/keycloak/microservices-platform-realm.json`） | 宣言の client の `secret` は**開発用の値**だけであり、**client を新しく作るときにだけ**使う。宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）は既存の client の `secret` を比べず・書かない。起動時の import は realm が在れば飛ばす。空の状態からの import では、管理用の 3 クライアント（`identity-admin`・`reset-gate`・`mcp-client-admin`）だけは起動器に与えた env の値で作る（与えなければ開発用の値） |
 | 保管先の種（`deploy/local/vault/eso/bootstrap.sh`） | 対になる秘密の KV は**無いときだけ作る**。在れば env を渡しても触らない |
-| 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **塞いでいない。** `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
+| 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **一部だけ塞いだ。** ［2026-10-22］`rabbitmq` / `keycloak-admin` は env か既存の Secret の値で作り、開発用既定値では作らない（無ければ止まる。使い捨ての環境だけ明示の opt-in で許す）。`postgres` / `reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -64,7 +64,7 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 
 - 環境を新しく立ち上げるとき。それは初期投入であり、`scripts/k8s-local-up.sh` の通常経路が担う。
 - **片側だけを書くとき。** 保管先だけ・相手だけの書き込みは、本書の手順の途中で止まった状態と同じである（[途中で止まったとき](#途中で止まったとき)）。
-- 取引ユニットのブローカの接続文字列を Secret から組み立てていない間の `rabbitmq` / `rabbitmq-app`（[`secret-rotation-runbook.md`](secret-rotation-runbook.md) 手順 B の注意）。
+- 取引ユニットがサービスごとのユーザーへ切り替える前の版で稼働している間の `rabbitmq`（[`secret-rotation-runbook.md`](secret-rotation-runbook.md) 手順 B の注意）。
 
 ## 前提
 
@@ -199,6 +199,7 @@ unset NEW_VALUE; rm -rf -- /tmp/rot.*; trap - EXIT
 | `retrieval-service` / `ingestion-service` / `aianalysis-service` / `graph-service` / `conversion-service` / `wiki-service` / `datasource-service` / `mcp-server` / `document-service` | `msp/<client>-token` の `client-secret` | `microservices-platform/<client>-token` | 0-e で引く |
 | `synthetic-monitor` | `msp/synthetic-monitor-oidc` の `client-secret` | `microservices-platform/synthetic-monitor-oidc` | 0-e で引く（`SYNTHETIC=1` のときだけ在る） |
 | `reset-gate` | `msp/reset-gate-oidc` の `client-secret` | `platform-infra/reset-gate-oidc` | 0-e で引く |
+| `abac-seeder` | `msp/abac-seeder-oidc` の `client-secret` | `platform-infra/abac-seeder-oidc` | 作り直す Pod は無い。投入器・運用スクリプト（`seed-*.js`・`republish-document-updated.js`・アーカイブの駆動器）が**実行のたびに**この Secret を読む。同期が `Ready` になれば次の実行から新しい値で名乗る。クライアントは**既定で無効**（スクリプトが実行の間だけ有効にして戻す）なので、回す間に有効へ変えない |
 | `grafana` / `headlamp` | `msp/<client>-oidc` の `client-secret` | `platform-infra/<client>-oidc` | 0-e で引く（`OBSERVABILITY=1` / `HEADLAMP=1` のときだけ在る） |
 | `vault` | `msp/vault-oidc` の `client-secret` | `platform-infra/vault-oidc` | **Pod ではなく** `deploy/local/vault/oidc/bootstrap.sh` が Vault の OIDC 認証設定へ書く。同期の後に同スクリプトを再実行する |
 | `wiki-js` | `msp/wikijs-oidc` の `client-secret` | `microservices-platform/wikijs-oidc` | **Pod ではなく** `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js の DB へ書く。同期の後に同スクリプトを再実行する |
@@ -300,6 +301,9 @@ MCP クライアント登録管理の後段が、無人のクライアントと�
   `RESET_GATE_CLIENT_SECRET`・`MCP_CLIENT_ADMIN_CLIENT_SECRET` に dev 以外の値（0-a の作り方）を与えて再実行する。認証基盤の側が dev の値のままなら、
   その後に下の確かめ方で名指されるので、1-3 の手順で対に回す。dev のクラスタだと分かっているときだけ `ALLOW_DEV_CLIENT_SECRETS=1` で通せる（警告を出す）。
   止まったときのメッセージにも、下の確かめ方が出る。
+  ［2026-10-22］**対象はこの 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広がった。** dev 以外のクラスタでは、
+  対象全部の env を与える（一覧と env の名前は `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2`）。
+  保管先（`ESO=1`）に既に在る値は書き換えないので、そのときは保管先に在る値と同じ値を与える（下の項と同じ）。
 - Keycloak 本体の realm の初回 import（空の状態からの起動・realm を消した後の再起動）は、起動器が作る取り込み元（Secret `keycloak-realm-import`）を読む。
   起動器はこの取り込み元を作るとき、env を与えたクライアントの secret を宣言の dev の値から env の値へ差し替える（値は出力しない）。
   よって env を与えて新しいクラスタを起動すれば、認証基盤の側も最初からその値になり、消費側の Secret と食い違わない。
@@ -316,7 +320,7 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 ```
 
 稼働の secret が dev の値のままのクライアントを `dev-secret <client>` と名指して非 0 で終える。名指されたものを 1-3 の手順で回し、もう一度実行して
-0 で終わる（3 つとも `ok`）ことを確かめる。稼働に無いクライアントは `absent` と出る（作られるときは上の守りが掛かる）。
+0 で終わる（対象がすべて `ok` か `absent`）ことを確かめる。稼働に無いクライアントは `absent` と出る（作られるときは上の守りが掛かる）。
 
 **手順**（通常の 1-3 に次を足す）:
 
@@ -334,7 +338,7 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 本書が持つのは順序と、途中で止まったときの戻し方である。
 
 1. **0-0** で準備し、**0-a** で新しい値を作る（ストア側の対話入力で決める場合は、その値を `read -rs NEW_VALUE` で読む）。
-2. **0-b** で保管先の直前の版を控える。**同値にすべき 2 つの KV**（`postgres-app` と `wikijs-db`、`rabbitmq` と `rabbitmq-app`）は**両方**控える。
+2. **0-b** で保管先の直前の版を控える。**同値にすべき 2 つの KV**（`postgres-app` と `wikijs-db`）は**両方**控える。
 3. **0-c** で保管先へ書く（同値の組は両方）。まだ何も壊れない。
 4. **ストア側の値を同じ値にする**（B-1 の「ストア側で先に行うこと」）。🔴 **ここから、旧の値で新しく接続する処理が失敗する。**
 5. **0-d** で同期を促し、B-1 の順で消費側を作り直す。
@@ -343,7 +347,8 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 ## 起動の後に同期を促す
 
 `scripts/k8s-local-up.sh` を再実行すると、手動の Secret 作成が `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` の Secret を
-**env か開発用既定値で**書き直す（保管先の値は戻らない）。env に新しい値を渡さなかったときは、起動の後に 4 つの同期を促す:
+**env か開発用既定値で**書き直す（保管先の値は戻らない）。［2026-10-22］`rabbitmq` / `keycloak-admin` だけは、env が無ければ既存の Secret の値で
+書き直し、既存の値も開発用の値なら止まる（開発用既定値では書かない）。env に新しい値を渡さなかったときは、起動の後に 4 つの同期を促す:
 
 ```sh
 for es in postgres rabbitmq keycloak-admin reset-gate-oidc; do

@@ -47,6 +47,8 @@ set_mesh_mtls_mode() {
   fi
 
   echo "    helm 経由で mesh.mtlsMode=$mode を宣言する（kubectl patch では書かない / #1159）"
+  # NFR-20, IADR-0605 (#2132): --reuse-values は稼働リリースの global.image.tag を引き継ぐ。宣言が無いリリース（初回の切り替え前）は
+  #   chart の描画で止まる —— 先に bash scripts/k8s-local-up.sh --live を流してタグを入れる（エラー文も同じことを告げる）。
   helm upgrade "$release" "$chart" -n "$ns" --reuse-values --set "mesh.mtlsMode=$mode" >/dev/null
 }
 
@@ -124,6 +126,7 @@ current_release_values() {
   local names
   names="$(helm list -n "$ns" -q --filter "^${release}\$" \
     --deployed --failed --pending --superseded --uninstalling --uninstalled 2>/dev/null)" || return 2
-  printf '%s\n' "$names" | grep -qx "$release" || return 1
+  # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+  grep -qx -- "$release" <<<"$names" || return 1
   helm get values "$release" -n "$ns" -o yaml 2>/dev/null || return 2
 }

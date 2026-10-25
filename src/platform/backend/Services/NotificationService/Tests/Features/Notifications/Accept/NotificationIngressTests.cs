@@ -1,17 +1,27 @@
 using System.Net;
 using System.Net.Http.Json;
-using System.Text;
 using AwesomeAssertions;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
+using Grpc.Net.Client;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NotificationService.Features.Notifications;
 using NotificationService.Features.Notifications.Accept;
 using NotificationService.Domain;
 using NotificationService.Infrastructure.Persistence;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Pb = Platform.Shared.Contracts.Grpc.Notification.V1;
 
 namespace NotificationService.Tests.Features.Notifications.Accept;
 
-// FR-22, IADR-0215 決定 5, IADR-0270 決定 6: 通知の受け口（POST /internal/notifications）。
+// FR-22, IADR-0215 決定 5, IADR-0270 決定 6: 通知の受け口。
+//
+// ［2026-10-15 / #1902・[[IADR-0533]]］REST の受け口（`POST /internal/notifications`）は撤去した ——
+// 送信側（DocumentService の N-1）は east-west gRPC（`NotificationIngress/Accept`）だけになっていた。
+// 本クラスは同じ本体（`NotificationIngress.AcceptAsync`）を呼ぶ **gRPC 面**を TestServer 上で叩き、
+// 受け口が守ってきた性質（永続化・本人限定・検証・重複の畳み・開いた種別・過去の期限）をそのまま固定する。
+// 状態の写像は REST の 201 / 200 / 400 → OK（duplicate=false）/ OK（duplicate=true）/ INVALID_ARGUMENT。
 //
 // 発火の**検知**は DocumentService（データの在る側）が行い、本サービスは受けて永続化する。
 // ★ **否定形と境界を主役に置く。** 「正しいペイロードが 201 になる」だけのテストは、
@@ -27,27 +37,38 @@ public class NotificationIngressTests : IDisposable
 
     private static readonly DateTimeOffset Occurred = new(2026, 8, 28, 9, 0, 0, TimeSpan.Zero);
 
-    // 🔴 送信側 DocumentService.Infrastructure.ExternalServices.HttpPrivateNoteNotifier.IngressPath の値。
-    // platform → knowledge の参照は禁止のため定数を共有できない。**リテラルで書き、一致を固定する。**
-    private const string SenderIngressPath = "/internal/notifications";
+    // 🔴 送信側（DocumentService）が名乗る s2s の主体。gRPC 面は `ServiceCaller`（`platform-service`）を要する。
+    private Pb.NotificationIngress.NotificationIngressClient Ingress()
+    {
+        var http = _factory.CreateClient();
+        http.DefaultRequestHeaders.Add(TestAuthHandler.SubHeader, "service-account-document-service");
+        http.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, PlatformAuthPolicies.ServiceRole);
+        return new(GrpcChannel.ForAddress(http.BaseAddress!, new GrpcChannelOptions { HttpClient = http }));
+    }
 
-    // 送信側が送るのと同じ形（匿名オブジェクト・camelCase）。**自由文の項目は 1 つも無い。**
-    private static object Payload(
+    // 送信側が送るのと同じ形。**自由文の項目は 1 つも無い。**
+    private static Pb.AcceptRequest Payload(
         string subject = "alice",
         string kind = NotificationKinds.PrivateNotePurgeWeekly,
         DateTimeOffset? occurredAt = null,
         int? count = 3,
         int? thresholdPercent = null,
         DateTimeOffset? deadline = null)
-        => new
+    {
+        var request = new Pb.AcceptRequest
         {
-            subject,
-            kind,
-            occurredAt = occurredAt ?? Occurred,
-            count,
-            thresholdPercent,
-            deadline,
+            Subject = subject,
+            Kind = kind,
+            OccurredAt = Timestamp.FromDateTimeOffset(occurredAt ?? Occurred),
         };
+        if (count is { } c) request.Count = c;
+        if (thresholdPercent is { } p) request.ThresholdPercent = p;
+        if (deadline is { } d) request.Deadline = Timestamp.FromDateTimeOffset(d);
+        return request;
+    }
+
+    private Task<Pb.AcceptResponse> AcceptAsync(Pb.AcceptRequest request) =>
+        Ingress().AcceptAsync(request, cancellationToken: TestContext.Current.CancellationToken).ResponseAsync;
 
     private async Task<List<Notification>> NotificationsAsync()
     {
@@ -63,22 +84,14 @@ public class NotificationIngressTests : IDisposable
         return await db.EmailOutbox.ToListAsync(TestContext.Current.CancellationToken);
     }
 
-    // FR-22: **送信側と同じパス・同じ形のペイロードを受理し、既存のドメインへ落とす。**
+    // FR-22: **送信側と同じ形のペイロードを受理し、既存のドメインへ落とす。**
     [Fact]
     public async Task 送信側と同じ形のペイロードを受理して通知を永続化する()
     {
         var deadline = Occurred.AddDays(30);
 
-        var response = await _factory.CreateClient().PostAsJsonAsync(
-            SenderIngressPath, Payload(count: 4, deadline: deadline),
-            TestContext.Current.CancellationToken);
+        var result = await AcceptAsync(Payload(count: 4, deadline: deadline));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var result = await response.Content
-            .ReadFromJsonAsync<NotificationIngressResultDto>(TestContext.Current.CancellationToken);
-        result.Should().NotBeNull();
-        result!.Id.Should().NotBe(Guid.Empty);
         result.Duplicate.Should().BeFalse();
 
         var notifications = await NotificationsAsync();
@@ -101,8 +114,7 @@ public class NotificationIngressTests : IDisposable
     [Fact]
     public async Task 受け口から入った通知は本人の一覧にだけ現れる()
     {
-        await _factory.CreateClient().PostAsJsonAsync(
-            SenderIngressPath, Payload(subject: "alice"), TestContext.Current.CancellationToken);
+        await AcceptAsync(Payload(subject: "alice"));
 
         var alice = _factory.CreateClient();
         alice.DefaultRequestHeaders.Add(TestAuthHandler.SubHeader, "alice");
@@ -118,64 +130,45 @@ public class NotificationIngressTests : IDisposable
         bobList!.Items.Should().BeEmpty("★ 受け口経由でも他人には 1 件も現れてはならない");
     }
 
-    // FR-22, IADR-0270 決定 6: **パスの複製が食い違っていないことを固定する。**
-    // platform → knowledge の参照が張れないため、この一致を守る機械はこのテストだけである。
-    [Fact]
-    public async Task 受け口のパスは送信側の宣言と同じ値である()
-    {
-        NotificationIngressEndpoints.IngressPath.Should().Be(SenderIngressPath,
-            "★ 送信側 HttpPrivateNoteNotifier.IngressPath と 1 バイトでも違えば通知は届かない");
-
-        var response = await _factory.CreateClient().PostAsJsonAsync(
-            SenderIngressPath, Payload(), TestContext.Current.CancellationToken);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Created, "宣言したパスで到達できること");
-    }
-
-    // FR-22: **不正なペイロードは 400。** 欠落を既定値で埋めて受理しない。
-    public static TheoryData<string, string> InvalidPayloads()
+    // FR-22: **不正なペイロードは INVALID_ARGUMENT**（REST の 400 に当たる）。欠落を既定値で埋めて受理しない。
+    public static TheoryData<string, Pb.AcceptRequest> InvalidPayloads()
     {
         var longSubject = new string('a', NotificationIngress.SubjectMaxLength + 1);
         var longKind = new string('k', NotificationIngress.KindMaxLength + 1);
-        const string When = "\"occurredAt\":\"2026-08-28T09:00:00+00:00\"";
+        var noOccurredAt = Payload(kind: "x");
+        noOccurredAt.OccurredAt = null;
 
-        return new TheoryData<string, string>
+        return new TheoryData<string, Pb.AcceptRequest>
         {
-            { "subject 欠落", $"{{\"kind\":\"x\",{When}}}" },
-            { "subject 空白", $"{{\"subject\":\"   \",\"kind\":\"x\",{When}}}" },
-            { "subject 長すぎ", $"{{\"subject\":\"{longSubject}\",\"kind\":\"x\",{When}}}" },
-            { "kind 欠落", $"{{\"subject\":\"alice\",{When}}}" },
-            { "kind 空白", $"{{\"subject\":\"alice\",\"kind\":\"\",{When}}}" },
-            { "kind 長すぎ", $"{{\"subject\":\"alice\",\"kind\":\"{longKind}\",{When}}}" },
-            { "occurredAt 欠落", "{\"subject\":\"alice\",\"kind\":\"x\"}" },
-            { "count が負", $"{{\"subject\":\"alice\",\"kind\":\"x\",{When},\"count\":-1}}" },
-            { "thresholdPercent が範囲外", $"{{\"subject\":\"alice\",\"kind\":\"x\",{When},\"thresholdPercent\":101}}" },
+            { "subject 欠落", Payload(subject: "", kind: "x") },
+            { "subject 空白", Payload(subject: "   ", kind: "x") },
+            { "subject 長すぎ", Payload(subject: longSubject, kind: "x") },
+            { "kind 欠落", Payload(kind: "") },
+            { "kind 長すぎ", Payload(kind: longKind) },
+            { "occurredAt 欠落", noOccurredAt },
+            { "count が負", Payload(kind: "x", count: -1) },
+            { "thresholdPercent が範囲外", Payload(kind: "x", count: null, thresholdPercent: 101) },
         };
     }
 
     [Theory]
     [MemberData(nameof(InvalidPayloads))]
-    public async Task 不正なペイロードは400を返す(string label, string json)
+    public async Task 不正なペイロードはINVALID_ARGUMENTを返す(string label, Pb.AcceptRequest request)
     {
-        var response = await _factory.CreateClient().PostAsync(
-            SenderIngressPath, new StringContent(json, Encoding.UTF8, "application/json"),
-            TestContext.Current.CancellationToken);
+        var act = () => AcceptAsync(request);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, $"「{label}」は受理してはならない");
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode
+            .Should().Be(StatusCode.InvalidArgument, $"「{label}」は受理してはならない");
     }
 
-    // FR-22: **400 のときは 1 件も永続化しない。** 状態コードだけを見るテストは、
-    // 400 を返しつつ裏で壊れた通知を書くコードを見逃す。
+    // FR-22: **不正なときは 1 件も永続化しない。** 状態だけを見るテストは、
+    // 拒否しつつ裏で壊れた通知を書くコードを見逃す。
     [Fact]
     public async Task 不正なペイロードは通知を1件も作らない()
     {
-        var response = await _factory.CreateClient().PostAsync(
-            SenderIngressPath,
-            new StringContent("{\"kind\":\"x\",\"occurredAt\":\"2026-08-28T09:00:00+00:00\"}",
-                Encoding.UTF8, "application/json"),
-            TestContext.Current.CancellationToken);
+        var act = () => AcceptAsync(Payload(subject: "", kind: "x"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        await act.Should().ThrowAsync<RpcException>();
         (await NotificationsAsync()).Should().BeEmpty("★ 検証は永続化より前に効くこと");
         (await OutboxAsync()).Should().BeEmpty();
     }
@@ -184,22 +177,13 @@ public class NotificationIngressTests : IDisposable
     [Fact]
     public async Task 同一ペイロードの再送は畳まれて通知は1件のままである()
     {
-        var client = _factory.CreateClient();
         var payload = Payload(count: 2, deadline: Occurred.AddDays(30));
 
-        var first = await client.PostAsJsonAsync(SenderIngressPath, payload, TestContext.Current.CancellationToken);
-        var second = await client.PostAsJsonAsync(SenderIngressPath, payload, TestContext.Current.CancellationToken);
+        var first = await AcceptAsync(payload);
+        var second = await AcceptAsync(payload);
 
-        first.StatusCode.Should().Be(HttpStatusCode.Created);
-        second.StatusCode.Should().Be(HttpStatusCode.OK, "再送は新規作成ではない");
-
-        var firstResult = await first.Content
-            .ReadFromJsonAsync<NotificationIngressResultDto>(TestContext.Current.CancellationToken);
-        var secondResult = await second.Content
-            .ReadFromJsonAsync<NotificationIngressResultDto>(TestContext.Current.CancellationToken);
-
-        secondResult!.Duplicate.Should().BeTrue();
-        secondResult.Id.Should().Be(firstResult!.Id, "畳んだ先の id を返す");
+        first.Duplicate.Should().BeFalse();
+        second.Duplicate.Should().BeTrue("再送は新規作成ではない");
 
         (await NotificationsAsync()).Should().ContainSingle("★ 同じ通知が 2 行に増えてはならない");
         (await OutboxAsync()).Should().ContainSingle("メールも二重に積まない");
@@ -212,17 +196,13 @@ public class NotificationIngressTests : IDisposable
     [Fact]
     public async Task 同一時刻同一種別でも閾値が違えば別の通知として残る()
     {
-        var client = _factory.CreateClient();
+        var warn80 = await AcceptAsync(
+            Payload(kind: NotificationKinds.StorageQuotaWarning, count: null, thresholdPercent: 80));
+        var warn95 = await AcceptAsync(
+            Payload(kind: NotificationKinds.StorageQuotaWarning, count: null, thresholdPercent: 95));
 
-        var warn80 = await client.PostAsJsonAsync(SenderIngressPath,
-            Payload(kind: NotificationKinds.StorageQuotaWarning, count: null, thresholdPercent: 80),
-            TestContext.Current.CancellationToken);
-        var warn95 = await client.PostAsJsonAsync(SenderIngressPath,
-            Payload(kind: NotificationKinds.StorageQuotaWarning, count: null, thresholdPercent: 95),
-            TestContext.Current.CancellationToken);
-
-        warn80.StatusCode.Should().Be(HttpStatusCode.Created);
-        warn95.StatusCode.Should().Be(HttpStatusCode.Created, "★ 95% の警告が 80% の重複にされてはならない");
+        warn80.Duplicate.Should().BeFalse();
+        warn95.Duplicate.Should().BeFalse("★ 95% の警告が 80% の重複にされてはならない");
 
         var notifications = await NotificationsAsync();
         notifications.Should().HaveCount(2);
@@ -234,11 +214,9 @@ public class NotificationIngressTests : IDisposable
     [Fact]
     public async Task 未知の種別も拒否せずに受理する()
     {
-        var response = await _factory.CreateClient().PostAsJsonAsync(
-            SenderIngressPath, Payload(kind: "some-future-kind"),
-            TestContext.Current.CancellationToken);
+        var response = await AcceptAsync(Payload(kind: "some-future-kind"));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.Duplicate.Should().BeFalse();
         (await NotificationsAsync()).Should().ContainSingle(n => n.Kind == "some-future-kind");
     }
 
@@ -247,28 +225,34 @@ public class NotificationIngressTests : IDisposable
     [Fact]
     public async Task 過去の期限を持つ通知も受理する()
     {
-        var response = await _factory.CreateClient().PostAsJsonAsync(
-            SenderIngressPath, Payload(deadline: Occurred.AddDays(-1)),
-            TestContext.Current.CancellationToken);
+        var response = await AcceptAsync(Payload(deadline: Occurred.AddDays(-1)));
 
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        response.Duplicate.Should().BeFalse();
+        (await NotificationsAsync()).Should().ContainSingle();
     }
 
-    // FR-22, IADR-0017（Superseded by IADR-0026）: **受け口は認証を課さない**（内部 API の慣行。
-    // 呼び出し元はユーザー文脈を持たない定期処理であり JWT を持ち得ない）。第一防御はネットワーク
-    // 境界側にある。**ただし読み出しは認証必須のままである** —— 無認証で作れることと、
-    // 無認証で読めることは別である。
+    // FR-22, NFR-09: 🔴 **受け口を通っても、読み出しは認証必須のままである**（作れることと読めることは別）。
+    // ［2026-10-15 / #1902］撤去した REST の受け口は無認証だった。gRPC 面は `ServiceCaller` を要する
+    // （`GrpcNotificationIngressTests` の T-04 / T-05）。
     [Fact]
-    public async Task 受け口は無認証で到達できるが一覧は無認証では読めない()
+    public async Task 受け口を通った通知も一覧は無認証では読めない()
     {
-        var client = _factory.CreateClient();
+        await AcceptAsync(Payload());
 
-        var ingress = await client.PostAsJsonAsync(
-            SenderIngressPath, Payload(), TestContext.Current.CancellationToken);
-        ingress.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var list = await client.GetAsync("/notifications", TestContext.Current.CancellationToken);
+        var list = await _factory.CreateClient().GetAsync("/notifications", TestContext.Current.CancellationToken);
         list.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "★ 受け口を無認証にしたことが、読み出しの認証まで緩めていないこと");
+            "★ 受け口が通ることが、読み出しの認証まで緩めていないこと");
+    }
+
+    // #1902: 撤去した REST の受け口はルート表に無い（戻ると、無認証で通知を作れる口が増える）。
+    [Fact]
+    public async Task 撤去したRESTの受け口はルート表に無い()
+    {
+        var resp = await _factory.CreateClient().PostAsJsonAsync(
+            "/internal/notifications", new { subject = "alice", kind = "x", occurredAt = Occurred },
+            TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await NotificationsAsync()).Should().BeEmpty();
     }
 }

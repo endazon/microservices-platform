@@ -3,15 +3,15 @@ title: エッジ（BFF）認証の担保 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-10
-updated: 2026-10-08
+updated: 2026-10-16
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-06, FR-07, NFR-07, NFR-09, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-13, UC-01, UC-02, UC-03]
 adrs: [ADR-0004, ADR-0032]
-iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160, IADR-0251, IADR-0273, IADR-0429, IADR-0510]
-specs: [20260926_issue-1535_drop-bff-bearer-user-arm, 20261008_1780_bff-keyring-shared-two-hosts]
-issues: [#458, #656, #1393, #1534, #1535, #1780]
+iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160, IADR-0251, IADR-0273, IADR-0429, IADR-0510, IADR-0533]
+specs: [20260926_issue-1535_drop-bff-bearer-user-arm, 20261008_1780_bff-keyring-shared-two-hosts, 20261015_1902_east-west-rest-residue]
+issues: [#458, #656, #1393, #1534, #1535, #1780, #1902]
 -->
 
 # テスト仕様書: エッジ（BFF）認証の担保
@@ -63,7 +63,7 @@ issues: [#458, #656, #1393, #1534, #1535, #1780]
 > スコープ外・不在が 404 なので環境依存を避けたつもりだったが、**それでは足りない** ——
 > **404 が素通りする**ので、口が静かに壊れて全員 404 になっても緑のままになる。
 >
-> テスト基盤は `/authz/scope` を `Granted=true`・フィルタ空（＝全件許可）で、`/documents/{id}` を
+> テスト基盤は権限スコープ解決（BFF が呼ぶのは gRPC `AuthzScope/Resolve` である。器の `AuthzScopeBridge` がその呼び出しを HTTP の偽物へ渡し、偽物は撤去済みの `/authz/scope` のパス文字列を内部の鍵として使うだけで、受け口は呼ばない）を `Granted=true`・フィルタ空（＝全件許可）で、`/documents/{id}` を
 > 文書ありでスタブしている（実測）ので、**200 を直接主張できる**。変異試験で差が出た ——
 > **「詳細を常に 404 へ倒す」変異は、弱い主張では素通りし、200 の主張では落ちる**（§変異試験 F）。
 

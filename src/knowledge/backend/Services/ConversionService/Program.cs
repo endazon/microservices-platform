@@ -10,6 +10,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Features.ConversionJobs;
 using ConversionService.Features.ConversionJobs.CorrectFigure;
+using ConversionService.Features.ConversionJobs.GetFigureImage;
 using ConversionService.Features.ConversionJobs.Normalize;
 using ConversionService.Domain.Ports;
 using ConversionService.Infrastructure.Configuration;
@@ -88,10 +89,9 @@ builder.Services.AddSingleton<IObjectStore, StorageObjectStore>();
 
 // FR-12, ADR-0012/0010: 図のコード化（LLMゲートウェイ経由、機密区分で送信制御）。
 //
-// FR-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 5, IADR-0400 (#1255): east-west gRPC への切替。
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス）が構成されたときだけ
-// 生成クライアントが登録され、そのときに限り gRPC 実装を使う。無ければ従来の HTTP 実装のまま
-// （戻すのは構成を外すだけ。コードは変えない）。
+// FR-12, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0400, [[IADR-0533]] (#1255): 図のコード化の輸送は east-west gRPC だけである
+// （［2026-10-10］REST の `LlmGatewayDiagramCoder` は撤去した）。`Services:LlmGatewayGrpc` が構成されていなければ
+// 生成クライアントは常に `UNAVAILABLE` を受け取り、図は画像として保持される（理由 `llm-call-failed`）。
 //
 // UC-06, IADR-0008（2026-09-27 追記 / #1621）: **図のコード化の時間の上限**（1 回の期限・1 文書の総枠・受け口の実行期限）。
 // 受け口の期限が「総枠＋1 回の期限」を超えていなければ、ここで起動を止める（`DiagramCodingLimits.From`）。
@@ -99,13 +99,7 @@ var diagramCodingLimits = DiagramCodingLimits.From(builder.Configuration);
 builder.Services.AddSingleton(diagramCodingLimits);
 builder.Services.TryAddSingleton(TimeProvider.System);
 builder.Services.AddLlmGatewayGrpcClient(builder.Configuration);
-if (!string.IsNullOrWhiteSpace(builder.Configuration[LlmGatewayGrpcClientExtensions.AddressKey]))
-    builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
-else
-    // 🔴 NFR-09, ADR-0084 決定 1, [[IADR-0424]] (#1364): **REST 面は `ServiceCaller` を要する。**
-    // #1621: 名前付きクライアントの `Timeout` は `DiagramCodingLimits.CallTimeout`（既定 100 秒のままにしない）。
-    builder.Services.AddRestDiagramCoder(builder.Configuration, diagramCodingLimits)
-        .AddLlmGatewayServiceToken(builder.Configuration);
+builder.Services.AddSingleton<IDiagramCoder, LlmGatewayGrpcDiagramCoder>();
 
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
 builder.Services.AddScoped<INormalizationService, NormalizationService>();
@@ -118,6 +112,10 @@ builder.Services.AddScoped<IConversionJobStore, EfConversionJobStore>();
 // 本文の図ブロックを置換して DocumentNormalized を再発行する（再変換ではない）。
 builder.Services.AddScoped<IFigureCorrectionService, FigureCorrectionService>();
 
+// FR-12, UC-06, SC-07, ADR-0014, [[IADR-0558]] (#1941): 縮退した図の元画像の読み取り。**画像を読むのは図の所有者（本サービス）**で、
+// BFF はストレージの資格情報を持たずに `GET /jobs/{id}/figures/{figureId}/image` を中継する。
+builder.Services.AddScoped<FigureImageReader>();
+
 // UC-06, SC-07, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0393:
 // 人手補正の入力検証。**アセンブリ走査（AddValidatorsFromAssembly）は使わない** —— 登録が暗黙になり、
 // 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
@@ -128,6 +126,10 @@ builder.Services.AddScoped<IValidator<FigureCorrectionRequest>, FigureCorrection
 // 🔴 **別ファイルへ切り出してある** —— 同一ファイルに両トランスポートの using が同居すると、
 // トポロジ検査の発行側 union に wolverine が混ざり、E2 で違反が報告されなくなる。
 builder.Services.AddScoped<IDocumentNormalizedPublisher, MassTransitDocumentNormalizedPublisher>();
+
+// FR-12 例外フロー, UC-06, ADR-0027 §決定, IADR-0609 (#2169): 再変換の RawDocumentFetched の発行口（Transactional Outbox）。
+// queued への遷移と再発行を 1 つの確定に載せる。Wolverine の発行なので MassTransit の発行口とは別ファイルに置く。
+builder.Services.AddScoped<IConversionRetryPublisher, WolverineConversionRetryPublisher>();
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -173,7 +175,7 @@ builder.Host.UseWolverine(opts =>
     // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
     // FR-14 / #1801: 段宣言（step）を渡す。queue 宣言があればそれ、無ければイベント型名で束ね・購読し、
     // `enabled: false` の段ではキューを束ねずリスナーも立てない（WolverineExtensions の段宣言版）。
-    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision()
+    opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision()
         .BindPlatformQueue<RawDocumentFetched>("conversion-service", step);
 
     // ADR-0027 手順 3（発行側）/ #992 / [[IADR-0314]]: **外向きの経路を宣言する。**
@@ -192,6 +194,11 @@ builder.Host.UseWolverine(opts =>
     // UC-06, IADR-0008（2026-09-27 追記 / #1621）: 受け口の実行期限を明示する（Wolverine の既定 60 秒のままにしない）。
     // 図のコード化の総枠と 1 回の期限が収まる長さである（`DiagramCodingLimits`）。
     opts.Policies.Add(new RawDocumentFetchedTimeoutPolicy(diagramCodingLimits.HandlerTimeout));
+
+    // FR-12 例外フロー, ADR-0027 §決定, IADR-0604 決定 1, IADR-0609 (#2169): Transactional Outbox。
+    // 再変換の `RawDocumentFetched` は queued への遷移と同じトランザクションで Outbox の表（`wolverine` スキーマ）へ書かれ、確定の後に送られる。
+    // 🔴 **接続文字列は DbContext（`ConversionJobDbContext`）と同じもの**（envelope の INSERT は DbContext の接続で走る）。表は起動時に Wolverine が作る。
+    opts.UsePlatformTransactionalOutbox(connStr);
 });
 
 var app = builder.Build();
@@ -211,7 +218,7 @@ app.UsePlatformMiddleware();
 // DB 到達性の readiness ヘルスチェック（/health/ready・/health/live）。
 app.MapPlatformHealthChecks();
 
-// FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
+// FR-15, IADR-0029: 自己申告（gRPC 面 `ServiceIntrospection/Get`。［2026-10-10 / #1517］REST の GET /internal/introspection は撤去した）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
 app.MapPlatformIntrospection();
 

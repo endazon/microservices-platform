@@ -1,18 +1,23 @@
-using System.Net;
+using Grpc.Net.Client;
 using AwesomeAssertions;
 using McpServer.Domain;
 using McpServer.Infrastructure.ExternalServices;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Pb = Platform.Shared.Contracts.Grpc.Mcp.V1;
 
 namespace Knowledge.IntegrationTests.McpTools;
 
 // 🔴 FR-16, UC-08, ADR-0024 §2・§5 (#1020): **実効カタログが空でないことを、実物で固定する。**
 //
-// #445 は収集機構（`HttpToolDeclarationSource` → `ToolCatalog`）を作ったが、
-// `/internal/mcp-tools` を実装したサービスが 0 件だったため**集める対象が存在せず**、
+// #445 は収集機構（当時は REST の `HttpToolDeclarationSource` → `ToolCatalog`）を作ったが、
+// 申告を実装したサービスが 0 件だったため**集める対象が存在せず**、
 // 単体試験はすべてスタブの申告に対して緑だった。本試験は
-// **実サービス 3 本を in-process で起こし、実際の HTTP 応答を収集して**突合まで通す。
+// **実サービス 3 本を in-process で起こし、実際の gRPC 応答（`McpToolDeclarations/Declare`）を収集して**突合まで通す。
+//
+// ［2026-10-10 / #1517］[[IADR-0533]] 決定 3: REST の申告口と収集（`HttpToolDeclarationSource`）を撤去したので、
+// 収集を gRPC へ移した。応答の写しは本番の収集器と同じ `GrpcToolDeclarationCollector.ToDto` を通す。
+// チャネルは in-process のテストサーバーへ向ける（実 DNS・実ポートを使わない）。s2s の認可（ServiceCaller）は
+// 各サービスの `GrpcMcpToolDeclarationTests` が実 Kestrel の h2c で測るので、本器では認可の評価を通過させる。
 //
 // 空でないことだけでなく、**申告した個々のツールが載ること**を測る ——
 // 「1 件でも載れば緑」にすると、6 件のうち 5 件が落ちても気づけない。
@@ -113,61 +118,34 @@ public sealed class McpToolCatalogIntegrationTests : IAsyncLifetime
 
     private async Task<ToolCatalog> RefreshAsync(ToolPublicationConfig config)
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-            new Dictionary<string, string?>
-            {
-                [$"{HttpToolDeclarationSource.ServicesSection}:document-service"] = "http://document-service:8080",
-                [$"{HttpToolDeclarationSource.ServicesSection}:retrieval-service"] = "http://retrieval-service:8080",
-                [$"{HttpToolDeclarationSource.ServicesSection}:graph-service"] = "http://graph-service:8080",
-            }).Build();
+        var declarations = new List<ServiceToolDeclarations>();
+        foreach (McpToolDeclarationHostAccessor host in new McpToolDeclarationHostAccessor[] { _document, _retrieval, _graph })
+        {
+            using var channel = GrpcChannel.ForAddress($"http://{host.MeshHost}",
+                new GrpcChannelOptions { HttpHandler = host.Handler });
+            var declared = await new Pb.McpToolDeclarations.McpToolDeclarationsClient(channel)
+                .DeclareAsync(new Pb.DeclareMcpToolsRequest(), cancellationToken: TestContext.Current.CancellationToken);
+            declarations.Add(GrpcToolDeclarationCollector.ToDto(declared));
+        }
 
-        var source = new HttpToolDeclarationSource(
-            new MeshHttpClientFactory(_document, _retrieval, _graph),
-            configuration,
-            NullLogger<HttpToolDeclarationSource>.Instance);
-
-        var declarations = await source.CollectAsync(TestContext.Current.CancellationToken);
         declarations.Should().HaveCount(3, "3 サービスすべてから申告を集められること");
+        declarations.Select(d => d.Service).Should().BeEquivalentTo(["document-service", "retrieval-service", "graph-service"]);
 
         var catalog = new ToolCatalog(NullLogger<ToolCatalog>.Instance);
         catalog.Refresh(config, declarations);
         return catalog;
     }
-
-    // 収集側が組み立てる絶対 URL（`http://<mesh-host>:8080/internal/mcp-tools`）を、
-    // host 名で in-process のテストサーバーへ振り分ける。**実 DNS は引かない。**
-    private sealed class MeshHttpClientFactory : IHttpClientFactory
-    {
-        private readonly Dictionary<string, HttpMessageInvoker> _byHost;
-
-        public MeshHttpClientFactory(params McpToolDeclarationHostAccessor[] hosts)
-            => _byHost = hosts.ToDictionary(h => h.MeshHost, h => h.Invoker, StringComparer.Ordinal);
-
-        public HttpClient CreateClient(string name) => new(new RoutingHandler(_byHost), disposeHandler: false);
-
-        private sealed class RoutingHandler(Dictionary<string, HttpMessageInvoker> byHost) : HttpMessageHandler
-        {
-            protected override Task<HttpResponseMessage> SendAsync(
-                HttpRequestMessage request, CancellationToken cancellationToken)
-                => byHost.TryGetValue(request.RequestUri!.Host, out var invoker)
-                    ? invoker.SendAsync(request, cancellationToken)
-                    // 到達できないサービスは「申告なし」になる（収集側の縮退）。
-                    // ここへ落ちたら振り分けの設定漏れであり、黙って空にしない。
-                    : throw new InvalidOperationException(
-                        $"未登録のメッシュ host: {request.RequestUri.Host}");
-        }
-    }
 }
 
 // テストサーバーの handler を host 名つきで渡すための小さな受け皿。
-internal readonly record struct McpToolDeclarationHostAccessor(string MeshHost, HttpMessageInvoker Invoker)
+internal readonly record struct McpToolDeclarationHostAccessor(string MeshHost, HttpMessageHandler Handler)
 {
     public static implicit operator McpToolDeclarationHostAccessor(DocumentServiceDeclarationHost host)
-        => new(host.MeshHost, new HttpMessageInvoker(host.Server.CreateHandler()));
+        => new(host.MeshHost, host.Server.CreateHandler());
 
     public static implicit operator McpToolDeclarationHostAccessor(RetrievalServiceDeclarationHost host)
-        => new(host.MeshHost, new HttpMessageInvoker(host.Server.CreateHandler()));
+        => new(host.MeshHost, host.Server.CreateHandler());
 
     public static implicit operator McpToolDeclarationHostAccessor(GraphServiceDeclarationHost host)
-        => new(host.MeshHost, new HttpMessageInvoker(host.Server.CreateHandler()));
+        => new(host.MeshHost, host.Server.CreateHandler());
 }

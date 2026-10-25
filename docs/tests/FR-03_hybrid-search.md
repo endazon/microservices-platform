@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-10
+updated: 2026-10-17
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, SC-01, SC-02, UC-01, FR-19, NFR-09, FR-04, FR-11]
 adrs: [ADR-0086, ADR-0119, ADR-0016, ADR-0057, ADR-0070, ADR-0092, ADR-0127, ADR-0010, ADR-0018, ADR-0035, ADR-0061, ADR-0076]
 iadrs: [IADR-0417, IADR-0426, IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0151, IADR-0256, IADR-0318, IADR-0339, IADR-0358, IADR-0388, IADR-0390, IADR-0422, IADR-0467, IADR-0497, IADR-0498, IADR-0531]
-specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261010_1875_claude-5-5-models]
-issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995, #1875, planning#783]
+specs: [20260927_issue-1658_relay-options-shared, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260927_issue-1635_document-search-trusted-user-context-relay, 20260823_issue-995_bff-search-500, 20260831_issue-1116_qdrant-fulltext-payload-index, 20260902_issue-1118_japanese-bigram-fulltext, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260926_issue-336_multi-collection-rrf-fusion, 20261005_1746_high-confidentiality-lexical-index, 20261006_1746_claude-rerank, 20261010_1875_claude-5-5-models, 20261015_1890_measurement-wiring-tests-and-rerank-race]
+issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1254, #448, #532, #536, #642, #995, #1875, #1890, planning#783]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -146,7 +146,7 @@ issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1
 | T-85 | 文書削除イベント | 削除の購読 | 主と追加の両方から消す | 削除の伝播 | 自動 |
 | T-86 | 主／追加コレクション用のクエリ埋め込み要求 | REST・gRPC の要求を捕まえる（`FusedQueryEmbeddingTests`） | 主は名乗らない（REST は `targetCollection: null`、gRPC は空文字）、追加だけがコレクション名を名乗る（主にも名乗らせる変異は赤）。名乗っても答えが食い違えば捨てる | クエリはそのモデルで埋める | 自動 |
 | T-87 | ゲートウェイの振り分け（`EmbeddingRouterTargetCollectionTests`・`EmbedTargetCollectionTransportTests`） | 読み先を名乗った Query／Index | Query は越境判定の後でそのコレクションの送信先へ絞られる。無効・不在なら既定へ落ちず拒否（篩の前へ移す変異は赤）。**Index では無視**（効かせる変異は赤）。プロファイルとは積。REST と gRPC で同じ答え | 越境を開かない | 自動 |
-| T-88 | Helm / compose の配線（`k8s-local-up.test.js`） | 静的検査 | retrieval の `Qdrant__FusedCollections__0` は `embedding.enabled` と同じ条件でだけ描画され、値はゲートウェイ・取り込みの Ruri コレクション名と一致。compose は既定空 | 有効化の前提 | 自動 |
+| T-88 | Helm / compose の配線（`k8s-local-up.test.js`） | 静的検査 | retrieval の `Qdrant__FusedCollections__0` は `embedding.enabled` と同じ条件でだけ描画され、値はゲートウェイ・取り込みの Ruri コレクション名と一致。compose は既定空（［2026-10-17］取り込みは既定で Ruri のコレクションを作らなくなった。取り込みの配線の検査は[取り込みのテスト仕様書](FR-02_ingestion.md)の T-54） | 有効化の前提 | 自動 |
 | T-89 | 本文つきのチャンク 1 点。AI 分析の client（`aianalysis-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・検索・グラフ）、クライアント識別の接頭辞・大小文字の変種、利用者名だけ AI 分析で `azp` が別のトークン、`azp=aianalysis-service` を持つ人のトークン（`DocumentSearchTrustedRelayTests`・`DocumentSearchRelayOptionsTests`・`DocumentSearchRelayDeploymentWiringTests`） | gRPC の検索を利用者文脈（管理者の属性つき）つき・無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけで束縛する。compose・helm の AI 分析の s2s の client と realm を読む | AI 分析だけが利用者として検索でき本文が返る（陽性対照）。他はすべて `PERMISSION_DENIED` で、スコープ解決も呼ばれない。空の query でも拒否。利用者文脈の無い要求は呼び出し元を問わず `INVALID_ARGUMENT`。集合は未構成なら `aianalysis-service` だけ・構成は既定を置き換える・空白だけは誰も信じない。配備の AI 分析の client は既定の集合に入り、realm に `platform-service` 付きで在る。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 | T-90 | 固有の部門値を持つ点 1 つ。BFF の client（`bff`。実トークンの形 = `service-account-bff` と `azp=bff`、利用者名だけ・`azp` だけの形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・AI 分析・MCP・文書・検索・グラフ）、クライアント識別の接頭辞・大小文字の変種、利用者名だけ BFF で `azp` が別のトークン、`azp=bff` を持つ人のトークン（`AttributeValuesTrustedRelayTests`・`AttributeValuesRelayOptionsTests`・`AttributeValuesRelayDeploymentWiringTests`・共有の判定 `TrustedUserContextRelayTests`） | 属性値の照会の gRPC 面を利用者文脈（管理者の属性つき）つき・無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけ・1 つの値で束縛する（検索の集合の節は効かない）。compose・helm の BFF の s2s の client と realm を読む | BFF だけが利用者として値を引ける（陽性対照）。他はすべて `PERMISSION_DENIED` で、スコープ解決も呼ばれない。空の key でも拒否。利用者文脈の無い要求は呼び出し元を問わず `INVALID_ARGUMENT`。集合は未構成なら BFF だけ・構成は既定を置き換える・空白だけは誰も信じない・1 つの値は起動時に止まる。配備の BFF の client は既定の集合に入り、realm に `platform-service` 付きで在り、属性値の照会を gRPC で配線している。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす・1 つの値の検査を外す変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 | T-91 | 検索の信頼する中継者の集合（`DocumentSearchRelayOptionsTests`・`DocumentSearchRelayDeploymentWiringTests`） | 集合を 1 つの値（`foo`・カンマ区切り）・配列・未構成・別の面の節の 1 つの値で構成して起動時の検査を呼ぶ。複数要素（前後空白・空白だけの要素・重複を含む）で束縛する。検索サービスの起動の手順（`Program.cs`）を読む | 1 つの値は起動時に例外になり、文言は配列の書き方（`DocumentSearch__TrustedUserContextClients__0`）と既定の `aianalysis-service` を示す（束縛だけなら既定へ静かに戻ることを前提として確かめる）。配列・未構成・別の面の節は通る。複数要素は前後空白を落とし空白だけの要素を捨てて順に並び、既定は残らない。起動の手順は束縛より前に 1 つの値を検査する。検査を素通しにする・起動の手順から検査を落とす・既定を足し合わせる・大小文字を畳む・接頭辞一致にする変異は赤 | 構成の誤りを黙って既定へ戻さない | 自動（単体） |
@@ -169,7 +169,7 @@ issues: [#1746, #1658, #1636, #1635, #336, #1116, #1118, #1193, #1247, #1253, #1
 | T-108 | semantic・updated・合成監視の標識・無効の構成。構成の範囲外の値。窓 2 件。既定の合成点。配備の既定（`k8s-local-up.test.js`） | 検索・構成の正規化・合成点を組む | 掛けない検索では呼ばず、段が無いときと同じ結果。範囲外は既定へ倒れ、既定は無効。窓の外は送らず元の順で後ろに付く。既定の合成点は段の型を登録しない。コード・appsettings・helm・compose の既定がすべて無効 | 既定は無効・着脱可能な段 |
 | T-109 | 合成監視の要求（内周の標識あり／なし）。AI 分析の質問・分析・逐次の 3 経路と REST・gRPC の検索輸送（`RagSearchSyntheticMarkerTests`）。BFF の横断検索の合成監視の主体・通常の主体・外からの偽装（`SyntheticTrafficExclusionTests`）。検索サービスの gRPC の受け口（`RerankCompletionTransportTests`） | 質問・分析・逐次・検索 | 合成のときだけ標識が検索サービスへ届く（REST はヘッダ、gRPC はメタデータ）。通常の主体・偽装では付かない。gRPC のメタデータの標識を受け口の判定（`IHttpContextAccessor` 越し）が読める。段は合成監視の検索では呼ばない | 合成監視に再順位付けの費用を出さない |
 | T-110 | 再順位付けの輸送（REST・gRPC。`RerankCompletionTransportTests`） | ゲートウェイを呼ぶ | REST の本文・gRPC の proto の欄に `purpose = rerank`・段が算出した `confidentiality`・出力上限が載る。合成のときだけ標識が付く。非 2xx は例外のまま上がる | 用途と越境の区分をゲートウェイへ正しく渡す |
-| T-111 | gRPC の取り消し（偽のクライアントの `Cancelled` / `DeadlineExceeded`・取り消していない `Cancelled`・ループバックの応答しない受け口） | ゲートウェイを呼ぶ・段を通す | 呼び出し元の取り消しは `OperationCanceledException` で上がり、取り消していない `Cancelled` は `RpcException`（輸送の失敗）のまま。実チャネルで段の期限は `timeout` として元の順へ戻り、利用者の取り消しは縮退として数えずに上がる | 失敗の理由を数え違えない |
+| T-111 | gRPC の取り消し（偽のクライアントの `Cancelled` / `DeadlineExceeded`・取り消していない `Cancelled`・ループバックの応答しない受け口） | ゲートウェイを呼ぶ・段を通す | 呼び出し元の取り消しは `OperationCanceledException` で上がり、取り消していない `Cancelled` は `RpcException`（輸送の失敗）のまま。実チャネルで段の期限は `timeout` として元の順へ戻り、利用者の取り消しは縮退として数えずに上がる。実チャネルの回は受け口への到着を待ってから明示的に取り消し、取り消しの源を回ごとに 1 つにする（利用者の取り消しと段の期限を壁時計で競わせない） | 失敗の理由を数え違えない |
 | T-112 | 再順位付けの構成の既定（`ClaudeRerankTests`） | 構成の正規化 | 出力の上限の既定は 1024（思考と本文の合算。2026-10-10 に 512 から引き上げ）、期限の既定は 8 秒のまま | 割当の `claude-haiku-5-5` は思考が既定で有効で、512 では思考が上限を食って順位の JSON が切れ得る |
 
 ## テストデータ

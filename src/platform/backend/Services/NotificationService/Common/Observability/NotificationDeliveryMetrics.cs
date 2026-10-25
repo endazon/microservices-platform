@@ -25,12 +25,20 @@ public sealed class NotificationDeliveryMetrics
     // （ADR-0045 決定 8。「上限に当たっている」ことがダッシュボードで先に見える）。
     public const string LimitReachedCounterName = "notification.email.limit_reached";
 
+    // FR-22, IADR-0600 決定 3: **一過性の失敗の再試行を使い切って `failed` にした件数。**
+    // 結末としては notification.email.total{outcome=failed} にも 1 件載る。別の計器にするのは、
+    // 「恒久的な失敗（SMTP 未構成・宛先未解決）が出続けている」と「リレーが上限を超えて落ち続けた」を
+    // ダッシュボードで分けて読むためである —— 前者は常時出る（未構成のあいだ）ので、同じ線に混ぜると
+    // 後者が埋もれる。
+    public const string RetryExhaustedCounterName = "notification.email.retry_exhausted";
+
     public const string KindTag = "notification.kind";
     public const string OutcomeTag = "notification.outcome";
 
     private readonly Counter<long> _inApp;
     private readonly Counter<long> _email;
     private readonly Counter<long> _limitReached;
+    private readonly Counter<long> _retryExhausted;
 
     public NotificationDeliveryMetrics(IMeterFactory meterFactory)
     {
@@ -45,9 +53,13 @@ public sealed class NotificationDeliveryMetrics
         _limitReached = meter.CreateCounter<long>(
             LimitReachedCounterName, unit: "{event}",
             description: "日次送信上限に触れた事象の件数。0 でない値は上限の見直しが要ることの信号である。");
+        _retryExhausted = meter.CreateCounter<long>(
+            RetryExhaustedCounterName, unit: "{notification}",
+            description: "一過性の送信失敗の再試行を上限まで使い切り failed にした件数（種別別）。"
+                       + "0 でない値は送信基盤（SMTP リレー）の障害が再試行の窓より長く続いたことの信号である。");
     }
 
-    // kind の値域は開放されている（IADR-0215 決定 2。受け口 /internal/notifications は値域検証を
+    // kind の値域は開放されている（IADR-0215 決定 2。受け口 `NotificationIngress/Accept` は値域検証を
     // 置かない）ため、このタグは**受け口の呼び出し元が基数を増やせる**。既知集合へ丸めず受容する ——
     // 受け口はゲートウェイ非公開の内部経路で、長さ 100 字上限・制御文字除去済みであり、丸めると
     // 新種別の追加のたびに本クラスの追随が要る（値域を開いた同決定の理由がここにも当たる）。
@@ -60,4 +72,7 @@ public sealed class NotificationDeliveryMetrics
 
     public void RecordLimitReached()
         => _limitReached.Add(1);
+
+    public void RecordRetryExhausted(string kind)
+        => _retryExhausted.Add(1, new TagList { { KindTag, kind } });
 }

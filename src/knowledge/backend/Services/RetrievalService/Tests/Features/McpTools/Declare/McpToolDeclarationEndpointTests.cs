@@ -1,14 +1,12 @@
 using System.Net;
-using System.Net.Http.Json;
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
-using System.Text.Json;
 using RetrievalService.Features.McpTools.Declare;
 
 namespace RetrievalService.Tests.Features.McpTools.Declare;
 
 // FR-16, FR-19, ADR-0024 §2・2026-08-02 注記, ADR-0034 決定 9 (#1020):
-// ツール定義の自己申告（`GET /internal/mcp-tools`）。
+// ツール定義の自己申告（gRPC `McpToolDeclarations/Declare`。［2026-10-10 / #1517］REST の `GET /internal/mcp-tools` は撤去した）。
 //
 // 🔴 **陽性対照を必ず対で置く。** 「個人資料が除外される」だけを測ると、
 // **常に空を返す実装がテストを通る** —— #1020 が是正しようとしている状態そのものである。
@@ -16,16 +14,20 @@ namespace RetrievalService.Tests.Features.McpTools.Declare;
 public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
-    private async Task<ServiceToolDeclarations> DeclarationsAsync()
+    // ［2026-10-10 / #1517］[[IADR-0533]] 決定 3: REST の `GET /internal/mcp-tools` を撤去したので、申告は gRPC の面
+    // （`McpToolDeclarationGrpcService`）と同じ `McpToolDeclarationSource.Declare()` から読む。
+    // gRPC の往復（実 Kestrel の h2c・s2s）は `GrpcMcpToolDeclarationTests` が測る。
+    private static Task<ServiceToolDeclarations> DeclarationsAsync() =>
+        Task.FromResult(McpToolDeclarationSource.Declare());
+
+    // ［2026-10-10 / #1517］🔴 REST の申告口は撤去されている（収集側は gRPC だけで集める。張り直すと呼び出し元の無い面が戻る）。
+    [Fact]
+    public async Task REST_の申告口は撤去されている()
     {
         var res = await factory.CreateClient()
-            .GetAsync(McpToolEndpoints.ToolsPath, TestContext.Current.CancellationToken);
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
+            .GetAsync("/internal/mcp-tools", TestContext.Current.CancellationToken);
 
-        var declared = await res.Content.ReadFromJsonAsync<ServiceToolDeclarations>(
-            TestContext.Current.CancellationToken);
-        declared.Should().NotBeNull();
-        return declared!;
+        res.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // FR-16（陽性対照）: **申告した個々のツールが載る。** 空でないことだけを測らない。
@@ -95,20 +97,17 @@ public class McpToolDeclarationEndpointTests(TestWebApplicationFactory factory)
     }
 
     // 🔴 FR-16, ADR-0117 決定 1（#1516）: **申告は実行先の URL を持たない。** 規約は 5 項目（`endpoint` は外した）。
-    // 実行先は McpServer が「申告したサービス＋ツール名」で決める。申告の JSON に URL が戻ると、申告元が別のサービスの
-    // 内部経路を自分のツールとして申告できる形が戻る。ワイヤ（JSON のキー）で測る —— DTO で読むと未知のキーは読み飛ばされて見えない。
+    // 実行先は McpServer が「申告したサービス＋ツール名」で決める。申告の面に URL が戻ると、申告元が別のサービスの
+    // 内部経路を自分のツールとして申告できる形が戻る。
+    // ［2026-10-10 / #1517］ワイヤは gRPC だけになったので、面の項目は proto の記述子で測る（旧形は REST の JSON のキーで測っていた）。
     [Fact]
-    public async Task 申告は実行先のURLを持たない()
+    public void 申告は実行先のURLを持たない()
     {
-        var json = await factory.CreateClient()
-            .GetStringAsync(McpToolEndpoints.ToolsPath, TestContext.Current.CancellationToken);
-        using var document = JsonDocument.Parse(json);
-        var tools = document.RootElement.GetProperty("tools").EnumerateArray().ToList();
-
-        tools.Should().NotBeEmpty("陽性対照 —— 空の申告で緑にしない");
-        tools.Should().AllSatisfy(t => t.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
-            ["name", "description", "input_schema", "required_scope", "egress_class"],
-            "ツール定義規約は 5 項目であり、実行先の URL（旧 endpoint）を申告しない"));
+        McpToolDeclarationSource.Declare().Tools.Should().NotBeEmpty("陽性対照 —— 空の申告で緑にしない");
+        Platform.Shared.Contracts.Grpc.Mcp.V1.McpToolDeclaration.Descriptor.Fields.InDeclarationOrder()
+            .Select(f => f.Name).Should().BeEquivalentTo(
+                ["name", "description", "input_schema", "required_scope", "egress_class"],
+                "ツール定義規約は 5 項目であり、実行先の URL（旧 endpoint）を申告しない");
     }
 
     private static McpToolCandidate Candidate(string name, string? scope) => new(

@@ -1,0 +1,24 @@
+# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーの**単一情報源**。
+# 書式: <ユーザー名> <接続元の名前空間> <接続元の Pod の app ラベル> <パスワードを持つ Vault の KV>
+# 読み手: deploy/local/vault/eso/bootstrap.sh（Vault の種）・reconcile-users.sh（ブローカのユーザーと権限）・
+#         deploy/local/infra/rabbitmq.yaml の NetworkPolicy（届いてよい Pod）。一致は scripts/scripts.repo.test.js が突き合わせる
+#         （MSP 側はチャートの messaging: true のサービス、AST 側は submodule の chart の services の全件と照合する）。
+# 🔴 足す・消すときは 3 か所（ここ・NetworkPolicy・消費側の chart）を同じ変更でそろえる。
+msp-document microservices-platform document-service msp/rabbitmq-users
+msp-datasource microservices-platform datasource-service msp/rabbitmq-users
+msp-conversion microservices-platform conversion-service msp/rabbitmq-users
+msp-ingestion microservices-platform ingestion-service msp/rabbitmq-users
+msp-retrieval microservices-platform retrieval-service msp/rabbitmq-users
+msp-wiki microservices-platform wiki-service msp/rabbitmq-users
+msp-graph microservices-platform graph-service msp/rabbitmq-users
+ast-audit ai-stock-trading audit-service ai-stock-trading/rabbitmq-users
+ast-backtest ai-stock-trading backtest-service ai-stock-trading/rabbitmq-users
+ast-configuration ai-stock-trading configuration-service ai-stock-trading/rabbitmq-users
+ast-cost-control ai-stock-trading cost-control-service ai-stock-trading/rabbitmq-users
+ast-information-collection ai-stock-trading information-collection-service ai-stock-trading/rabbitmq-users
+ast-market-monitor ai-stock-trading market-monitor-service ai-stock-trading/rabbitmq-users
+ast-notification ai-stock-trading notification-service ai-stock-trading/rabbitmq-users
+ast-order-execution ai-stock-trading order-execution-service ai-stock-trading/rabbitmq-users
+ast-report ai-stock-trading report-service ai-stock-trading/rabbitmq-users
+ast-risk-management ai-stock-trading risk-management-service ai-stock-trading/rabbitmq-users
+ast-trade-decision ai-stock-trading trade-decision-service ai-stock-trading/rabbitmq-users

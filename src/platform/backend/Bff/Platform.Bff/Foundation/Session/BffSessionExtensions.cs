@@ -71,11 +71,16 @@ public static class BffSessionExtensions
         // （鍵リングが 1 つしか無いので共有し忘れていても緑になる）。
         // **接続は遅延させる。** 登録時に Connect すると、セッションを使わないテストや
         // Redis 不在の環境でも起動時に落ちる（＝配線の都合でテストが Redis を要求することになる）。
-        var lazyRedis = new Lazy<IConnectionMultiplexer>(
-            () => ConnectionMultiplexer.Connect(options.SessionStoreConfiguration()));
+        // 🔴 NFR-07, [[IADR-0633]] (#2242): **失敗を覚えない遅延**（`SessionStoreConnection.Lazy`。ヘルスチェックと同じ方針）。
+        //   既定の Lazy は初回の Connect の例外を覚え、起動時に 1 度つながらなかっただけで、そのプロセスのログインが全部 500 になった。
+        //   接続を作る関数は DI に置く（既定は ConnectionMultiplexer.Connect。試験が「1 回目だけ失敗」を与えて回復を測る）。
+        services.TryAddSingleton(new SessionStoreConnect(o => ConnectionMultiplexer.Connect(o)));
+        services.AddSingleton(sp => new SessionStoreKeyRingConnection(SessionStoreConnection.Lazy(
+            () => sp.GetRequiredService<SessionStoreConnect>()(options.SessionStoreConfiguration()))));
         // 🔴 NFR-07, IADR-0510: この登録の利用者は鍵リングの保存先（下の KeyManagementOptions）である。死んだ登録に見えても消さない
         //   （消すと初回の DataProtection 利用で GetRequiredService が落ち、すべてのログインと Cookie が失敗する）。
-        services.AddSingleton<IConnectionMultiplexer>(_ => lazyRedis.Value);
+        //   ファクトリが例外を投げても DI はそれを覚えない（次の解決でまた呼ぶ）ので、回復は上の遅延が決める。
+        services.AddSingleton<IConnectionMultiplexer>(sp => sp.GetRequiredService<SessionStoreKeyRingConnection>().Value);
         services.AddDataProtection()
             .SetApplicationName(DataProtectionApplicationName);
         // 🔴 NFR-07, ADR-0032, [[IADR-0510]] (#1780): **鍵の保存先は DI の `IConnectionMultiplexer` から引く。**

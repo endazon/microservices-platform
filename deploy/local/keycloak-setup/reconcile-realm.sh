@@ -5,7 +5,7 @@
 #   bash deploy/local/keycloak-setup/reconcile-realm.sh            # 差分を当てる（apply）
 #   bash deploy/local/keycloak-setup/reconcile-realm.sh --check    # 差分を数えるだけ（書き換えない）。1 件でも在れば exit 1
 #   bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
-#       # 管理用の 3 クライアント（identity-admin / reset-gate / mcp-client-admin）の稼働の secret が宣言の dev の値のままなら
+#       # サービスアカウントを持つ機密クライアント（realm の宣言から導出。IADR-0572）の稼働の secret が宣言の dev の値のままなら
 #       # 名指しして exit 1（読むだけ。値は出さない。IADR-0517 / #1830。dev 以外のクラスタでは起動の直後に回す）
 #
 # ## なぜ要るか —— realm JSON を直しても既存クラスタには届かない
@@ -30,7 +30,7 @@
 # 環境変数（すべて任意）:
 #   INFRA_NS                 Keycloak の namespace（既定 platform-infra）
 #   RECONCILE_JOB_TIMEOUT    Job の完了待ち秒数（既定 300）
-#   ALLOW_DEV_CLIENT_SECRETS dev 以外の kube context でも、無い管理用クライアントを宣言の dev の値で作らせる（1 だけ。IADR-0517）
+#   ALLOW_DEV_CLIENT_SECRETS dev 以外の kube context でも、無い機密クライアント（サービスアカウントを持つもの）を宣言の dev の値で作らせる（1 だけ。IADR-0517・IADR-0572）
 #
 # ## dev の値で作ってよいかの判定（NFR-18, ADR-0124 決定 1, IADR-0517 / #1830）
 #
@@ -60,7 +60,7 @@ KC_CONTEXT="$(dev_client_secret_current_context)"
 if dev_client_secret_create_allowed "$KC_CONTEXT" "${ALLOW_DEV_CLIENT_SECRETS:-}"; then
   DEV_SECRETS="allow"
   if ! dev_client_secret_context_is_dev "$KC_CONTEXT"; then
-    echo "    !!! WARNING: ALLOW_DEV_CLIENT_SECRETS=1: dev ではない kube context '${KC_CONTEXT:-（読めない）}' でも、無い管理用クライアントを dev の値で作らせる" >&2
+    echo "    !!! WARNING: ALLOW_DEV_CLIENT_SECRETS=1: dev ではない kube context '${KC_CONTEXT:-（読めない）}' でも、無い機密クライアント（サービスアカウントを持つもの）を dev の値で作らせる" >&2
   fi
 else
   DEV_SECRETS="deny"

@@ -7,6 +7,8 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // 構成は `Llm:PurposeEffort`（用途 → effort）。例: `{ "rerank": "low" }`。**既定は空**であり、書かない用途は
 // effort を送らない（＝提供元の既定。opus-5-5 / haiku-5-5 は medium、sonnet-5-5 は high）。
 // 5.5 系は thinking を無効にできない（400）ので、思考の量を絞る手段は effort だけである。
+// ［2026-10-17 / #1749・IADR-0562］送り方は公式 SDK の `MessageCreateParams.OutputConfig.Effort` になった
+// （旧 SDK は口が無く、HttpClient の委譲ハンドラが要求本文へ足していた。そのハンドラと呼び出し単位の文脈は撤去した）。
 public sealed class ClaudePurposeEffortOptions
 {
     public const string SectionName = "Llm:PurposeEffort";
@@ -22,12 +24,12 @@ public static class ClaudeEffort
     public static readonly IReadOnlySet<string> Levels =
         new HashSet<string>(["low", "medium", "high", "xhigh", "max"], StringComparer.Ordinal);
 
-    // 🔴 **effort を受け付けると確かめたモデルだけ**に送る。`claude-haiku-4-5` は effort を 400 で拒む
-    // （切り戻しで用途を haiku-4-5 へ戻したときに、設定 1 つで全件 400 にしない）。ここに無いモデルへは送らない。
-    // 一覧は利用許可集合（claude-managed の Models）のうち effort に対応するものに限る（sonnet-4-6 は xhigh を
-    // 受けないため、値域が揃わないモデルは載せない）。
+    // 🔴 **effort を受け付けると確かめたモデルだけ**に送る。ここに無いモデルへは送らない（effort を 400 で拒むモデルへ
+    // 設定 1 つで全件 400 にしない）。一覧は利用許可集合（claude-managed の Models）のうち effort に対応するものに限る。
+    // ［2026-10-17 / #1903］計画 ADR-0138 決定 7 により許可集合は 5.5 系の 3 モデルだけになったので、旧世代
+    // （claude-opus-5・claude-sonnet-5・claude-opus-4-8）を外した。許可集合に無いモデルをここに残さない。
     public static readonly IReadOnlySet<string> CapableModels = new HashSet<string>(
-        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5", "claude-sonnet-5", "claude-opus-4-8"],
+        ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
         StringComparer.OrdinalIgnoreCase);
 
     // 用途とモデルから、送る effort を決める。送らないときは null。
@@ -55,29 +57,5 @@ public sealed class ClaudePurposeEffortOptionsValidator : IValidateOptions<Claud
                 + $"（{string.Join(" / ", ClaudeEffort.Levels)}）にありません。")
             .ToList();
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
-    }
-}
-
-// IADR-0531 決定 3: 1 回の Anthropic 呼び出しに付ける effort を、SDK の外（HttpClient の層）へ渡す文脈。
-// Anthropic.SDK 4.0.0 の MessageParameters は `output_config` を持たないため、要求本文への注入は
-// AnthropicRequestShapingHandler が行う。呼び出し単位の値なので AsyncLocal で渡す（シングルトンの HttpClient を
-// 共有したまま、並行する呼び出しの値が混ざらない）。
-public static class AnthropicRequestContext
-{
-    private static readonly AsyncLocal<string?> CurrentEffort = new();
-
-    public static string? Effort => CurrentEffort.Value;
-
-    // 範囲の間だけ effort を設定する。null なら何も付けない。
-    public static IDisposable UseEffort(string? effort)
-    {
-        var previous = CurrentEffort.Value;
-        CurrentEffort.Value = effort;
-        return new Scope(previous);
-    }
-
-    private sealed class Scope(string? previous) : IDisposable
-    {
-        public void Dispose() => CurrentEffort.Value = previous;
     }
 }

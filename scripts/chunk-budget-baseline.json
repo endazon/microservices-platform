@@ -294,7 +294,72 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 629188,
+  "initialTotalBytes": 644981,
+  "$comment_initialTotalBytes_20261024_2214_sc17-role-labels": [
+    "［2026-10-24 / #2214（SC-17 のロールを計画の表示名で出す）］644,822 → 644,930 B（+108 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。1 kB 未満の遅延チャンクは 11 本のまま。",
+    "増分は、初期チャンク（index-*.js）に載る基盤の翻訳カタログ（ja / en）へ足した 2 語（システム管理者・運用者。context「ロール」）の 2 ロケール分である（ビルド成果物で確かめた）。写像そのもの（lib/i18n/roles.ts）は SC-17 の遅延チャンク側にある。E2E が見つけた表示の欠落を直した、意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2016_shell-e2e": [
+    "［2026-10-24 / #2016（共通シェルの E2E）］644,568 → 644,610（+42 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は画面のエラー境界（RouteErrorComponent。初期チャンクに載る）の「再読み込み」で、購読の無い TanStack Query のキャッシュを捨てる 1 行（useQueryClient と removeQueries）である。意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2017_sc01-search-e2e": [
+    "［2026-10-24 / #2017（SC-01 の E2E）］644,610 → 644,788（+178 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は出典一覧の部品（CitationList。右レールの AI チャットと共有するので初期チャンクに載る）が描く機密区分の表示名（4 値の写像と Lingui のメッセージ）である。E2E が見つけた表示の欠落を直した、意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2201_theme-toggle-label": [
+    "［2026-10-24 / #2201（テーマ切替ボタンの名前を表示文言で始める）］644,788 → 644768 B へ引き下げた（実測値。pnpm run build → --update）。",
+    "減ったのは ThemeToggle の aria-label の文言（共通シェル＝初期チャンク）が短くなり、表示文言の参照を 1 回にまとめたため。床はラチェットなので、減った分は下げておく。"
+  ],
+  "$comment_20261024_2018_sc02-sc03-e2e": [
+    "［2026-10-24 / #2018（SC-02/03 の E2E）］初期ロード 644,788 → 644,838 B（+50 B）、1 kB 未満の遅延チャンク 10 → 11 本。いずれも実測値（pnpm run build → --require が報告し、--update で床を更新した）。",
+    "develop の取り込み（#2201 がテーマ切替の文言で床を 644,788 → 644,768 B へ 20 B 下げた）の後に測り直し、644,768 → 644,818 B（+50 B。増分は本件の写像の共有だけで、#2201 の減少はそのまま残る）とした。遅延チャンクは 11 本のまま。",
+    "原因は 1 つ: 機密区分の表示名の写像（約 0.25 kB）を CitationList から foundation の lib/i18n/confidentiality.ts へ移し、SC-01（出典・右レール）・SC-02（結果一覧）・SC-03（属性パネル）の 4 つの遅延チャンクで共有したこと。Rollup がそれを共有チャンク confidentiality-*.js に切り出し、初期チャンクには先読みの参照だけが載った（+50 B）。",
+    "写像を各画面へ複製すれば小さいチャンクは増えないが、同じ表を 2 か所以上に持つと片方が古くなる（#2017 で SC-02・SC-03 が生値のまま取り残されていた事故そのもの）。複製しない方を採った。意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2022_sc11-drift-contract-values": [
+    "［2026-10-24 / #2022（SC-08/10/11 の E2E）・IADR-0620］645,436 → 644,981 B へ引き下げた（実測値。pnpm run build → --update）。",
+    "減ったのは、SC-11 のドリフト種別の表示名 5 語（「接続の不一致」ほか）を計画（Q29）どおり外し、初期チャンクに載る ja / en の翻訳カタログから消えた分である。床はラチェットなので、減った分は下げておく。"
+  ],
+  "$comment_initialTotalBytes_20261024_2021_sc18-hops-no-rounding": [
+    "［2026-10-24 / #2021（SC-18/19/20/21 の E2E）］644,822 → 645,328 B（+506 B）へ引き上げた。develop の取り込み（#2214 が 644,930 へ上げた）の後に測り直し、644,930 → 645,436 B（+506 B。本件の増分は変わらない）とした。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 645.00 kB になる。カタログの増分（約 0.33 kB）は SC-18 の探索深さの範囲外のエラーの文言 2 キー（見出しと本文。en は英訳）である。残り（約 0.18 kB）はルート定義 sc18GraphRoute.ts（ルート木は初期チャンクに載る。画面の部品は遅延）に足した isHopsOption と validateSearch の変更である。E2E が見つけた計画との食い違い（hops=4 を既定 2 へ丸めていた）を直した、意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2019_sc05-sc06-e2e": [
+    "［2026-10-24 / #2019（SC-05/06/07 の E2E）］644,818 → 644,822 B（+4 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。1 kB 未満の遅延チャンクは 11 本のまま。",
+    "原因は、SC-05（文書管理）と SC-06（データソース）が、#2018 で foundation へ移した機密区分の表示名の写像（共有チャンク confidentiality-*.js）を使うようになったこと。写像そのものは増えておらず、初期チャンク（index-*.js）にある先読みの依存表（__vite__mapDeps）で、文書管理とデータソースの遅延チャンクの依存へ、その共有チャンクの番号が加わった分である（ビルド成果物で確かめた）。意図した増加である。"
+  ],
+  "$comment_initialTotalBytes_20261024_2046_break-glass-screens": [
+    "［2026-10-24 / #2046 の 3 本目（緊急アクセスの画面）］635,032 → 644,208（+9,176 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は翻訳カタログ（ja / en の messages.ts。初期チャンクに載る）に緊急アクセスの文言 61 キーを足した分である。カタログの生成物は ja +5,213 B・en +4,440 B（計 9,653 B。最小化前）。画面の部品は個人資料管理と文書詳細の遅延チャンクに載り、初期ロードには入らない。",
+    "同 PR の AI レビュー対応（失効の確認の引き直し）で文言 2 キーが増え、644,208 → 644,568（+360 B）へ再測した（同じく翻訳カタログの増分だけ）。"
+  ],
+  "$comment_initialTotalBytes_20261022_2077_radix-tabs-bump": [
+    "［2026-10-22 / #2077 の追随］633,157 → 635,032（+1,875 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は dependabot の @radix-ui/react-tabs 1.1.21 → 1.2.1（#2077。依存の primitive・react-primitive・react-roving-focus・react-slot ほか一式も上がった）で ui チャンクが 76,575 → 78,450 B になった分だけである。",
+    "A/B で帰属を確かめた: 同一環境で package.json 2 本と pnpm-lock.yaml だけを #2077 の直前（a29bf9da）へ戻してビルドすると初期ロード合計は 633,157（旧床ちょうど）。JS 55 本のうちサイズが動いたのは ui の 1 本だけで、他の 54 本は同サイズ（ハッシュだけ替わる）。smallLazyChunks は 10 のまま。",
+    "#2077 は自身の CI で build-test が赤のままマージされ、develop の push の Frontend CI は同時実行の打ち切り（cancelled）で赤が表に出なかった。"
+  ],
+  "$comment_initialTotalBytes_20261020_1993_document-list-index-status": [
+    "［2026-10-20 / #1993 文書管理の一覧の索引の状態の列］632,918 → 633,157（+239 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "増分は初期ロードに載る ja / en のカタログ（messages.ts）に文言 5 件（索引・索引済み・埋め込み待ち・未索引・不明）が加わった分である。画面のコード（documentIndexStatus.ts・列）は SC-05 の遅延チャンクに入る。"
+  ],
+  "$comment_initialTotalBytes_20261017_1923_document-list-tabs-columns-preview": [
+    "［2026-10-17 / #1923 の残り 文書管理の一覧のタブ・データソースとタグの列・出典・本文のプレビュー］631,315 → 632,918（+1,603 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを絞り込み群の PR の版へ戻すと 631,315（その床ちょうど）になる。増分は初期ロードに載るカタログに文言 19 件が加わった分で、画面のコード（DocumentOriginTabs・DocumentPreviewPanel ほか）は SC-05 の遅延チャンクに入る。"
+  ],
+  "$comment_initialTotalBytes_20261017_1923_document-list-facets-preview": [
+    "［2026-10-17 / #1923 の残り 文書管理の一覧のデータソース・機密区分・タグ・プロジェクト・保存日の絞り込み］630,819 → 631,315（+496 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が超過を報告し、--update で床を更新した）。",
+    "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 630,819（旧い床ちょうど）になる。増分は初期ロードに載るカタログに文言 8 件が加わった分で、画面のコード（DocumentListToolbar ほか）は SC-05 の遅延チャンクに入る。"
+  ],
+  "$comment_initialTotalBytes_20261015_1923_document-list-sort-filter": [
+    "［2026-10-15 / #1923 段 2 文書管理の一覧の並べ替え・表題の検索・状態の絞り込み］629,497 → 630,819（+1,322 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が +1.32 kB 超過を報告し、--update で床を更新した）。",
+    "A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 629,497（床ちょうど）になる。増分は初期ロードに載るカタログに文言 16 件が加わった分で、画面のコード（DocumentListToolbar ほか）は SC-05 の遅延チャンクに入る。"
+  ],
+  "$comment_initialTotalBytes_20261014_1923_document-list-pagination": [
+    "［2026-10-14 / #1923 文書管理の一覧のページネーション］629,188 → 629,497（+309 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が +0.31 kB 超過を報告し、--update で床を更新した）。",
+    "増分は初期ロードに載る ja / en のカタログ（messages.ts）にページ送りの文言 6 件が加わった分である。画面のコード（DocumentPagination）は SC-05 の遅延チャンクに入る。"
+  ],
   "$comment_initialTotalBytes_20261009_1845_sc12-secret-once-and-audit": [
     "［2026-10-09 / #1845 無人の MCP クライアントの secret の一度だけの表示・再発行と管理操作の監査］627,917 → 629,188（+1,271 B）へ引き上げた。実測値である（pnpm run build → node scripts/check-chunk-budget.js --require が",
     "+1.27 kB 超過を報告し、--update で床を更新した）。A/B で帰属を確かめた: 本件のコードのまま ja / en のカタログ（messages.ts）だけを develop の版へ戻すと 627,917（床ちょうど）になる。",
@@ -431,7 +496,7 @@
     "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
     "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
   ],
-  "smallLazyChunks": 10,
+  "smallLazyChunks": 11,
   "$comment_initialTotalBytes_20260912_ast-bump": [
     "［2026-09-12 / #1437 作業 1・2］705,386 → 731,293（+25.91 kB）へ引き上げた。submodule src/ai-stock-trading を",
     "develop 3d35c7a → 7780edc（AST#791: 4 画面を @platform/ui と Lingui へ載せ替え）へ進めた合成ビルドの実測。",

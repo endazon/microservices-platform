@@ -30,11 +30,16 @@ public sealed class NormalizedAssetLedgerTests
 {
     private sealed class NoopUpdatedPublisher : IDocumentUpdatedPublisher
     {
+        // IADR-0608 (#2168): 確定の口。この器は関数（保存 → 発行を積む）を呼ぶだけでよい（DB は InMemory でトランザクションが無い）。
+        public Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default) =>
+            saveAndPublish(ct);
+
         public Task PublishUpdatedAsync(Guid documentId, string title, string status, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
             string? contentFingerprint = null, bool hasBody = true,
             string? originalPath = null, string? dataSourceName = null,
             List<string>? sharedWith = null,
+            long? sequence = null,
             CancellationToken ct = default) => Task.CompletedTask;
     }
 

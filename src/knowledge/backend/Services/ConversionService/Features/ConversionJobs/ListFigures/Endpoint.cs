@@ -6,8 +6,8 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 namespace ConversionService.Features.ConversionJobs.ListFigures;
 
 // UC-06, SC-07, IADR-0154: 人手補正 Phase 1 の本文取得。2 ペイン（左＝図コード・右＝元の図画像）
-// が要る材料を返す。**画像のバイト列は返さない**——一覧が図の枚数だけ膨らむため、BFF が
-// 別の口で配信する（IADR-0154 決定 2）。
+// が要る材料を返す。**画像のバイト列は返さない**——一覧が図の枚数だけ膨らむため、別の口で配信する
+// （IADR-0154 決定 2。［2026-10-17 / #1941・[[IADR-0558]]］配信するのは本サービスの `GetFigureImage` で、BFF は中継する）。
 internal static class ListConversionFiguresEndpoint
 {
     internal static void Map(RouteGroupBuilder g)

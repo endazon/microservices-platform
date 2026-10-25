@@ -7,8 +7,11 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Introspection;
 
-// FR-15, NFR-16, ADR-0029, IADR-0379 決定 4・5, IADR-0462 (#1514): 構成情報 API の登録（`AddPlatformConfigInspection`）が
-// **宛先ごとに輸送を選ぶ収集器**を組み、gRPC の収集器と s2s トークンの発行側を**構成が在るときだけ**入れることを固定する。
+// FR-15, NFR-16, ADR-0029, IADR-0379 決定 4, IADR-0462 (#1514), [[IADR-0533]] 決定 3 (#1517):
+// 構成情報 API の登録（`AddPlatformConfigInspection`）が gRPC だけの収集器を組み、撤去した旧キーで起動を止めることを固定する。
+//
+// ［2026-10-10 / #1517］REST の収集は撤去した。宛先は `Introspection:Services`（値は h2c のアドレス）であり、
+// gRPC の収集器と s2s トークンの発行側は**常に**登録する（従前は `Introspection:GrpcServices` が在るときだけだった）。
 public class ConfigInspectionGrpcRegistrationTests
 {
     private static IServiceProvider Build(Dictionary<string, string?> config)
@@ -19,14 +22,13 @@ public class ConfigInspectionGrpcRegistrationTests
         return builder.Services.BuildServiceProvider();
     }
 
-    // gRPC の宛先があれば、収集器は宛先ごとに輸送を選ぶ実装であり、s2s の発行側と gRPC の収集器が解決できる。
+    // 収集器は gRPC の収集器の上に組まれ、s2s の発行側が解決できる。
     [Fact]
-    public void Grpc_targets_register_the_grpc_collector_and_service_token()
+    public void Registers_the_grpc_collector_and_service_token()
     {
         var sp = Build(new()
         {
-            ["Introspection:Services:document-service"] = "http://document-service:8080",
-            ["Introspection:GrpcServices:document-service"] = "http://document-service:8081",
+            ["Introspection:Services:document-service"] = "http://document-service:8081",
             ["ServiceToken:ClientId"] = "bff",
             ["ServiceToken:ClientSecret"] = "x",
         });
@@ -36,23 +38,28 @@ public class ConfigInspectionGrpcRegistrationTests
         sp.GetService<IServiceTokenProvider>().Should().NotBeNull();
     }
 
-    // 対照: gRPC の宛先が無い（あるいは値が空の）配備は資格情報を要求しない —— 既存配備は 1 バイトも変わらない。
+    // 🔴 撤去した旧キー `Introspection:GrpcServices` が残っていれば起動を止める（黙って無視しない）。
     [Theory]
-    [InlineData(null)]
+    [InlineData("http://document-service:8081")]
     [InlineData("")]
-    public void Without_grpc_targets_no_service_token_is_required(string? grpcAddress)
+    public void Retired_grpc_services_key_fails_fast(string value)
     {
-        var config = new Dictionary<string, string?>
+        var act = () => Build(new()
         {
-            ["Introspection:Services:document-service"] = "http://document-service:8080",
-        };
-        if (grpcAddress is not null)
-            config["Introspection:GrpcServices:document-service"] = grpcAddress;
+            ["Introspection:Services:document-service"] = "http://document-service:8081",
+            ["Introspection:GrpcServices:document-service"] = value,
+        });
 
-        var sp = Build(config);
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Introspection:GrpcServices*Introspection:Services*document-service*");
+    }
 
-        sp.GetRequiredService<IEffectiveConfigCollector>().Should().BeOfType<EffectiveConfigCollector>();
-        sp.GetService<GrpcServiceIntrospectionCollector>().Should().BeNull();
-        sp.GetService<IServiceTokenProvider>().Should().BeNull();
+    // 対照: 旧キーが無ければ起動する（宛先が 0 件でも組み立てられる）。
+    [Fact]
+    public void Without_the_retired_key_it_builds()
+    {
+        var act = () => Build(new());
+
+        act.Should().NotThrow();
     }
 }

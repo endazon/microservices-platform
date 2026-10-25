@@ -19,8 +19,9 @@ mesh 内の 3 Service（`frontend-service` / `bff-service` / `wiki-js`）へ**�
 | --- | --- |
 | `traefik-service-off.yaml` | Traefik の LoadBalancer Service を落として **80/443/50000 の hostPort を明け渡す**（`HelmChartConfig`）。**kustomization には入れない**（Gateway より先に当てる必要があるため） |
 | `gateway.yaml` | `msp-edge`（80 は 443 へリダイレクト／443 HTTPS）と `msp-admin-edge`（50000 HTTPS）。どちらも `credentialName: edge-tls` |
-| `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、`/private-notes/sync/`→document-service、残り→frontend-service）と `keycloak.localhost` |
-| `virtualservice-admin.yaml` | 50000: grafana / headlamp / vault / qdrant / wiki / argocd の 6 host |
+| `virtualservice-app.yaml` | 443: catch-all（`/bff`→bff-service、`/private-notes/sync/`→document-service、`/mcp`・`/mcp/` 配下→mcp-service（外部 AI エージェントの入口。#2045）、残り→frontend-service）と `keycloak.localhost` |
+| `virtualservice-admin.yaml` | 50000: grafana / headlamp / vault / qdrant / wiki / argocd の 6 host。**kustomization に含めない** —— `ADMIN_EDGE=1` のときだけ `istio-edge-up.sh` が当て、それ以外では消す（IADR-0586。入り方は [edge/README](../edge/README.md)「管理ツールへの入り方」） |
+| `virtualservice-admin-deny.yaml` | 50000 の既定の拒否（`*.localhost` に `directResponse: 403`）。opt-in の 6 host は host の完全一致が優先されるので、こちらは残りの host だけを受ける |
 | `coredns-edge-hosts.yaml` | pod 側の `*.localhost` 解決先を `istio-ingressgateway.istio-system` へ差し替える |
 | `tls/edge-certificate-istio.yaml` | `istio-system` の葉証明書 `edge-tls`（Gateway は同 namespace の Secret しか読めない）。**kustomization には入れない**（cert-manager の CRD 依存） |
 
@@ -30,8 +31,9 @@ istiod / ingressgateway の values は [`../../istio/`](../../istio/README.md)�
 
 ```sh
 # クラスタ作成から通す（推奨）
-ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERMISSIVE。再実行は現行のモードを引き継ぐ
-ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT
+ISTIO=1 LOCALEDGE=1 ./scripts/k8s-local-up.sh --live                            # 初回は既定の STRICT（入口を移した後で上げる）。再実行は現行のモードを引き継ぐ
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live     # PERMISSIVE を引き継いだクラスタを STRICT へ上げる
+ISTIO=1 LOCALEDGE=1 ISTIO_MTLS_MODE=PERMISSIVE ./scripts/k8s-local-up.sh --live # 緩める（明示のときだけ）
 
 # 既に立っているクラスタのエッジだけを移す
 bash scripts/istio-edge-up.sh --live

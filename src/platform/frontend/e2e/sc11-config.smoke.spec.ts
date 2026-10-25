@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import type { DriftReportDto, EffectiveConfigDto } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
@@ -74,5 +74,83 @@ test('SC-11: a user with no administrative role gets the same not-found page', a
   await expect(page.getByRole('link', { name: '構成ビューア' })).toHaveCount(0);
 
   expect(traffic.calls.map((c) => c.key)).not.toContain('GET /admin/config');
+  expectBffTrafficIsComplete(traffic);
+});
+
+// ───────────── M-098（#2022 / E-17）: ドリフトは契約の値のまま・参照のみ（入力要素 0） ─────────────
+//
+// 期待値は計画 05_screens §SC-11 から起こした。
+// - ドリフトは 5 分類（MissingApply / UndeclaredSubscription / StaleStage / BindingMismatch / Unverifiable）、
+//   深刻度は 2 値（Warning / Info）、対象は常に段名。**深刻度と種別は契約が返す値をそのまま表示する（日本語に訳さない）**
+//   （2026-08-05 確定・Q29。運用者・管理者向けで、実装との突合を容易にするため）。
+// - 入力 / バリデーション: **参照のみ**（本画面から構成は変更しない。変更は Git 経由に限る）。
+
+const KINDS = [
+  'MissingApply',
+  'UndeclaredSubscription',
+  'StaleStage',
+  'BindingMismatch',
+  'Unverifiable',
+] as const;
+const driftAll: DriftReportDto = {
+  hasDrift: true,
+  checkedAt: '2026-10-24T00:00:00Z',
+  findings: KINDS.map((kind, i) => ({
+    kind,
+    severity: i % 2 === 0 ? 'Warning' : 'Info',
+    target: `stage-${i + 1}`,
+    detail: `${kind} の説明`,
+  })),
+};
+
+test('M-098: ドリフトの種別 5 値と深刻度 2 値を、契約の値のまま描く', async ({ page }) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-operator']),
+    handlers: { ...handlers, 'GET /admin/config/drift': driftAll },
+  });
+
+  await page.goto('/admin/config-viewer');
+  const rows = page.getByRole('row').filter({ hasText: /stage-\d/ });
+  await expect(rows).toHaveCount(5);
+  for (const [i, kind] of KINDS.entries()) {
+    const row = rows.filter({ hasText: `stage-${i + 1}` });
+    // ★ 種別・深刻度は契約の値そのもの（訳さない）。列の順（種別・深刻度・対象・詳細）ごと 1 回で見る
+    // （#2038: `nth()` で列を引かない。基準書 §3）。
+    await expect(row.getByRole('cell')).toHaveText([
+      kind,
+      i % 2 === 0 ? 'Warning' : 'Info',
+      `stage-${i + 1}`,
+      `${kind} の説明`,
+    ]);
+  }
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+test('M-098: 構成ビューアは参照のみで、入力要素が 1 つも無く、書き込みの要求を出さない', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser(['platform-admin']),
+    handlers: { ...handlers, 'GET /admin/config/drift': driftAll },
+  });
+
+  await page.goto('/admin/config-viewer');
+  // 陽性対照: ドリフトの明細まで描けている。
+  await expect(page.getByRole('row').filter({ hasText: 'stage-1' })).toBeVisible();
+  // ★ 入力要素（テキスト・選択・チェック・ラジオ・数値）が 0 件。
+  for (const role of [
+    'textbox',
+    'combobox',
+    'checkbox',
+    'radio',
+    'spinbutton',
+    'switch',
+  ] as const) {
+    await expect(page.getByRole('main').getByRole(role)).toHaveCount(0);
+  }
+  await expect(page.getByRole('main').locator('input, select, textarea')).toHaveCount(0);
+  expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+
   expectBffTrafficIsComplete(traffic);
 });

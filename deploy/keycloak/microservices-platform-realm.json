@@ -4,6 +4,7 @@
   "enabled": true,
   "loginTheme": "platform",
   "accountTheme": "platform",
+  "emailTheme": "platform",
   "internationalizationEnabled": true,
   "supportedLocales": [
     "ja",
@@ -228,8 +229,82 @@
       {
         "name": "Administrators",
         "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。"
+      },
+      {
+        "name": "default-roles-platform",
+        "description": "${role_default-roles}",
+        "composite": true,
+        "composites": {
+          "realm": [
+            "offline_access"
+          ],
+          "client": {
+            "account": [
+              "view-profile",
+              "manage-account"
+            ]
+          }
+        }
       }
-    ]
+    ],
+    "client": {
+      "account": [
+        {
+          "name": "view-profile",
+          "description": "${role_view-profile}"
+        },
+        {
+          "name": "manage-account",
+          "description": "${role_manage-account}",
+          "composite": true,
+          "composites": {
+            "client": {
+              "account": [
+                "manage-account-links"
+              ]
+            }
+          }
+        },
+        {
+          "name": "manage-account-links",
+          "description": "${role_manage-account-links}"
+        },
+        {
+          "name": "view-applications",
+          "description": "${role_view-applications}"
+        },
+        {
+          "name": "view-consent",
+          "description": "${role_view-consent}"
+        },
+        {
+          "name": "manage-consent",
+          "description": "${role_manage-consent}",
+          "composite": true,
+          "composites": {
+            "client": {
+              "account": [
+                "view-consent"
+              ]
+            }
+          }
+        },
+        {
+          "name": "view-groups",
+          "description": "${role_view-groups}"
+        },
+        {
+          "name": "delete-account",
+          "description": "${role_delete-account}"
+        }
+      ]
+    }
+  },
+  "defaultRole": {
+    "name": "default-roles-platform",
+    "description": "${role_default-roles}",
+    "composite": true,
+    "clientRole": false
   },
   "groups": [
     {
@@ -665,8 +740,8 @@
     {
       "clientId": "abac-seeder",
       "name": "ABAC dev seeder (client_credentials)",
-      "description": "IADR-0294/#438: ABAC 初期投入器（scripts/seed-abac-policies.js・ABACSEED=1）の機密クライアント。MFA 必須化で人の password grant は成立しないため、機械の主体として client_credentials で発行する。service-account に platform-admin（投入先が AdminOnly のため）。本番シークレットは config から供給する。",
-      "enabled": true,
+      "description": "IADR-0294/#438: ABAC 初期投入器（scripts/seed-abac-policies.js・ABACSEED=1）の機密クライアント。MFA 必須化で人の password grant は成立しないため、機械の主体として client_credentials で発行する。service-account に platform-admin（投入先が AdminOnly のため）。IADR-0576: 既定で無効。投入器・運用スクリプトが実行の間だけ有効にする。",
+      "enabled": false,
       "protocol": "openid-connect",
       "publicClient": false,
       "standardFlowEnabled": false,
@@ -774,7 +849,7 @@
     {
       "clientId": "graph-service",
       "name": "GraphService east-west gRPC caller (client_credentials)",
-      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（AI 提案の生成）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
+      "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0400 (#1255): east-west gRPC で LlmGateway のテキスト生成を呼ぶ主体（AI 提案・クラスタ要約）。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -1170,8 +1245,105 @@
         "profile",
         "email"
       ]
+    },
+    {
+      "clientId": "account",
+      "name": "${client_account}",
+      "description": "SC-16, #1894, IADR-0546: Keycloak の組み込み account（アカウント API の資源。ロール manage-account 等の持ち主）。account-console を宣言するため本体と同じ形で宣言する（片方だけの宣言は import が重複で落ちる）",
+      "rootUrl": "${authBaseUrl}",
+      "baseUrl": "/realms/platform/account/",
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "/realms/platform/account/*"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "basic",
+        "profile"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "account-console",
+      "name": "${client_account-console}",
+      "description": "SC-16, #1894, IADR-0546: アカウントコンソール（SPA・公開クライアント）。basic で sub、profile で利用者名、写像で account のロールだけを resource_access へ載せる。共有の roles スコープは変えない。webOrigins は +（#2245。エッジ越しの token 交換の Invalid origin を防ぐ）",
+      "rootUrl": "${authBaseUrl}",
+      "baseUrl": "/realms/platform/account/",
+      "enabled": true,
+      "alwaysDisplayInConsole": false,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "fullScopeAllowed": false,
+      "redirectUris": [
+        "/realms/platform/account/*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "+",
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience resolve",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-resolve-mapper",
+          "consentRequired": false,
+          "config": {}
+        },
+        {
+          "name": "account client roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "account",
+            "claim.name": "resource_access.${client_id}.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "basic",
+        "profile"
+      ],
+      "optionalClientScopes": []
     }
   ],
+  "clientScopeMappings": {
+    "account": [
+      {
+        "client": "account-console",
+        "roles": [
+          "manage-account",
+          "view-groups"
+        ]
+      }
+    ]
+  },
   "users": [
     {
       "username": "admin",
@@ -1198,6 +1370,12 @@
         "wiki-editor",
         "Administrators"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1228,6 +1406,12 @@
         "/clearance/internal",
         "/department/engineering"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1249,6 +1433,12 @@
       "realmRoles": [
         "platform-operator"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1285,6 +1475,12 @@
         "wiki-editor",
         "trading-owner"
       ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
       "requiredActions": [
         "CONFIGURE_TOTP"
       ],
@@ -1293,6 +1489,248 @@
           "type": "password",
           "value": "Developer-2026",
           "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "e2e-user",
+      "email": "e2e-user@example.com",
+      "firstName": "E2E",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_USER_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_USER_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-operator",
+      "email": "e2e-operator@example.com",
+      "firstName": "E2E",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "platform-operator"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_OPERATOR_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_OPERATOR_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-admin",
+      "email": "e2e-admin@example.com",
+      "firstName": "E2E",
+      "lastName": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "attributes": {
+        "clearance": [
+          "restricted"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/restricted",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "platform-admin",
+        "platform-operator"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_ADMIN_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_ADMIN_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-noaccess",
+      "email": "e2e-noaccess@example.com",
+      "firstName": "E2E",
+      "lastName": "NoAccess",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "attributes": {
+        "clearance": [
+          "public"
+        ]
+      },
+      "groups": [
+        "/clearance/public"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_NOACCESS_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_NOACCESS_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-revocable",
+      "email": "e2e-revocable@example.com",
+      "firstName": "E2E",
+      "lastName": "Revocable",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "attributes": {
+        "clearance": [
+          "internal"
+        ]
+      },
+      "groups": [
+        "/clearance/internal"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_REVOCABLE_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_REVOCABLE_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
+        }
+      ]
+    },
+    {
+      "username": "e2e-trading-owner",
+      "email": "e2e-trading-owner@example.com",
+      "firstName": "E2E",
+      "lastName": "TradingOwner",
+      "enabled": true,
+      "emailVerified": true,
+      "requiredActions": [],
+      "attributes": {
+        "clearance": [
+          "internal"
+        ],
+        "department": [
+          "engineering"
+        ]
+      },
+      "groups": [
+        "/clearance/internal",
+        "/department/engineering"
+      ],
+      "realmRoles": [
+        "trading-owner"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${E2E_TRADING_OWNER_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "e2e",
+          "secretData": "{\"value\":\"${E2E_TRADING_OWNER_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA1\"}"
         }
       ]
     },

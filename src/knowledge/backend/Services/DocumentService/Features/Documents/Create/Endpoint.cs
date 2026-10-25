@@ -77,7 +77,11 @@ internal static class CreateDocumentEndpoint
             // どちらでも同じ名前を返す。人は従前どおり利用者名（ADR-0060 決定 3）。要求の `owner` は経路を問わず捨てる。
             // ［2026-09-28 / #1679］同じ式を `DocumentManageScope.OwnerSubject` へ移した（所有者で許す口が同じ関数から引く）。
             var createOwner = DocumentManageScope.OwnerSubject(http.User);
-            var createAttributes = DocumentBodyIntake.WithOwner(req.Attributes, createOwner);
+            // FR-19, SC-05, ADR-0054 決定 3・5, ADR-0058 決定 1, [[IADR-0598]] (#2112):
+            // **`doc_scope` が未指定なら `organization` を補う。** 作成後は付与できないので、ここで付けなければ
+            // 恒久的に欠落する。値域・個人資料経路の検証（上の `attributeGate`）を通った後にだけ補う。
+            var createAttributes = DocumentAttributes.WithOrganizationScopeIfAbsent(
+                DocumentBodyIntake.WithOwner(req.Attributes, createOwner));
 
             Document doc;
             if (string.IsNullOrEmpty(req.Body))
@@ -97,15 +101,14 @@ internal static class CreateDocumentEndpoint
                     DocumentBodyIntake.Fingerprint(req.Body));
             }
             db.Documents.Add(doc);
-            await db.SaveChangesAsync();
+            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            var createNames = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
             // FR-05, FR-16, SC-10, SC-12, ADR-0085 決定 4, [[IADR-0420]] (#1233):
             // **保存が成立した後にだけ数える**（0 が正常の違反検出。計器であって統制ではない）。
             // 🔴 **この位置より前へ動かさない** —— 400 / 413 / 409 で戻った要求は
             // 「保存されていない文書」であり、母集合（保存した文書）に入らない。
             unitProject.RecordIfUnitSubjectSavedWithoutProject(
                 http.User, doc.Attributes, UnitProjectMetrics.OperationCreate);
-            var createNames = await TagResolver.NamesAsync(db);
-            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, createNames, ct);
             return Results.Created($"/documents/{doc.Id}",
                 await DocumentEndpoints.ToDtoAsync(db, doc, createNames, ct));
         });

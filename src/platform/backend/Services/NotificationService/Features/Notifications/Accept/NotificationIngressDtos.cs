@@ -1,8 +1,8 @@
 namespace NotificationService.Features.Notifications.Accept;
 
-// FR-22, IADR-0215 決定 2・3, IADR-0270 決定 6: 受け口（POST /internal/notifications）の要求本文。
+// FR-22, IADR-0215 決定 2・3, IADR-0270 決定 6: 受け口の要求（gRPC の `AcceptRequest` を写した形。［2026-10-15 / #1902］REST の受け口は撤去した）。
 //
-// ★ **送信側（DocumentService の HttpPrivateNoteNotifier）が送る形と 1 バイトずれない。**
+// ★ **送信側（DocumentService の 旧 REST の `HttpPrivateNoteNotifier`（［2026-10-10］撤去））が送る形と 1 バイトずれない。**
 // platform → knowledge の参照は禁止のため型を共有できない。**同じ形を複製し、一致はテストで固定する**
 // （通知種別の定数で採ったのと同じ扱い）。
 //
@@ -21,9 +21,5 @@ public sealed record NotificationIngressRequest(
     int? ThresholdPercent,
     DateTimeOffset? Deadline);
 
-// FR-22: 受け口の応答。**2 項目だけで、通知の中身を返さない。**
-//
-// `Duplicate` は「同一事象の再送を畳んだ」ことを表す（201 = 新規 / 200 = 畳んだ）。
-// 送信側は成否しか見ないが、**畳んだ事実が観測できないと「届いていないのか、二重送信を
-// 止めたのか」が後から区別できない**。
-public sealed record NotificationIngressResultDto(Guid Id, bool Duplicate);
+// ［2026-10-15 / #1902］REST の受け口の応答（`NotificationIngressResultDto`）は受け口とともに撤去した。
+// 畳んだ事実は gRPC の `AcceptResponse.duplicate` が運ぶ。

@@ -4,14 +4,14 @@ type: runbook
 status: fixed
 author: claude
 created: 2026-09-28
-updated: 2026-09-28
+updated: 2026-10-11
 ---
 <!-- trace:
 ids: [FR-06, FR-05, FR-19, SC-05, NFR-09, UC-03]
 adrs: [ADR-0122, ADR-0121, ADR-0057, ADR-0119]
-iadrs: [IADR-0484, IADR-0483, IADR-0459, AST:IADR-0436]
-specs: [20260928_issue-1667_ast-stale-copies-enumeration]
-issues: [#1667, #457, #1679, planning#696]
+iadrs: [IADR-0484, IADR-0483, IADR-0459, IADR-0529, AST:IADR-0436]
+specs: [20261011_1891_ast-draft-not-duplicate, 20260928_issue-1667_ast-stale-copies-enumeration]
+issues: [#1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
 -->
 
 # 運用 Runbook: 内容の ABAC の前に、株取引の外部システムの古い写しを列挙して消す
@@ -35,6 +35,9 @@ issues: [#1667, #457, #1679, planning#696]
 - **確定報告書の写し**: 外部システムが入れ直せる（作り直される）。
 - **収集記事の写し**: 入れ直す経路が無い。**消すと検索（RAG）から失われる。これは受け入れ済みである。** 消す前に件数と期間を確かめる。
 - 個人資料・取り込みの経路の文書（所有者が `system` のものを含む）・他の project の文書・人が作った文書は**対象にならない**（列挙の口が除く）。
+- **属性 `reportState=draft` の文書は、外部システムの承認待ちの報告書の写し（ドラフト）である。古い写しの対象にも、重複の解消の対象にもならない**
+  （列挙の口が `not-ast-shape` に数えて除く。表題は `報告書ドラフト {種別} {期間キー}`）。ドラフトは確定や入れ直しのときに外部システムが自分で消す。
+  確定版と同じ種別・期間キーを持つが、列挙の口は確定報告書の写しとして数えないので、`currentAccountReports` にも現れない。
 
 ## 前提
 
@@ -64,7 +67,7 @@ jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
 | `targets.total` / `targets.reports.count` / `targets.articles.count` | 消す対象の件数（報告書・記事） |
 | `targets.reports.createdFrom` / `createdTo` | 対象の報告書の作成の期間 |
 | `targets.articles.createdFrom` / `createdTo` / `publishedFrom` / `publishedTo` | 対象の記事の作成の期間と、記事の公開日時の期間（**失う記事の期間**） |
-| `excluded` | 除いた件数を理由ごとに（0 件も出る）。`private-note`（個人資料）・`not-created-via-post`（取り込みの経路など、作成の口で作られていない）・`other-project`（別の project）・`not-ast-shape`（報告書・記事の属性の形でない）・`owned-by-current-account`（現在のサービスアカウントが所有。消さない）・`other-owner`（他の主体が所有） |
+| `excluded` | 除いた件数を理由ごとに（0 件も出る）。`private-note`（個人資料）・`not-created-via-post`（取り込みの経路など、作成の口で作られていない）・`other-project`（別の project）・`not-ast-shape`（報告書・記事の属性の形でない。承認待ちの報告書の写し〔`reportState=draft`〕もここに数える）・`owned-by-current-account`（現在のサービスアカウントが所有。消さない）・`other-owner`（他の主体が所有） |
 | `currentAccountReports` | 現在のサービスアカウントが所有する報告書の写しの件数と、同じ種別・期間キーの写しが 2 件以上ある組（`duplicates`） |
 | `items[]` | 対象の各件（`id`・`title`・`category`〔`report` / `article`〕・`owner`〔`missing` / `system`〕・`hasProject`・`status`・作成と更新の時刻・`kind`・`periodKey`・`publishedAt`）。作成の古い順 |
 
@@ -120,7 +123,7 @@ jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
 | 列挙が 401 | トークンが無い・期限切れ・別の realm | 取り直す |
 | `targets.total` が想定より大きい | 人が作った文書が同じ属性の組を持つ、または古い写しが本当に多い | 手順 A の 2 で `items[]` を確かめ、紛れた `id` を除く。判断できなければ止めて相談する |
 | 削除が 5xx | オブジェクトストレージ・メッセージの一時的な障害（削除は本文を先に消し、失敗すれば行は残る） | 障害の解消を待って、その `id` だけ再実行する |
-| 入れ直しの後に `duplicates` が出る | 入れ直しを 2 回以上実行した、または消し漏れた古い写しを入れ直しが写しとして数えた | 重複した組の新しい方を、文書管理の画面の管理者の削除で消す（外部システムの報告書 1 件につき写し 1 件にする） |
+| 入れ直しの後に `duplicates` が出る | 入れ直しを 2 回以上実行した、または消し漏れた古い写しを入れ直しが写しとして数えた | 重複した組の新しい方を、文書管理の画面の管理者の削除で消す（外部システムの報告書 1 件につき写し 1 件にする）。**消す前に、組の 2 件がどちらも `reportState` を持たない（確定版の写しである）ことを確かめる**。`reportState=draft` の文書は承認待ちの写しであり、重複の解消の対象外である（列挙の口は数えないので、組に出たら口の不具合として止めて相談する） |
 | 入れ直しで本文を入れられない写しが残る | 本文を入れる口の所有者の判定の別件（別の作業で是正中） | 本手順では扱わない。起点の issue に記録する |
 
 ## 記録
@@ -137,6 +140,8 @@ jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
 - **列挙は属性の形で見分ける。** 表題を変えた、project を持たない報告書は見つけられない（`not-ast-shape` に数えられる）。
   表題を変えられるのは基盤の管理者だけである。
 - **版を持たない文書は作成の経路が分からないので対象にしない**（`not-created-via-post` に数えられる）。
+- **承認待ちの報告書の写し（`reportState=draft`）は、所有者によらず対象にしない**（`not-ast-shape` に数えられる）。所有者が `system` や無しのドラフトが残っても、
+  この手順では消さない。後始末は外部システムの確定・入れ直しに委ねる。
 - **所有者を遡って付けることはしない。** 列挙の口も削除の口も所有者を書き換えない。
 - **削除は手作業である。** 口は列挙だけを行い、自動では消さない。門も古い写しの有無を確かめないので、
   **この手順を済ませたかどうかは記録でしか分からない**。有効化の前に記録を確かめる。

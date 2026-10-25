@@ -217,6 +217,13 @@ only [DocumentDeleted]    -> violations=0   only [DocumentUpdated]    -> violati
 > - E4 の中身（発行を Wolverine へ移すか、発行自体を撤去するか）は本追記でも決めない（完了記録が実装に委ねた）。撤去するなら、
 >   負荷試験 P-03 の計測点を Qdrant の points 数へ寄せる（`docs/tests/NFR-01_performance-load-test.md`）。
 
+> ［2026-10-25 追記 / #2134］**単位 E4 は完了した。発行は撤去せず、Wolverine へ移した**（オーケストレーターの判断 2026-10-25。作業仕様書 `20261025_2134_ingestion-completed-wolverine`）。
+> 撤去は計画のワークフロー図（`Ing-->>MQ: IngestionCompleted`）と食い違い、契約の型まで消すと計画 10_composability-design §3 と契約の破壊の承認に触れるため採らなかった。
+> - `WolverineIngestionCompletedPublisher`（`IMessageBus.PublishAsync`）と `RoutePlatformEvent<IngestionCompleted>()`（fan-out exchange `IngestionCompleted`）。契約の型は変えない。
+> - `scripts/backend-library-baseline.json` は **9 → 7 行**（`IngestionService` / `IngestionService.Tests` の 2 行が落ちた）。残る 7 行は固定 3 ＋ E2 の 4 で、上の表の E2 の行は「**3**（固定 3）」に読み替える。
+> - 🔴 **発行は非耐久である**（IngestionService は DB を持たず、Outbox も耐久送出も使えない）。購読者は 0 件なので失われて困る受け手は居ない。**購読者が付く時点で、耐久化（Outbox または durable な送出）を再検討する。**
+> - E4 の正しさ（購読 0 の明記の側）は、発行口の単体試験と、本番の配線で exchange へ経路が引かれる試験（`WolverineIngestionCompletedPublisherTests`）が示す。
+
 ### 決定 4: U5 は「型制約の緩和」としては発生しない。IADR-0233 決定 4 をここで改める
 
 [IADR-0233](./IADR-0233_wolverine-shared-helper-confinement.md) 決定 4（Superseded by 本 IADR 決定 4）は

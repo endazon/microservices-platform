@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './support/cspGuard';
 import type { Locator, Page } from '@playwright/test';
 import type {
   AttributeValuesResponse,
@@ -7,7 +7,7 @@ import type {
 } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
-// NFR-12（アクセシビリティ）/ SC-01, SC-19, UC-11 / ADR-0031: **キーボードだけで操作できるか**を
+// NFR-30（WCAG 2.2 AA。#2015 で誤った NFR-12 から直した）/ SC-01, SC-19, UC-11 / ADR-0031: **キーボードだけで操作できるか**を
 // 実ブラウザで踏む（WCAG 2.1.1 Keyboard / 2.1.2 No Keyboard Trap / 2.4.1 Bypass Blocks /
 // 2.4.3 Focus Order）。
 //

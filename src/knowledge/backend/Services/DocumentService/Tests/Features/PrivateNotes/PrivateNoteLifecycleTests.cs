@@ -265,11 +265,18 @@ public class PrivateNoteLifecycleTests(TestWebApplicationFactory factory)
             "90 日未満は保管が続く（陽性対照）");
 
         // 文書実体も消えている（復元不可）
-        // #1614: **所有者として**引く —— 他人として引くと、消えていなくても 404（存在秘匿）になり何も測れない。
-        (await session.GetAsync($"/documents/{oldNote}", TestContext.Current.CancellationToken)).StatusCode
-            .Should().Be(HttpStatusCode.NotFound);
+        // ［2026-10-25 / #2138・ADR-0142 決定 2・IADR-0636 決定 2］保管中（論理削除中）の資料は所有者にも SC-03 で返らなくなった
+        // （所有者が見られるのは SC-19 の削除済みタブだけ）。HTTP の 404 では「消えた」と「保管中で秘匿」を区別できないので、台帳を直接引く。
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            (await db.Documents.AnyAsync(d => d.Id == oldNote, TestContext.Current.CancellationToken))
+                .Should().BeFalse("90 日経過で文書の行も物理削除される");
+            (await db.Documents.AnyAsync(d => d.Id == freshNote, TestContext.Current.CancellationToken))
+                .Should().BeTrue("陽性対照: 保管中の資料の文書の行は残る");
+        }
         (await session.GetAsync($"/documents/{freshNote}", TestContext.Current.CancellationToken)).StatusCode
-            .Should().Be(HttpStatusCode.OK, "陽性対照: 保管中の資料は所有者に返る");
+            .Should().Be(HttpStatusCode.NotFound, "保管中の資料は所有者にも SC-03 で返らない（ADR-0142 決定 2）");
 
         // FR-22 ①-c: 事後通知は件数のみ
         var done = factory.Notifier.OfKind(PrivateNoteNotificationKinds.PrivateNotePurgeDone)

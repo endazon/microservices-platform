@@ -10,7 +10,7 @@ public interface ILlmProvider
 
     // IADR-0037: トークンストリーミング。既定実装は CompleteAsync を 1 チャンクで返す（未対応プロバイダは
     // 単一チャンクへ縮退＝壊れない）。真のストリーミングを行うプロバイダ（ClaudeProvider）が override する。
-    // 呼び出し側（LlmGateway /complete/stream）は egress ルーティング判定を通した後にのみ本メソッドを呼ぶ。
+    // 呼び出し側（LlmGateway の逐次生成 CompleteStream）は egress ルーティング判定を通した後にのみ本メソッドを呼ぶ。
     async IAsyncEnumerable<CompletionChunk> StreamAsync(
         CompletionRequest request, [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -36,5 +36,8 @@ public record CompletionResult(string Text, int InputTokens, int OutputTokens, s
 
 // IADR-0037: ストリーミングの 1 チャンク。TextDelta は増分本文。Done=true は最終チャンク（トークン数を伴う）。
 // IADR-0104: StopReason は最終チャンクにのみ載る（message_delta で確定するため）。
+// FR-10, ADR-0044 決定 3, IADR-0601 決定 1 (#2116): Done=false のチャンクがトークン数を持つときは
+// **その時点で判明した累計**（経過報告）である。差分ではないので**足し合わせず、最新の値で置き換えて読む**。
+// 呼び出し側は逐次応答が Done を受け取らずに終わったときだけこの値を計上に使う（Done の値が来れば Done が正）。
 public record CompletionChunk(
     string TextDelta, bool Done = false, int InputTokens = 0, int OutputTokens = 0, string? StopReason = null);

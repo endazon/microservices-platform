@@ -56,6 +56,8 @@ LIB="$SCRIPT_DIR/lib/tool-oidc-login.js"
 KC_URL="${KC_URL:-https://keycloak.localhost}"
 REALM="${OIDC_REALM:-platform}"
 EDGE_URL="${EDGE_URL:-https://localhost}"
+# 🔴 IADR-0586: 50000 の管理ツールの経路は既定で置かない。本検証器は ADMIN_EDGE=1 で起動したクラスタでだけ測れる
+#   （既定のクラスタでは各ツールが 404 / 403 で、測定は失敗する。それが既定の正しい姿である）。
 # 管理 entrypoint（IADR-0091 / IADR-0220。50000 は TLS 終端）。**1 箇所だけで持つ** ——
 # ツールごとに URL を並べると、ポート topology が変わったとき片方だけ取り残される。
 ADMIN_ORIGIN_FMT="${TOOLS_ADMIN_ORIGIN_FMT:-https://%s.localhost:50000}"
@@ -89,7 +91,9 @@ fi
 # `--ssl-revoke-best-effort` が緩めるのは**失効確認だけ**で、チェーン検証とホスト名照合は
 # 有効なまま残る（`--insecure` とは別物である）。対応しているときだけ付ける。
 CURL_TLS=(--cacert "$CA_BUNDLE")
-if curl --help all 2>/dev/null | grep -q -- '--ssl-revoke-best-effort'; then
+# NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
+#   コマンドの出力は -q を付けずに読み切らせ、変数の値は here-string で渡す。
+if curl --help all 2>/dev/null | grep -- '--ssl-revoke-best-effort' >/dev/null; then
   CURL_TLS+=(--ssl-revoke-best-effort)
 fi
 
@@ -182,7 +186,7 @@ fi
 #    証拠にならないので、**完全一致だけを宣言と数える**。
 host_declared() { # $1=hostname → 0:宣言あり 1:宣言なし 2:判定不能
   [ -z "$EDGE_HOSTS" ] && return 2
-  printf '%s\n' "$EDGE_HOSTS" | grep -Fxq "$1" && return 0
+  grep -Fxq -- "$1" <<<"$EDGE_HOSTS" && return 0
   return 1
 }
 

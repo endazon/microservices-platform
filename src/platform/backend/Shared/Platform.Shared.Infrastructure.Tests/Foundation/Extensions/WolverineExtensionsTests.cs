@@ -1,3 +1,4 @@
+using System.Net.Security;
 using System.Reflection;
 using AwesomeAssertions;
 using JasperFx.CodeGeneration.Model;
@@ -6,6 +7,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
+using Wolverine.RabbitMQ.Internal;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Extensions;
 
@@ -152,8 +154,18 @@ public class WolverineExtensionsTests
             + " Wolverine の版更新で再試行判定の観測点が変わった可能性があります（ADR-0027 §決定）。");
 
     // 試行 attempts 回目に Wolverine が選ぶ継続の型名を返す。
+    //
+    // NFR-21, IADR-0592 (#2043): 上限到達の試行には計器の継続（`.And(...)` の LambdaContinuation）が束ねられ、
+    // Wolverine はそれを CompositeContinuation で返す。ここで見るのは**回復の挙動**（再試行かデッドレターか）なので、
+    // 計器の継続を除いた残り 1 つの名前を返す。計器そのものは DeadLetterMetricsTests が測る。
     private static string ContinuationNameAt(WolverineOptions options, Exception exception, int attempts)
-        => ContinuationAt(options, exception, attempts).GetType().Name;
+    {
+        var behaviours = Messaging.DeadLetterMetricsTests
+            .Flatten((Wolverine.Runtime.IContinuation)ContinuationAt(options, exception, attempts))
+            .Where(c => !Messaging.DeadLetterMetricsTests.IsDeadLetterCounter(c)).ToArray();
+        behaviours.Should().ContainSingle($"試行 {attempts} 回目の回復の挙動は 1 つである");
+        return behaviours[0].GetType().Name;
+    }
 
     private static object ContinuationAt(WolverineOptions options, Exception exception, int attempts)
         => DetermineContinuationMethod.Invoke(
@@ -451,5 +463,78 @@ public class WolverineExtensionsTests
     {
         WolverineExtensions.PlatformStepQueueName<ProbeEvent>(ProbeStep(enabled: true, queue)).Should().Be(expected);
         WolverineExtensions.PlatformStepQueueName<ProbeEvent>(null).Should().Be(nameof(ProbeEvent));
+    }
+
+    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの TLS は CA の検証と名前の照合の両方を求める。
+    private static RabbitMQ.Client.ConnectionFactory FactoryOf(WolverineOptions options) =>
+        options.Transports.OfType<RabbitMqTransport>().Single().ConnectionFactory
+        ?? throw new InvalidOperationException("RabbitMqTransport.ConnectionFactory が null です（Wolverine の版更新で観測点が変わった可能性があります）。");
+
+    [Fact]
+    public void ブローカTLS_前提_素のUseRabbitMqはamqpsで名前の不一致を受け入れる()
+    {
+        // 変異が当たることの前提条件。既定が既に None なら下の試験は何も証明しない（共通ヘルパを使う理由そのもの）。
+        var options = new WolverineOptions();
+        options.UseRabbitMq(new Uri("amqps://msp-document:x@rabbitmq:5671"));
+
+        FactoryOf(options).Ssl.AcceptablePolicyErrors.Should().Be(SslPolicyErrors.RemoteCertificateNameMismatch);
+    }
+
+    [Fact]
+    public void ブローカTLS_共通ヘルパはamqpsで受け入れてよい誤りを空にし名前を照合する()
+    {
+        var options = new WolverineOptions();
+        options.UsePlatformRabbitMq("amqps://msp-document:x@rabbitmq:5671");
+
+        var factory = FactoryOf(options);
+        factory.Ssl.Enabled.Should().BeTrue();
+        factory.Ssl.AcceptablePolicyErrors.Should().Be(SslPolicyErrors.None);
+        factory.Ssl.ServerName.Should().Be("rabbitmq");
+        factory.Port.Should().Be(5671);
+        factory.UserName.Should().Be("msp-document");
+    }
+
+    [Fact]
+    public void ブローカTLS_共通ヘルパは平文のamqpではTLSを使わない()
+    {
+        var options = new WolverineOptions();
+        options.UsePlatformRabbitMq("amqp://msp-document:x@rabbitmq:5672");
+
+        var factory = FactoryOf(options);
+        factory.Ssl.Enabled.Should().BeFalse();
+        factory.Port.Should().Be(5672);
+    }
+
+    [Theory]
+    [InlineData("amqps://msp-document:x@rabbitmq:5671/vh")]
+    [InlineData("amqp://msp-document:x@rabbitmq:5672")]
+    public void ブローカTLS_共通ヘルパは受け入れてよい誤り以外を素のUseRabbitMqと同じに設定する(string connectionString)
+    {
+        // 置き換えで接続先・資格情報・仮想ホスト・TLS の有効と名前が変わっていないこと（変えるのは受け入れてよい誤りだけ）。
+        var plain = new WolverineOptions();
+        plain.UseRabbitMq(new Uri(connectionString));
+        var helper = new WolverineOptions();
+        helper.UsePlatformRabbitMq(connectionString);
+
+        var a = FactoryOf(plain);
+        var b = FactoryOf(helper);
+        b.HostName.Should().Be(a.HostName);
+        b.Port.Should().Be(a.Port);
+        b.VirtualHost.Should().Be(a.VirtualHost);
+        b.UserName.Should().Be(a.UserName);
+        b.Password.Should().Be(a.Password);
+        b.Ssl.Enabled.Should().Be(a.Ssl.Enabled);
+        b.Ssl.ServerName.Should().Be(a.Ssl.ServerName);
+        b.Ssl.Version.Should().Be(a.Ssl.Version);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void ブローカTLS_共通ヘルパは空の接続文字列を受けない(string connectionString)
+    {
+        var act = () => new WolverineOptions().UsePlatformRabbitMq(connectionString);
+
+        act.Should().Throw<ArgumentException>();
     }
 }

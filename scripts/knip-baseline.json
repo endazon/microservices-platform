@@ -35,12 +35,13 @@
   ],
   "$comment_types": [
     "17 件。すべて `export type` / `export interface` で、knowledge features が 10 件・platform foundation が 7 件。",
-    "型は消しても実行時の挙動が変わらないぶん残りやすく、#452 の再実装が使う可能性が高い。exports と同じ理由で据え置く。"
+    "型は消しても実行時の挙動が変わらないぶん残りやすく、#452 の再実装が使う可能性が高い。exports と同じ理由で据え置く。",
+    "［2026-10-24 / #2022・IADR-0620］15 → 14。SC-11 のドリフト種別の表示名を外したとき、使い道の無くなった `DriftKind`（sc11-config/types/driftView.ts）を消した。ラチェットなので床を締めた。"
   ],
   "counts": {
     "devDependencies": 4,
     "exports": 16,
-    "types": 15,
+    "types": 14,
     "unlisted": 1
   }
 }

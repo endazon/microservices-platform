@@ -141,6 +141,11 @@
               "type": "google.protobuf.Timestamp",
               "label": "singular"
             },
+            "data_source_name": {
+              "number": 13,
+              "type": "string",
+              "label": "optional"
+            },
             "has_body": {
               "number": 10,
               "type": "bool",
@@ -155,6 +160,16 @@
               "number": 4,
               "type": "string",
               "label": "optional"
+            },
+            "original_uri": {
+              "number": 14,
+              "type": "string",
+              "label": "optional"
+            },
+            "shared_with": {
+              "number": 12,
+              "type": "string",
+              "label": "repeated"
             },
             "status": {
               "number": 3,
@@ -235,8 +250,69 @@
             "names": []
           }
         },
+        "GetDocumentContentRequest": {
+          "fields": {
+            "allow_break_glass": {
+              "number": 3,
+              "type": "bool",
+              "label": "singular"
+            },
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "user": {
+              "number": 2,
+              "type": "UserContext",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetDocumentContentResponse": {
+          "fields": {
+            "found": {
+              "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "limit_bytes": {
+              "number": 5,
+              "type": "int64",
+              "label": "singular"
+            },
+            "markdown": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "size_bytes": {
+              "number": 4,
+              "type": "int64",
+              "label": "singular"
+            },
+            "state": {
+              "number": 2,
+              "type": "DocumentContentState",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "GetDocumentRequest": {
           "fields": {
+            "allow_break_glass": {
+              "number": 3,
+              "type": "bool",
+              "label": "singular"
+            },
             "id": {
               "number": 1,
               "type": "string",
@@ -262,6 +338,11 @@
             },
             "found": {
               "number": 1,
+              "type": "bool",
+              "label": "singular"
+            },
+            "granted_by_break_glass": {
+              "number": 3,
               "type": "bool",
               "label": "singular"
             }
@@ -314,6 +395,21 @@
         },
         "ListDocumentsRequest": {
           "fields": {
+            "page_size": {
+              "number": 2,
+              "type": "int32",
+              "label": "singular"
+            },
+            "page_token": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "sort": {
+              "number": 4,
+              "type": "DocumentListSort",
+              "label": "singular"
+            },
             "user": {
               "number": 1,
               "type": "UserContext",
@@ -331,6 +427,11 @@
               "number": 1,
               "type": "DocumentSummary",
               "label": "repeated"
+            },
+            "next_page_token": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
             }
           },
           "reserved": {
@@ -398,13 +499,48 @@
           }
         }
       },
-      "enums": {},
+      "enums": {
+        "DocumentContentState": {
+          "values": {
+            "DOCUMENT_CONTENT_STATE_AVAILABLE": 1,
+            "DOCUMENT_CONTENT_STATE_MISSING": 3,
+            "DOCUMENT_CONTENT_STATE_NOT_STORED": 2,
+            "DOCUMENT_CONTENT_STATE_TOO_LARGE": 4,
+            "DOCUMENT_CONTENT_STATE_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "DocumentListSort": {
+          "values": {
+            "DOCUMENT_LIST_SORT_CREATED_ASC": 4,
+            "DOCUMENT_LIST_SORT_CREATED_DESC": 3,
+            "DOCUMENT_LIST_SORT_TITLE_ASC": 5,
+            "DOCUMENT_LIST_SORT_TITLE_DESC": 6,
+            "DOCUMENT_LIST_SORT_UNSPECIFIED": 0,
+            "DOCUMENT_LIST_SORT_UPDATED_ASC": 2,
+            "DOCUMENT_LIST_SORT_UPDATED_DESC": 1
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
       "services": {
         "DocumentRead": {
           "rpcs": {
             "GetDocument": {
               "request": "GetDocumentRequest",
               "response": "GetDocumentResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            },
+            "GetDocumentContent": {
+              "request": "GetDocumentContentRequest",
+              "response": "GetDocumentContentResponse",
               "clientStreaming": false,
               "serverStreaming": false
             },
@@ -713,6 +849,84 @@
         }
       }
     },
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/ingestion/v1/index_status.proto": {
+      "syntax": "proto3",
+      "package": "knowledge.ingestion.v1",
+      "csharpNamespace": "Knowledge.Contracts.Grpc.Ingestion.V1",
+      "imports": [],
+      "messages": {
+        "DocumentIndexState": {
+          "fields": {
+            "document_id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "status": {
+              "number": 2,
+              "type": "IndexStatus",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetIndexStatusesRequest": {
+          "fields": {
+            "document_ids": {
+              "number": 1,
+              "type": "string",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "GetIndexStatusesResponse": {
+          "fields": {
+            "states": {
+              "number": 1,
+              "type": "DocumentIndexState",
+              "label": "repeated"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "enums": {
+        "IndexStatus": {
+          "values": {
+            "INDEX_STATUS_EMBEDDING_PENDING": 2,
+            "INDEX_STATUS_INDEXED": 1,
+            "INDEX_STATUS_NOT_INDEXED": 3,
+            "INDEX_STATUS_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        }
+      },
+      "services": {
+        "DocumentIndexStatus": {
+          "rpcs": {
+            "GetStatuses": {
+              "request": "GetIndexStatusesRequest",
+              "response": "GetIndexStatusesResponse",
+              "clientStreaming": false,
+              "serverStreaming": false
+            }
+          }
+        }
+      }
+    },
     "src/knowledge/backend/Shared/Knowledge.Contracts/Protos/knowledge/retrieval/v1/attribute_values.proto": {
       "syntax": "proto3",
       "package": "knowledge.retrieval.v1",
@@ -850,6 +1064,16 @@
         },
         "SearchResponse": {
           "fields": {
+            "degraded": {
+              "number": 2,
+              "type": "bool",
+              "label": "singular"
+            },
+            "degraded_reasons": {
+              "number": 3,
+              "type": "SearchDegradedReason",
+              "label": "repeated"
+            },
             "results": {
               "number": 1,
               "type": "SearchResult",
@@ -926,6 +1150,19 @@
             "EXPOSURE_PURPOSE_AI_INPUT": 2,
             "EXPOSURE_PURPOSE_SEARCH": 1,
             "EXPOSURE_PURPOSE_UNSPECIFIED": 0
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
+        "SearchDegradedReason": {
+          "values": {
+            "SEARCH_DEGRADED_REASON_EMBED_FAILED": 1,
+            "SEARCH_DEGRADED_REASON_FUSED_EMBED_FAILED": 2,
+            "SEARCH_DEGRADED_REASON_GRAPH_EXPAND_FAILED": 3,
+            "SEARCH_DEGRADED_REASON_RERANK_FAILED": 4,
+            "SEARCH_DEGRADED_REASON_UNSPECIFIED": 0
           },
           "reserved": {
             "numbers": [],

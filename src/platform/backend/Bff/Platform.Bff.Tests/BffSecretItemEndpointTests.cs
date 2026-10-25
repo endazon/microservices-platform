@@ -816,7 +816,9 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
         patch.Method.Should().Be("PATCH");
         patch.Path.Should().Be($"/apis/external-secrets.io/v1/namespaces/{ns}/externalsecrets/{externalSecret}");
         patch.ContentType.Should().Be("application/merge-patch+json");
-        patch.Authorization.Should().Be("Bearer " + FakeVault.ServiceAccountJwt);
+        // NFR-18, IADR-0585 決定 2, #2193: Kubernetes API 用のトークンで名乗り、Vault 用（audience: vault）は送らない。
+        patch.Authorization.Should().Be("Bearer " + FakeKubernetesApi.ServiceAccountJwt)
+            .And.NotBe("Bearer " + FakeVault.ServiceAccountJwt);
         using (var body = JsonDocument.Parse(patch.Body!))
         {
             body.RootElement.EnumerateObject().Select(p => p.Name).Should().Equal("metadata");
@@ -921,7 +923,8 @@ public class BffSecretItemEndpointTests : IClassFixture<BffTestFactory>
 
         var requests = _factory.KubernetesApi.Requests.ToList();
         requests.Should().OnlyContain(r => r.Method == "GET", "一覧は注釈を付けない（同期を依頼しない）");
-        requests.Should().OnlyContain(r => r.Authorization == "Bearer " + FakeVault.ServiceAccountJwt);
+        // NFR-18, IADR-0585 決定 2, #2193: Vault 用のトークン（audience: vault）を Kubernetes API へ送らない。
+        requests.Should().OnlyContain(r => r.Authorization == "Bearer " + FakeKubernetesApi.ServiceAccountJwt);
         requests.Select(r => r.Path).Should().BeEquivalentTo(
             "/apis/external-secrets.io/v1/namespaces/microservices-platform/externalsecrets/llm-provider-credentials",
             "/apis/external-secrets.io/v1/namespaces/platform-infra/externalsecrets/keycloak-smtp",

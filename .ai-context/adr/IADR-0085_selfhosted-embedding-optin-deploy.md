@@ -12,7 +12,7 @@ related_ids:
   - IADR-0025
 author: claude
 created: 2026-07-19
-updated: 2026-10-05
+updated: 2026-10-17
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (ティアB=Voyage voyage-3.5)
   - planning:projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (ティアA=セルフホスト Ruri v3・fail-closed)
@@ -132,3 +132,19 @@ embedding` 指定時のみ起動＝既定オフ）。既存 `llm-gateway` の en
   nDCG の測定用の `QueryProfile`）と、優先度の設定によっては `public` / `internal` の取り込みだけである。後付けして高機密を埋め込むときは、ADR-0127 を改める計画 ADR が要る。
 - 本文の「有効化まで confidential/restricted 文書は索引されない（fail-closed）」は、語彙索引の導入で事実でなくなった（高機密文書は語彙索引に索引される）。**本文は書き換えず残置する。**
 - 関連文書の後始末（values のコメント・運用仕様書の表）は #1746 段 S1 で一部を追随させた。残りは段 S4。
+
+## 追記: 取り込みは opt-in を有効にしたときだけ Ruri のコレクションを作る（2026-10-17 / #1746 段 S4）
+
+［2026-10-17 追記 / #1746］上の追記の「残りは段 S4」のうち、IADR-0497 §残るもの が「取り込みは Ruri のコレクション（`knowledge_chunks_ruri_v3`）を今も作る（空）。片付けは段 S4」と記録した件を片付けた。
+作業仕様書は `.ai-context/specs/20261017_1746_s4-stop-creating-empty-ruri-collection.md`。
+
+- **配備物は残す**（ADR-0127 決定 5 と上の追記のまま）。撤去したのは、opt-in を有効にしていない配備でも取り込みが起動のたびに作っていた Ruri のコレクションだけである。
+- **取り込みの既定（`IngestionService/appsettings.json` の `Embedding:Collections`）は voyage の 1 本だけにした。**
+  Ruri のコレクションは、ゲートウェイ（`Embedding__Routing__Endpoints__1__Enabled`）・検索（`Qdrant__FusedCollections__0`）と**同じ条件**で、添字 1 に足す。
+  - Helm: `embedding.enabled=true` のとき `deployment.yaml` が取り込みへ `Embedding__Collections__1__Name=<embedding.collection>`・`__VectorSize=<embedding.dimensions>`（新設。既定 768）を描画する。
+  - compose: 取り込みは検索と同じ `${SEARCH_FUSED_COLLECTION:-}` を読む（1 つの値で両方が動く）。既定の空文字は取り込みが捨てる（`EmbeddingCollectionsOptions.DropUnnamed`。検索側の `ResolveFusedCollectionNames` と同じ作法）。
+  - 決定的ローカル埋め込み（IADR-0313）は添字 2 のまま。添字が欠けても全件が束ねられる（試験で固定）。
+- **退けた形**: 取り込みだけ別の変数で opt-in する形（片方だけ与えると「索引できない」か「索引されるが検索されない」になる）。既定に残して検索側だけ外す形（空のコレクションに索引・削除の呼び出しが続く）。
+- **帰結**: 既定のコレクション数は 2（voyage ＋ 語彙索引）になり、`IngestionTimeouts.DefaultCollectionCount` は 3 → 2（既存チャンクの削除の期限は 30 → 20 秒）。opt-in のときは実際の本数で数える（`IngestionTimeouts.From`）。
+- **残るもの**: 稼働 PoC に既に作られた空の Ruri のコレクションは自動では消えない。新しい取り込みも検索（既定）も読み書きしないので害は無く、リポジトリの手順では削除しない。
+  点検と後始末の手順は運用仕様書 §埋め込みプロバイダ の「空の Ruri のコレクションの後始末」。過去に opt-in を有効にして点が入っている配備は、残存防止削除の対象から外れたので、再び有効にするときに `DocumentUpdated` を全件再発行する（同節）。

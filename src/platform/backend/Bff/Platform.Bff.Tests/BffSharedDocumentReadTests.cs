@@ -182,8 +182,8 @@ public class BffSharedDocumentReadTests : IClassFixture<BffTestFactory>
         _factory.ScopeBranches = [SharedWithBranch("alice"), StaticBranch()];
         _factory.StubDocumentList = [SharedNote(["alice"]), OrganizationDocument()];
 
-        var body = (await _factory.CreateClient().GetFromJsonAsync<List<DocumentDto>>(
-            "/bff/documents", TestContext.Current.CancellationToken))!;
+        var body = ((await _factory.CreateClient().GetFromJsonAsync<DocumentListPageDto>(
+            "/bff/documents", TestContext.Current.CancellationToken))!.Items)!;
 
         body.Select(d => d.Id).Should().NotContain(NoteId);
         // 陽性対照: 同じ呼び出しで組織文書は現れる（「一覧を常に空にする」実装を落とす）。
@@ -305,8 +305,8 @@ public class BffSharedDocumentReadTests : IClassFixture<BffTestFactory>
         _factory.ScopeBranches = [StaticBranch()];
         _factory.StubDocumentList = [OrganizationDocument() with { SharedWith = ["alice"] }];
 
-        var body = (await _factory.CreateClient().GetFromJsonAsync<List<DocumentDto>>(
-            "/bff/documents", TestContext.Current.CancellationToken))!;
+        var body = ((await _factory.CreateClient().GetFromJsonAsync<DocumentListPageDto>(
+            "/bff/documents", TestContext.Current.CancellationToken))!.Items)!;
 
         body.Should().ContainSingle().Which.SharedWith.Should().BeNull();
     }

@@ -50,7 +50,8 @@ public class ClaudeRerankWiringTests
             await store.UpsertAsync(c);
     }
 
-    // AI 分析（`HttpRagSearchTransport`）が送るのと同じ形。
+    // AI 分析の RAG の検索と同じ形（旧 REST 輸送が送っていた形。［2026-10-10 / #1255］REST 輸送は撤去し、
+    // gRPC の受け口 `DocumentSearch/Search` も同じ `SearchEndpoint.ExecuteAsync` を通る）。
     private static SearchRequest RagShaped(string query) =>
         new(query, 5, null, new AccessScope([new AttributeFilter("dept", ["sales"])], GrantsAccess: true));
 

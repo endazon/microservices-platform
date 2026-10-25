@@ -31,6 +31,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag'); // NFR-20, IADR-0605: chart はタグが無いと描画を落とす
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CHART = 'deploy/helm/microservices-platform';
@@ -56,7 +57,7 @@ function hasHelm() {
 }
 
 function helmTemplate(args, chartDir = CHART) {
-  const r = spawnSync('helm', ['template', 'msp', chartDir, ...args], {
+  const r = spawnSync('helm', ['template', 'msp', chartDir, ...RENDER_IMAGE_TAG_ARGS, ...args], {
     cwd: REPO_ROOT,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
@@ -461,9 +462,12 @@ ok('1 用途だけの有効化: 読み手だけ・書き手だけ・LLM ゲー�
   assert.deepStrictEqual(problemsFor(l, { enabled: ['llmGateway'] }), []);
 });
 
-ok('networkPolicy.enabled=false: 有効の values でも NetworkPolicy は 1 枚も描かれない', () => {
-  const t = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.enabled=false']);
-  assert.deepStrictEqual(networkPolicies(t), []);
+ok('networkPolicy.enabled=false: 有効の values でも ingress の NetworkPolicy は 1 枚も描かれない', () => {
+  // IADR-0589: egress の既定拒否（networkPolicy.egress）は ingress と別の knob で描かれる。ここで見るのは ingress の穴だけ。
+  const t = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.enabled=false', '--set', 'networkPolicy.egress.workloads[0]=document-service']);
+  assert.deepStrictEqual(networkPolicies(t).filter((p) => (p.spec.policyTypes || ['Ingress']).includes('Ingress')), []);
+  const none = mustRender(['-f', CI_VALUES, '--set', 'networkPolicy.enabled=false', '--set', 'networkPolicy.egress.enabled=false']);
+  assert.deepStrictEqual(networkPolicies(none), []);
 });
 
 ok('knob の追随: namespace・clients・services.<target>.port を変えると穴も同じ値へ動く', () => {

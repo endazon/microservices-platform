@@ -106,7 +106,7 @@ flowchart LR
 
 | ツール | バージョン | 用途 |
 | --- | --- | --- |
-| .NET SDK | 10.0.x（`global.json` は `8.0.0` + `rollForward: latestMajor`） | バックエンドのビルド・テスト（[`src/Directory.Build.props`](src/Directory.Build.props)） |
+| .NET SDK | 10.0.x（`global.json` は `8.0.100` + `rollForward: latestMajor`） | バックエンドのビルド・テスト（[`src/Directory.Build.props`](src/Directory.Build.props)） |
 | Node.js | 22（CI と同一。フロントは `frontend-tests.yml`/`frontend.yml` で node 22） | フロントエンドのビルド・テスト、`scripts/` の補助スクリプト |
 | Docker / Docker Compose | 任意（compose v2 相当） | ローカルのインフラ・全サービス起動（`deploy/docker-compose.yml`） |
 | git | — | ユニット submodule（`src/ai-stock-trading`）の取得を含む |

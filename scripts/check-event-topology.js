@@ -295,7 +295,7 @@ function routingGaps(topology, routes, binds) {
         [
           `「${ev}」を Wolverine で購読する ${owner} が、**自分のキューを exchange へ束ねていない**。`,
           '      キュー名を分けるだけでは 1 通も届かない（束ねて初めて fan-out が成立する）。',
-          `      UseRabbitMq(...).BindPlatformQueue<${ev}>("<service>", <queue>) を呼ぶこと。`,
+          `      UsePlatformRabbitMq(...).BindPlatformQueue<${ev}>("<service>", <queue>) を呼ぶこと。`,
         ].join('\n'),
       );
     }

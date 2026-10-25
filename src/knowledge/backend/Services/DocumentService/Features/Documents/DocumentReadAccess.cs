@@ -52,12 +52,23 @@ public sealed class DocumentReadAccess(IDocumentReadScopeSource scopes, IContent
     /// <summary>
     /// 主体がこの文書を読めるか。<paramref name="sharedWith"/> は共有台帳の `SubjectId` の集合
     /// （`DocumentEndpoints.ResolveSharedWithAsync` の値。共有なしは null / 空）。
+    /// <paramref name="privateNoteDeleted"/> は個人資料の台帳が論理削除中か
+    /// （`DocumentEndpoints.IsDeletedPrivateNoteAsync` / `ResolveDeletedPrivateNotesAsync` の値）。
     /// </summary>
+    // 🔴 FR-19, SC-03, ADR-0142 決定 2（2026-10-24 の補完を含む）, ADR-0056, IADR-0636 決定 2 (#2138): **論理削除中の個人資料は誰にも返さない**
+    // （所有者にも共有先にも。門の開閉・主体に依らない）。SC-03 の閲覧・MCP の `get_document` / `list_documents` が同じ判定を通る。
+    // 所有者が見られるのは SC-19 の削除済みタブだけで、それはこの判定を通らない。
+    // **引数を必須にしてある** —— 渡し忘れをコンパイルで止める（呼び出し点ごとに先に弾く形にすると判定器が 2 つになる）。
     public Task<bool> CanReadAsync(DocumentReadPrincipal principal, Document doc,
-        IReadOnlyCollection<string>? sharedWith, CancellationToken ct)
-        => ContentAbacEnabled
+        IReadOnlyCollection<string>? sharedWith, bool privateNoteDeleted, CancellationToken ct)
+    {
+        if (privateNoteDeleted && DocumentScopes.IsPrivateNote(doc.Attributes))
+            return Task.FromResult(false);
+
+        return ContentAbacEnabled
             ? CanReadByContentAbacAsync(principal, doc, sharedWith, ct)
             : CanReadPrivateNoteRuleAsync(principal, doc, sharedWith, ct);
+    }
 
     // 門が開いた枝（#1615）。判定は認可サービスの分岐だけで行う。
     private async Task<bool> CanReadByContentAbacAsync(DocumentReadPrincipal principal, Document doc,

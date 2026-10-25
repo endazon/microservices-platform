@@ -3,15 +3,15 @@ title: 変換ジョブ（ConversionJob） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-09
-updated: 2026-09-05
+updated: 2026-10-25
 author: claude
 ---
 <!-- trace:
 ids: [FR-12, SC-07, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0027, ADR-0070]
 iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154, IADR-0356, IADR-0358, IADR-0388]
-specs: [20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary]
-issues: [#533, #543, #580, #1192, #1193, #1253, #1254]
+specs: [20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261025_2159_conversion-retry-status-concurrency]
+issues: [#533, #543, #580, #1192, #1193, #1253, #1254, #2159]
 -->
 
 # データ仕様書: 変換ジョブ（ConversionJob）
@@ -160,8 +160,12 @@ erDiagram
   false へ戻す**——`processing` / `queued` なのに標識が立った行は自己矛盾するためである。
   **`Attempts` からは導出しない**（`Attempts` は手動再変換をまたいで累積するため上限との比較が成立しない）。
 - **属性・タグの NULL 非許容**: `Attributes` / `Tags` はカラム上 NOT NULL。未設定時は空 JSON（`{}` / `[]`）。
-- **並行性（既知の制約）**: `StartAsync` の attempts++ は read-modify-write で楽観的並行制御を持たない。
-  単一インスタンス（dev）前提。水平スケール時は行ロックまたは並行トークンを要する（永続化の実装 ADR のフォローアップ）。
+- **並行性**: `Status` は**並行トークン**である。ジョブ行の UPDATE は「読んだ状態のまま」のときだけ成功し、
+  読んだ後に別の遷移が状態を変えていれば失敗する（列は足さない）。これで再変換（`failed` → `queued`）が並行しても
+  再発行は 1 回だけになり、負けた側の API は 409 `not_retryable`（`status` は読み直した現在の状態）を返す。
+  取り込みの開始・成功・失敗が状態の変化と競合したときは例外になり、受け口の再試行で読み直してやり直す。
+  **残る制約**: 状態を変えない更新どうし（同じ原本の再配送が並行したときの `StartAsync` の attempts++ など）は
+  照合に掛からず、後勝ちのままである。
 
 ## 永続化方針
 

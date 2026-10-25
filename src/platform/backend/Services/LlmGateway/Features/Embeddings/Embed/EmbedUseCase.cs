@@ -6,7 +6,8 @@ using Platform.Shared.Contracts.Dtos;
 namespace LlmGateway.Features.Embeddings.Embed;
 
 // FR-02, FR-03, FR-05, NFR-09, ADR-0013, ADR-0016, ADR-0017（Superseded by ADR-0127・注記は #1746）, ADR-0029, ADR-0075, IADR-0379, IADR-0397 (#1255):
-// 埋め込み生成の**判定器本体**。REST（EmbeddingEndpoints）と gRPC（GrpcService）の**両方がここを呼ぶ**。
+// 埋め込み生成の**判定器本体**。gRPC（GrpcService）がここを呼ぶ（［2026-10-15 / #1902］REST の `/embed` は撤去した。
+// 撤去までは REST〔EmbeddingEndpoints〕と gRPC の**両方がここを呼んでいた**）。
 //
 // 🔴 **判定器を 2 つにしない**（IADR-0379 決定 5 と同じ向き。参照実装が REST と gRPC で
 // `AbacEvaluator.ResolveScope` を共有したのと同型）。越境判定・プロバイダ解決・次元照合・上流不調の
@@ -83,9 +84,9 @@ public sealed class EmbedUseCase(
         catch (EmbeddingProviderNotConfiguredException ex)
         {
             // FR-02, NFR-19, IADR-0504 追記 (#1819): 鍵の欠落など**構成として使えない**状態。
-            // 🔴 **応答は下の一時障害と同じ**（Embedded=false・Retryable=true）—— 取り込みは再試行の後 DLQ へ送り、
-            // 鍵を入れてから DLQ を再投入すれば索引へ入る。恒久スキップ（Retryable=false）にすると取り込みは
-            // チャンクを捨てて完了扱いにし、後から鍵を入れても索引に入らない（IADR-0504 §検討した代替案）。
+            // 🔴 **応答は下の一時障害と同じ**（Embedded=false・Retryable=true）—— ［2026-10-14 / #1908・IADR-0536］取り込みは
+            // public / internal のチャンクを語彙索引へ全文だけの点（埋め込み待ち・理由 transient）として書き、鍵を入れた後に
+            // 自動で埋め直す（以前は再試行の後 DLQ）。理由を transient に保つため、恒久的な拒否（Retryable=false）にはしない。
             // 🔴 **違うのはログだけである。** 同じ原因の失敗を毎回スタック付きで残すとログを埋め、他の行を
             // 押し出す（#1819 の PoC で 1,146 回）。エンドポイントごとに初回は即時・以後は 5 分ごとに
             // 抑えた件数つきの 1 行（スタックなし）にする。

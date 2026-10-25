@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-09
-updated: 2026-10-09
+updated: 2026-10-16
 ---
 <!-- trace:
 ids: [NFR-18, NFR-21, SC-22]
 adrs: [ADR-0132, ADR-0124, ADR-0107, ADR-0112]
-iadrs: [IADR-0457, IADR-0471, IADR-0486, IADR-0525]
-specs: [20261009_1840_secret-store-openbao]
-issues: [#1840]
+iadrs: [IADR-0457, IADR-0471, IADR-0486, IADR-0525, IADR-0548]
+specs: [20261009_1840_secret-store-openbao, 20261016_1868_openbao-raft-snapshot-backup]
+issues: [#1840, #1868]
 -->
 
 # 運用 Runbook: 稼働中の経路 B の秘匿管理を Vault から OpenBao へ移す
@@ -73,6 +73,14 @@ IN_POD='export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOK
    kubectl -n platform-infra create job --from=cronjob/platform-backup-vault "$BACKUP_JOB"
    kubectl -n platform-infra wait --for=condition=complete "job/$BACKUP_JOB" --timeout=600s
    ```
+
+   🔴 **この Job は移行前の CronJob（`/vault/data` の tar を作る版）で取る。** 秘匿管理のバックアップは後に raft の整合したスナップショットへ
+   改められ、その版の CronJob は旧 Vault（file ストレージ）では失敗して何も書かない（スナップショットの API が無い）。
+   起動スクリプトは移行の門で止まるので、旧 Vault の下で新しい CronJob が当たることは通常ない。`kubectl -n platform-infra get cronjob
+   platform-backup-vault -o jsonpath='{.spec.jobTemplate.spec.template.spec.serviceAccountName}'` が `platform-backup-vault` を返すなら
+   新しい版が当たっている —— そのときは手順 7 の (b) と同じ作業ツリー（`$PRE`）の `deploy/local/platform-backup/vault` を当ててから Job を作る。
+   取れた回は、移行前の唯一の写しとして、ディレクトリ名の末尾に `-keep` を付けて残す（[バックアップの手順書](platform-infra-backup-runbook.md) §4。
+   付けないと日次の保持で 30 日後に消える）。
 
    あわせて、移した後に突き合わせる**値を含まない**数を控える（KV の数と、いくつかの KV の現在版）:
 
@@ -192,8 +200,8 @@ git worktree remove "$PRE"
 8. **旧 file ストレージの片付け（任意・後日）。** 手順 6 が通り、OpenBao の下でバックアップの回が 1 つ以上成功してから行う。
    OpenBao のイメージの使い捨ての Pod（PVC `vault-data` をマウントし、OpenBao を止めた状態）で
    `rm -rf /vault/data/core /vault/data/logical /vault/data/sys /vault/data/audit` を走らせる。
-   🔴 **片付けた後は 7 の (b) で戻せない**（戻すにはバックアップの回が要る）。片付けるまでは旧データもバックアップの写しに入る
-   （守りの水準は同じ。同じ unseal 鍵で開く）。
+   🔴 **片付けた後は 7 の (b) で戻せない**（戻すには手順 1 で取った回が要る）。日次のバックアップは raft のスナップショットだけを写し、
+   旧データ（`core/` 等）は入らない —— 旧データの写しは手順 1 の回（`-keep`）だけである。
 
 ## 確認（この手順が成功したと言える条件）
 

@@ -1,0 +1,15 @@
+# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）のサーバ証明書。**既定で当てる**（opt-in にしない）。
+# k8s-local-up.sh の [4/7] が「cert-manager 導入 → CRD Established 待ち → 本 overlay を apply → 証明書 Ready 待ち →
+# deploy/local/infra(-persistence) を apply」の順で当てる（postgres / rabbitmq の Pod は証明書の Secret をマウントするので、
+# 先に Secret が要る）。
+#
+# 親（deploy/local/infra/kustomization.yaml）に含めない理由はエッジの tls/ と同じ: cert-manager.io/v1 の CRD に依存するので、
+# CRD が入る前に渡すと "no matches for kind Certificate" で基盤の overlay 全体が落ちる。
+#
+# CA はエッジ（local-edge-root-ca）と分ける。基盤のクライアントが信頼するのは基盤の CA だけにする（エッジの葉証明書を
+# 基盤の名前で受けない。逆も同じ）。形はエッジと同じ selfSigned → CA の 2 段（IADR-0206 決定 2）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - issuers.yaml
+  - certificates.yaml

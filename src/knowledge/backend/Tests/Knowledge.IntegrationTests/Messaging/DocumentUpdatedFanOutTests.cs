@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using IngestionService.Domain;
 using IngestionService.Domain.Ports;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using WikiService.Infrastructure.Persistence;
@@ -360,7 +361,7 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         probe.IngestionUpserts.Signal(documentId);
         return Task.CompletedTask;
@@ -372,7 +373,7 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
         string title, string indexText, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         probe.IngestionUpserts.Signal(documentId);
         return Task.CompletedTask;
@@ -384,7 +385,7 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         probe.IngestionUpserts.Signal(documentId);
         return Task.CompletedTask;
@@ -394,7 +395,7 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         probe.IngestionUpserts.Signal(documentId);
         return Task.CompletedTask;
@@ -402,6 +403,16 @@ internal sealed class RecordingVectorStore(RecordingProbe probe) : IIngestionVec
 
     public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    // #2101 / IADR-0595: 版を持たない偽物（印は常に無い）。fan-out の観測（受信して書いたか）だけを測る。
+    public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
+        => Task.FromResult<DocumentIndexVersion?>(null);
+
+    public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
+        IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 // storage:// を実取得できないため、チャンク化に渡せる本文を返すだけのスタブ。

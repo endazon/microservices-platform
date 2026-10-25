@@ -44,7 +44,7 @@
  *
  * A（fail-fast）は**どの器でもホストが起動しない**ので普遍に要求できる。B はそうではない ——
  * 縮退して困るかどうかは**そのテストが何を主張するか**による。実例: `McpToolDeclarationHosts` は
- * DocumentService / GraphService を起こすが、見るのは `/internal/mcp-tools` だけであり、
+ * DocumentService / GraphService を起こすが、見るのはツール申告の gRPC 面（［2026-10-10 / #1517］REST の `/internal/mcp-tools` は撤去）だけであり、
  * 段宣言が読まれなくても主張は壊れない。ここに B を要求すると**無意味な注入を強いる偽陽性**になる。
  * 事故 1（`Pipeline:ConfigPath`）が起きたのは段を実際に流す試験群＝基底フィクスチャ群であり、
  * **そこに限って要求する。**

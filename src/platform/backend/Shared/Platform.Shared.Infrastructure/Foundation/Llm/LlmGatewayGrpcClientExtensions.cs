@@ -9,9 +9,10 @@ namespace Platform.Shared.Infrastructure.Foundation.Llm;
 // FR-02, FR-03, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4・5, IADR-0397 (#1255):
 // LlmGateway への east-west gRPC 呼び出し側の登録。参照実装 `AddAuthzScopeGrpcClient` と同型。
 //
-// **並走中の正は REST である。** `Services:LlmGatewayGrpc`（h2c のアドレス。例:
-// http://llm-gateway:8081）が構成されたときだけ生成クライアントを登録し、未設定なら**何も登録しない**
-// —— 呼び出し元は登録の有無で REST 実装と gRPC 実装を選ぶ（戻すのは構成を外すだけ。コードは変えない）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］**REST の並走は撤去した。** 呼び出し元（AiAnalysis / Conversion / Graph の提案 /
+// Ingestion / Retrieval）の輸送は gRPC だけである（[[IADR-0379]] 決定 5「並走中の正は REST」を反転）。
+// `Services:LlmGatewayGrpc`（h2c のアドレス。例: http://llm-gateway:8081）が構成されていなければ、生成クライアントを
+// 常に `UNAVAILABLE` を返す呼び出し器の上に組む（[[IADR-0533]] 決定 2。各呼び出し元の「届かない」の枝へ落ちる）。
 public static class LlmGatewayGrpcClientExtensions
 {
     public const string AddressKey = "Services:LlmGatewayGrpc";
@@ -23,7 +24,9 @@ public static class LlmGatewayGrpcClientExtensions
     {
         var address = config[AddressKey];
         if (string.IsNullOrWhiteSpace(address))
-            return services;
+            return services
+                .TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.LlmEmbedding.LlmEmbeddingClient(ci))
+                .TryAddUnconfiguredGrpcClient(AddressKey, ci => new Pb.LlmCompletion.LlmCompletionClient(ci));
 
         services.AddPlatformServiceToken(config);
         // 🔴 チャネルは**キー付き**で登録する。`AddAuthzScopeGrpcClient` は同じ `GrpcChannel` 型を

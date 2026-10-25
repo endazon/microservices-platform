@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using AwesomeAssertions;
+using DashboardService.Tests.Grpc;
 using DashboardService.Features.KnowledgeHealth;
 using DashboardService.Features.KnowledgeHealth.Report;
 using DashboardService.Features.KnowledgeHealth.View;
@@ -22,10 +23,10 @@ namespace DashboardService.Tests.Features.KnowledgeHealth;
 [Trait("TestKind", "Integration")]
 public class KnowledgeHealthEndpointTests
 {
-    // 🔴 送信側 GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter.ObservationsPath の値。
-    // **サービスを跨ぐため定数を共有できない**。**リテラルで持ち、一致を下のテストで固定する**
-    // （`/internal/notifications` の送信側・受け口と同じ作法）。
-    private const string ProducerObservationsPath = "/internal/knowledge-health/observations";
+    // ［2026-10-15 / #1902・[[IADR-0533]]］観測値の REST の受け口（`POST /internal/knowledge-health/observations`）は
+    // 撤去した。生産者（graph の H-1）は east-west gRPC だけになっていた。投入は gRPC 面（`TestServerReportGrpc`）で行い、
+    // 状態は REST の 202 / 400 → OK / INVALID_ARGUMENT、本文の `error` → status の detail に写る。
+    private const string RemovedObservationsPath = "/internal/knowledge-health/observations";
 
     private static KnowledgeHealthReportRequest Report(
         string indicator, params KnowledgeHealthObservationRequest[] observations)
@@ -38,8 +39,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1", "organization"),
                 new KnowledgeHealthObservationRequest("doc-2", "organization")),
             TestContext.Current.CancellationToken);
@@ -60,8 +60,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-org", "organization"),
                 new KnowledgeHealthObservationRequest("doc-private", KnowledgeDocScopes.PrivateNote),
                 new KnowledgeHealthObservationRequest("doc-private-upper", "PRIVATE-NOTE")),
@@ -83,8 +82,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.UnresolvedLinks,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.UnresolvedLinks,
                 new KnowledgeHealthObservationRequest("edge-1"),
                 new KnowledgeHealthObservationRequest("edge-2", null)),
             TestContext.Current.CancellationToken);
@@ -119,8 +117,7 @@ public class KnowledgeHealthEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1", "organization")),
             TestContext.Current.CancellationToken);
 
@@ -142,8 +139,7 @@ public class KnowledgeHealthEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.StaleDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.StaleDocuments,
                 new KnowledgeHealthObservationRequest("経費規程-2024", "organization")),
             TestContext.Current.CancellationToken);
 
@@ -176,13 +172,11 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1"),
                 new KnowledgeHealthObservationRequest("doc-2")),
             TestContext.Current.CancellationToken);
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1")),
             TestContext.Current.CancellationToken);
 
@@ -201,62 +195,38 @@ public class KnowledgeHealthEndpointTests
     // 400 のままメッセージだけが変わる退行（あるいは規則順が入れ替わって別の理由が返る退行）は
     // 状態コードでは捕まらない。
     [Fact]
-    public async Task 未知の指標名は400()
+    public async Task 未知の指標名はINVALID_ARGUMENT()
     {
         using var factory = new TestWebApplicationFactory();
 
-        var resp = await factory.CreateClient().PostAsJsonAsync(
-            ProducerObservationsPath,
-            Report("orphan-docs", new KnowledgeHealthObservationRequest("doc-1")),
+        var resp = await factory.CreateClient().ReportAsync(Report("orphan-docs", new KnowledgeHealthObservationRequest("doc-1")),
             TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        body.GetProperty("error").GetString().Should()
-            .Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
+        resp.Status.Should().Be(global::Grpc.Core.StatusCode.InvalidArgument);
+        resp.Detail.Should().Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
     }
 
-    // ── 受け口の移設（#443 / [[IADR-0299]] 決定 4） ───────────────────────────
+    // ── 受け口（#443 / [[IADR-0299]] 決定 4 → #1902 で gRPC だけ） ───────────────────
 
-    // FR-10, FR-17 (T-29): 🔴 **パスの複製が食い違っていないことを固定する。**
-    // サービス間の直接参照が張れないため、この一致を守る機械はこのテストと送信側のテストだけである。
+    // FR-10, FR-17 (T-29 / T-30): ［2026-10-15 / #1902・[[IADR-0533]]］無認証の REST の受け口は撤去した。
+    // 従前は「パスが生産者の宣言と同じ」「認可を要求せず OpenAPI に載せない」を固定していた —— 生産者は gRPC
+    // （`ServiceCaller`）だけになり、無認証の口を残す理由が無くなった。撤去したことをルート表と到達で固定する
+    // （戻ると、同一ネットワーク内から無認証で観測値を差し替えられる口が増える。[[IADR-0299]] の残余リスク）。
     [Fact]
-    public async Task 受け口のパスは生産者側の宣言と同じ値である()
+    public async Task 撤去したRESTの受け口はルート表に無い()
     {
-        ReportKnowledgeHealthEndpoint.ObservationsPath.Should().Be(ProducerObservationsPath,
-            "★ 送信側 HttpKnowledgeHealthReporter.ObservationsPath と 1 バイトでも違えば観測値は届かない"
-            + "（送出は fail-open のため、不一致は 404 のログにしか現れない）");
+        using var factory = new TestWebApplicationFactory();
+        var client = factory.CreateClient();
 
-        var resp = await new TestWebApplicationFactory().CreateClient().PostAsJsonAsync(
-            ProducerObservationsPath,
+        factory.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Should().NotContain(e => e.RoutePattern.RawText == RemovedObservationsPath);
+
+        var resp = await client.PostAsJsonAsync(RemovedObservationsPath,
             Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1", "organization")),
             TestContext.Current.CancellationToken);
-
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted, "宣言したパスで到達できること");
-    }
-
-    // FR-10, FR-17 (T-30): 🔴 **受け口は認可を要求せず、OpenAPI にも載らない。**
-    // 生産者は**利用者 JWT を持たない定期処理**であり、client_credentials の実装は本体に 1 行も無い。
-    // `/internal/notifications` と同じ形を採った（[[IADR-0299]] 決定 4。利用者裁定）。
-    //
-    // **統制は mTLS ＋ ネットワーク分離であって、認可ではない。** ここで固定するのは
-    // 「認可メタデータが付いていないこと」＝**移設が巻き戻っていないこと**である
-    // （テスト器の認証ハンドラは常に認証を成功させるため、無認証の到達性は状態コードでは測れない）。
-    [Fact]
-    public void 観測値の受け口は認可を要求せずOpenAPIにも載せない()
-    {
-        using var factory = new TestWebApplicationFactory();
-        using var _ = factory.CreateClient();
-
-        var endpoint = FindByName(factory, "ReportKnowledgeHealth");
-
-        endpoint.RoutePattern.RawText.Should().Be(ProducerObservationsPath,
-            "移設先のパスが `/internal/...` のままであること");
-        endpoint.Metadata.GetMetadata<IAuthorizeData>().Should().BeNull(
-            "生産者は利用者 JWT を持たない定期処理である（認可を課すと観測値が永久に届かない）");
-        endpoint.Metadata.GetMetadata<IExcludeFromDescriptionMetadata>()
-            .Should().NotBeNull("内部 API は OpenAPI に載せない（/internal/* は 1 本も無い）");
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // FR-10, SC-10 (T-31): 🔴 **閲覧側のロール限定は移設で緩んでいない。**
@@ -274,36 +244,34 @@ public class KnowledgeHealthEndpointTests
             "閲覧側のロール制限が唯一の統制点である（計画 §ナレッジ健全性の指標 規則 2）");
     }
 
-    // FR-10, FR-17, FR-19 (T-32): 🔴 **生産者が実際に送る JSON がそのまま束縛できる。**
-    // 型で書いた Report(...) は**両側が同じ DTO を使う前提**を暗黙に置いており、
-    // 送信側が匿名オブジェクトを組み立てている以上、**綴りと大小の一致は型では守られない**
-    // （`docScope` を `docscope` と書いても C# は何も言わない）。生の JSON で固定する。
+    // FR-10, FR-17, FR-19 (T-32): 🔴 **生産者が組む形がそのまま束縛できる**（しきい値を持たない指標は threshold_days を送らない）。
+    // ［2026-10-15 / #1902］従前は旧 REST の生の JSON（綴りと大小）を固定していた。REST の受け口を撤去したので、
+    // 生産者（gRPC）の proto の形で固定する —— `has` を読まずに素の値を読むと、未指定のしきい値が 0 に化けて弾かれる。
     [Fact]
-    public async Task 生産者が組み立てる生のJSONで束縛できる()
+    public async Task 生産者が組み立てる形で束縛できる()
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        // HttpKnowledgeHealthReporter が PostAsJsonAsync へ渡す匿名オブジェクトと同じ形。
-        const string body = """
-            {"indicator":"orphan-documents","observations":[
-              {"subjectKey":"11111111-1111-1111-1111-111111111111","docScope":null},
-              {"subjectKey":"22222222-2222-2222-2222-222222222222","docScope":"private-note"}]}
-            """;
+        var request = new Knowledge.Contracts.Grpc.Dashboard.V1.ReportRequest { Indicator = "orphan-documents" };
+        request.Observations.Add(new Knowledge.Contracts.Grpc.Dashboard.V1.Observation
+        { SubjectKey = "11111111-1111-1111-1111-111111111111" });
+        request.Observations.Add(new Knowledge.Contracts.Grpc.Dashboard.V1.Observation
+        { SubjectKey = "22222222-2222-2222-2222-222222222222", DocScope = "private-note" });
 
-        var resp = await client.PostAsync(ProducerObservationsPath,
-            new StringContent(body, Encoding.UTF8, "application/json"),
-            TestContext.Current.CancellationToken);
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var resp = await client.ReportAsync(request, TestContext.Current.CancellationToken);
+        resp.Status.Should().Be(global::Grpc.Core.StatusCode.OK);
 
         var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
             "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
-
         health!.Indicators.Single(i => i.Indicator == KnowledgeHealthIndicators.OrphanDocuments)
-            .Count.Should().Be(1, "個人資料は受け手が落とす（生の JSON でも綴りが噛み合っている）");
+            .Count.Should().Be(1, "個人資料の印は proto の doc_scope で届き、閲覧側で除外される");
+        health.Indicators.Single(i => i.Indicator == KnowledgeHealthIndicators.StaleDocuments)
+            .ThresholdDays.Should().BeNull();
     }
 
     // ── しきい値の併記（planning#494 決定 3 / [[IADR-0353]] 決定 4。#1186） ──
+    // ［2026-10-15 / #1902］投入は gRPC 面（`TestServerReportGrpc`）で行い、閲覧（GET）の応答で固定する。
 
     // FR-10, SC-10 (T-57): 生産者が添えたしきい値が件数と一緒に返る。
     // 計画は「SC-10 には**件数と現在のしきい値を併記する**」と定めており、
@@ -314,8 +282,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(
+        await client.ReportAsync(new KnowledgeHealthReportRequest(
                 KnowledgeHealthIndicators.StaleDocuments,
                 [new KnowledgeHealthObservationRequest("doc-1", "organization")],
                 ThresholdDays: 180),
@@ -339,8 +306,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(
+        await client.ReportAsync(new KnowledgeHealthReportRequest(
                 KnowledgeHealthIndicators.StaleDocuments, [], ThresholdDays: 90),
             TestContext.Current.CancellationToken);
 
@@ -361,8 +327,7 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.OrphanDocuments,
+        await client.ReportAsync(Report(KnowledgeHealthIndicators.OrphanDocuments,
                 new KnowledgeHealthObservationRequest("doc-1", "organization")),
             TestContext.Current.CancellationToken);
 
@@ -373,49 +338,23 @@ public class KnowledgeHealthEndpointTests
             .ThresholdDays.Should().BeNull();
     }
 
-    // FR-10 (T-60): しきい値も**スナップショット置換**である。
-    // 添えない報告が来たら行を消す —— 残すと、生産者が変わった後も古い日数が出続ける。
-    [Fact]
-    public async Task しきい値を添えない報告は既存のしきい値を落とす()
-    {
-        using var factory = new TestWebApplicationFactory();
-        var client = factory.CreateClient();
-
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(
-                KnowledgeHealthIndicators.StaleDocuments, [], ThresholdDays: 180),
-            TestContext.Current.CancellationToken);
-        await client.PostAsJsonAsync(ProducerObservationsPath,
-            Report(KnowledgeHealthIndicators.StaleDocuments),
-            TestContext.Current.CancellationToken);
-
-        var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
-            "/dashboard/knowledge-health", TestContext.Current.CancellationToken);
-
-        health!.Indicators.Single(i => i.Indicator == KnowledgeHealthIndicators.StaleDocuments)
-            .ThresholdDays.Should().BeNull();
-    }
-
-    // FR-10 (T-61): **0 以下のしきい値は 400。** 保存すると画面が「しきい値 0 日」と表示し、
+    // FR-10 (T-61): **0 以下のしきい値は INVALID_ARGUMENT**（REST の 400）。 保存すると画面が「しきい値 0 日」と表示し、
     // 件数の意味が読めなくなる（指標名の値域を閉じているのと同じ姿勢）。
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public async Task ゼロ以下のしきい値は400になる(int days)
+    public async Task ゼロ以下のしきい値はINVALID_ARGUMENTになる(int days)
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        var resp = await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest(
+        var resp = await client.ReportAsync(new KnowledgeHealthReportRequest(
                 KnowledgeHealthIndicators.StaleDocuments, [], ThresholdDays: days),
             TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        // IADR-0371 決定 2 / IADR-0393: 本文も移送前と同じであること。
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        body.GetProperty("error").GetString().Should()
-            .Be(ReportKnowledgeHealthValidator.ThresholdInvalidMessage);
+        resp.Status.Should().Be(global::Grpc.Core.StatusCode.InvalidArgument);
+        // IADR-0371 決定 2 / IADR-0393: 理由の本文も変わっていないこと。
+        resp.Detail.Should().Be(ReportKnowledgeHealthValidator.ThresholdInvalidMessage);
     }
 
     // FR-10, FR-17, FR-18 / IADR-0371 決定 2 / IADR-0393 決定 3 / [[IADR-0409]] (#1230):
@@ -434,35 +373,27 @@ public class KnowledgeHealthEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        var resp = await client.PostAsJsonAsync(ProducerObservationsPath,
-            new KnowledgeHealthReportRequest("orphan-docs", [], ThresholdDays: 0),
+        var resp = await client.ReportAsync(new KnowledgeHealthReportRequest("orphan-docs", [], ThresholdDays: 0),
             TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
-        body.GetProperty("error").GetString().Should()
-            .Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
+        resp.Status.Should().Be(global::Grpc.Core.StatusCode.InvalidArgument);
+        resp.Detail.Should().Be(ReportKnowledgeHealthValidator.IndicatorInvalidMessage);
     }
 
-    // FR-10 (T-62): 🔴 **生産者が実際に送る JSON がそのまま束縛できる**（T-32 と同じ作法）。
-    // 送っているのは匿名オブジェクトであり、`thresholdDays` の綴り違いを C# は何も言わない。
+    // FR-10 (T-62): 🔴 **生産者が送る陳腐化の形がそのまま束縛できる**（T-32 と同じ作法）。
+    // `threshold_days` を `has` で読まないと、送ったしきい値が null として静かに落ちる。
     [Fact]
-    public async Task 生産者が送る陳腐化のJSONがそのまま束縛できる()
+    public async Task 生産者が送る陳腐化の形がそのまま束縛できる()
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
 
-        // GraphService.Infrastructure.ExternalServices.HttpKnowledgeHealthReporter が組む本文。
-        var body = """
-            {"indicator":"stale-documents",
-             "observations":[{"subjectKey":"doc-1","docScope":null}],
-             "thresholdDays":180}
-            """;
+        var request = new Knowledge.Contracts.Grpc.Dashboard.V1.ReportRequest
+        { Indicator = "stale-documents", ThresholdDays = 180 };
+        request.Observations.Add(new Knowledge.Contracts.Grpc.Dashboard.V1.Observation { SubjectKey = "doc-1" });
 
-        var resp = await client.PostAsync(ProducerObservationsPath,
-            new StringContent(body, Encoding.UTF8, "application/json"),
-            TestContext.Current.CancellationToken);
-        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var resp = await client.ReportAsync(request, TestContext.Current.CancellationToken);
+        resp.Status.Should().Be(global::Grpc.Core.StatusCode.OK);
 
         var health = await client.GetFromJsonAsync<KnowledgeHealthDto>(
             "/dashboard/knowledge-health", TestContext.Current.CancellationToken);

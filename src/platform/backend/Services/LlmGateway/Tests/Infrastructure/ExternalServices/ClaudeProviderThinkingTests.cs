@@ -1,17 +1,18 @@
-using System.Net;
-using System.Text;
 using System.Text.Json;
-using Anthropic.SDK;
 using AwesomeAssertions;
 using LlmGateway.Infrastructure.ExternalServices;
 using LlmGateway.Domain.Ports;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// FR-04, FR-11, ADR-0010, IADR-0114 (AST#290): thinking（拡張思考）ブロックを含む応答でも
-// ClaudeProvider が本文を取り出せることの回帰テスト。
+// FR-04, FR-11, ADR-0010, IADR-0114 (AST#290), IADR-0562 (#1749): thinking（拡張思考）ブロック・未知のブロックを含む応答でも
+// ClaudeProvider が本文を取り出せることの回帰テスト（T-24 / T-35）。
+//
+// ［2026-10-17 追記 / #1749・IADR-0562］SDK を公式 `Anthropic`（12.53.0）へ移した。公式 SDK は thinking を型として知り、
+// 判別子に無い型も例外にせず保持するので、旧 SDK 向けのサニタイズ（委譲ハンドラ）は撤去した。下の「背景」は旧 SDK の事情である。
+// 本ファイルは**サニタイズ無し**で同じ応答を与え、本文が取り出せることを固定する。旧来の変異（サニタイズを外すと例外）は
+// 前提ごと消えたので、代わりに「本文は text ブロックだけから取る」ことが load-bearing であることを、本文の前に置いた
+// 非 text ブロックの文字列が本文へ混ざらないことで固定する（ExtractText の条件を外すと赤）。
 //
 // 背景: 用途別の割当モデル（trade-decision / report-daily = claude-sonnet-5-5、report-weekly /
 // report-monthly / analysis / default = claude-opus-5-5）はいずれも thinking が
@@ -42,7 +43,7 @@ public class ClaudeProviderThinkingTests
     [Fact]
     public async Task CompleteAsync_WithThinkingBlock_ReturnsTextInsteadOfThrowing()
     {
-        var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock("要約本文")}"), sanitize: true);
+        var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock("要約本文")}"));
 
         var result = await provider.CompleteAsync(new CompletionRequest("要約して", 4096, "claude-sonnet-5-5"), TestContext.Current.CancellationToken);
 
@@ -62,7 +63,7 @@ public class ClaudeProviderThinkingTests
     public async Task CompleteAsync_WithThinkingBlock_PreservesStructuredDecisionBody(string action)
     {
         var body = $$"""{"action":"{{action}}","rationale":"根拠","referencePrice":190.5,"stopLossDistancePerShare":5.5}""";
-        var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock(body)}"), sanitize: true);
+        var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock(body)}"));
 
         var result = await provider.CompleteAsync(new CompletionRequest("判断して", 4096, "claude-sonnet-5-5"), TestContext.Current.CancellationToken);
 
@@ -76,28 +77,43 @@ public class ClaudeProviderThinkingTests
     public async Task CompleteAsync_WithUnknownFutureBlock_ReturnsText()
     {
         var provider = CreateProvider(
-            Envelope($$"""{"type":"some_future_block","payload":1},{{TextBlock("本文")}}"""), sanitize: true);
+            Envelope($$"""{"type":"some_future_block","payload":1},{{TextBlock("本文")}}"""));
 
         (await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken)).Text.Should().Be("本文");
     }
 
-    // 変異テスト: サニタイズを外すと同じ応答で例外になる（ガードが load-bearing であることの実証）。
+    // ［2026-10-17 / #1749］旧来の変異（サニタイズを外すと `Unknown type thinking`）の置き換え。
+    // 本文の前に、文字列の欄を持つ thinking・型名の無い要素・将来型が並んでも、本文は text ブロックからだけ取る。
+    // 本文を「最初のブロックの文字列」等で取る実装へ崩すと赤になる。
     [Fact]
-    public async Task CompleteAsync_WithoutSanitizer_ThrowsUnknownTypeThinking()
+    public async Task CompleteAsync_NonTextBlocksBeforeBody_AreNeverUsedAsBody()
     {
-        var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock("要約本文")}"), sanitize: false);
+        var provider = CreateProvider(Envelope(
+            """{"type":"thinking","thinking":"思考の文字列","signature":"s"},{"text":"型の無い要素"},{"type":"some_future_block","text":"将来型の文字列"},"""
+            + TextBlock("本文")));
 
-        var act = () => provider.CompleteAsync(new CompletionRequest("要約して", 4096, "claude-sonnet-5-5"), TestContext.Current.CancellationToken);
+        var result = await provider.CompleteAsync(new CompletionRequest("q", 4096, "claude-sonnet-5-5"), TestContext.Current.CancellationToken);
 
-        (await act.Should().ThrowAsync<JsonException>()).WithMessage("*Unknown type thinking*");
+        result.Text.Should().Be("本文");
     }
 
-    // 既知型だけの応答（サニタイズ不要）でも本文を取り出せる。ハンドラが判定のために本文を
-    // 1 度読むため、書き換えない経路で SDK が本文を読み直せることの回帰（二重読み取り）。
+    // 全ブロックが本文でない（thinking だけ）なら例外にせず空へ縮退する（IADR-0114 決定 6 と同じ帰結。呼び出し側の空応答分岐へ合流）。
+    [Fact]
+    public async Task CompleteAsync_ThinkingOnly_ReturnsEmptyTextWithoutThrowing()
+    {
+        var provider = CreateProvider(Envelope(ThinkingBlock, stopReason: "max_tokens"));
+
+        var result = await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken);
+
+        result.Text.Should().BeEmpty();
+        result.StopReason.Should().Be("max_tokens");
+    }
+
+    // 既知型だけの応答でも本文を取り出せる（回帰）。
     [Fact]
     public async Task CompleteAsync_WithKnownBlocksOnly_IsReadableAfterInspection()
     {
-        var provider = CreateProvider(Envelope(TextBlock("素通し本文")), sanitize: true);
+        var provider = CreateProvider(Envelope(TextBlock("素通し本文")));
 
         (await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken)).Text.Should().Be("素通し本文");
     }
@@ -107,7 +123,7 @@ public class ClaudeProviderThinkingTests
     public async Task CompleteAsync_RefusalWithThinkingBlock_StillReturnsEmptyText()
     {
         var provider = CreateProvider(
-            Envelope($"{ThinkingBlock},{TextBlock("断片")}", stopReason: "refusal"), sanitize: true);
+            Envelope($"{ThinkingBlock},{TextBlock("断片")}", stopReason: "refusal"));
 
         var result = await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken);
 
@@ -122,7 +138,7 @@ public class ClaudeProviderThinkingTests
     {
         const string ranking = """{"ranking":[3,1,2]}""";
         var provider = CreateProvider(
-            Envelope($"{ThinkingBlock},{TextBlock(ranking)}", model: "claude-haiku-5-5"), sanitize: true);
+            Envelope($"{ThinkingBlock},{TextBlock(ranking)}", model: "claude-haiku-5-5"));
 
         var result = await provider.CompleteAsync(
             new CompletionRequest("並べ替えて", 1024, "claude-haiku-5-5", "rerank"), TestContext.Current.CancellationToken);
@@ -132,7 +148,7 @@ public class ClaudeProviderThinkingTests
     }
 
     // FR-11, IADR-0531 (#1875, T-35): ストリーム経路は thinking ブロック（content_block_start の thinking・
-    // thinking_delta・signature_delta）を本文デルタとして流さず、後続の本文だけを流す（サニタイズは SSE を触らない）。
+    // thinking_delta・signature_delta）を本文デルタとして流さず、後続の本文だけを流す。
     [Fact]
     public async Task StreamAsync_Haiku55ThinkingFirst_StreamsOnlyTextDeltas()
     {
@@ -169,13 +185,7 @@ public class ClaudeProviderThinkingTests
 
 
         """;
-        HttpMessageHandler handler = new AnthropicResponseSanitizingHandler(
-            NullLogger<AnthropicResponseSanitizingHandler>.Instance)
-        {
-            InnerHandler = new StubHandler(sse, "text/event-stream"),
-        };
-        var client = new AnthropicClient(new APIAuthentication("test-key"), new HttpClient(handler));
-        var provider = new ClaudeProvider(client, new ConfigurationBuilder().AddInMemoryCollection([]).Build());
+        var provider = TestClaudeProviders.Create(new StubAnthropicHandler(sse, "text/event-stream"));
 
         var chunks = new List<CompletionChunk>();
         await foreach (var chunk in provider.StreamAsync(
@@ -190,29 +200,6 @@ public class ClaudeProviderThinkingTests
         done.OutputTokens.Should().Be(42);
     }
 
-    private static ClaudeProvider CreateProvider(string responseBody, bool sanitize)
-    {
-        HttpMessageHandler handler = new StubHandler(responseBody);
-        if (sanitize)
-        {
-            handler = new AnthropicResponseSanitizingHandler(
-                NullLogger<AnthropicResponseSanitizingHandler>.Instance)
-            {
-                InnerHandler = handler,
-            };
-        }
-
-        var client = new AnthropicClient(new APIAuthentication("test-key"), new HttpClient(handler));
-        var config = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
-        return new ClaudeProvider(client, config);
-    }
-
-    private sealed class StubHandler(string body, string mediaType = "application/json") : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
-            => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(body, Encoding.UTF8, mediaType),
-            });
-    }
+    private static ClaudeProvider CreateProvider(string responseBody)
+        => TestClaudeProviders.Create(new StubAnthropicHandler(responseBody));
 }

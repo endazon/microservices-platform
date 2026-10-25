@@ -6,7 +6,9 @@ namespace WikiService.Infrastructure.ExternalServices;
 
 // FR-13, UC-07, ADR-0011, IADR-0021: Wiki.js 管理 GraphQL API への同期クライアント（API push）。
 //
-// 冪等 upsert: path をキーに singleByPath で既存を引き、あれば pages.update、無ければ pages.create。
+// 冪等 upsert: path をキーに singleByPath で既存を引き、無ければ pages.create、あって内容が違えば pages.update、
+// 同じなら何も書かない（#1971・[[IADR-0557]]。Wiki.js 2.5 の update は 1 件ごとに描画の子プロセスを起こし 2.5〜5 秒かかる）。
+// アーカイブも、既に非公開なら何も書かない（#1971・[[IADR-0563]] 決定 3）。
 // 認証はサービスアカウントの API キー（Bearer）。秘密は環境変数/シークレット経由で注入しコミットしない。
 //
 // 注（IADR-0021）: Wiki.js 2.x の GraphQL スキーマ（バージョン差異あり）への結合が生じる。実際の
@@ -23,19 +25,60 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
     public async Task UpsertPageAsync(WikiJsPage page, CancellationToken ct = default)
     {
         var path = NormalizePath(page.Path);
-        var existingId = await GetPageIdByPathAsync(path, ct);
+        const string query = """
+            query ($path: String!, $locale: String!) {
+              pages { singleByPath(path: $path, locale: $locale) { id title content render isPublished tags { tag } } }
+            }
+            """;
+        var single = await QuerySingleByPathAsync(query, path, ct);
 
-        if (existingId is int id)
-        {
-            await UpdateAsync(id, path, page, isPublished: true, ct);
-            logger.LogInformation("Wiki.js page updated: path={Path} id={Id}", path, id);
-        }
-        else
+        if (single is not JsonElement current)
         {
             await CreateAsync(path, page, ct);
             logger.LogInformation("Wiki.js page created: path={Path}", path);
+            return;
         }
+
+        var id = current.GetProperty("id").GetInt32();
+        if (HoldsSameContent(current, page))
+        {
+            logger.LogInformation("Wiki.js page unchanged; update skipped: path={Path} id={Id}", path, id);
+            return;
+        }
+
+        await UpdateAsync(id, path, page, isPublished: true, ct);
+        logger.LogInformation("Wiki.js page updated: path={Path} id={Id}", path, id);
     }
+
+    // 🔴 FR-13, [[IADR-0557]] 決定 1・2 (#1971): **Wiki.js の今のページが、送ろうとしている update と同じ結果を既に持っているか。**
+    // 同じなら update は Wiki.js の状態を変えない（同じ値の上書き）ので送らない。比べる相手は wiki_svc の台帳ではなく **Wiki.js の今の状態**である
+    // （Wiki.js の DB が作り直された・Wiki.js の画面で本文が直された、のどちらでも、違いが見えれば従来どおり上書きする）。
+    // - 表題・本文: 序数比較（Wiki.js は受け取った値をそのまま保存する。実測で往復一致）。
+    // - タグ: Wiki.js の `associateTags` と同じ正規化（trim・小文字・重複除去）の集合で比べる。正規化の差（文化依存の小文字化など）は
+    //   「違う」に倒れ、update を送る（安全側）。
+    // - 公開状態: update は常に isPublished=true を送る。アーカイブ済み（false）なら違う。
+    // - 描画: render が空なら違う扱い（前回の描画の子プロセスが落ちていた場合に、update で描き直させる）。
+    // - **isPrivate は比べない。** Wiki.js 2.5 の updatePage は isPrivate を書かない（patch の列に無い）ので、違っていても update では直らない。
+    internal static bool HoldsSameContent(JsonElement current, WikiJsPage page)
+    {
+        if (!current.TryGetProperty("isPublished", out var published) || published.ValueKind != JsonValueKind.True) return false;
+        if (!current.TryGetProperty("render", out var render) || render.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(render.GetString())) return false;
+        if (!string.Equals(StringOrNull(current, "title"), page.Title, StringComparison.Ordinal)) return false;
+        if (!string.Equals(StringOrNull(current, "content"), page.Markdown, StringComparison.Ordinal)) return false;
+        if (!current.TryGetProperty("tags", out var tags) || tags.ValueKind != JsonValueKind.Array) return false;
+
+        var held = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var t in tags.EnumerateArray())
+        {
+            if (!t.TryGetProperty("tag", out var tag) || tag.ValueKind != JsonValueKind.String) return false;
+            held.Add(tag.GetString()!);
+        }
+        return held.SetEquals(page.Tags.Select(t => t.Trim().ToLowerInvariant()));
+    }
+
+    private static string? StringOrNull(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     public async Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
     {
@@ -96,12 +139,18 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
     //   → 現在の content/title/tags を取得してから、UpdateAsync と同じ全項目シェイプで送る。
     //   - update は isPrivate の変更を無視する（create 時のみ有効）。非公開化の実効手段は
     //     isPublished=false（unpublish）であり、isPrivate は将来バージョンでの適用を期待して送るのみ。
+    //
+    // 🔴 FR-13, [[IADR-0563]] 決定 3 (#1971): **既に非公開（isPublished=false）なら update を送らない。** この update は
+    //   今の表題・本文・タグをそのまま送り返し、変えるのは isPublished だけである（isPrivate は上のとおり書かれない）。
+    //   既に false なら Wiki.js の状態は変わらないのに、描画の子プロセスと `pageHistory` の版が 1 件ずつ増える
+    //   （[[IADR-0557]] の実測: update は内容が同じでも CPU 0.5 で約 5 秒）。一括アーカイブの後の再発行は、ほぼこの形である。
+    //   isPublished が読めない（欠落・true 以外の値）ときは従来どおり送る（安全側）。
     public async Task ArchivePageAsync(string path, CancellationToken ct = default)
     {
         var normalized = NormalizePath(path);
         const string query = """
             query ($path: String!, $locale: String!) {
-              pages { singleByPath(path: $path, locale: $locale) { id content title tags { tag } } }
+              pages { singleByPath(path: $path, locale: $locale) { id content title isPublished tags { tag } } }
             }
             """;
         var single = await QuerySingleByPathAsync(query, normalized, ct);
@@ -112,6 +161,12 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         }
 
         var id = page.GetProperty("id").GetInt32();
+        if (page.TryGetProperty("isPublished", out var published) && published.ValueKind == JsonValueKind.False)
+        {
+            logger.LogInformation("Wiki.js page already unpublished; archive update skipped: path={Path} id={Id}", normalized, id);
+            return;
+        }
+
         var tags = page.GetProperty("tags").EnumerateArray()
             .Select(t => t.GetProperty("tag").GetString() ?? "")
             .ToArray();
@@ -275,8 +330,18 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
         if (result.GetProperty("succeeded").GetBoolean()) return;
         var code = result.TryGetProperty("errorCode", out var c) ? c.ToString() : "?";
         var message = result.TryGetProperty("message", out var m) ? m.GetString() : "?";
+        // 🔴 FR-13, [[IADR-0554]] 決定 5 (#1966): 入力の長さで拒まれたのは恒久的な失敗（同じ入力の再試行では直らない）。
+        if (IsValueTooLong(message)) throw new WikiJsInputRejectedException(op, path, code, message ?? "");
         throw new WikiJsSyncException($"Wiki.js pages.{op} failed for '{path}' (code={code}): {message}");
     }
+
+    // PostgreSQL の 22001（string_data_right_truncation）の定型句。Wiki.js は SQLSTATE を運ばず、DB の例外の message だけを返す
+    // （実測 2026-10-16: `insert into "pages" (...) - value too long for type character varying(255)`）。
+    // 🔴 これ以外の文言は恒久と見なさない（一時障害を捨てない）。
+    internal const string ValueTooLongPhrase = "value too long for type ";
+
+    internal static bool IsValueTooLong(string? message)
+        => message is not null && message.Contains(ValueTooLongPhrase, StringComparison.Ordinal);
 
     // Wiki.js のパスは先頭スラッシュを持たない相対形（例 doc/<guid>）。
     private static string NormalizePath(string path) => path.TrimStart('/');

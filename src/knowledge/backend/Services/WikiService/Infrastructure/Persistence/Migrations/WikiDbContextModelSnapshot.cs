@@ -22,6 +22,30 @@ namespace WikiService.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("WikiService.Domain.DocumentSyncMark", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("AppliedSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Deleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("DocumentId")
+                        .HasName("PK_SyncMarks");
+
+                    b.ToTable("SyncMarks");
+                });
+
             modelBuilder.Entity("WikiService.Domain.WikiPage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -65,7 +89,8 @@ namespace WikiService.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("Slug")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Pages_Slug");
 
                     b.ToTable("Pages");
                 });

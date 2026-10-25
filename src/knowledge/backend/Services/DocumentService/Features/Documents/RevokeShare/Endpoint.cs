@@ -30,9 +30,18 @@ internal static class RevokeDocumentShareEndpoint
             if (share is null) return Results.NotFound();
 
             db.DocumentShares.Remove(share);
-            await db.SaveChangesAsync(ct);
-            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(
-                bus, db, doc, await TagResolver.NamesAsync(db, ct), ct);
+            // FR-06, ADR-0027 §決定, IADR-0608 決定 1 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 🔴 共有先（`sharedWith`）は**保存の後の**共有台帳から解決する（今回の付与・取り消しが載る）。保存の前に積む形にしない。
+            // FR-02, FR-06, [[IADR-0597]] / IADR-0637 (#2150): 発行の連番は並行トークンである。読んだ後に別の発行（露出・共有・論理削除等）が
+            // 確定していれば確定ごと負ける（共有の行も残らない）。#2103 の版の競合と同じ 409 `version_conflict` を返す（500 にしない）。
+            try
+            {
+                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
+            }
             return Results.NoContent();
         });
     }

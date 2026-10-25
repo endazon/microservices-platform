@@ -5,10 +5,8 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 namespace RetrievalService.Infrastructure.ExternalServices;
 
 // FR-03, FR-05, ADR-0013, ADR-0016, ADR-0029, ADR-0075, IADR-0256, IADR-0379, IADR-0397 (#1255):
-// クエリ埋め込みの **east-west gRPC 経路**（REST の LlmGatewayEmbeddingService の兄弟）。
-//
-// **並走中の正は REST である。** 本クラスは `Services:LlmGatewayGrpc` が構成されたときだけ登録され
-// （Program.cs）、無ければ従来の HTTP 実装がそのまま使われる。戻すのは構成を外すだけでよい。
+// クエリ埋め込みの **east-west gRPC 経路**。［2026-10-10 / #1255・[[IADR-0533]]］REST の兄弟実装 `LlmGatewayEmbeddingService` は撤去し、
+// 本クラスが唯一の実装である（宛先未構成は `UNAVAILABLE` の `RpcException` として上がる。下の 🔴 のとおり捕まえない）。
 //
 // 🔴 **輸送の失敗は例外のまま上げる。** RpcException（UNAVAILABLE / UNAUTHENTICATED /
 // PERMISSION_DENIED ほか）も s2s トークンの取得失敗（InvalidOperationException）も**捕まえない** ——

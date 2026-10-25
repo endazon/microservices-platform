@@ -205,7 +205,7 @@ public class LexicalIndexFusionTests
         var doc = Guid.NewGuid();
 
         await new DocumentDeletedConsumer(primary, new FusedCollections([LexicalCollection(lexical)]),
-                ConsumerTimeoutsForTests.Calls(), DocumentDeletedTimeouts.Default,
+                WrittenCollections.None, ConsumerTimeoutsForTests.Calls(), DocumentDeletedTimeouts.Default,
                 NullLogger<DocumentDeletedConsumer>.Instance)
             .Handle(new DocumentDeleted(doc, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
 

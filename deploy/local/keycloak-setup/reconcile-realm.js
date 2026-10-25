@@ -41,6 +41,16 @@
  *   `GET …/client-secret` で読み、宣言の値と一致するものを名指して非 0 で終える。**読むだけで書かない。値は出力しない。**
  *   🔴 稼働の secret を読むのはこのモードの `collectGuardedSecrets` だけである（apply / check の `collectLive` は今も読まない）。
  *
+ * ［2026-10-22 追記 / GHSA-rh44-px44-p48q / IADR-0572］**対象を 3 クライアントから、サービスアカウントを持つ機密クライアント全部へ
+ *   広げた。** 対象は手で並べず宣言から導出する（`isDevSecretGuardedClient`。`DEV_SECRET_GUARDED_CLIENTS` は撤去した）。
+ *   上の 2 段落の「3 クライアント」は、この導出した集合と読み替える。
+ *
+ * ［2026-10-15 追記 / #1894 / IADR-0546］**既存の人間の seed 利用者にも、アカウントコンソールの自己管理のロール（`account` の
+ *   `view-profile`・`manage-account`。`SEED_USER_SELF_SERVICE_ROLES`）だけは足す。** realm import で作られる利用者は realm の既定ロール
+ *   （`default-roles-platform`）を受け取らず、SC-16 の account API が 401 / 403 になっていた。実行時に作られる利用者は Keycloak が既定ロールで
+ *   同じ 2 つを必ず与えるので、足すのは「どの利用者も持つ基線」までであり、境界（人の利用者は実行時が所有する）の例外はこの 2 つに限る。
+ *   **加えるだけで外さない。** 実効（合成を含む）の割当で比べるので、既定ロール経由で持つ利用者には何もしない。
+ *
  * ［2026-09-06 追記 / #1245 / IADR-0404］**`smtpServer` を実行時所有から宣言所有へ移した。**
  *   ADR-0078 決定 2 が Keycloak の送出先を**クラスタ内の近接 MTA**（`deploy/mail-relay/`）へ固定し、
  *   秘匿値（実リレーの host/user/password）は relay 側の Secret へ移った。realm に残るのは
@@ -56,7 +66,26 @@
  *   🔴 実行時所有へ入れてはならない —— それだと「**宣言 false なのに稼働 true**」という
  *   **危険な向きの drift**（閉じたはずの申請が開いている）まで見なくなる。
  *
+ * ［2026-10-21 追記 / #2024 / IADR-0570］**試験アカウント `e2e-*` の資格情報は宣言にプレースホルダだけを置き、env から差し込む。**
+ *   宣言は `users[].credentials[]` の `value`（パスワード）と `secretData`（OTP の生の秘密）に `${E2E_<ROLE>_PASSWORD}` /
+ *   `${E2E_<ROLE>_TOTP_SECRET}` を持つ。値は Secret `e2e-accounts`（OpenBao → ESO）を Job が `envFrom`（optional）で読む。
+ *   差し込みの口は `resolveE2eCredentials` の 1 つで、取り込み元を作る `--render-import`（k8s-local-up.sh の [3/7]）と共有する。
+ *   🔴 **差し込めない利用者は作らない（宣言から外す。drift にも数えない）。** プレースホルダを残したまま作ると、公知の文字列が
+ *   パスワードになる。置き換えるのは `E2E_` で始まる名前だけ（宣言で Job の env〔管理者のパスワード等〕を利用者へ写させない）。
+ *   作った後の e2e 利用者は他の人の seed 利用者と同じく実行時が所有する（資格情報を比べない・戻さない）。回すときは消して作り直す
+ *   （deploy/local/README.md の e2e 節）。
+ *
+ * ［2026-10-24 追記 / #2208 / IADR-0618］**Keycloak 26 がサービスアカウントの client へ自分で付ける既定スコープ `service_account` は
+ *   宣言の外（Keycloak が所有する）。** サービスアカウントを持つ client を PUT するたび（投入器の有効・無効の切替、secret の入れ替え、
+ *   本 Job 自身の client.update）に Keycloak が defaultClientScopes へ足し直すので、余剰として外しても次の PUT で戻り、
+ *   `--check` だけが落ち続ける。許すのは `KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES` が名指す組（名前・欄・宣言の
+ *   `serviceAccountsEnabled: true`）の**稼働側の余剰だけ**で、それ以外の余剰は従来どおり外す（宣言が全集合）。
+ *   🔴 宣言にこのスコープを書かない（scripts/check-realm-constraints.js の検査11 が同じ定数で止める）。
+ *
  * 集合欄（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は**宣言が全集合**（置換）。
+ *   ［2026-10-25 / #2245 / IADR-0524 の追記］`account-console` の `webOrigins: ["+"]` も、この比べ方で既存の realm へ当たる
+ *   （空の稼働へ client.update 1 件。稼働の表現へ宣言を合成して PUT するので、ほかの欄は変えない。当てた後は 0 件）。
+ *   新しい分岐は足していない（keycloak-realm-reconcile.test.js が固定する）。
  * 実体（client / role / group / mapper / user）は**加算的**（宣言に無い余剰は消さない）。
  *
  * ## 収束
@@ -71,7 +100,10 @@
  *   KC_ADMIN_PASSWORD   同パスワード（Secret keycloak-admin/password）。**値は出力しない**
  *   REALM_DIR           realm JSON の置き場（既定 /import ＝ ConfigMap keycloak-realms のマウント先）
  *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
- *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い管理用クライアントを宣言の dev の値で作る（既定は拒否。#1830）
+ *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0572）
+ *   E2E_<ROLE>_PASSWORD / E2E_<ROLE>_TOTP_SECRET  試験アカウントの資格情報（Secret e2e-accounts。無ければ e2e 利用者を作らない。#2024）
+ *
+ * 引数 `--render-import`: 標準入力の realm JSON へ同じ差し込みを当てて標準出力へ書く（Keycloak へは接続しない。#2024）。
  */
 
 const fs = require('fs');
@@ -118,13 +150,34 @@ const CLIENT_SKIP_KEYS = new Set([
 // 🔴 ここから `secret` を外すと、対の手順で回した client シークレットを次の起動で開発用の値へ戻す。
 const CLIENT_CREATE_ONLY_KEYS = new Set(['secret']);
 const MAPPER_SKIP_KEYS = new Set(['id']);
-// ［2026-10-09 / #1830 / IADR-0517］レルム管理のロールを持つ機密クライアント。dev ではないクラスタで宣言の（公知の dev の）
-// secret のまま作らない・稼働の値が宣言の値のままかを `--check-dev-secrets` で見る。
-// 🔴 scripts/lib/dev-client-secret-guard.sh の DEV_CLIENT_SECRET_GUARDED と同じ集合（keycloak-realm-reconcile.test.js が突き合わせる）。
-const DEV_SECRET_GUARDED_CLIENTS = Object.freeze(['identity-admin', 'reset-gate', 'mcp-client-admin']);
+// ［2026-10-24 / #2208 / IADR-0618］Keycloak が自分で client へ付けるスコープ（名前 → 欄と、付く条件の宣言側の述語）。
+// 稼働側にあっても**余剰と見なさない**（client.scope.remove を計画しない）。欠落の向きは見ない（宣言に書かないので欠落も起きない）。
+// Keycloak 26 はサービスアカウントを持つ client の作成・更新（PUT）のたびに既定スコープ `service_account` を足す（2026-10-24 の稼働 PoC で実測）。
+// 🔴 ここへ足すと、その名前の余剰を宣言が見なくなる。**名前・欄・条件の 3 つで限定する**（「Keycloak の組み込みは全部許す」にしない）。
+//    検査器（scripts/check-realm-constraints.js の検査11）は同じ定数を読み、宣言にこれらを書くことを止める（所有の境界をそろえる）。
+const KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES = Object.freeze({
+  service_account: Object.freeze({ field: 'defaultClientScopes', when: (client) => !!client && client.serviceAccountsEnabled === true }),
+});
+// 宣言の client の、その欄の稼働側の余剰 name が Keycloak の自動付与として許されるか。
+function isKeycloakAutoAssignedScope(client, field, name) {
+  const rule = Object.prototype.hasOwnProperty.call(KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, name) ? KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES[name] : null;
+  return !!rule && rule.field === field && rule.when(client);
+}
+// ［2026-10-09 / #1830 / IADR-0517］dev ではないクラスタで宣言の（公知の dev の）secret のまま作らない・稼働の値が宣言の値の
+// ままかを `--check-dev-secrets` で見るクライアント。
+// ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
+// 機密クライアントのうち、宣言が secret を持つもの全部（isDevSecretGuardedClient）。新しいクライアントを宣言に足せば対象に入る。
+// 🔴 ホスト側の判定器（scripts/lib/dev-client-secret-guard.sh）も同じ述語を scripts/lib/dev-client-secret-targets.js 経由で使う
+//    （単一情報源。Job へはこのファイル 1 本だけがマウントされるので、述語はここに置く）。
 const DEV_SECRETS_ALLOWED_ENV = 'DEV_CLIENT_SECRETS_ALLOWED';
+// ［2026-10-15 / #1894 / IADR-0546］既存の人間の seed 利用者にも当てる client ロール（境界の唯一の例外）。
+// Keycloak が実行時に作る利用者へ既定ロールで必ず与える 2 つ（アカウントコンソールの自己管理）に限る。
+// 🔴 ここへ足すと、人の利用者の権限を宣言で上書きする口が広がる。足すなら IADR-0369 の境界表も直す。
+const SEED_USER_SELF_SERVICE_ROLES = Object.freeze({ account: Object.freeze(['view-profile', 'manage-account']) });
 // 利用者の作成時に POST /users が処理しないもの（作成後にロール割当の端点で当てる）。
 const USER_CREATE_SKIP_KEYS = new Set(['realmRoles', 'clientRoles', 'serviceAccountClientId', 'id']);
+// ［2026-10-25 / #2026］作成の後に requiredActions を当て直す PUT が載せないもの（PUT はこれらを扱わない／資格情報を二度送らない）。
+const USER_UPDATE_SKIP_KEYS = new Set(['credentials', 'groups', 'federatedIdentities']);
 
 // ---------------------------------------------------------------- 比較（純粋関数）
 
@@ -208,6 +261,7 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  *     roleComposites:{ <roleName>: [...] },          // 宣言が composite を持つロールのみ
  *     groups: [ { ..., subGroups: [...] } ],
  *     users: { <username>: <UserRepresentation>|null },
+ *     userClientRoles: { <username>: { <clientId>: [names] } }, // 既存の人の seed 利用者の実効の client ロール（SEED_USER_SELF_SERVICE_ROLES の client だけ）
  *     serviceAccounts: { <clientId>: { user, realmRoles: [names], clientRoles: { <clientId>: [names] } } },
  *   }
  *
@@ -345,6 +399,7 @@ function plan(desired, live) {
       }
       for (const name of have) {
         if (want.has(name)) continue;
+        if (isKeycloakAutoAssignedScope(client, field, name)) continue; // #2208: Keycloak が所有する（PUT のたびに戻る）
         const sc = liveScopes.get(name);
         if (!sc) continue;
         add({ op: 'client.scope.remove', target: `${client.clientId}:${name}`, method: 'DELETE',
@@ -438,7 +493,22 @@ function plan(desired, live) {
       continue;
     }
     const cur = (live.users || {})[user.username];
-    if (cur) continue; // 既存の人間の利用者は実行時が所有する（境界）。触らない。
+    if (cur) {
+      // 既存の人間の利用者は実行時が所有する（境界）。例外は自己管理のロールだけ（#1894 / IADR-0546。加えるだけ）。
+      for (const [clientId, allowed] of Object.entries(SEED_USER_SELF_SERVICE_ROLES)) {
+        const wanted = ((user.clientRoles || {})[clientId] || []).filter((n) => allowed.includes(n));
+        if (wanted.length === 0) continue;
+        const have = (((live.userClientRoles || {})[user.username] || {})[clientId]) || [];
+        const missing = wanted.filter((n) => !have.includes(n));
+        if (missing.length === 0) continue;
+        const cr = clientRoleRefs(clientId, missing);
+        if (!cr) { defer(`user ${user.username} clientRoles ${clientId}`, 'client かロールがまだ無い'); continue; }
+        add({ op: 'user.clientRoles.add', target: `${user.username}:${clientId}`, method: 'POST',
+          path: `${R}/users/${cur.id}/role-mappings/clients/${cr.clientUuid}`, body: cr.refs,
+          reason: `自己管理のロールの欠落: ${missing.join(', ')}` });
+      }
+      continue;
+    }
     // 作成。POST /users は realmRoles / clientRoles を処理しないので、作成直後の割当を postSteps で運ぶ。
     const postSteps = [];
     let blocked = null;
@@ -453,6 +523,18 @@ function plan(desired, live) {
       postSteps.push({ method: 'POST', pathSuffix: `/role-mappings/clients/${cr.clientUuid}`, body: cr.refs });
     }
     if (blocked) { defer(`user ${user.username}`, blocked); continue; }
+    // ［2026-10-25 / #2026］宣言の requiredActions を作成の後に PUT で当て直す。🔴 POST /users は宣言の requiredActions を
+    // **足すだけで外さない**: 作成は realm の defaultAction（本 realm では CONFIGURE_TOTP）を付けた利用者を作り、
+    // `UserResource.updateUserFromRep(…, isUpdateExistingUser=false)` は宣言に無い action を消さない（Keycloak 26.7.4 の
+    // `removeMissingRequiredActions = isUpdateExistingUser`）。更新（PUT）は消す。realm の取り込み（--import-realm）は
+    // 既定の action を付けないので、この差は Job で作った利用者にだけ出る（e2e-live の実行で e2e-* 6 名が OTP の後に
+    // 「OTP の登録」へ送られた）。body は作成と同じ宣言から資格情報・グループを除いたもの（PUT はそれらを扱わない）。
+    // 既存の利用者（上の `cur`）はここへ来ないので当て直さない。宣言が requiredActions を持たない利用者にも当てない。
+    // PUT の失敗は reconcile 全体の失敗にする（applyOps の errors → exitCodeFor。作成だけ済んで黙って緑にしない）。
+    if (Array.isArray(user.requiredActions)) {
+      postSteps.push({ method: 'PUT', pathSuffix: '', label: 'user.update', reason: 'requiredActions を宣言へ当て直す（作成は既定の action を外さない）',
+        body: pick(user, (k) => !USER_CREATE_SKIP_KEYS.has(k) && !USER_UPDATE_SKIP_KEYS.has(k)) });
+    }
     add({ op: 'user.create', target: user.username, method: 'POST', path: `${R}/users`,
       body: pick(user, (k) => !USER_CREATE_SKIP_KEYS.has(k)), postSteps, reason: 'seed 利用者が無い' });
   }
@@ -461,7 +543,21 @@ function plan(desired, live) {
 }
 
 /**
- * ［#1830 / IADR-0517］計画のうち、管理用の 3 クライアントを**宣言の secret（公知の dev の値）で作る**操作の対象を名指す。**純関数**。
+ * ［GHSA-rh44-px44-p48q / IADR-0572］dev の値の守りの対象か。**純関数**。サービスアカウントを持つ機密クライアント
+ * （`serviceAccountsEnabled: true`・`publicClient` でない）で、宣言が `secret` を持つもの。clientId では選ばない（入れ漏れを作らない）。
+ * @param {object} c client の表現（宣言・作成の本文）
+ */
+function isDevSecretGuardedClient(c) {
+  return isObj(c) && c.serviceAccountsEnabled === true && c.publicClient !== true && asStr(c.secret) !== '';
+}
+
+/** ［GHSA-rh44-px44-p48q / IADR-0572］realm の宣言から導出した対象の clientId（昇順・重複なし）。**純関数**。 */
+function devSecretGuardedClients(desired) {
+  return [...new Set(((desired && desired.clients) || []).filter(isDevSecretGuardedClient).map((c) => c.clientId))].sort();
+}
+
+/**
+ * ［#1830 / IADR-0517］計画のうち、対象のクライアントを**宣言の secret（公知の dev の値）で作る**操作の対象を名指す。**純関数**。
  * `client.create` の本文、または `realm.create` の本文の `clients[]` に、対象のクライアントが `secret` つきで在れば挙げる。
  * 宣言の `secret` は検査 8 で開発用の形に限られている（＝リポジトリに公開されている）ので、値は見ずに「在るか」だけで決める。
  * @param {Array<object>} ops plan() の戻り値
@@ -469,7 +565,7 @@ function plan(desired, live) {
  */
 function devSecretCreations(ops) {
   const hits = new Set();
-  const guarded = (c) => isObj(c) && DEV_SECRET_GUARDED_CLIENTS.includes(c.clientId) && asStr(c.secret) !== '';
+  const guarded = isDevSecretGuardedClient;
   for (const op of ops || []) {
     if (op.op === 'client.create' && guarded(op.body)) hits.add(op.body.clientId);
     if (op.op === 'realm.create' && isObj(op.body)) for (const c of op.body.clients || []) if (guarded(c)) hits.add(c.clientId);
@@ -486,7 +582,7 @@ function devSecretCreations(ops) {
 function devSecretFindings(desired, liveSecrets) {
   const out = [];
   for (const c of (desired && desired.clients) || []) {
-    if (!DEV_SECRET_GUARDED_CLIENTS.includes(c.clientId) || asStr(c.secret) === '') continue;
+    if (!isDevSecretGuardedClient(c)) continue;
     const live = (liveSecrets || {})[c.clientId];
     let state = 'rotated';
     if (live === null || live === undefined) state = 'absent';
@@ -494,6 +590,100 @@ function devSecretFindings(desired, liveSecrets) {
     out.push({ clientId: c.clientId, state });
   }
   return out.sort((a, b) => a.clientId.localeCompare(b.clientId));
+}
+
+// ---------------------------------------------------------------- 試験アカウントの資格情報（#2024 / IADR-0570）
+
+// 置き換える名前の形。🔴 `E2E_` で始まる名前だけ —— 宣言に `${KC_ADMIN_PASSWORD}` と書けば Job の env を利用者へ写せてしまう。
+const E2E_PLACEHOLDER_RE = /\$\{(E2E_[A-Z0-9_]+)\}/g;
+const E2E_PLACEHOLDER_MARK = '${E2E_';
+// OTP の生の秘密（Keycloak が `secretData.value` に持つ文字列）の形。Keycloak が自分で作る秘密と同じ英数に限る
+// （JSON の文字列へそのまま置ける・認証アプリへ見せる base32 はこの UTF-8 バイト列の base32）。
+const E2E_TOTP_SECRET_RE = /^[A-Za-z0-9]{20,64}$/;
+
+/**
+ * realm の `passwordPolicy` のうち `length(N)` と `regexPattern(…)` だけで値を確かめる。**純関数**。
+ * Keycloak はポリシーに反するパスワードで `--import-realm` 全体を失敗させ、`POST /users` を 400 にする（後追いは fail-closed なので
+ * up が止まる）。他の項（passwordHistory 等）は作成時に効かないので見ない。
+ * @returns {boolean}
+ */
+function passwordMeetsPolicy(policy, value) {
+  for (const term of String(policy || '').split(' and ')) {
+    const m = /^\s*([A-Za-z]+)\((.*)\)\s*$/.exec(term);
+    if (!m) continue;
+    if (m[1] === 'length' && value.length < Number(m[2])) return false;
+    if (m[1] === 'regexPattern' && !new RegExp(`^(?:${m[2]})$`).test(value)) return false;
+  }
+  return true;
+}
+
+/** 差し込む値の検査。通らなければ理由（値は含めない）を返す。 */
+function e2eValueProblem(kind, value, policy) {
+  if (typeof value !== 'string' || value === '') return '無い';
+  if (/[\u0000-\u001f\u007f]/.test(value)) return '制御文字を含む';
+  if (value.includes('${')) return '${ を含む（Keycloak の取り込みが置き換える）';
+  if (kind === 'otp' && !E2E_TOTP_SECRET_RE.test(value)) return '英数 20〜64 文字でない';
+  if (kind === 'password' && !passwordMeetsPolicy(policy, value)) return 'realm の passwordPolicy を満たさない';
+  return null;
+}
+
+/**
+ * 宣言の `users[].credentials[]` のプレースホルダ `${E2E_…}` を env の値で置き換える。**純関数**（入力を変えない）。
+ *
+ * - 置き換える場所は資格情報の `value` と `secretData` だけ。それ以外の場所に `${E2E_` があれば宣言の誤りとして例外。
+ * - 利用者ごとに、必要な名前が全部 env に在り検査を通るときだけ置き換えて残す。1 つでも欠ける・落ちる利用者は**外す**
+ *   （作らない。外した利用者は plan に現れないので drift にも数えない）。
+ * - プレースホルダを持たない利用者・realm はそのまま。
+ *
+ * @param {object} desired realm の宣言
+ * @param {Record<string, string|undefined>} env
+ * @returns {{desired: object, resolved: string[], skipped: Array<{username: string, problems: string[]}>}}
+ *   problems は「名前: 理由」の列（値は含めない）
+ */
+function resolveE2eCredentials(desired, env) {
+  const out = JSON.parse(JSON.stringify(desired));
+  const resolved = [];
+  const skipped = [];
+  const outside = JSON.parse(JSON.stringify(desired));
+  for (const u of outside.users || []) delete u.credentials;
+  if (JSON.stringify(outside).includes(E2E_PLACEHOLDER_MARK)) {
+    throw new Error(`realm '${desired.realm}' の資格情報の外に ${E2E_PLACEHOLDER_MARK}…} がある（差し込めるのは users[].credentials[] の value / secretData だけ）`);
+  }
+  const users = [];
+  for (const u of out.users || []) {
+    const creds = u.credentials || [];
+    if (!JSON.stringify(creds).includes('${')) { users.push(u); continue; }
+    const problems = [];
+    for (const c of creds) {
+      const kind = c.type === 'password' ? 'password' : 'otp';
+      for (const field of ['value', 'secretData']) {
+        if (typeof c[field] !== 'string') continue;
+        c[field] = c[field].replace(E2E_PLACEHOLDER_RE, (whole, name) => {
+          const problem = e2eValueProblem(kind, env[name], desired.passwordPolicy);
+          if (problem) { problems.push(`${name}: ${problem}`); return whole; }
+          return env[name];
+        });
+        // 置き換えない形（`E2E_` 以外の名前）が残れば、その文字列のまま作らない（公知の文字列がパスワードになる）。
+        const rest = c[field].replace(E2E_PLACEHOLDER_RE, '');
+        if (rest.includes('${')) problems.push(`${field}: E2E_ で始まらないプレースホルダ（置き換えない）`);
+      }
+      for (const field of Object.keys(c)) {
+        if (!['value', 'secretData'].includes(field) && JSON.stringify(c[field]).includes(E2E_PLACEHOLDER_MARK)) {
+          throw new Error(`users[${u.username}].credentials の ${field} に ${E2E_PLACEHOLDER_MARK}…} がある（差し込めるのは value / secretData だけ）`);
+        }
+      }
+    }
+    if (problems.length > 0) { skipped.push({ username: u.username, problems }); continue; }
+    resolved.push(u.username);
+    users.push(u);
+  }
+  if (out.users) out.users = users;
+  return { desired: out, resolved, skipped };
+}
+
+/** 外した利用者の 1 行（値は含めない）。 */
+function describeSkipped(s) {
+  return `skipped   user ${s.username} — e2e-accounts から差し込めない: ${s.problems.join(', ')}`;
 }
 
 /** protocol mappers を name で突合する（client scope と client で同型）。 */
@@ -589,6 +779,7 @@ async function collectLive(kc, desired) {
   }
 
   const users = {};
+  const userClientRoles = {};
   const serviceAccounts = {};
   for (const u of desired.users || []) {
     if (u.serviceAccountClientId) {
@@ -610,14 +801,22 @@ async function collectLive(kc, desired) {
     } else {
       const found = (await kc.get(`${R}/users?username=${encodeURIComponent(u.username)}&exact=true`)) || [];
       users[u.username] = found[0] || null;
+      // #1894 / IADR-0546: 自己管理のロールだけ、実効（合成を含む。既定ロール経由も数える）の割当を読む。
+      if (!users[u.username]) continue;
+      for (const cid of Object.keys(SEED_USER_SELF_SERVICE_ROLES)) {
+        const cc = clientByClientId.get(cid);
+        if (!cc || !((u.clientRoles || {})[cid] || []).length) continue;
+        const eff = (await kc.get(`${R}/users/${users[u.username].id}/role-mappings/clients/${cc.id}/composite`)) || [];
+        (userClientRoles[u.username] = userClientRoles[u.username] || {})[cid] = eff.map((r) => r.name);
+      }
     }
   }
 
-  return { realm, requiredActions, realmRoles, clientScopes, clients, clientRoles, roleComposites, groups, users, serviceAccounts };
+  return { realm, requiredActions, realmRoles, clientScopes, clients, clientRoles, roleComposites, groups, users, userClientRoles, serviceAccounts };
 }
 
 /**
- * ［#1830 / IADR-0517］`--check-dev-secrets` だけが使う。宣言が secret を持つ管理用クライアントの稼働の secret を読む（GET だけ）。
+ * ［#1830 / IADR-0517］`--check-dev-secrets` だけが使う。宣言が secret を持つ対象のクライアントの稼働の secret を読む（GET だけ）。
  * realm が無ければ null（測れない）。client が無ければ null の値。値はこの関数の戻り値と比較にしか使わない（出力しない）。
  */
 async function collectGuardedSecrets(kc, desired) {
@@ -625,7 +824,7 @@ async function collectGuardedSecrets(kc, desired) {
   if (!(await kc.get(R))) return null;
   const out = {};
   for (const c of desired.clients || []) {
-    if (!DEV_SECRET_GUARDED_CLIENTS.includes(c.clientId) || asStr(c.secret) === '') continue;
+    if (!isDevSecretGuardedClient(c)) continue;
     const found = (await kc.get(`${R}/clients?clientId=${encodeURIComponent(c.clientId)}`)) || [];
     const cur = found.find((x) => x.clientId === c.clientId);
     if (!cur) { out[c.clientId] = null; continue; }
@@ -660,7 +859,7 @@ async function checkDevSecrets(kc, realms, log = console.log) {
       }
     }
   }
-  if (checked === 0) throw new Error('対象のクライアント（identity-admin / reset-gate / mcp-client-admin）を宣言する realm が無い（0 件を緑にしない）');
+  if (checked === 0) throw new Error('対象のクライアント（サービスアカウントを持つ機密クライアント）を宣言する realm が無い（0 件を緑にしない）');
   log(`realms=${realms.length} checked=${checked} dev-secrets=${dev}`);
   return { checked, dev };
 }
@@ -677,18 +876,62 @@ async function applyOps(kc, realmName, ops) {
       continue;
     }
     applied += 1;
+    const stepLines = [];
     if (op.op === 'user.create' && (op.postSteps || []).length > 0) {
       const found = (await kc.get(`${R}/users?username=${encodeURIComponent(op.target)}&exact=true`)) || [];
       const id = found[0] && found[0].id;
       if (!id) { errors.push(`user.create ${op.target}: 作成後に利用者を引けない`); continue; }
       for (const step of op.postSteps) {
+        // 409（作成の前から在った利用者）には当て直さない —— 既存の利用者の requiredActions は実行時が所有する。
+        if (r.status === 409 && step.label) {
+          stepLines.push(`    skipped   ${step.label.padEnd(24)} ${op.target} — 作成の前から在った（409）。既存の利用者は当て直さない`);
+          continue;
+        }
         const s = await kc.call(step.method, `${R}/users/${id}${step.pathSuffix}`, step.body);
-        if (!s.ok) errors.push(`user.create ${op.target} ${step.pathSuffix}: HTTP ${s.status} ${s.text.slice(0, 200)}`);
+        if (!s.ok) {
+          errors.push(`${step.label || 'user.create'} ${op.target} ${step.pathSuffix || '(本体)'}: HTTP ${s.status} ${s.text.slice(0, 200)}`);
+        } else if (step.label) {
+          stepLines.push(`    applied   ${step.label.padEnd(24)} ${op.target} — ${step.reason}`);
+        }
       }
     }
     console.log(`    applied   ${describe(op)}`);
+    for (const line of stepLines) console.log(line);
   }
   return { applied, errors };
+}
+
+/**
+ * 1 つの realm を計画し、apply なら当てて計画し直す（MAX_PASSES まで）。`collect` は試験で差し替える（既定 collectLive）。
+ * ［2026-10-25 / #2026］当てられなかった操作の数（applyErrors）を返す —— 作成の後の手順の失敗は再計画の差分に戻らないことがある。
+ */
+async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive }) {
+  let ops = plan(desired, await collect(kc, desired));
+  let applied = 0;
+  let guardBlocked = 0;
+  let applyErrors = 0;
+  if (mode === 'apply') {
+    for (let pass = 1; pass <= MAX_PASSES && ops.length > 0; pass += 1) {
+      // #1830 / IADR-0517: 対象のクライアントを宣言の dev の値で作る操作があり、許されていなければ、この realm には何も書かない。
+      const blocked = devSecretCreations(ops);
+      if (blocked.length > 0 && !devSecretsAllowed) {
+        console.error(`    ERROR サービスアカウントを持つ機密クライアントを公知の dev の値で作る操作がある: ${blocked.join(', ')}。`
+          + ` dev ではない kube context なので、この realm には何も書かない（${DEV_SECRETS_ALLOWED_ENV}=allow でない。#1830）。`
+          + ' 先に認証基盤へ dev 以外の secret で作るか、dev のクラスタなら ALLOW_DEV_CLIENT_SECRETS=1 で再実行する');
+        guardBlocked += blocked.length;
+        break;
+      }
+      if (blocked.length > 0) console.error(`    WARN サービスアカウントを持つ機密クライアントを宣言の dev の値で作る（許可済み）: ${blocked.join(', ')}`);
+      console.log(`    pass ${pass}: ${ops.length} 件`);
+      for (const op of ops) if (op.op === 'deferred') console.log(`    ${describe(op)}`);
+      const r = await applyOps(kc, desired.realm, ops);
+      applied += r.applied;
+      for (const e of r.errors) console.error(`    ERROR ${e}`);
+      applyErrors += r.errors.length;
+      ops = plan(desired, await collect(kc, desired));
+    }
+  }
+  return { ops, applied, guardBlocked, applyErrors };
 }
 
 function readRealmFiles(dir) {
@@ -696,7 +939,22 @@ function readRealmFiles(dir) {
   return files.map((f) => ({ file: f, desired: JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) }));
 }
 
+/**
+ * `--render-import`（#2024 / IADR-0570）: 標準入力の realm JSON に試験アカウントの差し込みを当て、Keycloak の取り込み元を標準出力へ書く。
+ * 外した利用者は標準エラーへ名前と理由だけを出す（値は出さない）。
+ */
+function renderImport(text, env, err = (s) => process.stderr.write(`${s}\n`)) {
+  const r = resolveE2eCredentials(JSON.parse(text), env);
+  if (r.resolved.length > 0) err(`    realm の取り込み元: 試験アカウントを e2e-accounts から差し込む: ${r.resolved.join(', ')}（値は表示しない）`);
+  for (const s of r.skipped) err(`    realm の取り込み元: ${describeSkipped(s)}（取り込まない）`);
+  return `${JSON.stringify(r.desired, null, 2)}\n`;
+}
+
 async function main() {
+  if (process.argv.includes('--render-import')) {
+    process.stdout.write(renderImport(fs.readFileSync(0, 'utf8'), process.env));
+    return;
+  }
   const baseUrl = (process.env.KC_URL || 'http://keycloak:8080').replace(/\/+$/, '');
   const mode = process.argv.includes('--check-dev-secrets') ? 'check-dev-secrets' : (process.env.RECONCILE_MODE || 'apply');
   const dir = process.env.REALM_DIR || '/import';
@@ -718,7 +976,7 @@ async function main() {
   if (mode === 'check-dev-secrets') {
     const { dev } = await checkDevSecrets(kc, realms);
     if (dev > 0) {
-      console.error(`ERROR: ${dev} 件の管理用クライアントの secret が宣言の dev の値のまま（上の dev-secret の行）。dev 以外のクラスタなら直ちに回す`);
+      console.error(`ERROR: ${dev} 件のサービスアカウントを持つクライアントの secret が宣言の dev の値のまま（上の dev-secret の行）。dev 以外のクラスタなら直ちに回す`);
       process.exitCode = 1;
     }
     return;
@@ -727,35 +985,32 @@ async function main() {
   let drift = 0;
   let guardBlocked = 0;
   let applied = 0;
-  for (const { file, desired } of realms) {
-    console.log(`==> realm '${desired.realm}' (${file}) mode=${mode}`);
-    let ops = plan(desired, await collectLive(kc, desired));
-    if (mode === 'apply') {
-      for (let pass = 1; pass <= MAX_PASSES && ops.length > 0; pass += 1) {
-        // #1830 / IADR-0517: 管理用クライアントを宣言の dev の値で作る操作があり、許されていなければ、この realm には何も書かない。
-        const blocked = devSecretCreations(ops);
-        if (blocked.length > 0 && !devSecretsAllowed) {
-          console.error(`    ERROR 管理用の機密クライアントを公知の dev の値で作る操作がある: ${blocked.join(', ')}。`
-            + ` dev ではない kube context なので、この realm には何も書かない（${DEV_SECRETS_ALLOWED_ENV}=allow でない。#1830）。`
-            + ' 先に認証基盤へ dev 以外の secret で作るか、dev のクラスタなら ALLOW_DEV_CLIENT_SECRETS=1 で再実行する');
-          guardBlocked += blocked.length;
-          break;
-        }
-        if (blocked.length > 0) console.error(`    WARN 管理用の機密クライアントを宣言の dev の値で作る（許可済み）: ${blocked.join(', ')}`);
-        console.log(`    pass ${pass}: ${ops.length} 件`);
-        for (const op of ops) if (op.op === 'deferred') console.log(`    ${describe(op)}`);
-        const r = await applyOps(kc, desired.realm, ops);
-        applied += r.applied;
-        for (const e of r.errors) console.error(`    ERROR ${e}`);
-        ops = plan(desired, await collectLive(kc, desired));
-      }
-    }
+  let applyErrors = 0;
+  for (const { file, desired: declared } of realms) {
+    console.log(`==> realm '${declared.realm}' (${file}) mode=${mode}`);
+    // #2024 / IADR-0570: 試験アカウントの資格情報を差し込む。差し込めない利用者は作らない（drift にも数えない）。
+    const { desired, skipped } = resolveE2eCredentials(declared, process.env);
+    for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
+    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed });
+    const ops = r.ops;
+    applied += r.applied;
+    guardBlocked += r.guardBlocked;
+    applyErrors += r.applyErrors;
     for (const op of ops) console.log(`    drift     ${describe(op)}`);
     if (ops.length === 0) console.log('    一致（差分なし）');
     drift += ops.length;
   }
   console.log(`realms=${realms.length} drift=${drift} applied=${applied}`);
-  if (drift > 0 || guardBlocked > 0) process.exitCode = 1;
+  if (applyErrors > 0) console.error(`ERROR: 当てられなかった操作が ${applyErrors} 件（上の ERROR の行）`);
+  process.exitCode = exitCodeFor({ drift, guardBlocked, applyErrors }) || process.exitCode;
+}
+
+/**
+ * ［2026-10-25 / #2026］終了コード。**純関数**。差分が残る・守りで止めた・当てられなかった操作がある、のいずれでも 1。
+ * 当てられなかった操作は再計画で差分に戻らないことがある（作成の後の手順。利用者は在るので drift 0 になる）ため、別に数える。
+ */
+function exitCodeFor({ drift, guardBlocked, applyErrors }) {
+  return drift > 0 || guardBlocked > 0 || applyErrors > 0 ? 1 : 0;
 }
 
 if (require.main === module) {
@@ -766,8 +1021,12 @@ if (require.main === module) {
 }
 
 module.exports = {
+  applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
-  devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, DEV_SECRET_GUARDED_CLIENTS, DEV_SECRETS_ALLOWED_ENV,
+  devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,
+  DEV_SECRETS_ALLOWED_ENV,
   REALM_COLLECTION_KEYS, RUNTIME_OWNED_REALM_KEYS, GATE_OWNED_REALM_KEYS, CLIENT_SKIP_KEYS, CLIENT_CREATE_ONLY_KEYS, MAX_PASSES,
-  GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED,
+  KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, isKeycloakAutoAssignedScope,
+  GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED, SEED_USER_SELF_SERVICE_ROLES,
+  resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, E2E_TOTP_SECRET_RE,
 };

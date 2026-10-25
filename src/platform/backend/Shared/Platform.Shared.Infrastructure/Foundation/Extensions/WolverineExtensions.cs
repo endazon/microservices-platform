@@ -1,10 +1,16 @@
+using System.Net.Security;
 using System.Reflection;
+using JasperFx;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Platform.Shared.Infrastructure.Foundation.Messaging;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
+using Wolverine.EntityFrameworkCore;
 using Wolverine.ErrorHandling;
+using Wolverine.Postgresql;
 using Wolverine.RabbitMQ;
 using Wolverine.RabbitMQ.Internal;
 using Wolverine.Runtime;
@@ -167,6 +173,31 @@ public static class WolverineExtensions
     // 発行側と購読側が同じ値を導くことが要点であり、値そのものに意味は無い。
     public static string PlatformExchangeName<TEvent>() => typeof(TEvent).Name;
 
+    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの接続（RabbitMq:ConnectionString）。各サービスは
+    // `UseRabbitMq(new Uri(...))` ではなくこれを使う。
+    //
+    // 🔴 **RabbitMQ.Client は amqps の URI を受けると、サーバ証明書の名前の不一致を既定で受け入れる**
+    // （`ConnectionFactory.Uri` の setter が `Ssl.AcceptablePolicyErrors = RemoteCertificateNameMismatch` を入れる。
+    // RabbitMQ.Client 7.1.2 ＋ WolverineFx.RabbitMQ 6.24.4 で実測）。CA の検証は効くが、同じ CA が発行した別の名前の
+    // 証明書で受けた相手を拒めない。ここで「受け入れてよい誤り」を空に戻し、CA の検証と名前の照合の両方を求める。
+    // 平文（amqp）のときは TLS を使わないので何も変えない。
+    public static RabbitMqTransportExpression UsePlatformRabbitMq(this WolverineOptions options, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        var uri = new Uri(connectionString);
+        return options.UseRabbitMq(factory =>
+        {
+            factory.Uri = uri;
+            if (factory.Ssl.Enabled)
+            {
+                factory.Ssl.AcceptablePolicyErrors = SslPolicyErrors.None;
+                factory.Ssl.ServerName = uri.Host;
+            }
+        });
+    }
+
     // 手順 4・5: 全サービス共通のメッセージング既定値。各サービスの UseWolverine 内で 1 回呼ぶ。
     public static WolverineOptions UsePlatformMessagingDefaults(this WolverineOptions options)
     {
@@ -192,12 +223,79 @@ public static class WolverineExtensions
         // ⚠️ **.Then.MoveToErrorQueue() は挙動としては冗長である**（既定でも試行を使い切れば
         // デッドレターへ行くことを実測済み）。**意図の明示と、変異試験のための面**として残す ——
         // これが無いと「デッドレター送りを無効化する」変異を注入する場所が存在しない。
+        //
+        // NFR-21, ADR-0053 決定 1〜3, IADR-0592 (#2043): **デッドレターへ送るのと同じ継続で計器を上げる。**
+        // 契機は「再試行を使い切ったこと」であり（決定 2）、キュー名を見ない（共有 1 本の `wolverine-dead-letter-queue`
+        // にはキュー名の照合が効かない）。上げる場所はここ 1 箇所で、個別サービスでは上げない（決定 3）。
+        // 計器は DI から引く（Meter は host の IMeterFactory が持ち、`AddPlatformObservability` が収集対象へ入れる）。
+        options.Services.AddMetrics();
+        options.Services.TryAddSingleton<DeadLetterMetrics>();
         options.Policies.OnAnyException()
             .RetryWithCooldown(RetryIntervals)
-            .Then.MoveToErrorQueue();
+            .Then.MoveToErrorQueue()
+            .And(RecordDeadLetterAsync, DeadLetterCounterDescription);
 
         return options;
     }
+
+    // FR-06, ADR-0027 §決定, IADR-0604 (#2042): Wolverine の表（envelope・ノード・デッドレター等）を置くスキーマ。
+    // サービスの業務表（EF の既定スキーマ）と分ける。値は全サービス共通である（DB はサービスごとに別なので衝突しない）。
+    public const string OutboxSchemaName = "wolverine";
+
+    // FR-06, ADR-0027 §決定「イベント発行の原子性は Wolverine の EF Core + PostgreSQL Transactional Outbox を標準とする」,
+    // IADR-0604 (#2042): **Transactional Outbox の共通構成。`UsePlatformMessagingDefaults` と対で、DB 更新と対になる
+    // イベントを出すサービスの `UseWolverine` 内で 1 回呼ぶ。**
+    //
+    // 🔴 **`connectionString` は発行と対になる DbContext と同じ DB を指さなければならない。**
+    // EF 連携の発行口（`IDbContextOutbox<T>`）は、envelope の INSERT を **DbContext の接続とトランザクションで**
+    // 実行する（DbContext のモデルに Wolverine の表を写していないとき。本構成はそれである）。表の在り処は
+    // ここで渡した接続文字列が決めるので、別の DB を渡すと INSERT が表を見つけられず落ちる
+    // （同じサーバの別 DB でも同じ。原子性は「同じ DB の同じトランザクション」でしか成り立たない）。
+    //
+    // 3 つの設定はいずれも「欠けても起動し、ビルドもテストも通り、障害時にだけ壊れる」種類である:
+    // - 永続化（PersistMessagesWithPostgresql）が無いと、`IDbContextOutbox` は最初の発行で
+    //   `This Wolverine application is not using Database backed message persistence` を投げる。
+    // - EF 連携（UseEntityFrameworkCoreTransactions）が無いと、`IDbContextOutbox<T>` が DI に無い。
+    // - 🔴 **耐久送出（UseDurableOutboxOnAllSendingEndpoints）が無いと、発行は Outbox の表へ書かれない。**
+    //   Wolverine は送出先が耐久（Durable）のときだけ envelope を永続化する（`Envelope.PersistAsync` が
+    //   `Sender.IsDurable` を見る）。既定の送出先は耐久でないため、**発行は DB のトランザクションと無関係に
+    //   メモリ上で保持され、コミットの後・送出の前にプロセスが落ちると消える** —— Outbox を入れる前と同じ壊れ方である。
+    //   これは全送出先へ効く（DB と対にならない発行も、送出前に自分の表へ書かれるので、ブローカ不達では消えなくなる）。
+    //
+    // 表は起動時に Wolverine 自身が作る（`AutoBuildMessageStorageOnStartup`。EF の Migration には入れない）。
+    // 既定値は JasperFx のプロファイルに依存するため、明示する。DB ロールにスキーマ作成の権限が要る。
+    public static WolverineOptions UsePlatformTransactionalOutbox(this WolverineOptions options, string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        options.PersistMessagesWithPostgresql(connectionString, OutboxSchemaName);
+        options.UseEntityFrameworkCoreTransactions();
+        options.Policies.UseDurableOutboxOnAllSendingEndpoints();
+        options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
+
+        return options;
+    }
+
+    // 継続の説明（Wolverine の診断表示に出る）。
+    private const string DeadLetterCounterDescription = "計器: messaging.dead_letter（再試行を使い切った）";
+
+    // ADR-0053 決定 2: 再試行を使い切った 1 通を数える。**例外を投げない** —— ここで投げると
+    // デッドレターへの移送と同じ継続の中で失敗し、検知のための計器が回復の経路を壊す。
+    internal static ValueTask RecordDeadLetterAsync(
+        IWolverineRuntime runtime, IEnvelopeLifecycle lifecycle, Exception exception)
+    {
+        runtime.Services.GetService<DeadLetterMetrics>()?.RecordRetryExhausted(
+            MessageTypeOf(lifecycle.Envelope), exception.GetType().Name);
+        return ValueTask.CompletedTask;
+    }
+
+    // タグの値。メッセージ本体の型の短い名前（`DocumentUpdated`）を優先し、本体が無ければエンベロープの型名で代える。
+    internal static string MessageTypeOf(Envelope? envelope) =>
+        envelope?.Message?.GetType().Name
+        ?? envelope?.MessageType
+        ?? "unknown";
+
     // readiness タグ。MapPlatformHealthChecks の /health/ready は
     // `Predicate = hc => hc.Tags.Contains("ready")` だけを条件にするため、この 1 語が
     // 「ready に載るか」を決める唯一の接点である。

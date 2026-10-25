@@ -30,6 +30,10 @@ public sealed class NormalizedBodyPresenceTests
     // 見逃す（それが #1254 の元の事故と同じ形である）。
     private sealed class RecordingUpdatedPublisher : IDocumentUpdatedPublisher
     {
+        // IADR-0608 (#2168): 確定の口。この器は関数（保存 → 発行を積む）を呼ぶだけでよい（DB は InMemory でトランザクションが無い）。
+        public Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default) =>
+            saveAndPublish(ct);
+
         public sealed record Call(Guid DocumentId, bool HasBody, string? OriginalPath, string? DataSourceName);
 
         public List<Call> Calls { get; } = [];
@@ -39,6 +43,7 @@ public sealed class NormalizedBodyPresenceTests
             string? contentFingerprint = null, bool hasBody = true,
             string? originalPath = null, string? dataSourceName = null,
             List<string>? sharedWith = null,
+            long? sequence = null,
             CancellationToken ct = default)
         {
             Calls.Add(new Call(documentId, hasBody, originalPath, dataSourceName));

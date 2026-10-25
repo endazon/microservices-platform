@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-10-09
+updated: 2026-10-24
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-22, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
-adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101, ADR-0104, ADR-0110, ADR-0116]
-iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0429, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0473]
-specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit]
-issues: [#1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652]
+adrs: [ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101, ADR-0104, ADR-0110, ADR-0116]
+iadrs: [IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0429, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0473, IADR-0537, IADR-0545, IADR-0544, IADR-0561, IADR-0565, IADR-0610, IADR-0611]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay]
+issues: [#1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -124,12 +124,12 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521） | —| `useBffSubmitFeedback` |
 | GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521） | —| `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画側の運用ダッシュボード「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
-| GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | —| `useBffDocumentList` |
+| GET | `/bff/documents` | **端点認可なし**（ABAC で絞る）。［2026-10-14 / #1923］**ページで返す**（`offset` / `limit`。既定 50・上限 100）。`total` は ABAC で絞った後の件数だけで、権限外の文書は窓にも数にも入らない。［2026-10-15 / #1923 段 2］並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）。絞り込みは ABAC の後に当て、`unfilteredTotal` / `statusCounts` は絞り込み前（ABAC 後）の数。［2026-10-17］タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲（`createdFrom` / `createdBefore`）も同じ作法で当て、`sourceCounts` / `projectCounts` を返す（どれも省略可・省略は従前どおり）。［2026-10-20 / #1993］ページの文書の索引の状態（`indexStatuses`）を添える（ページの ID だけを取り込み側へ 1 回で問い合わせる。引けなければ全件 `unknown` で一覧は 200） | —| `useBffDocumentList` |
 | POST | `/bff/documents` | **admin のみ** | —| `useBffDocumentCreate` |
-| GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿）。**共有先ベースの分岐は応答の `sharedWith` を `shared_with` の集合値属性として読む**（カンマ連結の像を作り、交差で突き合わせる）。共有が無ければ属性は載らず、属性キーの欠落は不一致（欠落は安全側）。🔴 **共有された個人資料が読めるのはこの読み取り系 3 口だけ**で、下の一覧（管理面）には現れない。**応答の `sharedWith` は所有者（`owner` 分岐で許可された閲覧者）にだけ載せ、共有された相手への応答では項目ごと落とす**（空集合にしない。一覧も同じ 1 点を通る） | —| `useBffDocumentDetail` |
+| GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿）。**共有先ベースの分岐は応答の `sharedWith` を `shared_with` の集合値属性として読む**（カンマ連結の像を作り、交差で突き合わせる）。共有が無ければ属性は載らず、属性キーの欠落は不一致（欠落は安全側）。🔴 **共有された個人資料が読めるのはこの読み取り系 3 口だけ**で、下の一覧（管理面）には現れない。**応答の `sharedWith` は所有者（`owner` 分岐で許可された閲覧者）にだけ載せ、共有された相手への応答では項目ごと落とす**（空集合にしない。一覧も同じ 1 点を通る）。［2026-10-24］🔴 **緊急アクセス**: 文書サービスが緊急アクセスとして許した閲覧（指名された platform-admin・有効中だけ）は、**BFF の ABAC を重ねずに通す**（許可も拒否も足さない。可否は文書サービスが要求ごとに発動記録で決める）。こう通すのは詳細と本文の 2 口だけで、版の一覧・特定版・書き込みの前段は緊急アクセスを含めない。応答に `sharedWith` は載らない | —| `useBffDocumentDetail` |
 | PUT | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentUpdate` |
 | DELETE | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentDelete` |
-| GET | `/bff/documents/{id}/content` | **端点認可なし**（ABAC ＋ 404 秘匿）。判定は詳細と同じ像（`sharedWith` を重ねる） | —| `useBffDocumentContent` |
+| GET | `/bff/documents/{id}/content` | **端点認可なし**（ABAC ＋ 404 秘匿）。判定は詳細と同じ像（`sharedWith` を重ねる）。［2026-10-15 / #1905］本文は文書サービスから east-west gRPC で受け取る（BFF はストレージを読まない）。**本文を返せないときに案内文を 200 で返さない** —— 本文が保管されていない 404（ProblemDetails・`reason`）、上限超過 413、受け取れない 502。［2026-10-24］🔴 **緊急アクセス**: 詳細と同じく、文書サービスが緊急アクセスとして許した閲覧（指名された platform-admin・有効中だけ）は BFF の ABAC を重ねずに通す。本文の取得にも緊急アクセスの判定を頼むのは、前段の詳細が緊急アクセスで読めたときだけ | —| `useBffDocumentContent` |
 | GET | `/bff/documents/{id}/versions` | **端点認可なし**（ABAC ＋ 404 秘匿）。判定は詳細と同じ像（`sharedWith` を重ねる） | —| `useBffDocumentVersions` |
 | POST | `/bff/documents/{id}/publish` | **admin のみ** | —| `useBffDocumentPublish` |
 | POST | `/bff/documents/{id}/archive` | **admin のみ** | —| `useBffDocumentArchive` |
@@ -198,6 +198,10 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/private-notes/{id}/shares` | 同上 ＋ **書き込みは ABAC の `write` スコープ**（許可が無ければ 403）。重複付与は 409。🔴 **画面が送る指定先の種別は個人（`user`）だけである**（グループ指定の UI は、共有先の束縛が配備されるまで描かない。契約と台帳は `group` を受け付けたままにする） | —| `useBffPrivateNoteShareGrant` |
 | DELETE | `/bff/private-notes/{id}/shares/{subjectType}/{subjectId}` | 同上 ＋ **`write` スコープ**。取り消しの鍵は種別と識別子である。不在・他人の資料・該当する共有が無い場合はいずれも 404（区別しない） | —| `useBffPrivateNoteShareRevoke` |
 | GET | `/bff/private-notes/sync-history` | 同上（読み取り）。**読めるのは本人の記録だけ**で、端末横断に**新しい順**で返る。**表示件数は前段が固定する**（保持期間とは別の値である）。🔴 **資料の題名・Vault のパス・資料 ID は 1 つも載らない** | —| `useBffSyncHistoryList` |
+| GET | `/bff/private-notes/{id}/break-glass` | **認証必須・ロールは問わない**（`x-roles: []`）＋ **所有者本人のセッションだけ**。緊急アクセスの状態（残り時間の表示用。許可の根拠にしない）。🔴 **BFF でも本人の個人資料かを確かめてから中継する**（後段も判定する二重の守り）。他人の・無い・個人資料でない・指名されただけの管理者・機械の主体はいずれも 404 | —| `useBffBreakGlassStatus` |
+| POST | `/bff/private-notes/{id}/break-glass` | 同上 ＋ **`write` スコープ**（許可が無ければ 403）。資料 1 件・理由必須・platform-admin を 1 人指名して発動する（15 分固定）。後段の 400・409・503 は本文ごと透過する | —| `useBffBreakGlassActivate` |
+| POST | `/bff/private-notes/{id}/break-glass/end` | 同上。**`write` スコープを要しない**（終了は露出を縮める向きであり、ポリシーの有無で止めない） | —| `useBffBreakGlassEnd` |
+| GET | `/bff/break-glass/audit` | **認証必須・ロールは問わない**（`x-roles: []`）＋ **人の主体だけ**（機械は 403）。緊急アクセスの監査ログ（発動・終了・閲覧の 1 件ずつ。本文・題名は載らない）。**管理者は全件・本人は自分の資料の行だけで、絞るのは後段** | —| `useBffBreakGlassAudit` |
 | GET | `/bff/users/lookup` | **認証必須・ロールは問わない**（`x-roles: []`）。共有先に指定する利用者を名前で探す。`q` は 2 文字以上・**有効な利用者のみ**・上限 50（既定 20）。🔴 **`/bff/admin/users`（admin のみ）とは別の口である** —— 返すのは利用者名・表示名・有効状態の 3 つだけで、ロール・属性・内部 ID を運ばない | —| `useBffUserLookup` |
 | POST | `/bff/users/resolve` | 同上。利用者名の集合を表示名へ引く（1 回に 100 件まで）。**居ない名前は応答から落ちる**（エラーではない）。**無効化済みも返る** —— 既存の共有先を表示して取り消せるようにするため（検索の側は返さないのと意図的に非対称である） | —| `useBffUserResolve` |
 | GET | `/bff/groups/lookup` | **認証必須・ロールは問わない**（`x-roles: []`）＋ **人の主体だけ**（サービスアカウントは 403。管理者ロールを持つサービスアカウントも 403 —— 分けるのはロールではなく主体の種別である）。共有先に指定するグループを表示名で探す。`q` は 2 文字以上・上限 50（既定 20）。グループ木を平坦化して返す | —| `useBffGroupLookup` |
@@ -275,7 +279,8 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 
 | 面 | 後段不達・不調のとき | 理由 |
 | --- | --- | --- |
-| `/bff/search`・`/bff/documents`（一覧） | **空応答へ縮退**（200） | 権限外の存在を示さない（deny-by-default） |
+| `/bff/search` | **空応答へ縮退**（200） | 権限外の存在を示さない（deny-by-default） |
+| `/bff/documents`（一覧） | ［2026-10-14 / #1923］**502**（従前は空応答へ縮退） | 空へ畳むと本当の 0 件と区別できない（#1897）。本文は中立の文言だけで件数も載せないので、存在は示さない。許可ポリシーが無いときの空ページ（200）は従前どおり |
 | `/bff/attribute-values` | **空配列へ縮退**（200） | **404 にも 403 にもしない** —— 候補が無いことと権限が無いことを区別させない（スコープ付き属性値ルックアップの決定 3 の趣旨と、facet 実装の決定 5） |
 | `/bff/datasources`・`/bff/conversion/jobs`（一覧） | **502** | 運用画面。「未登録」「ジョブ無し」と誤認させると重複登録・見落としを誘発する |
 | `/bff/analysis/ask/stream` | `event: error` の SSE イベント | ヘッダ送出済みで HTTP ステータスを変えられない |

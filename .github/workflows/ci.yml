@@ -65,11 +65,11 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
       - name: Check commit messages
@@ -90,11 +90,11 @@ jobs:
   scripts-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
       - name: Run scripts unit tests
@@ -113,7 +113,7 @@ jobs:
       - name: Test local k8s teardown order and read-only dry-run (kubectl / helm stub)
         run: bash scripts/k8s-local-down.test.sh
       # NFR-21, NFR-05, IADR-0471, Issue #1560: platform-infra の日次バックアップ本体（deploy/local/platform-backup/script/backup.sh）の
-      # 分岐（受取人の fail-closed・2 か所への書き込みと片側の失敗・平文を残さないこと・Vault の写しのやり直し・保持と削除の安全）を、
+      # 分岐（受取人の fail-closed・2 か所への書き込みと片側の失敗・平文を残さないこと・Vault の raft スナップショットの取得と fail-closed の検査〔IADR-0548・偽の秘匿管理〕・保持と削除の安全）を、
       # pg_dump / psql / age をスタブへ差し替えた Bash テストで固定する。実 Postgres・実 age・実クラスタは要らない。
       # 先行ステップの失敗（例: 並行 PR の予約で IADR が一時的に欠番）で本試験まで走らなくならないよう、!cancelled() で走らせる。
       - name: Test platform-infra backup script (pg_dump / age stub)
@@ -152,13 +152,13 @@ jobs:
     env:
       PIPELINE_CONFIG: "deploy/helm/microservices-platform/files/pipeline.json"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           # check-action-versions の --compare-with-ref が統合ブランチ時点のワークフローを
           # 読むため、履歴が要る（shallow だと当該検査が warn で skip される）。
           fetch-depth: 0
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
 
@@ -249,6 +249,30 @@ jobs:
       - name: Check integration config timing (#1040)
         if: ${{ !cancelled() }}
         run: node scripts/check-integration-config-timing.js
+
+      # NFR, #1929 / IADR-0232（2026-10-17 追記）: 後段（integration-stack.yml / integration.yml）の門の自己試験を PR でも走らせる。
+      # 🔴 **自己試験は実データ（realm の宣言・helm の描画・実装の定数）をラチェットとして読む。** だから門の器を
+      #    触らない PR でも、宣言を変えれば自己試験が赤になる。後段でしか走らないと、PR は緑のまま develop が赤になる。
+      #    実測: #1944 が realm に組み込みの public client を足し、check-password-reset-mail.js の #1413 ラチェットが
+      #    develop の integration-stack でだけ落ちた（d3addc82 から 1721e667 まで 5 本連続の赤。PR の CI は緑）。
+      # 自己試験はクラスタ・helm・kubectl・submodule を使わない（手元の素の環境で全件緑・計 1 秒ほど）。
+      # 後段の自己試験も残す（高価な起動の前に門自身を確かめる役は後段にしか無い）。
+      # 後段で `--self-test` を呼ぶ検査器がここに無いと scripts.repo.test.js（#1929 節）が赤になる。
+      - name: Self-test readiness gate (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-stack-ready.js --self-test
+      - name: Self-test password-reset mail gate (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-password-reset-mail.js --self-test
+      - name: Self-test login existence-disclosure probe (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-login-existence-disclosure.js --self-test
+      - name: Self-test SC-12 provisioning probe (integration-stack 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-mcp-client-provisioning.js --self-test
+      - name: Self-test integration executed checker (integration 前倒し)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-integration-executed.js --self-test
 
       - name: Self-test knowledge graph generator
         if: ${{ !cancelled() }}
@@ -492,6 +516,24 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-realm-constraints.js
 
+      # SC-13〜16, ADR-0026 / ADR-0031, IADR-0532: Keycloak テーマ（deploy/keycloak/themes/platform）の色・角丸・フォントは
+      # SPA の共有 UI のトークン（src/packages/ui/src/styles.css）から生成する。生成物（tokens.css）が単一情報源と食い違う・
+      # メール外枠／アカウントのロゴの直書きの色がトークンの値でない・「このデバイスを記憶（N日）」が realm の記憶期間と違う・
+      # styles.css の明暗の対（明示ライト ⇔ system ライト／既定ダーク ⇔ 明示ダーク）が食い違う・テーマの platform.css に 16 進色がある
+      # のいずれでも exit 1。別オリジンで描かれる画面なので、手で写すと SPA の是正が届かず見た目だけが静かにずれる。
+      - name: Self-test Keycloak theme token generator
+        if: ${{ !cancelled() }}
+        run: node scripts/gen-keycloak-theme-tokens.js --self-test
+      - name: Check Keycloak theme tokens are in sync with @platform/ui
+        if: ${{ !cancelled() }}
+        run: node scripts/gen-keycloak-theme-tokens.js --check
+      # 08_data-egress-policy: テーマは利用者のブラウザが直接読む資源である。外部 CDN・Web フォント・解析を参照しないことを
+      # SPA の成果物と同じ検査器で走査する（テーマはビルド不要なので、ソースそのものが成果物）。--require で fail-closed。
+      # メールの外枠（.ftl）と HTML を値に持つ文言（messages_*.properties の loginTitleHtml 等）も走査対象に入る。
+      - name: Check Keycloak theme has no external egress
+        if: ${{ !cancelled() }}
+        run: node scripts/check-static-egress.js --require deploy/keycloak/themes
+
       # NFR, 計画 AST/ADR-0038 決定 3・フォローアップ 2, IADR-0434, Issue #1412:
       # 基盤レルムの宣言（正本）と AST 専用レルムの宣言（写し）のずれを突き合わせる。
       # 🔴 **このジョブは submodule を取得しない**（checkout に submodule 指定が無い）。したがって
@@ -620,7 +662,7 @@ jobs:
   static-checks-units:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -633,11 +675,11 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "20"
-      - uses: azure/setup-helm@v5
-      - uses: azure/setup-kubectl@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: azure/setup-kubectl@bda439f5f36b99b262ebdcd3613869bddb064c8e # v5.2.0
       # NFR, IADR-0240, Issue #783（#442 子 5）: kubeconform を導入する（chart / overlay の
       # スキーマ突合に要る）。latest には追従しない —— 版を pin し、公式リリースの CHECKSUMS と
       # 突合してから導入する（本リポジトリは latest 追従を問題として扱っている。
@@ -654,6 +696,30 @@ jobs:
           sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
           rm -f kubeconform.tar.gz kubeconform
           kubeconform -v
+      # NFR-21, ADR-0053 決定 1, IADR-0592, #2043: promtool を導入する（警報ルールの構文検査と単体試験に要る）。
+      # 版は deploy の Prometheus（prom/prometheus:v2.52.0）と同じにし、公式リリースの sha256sums と突合してから導入する。
+      - name: Install promtool (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          PROMETHEUS_VERSION=2.52.0
+          PROMETHEUS_SHA256=7f31c5d6474bbff3e514e627e0b7a7fbbd4e5cea3f315fd0b76cad50be4c1ba3
+          curl -fsSL -o prometheus.tar.gz \
+            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
+          echo "${PROMETHEUS_SHA256}  prometheus.tar.gz" | sha256sum -c -
+          tar -xzf prometheus.tar.gz --strip-components=1 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+          sudo install -m 0755 promtool /usr/local/bin/promtool
+          rm -f prometheus.tar.gz promtool
+          promtool --version
+
+      # NFR-21, ADR-0053 決定 1, IADR-0592, #2043: 警報ルールを Prometheus 自身の解析器で読み、単体試験を回す。
+      # 🔴 試験が固定するのは「系列が初めて 1 で現れる」場面（初回のデッドレター）である —— `increase` だけの式では鳴らない。
+      #   ［#2097・IADR-0593］「0 が正常」の 4 本（first-series-alerts.test.yml を含む）とも、再起動で instance が替わった新しい系列の初回も固定する。
+      #   経路 B（k8s の inline）は check-prometheus-alerts-parity.js が compose と式の一致を見るので、compose 側だけを試験する。
+      - name: Check Prometheus alert rules (promtool)
+        if: ${{ !cancelled() }}
+        run: |
+          promtool check rules deploy/prometheus/alerts.yml
+          promtool test rules deploy/prometheus/tests/*.test.yml
 
       # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
       # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。
@@ -676,6 +742,9 @@ jobs:
       #
       # ADR-0107 決定 4, #1841: 同じ検査器が描画結果・compose・Testcontainers で Grafana・Loki・Tempo・Qdrant・Mailpit の
       # 既定の外部通信（利用統計・更新確認・テレメトリ）が止まっていることも見る（scripts/lib/product-egress-defaults.js）。
+      #
+      # NFR-18, ADR-0133 決定 3, IADR-0550, #1867: 描画結果に Loki・Tempo が現れたら、前段の認証と NetworkPolicy の両方が
+      # 描画されていることも見る（scripts/lib/observability-front-guard.js）。chart へ前段なしで足す PR をここで止める。
       #
       # **DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS をここで立てないこと。** 立てると helm / kubectl /
       # kubeconform の導入が失敗しても検査が notice を出して素通りする。scripts/scripts.repo.test.js
@@ -710,6 +779,21 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-private-notes-sync-authz.test.js
 
+      # FR-16, NFR-09, ADR-0024, IADR-0594, Issue #2045: 外部 AI エージェントの入口（エッジの /mcp。既定オフ）を有効にしたとき、
+      # 経路（exact /mcp ＋ prefix /mcp/）・NetworkPolicy の穴・エッジの主体を /mcp の面に絞る AuthorizationPolicy（DENY）を
+      # **実際に helm template で描いて**固定する —— 無効時は描かない、経路と門を Istio の規則で要求・呼び出し元の一覧へ当てると
+      # エッジ × /mcp の面だけが届き管理 REST（/mcp-clients）は届かない、BFF・プローブは切れない、変異。helm が要るのでこのジョブ。
+      - name: Test helm edge MCP entry (render, route and caller evaluation, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-edge-mcp-entry.test.js
+
+      # NFR, ADR-0005, IADR-0273, Issue #1885: バックチャネルログアウトだけを平文で通す DENY（bff-service-plaintext-only-backchannel）に
+      # ports を明示したことを**実際に helm template で描いて**固定する —— 既定と values-local は描かない、有効時の形、
+      # BFF の受信ポート＝ports（前提）、ports を外した旧形と受信ポートの全組で拒否の範囲が同じ、Istio の警告条件に当たらない、変異。
+      - name: Test helm backchannel logout authorization ports (render, equivalence, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-backchannel-authz.test.js
+
       # NFR-09, ADR-0125 決定 4, IADR-0513, Issue #1756・#1811: 取引ユニット（AST）の名前空間 → KB の読み手（検索）・書き手（文書の保存）・
       # LLM ゲートウェイへの ingress の NetworkPolicy（既定は閉）を**実際に helm template で描いて**固定する —— 既定と values-local は描かない（陰性対照）、
       # 有効時は行き先・from の AND・REST のポートだけ、k8s の評価規則で呼び出し元の一覧へ当てると読み手・書き手・LLM の呼び出し元だけが通る、描画で止まる条件、変異。
@@ -738,6 +822,72 @@ jobs:
       - name: Test helm MCP client provisioning wiring (render, negative, mutation)
         if: ${{ !cancelled() }}
         run: node scripts/helm-mcp-client-provisioning.test.js
+
+      # NFR-18, IADR-0577: ブローカへの名乗り（サービスごとのユーザー）を**実際に helm template で描いて**固定する —— 既定と values-local の
+      # 両方で、ブローカへ繋ぐ Deployment の集合が users.txt と一致し、ユーザー msp-<名前>・Secret msp-rabbitmq-users の同名のキー（非 optional）・
+      # 共通の 1 組（rabbitmq-app / guest）が無い、旧キーは描画で止まる、変異。helm が要るのでこのジョブ（既存ジョブへの段の追加・起動条件は不変）。
+      - name: Test helm broker per-service users (render, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-broker-per-service-users.test.js
+
+      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
+      # 任意部品の全てで seccomp RuntimeDefault・権限昇格なし・（外部 3 つ以外は）非 root とケーパビリティなし・SA を持たない Pod はトークンを置かない、
+      # Namespace の Pod Security Admission の水準、描画で止まる条件、Dockerfile / overlay / 起動器との一致、変異。helm が要るのでこのジョブ（段の追加のみ）。
+      - name: Test helm pod security settings (render, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-pod-security.test.js
+
+      # SC-22, NFR-18, IADR-0588（Refs GHSA-j4qv-2w99-xg5p）: BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を
+      # **実際に helm template で描いて**固定する —— Role と同じ描画条件・Fail / Deny の形・CEL の判定の行列（陽性・陰性・主体）・BFF の要求と
+      # RBAC の動詞との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test BFF ExternalSecret admission policy (render, CEL matrix, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-bff-externalsecret-admission.test.js
+
+      # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）の既定拒否と許可の一覧を**実際に helm template で描いて**固定する
+      # —— 本番像は名前空間の全 Pod・DNS は kube-dns だけ、values-local は段 1 の Pod だけ（全 Pod が段 1 / 段 2 に分類済み）・宛先の送り元が
+      # DB / ブローカ / OTLP / Qdrant の宣言と一致・宛先が基盤の manifest の実体と一致、k8s の評価規則で通信の一覧へ当てた結果、描画で止まる条件、変異。
+      # helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。稼働のクラスタでの強制は integration-stack.yml の門が測る。
+      - name: Test helm egress network policy (render, evaluation, supply, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-egress-network-policy.test.js
+
+      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への接続が検証つきの TLS であることを**実際に helm template で描いて**
+      # 固定する —— DB は VerifyFull ＋ 基盤の CA、ブローカは amqps ＋ 信頼ストアへの追加、CA の ConfigMap は非 optional で 1 キーだけ、描画で止まる
+      # 条件、切り戻しの形、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。稼働の効きは integration-stack.yml の門が測る。
+      - name: Test helm infra TLS (render, rollback, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-infra-tls.test.js
+
+      # NFR-21, NFR-06, IADR-0602, #2140: キュー駆動のワーカー（conversion / ingestion）にも liveness / readiness が描かれることを
+      # **実際に helm template で描いて**固定する —— 既定・values-local で両者が /health/live・/health/ready を HTTP ポートへ持ち、HTTP ポートを持つ
+      # 全 Deployment が probe を持つ、旗 worker が残らない、両 Program.cs の Map、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test helm worker probes (render, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-worker-probes.test.js
+
+      # NFR-20, ADR-0007, IADR-0605, #2132: 自製イメージ（services の全 Deployment と frontend）が不変のタグ（global.image.tag）を参照し、
+      # タグが無い・latest・--set の数・タグの形でない値では**実際に helm template が落ちる**ことを固定する —— 既定・values-local の全件、
+      # サービスごとの上書き、ArgoCD の口、起動器のタグの受け渡し、ローカルのタグの作り方（git の sha・差分の hash）、変異（default "latest" を
+      # 戻す・required を外す・latest の拒否を外す）。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test helm image tag pinning (render, fail-closed, local tag, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-image-tag.test.js
+
+      # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 秘匿管理の kubernetes 認証で、role（deploy/ の bootstrap が書く全て）と名乗る側
+      # （ESO の store・helm が描く Vault を使う Deployment・バックアップの CronJob）の audience が揃うことを**実際に helm template で描いて**固定する
+      # —— コードの既定のトークンの置き場との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test Vault k8s auth audience (roles, store, render, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/vault-k8s-auth-audience.test.js
+
+      # NFR, IADR-0539, Issue #1927: 常駐メモリを下げた設定を**実際に描いて**固定する —— .NET の全 Deployment（既定・values-local）に
+      # GC の 3 つ（.NET でないものには無い・サービス単位の上書き・extraEnv の同名は描画で落ちる）、H-1 / AST#690 の系列の経路
+      # （collector の metrics パイプラインに値で落とす段が無い・remote write の受け口・保持 30d 以上）、Keycloak のヒープと limits の整合、変異。
+      # helm と kubectl が要るのでこのジョブ。
+      - name: Test resident memory settings (render, metrics path, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/resident-memory.test.js
 
       # NFR-21, ADR-0006, Issue #1090 / #546: すべての OTel Collector 設定が自己テレメトリの
       # 待受（Prometheus の**唯一の scrape 対象**）を明示していることを検査する。
@@ -818,7 +968,7 @@ jobs:
       units: ${{ steps.discover.outputs.units }}
       legs: ${{ steps.discover.outputs.legs }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Discover backend units from src/*/backend/backend.slnx
@@ -856,7 +1006,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.discover-units.outputs.legs) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -884,15 +1034,15 @@ jobs:
       # 🔴 NFR, #1686（2026-10-02 再裁定）: シャードの脚は**復元だけ**する（actions/cache/restore）。脚は閉包の
       # パッケージしか restore しないので、同じキーで保存すると「キーは当たるのに中身が足りない」キャッシュを
       # 後続の run へ残す。保存は backend.slnx 全体を restore する backend-verify-build / backend-format が持つ。
-      - uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
       # --- スタック別に書き換え（例: C#/.NET） ---
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # 🔴 Testcontainers（実 RabbitMQ / Postgres / SeaweedFS）を起動するテストは PR から外す
       # （IADR-0232 決定 3・改定 3。利用者裁定 2026-08-22「PR の精度低下は、どこかで回収できるなら
       # ある程度許容する。AI コーディング→PR→CI→AI コーディングのループ効率を上げよ」）。
@@ -959,7 +1109,7 @@ jobs:
       # NFR, #1686: artifact 名は脚ごとに一意（key）。シャードは試験プロジェクトが重ならないので、集約ジョブの
       # merge-multiple で展開しても Cobertura のパス（<試験プロジェクト>/TestResults/<guid>/）は衝突しない。
       - name: Upload coverage reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.key }}
           path: "**/coverage.cobertura.xml"
@@ -982,7 +1132,7 @@ jobs:
       matrix:
         unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # backend-build と同じ取得（platform の Platform.Bff が AST の Bff.Endpoints を ProjectReference する合成点のため）。
@@ -992,14 +1142,14 @@ jobs:
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       # 全体を restore するので、キャッシュの保存はこのジョブ（と backend-format）が持つ（脚は復元だけ）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       - name: Restore and build the whole backend.slnx (${{ matrix.unit }})
         env:
           UNIT: ${{ matrix.unit }}
@@ -1041,7 +1191,7 @@ jobs:
       units: ${{ steps.filter.outputs.units }}
     steps:
       # fetch-depth: 0 は origin/<base>...HEAD の差分解決に要る（images.yml の changes と同じ）。
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -1110,7 +1260,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # integration.yml と同じ取得（src/* の submodule のみ・非再帰。public ユニットはトークン不要。IADR-0065）。
@@ -1122,14 +1272,14 @@ jobs:
       # 取得の後に置く（hashFiles('**/*.csproj') に submodule の csproj が入る）。submodule は CPM を自前の
       # Directory.Packages.props で宣言するので、それもキーへ入れる（入れないと版を上げても同じキーに当たり、
       # 新しいパッケージを毎回取り直す）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', 'src/*/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # 🔴 リポジトリ直下から呼ぶ（integration.yml と同じ）。SDK は作業ディレクトリから global.json を探すので、
       #    submodule の中へ cd すると submodule 自身の global.json が効き、MSP の構成ではなくなる。
       - name: Restore, build and test as MSP composes it (${{ matrix.unit }}, unit tests only)
@@ -1164,8 +1314,10 @@ jobs:
     # 差分が無い」を意味し合格として扱う）。
     # NFR, #1686（2026-10-02 再裁定）: backend-verify-build（backend.slnx 全体の build。脚は閉包しか建てない）も拾う。
     # NFR, #1768 / IADR-0505: 依存ゼロの node 検査器の集約 static-checks も拾う。単独の必須 check 名にはしない
-    # （ブランチ保護の変更が要る）。直近 16 本の実測（2026-10-07）では static-checks（65〜80 秒）は
-    # すべて本ジョブの開始より前（最小 28 秒前）に終わっており、律速を延ばしていない。結果の判定は最後のステップで行う（カバレッジの報告を止めないため）。
+    # （ブランチ保護の変更が要る）。結果の判定は最後のステップで行う（カバレッジの報告を止めないため）。
+    # 🔴 NFR, #1910: static-checks がここで律速にならないことは前提ではなく、実測で保っている（10/9〜10/10 は
+    # k8s-local-up.test.js の積み増しで 117〜149 秒に伸び、PR の約半数で律速になった。同試験を並列実行にして戻した）。
+    # 所要の現況は docs/ai-workflow.md の必須 check 表の static-checks 行が正本。遅くなれば check-ci-latency.js の監視に現れる。
     needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build, static-checks]
     if: always()
     steps:
@@ -1205,11 +1357,11 @@ jobs:
               ;;
           esac
           echo "✓ 全ユニットの restore / build / 単体テストが成立した（統合テストは integration.yml が回す）。"
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Download coverage reports from all units
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: coverage-*
           merge-multiple: true
@@ -1262,7 +1414,7 @@ jobs:
       matrix:
         unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -1277,15 +1429,15 @@ jobs:
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       # dotnet format は内部で MSBuild ワークスペースをロードするため、NuGet キャッシュが効く。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
       # --- スタック別に書き換え（例: C#/.NET） ---
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       - name: Format check (${{ matrix.unit }})
         run: dotnet format "src/${{ matrix.unit }}/backend/backend.slnx" --verify-no-changes
 
@@ -1368,18 +1520,18 @@ jobs:
   template-backend-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（backend-build と同じキー）。
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       - name: Stage, build and test unit templates (as placed under src/)
         run: |
           set -euo pipefail

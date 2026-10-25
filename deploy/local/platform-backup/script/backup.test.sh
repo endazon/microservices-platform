@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # NFR-21, NFR-05, NFR-18, IADR-0471 (#1560): backup.sh の分岐を、pg_dump / pg_dumpall / psql / age を
 # PATH 上のスタブへ差し替えて固定する。実 Postgres・実 Vault・実 age・実クラスタは要らない。
+# Vault の回（IADR-0548 / #1868）は node の偽の秘匿管理（HTTP）を立てて、backup.sh の HTTP をそのまま通す。
 #
 #   - age スタブは「AGE[」＋ 標準入力 ＋「]」を -o のファイルへ書く（パイプが age を通ったことを中身で確かめる）
 #   - 呼び出しの argv はすべて $STUB_LOG へ記録する（パスワードが引数に出ないことをここで確かめる）
-#   - $STATE の印で失敗を注入する（psql-fail / dump-fail-<db> / age-fail / mutate-vault / mutate-once）
+#   - $STATE の印で失敗を注入する（psql-fail / dump-fail-<db> / age-fail / snap-*〔偽の秘匿管理の応答。下の Vault の節〕）
 #
 #   bash deploy/local/platform-backup/script/backup.test.sh
 set -u
@@ -57,10 +58,6 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$out" ] || exit 1
 [ -f "$STATE/age-fail" ] && { cat > /dev/null; exit 1; }
-if [ -f "$STATE/mutate-vault" ]; then
-  echo "$RANDOM$RANDOM" > "$VAULT_DATA_DIR/changed-$RANDOM$RANDOM"
-  [ -f "$STATE/mutate-once" ] && rm -f "$STATE/mutate-vault"
-fi
 { printf 'AGE['; cat; printf ']'; } > "$out"
 STUB
 # cp は既定で本物を呼ぶ。$STATE/corrupt-copy があれば、写した先の暗号文を 1 つ書き換える
@@ -226,46 +223,187 @@ export BACKUP_KIND=nonsense
 run_backup
 assert_ne 'T-1560-13 BACKUP_KIND が不正: 失敗で終わる' "$RC" "0"
 
-# ---- Vault --------------------------------------------------------------------------
-new_env
-export BACKUP_KIND=vault
-mkdir -p "$R/vault/logical/abc"
-echo 'Unseal Key 1: STUB-UNSEAL' > "$R/vault/.local-dev-init"
-echo 'data' > "$R/vault/logical/abc/_entry"
-run_backup
-assert_eq 'T-1560-14 Vault: 成功で終わる' "$RC" "0"
-V="$R/c/vault/2026-09-26T030000Z/vault-data.tar.gz.age"
-assert_file 'T-1560-14 Vault: C に tar.gz.age が並ぶ' "$V"
-assert_file 'T-1560-14 Vault: E に tar.gz.age が並ぶ' "$R/e/vault/2026-09-26T030000Z/vault-data.tar.gz.age"
-EXTRACT="$WORK/extract"; mkdir -p "$EXTRACT"
-head -c 4 "$V" | grep -q 'AGE\[' && ok 'T-1560-14 Vault: 成果物は age を通っている' || ng 'T-1560-14 Vault: 成果物は age を通っている' "$(head -c 8 "$V")"
-# スタブの枠（先頭 4 バイト「AGE[」と末尾 1 バイト「]」）を外すと元の tar.gz に戻る。
-SIZE=$(wc -c < "$V"); tail -c +5 "$V" | head -c $((SIZE - 5)) | tar -xzf - -C "$EXTRACT" 2>/dev/null
-assert_file 'T-1560-14 Vault: 写しに init ファイルまで含まれる（だから暗号化が必須）' "$EXTRACT/.local-dev-init"
-assert_file 'T-1560-14 Vault: 写しにデータが含まれる' "$EXTRACT/logical/abc/_entry"
-assert_missing 'T-1560-14 Vault: unseal 鍵がログに出ない' "$OUT" 'STUB-UNSEAL'
-assert_eq 'T-1560-14 Vault: 平文の tar を staging に残さない' "$(ls -A "$R/staging")" ""
+# ---- Vault（IADR-0548 / #1868: raft の整合したスナップショット） ------------------------------
+# 偽の秘匿管理（node の HTTP サーバ）を立て、backup.sh の /dev/tcp の HTTP をそのまま通す。
+#   - POST /v1/auth/kubernetes/login … role と JWT が期待どおりなら 1 回きりのトークンを返す。違えば 403
+#   - GET  /v1/sys/storage/raft/snapshot … トークンが一致すれば $STATE の印に応じた本文を返す（既定は整合したスナップショット）
+#       snap-500 / snap-empty / snap-truncated / snap-badsum / snap-nostate / snap-notgz
+#   - トークンは 1 回使うと無効（role の token_num_uses=1 と同じ振る舞い）
+#   - 受けた要求の行（メソッド・パス・HTTP の版・ヘッダ名）を $WORK/vault-requests.log へ書く
+# 🔴 JWT・トークンの形をした文字列をリポジトリに置かない（秘密の走査〔gitleaks〕が本物と見分けられない）。試験の中で組み立てる。
+b64url() { printf '%s' "$1" | base64 | tr -d '=\n' | tr '/+' '_-'; }
+fake_jwt() { printf '%s.%s.%s' "$(b64url '{"alg":"RS256"}')" "$(b64url "{\"sub\":\"$1\"}")" "$2"; }
+FAKE_JWT="$(fake_jwt 'system:serviceaccount:platform-infra:platform-backup-vault' STUB-JWT-SIGNATURE)"
+FAKE_VAULT_TOKEN="stub-snapshot-token-do-not-leak"
+SNAPDIR="$WORK/snap-src"; mkdir -p "$SNAPDIR/ok" "$SNAPDIR/badsum" "$SNAPDIR/nostate"
+printf '{"Version":1,"ID":"bolt-snapshot","Index":40}' > "$SNAPDIR/ok/meta.json"
+printf 'STATE-BIN-%s' "$(seq 1 200 | tr -d '\n')" > "$SNAPDIR/ok/state.bin"
+(cd "$SNAPDIR/ok" && sha256sum meta.json state.bin > SHA256SUMS && tar -czf ../ok.snap meta.json state.bin SHA256SUMS)
+cp "$SNAPDIR/ok/meta.json" "$SNAPDIR/ok/state.bin" "$SNAPDIR/badsum/"
+(cd "$SNAPDIR/badsum" && sha256sum meta.json state.bin > SHA256SUMS && printf 'X' >> state.bin && tar -czf ../badsum.snap meta.json state.bin SHA256SUMS)
+cp "$SNAPDIR/ok/meta.json" "$SNAPDIR/ok/SHA256SUMS" "$SNAPDIR/nostate/"
+(cd "$SNAPDIR/nostate" && tar -czf ../nostate.snap meta.json SHA256SUMS)
+head -c 100 "$SNAPDIR/ok.snap" > "$SNAPDIR/truncated.snap"
+printf 'not a snapshot' > "$SNAPDIR/notgz.snap"
+cat > "$WORK/fake-vault.js" <<'JS'
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const [portFile, state, snapdir, reqLog, jwt, token] = process.argv.slice(2);
+let tokenUses = 0;
+const has = (m) => fs.existsSync(path.join(state, m));
+http.createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    fs.appendFileSync(reqLog, `${req.method} ${req.url} HTTP/${req.httpVersion} [${Object.keys(req.headers).sort().join(',')}]\n`);
+    const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (req.method === 'POST' && req.url === '/v1/auth/kubernetes/login') {
+      let b = {};
+      try { b = JSON.parse(body); } catch (e) { return json(400, { errors: ['bad json'] }); }
+      if (b.role !== 'platform-backup-vault' || b.jwt !== jwt) return json(403, { errors: ['permission denied'] });
+      tokenUses = 1;
+      return json(200, { auth: { client_token: token, policies: ['platform-backup-raft-snapshot'], num_uses: 1 } });
+    }
+    if (req.method === 'GET' && req.url === '/v1/sys/storage/raft/snapshot') {
+      if (req.headers['x-vault-token'] !== token || tokenUses < 1) return json(403, { errors: ['permission denied'] });
+      tokenUses -= 1;
+      if (has('snap-500')) return json(500, { errors: ['raft is not ready'] });
+      const pick = ['empty', 'truncated', 'badsum', 'nostate', 'notgz'].find((m) => has(`snap-${m}`));
+      res.writeHead(200, { 'Content-Type': 'application/gzip' });
+      if (pick === 'empty') return res.end();
+      return res.end(fs.readFileSync(path.join(snapdir, `${pick || 'ok'}.snap`)));
+    }
+    json(404, { errors: ['no handler'] });
+  });
+}).listen(0, '127.0.0.1', function () { fs.writeFileSync(portFile, String(this.address().port)); });
+JS
+FAKE_VAULT_PID=""
+if command -v node >/dev/null 2>&1; then
+	node "$WORK/fake-vault.js" "$WORK/fake-vault.port" "$STATE" "$SNAPDIR" "$WORK/vault-requests.log" "$FAKE_JWT" "$FAKE_VAULT_TOKEN" &
+	FAKE_VAULT_PID=$!
+	trap '[ -n "$FAKE_VAULT_PID" ] && kill "$FAKE_VAULT_PID" 2>/dev/null' EXIT
+	for _ in $(seq 1 50); do [ -s "$WORK/fake-vault.port" ] && break; sleep 0.1; done
+fi
+if [ ! -s "$WORK/fake-vault.port" ]; then
+	# 🔴 node が無い・偽の秘匿管理が立たないなら、黙って飛ばさず失敗にする（CI のランナーは node を持つ）。
+	ng 'T-1868-00 偽の秘匿管理（node）を立てられる' 'node が無いか、偽の秘匿管理が起動しなかった'
+	FAKE_VAULT_ADDR="http://127.0.0.1:1"
+else
+	ok 'T-1868-00 偽の秘匿管理（node）を立てられる'
+	FAKE_VAULT_ADDR="http://127.0.0.1:$(cat "$WORK/fake-vault.port")"
+fi
 
-new_env
-export BACKUP_KIND=vault
-echo 'x' > "$R/vault/file"
-: > "$STATE/mutate-vault"; : > "$STATE/mutate-once"
-run_backup
-assert_eq 'T-1560-15 Vault: 写している間に 1 度変わっても、やり直して成功する' "$RC" "0"
-assert_contains 'T-1560-15 Vault: やり直したことをログに出す' "$OUT" 'やり直します'
+new_vault_env() {
+	new_env
+	export BACKUP_KIND=vault
+	export BACKUP_VAULT_ADDR="$FAKE_VAULT_ADDR"
+	export BACKUP_VAULT_SCRATCH="$R/scratch"
+	mkdir -p "$R/scratch" "$R/sa"
+	printf '%s\n' "$FAKE_JWT" > "$R/sa/jwt"
+	export BACKUP_VAULT_SA_JWT_FILE="$R/sa/jwt"
+	echo 'Unseal Key 1: STUB-UNSEAL' > "$R/vault/.local-dev-init"
+	echo 'Initial Root Token: STUB-ROOT' >> "$R/vault/.local-dev-init"
+	: > "$WORK/vault-requests.log"
+}
+# スタブの枠（先頭 4 バイト「AGE[」と末尾 1 バイト「]」）を外して中身を取り出す。
+unwrap_age() { local size; size=$(wc -c < "$1"); tail -c +5 "$1" | head -c $((size - 5)); }
 
-new_env
-export BACKUP_KIND=vault
-echo 'x' > "$R/vault/file"
-: > "$STATE/mutate-vault"
+new_vault_env
 run_backup
-assert_ne 'T-1560-16 Vault: 変わり続けるなら失敗で終わる（黙って不整合な写しを置かない）' "$RC" "0"
-assert_nofile 'T-1560-16 Vault: 変わり続けるなら何も書かない' "$R/c/vault"
+assert_eq 'T-1868-01 Vault: 整合したスナップショットで成功する' "$RC" "0"
+V="$R/c/vault/2026-09-26T030000Z"
+assert_file 'T-1868-01 Vault: C にスナップショット（age）が並ぶ' "$V/vault-raft.snap.age"
+assert_file 'T-1868-01 Vault: C に init のファイル（age）が並ぶ' "$V/vault-init.age"
+assert_file 'T-1868-01 Vault: E にも並ぶ' "$R/e/vault/2026-09-26T030000Z/vault-raft.snap.age"
+assert_nofile 'T-1868-01 Vault: 稼働中の /vault/data の tar はもう作らない' "$V/vault-data.tar.gz.age"
+head -c 4 "$V/vault-raft.snap.age" | grep -q 'AGE\[' && ok 'T-1868-01 Vault: スナップショットは age を通っている' || ng 'T-1868-01 Vault: スナップショットは age を通っている' "$(head -c 8 "$V/vault-raft.snap.age")"
+if unwrap_age "$V/vault-raft.snap.age" | cmp -s - "$SNAPDIR/ok.snap"; then ok 'T-1868-01 Vault: 写したのは秘匿管理が返したスナップショットそのもの'; else ng 'T-1868-01 Vault: 写したのは秘匿管理が返したスナップショットそのもの' 'differs'; fi
+assert_contains 'T-1868-01 Vault: init のファイル（unseal 鍵）も同じ回に入る' "$(unwrap_age "$V/vault-init.age")" 'Unseal Key 1: STUB-UNSEAL'
+REQS="$(cat "$WORK/vault-requests.log")"
+assert_contains 'T-1868-01 Vault: k8s auth でログインする' "$REQS" 'POST /v1/auth/kubernetes/login HTTP/1.0'
+assert_contains 'T-1868-01 Vault: スナップショットの API（GET sys/storage/raft/snapshot）を呼ぶ' "$REQS" 'GET /v1/sys/storage/raft/snapshot HTTP/1.0'
+assert_contains 'T-1868-01 Vault: スナップショットはトークンのヘッダで要求する' "$REQS" 'x-vault-token'
+for secret in "$FAKE_VAULT_TOKEN" STUB-JWT-SIGNATURE STUB-UNSEAL STUB-ROOT; do
+	assert_missing "T-1868-01 Vault: ログに秘密が出ない（${secret:0:12}…）" "$OUT" "$secret"
+	assert_missing "T-1868-01 Vault: スタブの引数に秘密が出ない（${secret:0:12}…）" "$(cat "$STUB_LOG")" "$secret"
+done
+assert_eq 'T-1868-01 Vault: 平文のスナップショット・ログインの応答を作業場所に残さない' "$(ls -A "$R/scratch")" ""
+assert_eq 'T-1868-01 Vault: staging に何も残さない' "$(ls -A "$R/staging")" ""
 
-new_env
-export BACKUP_KIND=vault
+# 🔴 fail-closed: どの壊れ方でも、スナップショットを「成功」として置かない（回そのものを書かない）。
+# 印ごとに「どの検査が止めたか」もログの文言で確かめる（後段の検査が拾うので、前段を外しても赤にならない、を防ぐ）。
+declare -A SNAP_REASON=(
+	[snap-empty]='スナップショットが空です'
+	[snap-truncated]='gzip として壊れています'
+	[snap-notgz]='gzip として壊れています'
+	[snap-badsum]='state.bin が中の SHA256SUMS と一致しません'
+	[snap-nostate]='state.bin がありません'
+	[snap-500]='スナップショットを取れません（HTTP 500'
+)
+for mark in snap-empty snap-truncated snap-badsum snap-nostate snap-notgz snap-500; do
+	new_vault_env
+	: > "$STATE/$mark"
+	run_backup
+	assert_ne "T-1868-02 Vault（$mark）: 失敗で終わる" "$RC" "0"
+	assert_nofile "T-1868-02 Vault（$mark）: C に何も書かない" "$R/c/vault"
+	assert_nofile "T-1868-02 Vault（$mark）: E に何も書かない" "$R/e/vault"
+	assert_eq "T-1868-02 Vault（$mark）: 作業場所に何も残さない" "$(ls -A "$R/scratch")" ""
+	assert_contains "T-1868-02 Vault（$mark）: 回を書かないことをログに出す" "$OUT" '秘匿管理の回は書きません'
+	assert_contains "T-1868-02 Vault（$mark）: 止めた検査が分かる" "$OUT" "${SNAP_REASON[$mark]}"
+done
+
+new_vault_env
+printf '%s\n' "$(fake_jwt other WRONG-SA)" > "$R/sa/jwt"
 run_backup
-assert_ne 'T-1560-17 Vault: データが空なら失敗で終わる' "$RC" "0"
+assert_ne 'T-1868-03 Vault: role に束縛されていない SA（ログイン 403）なら失敗で終わる' "$RC" "0"
+assert_contains 'T-1868-03 Vault: ログインできないことをログに出す' "$OUT" 'ログインできません（HTTP 403'
+assert_missing 'T-1868-03 Vault: ログインに失敗したらスナップショットを要求しない' "$(cat "$WORK/vault-requests.log")" 'raft/snapshot'
+assert_nofile 'T-1868-03 Vault: 何も書かない' "$R/c/vault"
+
+new_vault_env
+rm -f "$R/sa/jwt"
+run_backup
+assert_ne 'T-1868-04 Vault: SA のトークン（projected volume）が無いなら失敗で終わる' "$RC" "0"
+assert_eq 'T-1868-04 Vault: SA のトークンが無いなら秘匿管理へ要求を送らない' "$(cat "$WORK/vault-requests.log")" ""
+
+new_vault_env
+printf 'not-a-jwt"}\n' > "$R/sa/jwt"
+run_backup
+assert_ne 'T-1868-05 Vault: JWT の形でないもの（引用符を含む）は本文へ埋めずに失敗する' "$RC" "0"
+assert_eq 'T-1868-05 Vault: JWT の形でないなら要求を送らない' "$(cat "$WORK/vault-requests.log")" ""
+
+new_vault_env
+export BACKUP_VAULT_ADDR="http://127.0.0.1:1"
+run_backup
+assert_ne 'T-1868-06 Vault: 秘匿管理へ届かないなら失敗で終わる' "$RC" "0"
+assert_contains 'T-1868-06 Vault: 届かないことをログに出す' "$OUT" '秘匿管理へ接続できません'
+assert_nofile 'T-1868-06 Vault: 何も書かない' "$R/c/vault"
+
+new_vault_env
+export BACKUP_VAULT_ADDR="https://vault.platform-infra:8200"
+run_backup
+assert_ne 'T-1868-07 Vault: http:// 以外の宛先は受け付けない（黙って別の経路へ送らない）' "$RC" "0"
+
+new_vault_env
+rm -f "$R/vault/.local-dev-init"
+run_backup
+assert_ne 'T-1868-08 Vault: init のファイルが無ければ失敗で終わる（失ったときに開けない）' "$RC" "0"
+assert_file 'T-1868-08 Vault: スナップショットは -partial の回として残す' "$R/c/vault/2026-09-26T030000Z-partial/vault-raft.snap.age"
+assert_nofile 'T-1868-08 Vault: init の成果物は作らない' "$R/c/vault/2026-09-26T030000Z-partial/vault-init.age"
+
+new_vault_env
+echo 'garbage' > "$R/vault/.local-dev-init"
+run_backup
+assert_ne 'T-1868-09 Vault: init のファイルに unseal 鍵の行が無ければ失敗で終わる' "$RC" "0"
+assert_file 'T-1868-09 Vault: スナップショットは -partial の回として残す' "$R/c/vault/2026-09-26T030000Z-partial/vault-raft.snap.age"
+
+new_vault_env
+: > "$STATE/age-fail"
+run_backup
+assert_ne 'T-1868-10 Vault: 暗号化に失敗したら失敗で終わる' "$RC" "0"
+assert_nofile 'T-1868-10 Vault: 暗号化に失敗したら何も書かない' "$R/c/vault"
+assert_eq 'T-1868-10 Vault: 暗号化に失敗しても平文のスナップショットを残さない' "$(ls -A "$R/scratch")" ""
 
 # ---- A6: 保持（純関数 prune_list を固定の名前で試す） ------------------------------
 BACKUP_LIB=1 . "$HERE/backup.sh"

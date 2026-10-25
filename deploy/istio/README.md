@@ -32,7 +32,8 @@ ISTIO=1 ./scripts/k8s-local-up.sh --live
 `scripts/k8s-local-up.sh` が次を **[6/7] の前に** 行う（CRD が無いまま helm upgrade すると apply が失敗するため）:
 
 1. `istio/base`（CRD）と `istio/istiod`（コントロールプレーン）を Helm で導入する
-   （版は `ISTIO_VERSION`。既定 `1.30.4`。values は [`istiod-values-local.yaml`](istiod-values-local.yaml)）
+   （版は `1.30.4` に固定。values は [`istiod-values-local.yaml`](istiod-values-local.yaml)。values が pilot・proxyv2 を
+   `tag@sha256:…` で固定するので、`ISTIO_VERSION` は同じ値しか受けない。版を上げるときは values の 3 参照と起動器 2 本の版を対で改める）
 2. 4 つの CRD が `Established` になるまで待つ
 3. `microservices-platform` へ `istio-injection=enabled` を貼る
    —— 🔴 **経路B は `namespace.create=false` なので Helm は Namespace を作らない。**
@@ -53,24 +54,66 @@ kubectl -n microservices-platform get pods -o json |   jq -r '.items[] | .metada
 **`istioctl` は要らない**（配布バイナリを増やさず、他の opt-in と同じ Helm 経路に揃える）。
 検証コマンド（§4）だけは `istioctl` があると便利だが、`kubectl` でも代替できる。
 
-### 🔴 mTLS モードは初回は既定 PERMISSIVE で入り、再実行は現行を引き継ぐ
+### 🔴 mTLS モードは初回は既定 STRICT で入り、再実行は現行を引き継ぐ
 
 ```sh
-ISTIO=1 ./scripts/k8s-local-up.sh --live                        # 初回は PERMISSIVE（既定）。再実行は現行を引き継ぐ
-ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live # STRICT へ移す
+ISTIO=1 ./scripts/k8s-local-up.sh --live                            # 初回は STRICT（既定）。再実行は現行を引き継ぐ
+ISTIO=1 ISTIO_MTLS_MODE=STRICT ./scripts/k8s-local-up.sh --live     # PERMISSIVE を引き継いだクラスタを STRICT へ上げる
+ISTIO=1 ISTIO_MTLS_MODE=PERMISSIVE ./scripts/k8s-local-up.sh --live # 緩める（明示のときだけ）
 ```
+
+［2026-10-23 / IADR-0590］**初回の既定を PERMISSIVE から STRICT へ改めた**（多層防御の強化。従前の判断は
+[`IADR-0307`](../../.ai-context/adr/IADR-0307_istio-optin-and-staged-mtls.md) 決定 4・
+[`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 3）。
+引き継いだ PERMISSIVE は黙って上げない（#1710 の逆向きを作らない）が、再実行のたびに `WARN: mTLS は PERMISSIVE のままです` を出す。
 
 **`ISTIO_MTLS_MODE` を付けない再実行は、現行の `mesh.mtlsMode` を引き継ぐ**（`ISTIO` を付けずにメッシュを引き継いだ再実行も同じ。#1710 / [`IADR-0487`](../../.ai-context/adr/IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)）。
 読む先は helm の宣言（`helm get values msp`）であり、`INFO: mesh.mtlsMode は現行の <mode> を引き継ぎます` を出す。
-PERMISSIVE になるのは `msp` リリースが無い・メッシュを宣言していない**初回だけ**である。STRICT から PERMISSIVE へ戻すのも
-`ISTIO_MTLS_MODE=PERMISSIVE` の明示でだけ行う。🔴 **現行の値を読めないとき（helm に届かない等）は、何も書き換える前に止まる** ——
+`msp` リリースが無い・メッシュを宣言していない**初回**は既定の STRICT を宣言し、`INFO: mesh.mtlsMode は既定の STRICT を宣言します` を出す。
+STRICT から PERMISSIVE へ戻すのは `ISTIO_MTLS_MODE=PERMISSIVE` の明示でだけ行う。🔴 **現行の値を読めないとき（helm に届かない等）は、何も書き換える前に止まる** ——
 推測で PERMISSIVE へ倒すと STRICT を黙って緩め、STRICT へ倒すと入口がメッシュ外の構成で 502 になり得るため。
 そのときは `ISTIO_MTLS_MODE` を明示して再実行する。
 
-**いきなり STRICT にしてはならない。** サイドカーの入っていない `platform-infra`
-（postgres / keycloak / rabbitmq / qdrant / valkey …）との通信と、注入前の Pod からの通信が
-**同時に**壊れ、どちらが原因か切り分けられなくなる。段取りは
-**注入 → 全 Pod Ready → PERMISSIVE で疎通確認 → STRICT** である。
+段取りは **注入 → 全 Pod Ready → STRICT** である（[`IADR-0307`](../../.ai-context/adr/IADR-0307_istio-optin-and-staged-mtls.md) 決定 4。
+［2026-10-23 / IADR-0590］その上で既定を STRICT にした）。起動器がこの順を満たす:
+
+- `LOCALEDGE=1` の初回は、`[6/7]` で PERMISSIVE を宣言し、入口を Envoy へ移した後に `istio-edge-up.sh` [5/5] が STRICT へ上げる（下節）。
+- `ISTIO=1` 単独の初回は、注入ラベルを helm より前に貼るので Pod は最初からサイドカー付きで生まれる。
+- メッシュ無しで立てたクラスタへ `ISTIO=1` を足した再実行だけは、注入の rollout restart の間に限り、
+  注入前の Pod から注入後の Pod への平文が落ちる（作り直しが終われば消える）。
+
+なお `platform-infra`（postgres / keycloak / rabbitmq / qdrant / valkey …）**へ出る**通信は STRICT の影響を受けない ——
+`PeerAuthentication` は**受ける側**の規則であり、サイドカーの無い宛先へは auto-mTLS が平文で出す。
+
+### 🔴 STRICT の前提（どこから受けるか。IADR-0590）
+
+STRICT の受け手はこの名前空間のサイドカー付きの Pod である。サイドカーの無い呼び出し元からの平文は、
+接続は受けてから切る（`nc -z` は開いて見え、HTTP は接続リセットになる）。経路ごとの扱い:
+
+| 呼び出し元 → MSP の Pod | STRICT での扱い |
+| --- | --- |
+| Istio Ingress Gateway（`LOCALEDGE=1` の入口） | メッシュの中。届く |
+| `kube-system` の Traefik（`ISTIO=1` だが入口を移していない間） | 届かない（502）。起動器は入口を移した後でしか STRICT を宣言しない（下節） |
+| `kubectl port-forward` | 届く（Pod の loopback へ入り、受信のサイドカーを通らない。k3s v1.35.4 ＋ Istio 1.30.4 で実測 200） |
+| kubelet の HTTP プローブ | 届く（注入がプローブを pilot-agent 経由へ書き換える） |
+| MSP の名前空間の Job・Deployment（ドリフト検出の Job・synthetic-monitor 等） | 名前空間の注入ラベルでサイドカーが入る。ドリフト検出の Job は `mesh.enabled` のとき注入を明示する |
+| `platform-infra` の認可サーバ（バックチャネルログアウト） | **唯一の受信の例外**。BFF の受信ポートだけ PERMISSIVE ＋ principal の無い要求はその 1 URI 以外 DENY（2 枚組。`mesh.backchannelLogout.fromOutsideMesh`） |
+| `ai-stock-trading`（サイドカー無し） | **届かない**。AST をメッシュへ入れてから STRICT にする（下の手順） |
+| observability の Prometheus | MSP の Pod を直接 scrape しない（otel-collector だけを scrape する）。影響なし |
+
+**AST をメッシュへ入れる手順**（経路B。AST の chart の設定点は AST 側の `mesh.sidecarInjection.*`）:
+
+1. AST の名前空間へ注入ラベルを貼る（AST の配備は `namespace.create=false` なので chart は貼らない）:
+   `kubectl label namespace ai-stock-trading istio-injection=enabled --overwrite`
+2. AST の chart を `mesh.sidecarInjection.enabled=true` で描画し直す（OpenD を注入対象から外す注釈が付く）。
+   🔴 AST の配備スクリプトがこの値を再実行で引き継げることが前提である（引き継がないと次の配備で注釈が外れ、
+   OpenD の作り直しでサイドカーが入る）。値の受け口は AST リポジトリ側の対応になる。
+3. AST の Deployment を作り直し、OpenD 以外の Pod が `istio-proxy` を持つことを確かめる
+   （`kubectl -n ai-stock-trading get pods -o custom-columns='NAME:.metadata.name,INIT:.spec.initContainers[*].name'`）。
+4. AST の Pod から `http://document-service.microservices-platform:8080/health/live` が 200 になることを確かめてから、MSP を STRICT へ上げる。
+
+起動器は STRICT のとき、AST の名前空間に Pod が居て注入ラベルが無ければ `WARN: mTLS は STRICT ですが、名前空間 ai-stock-trading に注入ラベル…` を出す（止めない）。
+稼働の STRICT が効いていることは統合スタックの門「メッシュの mTLS が STRICT で効いている」が測る（サイドカーの無い Pod から平文が届かないこと・サイドカー付きの Pod からは届くこと）。
 
 ### 🔴 STRICT には **エッジがメッシュの中に居ること**が要る（#782 で解いた）
 
@@ -103,7 +146,7 @@ bash scripts/istio-edge-down.sh --live   # 🔴 切り戻し（1 コマンド）
 判断と実測は [`IADR-0317`](../../.ai-context/adr/IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)。
 
 🔴 **`ISTIO=1` を `LOCALEDGE=1` 無しで使うとエッジは移らない**（port-forward のまま）。
-その状態で STRICT へ上げると mesh へ入る経路が無くなる。スクリプトが警告を出す。
+［2026-10-23 / IADR-0590］port-forward は STRICT でも届く（実測）。ブラウザのエッジ経路が無いことをスクリプトが警告する。
 
 `LOCALEDGE=1` と併用したときは、**[6/7] の helm はいったん PERMISSIVE を宣言し、入口を Envoy へ移した
 後に `istio-edge-up.sh` [5/5] が STRICT へ上げる**（#1159 / [`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 2）。
@@ -131,8 +174,9 @@ Helm 4 はサーバサイド apply を使うので、外から書くと field ma
 経路B の AST namespace はサイドカーを持たない。STRICT の間、AST の 3 サービスから MSP への平文
 （ナレッジ保存・日報の LLM 生成・**取引判断の LLM 呼び出し**）が RST で全断する（2026-09-04 実測）。
 **逆向き（MSP→AST）は auto-mTLS が平文へフォールバックするので落ちない** —— 片方向だけである。
-恒久像は AST を mesh へ入れること（AST#627）。それまで経路B の既定は PERMISSIVE のままにする
-（[`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 3・4）。
+恒久像は AST を mesh へ入れること（AST#627）。［2026-10-23 / IADR-0590］既定は STRICT へ改めた ——
+AST を入れる手順は上の「STRICT の前提」。入れるまでの間 PERMISSIVE を使うなら `ISTIO_MTLS_MODE=PERMISSIVE` を明示する
+（従前の据え置きは [`IADR-0377`](../../.ai-context/adr/IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 3・4）。
 
 ### 本番像
 

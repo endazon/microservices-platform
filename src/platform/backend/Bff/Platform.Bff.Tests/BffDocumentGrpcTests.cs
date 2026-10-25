@@ -19,8 +19,8 @@ namespace Platform.Bff.Tests;
 // [[IADR-0009]], [[IADR-0041]], [[IADR-0045]], [[IADR-0379]], [[IADR-0402]] (#1255):
 // BFF の文書読み取り 4 箇所を east-west gRPC へ振り替える切替と、その縮退を固定する。
 //
-// 🔴 **既定は REST（正）である。** 切替は `Services:DocumentServiceGrpc` の有無だけで決まり、
-// 未設定なら gRPC クライアントは DI に 1 つも入らない（戻すのは構成を外すだけ）。
+// ［2026-10-10 / #1255・[[IADR-0533]]］REST の並走は撤去した。器（`BffTestFactory`）の既定のクライアントも gRPC であり、
+// 器の HTTP スタブへの橋渡しの上に組まれている。本クラスは DI へ直接差し込む呼び出し器で個々の振る舞いを測る。
 public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 {
     private readonly BffTestFactory _factory;
@@ -40,14 +40,20 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
     // ── 登録の門（構成でしか切り替わらないこと） ─────────────────────────────────
 
-    // 🔴 未設定なら**何も登録しない**。REST が正であることの実体はこの 1 行である。
+    // 🔴 ［2026-10-10 / #1255・[[IADR-0533]] 決定 2］未設定でも**登録する**（REST へ戻る経路はもう無い）。
+    // 生成クライアントは常に `UNAVAILABLE` を返す呼び出し器の上に組まれる。
     [Fact]
-    public void Registration_is_a_no_op_without_the_grpc_address()
+    public async Task Registration_without_the_grpc_address_answers_unavailable()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddDocumentReadGrpcClient(new ConfigurationBuilder().Build());
+        using var provider = services.BuildServiceProvider();
 
-        services.Should().NotContain(d => d.ServiceType == typeof(DocumentReadGrpcClient));
+        provider.GetService<DocumentReadGrpcClient>().Should().NotBeNull();
+        var raw = provider.GetRequiredService<Pb.DocumentRead.DocumentReadClient>();
+        raw.Should().NotBeNull();
+        provider.GetService<GrpcChannel>().Should().BeNull("宛先が無ければチャネルは張らない");
     }
 
     // 陽性対照: アドレスが在れば登録される（上のテストだけだと「常に何もしない」実装でも緑になる）。
@@ -97,7 +103,7 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
     {
         _factory.DocumentStatusCode = HttpStatusCode.InternalServerError;
 
-        // 陰性対照: gRPC が無ければ REST の 500 が 404（存在秘匿）へ落ちる。
+        // 陰性対照: 器の既定（HTTP スタブへの橋渡し）では後段の 500 が 404（存在秘匿）へ落ちる。
         var viaRest = await _factory.CreateClient().GetAsync(DetailPath, TestContext.Current.CancellationToken);
         viaRest.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
@@ -130,10 +136,10 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
     {
         _factory.ScopeFilters = [new Platform.Shared.Contracts.Dtos.AttributeFilter("confidentiality", ["internal"])];
 
-        var rest = await _factory.CreateClient()
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
-        var grpc = await GrpcClient(new StubDocumentReadInvoker(_factory))
-            .GetFromJsonAsync<List<DocumentDto>>("/bff/documents", TestContext.Current.CancellationToken);
+        var rest = (await _factory.CreateClient()
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
+        var grpc = (await GrpcClient(new StubDocumentReadInvoker(_factory))
+            .GetFromJsonAsync<DocumentListPageDto>("/bff/documents", TestContext.Current.CancellationToken))!.Items;
 
         rest.Should().ContainSingle("陽性対照: REST 側もスコープで 1 件へ絞られている");
         grpc.Should().BeEquivalentTo(rest, o => o.WithStrictOrdering());
@@ -188,6 +194,8 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
         var stub = new StubDocumentReadInvoker(_factory);
         var client = GrpcClient(stub);
         client.DefaultRequestHeaders.Add(TestAuthHandler.UsernameHeader, "service-account-some-client");
+        // NFR-09, IADR-0606: Keycloak のサービスアカウントのトークンは `azp` に自身のクライアントを載せる（無人の判定は両者の一致）。
+        client.DefaultRequestHeaders.Add(TestAuthHandler.ClientIdHeader, "some-client");
 
         await client.GetAsync(DetailPath, TestContext.Current.CancellationToken);
 
@@ -197,9 +205,9 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
     // ── 縮退（呼び出し元ごとに向きが違う。一般化しない） ─────────────────────────
 
-    // 一覧: 引けなかったら **空一覧**（現行 REST の catch と同じ枝を共有する）。
+    // 一覧: 引けなかったら **502**（［2026-10-14 / #1923・IADR-0537］従前は空一覧。空へ畳むと本当の 0 件と区別できない。#1897）。
     [Fact]
-    public async Task List_over_grpc_degrades_to_an_empty_list_when_the_call_fails()
+    public async Task List_over_grpc_returns_502_when_the_call_fails()
     {
         var stub = new StubDocumentReadInvoker(_factory)
         {
@@ -208,9 +216,7 @@ public class BffDocumentGrpcTests : IClassFixture<BffTestFactory>
 
         var resp = await GrpcClient(stub).GetAsync("/bff/documents", TestContext.Current.CancellationToken);
 
-        resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<List<DocumentDto>>(TestContext.Current.CancellationToken))
-            .Should().BeEmpty();
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
 
     // 詳細: 引けなかったら **404 秘匿**（「不在」と区別しない。現行 REST と同じ枝）。

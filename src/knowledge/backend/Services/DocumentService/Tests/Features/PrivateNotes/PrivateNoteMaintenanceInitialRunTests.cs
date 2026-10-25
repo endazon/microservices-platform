@@ -6,11 +6,14 @@ using AwesomeAssertions;
 using DocumentService.Common.Observability;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.PrivateNotes.Maintenance;
+using DocumentService.Infrastructure.Persistence;
 using DocumentService.Infrastructure.ExternalServices;
 using DocumentService.Tests.Grpc;
 using DocumentService.Tests.Infrastructure.ExternalServices;
 using Grpc.Core;
 using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -26,6 +29,12 @@ namespace DocumentService.Tests.Features.PrivateNotes;
 //   ③ その通知が **本番の gRPC 実装（`GrpcPrivateNoteNotifier`）で `NotificationIngress/Accept` まで届く**（N-1 の経路そのもの）
 //   ④ 不正な値は起動を止める（黙って既定へ倒すと、計測者は前倒しが効いたと思ったまま 24 時間待つ）
 // ことを固定する。
+//
+// ［2026-10-15 追記 / #1890］#1889 の独立監査で生き残った 3 つの変異を殺す試験を足した。
+//   M4: `Program.cs` の配線（`InitialRunDelay = ResolveInitialRunDelay(...)`）を外す → 鍵を設定した**ホスト**で測る（⑤）
+//   M5: 前倒しの 1 回の後に 24 時間周期のループへ進まない → 偽の時計で「前倒し + 24 時間」進めて 2 回目を待つ（⑥）
+//   M6: 前倒しの待ち（`Task.Delay`）が停止要求を無視する → 待ちの最中に停止を要求し、速やかに終わることを測る（⑦）
+// 周期の回数は、周期ごとに 1 つ作られるスコープの数で数える（`CountingScopeFactory`。中身は試験ホストの本物のスコープ）。
 [Trait("TestKind", "Integration")]
 public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
@@ -86,6 +95,7 @@ public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory fac
         var delay = TimeSpan.FromMinutes(2);
         var worker = new PrivateNoteMaintenanceHostedService(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
+            NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance,
             new RecordingLogger<PrivateNoteMaintenanceHostedService>())
         { CycleInterval = PrivateNoteMaintenanceHostedService.Interval, CycleClock = clock, InitialRunDelay = delay };
 
@@ -108,6 +118,99 @@ public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory fac
 
         WeeklyFor(user).Should().ContainSingle()
             .Which.Count.Should().Be(1, "論理削除済みの資料 1 件の件数だけを運ぶ（タイトルを運ばない）");
+    }
+
+    // ⑤ (#1890 M4) 本番の組み立て（Program.cs）が構成の鍵を読む: 不正な値を入れたホストは起動（StartAsync）で止まる。
+    // 配線を外すと鍵は読まれず、ホストは黙って起動する（＝前倒しが効かないまま計測者が 24 時間待つ）。
+    [Fact]
+    public void 鍵を不正な値にしたホストは起動で止まる()
+    {
+        var host = WithInitialRunDelay("abc");
+        try
+        {
+            var act = () => host.Services; // ホストの組み立てと起動（ホスト型サービスの解決は StartAsync の中）
+
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"*{PrivateNoteMaintenanceHostedService.InitialRunDelayKey}*'abc'*");
+        }
+        finally
+        {
+            DisposeQuietly(host);
+        }
+    }
+
+    // ⑤ の陽性対照: 正しい値を入れたホストでは、登録された保守がその前倒しを持つ。
+    [Fact]
+    public void 鍵を設定したホストの保守は前倒しを持つ()
+    {
+        var host = WithInitialRunDelay("120");
+        try
+        {
+            var hosted = host.Services.GetServices<IHostedService>()
+                .OfType<PrivateNoteMaintenanceHostedService>()
+                .Should().ContainSingle().Subject;
+
+            hosted.InitialRunDelay.Should().Be(TimeSpan.FromSeconds(120), "構成の鍵が本番の組み立てで前倒しへ渡る");
+        }
+        finally
+        {
+            DisposeQuietly(host);
+        }
+    }
+
+    // ⑥ (#1890 M5) 前倒しの 1 回の後も、24 時間ごとの周期へ進む（前倒しは 1 回目の時刻を変えるだけ）。
+    // 陰: 前倒しの後、24 時間に 1 tick 足りないところでは 2 回目は来ない（前倒しの直後に周期を重ねない）。
+    [Fact]
+    public async Task 前倒しの後も24時間ごとの周期へ進む()
+    {
+        var clock = new TimerCountingClock();
+        var scopes = new CountingScopeFactory(factory.Services.GetRequiredService<IServiceScopeFactory>());
+        var delay = TimeSpan.FromMinutes(2);
+        var worker = new PrivateNoteMaintenanceHostedService(scopes, NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance, new RecordingLogger<PrivateNoteMaintenanceHostedService>())
+        { CycleInterval = PrivateNoteMaintenanceHostedService.Interval, CycleClock = clock, InitialRunDelay = delay };
+
+        await worker.StartAsync(Ct);
+        try
+        {
+            await clock.WaitForTimersAsync(1); // 前倒しの待ち
+            clock.Advance(delay);
+            await scopes.WaitForCyclesAsync(1);
+
+            await clock.WaitForTimersAsync(2); // 24 時間周期の拍の源。変異 M5 ではここが作られず時間切れになる
+            clock.Advance(PrivateNoteMaintenanceHostedService.Interval - TimeSpan.FromTicks(1));
+            await Task.Delay(TimeSpan.FromMilliseconds(250), Ct);
+            scopes.Cycles.Should().Be(1, "前倒しの後、24 時間が経つまでは 2 回目は走らない");
+
+            clock.Advance(TimeSpan.FromTicks(1));
+            await scopes.WaitForCyclesAsync(2);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+
+        worker.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue("停止要求はシャットダウンとして正常に終える");
+    }
+
+    // ⑦ (#1890 M6) 前倒しの待ちの最中に停止を要求すると、時計を進めなくても速やかに終わり、周期は走らない。
+    // 偽の時計は試験が進めない限り進まない —— 終われるのは待ちが停止要求を見ているときだけである。
+    [Fact]
+    public async Task 前倒しの待ちの最中に停止を要求すると速やかに終わる()
+    {
+        var clock = new TimerCountingClock();
+        var scopes = new CountingScopeFactory(factory.Services.GetRequiredService<IServiceScopeFactory>());
+        var worker = new PrivateNoteMaintenanceHostedService(scopes, NoOpPrivateNoteMaintenanceLeaseCoordinator.Instance, new RecordingLogger<PrivateNoteMaintenanceHostedService>())
+        { CycleInterval = PrivateNoteMaintenanceHostedService.Interval, CycleClock = clock, InitialRunDelay = TimeSpan.FromHours(1) };
+
+        await worker.StartAsync(Ct);
+        await clock.WaitForTimersAsync(1); // 前倒しの待ちに入った
+
+        // 変異 M6 では停止要求が待ちに届かず、ここが時間切れ（TimeoutException）になる。
+        await worker.StopAsync(CancellationToken.None).WaitAsync(Deadline, Ct);
+
+        worker.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue("停止要求はシャットダウンとして正常に終える");
+        scopes.Cycles.Should().Be(0, "停止の要求で前倒しの周期を走らせない");
+        clock.TimersCreated.Should().Be(1, "前倒しの待ちから周期のループへ進まずに終わる");
     }
 
     // ③ N-1 の経路そのもの: 前倒しで走る周期の通知は、本番の gRPC 実装で `NotificationIngress/Accept` まで届く。
@@ -171,6 +274,69 @@ public class PrivateNoteMaintenanceInitialRunTests(TestWebApplicationFactory fac
         {
             [PrivateNoteMaintenanceHostedService.InitialRunDelayKey] = raw,
         }).Build();
+
+    // #1890: 鍵を入れた試験ホスト（器はこのクラスの fixture から派生させる。DB 名も同じ）。
+    private WebApplicationFactory<Program> WithInitialRunDelay(string raw) =>
+        factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
+            cfg.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [PrivateNoteMaintenanceHostedService.InitialRunDelayKey] = raw,
+            })));
+
+    // 起動に失敗したホストの後始末は、起動の例外とは別に失敗し得る（測りたいのは起動の側だけ）。
+    private static void DisposeQuietly(IDisposable host)
+    {
+        try { host.Dispose(); }
+        catch (Exception) { /* 起動に失敗したホストの後始末の失敗は測らない */ }
+    }
+
+    // #1890: 周期ごとに 1 つ作られるスコープを数える（中身は試験ホストの本物のスコープ）。
+    private sealed class CountingScopeFactory(IServiceScopeFactory inner) : IServiceScopeFactory
+    {
+        private readonly SemaphoreSlim _created = new(0);
+        private int _cycles;
+
+        public int Cycles => Volatile.Read(ref _cycles);
+
+        public IServiceScope CreateScope()
+        {
+            Interlocked.Increment(ref _cycles);
+            _created.Release();
+            return inner.CreateScope();
+        }
+
+        public async Task WaitForCyclesAsync(int count)
+        {
+            while (Cycles < count)
+                if (!await _created.WaitAsync(Deadline, Ct))
+                    Assert.Fail($"{Deadline.TotalSeconds} 秒待っても {count} 回目の周期が走らなかった（走ったのは {Cycles} 回）");
+        }
+    }
+
+    // #1890: 偽の時計から作られた拍の源（`Task.Delay` の待ち・`PeriodicTimer`）を数える。
+    // 作られる前に進めた時刻は拍にならないので、試験は源が作られたのを見てから進める。
+    private sealed class TimerCountingClock : FakeTimeProvider
+    {
+        private readonly SemaphoreSlim _created = new(0);
+        private int _timers;
+
+        public int TimersCreated => Volatile.Read(ref _timers);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            Interlocked.Increment(ref _timers);
+            _created.Release();
+            return timer;
+        }
+
+        public async Task WaitForTimersAsync(int count)
+        {
+            while (TimersCreated < count)
+                if (!await _created.WaitAsync(Deadline, Ct))
+                    Assert.Fail($"{Deadline.TotalSeconds} 秒待っても拍の源が {count} 個作られなかった（作られたのは {TimersCreated} 個）");
+        }
+    }
 
     // 受け口の偽物。受け取った要求を記録して受理する。
     private sealed class RecordingAcceptService : Pb.NotificationIngress.NotificationIngressBase

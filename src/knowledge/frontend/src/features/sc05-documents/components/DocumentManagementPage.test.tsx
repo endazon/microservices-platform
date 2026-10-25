@@ -56,6 +56,45 @@ const TAG_DICTIONARY = {
 };
 
 /**
+ * FR-06, IADR-0537（#1923）: 一覧（`GET /bff/documents`）の応答は 1 ページ（`items` / `total` / `offset` / `limit`）である。
+ * 既定は全件が 1 ページに収まる形。総件数・位置を変える試験は引数で与える。
+ */
+function listPage(
+  items: unknown[],
+  page: {
+    total?: number;
+    offset?: number;
+    limit?: number;
+    unfilteredTotal?: number;
+    statusCounts?: Record<string, number>;
+    sourceCounts?: Record<string, number>;
+    projectCounts?: Record<string, number>;
+    /** #1993: 省略すると項目ごと出さない（旧い BFF の応答。全件「不明」になる）。 */
+    indexStatuses?: Record<string, string>;
+  } = {},
+) {
+  const total = page.total ?? items.length;
+  return jsonResponse({
+    items,
+    total,
+    offset: page.offset ?? 0,
+    limit: page.limit ?? 50,
+    unfilteredTotal: page.unfilteredTotal ?? total,
+    statusCounts: page.statusCounts ?? {},
+    sourceCounts: page.sourceCounts ?? {},
+    projectCounts: page.projectCounts ?? {},
+    ...(page.indexStatuses ? { indexStatuses: page.indexStatuses } : {}),
+  });
+}
+
+/** 一覧の取得（GET）の要求だけを数える（`/documents?offset=…&limit=…`）。 */
+const listCalls = () =>
+  mocks.apiRequest.mock.calls.filter(
+    ([path, init]) =>
+      String(path).startsWith('/documents?') && (init as RequestInit | undefined)?.method === 'GET',
+  );
+
+/**
  * `/tags` には辞書を、その他のパスには `rest` の応答を返す。
  *
  * **辞書を返さないと選択肢が空になり、タグを触るテストが「候補なし」で止まる。**
@@ -88,26 +127,25 @@ afterEach(() => {
 describe('DocumentManagementPage (SC-05)', () => {
   // 05_screens §SC-05: 一覧はタイトル・機密区分・版（版列＝現行版の表示）。詳細・版履歴は SC-03。
   it('lists documents with confidentiality and the current version, linking to SC-03', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage();
 
     const link = await screen.findByRole('link', { name: '経費精算規程' });
     expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
     const table = within(screen.getByRole('table'));
-    // 機密区分は生値のまま出す。**［2026-08-10 追記 / #553］理由は「表示名が 2 値しか無いから」
-    // ではなくなった** —— 4 値の表示名は裁定（2026-08-05 Q7・Q8・派生 Q30）で確定しており、
-    // **写像の実装先が #541 である**ため、それまでの現状として生値を出している。
-    expect(table.getByText('internal')).toBeInTheDocument();
+    // 機密区分は用語集の表示名で出す（internal＝社内限。`@foundation/i18n` の写像を SC-02・SC-03 と共有。#2019）。
+    expect(table.getByText('社内限')).toBeInTheDocument();
+    expect(table.queryByText('internal')).not.toBeInTheDocument();
     expect(table.getByText('v3')).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith(
-      '/documents',
+      '/documents?offset=0&limit=50&origin=curated',
       expect.objectContaining({ method: 'GET' }),
     );
   });
 
   // UC-03 基本フロー 1: 管理者が文書を登録し、属性・タグを設定する。
   it('creates a document with the required confidentiality attribute and tags', async () => {
-    withTagDictionary(() => jsonResponse([]));
+    withTagDictionary(() => listPage([]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -143,7 +181,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // 従前は自由テキスト入力で、辞書に無い値をいくらでも付けられた。
 
   it('offers tags from the dictionary instead of free text', async () => {
-    withTagDictionary(() => jsonResponse([]));
+    withTagDictionary(() => listPage([]));
     await renderPage();
 
     const tagField = await screen.findByLabelText('タグ');
@@ -164,7 +202,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 既に付いているタグは選択肢から消える（同じタグを 2 度付けられない）。
   it('removes already-attached tags from the choices', async () => {
-    withTagDictionary(() => jsonResponse([DRAFT_DOC]));
+    withTagDictionary(() => listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -199,7 +237,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // 画面が既存のタグを黙って落とすと、保存時に消えて破壊的になる。
   it('keeps existing tags that are no longer in the dictionary', async () => {
     const legacy = { ...DRAFT_DOC, tags: ['廃止された分類'] };
-    withTagDictionary(() => jsonResponse([legacy]));
+    withTagDictionary(() => listPage([legacy]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -218,7 +256,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // UC-03 例外フロー: 必須属性が未設定の場合は保存を拒否する（タイトルが空では保存できない）。
   it('refuses to save until the required title is filled (UC-03 exception flow)', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    mocks.apiRequest.mockResolvedValue(listPage([]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -240,7 +278,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // FR-06 のバージョン管理: 更新は現在版を expectedVersion として送る（楽観ロック）。
   it('updates a document with the optimistic-lock version and the change note', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -272,18 +310,16 @@ describe('DocumentManagementPage (SC-05)', () => {
   // IADR-0127 決定 5: 更新系の成功後は invalidateQueries だけを行う（手書きの再取得を持たない）。
   // これが外れると、保存したのに一覧が古いまま残る（旧実装が load() を手で呼び直していた箇所）。
   it('refetches the list after a successful save', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '編集' }));
-    expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/documents')).toHaveLength(1);
+    expect(listCalls()).toHaveLength(1);
 
     await user.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() =>
-      expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/documents')).toHaveLength(2),
-    );
+    await waitFor(() => expect(listCalls()).toHaveLength(2));
   });
 
   // 版競合（409）は「他の更新と競合した」ことが読める形で伝える（消えるトーストにしない）。
@@ -291,7 +327,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiRequest.mockImplementation((_path: string, init?: RequestInit) =>
       init?.method === 'PUT'
         ? Promise.reject(new ApiError('conflict', '競合が発生しました。', 409))
-        : Promise.resolve(jsonResponse([DRAFT_DOC])),
+        : Promise.resolve(listPage([DRAFT_DOC])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -307,7 +343,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 公開は未公開状態（draft / normalized）のみ。アーカイブ済みの誤再公開を防ぐ（サーバも 409）。
   it('offers publish only for unpublished documents', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC, ARCHIVED_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC, ARCHIVED_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -328,7 +364,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 
   it('deletes a document', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -348,7 +384,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiRequest.mockImplementation((_path: string, init?: RequestInit) =>
       init?.method === 'DELETE'
         ? Promise.reject(new ApiError('notFound', '見つかりませんでした。', 404))
-        : Promise.resolve(jsonResponse([DRAFT_DOC])),
+        : Promise.resolve(listPage([DRAFT_DOC])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -372,7 +408,7 @@ describe('DocumentManagementPage (SC-05)', () => {
               'この文書は参照中のため削除できません。',
             ]),
           )
-        : Promise.resolve(jsonResponse([DRAFT_DOC])),
+        : Promise.resolve(listPage([DRAFT_DOC])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -389,6 +425,22 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  // FR-06, NFR-16, IADR-0537（#1897・#1923）: BFF が後段から一覧を引き切れないときは **502** を返す。
+  // 画面は**エラーとして**出し、0 件の表示（「文書はまだありません。」）へ寄せない —— 本当の 0 件と区別できなくなる（#1897 の本質）。
+  it('shows the list failure (502) as an error, not as an empty list', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/documents?'))
+        throw new ApiError('server', 'サーバでエラーが発生しました。', 502);
+      return listPage([]);
+    });
+    await renderPage();
+
+    expect(await screen.findByText('文書を取得できませんでした。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeInTheDocument();
+    expect(screen.queryByText('文書はまだありません。')).not.toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'ページ送り' })).not.toBeInTheDocument();
+  });
+
   it('shows an alert when the list cannot be loaded', async () => {
     mocks.apiRequest.mockRejectedValue(
       new ApiError('server', 'サーバでエラーが発生しました。', 500),
@@ -403,7 +455,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // **［2026-09-12］文言が変わった**（`QueryState` ＋ `EmptyState` への統一）。
   // 空は失敗ではないので再試行を促さず、**次の一手**（新規登録）を示す。実装が正・テストを追随。
   it('shows a neutral message with a next step when there is no document', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    mocks.apiRequest.mockResolvedValue(listPage([]));
     await renderPage();
 
     expect(await screen.findByText('文書はまだありません。')).toBeInTheDocument();
@@ -418,7 +470,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // ボタンが並ぶだけでは、いまどの状態なのかが読めない。色だけで意味を持たせない
   // （`StatusBadge` がアイコン ＋ テキストを強制する）。
   it('shows the lifecycle state of each document as a badge', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC, ARCHIVED_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC, ARCHIVED_DOC]));
     await renderPage();
 
     expect(await screen.findByRole('columnheader', { name: '状態' })).toBeInTheDocument();
@@ -430,7 +482,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 存在秘匿（IADR-0009 / IADR-0035）: ロールを持たない利用者へ画面の存在を示さない。
   it('hides the screen from a user without any role', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage([]);
 
     expect(screen.queryByRole('heading', { name: '文書一覧' })).not.toBeInTheDocument();
@@ -445,7 +497,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 受け入れ基準 5: 運用者へ書き込みの導線を 1 つも出さない（5 つとも書き込みである）。
   it('offers no write action to an operator', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage(['platform-operator']);
 
     // まず「見えるはずの条件」を確かめる——一覧が出ていないと、
@@ -464,7 +516,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   // 受け入れ基準 4（対）: **閲覧は狭めない**。運用者にも一覧と SC-03 への導線は残る。
   it('still lets an operator read the list and reach SC-03', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage(['platform-operator']);
 
     expect(await screen.findByRole('link', { name: '経費精算規程' })).toHaveAttribute(
@@ -477,7 +529,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // 受け入れ基準 6（対）: 管理者には従来どおり出す（**狭めすぎていない**）。
   // これが無いと、全員から消しても上の 2 件は緑のまま通る。
   it('still offers every write action to an administrator', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage(['platform-admin']);
 
     for (const name of ['＋ 新規登録', '編集', '公開', 'アーカイブ', '削除']) {
@@ -490,7 +542,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   // まず「見えるはずの条件」——一覧が描画され、機密区分と版の列が出ている状態——を確かめてから、
   // 契約に無い「変換」列が無いことを見る。
   it('does not render the conversion column (no contract links a document to its job)', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     await renderPage();
 
     expect(await screen.findByRole('columnheader', { name: '機密区分' })).toBeInTheDocument();
@@ -499,7 +551,7 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 
   it('renders in English when the en locale is active', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC]));
     activate('en');
     await renderPage();
 
@@ -513,10 +565,11 @@ describe('DocumentManagementPage (SC-05)', () => {
   // だった。生成物の `bffFetch` は空ボディで `{}` を返すので `??` は発火せず、`items.length === 0`
   // も `{}.length === undefined` で救えず、`items.map` が `TypeError` を投げていた。
   // `okArray` が「配列でなければ空配列」まで詰めることで、載せ替え前と同じ縮退に戻る。
+  // ［2026-10-14 / #1923］一覧はページになった。`okPage` が「`items` が配列でなければ空・総件数 0」へ同じく詰める。
   it('degrades to the empty state when the list response has no body (204)', async () => {
     mocks.apiRequest.mockImplementation(async (path: string) => {
       if (path.startsWith('/documents')) return noContent();
-      return jsonResponse([]);
+      return listPage([]);
     });
     await renderPage();
 
@@ -533,7 +586,7 @@ describe('DocumentManagementPage (SC-05)', () => {
       ...DRAFT_DOC,
       attributes: { ...DRAFT_DOC.attributes, doc_scope: 'organization' },
     };
-    mocks.apiRequest.mockResolvedValue(jsonResponse([SCOPED_DOC]));
+    mocks.apiRequest.mockResolvedValue(listPage([SCOPED_DOC]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -560,5 +613,598 @@ describe('DocumentManagementPage (SC-05)', () => {
     ).toMatchObject({
       attributes: { confidentiality: 'internal', department: 'finance', doc_scope: 'organization' },
     });
+  });
+
+  // ---- FR-06, SC-05, IADR-0537（#1923 段 1）: ページネーション ----
+  //
+  // 総件数は BFF が ABAC で絞った後の数（画面はそれを描くだけ）。送り方はオフセット（`offset` / `limit`）。
+
+  // 総件数と表示範囲を出し、「次へ」で次の窓を要求する。先頭のページでは「前へ」を押せない。
+  it('shows the total and the range, and requests the next page', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('offset=50')
+        ? listPage([ARCHIVED_DOC], { total: 120, offset: 50 })
+        : listPage([DRAFT_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    expect(await screen.findByText('絞り込み 120 件（全 120 件）中 1–50 件')).toBeInTheDocument();
+    const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
+    expect(nav.getByRole('button', { name: '前へ' })).toBeDisabled();
+    expect(nav.getByRole('button', { name: '1 ページ目' })).toHaveAttribute('aria-current', 'page');
+    expect(nav.getByRole('button', { name: '3 ページ目' })).toBeInTheDocument();
+
+    await user.click(nav.getByRole('button', { name: '次へ' }));
+
+    expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/documents?offset=50&limit=50&origin=curated',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(screen.getByText('絞り込み 120 件（全 120 件）中 51–100 件')).toBeInTheDocument();
+  });
+
+  // 件数を選ぶと、その件数で先頭のページから引き直す（25 / 50 / 100。既定 50）。
+  it('requests the first page again with the chosen page size', async () => {
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC], { total: 120 }));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const size = await screen.findByLabelText('表示件数');
+    expect(size).toHaveValue('50');
+    expect(
+      within(size)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(['25', '50', '100']);
+
+    await user.selectOptions(size, '25');
+
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/documents?offset=0&limit=25&origin=curated',
+        expect.objectContaining({ method: 'GET' }),
+      ),
+    );
+  });
+
+  // 次のページを読む間は、前のページの行を出したままにし（読み込み中の表示へ切り替えない）、ページ送りを止める（busy）。
+  // 🔴 変異で確かめた: `keepPreviousData` を外すと行が消え、`busy` を外すと「次へ」が押せるままになり、どちらもここで落ちる。
+  it('keeps the previous page on screen and the pager busy while the next page loads', async () => {
+    let release: (value: unknown) => void = () => {};
+    const nextPage = new Promise((resolve) => {
+      release = resolve;
+    });
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('offset=50') ? nextPage : listPage([DRAFT_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(
+      within(await screen.findByRole('navigation', { name: 'ページ送り' })).getByRole('button', {
+        name: '次へ',
+      }),
+    );
+
+    // 読み込み中: 前のページの行が残り、読み込み中の表示に替わらない。ページ送りと件数の選択は止まる。
+    const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
+    await waitFor(() => expect(nav.getByRole('button', { name: '次へ' })).toBeDisabled());
+    expect(screen.getByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(screen.queryByText('文書を読み込み中…')).not.toBeInTheDocument();
+    expect(nav.getByRole('button', { name: '前へ' })).toBeDisabled();
+    expect(nav.getByRole('button', { name: '1 ページ目' })).toBeDisabled();
+    expect(screen.getByLabelText('表示件数')).toBeDisabled();
+
+    release(listPage([ARCHIVED_DOC], { total: 120, offset: 50 }));
+
+    expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: '経費精算規程' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('navigation', { name: 'ページ送り' })).getByRole('button', {
+          name: '次へ',
+        }),
+      ).toBeEnabled(),
+    );
+  });
+
+  // 最後のページでは「次へ」を押せない（先頭の「前へ」と対。画面仕様 §ページング）。
+  it('disables "next" on the last page', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('offset=100')
+        ? listPage([ARCHIVED_DOC], { total: 120, offset: 100 })
+        : listPage([DRAFT_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '3 ページ目' }));
+
+    expect(await screen.findByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    expect(screen.getByText('絞り込み 120 件（全 120 件）中 101–120 件')).toBeInTheDocument();
+    const nav = within(screen.getByRole('navigation', { name: 'ページ送り' }));
+    expect(nav.getByRole('button', { name: '次へ' })).toBeDisabled();
+    expect(nav.getByRole('button', { name: '前へ' })).toBeEnabled();
+    expect(nav.getByRole('button', { name: '3 ページ目' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  // 削除などで総件数が減り、いまのページが末尾を越えたら、末尾のページへ戻す（空のページを出したままにしない）。
+  it('moves back to the last page when the current page falls beyond the total', async () => {
+    let shrunk = false;
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.includes('offset=100')) {
+        shrunk = true;
+        return listPage([], { total: 40, offset: 100 });
+      }
+      return listPage([DRAFT_DOC], { total: shrunk ? 40 : 120 });
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '3 ページ目' }));
+
+    expect(await screen.findByText('絞り込み 40 件（全 40 件）中 1–40 件')).toBeInTheDocument();
+    const offsets = mocks.apiRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/documents?'));
+    expect(offsets).toEqual([
+      '/documents?offset=0&limit=50&origin=curated',
+      '/documents?offset=100&limit=50&origin=curated',
+      '/documents?offset=0&limit=50&origin=curated',
+    ]);
+  });
+
+  // ── #1923 段 2（IADR-0545）: 並べ替え・表題の検索・状態の絞り込み・件数の要約・列 ─────────────
+
+  /** 一覧の要求のパス（`/documents?…`）だけを順に取り出す。 */
+  const listPaths = () =>
+    mocks.apiRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/documents?'));
+
+  // 並べ替えを変えると `sort` を載せて先頭のページから引き直す。既定（更新日時が新しい順）は載せない（従前の URL）。
+  it('requests the chosen sort from the first page and omits the default', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      listPage([DRAFT_DOC], { total: 120, offset: path.includes('offset=50') ? 50 : 0 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '2 ページ目' }));
+    await waitFor(() =>
+      expect(listPaths()).toContain('/documents?offset=50&limit=50&origin=curated'),
+    );
+    await user.selectOptions(screen.getByLabelText('並べ替え'), 'title-asc');
+
+    await waitFor(() =>
+      expect(listPaths()).toContain('/documents?offset=0&limit=50&sort=title-asc&origin=curated'),
+    );
+    expect(listPaths()[0]).toBe('/documents?offset=0&limit=50&origin=curated');
+  });
+
+  // 表題の検索は入力が止まってから 1 回だけ引く（1 打鍵ごとに台帳を 1 周させない）。前後の空白は送らない。
+  it('requests the title query once after typing stops, trimmed', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('q=')
+        ? listPage([DRAFT_DOC], { total: 1, unfilteredTotal: 120 })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC], { total: 120 }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.type(await screen.findByLabelText('表題で検索'), ' 経費 ');
+
+    expect(await screen.findByText('絞り込み 1 件（全 120 件）中 1–1 件')).toBeInTheDocument();
+    const queried = listPaths().filter((path) => path.includes('q='));
+    expect(queried).toEqual([
+      `/documents?offset=0&limit=50&q=${encodeURIComponent('経費')}&origin=curated`,
+    ]);
+  });
+
+  // 状態で絞ると `status` を載せる。選択肢には状態別の件数（絞り込み前）を添える。解除で条件を外して先頭から引く。
+  it('filters by status with per-status counts and clears the filters', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('status=archived')
+        ? listPage([ARCHIVED_DOC], {
+            total: 1,
+            unfilteredTotal: 3,
+            statusCounts: { draft: 2, archived: 1 },
+          })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC], {
+            total: 3,
+            statusCounts: { draft: 2, archived: 1 },
+          }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    const status = await screen.findByLabelText('状態');
+    await waitFor(() =>
+      expect(
+        within(status).getByRole('option', { name: 'アーカイブ済み（1 件）' }),
+      ).toBeInTheDocument(),
+    );
+    expect(within(status).getByRole('option', { name: 'すべて（3 件）' })).toBeInTheDocument();
+    expect(within(status).getByRole('option', { name: '公開中（0 件）' })).toBeInTheDocument();
+    await user.selectOptions(status, 'archived');
+
+    expect(await screen.findByText('絞り込み 1 件（全 3 件）中 1–1 件')).toBeInTheDocument();
+    expect(listPaths()).toContain('/documents?offset=0&limit=50&status=archived&origin=curated');
+
+    await user.click(screen.getAllByRole('button', { name: '条件を解除' })[0]!);
+    expect(await screen.findByText('絞り込み 3 件（全 3 件）中 1–3 件')).toBeInTheDocument();
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=curated');
+  });
+
+  // 絞り込みの結果だけが 0 件なら「文書はまだありません。」ではなく条件の側の空を出し、解除の口を置く。
+  it('distinguishes "no match" from "no documents yet"', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('status=published')
+        ? listPage([], { total: 0, unfilteredTotal: 2 })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.selectOptions(await screen.findByLabelText('状態'), 'published');
+
+    expect(await screen.findByText('条件に一致する文書はありません。')).toBeInTheDocument();
+    expect(screen.queryByText('文書はまだありません。')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: '条件を解除' }).at(-1)!);
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+  });
+
+  // 🔴 表題の検索で 0 件にした後、空の表示の「条件を解除」で解除したら、入力欄も空になり、待ち時間の後も絞り込みが戻らない
+  // （入力中の値を帯が持ったままだと、300 ms 後に古い語で引き直してしまう。監査の指摘）。
+  it('clearing from the empty result also clears the title input and does not re-apply the query', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('q=')
+        ? listPage([], { total: 0, unfilteredTotal: 2 })
+        : listPage([DRAFT_DOC, ARCHIVED_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    const input = await screen.findByLabelText('表題で検索');
+    await user.type(input, '存在しない');
+    expect(await screen.findByText('条件に一致する文書はありません。')).toBeInTheDocument();
+
+    // 空の表示の側の「条件を解除」（帯の側ではない。DOM の順で後ろ）。
+    await user.click(screen.getAllByRole('button', { name: '条件を解除' }).at(-1)!);
+
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(input).toHaveValue('');
+    // 待ち時間（300 ms）を越えても、古い語で引き直さない。
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=curated');
+    expect(screen.getByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(input).toHaveValue('');
+  });
+
+  // 列: 本文の状態（色だけでなく文言）と更新日時。長い表題は省略し、全文はホバー（title）とリンクの名前に残す。
+  it('shows the body state and the update time, and keeps the full title on hover', async () => {
+    const longTitle = '長い表題'.repeat(40);
+    mocks.apiRequest.mockResolvedValue(
+      listPage([
+        { ...DRAFT_DOC, title: longTitle, markdownUri: 'storage://docs/a.md', hasBody: true },
+        { ...ARCHIVED_DOC, markdownUri: 'storage://docs/b.md', hasBody: false },
+        {
+          ...DRAFT_DOC,
+          id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
+          title: '手入力',
+          markdownUri: null,
+        },
+      ]),
+    );
+    await renderPage();
+
+    const link = await screen.findByRole('link', { name: longTitle });
+    expect(link).toHaveAttribute('title', longTitle);
+    expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
+    const table = within(screen.getByRole('table'));
+    expect(table.getByRole('columnheader', { name: '本文' })).toBeInTheDocument();
+    expect(table.getByText('本文あり')).toBeInTheDocument();
+    expect(table.getByText('本文なし（原本を参照）')).toBeInTheDocument();
+    expect(table.getByText('本文未設定')).toBeInTheDocument();
+    // 時刻は実行環境のタイムゾーンで出る（`formatDateTime`）。書式（`YYYY/MM/DD HH:mm`）が 3 行に出ることだけを見る。
+    expect(table.getAllByText(/^2026\/0[78]\/\d{2} \d{2}:\d{2}$/)).toHaveLength(3);
+  });
+
+  // #1993: 索引の状態の列。BFF がページ分を引いた値を文言つきのバッジで出す（色だけにしない）。鍵の無い文書は「不明」。
+  it('shows the index state of each document and unknown when the key is missing', async () => {
+    const third = { ...DRAFT_DOC, id: 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee', title: '手入力' };
+    const fourth = { ...DRAFT_DOC, id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', title: '鍵なし' };
+    mocks.apiRequest.mockResolvedValue(
+      listPage([DRAFT_DOC, ARCHIVED_DOC, third, fourth], {
+        indexStatuses: {
+          [DRAFT_DOC.id]: 'indexed',
+          [ARCHIVED_DOC.id]: 'embedding_pending',
+          [third.id]: 'not_indexed',
+        },
+      }),
+    );
+    await renderPage();
+
+    await screen.findByRole('link', { name: '鍵なし' });
+    const table = within(screen.getByRole('table'));
+    expect(table.getByRole('columnheader', { name: '索引' })).toBeInTheDocument();
+    const rowOf = (title: string) =>
+      within(table.getByRole('link', { name: title }).closest('tr') as HTMLElement);
+    expect(rowOf('経費精算規程').getByText('索引済み')).toBeInTheDocument();
+    expect(rowOf('製品ロードマップ 2027').getByText('埋め込み待ち')).toBeInTheDocument();
+    expect(rowOf('手入力').getByText('未索引')).toBeInTheDocument();
+    expect(rowOf('鍵なし').getByText('不明')).toBeInTheDocument();
+  });
+
+  // #1993: 旧い BFF（項目そのものが無い）でも一覧は出て、索引の列は全件「不明」。
+  it('reads a response without index statuses as unknown for every row', async () => {
+    mocks.apiRequest.mockResolvedValue(listPage([DRAFT_DOC, ARCHIVED_DOC]));
+    await renderPage();
+
+    await screen.findByRole('link', { name: '経費精算規程' });
+    expect(within(screen.getByRole('table')).getAllByText('不明')).toHaveLength(2);
+  });
+});
+
+// SC-05, FR-06（#1923 の残り・IADR-0561）: タブ（機械の収集と人の文書）・データソース・機密区分・タグ・プロジェクト・保存日の絞り込み、
+// データソースとタグの列・出典のリンク・本文の先頭のプレビュー。件数は BFF が ABAC で絞った後の数で、画面は描くだけである。
+describe('DocumentManagementPage (SC-05) facets, tabs and preview', () => {
+  const listPaths = () =>
+    mocks.apiRequest.mock.calls
+      .map(([path]) => String(path))
+      .filter((path) => path.startsWith('/documents?'));
+
+  const NEWS_DOC = {
+    ...DRAFT_DOC,
+    id: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+    title: '株探のニュース',
+    status: 'published',
+    markdownUri: 'storage://docs/news.md',
+    hasBody: true,
+    attributes: {
+      confidentiality: 'internal',
+      kind: 'News',
+      source: 'kabutan',
+      project: 'ai-stock-trading',
+    },
+    tags: ['News', 'kabutan', '決算', '開示'],
+    originalUri: 'https://kabutan.example/news/1',
+  };
+  const COUNTS = {
+    sourceCounts: { 'col:kabutan': 30, 'ds:共有フォルダ': 2, manual: 5, report: 1 },
+    projectCounts: { 'ai-stock-trading': 31, '(none)': 7 },
+  };
+
+  // 既定のタブは「人の文書・報告書」（`origin=curated`）。件数はデータソース別の件数から導く。タブを替えると先頭から引き直す。
+  it('opens on the curated tab with counts and switches tabs from the first page', async () => {
+    mocks.apiRequest.mockImplementation(async () =>
+      listPage([DRAFT_DOC], { total: 8, unfilteredTotal: 38, ...COUNTS }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    const tabs = within(await screen.findByRole('group', { name: '文書の種類' }));
+    const curated = await tabs.findByRole('button', { name: '人の文書・報告書（8 件）' });
+    expect(curated).toHaveAttribute('aria-pressed', 'true');
+    expect(tabs.getByRole('button', { name: '機械の収集（30 件）' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(listPaths()[0]).toBe('/documents?offset=0&limit=50&origin=curated');
+
+    await user.click(tabs.getByRole('button', { name: '機械の収集（30 件）' }));
+    await waitFor(() =>
+      expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=collected'),
+    );
+    await user.click(tabs.getByRole('button', { name: 'すべて（38 件）' }));
+    await waitFor(() => expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50'));
+  });
+
+  // 帯の条件はそれぞれのクエリに写る。保存日は利用者の時刻帯の暦日で、「まで」はその日を含む（翌日 0 時を含まない終わりとして送る）。
+  // 「条件を解除」は帯の条件をすべて外し、タブは残す。
+  it('sends each facet, the inclusive date range and clears them but keeps the tab', async () => {
+    withTagDictionary(() => listPage([DRAFT_DOC], { total: 1, unfilteredTotal: 38, ...COUNTS }));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const filters = within(await screen.findByRole('search', { name: '文書の絞り込み' }));
+    const source = filters.getByLabelText('データソース');
+    await waitFor(() =>
+      expect(
+        within(source).getByRole('option', { name: '収集: kabutan（30 件）' }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(source).getByRole('option', { name: '共有フォルダ（2 件）' }),
+    ).toBeInTheDocument();
+    expect(within(source).getByRole('option', { name: '確定報告書（1 件）' })).toBeInTheDocument();
+    expect(within(source).getByRole('option', { name: '手入力（5 件）' })).toBeInTheDocument();
+    await user.selectOptions(source, 'ds:共有フォルダ');
+    await user.selectOptions(filters.getByLabelText('機密区分で絞り込み'), 'internal');
+    await waitFor(() =>
+      expect(
+        within(filters.getByLabelText('タグで絞り込み')).getByRole('option', { name: '規程' }),
+      ).toBeInTheDocument(),
+    );
+    await user.selectOptions(filters.getByLabelText('タグで絞り込み'), '規程');
+    const project = filters.getByLabelText('プロジェクト');
+    expect(
+      within(project).getByRole('option', { name: 'プロジェクトなし（7 件）' }),
+    ).toBeInTheDocument();
+    await user.selectOptions(project, '(none)');
+    await user.type(filters.getByLabelText('保存日（から）'), '2026-10-01');
+    await user.type(filters.getByLabelText('保存日（まで）'), '2026-10-03');
+
+    const from = new Date(2026, 9, 1).toISOString();
+    const before = new Date(2026, 9, 4).toISOString();
+    await waitFor(() => {
+      const url = new URL(`http://x${listPaths().at(-1)}`);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        offset: '0',
+        limit: '50',
+        origin: 'curated',
+        source: 'ds:共有フォルダ',
+        confidentiality: 'internal',
+        tag: '規程',
+        project: '(none)',
+        createdFrom: from,
+        createdBefore: before,
+      });
+    });
+
+    await user.click(filters.getByRole('button', { name: '条件を解除' }));
+    await waitFor(() =>
+      expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50&origin=curated'),
+    );
+  });
+
+  // 列: データソース（収集は出典名）・タグ（3 個まで＋残数）・出典のリンク（`http(s)` だけ）。
+  it('shows the data source and tags, and links only http(s) originals', async () => {
+    mocks.apiRequest.mockResolvedValue(
+      listPage([
+        NEWS_DOC,
+        { ...DRAFT_DOC, dataSourceName: '共有フォルダ', originalUri: 'storage://raw/a.pdf' },
+      ]),
+    );
+    await renderPage();
+
+    const table = within(await screen.findByRole('table'));
+    expect(table.getByRole('columnheader', { name: 'データソース' })).toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: 'タグ' })).toBeInTheDocument();
+    expect(table.getByText('収集: kabutan')).toBeInTheDocument();
+    expect(table.getByText('共有フォルダ')).toBeInTheDocument();
+    expect(table.getByText('他 1 件')).toBeInTheDocument();
+    const original = table.getByRole('link', { name: '「株探のニュース」の出典を開く' });
+    expect(original).toHaveAttribute('href', 'https://kabutan.example/news/1');
+    expect(original).toHaveAttribute('rel', 'noopener noreferrer');
+    // `storage://` はリンクにしない。
+    expect(
+      table.queryByRole('link', { name: '「経費精算規程」の出典を開く' }),
+    ).not.toBeInTheDocument();
+  });
+
+  // プレビュー: 本文の先頭（1,000 文字）を横のペインに素の文字で出す。運用者にも出す（閲覧である）。
+  it('previews the head of the body in the side pane, also for an operator', async () => {
+    const markdown = '# 見出し\n' + 'あ'.repeat(1200);
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.endsWith('/content')
+        ? jsonResponse({ id: NEWS_DOC.id, title: NEWS_DOC.title, markdown, sourceUri: null })
+        : listPage([NEWS_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage(['platform-operator']);
+
+    await user.click(await screen.findByRole('button', { name: '「株探のニュース」をプレビュー' }));
+
+    const pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(await pane.findByText(/^# 見出し/)).toHaveTextContent('# 見出し ' + 'あ'.repeat(994));
+    expect(pane.getByText('先頭 1000 文字を表示しています。')).toBeInTheDocument();
+    expect(pane.getByRole('link', { name: '文書詳細を開く' })).toHaveAttribute(
+      'href',
+      `/docs/${NEWS_DOC.id}`,
+    );
+    expect(pane.getByRole('link', { name: '出典を開く' })).toHaveAttribute(
+      'href',
+      'https://kabutan.example/news/1',
+    );
+    await user.click(pane.getByRole('button', { name: 'プレビューを閉じる' }));
+    expect(screen.queryByRole('region', { name: '本文のプレビュー' })).not.toBeInTheDocument();
+  });
+
+  // 🔴 ペインは最新の一覧に追随する: 状態遷移の後の再取得で表題・状態が変われば変わった値を出し、削除で一覧から消えればペインも消える
+  // （クリックした時点の写しを持ち続けない）。
+  it('keeps the preview pane in step with the latest list and drops it when the document is deleted', async () => {
+    let items: unknown[] = [NEWS_DOC, DRAFT_DOC];
+    mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path.endsWith('/content'))
+        return jsonResponse({
+          id: NEWS_DOC.id,
+          title: NEWS_DOC.title,
+          markdown: '本文',
+          sourceUri: null,
+        });
+      if (init?.method === 'POST' && path.endsWith('/archive')) {
+        items = [{ ...NEWS_DOC, title: '株探のニュース（改題）', status: 'archived' }, DRAFT_DOC];
+        return noContent();
+      }
+      if (init?.method === 'DELETE') {
+        items = [DRAFT_DOC];
+        return noContent();
+      }
+      return listPage(items);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '「株探のニュース」をプレビュー' }));
+    const pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(pane.getByText('株探のニュース')).toBeInTheDocument();
+
+    const row = screen.getByRole('link', { name: '株探のニュース' }).closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'アーカイブ' }));
+    expect(await pane.findByText('株探のニュース（改題）')).toBeInTheDocument();
+
+    const archivedRow = screen.getByRole('link', { name: '株探のニュース（改題）' }).closest('tr')!;
+    await user.click(within(archivedRow).getByRole('button', { name: '削除' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: '本文のプレビュー' })).not.toBeInTheDocument(),
+    );
+  });
+
+  // 台帳が本文なしと言う文書は本文を引かずに状態を出す。大きすぎる本文（413）は理由を出す。
+  it('does not fetch a body the ledger says is absent, and explains a too-large body', async () => {
+    const tooLarge = {
+      ...NEWS_DOC,
+      id: '12121212-1212-1212-1212-121212121212',
+      title: '大きい文書',
+    };
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.endsWith('/content')) throw new ApiError('server', '大きすぎます', 413);
+      return listPage([
+        { ...DRAFT_DOC, hasBody: false, markdownUri: 'storage://docs/x.md' },
+        tooLarge,
+      ]);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '「経費精算規程」をプレビュー' }));
+    let pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(pane.getByText('本文なし（原本を参照）')).toBeInTheDocument();
+    expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).endsWith('/content'))).toBe(
+      false,
+    );
+
+    await user.click(screen.getByRole('button', { name: '「大きい文書」をプレビュー' }));
+    pane = within(await screen.findByRole('region', { name: '本文のプレビュー' }));
+    expect(
+      await pane.findByText(
+        '本文が大きすぎるためプレビューできません。文書詳細で確かめてください。',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // タブだけで 0 件（台帳には文書がある）なら「文書はまだありません。」にせず、すべての文書へ戻す口を出す。
+  it('tells that the tab is empty and offers all documents', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) =>
+      path.includes('origin=curated')
+        ? listPage([], { total: 0, unfilteredTotal: 30, sourceCounts: { 'col:kabutan': 30 } })
+        : listPage([NEWS_DOC], {
+            total: 30,
+            unfilteredTotal: 30,
+            sourceCounts: { 'col:kabutan': 30 },
+          }),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    expect(await screen.findByText('このタブの文書はありません。')).toBeInTheDocument();
+    expect(screen.queryByText('文書はまだありません。')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'すべての文書を表示' }));
+    expect(await screen.findByRole('link', { name: '株探のニュース' })).toBeInTheDocument();
+    expect(listPaths().at(-1)).toBe('/documents?offset=0&limit=50');
   });
 });

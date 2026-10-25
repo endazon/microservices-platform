@@ -20,6 +20,11 @@ const GraphViewPage = lazyRouteComponent(
 export const HOPS_OPTIONS = [1, 2, 3] as const;
 type HopsOption = (typeof HOPS_OPTIONS)[number];
 
+/** 探索深さが選択肢（1 / 2 / 3）のどれかか。範囲外は**丸めずエラー**にする（05_screens §SC-18 入力表）。 */
+export function isHopsOption(hops: number): hops is HopsOption {
+  return (HOPS_OPTIONS as readonly number[]).includes(hops);
+}
+
 /** 間引きの基準（ADR-0049 決定 4 の 3 択）。 */
 export const THINNING_OPTIONS = ['distance', 'updated', 'degree'] as const;
 export type ThinningOption = (typeof THINNING_OPTIONS)[number];
@@ -27,7 +32,11 @@ export type ThinningOption = (typeof THINNING_OPTIONS)[number];
 export interface GraphSearch {
   /** 起点文書 ID。空文字は「未指定」（起点の指定を促す案内を出す）。 */
   root: string;
-  hops: HopsOption;
+  /**
+   * 探索深さ。URL の値を**そのまま**持つ（#2021）。選択肢の外（例 4）でも既定の 2 へ丸めない ——
+   * 画面がエラーを示し、近傍を引かない（`isHopsOption` で判定する）。指定が無いときだけ既定 2。
+   */
+  hops: number;
   by: ThinningOption;
   /** 辺の型フィルタ（型 ID の配列）。省略＝すべての型。 */
   types?: string[];
@@ -38,11 +47,12 @@ export const createSc18GraphRoute = (shell: ShellRoute) =>
     getParentRoute: () => shell,
     path: '/graph',
     // SC-18, IADR-0124: URL が起点・深さ・間引き・型フィルタの単一情報源である。
-    // URL は外部由来なので正規化する —— hops の不正値は**クライアントでは既定 2 へ**倒す
-    // （選択肢が 1/2/3 しか無い UI に「エラー状態」を持ち込まない。手打ちの hops=4 を
-    // そのまま送ってサーバの 400 を見せる形にはしない。丸めずエラーの防壁はサーバに在る）。
+    // URL は外部由来である。［2026-10-24 / #2021］hops は**丸めない**: 05_screens §SC-18 の入力表は
+    // 「1 / 2 / 3 のみ。上限超過は丸めずエラー」と定める。従前は不正値を既定 2 へ倒していたが、
+    // 利用者は 4 を求めて 2 の結果を見ることになり、計画に反していた。範囲外は値のまま持ち、
+    // 画面がエラーを示して近傍を引かない（サーバの 400 も引き続き防壁である）。
     validateSearch: (raw: Record<string, unknown>): GraphSearch => {
-      const hops = HOPS_OPTIONS.find((h) => h === Number(raw.hops)) ?? 2;
+      const hops = raw.hops === undefined || raw.hops === '' ? 2 : Number(raw.hops);
       const by = THINNING_OPTIONS.find((b) => b === raw.by) ?? 'distance';
       const types = Array.isArray(raw.types)
         ? raw.types.filter((t): t is string => typeof t === 'string')

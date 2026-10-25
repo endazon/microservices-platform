@@ -75,7 +75,7 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     {
         var id = await CreateValidAsync();
         var resp = await Client().PutAsJsonAsync($"/documents/{id}",
-            new { title = "updated", attributes = new Dictionary<string, string> { ["confidentiality"] = "confidential" } }, TestContext.Current.CancellationToken);
+            new { title = "updated", attributes = new Dictionary<string, string> { ["confidentiality"] = "confidential", ["doc_scope"] = "organization" } }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -94,10 +94,12 @@ public class DocumentConfidentialityValidationTests(TestWebApplicationFactory fa
     {
         var id = await CreateValidAsync();
         var resp = await Client().PatchAsJsonAsync($"/documents/{id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "restricted" }, tags = Array.Empty<string>() }, TestContext.Current.CancellationToken);
+            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "restricted", ["doc_scope"] = "organization" }, tags = Array.Empty<string>() }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // #2112 / [[IADR-0598]]: 作成口が `doc_scope=organization` を補うため、200 を期待する更新は同値を同送する
+    // （SC-05 の編集フォームと同じ形）。同送しないと `doc_scope` の不変性で 400 になる。
     private async Task<Guid> CreateValidAsync()
     {
         var resp = await Client().PostAsJsonAsync("/documents",

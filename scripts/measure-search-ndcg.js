@@ -12,6 +12,10 @@
  *   リポジトリに 1 つも無かった**（棚卸し 2026-08-16 / 09-03 / 09-05 が 3 度続けて指摘）。
  *   `perf/k6/` はレイテンシとスループットだけを測り、**返却結果の順位も ID も見ていない**。
  *
+ *   ［2026-10-17 / #1746］ADR-0127 が ADR-0017 を置き換え、高機密文書は埋め込まず語彙索引にだけ載せると決めた。
+ *   #336 は not planned で閉じ、Ruri の A/B は opt-in の配備物を試すときの参考に下がった。今の計測は ADR-0127 決定 6
+ *   （「全文のみ＋Claude の再順位付け」と「ハイブリッド（voyage）」の nDCG@10 の差。閾値なし）で、本スクリプトをそのまま使う。
+ *
  *   本スクリプトがその道具である。**測定そのものは稼働環境が要る**が、
  *   **集計は純関数なのでクラスタ無しで書き切れて CI で緑にできる**（`scripts.repo.test.js`）。
  *
@@ -30,6 +34,11 @@
  *        node scripts/measure-search-ndcg.js --input run-voyage.json
  *   3) A/B の比較（2 回の収集を並べる。qrels が同一であることは digest で検査する）:
  *        node scripts/measure-search-ndcg.js --input run-voyage.json --input run-ruri.json
+ *   4) ［2026-10-17 / #1746 段 S3］再順位付けの有効・無効の 2 構成の比較（構成を切り替えて 2 回収集し、並べる）:
+ *        NDCG_RERANK=off NDCG_LABEL=rerank-off … --live --dump run-off.json   # Rerank__Enabled=false の構成で
+ *        NDCG_RERANK=on  NDCG_LABEL=rerank-on  … --live --dump run-on.json    # Rerank__Enabled=true の構成で
+ *        node scripts/measure-search-ndcg.js --input run-off.json --input run-on.json
+ *      手順（前提・回数・費用・記録先）は docs/operations/search-rerank-s3-measurement-runbook.md。
  *
  * 主な環境変数:
  *   NDCG_BASE_URL   … 検索 API のベース URL（既定 http://localhost:5000）
@@ -42,8 +51,16 @@
  *   NDCG_MODES      … 測るモード（既定 keyword,semantic,hybrid）
  *   NDCG_LABEL      … この収集の名札（例 voyage-3.5 / ruri-v3）。A/B の識別に使う
  *   NDCG_K          … 打ち切り順位（既定 10）。qrels の `k` より優先する
+ *   NDCG_RERANK     … ［#1746 段 S3］この収集を採った構成の再順位付け（on / off。`--rerank` でも与えられる）。
+ *                   **検索サービスの `Rerank__Enabled` を名乗るだけ**で、要求ごとに切り替える口は無い（構成で決まる）。
+ *                   与えなければ run に記録しない（従来どおり）
+ *   NDCG_REPEAT     … ［#1746 段 S3］同じクエリを繰り返す回数（既定 1・1〜20。`--repeat` でも与えられる）。
+ *                   順位は 1 回目を採り、所要時間は全回を記録する。🔴 再順位付けが有効なら回数ぶん Claude を呼ぶ
  *
  * 出力: 既定は人が読める要約。--json で機械可読、--dump <path> で収集した生データを保存する。
+ *   ［#1746 段 S3］収集はクエリごとの所要時間（ミリ秒。`latencyMs`）と縮退の理由（`degraded`。応答の `degradedReasons`）も
+ *   dump に残す。集計は所要時間の統計と、再順位付けの有効・無効の組の差を足す。**それらを持たない既存の dump の
+ *   テキスト出力は変わらない**（JSON は項目が増えるだけ）。
  */
 
 const fs = require('fs');
@@ -59,6 +76,13 @@ const DEFAULT_K = 10;
 
 // 関連度の値域（graded relevance）。qrels の雛形と検証で使う。
 const MAX_RELEVANCE = 3;
+
+// FR-03, ADR-0129 決定 1, IADR-0498 決定 7 (#1746 段 S3): 再順位付けを掛けようとして元の順へ戻した縮退の理由
+// （`Knowledge.Contracts/Dtos/SearchDto.cs` の `SearchDegradedReasons.RerankFailed` と同じ値）。
+const RERANK_FAILED = 'rerank-failed';
+
+// 同じクエリを繰り返す回数の上限。再順位付けが有効なら 1 回ごとに Claude を呼ぶので、桁を誤った指定を止める。
+const MAX_REPEAT = 20;
 
 // ---------------------------------------------------------------------------
 // 集計（純関数。副作用・I/O を持たない）
@@ -170,6 +194,48 @@ function qrelsDigest(qrels) {
   return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 16);
 }
 
+// FR-03, NFR-01, NFR-02, NFR-29, ADR-0129 決定 1 (#1746 段 S3): 所要時間の統計（ミリ秒）。
+//
+// 百分位は**最近順位法**（昇順に並べて `ceil(p/100 × n)` 番目）。補間しない —— 少ない標本で補間すると、
+// 実際には観測していない値を p95 と呼ぶことになる。標本が 20 未満なら p95 は最大と同じである。
+// 🔴 **ここの p95 は少ない標本の参考値である。** NFR-01・NFR-02・NFR-29 の p95 の正は k6（`perf/k6/`）。
+function percentile(sortedAsc, p) {
+  if (sortedAsc.length === 0) return null;
+  const rank = Math.max(1, Math.ceil((p / 100) * sortedAsc.length));
+  return sortedAsc[Math.min(rank, sortedAsc.length) - 1];
+}
+
+function latencyStats(samples) {
+  const xs = (samples || []).map(Number).filter((v) => Number.isFinite(v) && v >= 0).sort((a, b) => a - b);
+  if (xs.length === 0) return null;
+  return {
+    count: xs.length,
+    meanMs: xs.reduce((sum, v) => sum + v, 0) / xs.length,
+    p50Ms: percentile(xs, 50),
+    p95Ms: percentile(xs, 95),
+    maxMs: xs[xs.length - 1],
+  };
+}
+
+// `NDCG_RERANK` / `--rerank` の値。未指定は null（run に記録しない＝従来どおり）。値域外は収集の前に落とす
+// （名乗りを誤ると 2 構成の組が取り違えられ、差の符号が反転する）。
+function parseRerank(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const v = String(value).trim().toLowerCase();
+  if (v === 'on' || v === 'true') return true;
+  if (v === 'off' || v === 'false') return false;
+  throw new Error(`NDCG_RERANK（--rerank）は on / off のどちらかです: ${value}`);
+}
+
+function parseRepeat(value) {
+  if (value === undefined || value === null || value === '') return 1;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_REPEAT) {
+    throw new Error(`NDCG_REPEAT（--repeat）は 1〜${MAX_REPEAT} の整数です: ${value}`);
+  }
+  return n;
+}
+
 // 1 run（＝ある名札・あるモードで採った順位の集合）の集計。
 function summarizeRun(qrels, run, k = DEFAULT_K) {
   const perQuery = [];
@@ -187,13 +253,33 @@ function summarizeRun(qrels, run, k = DEFAULT_K) {
       skipped.push(q.id);
       continue;
     }
-    perQuery.push({ id: q.id, text: q.text, ...r });
+    const entry = { id: q.id, text: q.text, ...r };
+    // ［#1746 段 S3］所要時間を持つ dump だけ、クエリの中央値を添える（持たない dump の出力は変えない）。
+    const qLatency = latencyStats(((run.latencyMs || {})[q.id]) || []);
+    if (qLatency) entry.latencyMs = qLatency.p50Ms;
+    perQuery.push(entry);
   }
   const mean =
     perQuery.length > 0 ? perQuery.reduce((s, e) => s + e.ndcg, 0) / perQuery.length : null;
+
+  // FR-03, NFR-29, ADR-0129 決定 1 (#1746 段 S3): 所要時間は**収集したすべてのクエリ**で数える
+  // （正解ラベルの無いクエリも検索の遅延としては測れている。nDCG の除外とは別である）。
+  const samples = [];
+  for (const q of qrels.queries) {
+    if (!Array.isArray((run.results || {})[q.id])) continue;
+    samples.push(...(((run.latencyMs || {})[q.id]) || []));
+  }
+  // IADR-0498 決定 7: 再順位付けを掛けようとして元の順へ戻ったクエリ。有効の構成でも、ここに出たクエリの順位は
+  // 再順位付けの順位ではない。平均からは外さない（利用者が実際に見る並びである）が、件数と ID を必ず出す。
+  const rerankFailed = qrels.queries
+    .filter((q) => (((run.degraded || {})[q.id]) || []).includes(RERANK_FAILED))
+    .map((q) => q.id);
+
   return {
     label: run.label || '(no label)',
     mode: run.mode,
+    // 収集のときに名乗った構成（未指定は null）。
+    rerank: typeof run.rerank === 'boolean' ? run.rerank : null,
     k,
     mean,
     evaluated: perQuery.length,
@@ -201,7 +287,47 @@ function summarizeRun(qrels, run, k = DEFAULT_K) {
     skippedNoRelevant: skipped,
     // 収集されていないクエリ。
     missingResults: missing,
+    // 所要時間の統計（所要時間を持たない dump は null）。
+    latency: latencyStats(samples),
+    rerankFailed,
     perQuery,
+  };
+}
+
+// FR-03, ADR-0127 決定 6, ADR-0129 決定 1 (#1746 段 S3): 再順位付けの有効・無効の組の差。
+//
+// 再順位付けは要求ごとに選べず（構成 `Rerank__Enabled`）、2 構成は別々の収集である。組は**名乗り（`rerank`）**で取る ——
+// 名札の文字列からは推さない。同じモードで有効と無効が両方あるとき、それぞれの**先頭**の run を組にする。
+// 差は「有効 − 無効」（nDCG は正なら有効が良い。所要時間は正なら有効が遅い）。
+function deltaOrNull(a, b) {
+  return a === null || a === undefined || b === null || b === undefined ? null : a - b;
+}
+
+function pairOf(off, on, extra = {}) {
+  const side = (r) => ({ label: r.label, mode: r.mode, mean: r.mean, p95Ms: r.latency ? r.latency.p95Ms : null });
+  return {
+    ...extra,
+    off: side(off),
+    on: side(on),
+    ndcgDelta: deltaOrNull(on.mean, off.mean),
+    p95DeltaMs: deltaOrNull(on.latency && on.latency.p95Ms, off.latency && off.latency.p95Ms),
+  };
+}
+
+function compareRerank(runs) {
+  const first = (mode, rerank) => runs.find((r) => r.mode === mode && r.rerank === rerank);
+  const byMode = [];
+  for (const mode of SEARCH_MODES) {
+    const off = first(mode, false);
+    const on = first(mode, true);
+    if (off && on) byMode.push(pairOf(off, on, { mode }));
+  }
+  // ADR-0127 決定 6: 「全文のみ＋Claude の再順位付け」（keyword・有効）と「ハイブリッド（voyage）」（hybrid・無効）。
+  const lexicalOn = first('keyword', true);
+  const hybridOff = first('hybrid', false);
+  return {
+    byMode,
+    lexicalRerankVsHybrid: lexicalOn && hybridOff ? pairOf(hybridOff, lexicalOn) : null,
   };
 }
 
@@ -260,6 +386,8 @@ function summarize(data, options = {}) {
     },
     runs,
     comparison,
+    // ［#1746 段 S3］名乗り（`rerank`）を持つ run が無ければ空（byMode が空・lexicalRerankVsHybrid が null）。
+    rerankComparison: compareRerank(runs),
   };
 }
 
@@ -268,6 +396,7 @@ function summarize(data, options = {}) {
 // ---------------------------------------------------------------------------
 
 const fmt = (v) => (v === null || v === undefined ? '—' : v.toFixed(4));
+const fmtMs = (v) => (v === null || v === undefined ? '—' : v.toFixed(1));
 
 function renderText(r) {
   const L = [];
@@ -280,8 +409,20 @@ function renderText(r) {
   }
   L.push('');
   for (const run of r.runs) {
-    L.push(`■ ${run.label} / mode=${run.mode}`);
+    // ［#1746 段 S3］名乗り・所要時間・縮退を持たない run の行は従来と 1 文字も変えない。
+    const rerankTag = run.rerank === null || run.rerank === undefined ? '' : ` / 再順位付け=${run.rerank ? '有効' : '無効'}`;
+    L.push(`■ ${run.label} / mode=${run.mode}${rerankTag}`);
     L.push(`  nDCG@${run.k} 平均      : ${fmt(run.mean)}（評価 ${run.evaluated} クエリ）`);
+    if (run.latency) {
+      const l = run.latency;
+      L.push(
+        `  所要時間（ミリ秒）    : 平均 ${fmtMs(l.meanMs)} / p50 ${fmtMs(l.p50Ms)} / p95 ${fmtMs(l.p95Ms)} / 最大 ${fmtMs(l.maxMs)}` +
+          `（${l.count} 回。参考値。p95 の正は k6）`
+      );
+    }
+    if (run.rerankFailed && run.rerankFailed.length) {
+      L.push(`  ⚠ 再順位付けが元の順へ戻ったクエリ（rerank-failed）: ${run.rerankFailed.length} 件（${run.rerankFailed.join(', ')}）`);
+    }
     if (run.skippedNoRelevant.length) {
       L.push(`  除外（正解ラベル無し）: ${run.skippedNoRelevant.join(', ')}`);
     }
@@ -289,9 +430,10 @@ function renderText(r) {
       L.push(`  ⚠ 収集されていないクエリ: ${run.missingResults.join(', ')}`);
     }
     for (const q of run.perQuery) {
+      const took = q.latencyMs === undefined ? '' : `  所要 ${fmtMs(q.latencyMs)} ms`;
       L.push(
         `    ${fmt(q.ndcg)}  ${q.text}` +
-          `（上位 ${q.returned} 件中 当たり ${q.hits} / 正解 ${q.judged}）`
+          `（上位 ${q.returned} 件中 当たり ${q.hits} / 正解 ${q.judged}）${took}`
       );
     }
     L.push('');
@@ -303,6 +445,19 @@ function renderText(r) {
     L.push(`  ${fmt(c.mean)}  ${c.label} / ${c.mode}${delta}`);
   }
   L.push(hr);
+  const rc = r.rerankComparison;
+  if (rc && (rc.byMode.length > 0 || rc.lexicalRerankVsHybrid)) {
+    const signed = (v, f) => (v === null ? '—' : `${v >= 0 ? '+' : ''}${f(v)}`);
+    const line = (p, name) =>
+      `  ${name}: nDCG ${fmt(p.off.mean)} → ${fmt(p.on.mean)}（差 ${signed(p.ndcgDelta, (v) => v.toFixed(4))}）` +
+      ` / p95 ${fmtMs(p.off.p95Ms)} → ${fmtMs(p.on.p95Ms)} ms（差 ${signed(p.p95DeltaMs, fmtMs)}）`;
+    L.push('再順位付けの比較（無効 → 有効。差は 有効 − 無効）');
+    for (const p of rc.byMode) L.push(line(p, `mode=${p.mode}`));
+    if (rc.lexicalRerankVsHybrid) {
+      L.push(line(rc.lexicalRerankVsHybrid, 'hybrid・無効 → keyword・有効（全文のみ＋再順位付け 対 ハイブリッド）'));
+    }
+    L.push(hr);
+  }
   return L.join('\n');
 }
 
@@ -367,7 +522,9 @@ async function obtainToken() {
 }
 
 // 1 クエリ × 1 モードの上位 k 件（文書 ID の列）を取る。
+// ［#1746 段 S3］所要時間（要求の送出から本文の読み終わりまで。ミリ秒）と縮退の理由（`degradedReasons`）も返す。
 async function search(baseUrl, path, auth, query, mode, k) {
+  const started = performance.now();
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}${path}`, {
     method: 'POST',
     headers: { ...auth, 'Content-Type': 'application/json' },
@@ -382,7 +539,12 @@ async function search(baseUrl, path, auth, query, mode, k) {
     throw new Error(`検索に失敗しました（${mode} / ${res.status}）: ${query}${hint}`);
   }
   const body = await res.json();
-  return (body.results || []).map((x) => x.documentId ?? x.DocumentId).filter(Boolean);
+  const latencyMs = performance.now() - started;
+  return {
+    ids: (body.results || []).map((x) => x.documentId ?? x.DocumentId).filter(Boolean),
+    latencyMs,
+    degradedReasons: body.degradedReasons ?? body.DegradedReasons ?? [],
+  };
 }
 
 async function collect(qrels, options) {
@@ -398,14 +560,29 @@ async function collect(qrels, options) {
     throw new Error(`未知の検索モードです: ${unknown.join(', ')}（有効: ${SEARCH_MODES.join(', ')}）`);
   }
 
+  const rerank = options.rerank === undefined ? null : options.rerank;
+  const repeat = options.repeat || 1;
+
   const auth = await obtainAuthHeaders();
   const runs = [];
   for (const mode of modes) {
     const results = {};
+    const latencyMs = {};
+    const degraded = {};
     for (const q of qrels.queries) {
-      results[q.id] = await search(baseUrl, path, auth, q.text, mode, options.k);
+      latencyMs[q.id] = [];
+      for (let i = 0; i < repeat; i += 1) {
+        const r = await search(baseUrl, path, auth, q.text, mode, options.k);
+        // 順位は 1 回目を採る（繰り返しは所要時間の標本を増やすためである）。
+        if (i === 0) results[q.id] = r.ids;
+        latencyMs[q.id].push(Math.round(r.latencyMs * 10) / 10);
+        for (const reason of r.degradedReasons) {
+          degraded[q.id] = [...new Set([...(degraded[q.id] || []), reason])];
+        }
+      }
     }
-    runs.push({ label, mode, results });
+    // 名乗りが無ければ従来の形（rerank を書かない）。
+    runs.push({ label, mode, ...(rerank === null ? {} : { rerank }), results, latencyMs, degraded });
   }
   return { qrels, runs };
 }
@@ -429,6 +606,9 @@ async function main(argv) {
   const qrelsPaths = argValues(argv, '--qrels');
   const kFlag = argValues(argv, '--k')[0];
   const k = Number(kFlag || process.env.NDCG_K || 0) || null;
+  // ［#1746 段 S3］値域外は収集（稼働の検索 API）の前に落とす。
+  const rerank = parseRerank(argValues(argv, '--rerank')[0] ?? process.env.NDCG_RERANK);
+  const repeat = parseRepeat(argValues(argv, '--repeat')[0] ?? process.env.NDCG_REPEAT);
 
   let data;
   if (inputs.length > 0) {
@@ -440,7 +620,7 @@ async function main(argv) {
     const qrels = readJson(qrelsPath);
     const errors = validateQrels(qrels);
     if (errors.length > 0) throw new Error(`qrels が不正です:\n  - ${errors.join('\n  - ')}`);
-    data = await collect(qrels, { k: k || qrels.k || DEFAULT_K });
+    data = await collect(qrels, { k: k || qrels.k || DEFAULT_K, rerank, repeat });
   }
 
   if (dumps.length > 0) fs.writeFileSync(dumps[0], `${JSON.stringify(data, null, 2)}\n`);
@@ -453,6 +633,8 @@ module.exports = {
   SEARCH_MODES,
   DEFAULT_K,
   MAX_RELEVANCE,
+  RERANK_FAILED,
+  MAX_REPEAT,
   dcgAtK,
   idcgAtK,
   dedupeDocuments,
@@ -463,6 +645,12 @@ module.exports = {
   mergeDatasets,
   summarize,
   renderText,
+  percentile,
+  latencyStats,
+  parseRerank,
+  parseRepeat,
+  compareRerank,
+  collect,
 };
 
 if (require.main === module) {

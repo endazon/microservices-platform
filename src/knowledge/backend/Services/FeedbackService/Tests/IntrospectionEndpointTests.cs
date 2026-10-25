@@ -24,12 +24,9 @@ public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactor
     [Fact]
     public async Task Reports_service_presence()
     {
-        var client = _factory.CreateClient();
-
-        var res = await client.GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(TestContext.Current.CancellationToken);
+        // ［2026-10-10 / #1517・[[IADR-0533]]］REST の自己申告の面（GET /internal/introspection）は撤去した。
+        // 申告の中身は gRPC 面が返すのと同じ DI の 1 つ（`ServiceIntrospectionDto`）から読む。
+        var report = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         report.Should().NotBeNull();
         report!.Service.Should().Be("feedback-service");
     }

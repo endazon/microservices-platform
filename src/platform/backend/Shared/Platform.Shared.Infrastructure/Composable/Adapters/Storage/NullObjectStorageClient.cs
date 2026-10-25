@@ -49,9 +49,20 @@ public sealed class NullObjectStorageClient(
         throw new NotSupportedException(
             "Object storage is not configured; cannot fetch " + uri);
 
+    // FR-06, [[IADR-0544]] 決定 4（2026-10-17 追記 / #1940）: `GetTextAsync` と同じく投げる（本文を持たない）。
+    public Task<BoundedTextRead> GetTextBoundedAsync(string uri, long maxBytes, CancellationToken ct = default) =>
+        throw new NotSupportedException(
+            "Object storage is not configured; cannot fetch " + uri);
+
     public Task<byte[]> GetBytesAsync(string uri, CancellationToken ct = default) =>
         throw new NotSupportedException(
             "Object storage is not configured; cannot fetch " + uri);
+
+    // FR-06, [[IADR-0549]] (#1931 項目 3): **未構成では在るとも無いとも言えない。** `Get*` と同じく投げる。
+    // 「無い」（false）を返すと、存在確認を根拠にアーカイブする呼び出し側が全件を動かしてしまう。
+    public Task<bool> ExistsAsync(string uri, CancellationToken ct = default) =>
+        throw new NotSupportedException(
+            "Object storage is not configured; cannot probe " + uri);
 
     // 未配備のため解決不可（読み取り側はプレースホルダーへ縮退する）。
     public bool CanResolve(string? uri) => false;

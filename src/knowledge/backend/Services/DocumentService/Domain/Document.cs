@@ -58,6 +58,23 @@ public class Document
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
+    // FR-02, FR-19, IADR-0637 (#2150 / #2251): **発行の連番。** `DocumentUpdated` を発行するたびに確定と同じトランザクションで 1 つ進め、
+    // イベントの `Sequence` に載せる（`DocumentDeleted` は最後の値 + 1 を運ぶ）。`UpdatedAt` を進めない変化（露出・共有・論理削除・復元・
+    // タグの改名・再発行）にも順序の鍵を与えるためで、版（`Version`）とは別に持つ（版は内容の編集の数であり、版履歴と同期の基準版に使う）。
+    // 🔴 **並行トークンである**（`DocumentDbContext`）。並行する 2 つの発行が同じ値を読んで同じ値を書くと、2 つの違う状態が同じ連番を運ぶ。
+    // 後から保存する側は `WHERE "EventSequence" = @読んだ値` が 0 行になって負ける（409 への写像は `DocumentVersionConflict`）。
+    public long EventSequence { get; private set; }
+
+    // 発行の直前に呼ぶ（`DocumentEndpoints.PublishUpdatedAsync` の 1 か所）。進めた後の値を返す。
+    internal long AdvanceEventSequence() => ++EventSequence;
+    // FR-01, FR-06, ADR-0027, [[IADR-0596]] 決定 5 (#2102): **台帳へ最後に反映した再正規化の版**（`DocumentNormalized.NormalizedAt`）。
+    // これより厳密に古い再正規化は反映しない（`IsNormalizationStale`）。取り込み経路を通っていない文書・本欄の追加以前の文書は null（判定しない）。
+    public DateTimeOffset? LastNormalizedAt { get; private set; }
+    // FR-06, ADR-0141 決定 1 (a), [[IADR-0596]] 決定 6 (#2102): **アーカイブした時刻。** 再正規化はアーカイブを戻すが（ADR-0141 決定 1 (a)）、
+    // アーカイブより前に作られた再正規化（遅れて届いた・再配送）では戻さない。戻したら消す。本欄の追加以前のアーカイブは null で、
+    // そのときは `UpdatedAt`（アーカイブ以後に動いた時刻であり、アーカイブの時刻以上）で読む —— 戻しにくい側に倒れる。
+    public DateTimeOffset? ArchivedAt { get; private set; }
+
     // FR-06, UC-03: 版履歴（append-only）。作成・各更新で確定版のスナップショットを追記する。
     public IReadOnlyList<DocumentVersion> Versions => _versions;
 
@@ -84,7 +101,8 @@ public class Document
     public static Document CreateNormalized(Guid id, string title, string markdownUri,
         Dictionary<string, string>? attributes = null, List<Guid>? tags = null,
         string? contentFingerprint = null, List<string>? assetUris = null,
-        bool hasBody = true, string? originalPath = null, string? dataSourceName = null)
+        bool hasBody = true, string? originalPath = null, string? dataSourceName = null,
+        DateTimeOffset? normalizedAt = null)
     {
         var doc = new Document
         {
@@ -92,6 +110,7 @@ public class Document
             Title = title,
             MarkdownUri = markdownUri,
             Status = DocumentStatus.Normalized,
+            LastNormalizedAt = normalizedAt is { } at ? ToStoredPrecision(at) : null,
             Attributes = attributes ?? [],
             Tags = tags ?? [],
             ContentFingerprint = contentFingerprint,
@@ -194,11 +213,21 @@ public class Document
     public void ApplyNormalized(string title, string markdownUri,
         Dictionary<string, string> attributes, string? contentFingerprint = null,
         List<string>? assetUris = null,
-        bool hasBody = true, string? originalPath = null, string? dataSourceName = null)
+        bool hasBody = true, string? originalPath = null, string? dataSourceName = null,
+        DateTimeOffset? normalizedAt = null)
     {
         Title = title;
         MarkdownUri = markdownUri;
-        Status = DocumentStatus.Normalized;
+        // 🔴 FR-06, ADR-0141 決定 1 (a), [[IADR-0596]] 決定 6 (#2102): アーカイブより前に作られた再正規化は状態を戻さない（内容は反映する ——
+        // 正しい順に届いていれば「再正規化 → アーカイブ」で、内容は再正規化の値・状態はアーカイブになる）。アーカイブより後なら従来どおり戻す。
+        if (normalizedAt is not { } version || !KeepsArchiveAgainst(version))
+        {
+            Status = DocumentStatus.Normalized;
+            ArchivedAt = null;
+        }
+        if (normalizedAt is { } applied
+            && (LastNormalizedAt is null || ToStoredPrecision(applied) > LastNormalizedAt))
+            LastNormalizedAt = ToStoredPrecision(applied);
         Attributes = attributes;
         if (assetUris is not null) AssetUris = assetUris;
         // [[IADR-0388]] 決定 2・4 (#1254 / #1253): 本文の有無と所在は**再正規化の結果が正本**である
@@ -274,12 +303,47 @@ public class Document
 
     // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流（Wiki.js 同期）は
     // status=archived の DocumentUpdated を受けてページを非公開化する。
-    public void Archive()
+    // FR-06, [[IADR-0549]] 決定 5 (#1931 項目 3): 版の注記（`changeNote`）を呼び出し側が与えられる。
+    // 本文の無い文書の一括アーカイブは固有の注記を残し、どの版がその操作で作られたかを台帳から引けるようにする。
+    public void Archive(string? changeNote = null)
     {
         Status = DocumentStatus.Archived;
         Touch();
-        Snapshot("archived");
+        // [[IADR-0596]] 決定 6 (#2102): アーカイブした時刻（これより前に作られた再正規化では戻さない）。
+        ArchivedAt = ToStoredPrecision(UpdatedAt);
+        Snapshot(changeNote ?? "archived");
     }
+
+    // FR-06, UC-03, [[IADR-0556]] (#1973): AST が境界語つきで保存した表題・本文を、境界語を剥がした値へ置き換える（一回限りの移行）。
+    //
+    // 🔴 **状態・属性・タグを変えない。** `Update` は属性とタグを全置換し、`SetMarkdownUri` は状態を `normalized` へ戻す
+    //   （公開済みの文書が下書き相当へ落ちる）。どちらも移行には使えないので、表題と本文の参照だけを動かす点をここに置く。
+    // 本文を置き換えないとき（本文は境界語つきでなかった・本文が無い）は `markdownUri` に null を渡す（参照と指紋はそのまま）。
+    // 版は 1 つだけ進める（表題と本文を同じ版で変える）。
+    public void ReplaceUntrustedBoundaryWrapped(string title, string? markdownUri, string? contentFingerprint, string changeNote)
+    {
+        Title = title;
+        if (markdownUri is not null)
+        {
+            MarkdownUri = markdownUri;
+            ContentFingerprint = contentFingerprint;
+        }
+        Touch();
+        Snapshot(changeNote);
+    }
+
+    // 🔴 FR-01, FR-06, [[IADR-0596]] 決定 5 (#2102): **反映済みの再正規化より厳密に古い再正規化は反映しない**（本文を読まず、台帳を書かず、
+    // `DocumentUpdated` も出さずに ack する）。等しい版（再配送）は反映する。版を持たない文書は判定しない（従前どおり反映する）。
+    public bool IsNormalizationStale(DateTimeOffset normalizedAt)
+        => LastNormalizedAt is { } last && ToStoredPrecision(normalizedAt) < last;
+
+    // [[IADR-0596]] 決定 6 (#2102): この再正規化でアーカイブを戻さないか（アーカイブ以前に作られた再正規化）。
+    public bool KeepsArchiveAgainst(DateTimeOffset normalizedAt)
+        => Status == DocumentStatus.Archived && ToStoredPrecision(normalizedAt) <= ToStoredPrecision(ArchivedAt ?? UpdatedAt);
+
+    // Postgres の timestamptz はマイクロ秒で保存する。ティックのまま比べると、同じ版の再配送が保存値より「新しい」と読める。
+    internal static DateTimeOffset ToStoredPrecision(DateTimeOffset at)
+        => new(at.UtcTicks - at.UtcTicks % 10, TimeSpan.Zero);
 
     private void Touch()
     {
@@ -297,8 +361,10 @@ public static class DocumentStatus
     public const string Draft = "draft";
     public const string Normalized = "normalized";
     public const string Published = "published";
-    // Issue #88: アーカイブ（非公開化）。削除と異なり実体は保持し、閲覧経路から不可視にする。
-    public const string Archived = "archived";
+    // Issue #88: アーカイブ（非公開化）。削除と異なり実体は保持する。
+    // ［2026-10-16 / #1961・計画 ADR-0141 決定 2・[[IADR-0551]]］見つかる面（検索・RAG・グラフ・Wiki・MCP の一覧）から外す。
+    // 閲覧（SC-03）と SC-05 の一覧には残る。値は下流が判定に使う契約の定数（`DocumentArchival`）と同じものを指す。
+    public const string Archived = DocumentArchival.ArchivedStatus;
 }
 
 // FR-06, UC-03, SC-05: 不正な状態遷移（例: archived → published）を表すドメイン例外。

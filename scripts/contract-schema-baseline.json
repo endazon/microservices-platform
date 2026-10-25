@@ -90,10 +90,34 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1771",
       "date": "2026-10-07"
+    },
+    {
+      "key": "typeRemoved:Knowledge.Contracts.Dtos.TagNamesResponse",
+      "reason": "#1902（#1901 / IADR-0533 の残余）: 無認証の REST の受け口 `GET /internal/tags/names` の応答型。受け口を撤去したので生産者 0・消費者 0 になった（読み手の GraphService は #1901 で gRPC `TagDictionary/ListNames` だけになっている）。TagNamesResponse でリポジトリ全体を走査し、契約ファイルの外の参照は撤去した受け口・その試験・本 baseline だけで、いずれも同 PR で外した。名前だけの応答は gRPC の ListNamesResponse が運ぶ。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#1902",
+      "date": "2026-10-15"
     }
   ],
   "projects": {
     "src/knowledge/backend/Shared/Knowledge.Contracts": {
+      "Knowledge.Contracts.Dtos.ActivateBreakGlassRequest": {
+        "kind": "record",
+        "members": {
+          "NomineeUserId": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 1
+          },
+          "Reason": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.AddDocumentTagRequest": {
         "kind": "record",
         "members": {
@@ -365,6 +389,208 @@
             "type": "List<string>",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.BreakGlassAuditEntryDto": {
+        "kind": "record",
+        "members": {
+          "ActivatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 9
+          },
+          "ActorUserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 4
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 5
+          },
+          "EndsAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 10
+          },
+          "GrantId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "NomineeUserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 7
+          },
+          "OccurredAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 2
+          },
+          "Operation": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "OwnerUserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 6
+          },
+          "Reason": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 8
+          },
+          "ViewTarget": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 11
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.BreakGlassGrantDto": {
+        "kind": "record",
+        "members": {
+          "ActivatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 4
+          },
+          "Active": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 8
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "EndedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 6
+          },
+          "EndsAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 7
+          },
+          "ExpiresAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 5
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "NomineeUserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Reason": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.BreakGlassOperations": {
+        "kind": "class",
+        "members": {
+          "Activate": {
+            "source": "const",
+            "type": "string",
+            "value": "\"activate\""
+          },
+          "End": {
+            "source": "const",
+            "type": "string",
+            "value": "\"end\""
+          },
+          "View": {
+            "source": "const",
+            "type": "string",
+            "value": "\"view\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.BreakGlassPolicy": {
+        "kind": "class",
+        "members": {
+          "ReasonMaxLength": {
+            "source": "const",
+            "type": "int",
+            "value": "500"
+          },
+          "RetentionYears": {
+            "source": "const",
+            "type": "int",
+            "value": "3"
+          },
+          "ValidityMinutes": {
+            "source": "const",
+            "type": "int",
+            "value": "15"
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.BreakGlassStatusResponse": {
+        "kind": "record",
+        "members": {
+          "Active": {
+            "source": "positional",
+            "type": "BreakGlassGrantDto?",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.BreakGlassViewTargets": {
+        "kind": "class",
+        "members": {
+          "Content": {
+            "source": "const",
+            "type": "string",
+            "value": "\"content\""
+          },
+          "Document": {
+            "source": "const",
+            "type": "string",
+            "value": "\"document\""
           }
         }
       },
@@ -1099,6 +1325,16 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.DocumentArchival": {
+        "kind": "class",
+        "members": {
+          "ArchivedStatus": {
+            "source": "const",
+            "type": "string",
+            "value": "\"archived\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.DocumentContentDto": {
         "kind": "record",
         "members": {
@@ -1146,6 +1382,11 @@
             "type": "DateTimeOffset",
             "required": false
           },
+          "DataSourceName": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
           "HasBody": {
             "source": "property",
             "type": "bool",
@@ -1157,6 +1398,11 @@
             "required": false
           },
           "MarkdownUri": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
+          "OriginalUri": {
             "source": "property",
             "type": "string?",
             "required": false
@@ -1220,6 +1466,81 @@
             "source": "const",
             "type": "string",
             "value": "\"search_exposure\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentIndexStatuses": {
+        "kind": "class",
+        "members": {
+          "EmbeddingPending": {
+            "source": "const",
+            "type": "string",
+            "value": "\"embedding_pending\""
+          },
+          "Indexed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"indexed\""
+          },
+          "NotIndexed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"not_indexed\""
+          },
+          "Unknown": {
+            "source": "const",
+            "type": "string",
+            "value": "\"unknown\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentListPageDto": {
+        "kind": "record",
+        "members": {
+          "IndexStatuses": {
+            "source": "property",
+            "type": "Dictionary<string,string>",
+            "required": false
+          },
+          "Items": {
+            "source": "property",
+            "type": "List<DocumentDto>",
+            "required": false
+          },
+          "Limit": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "Offset": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "ProjectCounts": {
+            "source": "property",
+            "type": "Dictionary<string,int>",
+            "required": false
+          },
+          "SourceCounts": {
+            "source": "property",
+            "type": "Dictionary<string,int>",
+            "required": false
+          },
+          "StatusCounts": {
+            "source": "property",
+            "type": "Dictionary<string,int>",
+            "required": false
+          },
+          "Total": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "UnfilteredTotal": {
+            "source": "property",
+            "type": "int",
+            "required": false
           }
         }
       },
@@ -2181,6 +2502,31 @@
         "kind": "class",
         "members": {}
       },
+      "Knowledge.Contracts.Dtos.SearchDegradedReasons": {
+        "kind": "class",
+        "members": {
+          "EmbedFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"embed-failed\""
+          },
+          "FusedEmbedFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"fused-embed-failed\""
+          },
+          "GraphExpandFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"graph-expand-failed\""
+          },
+          "RerankFailed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"rerank-failed\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SearchModes": {
         "kind": "class",
         "members": {
@@ -2245,6 +2591,16 @@
       "Knowledge.Contracts.Dtos.SearchResponse": {
         "kind": "record",
         "members": {
+          "Degraded": {
+            "source": "property",
+            "type": "bool",
+            "required": false
+          },
+          "DegradedReasons": {
+            "source": "property",
+            "type": "List<string>",
+            "required": false
+          },
           "ElapsedMs": {
             "source": "positional",
             "type": "long",
@@ -2817,17 +3173,6 @@
           }
         }
       },
-      "Knowledge.Contracts.Dtos.TagNamesResponse": {
-        "kind": "record",
-        "members": {
-          "Names": {
-            "source": "positional",
-            "type": "List<string>",
-            "required": true,
-            "position": 0
-          }
-        }
-      },
       "Knowledge.Contracts.Dtos.UpdateDataSourceRequest": {
         "kind": "record",
         "members": {
@@ -2972,6 +3317,12 @@
             "type": "Guid",
             "required": true,
             "position": 0
+          },
+          "Sequence": {
+            "source": "positional",
+            "type": "long?",
+            "required": false,
+            "position": 2
           }
         }
       },
@@ -3090,6 +3441,12 @@
             "type": "string?",
             "required": false,
             "position": 9
+          },
+          "Sequence": {
+            "source": "positional",
+            "type": "long?",
+            "required": false,
+            "position": 12
           },
           "SharedWith": {
             "source": "positional",
@@ -3239,6 +3596,25 @@
             "value": "\"has_body\""
           }
         }
+      },
+      "Knowledge.Contracts.Llm.PromptTrustBoundary": {
+        "kind": "class",
+        "members": {
+          "DocumentsTag": {
+            "source": "const",
+            "type": "string",
+            "value": "\"documents\""
+          },
+          "UserInputTag": {
+            "source": "const",
+            "type": "string",
+            "value": "\"user-input\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Ordering.DocumentEventOrder": {
+        "kind": "class",
+        "members": {}
       }
     },
     "src/platform/backend/Shared/Platform.Shared.Contracts": {

@@ -2,6 +2,7 @@ using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.PrivateNotes.SetExposure;
 
@@ -32,6 +33,10 @@ internal static class SetPrivateNoteExposureEndpoint
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner) return Results.Unauthorized();
             var note = await PrivateNoteEndpoints.FindOwnedAsync(db, owner, id, ct);
             if (note is null) return Results.NotFound();
+            // 🔴 FR-19, ADR-0142 決定 3, IADR-0636 決定 3 (#2138): **削除中の露出の変更は拒む**（台帳を変えない）。ON にすると削除中の資料が
+            // 載る経路になる。形は同期の push が削除済みへの更新を拒むのと同じ 409（`deleted`・`purgeAt`）。
+            if (note.IsDeleted)
+                return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
 
             note.SetExposure(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi,
                 DateTimeOffset.UtcNow);
@@ -45,15 +50,23 @@ internal static class SetPrivateNoteExposureEndpoint
 
             // **版は進めない**（[[IADR-0283]] 決定 4）——露出トグルは本文の編集ではない。
             doc?.SetExposureAttributes(req.IncludeInSearch, req.IncludeInGraph, req.IncludeInAi);
-            await db.SaveChangesAsync(ct);
-
+            // FR-19, [[IADR-0597]] 決定 4 (#2103): 版は進めないが、版は並行トークンである。読んだ後に別の保存（同期の push 等）が
+            // 版を進めていれば負け、古い属性で黙って上書きせずに `Update` と同じ 409 `version_conflict` を返す（台帳の露出も巻き戻る）。
             // ［#1471］上の条件 1・2 は撤収の形の門がそのまま持つ（[[IADR-0455]] 決定 1）。
             // 条件をここへ書き下さない —— 門と経路で 2 か所になると、片方だけが直る。
-            if (doc is not null)
+            // FR-19, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
+            // 版の競合で保存が負ければ、発行も巻き戻って 1 通も出ない。
+            try
             {
-                var names = await TagResolver.NamesAsync(db, ct);
-                await DocumentEndpoints.PublishUpdatedIfIndexableOrWithdrawingAsync(
-                    bus, db, doc, wasPublishable, names, ct);
+                if (doc is not null)
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableOrWithdrawingAsync(
+                        bus, db, doc, wasPublishable, ct);
+                else
+                    await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
             }
 
             // #1441: 露出更新の応答も一覧と同じ導出で埋める（露出 3 トグルと公開範囲は別物である）。

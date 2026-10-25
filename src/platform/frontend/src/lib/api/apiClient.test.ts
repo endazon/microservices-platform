@@ -151,6 +151,30 @@ describe('apiFetch', () => {
     );
   });
 
+  // FR-02, FR-09, SC-09, IADR-0637 決定 6 (#2150 段 1b): タグの改名が並行する確定に上限まで負けたときの 409 は
+  // `{ error: 'version_conflict', message }` である。`message` が `details` に入り、SC-09 は既存の経路（`toMessages`）で出す。
+  it('extracts the message of a version_conflict 409 (SC-09 tag rename)', async () => {
+    const message = '他の変更と重なったため、改名しませんでした。もう一度改名してください。';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'version_conflict', message }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
+    );
+
+    await expect(
+      apiFetch('/bff/tags/x', { method: 'PUT', json: { name: 'y' } }),
+    ).rejects.toMatchObject({
+      kind: 'conflict',
+      details: [message],
+      body: { error: 'version_conflict', message },
+    });
+  });
+
   it('maps fetch rejection to a network error', async () => {
     vi.stubGlobal(
       'fetch',
