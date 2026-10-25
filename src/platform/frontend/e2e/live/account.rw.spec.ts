@@ -184,17 +184,18 @@ function watchKeycloakFailures(
     // （method・origin＋path・status だけ。query と本文は読まない）。
     if (['fetch', 'xhr'].includes(r.request().resourceType())) seen.push(line);
     if (r.status() < 400) return;
+    // 🔴 失敗は見えた時点で同期に積む（#2034 の調べ: 本文の読み取りを待ってから積むと、403 の本文が決着する前に
+    // 例外を投げ、失敗の一覧から抜けた）。OAuth の誤りの種類は、読めたら別の項目として足す。
+    failures.push(line);
+    notes.push(line);
     void r
       .json()
-      .then(
-        (body: { error?: unknown; error_description?: unknown }) =>
-          `${line} (error=${String(body.error ?? '')} / ${String(body.error_description ?? '')})`,
-      )
-      .catch(() => line)
-      .then((entry) => {
+      .then((body: { error?: unknown; error_description?: unknown }) => {
+        const entry = `${line} の error=${String(body.error ?? '')} / ${String(body.error_description ?? '')}`;
         failures.push(entry);
         notes.push(entry);
-      });
+      })
+      .catch(() => undefined);
   });
   page.on('requestfailed', (r) => {
     const url = new URL(r.url());
