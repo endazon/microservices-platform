@@ -2,13 +2,14 @@
 title: IADR-0637 文書ごとの単調な発行の連番（Document.EventSequence）を唯一の発行点で進めて DocumentUpdated / DocumentDeleted の末尾に運び、連番そのものを並行トークンにする。新たに負け得る単一文書の経路と完全削除は 409 version_conflict へ写し、多数文書の 2 経路と既存の 8 経路は段 1b・1c、受け手の比較は段 2 に分ける
 type: impl-adr
 status: Accepted
-related_ids: [FR-02, FR-06, FR-09, FR-19, FR-20, SC-09, ADR-0027, ADR-0057, ADR-0061, ADR-0142, IADR-0122, IADR-0283, IADR-0296, IADR-0455, IADR-0595, IADR-0596, IADR-0597, IADR-0604, IADR-0608, IADR-0636]
+related_ids: [FR-02, FR-06, FR-09, FR-18, FR-19, FR-20, SC-09, SC-19, SC-20, ADR-0027, ADR-0057, ADR-0061, ADR-0142, IADR-0122, IADR-0283, IADR-0296, IADR-0455, IADR-0595, IADR-0596, IADR-0597, IADR-0604, IADR-0608, IADR-0636]
 author: claude
 created: 2026-10-26
 updated: 2026-10-26
 related_specs:
   - ../specs/20261026_2150_document-event-sequence-stage1a.md
   - ../specs/20261026_2150_document-event-sequence-stage1b.md
+  - ../specs/20261026_2150_document-event-sequence-stage1c.md
 ---
 
 # IADR-0637: 文書ごとの単調な発行の連番を契約に足し、並行トークンにする（#2150 / #2251）
@@ -143,6 +144,23 @@ related_specs:
   - 使用件数が大きいと分かれば、どちらかへ移す（#2260）。
 - 前提の変化: 再発行は「台帳を書き換えない」口だった（[IADR-0503](./IADR-0503_republish-document-updated-admin-endpoint-and-driver.md)）。1a の後は、発行の連番だけを書き換える。版と更新時刻は従前どおり動かない。
   - IADR-0503 は凍結の記録なので書き換えない。運用仕様書と OpenAPI の記述は直した。
+
+### 決定 7（［2026-10-26 追記 / #2150 段 1c / #2258］）: もとから 409 へ写していなかった 8 経路を写す
+
+- 単一文書の 5 経路は、`DocumentVersionConflict.AfterLostSaveAsync`（#2103 と同じ形）へ写す。
+  - Archive・Publish・PutBody・SyncConflicts/Resolve（負け得るのは元の資料を書く `local` だけ）・AddTag。
+  - AddTag は gRPC だけの口である。利用の場が `AddDocumentTagStatus.VersionConflict` を返し、応答を作る唯一の点 `Respond` が写像の前で `ABORTED` を投げる（`ToProto` は投げない）。
+    - 既定の枝（`NOT_WRITABLE`）へ化けさせない。
+    - proto の結果の値は足さない。
+    - 呼び出し元（graph）はどの `RpcException` も 502 として承認を確定しないので、挙動は従前と同じである。
+- 複数文書の 3 経路は、id なしの 409 `{ error: "version_conflict", message }`（`ProblemForBatch(BatchPageConflictMessage)`）へ写す。
+  - StripUntrustedBoundary・ArchiveAstQuotes・ArchiveBodyless。
+  - 読み直してやり直す処理は入れない（決定 6 と違う）。一回限りの管理操作で、同じ要求（同じカーソル）の再送で再開できるからである。
+- 個人資料の完全削除（決定 4）の 409 にも `message` を載せる。本文の実体は消えている場合があるが、資料は削除済みのまま残り、再送で片付くことを伝える（#2259 のレビュー）。
+- 衝突の解決は、退避したローカル本文を**確定の後に**消す。従前は確定の前に消しており、負けると未解決の衝突から本文だけが消えた（選び直すと空の本文が書かれた）。
+- gRPC の `ABORTED` は、応答を作る唯一の点（`Respond`）が写像の前で投げる。写像（`ToProto`）は例外を投げない。
+- 既存の性質（変えない）: PutBody と Resolve の `local` は、本文のオブジェクトを確定の前に同じキーへ上書きする。負けると台帳の指紋と食い違い得るが、本文を書き直せば揃う。
+- これで、Touch しない状態の変化に新たに負ける経路は、すべて 409（または周期の次回）へ写った。**PoC への配備の条件（1a・1b・1c がそろう）を満たす。**
 
 ## 結果
 

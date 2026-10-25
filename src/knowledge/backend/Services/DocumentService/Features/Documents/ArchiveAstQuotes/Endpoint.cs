@@ -4,6 +4,7 @@ using DocumentService.Features.Documents.ArchiveBodyless;
 using DocumentService.Features.Documents.AstStaleCopies;
 using DocumentService.Features.Documents.ListPage;
 using DocumentService.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Logging;
@@ -69,7 +70,15 @@ internal static class ArchiveAstQuotesEndpoint
             {
                 foreach (var doc in page) doc.Archive(ChangeNote);
                 // FR-06, ADR-0027 §決定, IADR-0608 (#2168): ページ全件の保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
-                await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, page, ct);
+                try
+                {
+                    await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, page, ct);
+                }
+                catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+                {
+                    // FR-02, IADR-0637 決定 7 (#2150 段 1c): ページの確定が並行トークンに負けた。ページは 1 件も確定していない（発行も出ない）。
+                    return DocumentVersionConflict.ProblemForBatch(DocumentVersionConflict.BatchPageConflictMessage);
+                }
 
                 foreach (var doc in page)
                 {

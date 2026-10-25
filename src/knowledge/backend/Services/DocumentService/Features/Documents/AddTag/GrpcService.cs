@@ -85,7 +85,7 @@ public sealed class DocumentTagWriteGrpcService(
             innerCt => IsAdminAsync(request.UserId, innerCt),
             context.CancellationToken);
 
-        return new AddTagResponse { Result = ToProto(outcome.Status) };
+        return Respond(outcome.Status);
     }
 
     // FR-05, FR-18, NFR-09, SC-05, 計画 ADR-0088 決定 1, ADR-0063 決定 3, [[IADR-0410]] 追記 2 (#1636):
@@ -131,6 +131,16 @@ public sealed class DocumentTagWriteGrpcService(
     // REST の状態コードと 1:1（200 / 400 / 404）。
     // 🔴 **`UNSPECIFIED` を返す枝を作らない** —— 既定値が線上へ出ると、呼び出し元は
     // それを `Unavailable` として扱う（成功に化けさせないための既定である）。
+    // FR-02, IADR-0637 決定 7 (#2150 段 1c): 応答を作る唯一の点。並行する確定に負けたら、写像（`ToProto`）より前で `ABORTED`
+    // （やり直せる失敗）を投げる。`ToProto` の既定の枝（`NOT_WRITABLE`）へ落とさない —— 落とすと「その文書は書けない」に化ける。
+    // proto の結果の値は足さない（graph はどの RpcException も 502 として承認を確定しない）。
+    internal static AddTagResponse Respond(AddDocumentTagStatus status)
+    {
+        if (status == AddDocumentTagStatus.VersionConflict)
+            throw new RpcException(new Status(StatusCode.Aborted, "version_conflict: 並行する文書の確定に負けました。やり直してください。"));
+        return new AddTagResponse { Result = ToProto(status) };
+    }
+
     internal static TagWriteResult ToProto(AddDocumentTagStatus status) => status switch
     {
         AddDocumentTagStatus.Applied => TagWriteResult.Applied,
