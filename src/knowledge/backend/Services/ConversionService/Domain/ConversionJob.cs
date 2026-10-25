@@ -96,6 +96,11 @@ public class ConversionJob
         Figures.AddRange(figures);
     }
 
+    // UC-06, 05_screens:319, #2255: 変換中（queued / processing）の本文は動いている。人手補正はこの間、書かない。
+    // 補正の口の最初の確かめと、補正の記録の直前の確かめ直しが**同じ述語**を使う（片方だけ直る形を作らない）。
+    public static bool IsBusy(string status) =>
+        status == ConversionJobStatus.Queued || status == ConversionJobStatus.Processing;
+
     // UC-06: 人手補正で本文を差し替えたときに、参照先だけを更新する（状態は succeeded のまま）。
     // **再変換ではない**——原本からやり直すと LLM が再び縮退して補正が消えるためである
     // （IADR-0154 決定 3）。

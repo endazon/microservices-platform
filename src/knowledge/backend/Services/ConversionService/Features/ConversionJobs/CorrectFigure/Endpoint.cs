@@ -42,6 +42,9 @@ internal static class CorrectFigureEndpoint
                     => Results.Conflict(new { error = "figure_not_correctable" }),
                 FigureCorrectionStatus.JobBusy
                     => Results.Conflict(new { error = "job_busy" }),
+                // FR-12, UC-06, #2255: 確かめた後に状態が変わった。500 にせず、読み直した現在の状態を返す（再変換の not_retryable と同じ形）。
+                FigureCorrectionStatus.JobChanged
+                    => Results.Conflict(new { error = "job_changed", status = outcome.CurrentStatus }),
                 // 本文が読めない・埋め込みが見つからない。**補正は保存していない。**
                 _ => Results.Conflict(new { error = "body_unavailable" }),
             };
