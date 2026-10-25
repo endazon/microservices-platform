@@ -26,12 +26,17 @@ namespace RetrievalService.Features.Search.RemoveDeleted;
 // 追加コレクション（`Qdrant:FusedCollections`）**からも消す**。検索が読むコレクションに点が残れば、
 // 削除済みの文書が検索に出る。追加が空（既定）なら従来どおり主の 1 本だけである。
 //
+// ［2026-10-25 / #2137］FR-06, ADR-0057 決定 1: **取り込みが書くが検索が読まないコレクション（`WrittenCollections`）からも消す。**
+// 上の「既知の限界」（主を差し替えた決定的ローカル埋め込みの検証スタックで、voyage のコレクションが削除の対象から漏れる）を閉じる。
+// 対象は取り込みと同じ構成（`Embedding:Collections`）から導く。既定の配備では差は空である。
+//
 // 🔴 #1640: Qdrant への削除は 1 回ごとに期限（`DocumentDeletedTimeouts`・既定 10 秒）の下で行う。止まった Qdrant は
 // 受け口の ct（Wolverine の実行期限）で「取り消し」として切られる前に、時間切れ（`ConsumerTimeoutException`・
 // 計器 `messaging.consumer.timeout`）として投げ、再試行・デッドレターへ委ねる。呼び出し元の取り消しはそのまま外へ出す。
 public class DocumentDeletedConsumer(
     IVectorStore store,
     FusedCollections fused,
+    WrittenCollections written,
     ConsumerCallTimeouts calls,
     DocumentDeletedTimeouts timeouts,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
@@ -44,6 +49,8 @@ public class DocumentDeletedConsumer(
     {
         await DeleteAsync(store, ev.DocumentId, ct);
         foreach (var collection in fused.Items)
+            await DeleteAsync(collection.Store, ev.DocumentId, ct);
+        foreach (var collection in written.Items)
             await DeleteAsync(collection.Store, ev.DocumentId, ct);
         logger.LogInformation(
             "Removed chunks of deleted document {DocumentId} from the search index", ev.DocumentId);

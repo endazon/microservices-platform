@@ -96,11 +96,24 @@ QdrantVectorStore.EnsureLexicalCollectionDistinct(lexicalCollectionName,
     QdrantVectorStore.ResolveCollectionName(builder.Configuration), fusedCollectionNames);
 builder.Services.AddScoped(sp =>
     FusedCollectionsComposition.Build(sp, fusedCollectionNames, lexicalCollectionName));
+// FR-06, ADR-0057 決定 1 (#2137): 取り込みが書くが検索が読まないコレクション（削除だけの対象）。差が空なら従来と同一。
+var writtenOnlyCollectionNames = QdrantVectorStore.ResolveWrittenOnlyCollectionNames(builder.Configuration,
+    [QdrantVectorStore.ResolveCollectionName(builder.Configuration), .. fusedCollectionNames, lexicalCollectionName]);
+builder.Services.AddScoped(sp => writtenOnlyCollectionNames.Count == 0
+    ? RetrievalService.Domain.WrittenCollections.None
+    : new RetrievalService.Domain.WrittenCollections([.. writtenOnlyCollectionNames.Select(name => new RetrievalService.Domain.WrittenCollection(name,
+        // 取り込みが起動時に作るコレクションなので、無いうちの削除は no-op にする（語彙索引と同じ。IADR-0497 決定 4）。
+        QdrantVectorStore.ForCollection(sp.GetRequiredService<QdrantClient>(), name,
+            sp.GetRequiredService<ILogger<QdrantVectorStore>>(),
+            sp.GetRequiredService<KeywordSearchMetrics>(),
+            missingCollectionIsEmpty: true)))]));
 
 // FR-06, ADR-0027 (#1640): 索引からの削除の受け口の時間の上限（Qdrant 1 回ごとの期限）。
 // 「(主 ＋ 追加コレクション数) × 期限」が Wolverine の既定の実行期限に収まらない構成は、ここで起動を止める。
 // ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: 語彙索引からも消すので 1 本足す。
-builder.Services.AddSingleton(DocumentDeletedTimeouts.From(builder.Configuration, fusedCollectionNames.Count + 1));
+// #2137: 削除だけの対象（取り込みが書くが検索が読まないコレクション）も 1 本ごとに期限の下で消すので、本数に数える。
+builder.Services.AddSingleton(DocumentDeletedTimeouts.From(builder.Configuration,
+    fusedCollectionNames.Count + 1 + writtenOnlyCollectionNames.Count));
 builder.Services.AddPlatformConsumerTimeouts();
 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
