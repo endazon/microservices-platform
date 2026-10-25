@@ -21,7 +21,11 @@ public class ConversionJobDbContext(DbContextOptions<ConversionJobDbContext> opt
             e.Property(j => j.Id).ValueGeneratedNever();
             e.Property(j => j.SourceType).HasMaxLength(50).IsRequired();
             e.Property(j => j.OriginalPath).HasMaxLength(2048).IsRequired();
-            e.Property(j => j.Status).HasMaxLength(20).IsRequired();
+            // FR-12, UC-06, #2159: **状態は並行トークンである。** ジョブ行の UPDATE は `WHERE "Status" = @読んだ状態` を伴い、
+            // 読んだ後に別の遷移が状態を変えていれば 0 行になって EF が `DbUpdateConcurrencyException` を投げる。
+            // 再変換（failed → queued）の check-then-write の窓を塞ぐ（並行する 2 つの再変換が両方とも発行しない）。
+            // 列は足さない（スキーマは変わらない）。他の経路への帰結は作業仕様書 20261025_2159 §他の経路への影響。
+            e.Property(j => j.Status).HasMaxLength(20).IsRequired().IsConcurrencyToken();
             // FR-12, SC-07: デッドレター標識。既存行は「未送出」として読むため既定 false。
             e.Property(j => j.DeadLettered).HasDefaultValue(false);
             // FR-12, SC-07, ADR-0070 決定 3 / IADR-0356 (#1192) / [[IADR-0388]] (#1254): 本文の有無。

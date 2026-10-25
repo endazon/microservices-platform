@@ -190,7 +190,7 @@ public class ConversionJobEndpointTests
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    private sealed class Factory : WebApplicationFactory<Program>
+    internal sealed class Factory : WebApplicationFactory<Program>
     {
         // Factory ごとに一意な InMemory DB 名で他テストと隔離する。
         private readonly string _dbName = Guid.NewGuid().ToString();
