@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using System.Diagnostics.Metrics;
 using AwesomeAssertions;
 using IngestionService.Common.Observability;
@@ -40,7 +41,7 @@ public class EmbeddingPendingReembedderTests
         var metrics = TestMeterFactory.NewEmbeddingPendingMetrics();
         var logger = new CapturingLogger();
         var reembedder = new EmbeddingPendingReembedder(store, embed, metrics,
-            EmbeddingPendingOptions.Default with { BatchSize = batchSize }, IngestionTimeouts.Default, logger);
+            EmbeddingPendingOptions.Default with { BatchSize = batchSize }, IngestionTimeouts.Default, logger, new DocumentIndexLocks());
         return (reembedder, metrics, logger);
     }
 
@@ -229,7 +230,7 @@ public class EmbeddingPendingReembedderTests
         using var listener = Listen(factory, EmbeddingPendingMetrics.ReembeddedCounterName, (v, _) => reembedded.Add(v));
         var store = new PendingStore(Point(0), Point(1));
         var reembedder = new EmbeddingPendingReembedder(store, new FixedEmbedding(embedded: true), metrics,
-            EmbeddingPendingOptions.Default, IngestionTimeouts.Default, new CapturingLogger());
+            EmbeddingPendingOptions.Default, IngestionTimeouts.Default, new CapturingLogger(), new DocumentIndexLocks());
 
         await reembedder.SweepAsync(Ct);
 
@@ -243,7 +244,7 @@ public class EmbeddingPendingReembedderTests
         var store = new PendingStore(Point(0)) { CountFailures = 1 };
         var options = EmbeddingPendingOptions.Default with { Interval = TimeSpan.FromMilliseconds(20) };
         var reembedder = new EmbeddingPendingReembedder(store, new FixedEmbedding(embedded: true),
-            TestMeterFactory.NewEmbeddingPendingMetrics(), options, IngestionTimeouts.Default, new CapturingLogger());
+            TestMeterFactory.NewEmbeddingPendingMetrics(), options, IngestionTimeouts.Default, new CapturingLogger(), new DocumentIndexLocks());
         var hostLogger = new CapturingHostLogger();
         var hosted = new EmbeddingPendingReembedHostedService(reembedder, options, TimeProvider.System, hostLogger);
 

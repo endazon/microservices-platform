@@ -28,11 +28,12 @@ public sealed class EmbeddingPendingReembedder(
     EmbeddingPendingOptions options,
     IngestionTimeouts timeouts,
     ILogger<EmbeddingPendingReembedder> logger,
-    DocumentIndexLocks? locks = null)
+    DocumentIndexLocks locks)
 {
     // 🔴 FR-02, FR-06, IADR-0640 決定 3 (#2263): 点の読み直しから主への書き込み・待ちの点の削除までを、同じ文書の削除と交差させない
     // （読み直した後に削除が点を消すと、ここで主へ書いた点が削除した文書の点として残る）。
-    private readonly DocumentIndexLocks _locks = locks ?? new DocumentIndexLocks();
+    // 必須の引数にする（既定値で私的な排他を作ると、削除の受け口と別の排他になる。#2270 のレビュー）。
+    private readonly DocumentIndexLocks _locks = locks;
 
     private bool _indexEnsured;
 

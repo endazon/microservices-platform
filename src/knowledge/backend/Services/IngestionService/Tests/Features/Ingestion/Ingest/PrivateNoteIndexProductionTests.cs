@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using AwesomeAssertions;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
@@ -54,7 +55,7 @@ public class PrivateNoteIndexProductionTests
             TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
             TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance);
+            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks());
         return (consumer, index);
     }
 

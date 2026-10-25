@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using AwesomeAssertions;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
@@ -50,7 +51,8 @@ public class IngestionOrderingAndAtomicityTests
             TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
             TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance);
+            NullLogger<DocumentUpdatedConsumer>.Instance,
+            new DocumentIndexLocks());
 
     private static Task Handle(DocumentUpdatedConsumer consumer, DocumentUpdated ev)
         => consumer.Handle(ev, TestContext.Current.CancellationToken);

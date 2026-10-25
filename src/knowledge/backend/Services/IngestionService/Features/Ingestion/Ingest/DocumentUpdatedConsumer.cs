@@ -37,10 +37,11 @@ public class DocumentUpdatedConsumer(
     EmbeddingPendingMetrics pendingMetrics,
     BodyMissingMetrics bodyMissingMetrics,
     ILogger<DocumentUpdatedConsumer> logger,
-    DocumentIndexLocks? locks = null) : IPipelineStep<DocumentUpdated>
+    DocumentIndexLocks locks) : IPipelineStep<DocumentUpdated>
 {
     // 🔴 FR-02, FR-06, IADR-0640 決定 3 (#2263): 削除の受け口（`ingestion-delete`）と文書ごとに直列にする（DI では単一のインスタンス）。
-    private readonly DocumentIndexLocks _locks = locks ?? new DocumentIndexLocks();
+    // 必須の引数にする（既定値で私的な排他を作ると、削除の受け口と別の排他になって直列にならない。#2270 のレビュー）。
+    private readonly DocumentIndexLocks _locks = locks;
 
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "ingest";
