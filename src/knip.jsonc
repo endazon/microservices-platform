@@ -28,6 +28,11 @@
   // **submodule を足したのにここへ足し忘れると落ちる。**
   "ignoreWorkspaces": ["ai-stock-trading/**"],
 
+  // ［2026-10-25 / #2034 / IADR-0633］`kubectl` は npm の依存ではなく、live-rw が捕捉用 MTA を読むときに呼ぶ**OS の道具**である
+  // （`platform/frontend/e2e/live/support/mailpit.ts`。e2e-live.yml の runner は k3d と一緒に入れている）。package.json へは足せないので、
+  // 「未登録の実行ファイル」から外す。ここに足すのは**OS の道具だけ**にする（npm で入る CLI は依存として宣言する）。
+  "ignoreBinaries": ["kubectl"],
+
   "workspaces": {
     ".": {
       // knip が発見できない**実在する入口**。どちらも package.json の scripts から名指しで起動される
