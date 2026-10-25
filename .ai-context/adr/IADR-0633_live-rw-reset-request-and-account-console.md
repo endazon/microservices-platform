@@ -38,14 +38,18 @@ e2e-revocable の資格情報は、同じ実行の revocation（最後の projec
 
 1. **配置**: `e2e/live/account.rw.spec.ts` を `live-rw` に置く（`live-ro` の auth-errors の後、`live-rw-revocation` の前）。
 2. **M-006 はパスワードを変えない**: 申請 → メールが届くまで。リンクは開かない。網羅表の「12 文字 3 種・直近 5 世代の文言」は
-   リンクを開いた後の新パスワードの画面にしか出ないので、この試験では測らない（静的には `check-realm-constraints.js`、表示は SC-15 試験仕様の T-15）。
+   **送信前のどの画面にも出ない**ので、この試験では測らない（静的には `check-realm-constraints.js`、表示は SC-15 試験仕様の T-15。
+   網羅表 #2013 へ訂正を残した）。調べた結果は下の「理由」に置く。
 3. **リンクの値を残さない**: 本文は spec の中で読み、判定の前にリンクと `key` を `recordIssuedSecret`（`E2E_ISSUED_RESET_LINK`・
    `E2E_ISSUED_RESET_KEY`）で記録する。ファイルは trace・スクリーンショット・動画を切る。メールの判定は `check-password-reset-mail.js` の
    `evaluateResetMail` をそのまま使う（判定を複製しない。失敗の文言にリンクを入れない）。
 4. **mailpit は kubectl で読むだけ**: `kubectl --context k3d-<E2E_STACK> … exec deploy/mailpit -- wget`（Pod の中の loopback）。context は
    引数で固定し、current-context に頼らない。メールは消さない（使い捨てのスタックごと消える）。
 5. **存在秘匿**: 非実在（`e2e-<runId>-absent-r<retry>`。何も作らない）→ 実在の順に申請し、申請後の表示を入れた利用者名だけ伏せて比べる。
-   実在の 1 通が届いた時点で、増えた全メールが実在の宛先の 1 通だけであることを見る（非実在の側の送出は先に届くので、増分に現れる）。
+   実在の 1 通が届いた後も**静かな窓（10 秒）**のあいだ mailpit の件数を見続け、「前 ＋ 1」から動かないこと、増えた 1 通が実在の宛先で
+   あることを見る。**届く順には頼らない**（遅れて届く非実在の側の送出も窓の中で落ちる）。10 秒は、既存の存在秘匿の検査
+   （`check-password-reset-mail.js` の T-10）が非実在の申請の後に置く待ち（3 秒）の 3 倍を超える長さで、非実在の側は実在の申請と受け取りの
+   時間の分だけさらに長く待たれる。
 6. **M-007 は読み取り中心**: 個人情報は開いて見るだけ（保存しない）。利用者名は読み取り専用、realm 宣言で管理者が付けた属性は本人の面に
    名前も値も出ない。書き込みは、この試験が作ったセッション B の個別サインアウトだけ。B の行は「現在でない・BFF のクライアントを含まない」行で特定し、
    ちょうど 1 つであることを求める。終わりに A・B を Keycloak のログアウトで閉じる（再試行で前の試行のセッションが B の行と紛れない）。
@@ -55,6 +59,15 @@ e2e-revocable の資格情報は、同じ実行の revocation（最後の projec
 
 - 決定 2: パスワードを変えると、後の revocation と次の実行の setup・auth-errors が使う資格情報（Secret `e2e-accounts`）と食い違う。
   変えた後に戻すには同じ試験の中で 2 回変える必要があり、`passwordHistory(5)` に当たる。変えないなら整合を取る作業が要らない。
+- 決定 2（文言を範囲外にした根拠。オーケストレーターの指示 2026-10-25 で「リンクを開き新パスワードの画面で文言を確かめ、送信しない」案を調べた）:
+  - Keycloak 26.7.4 の `keycloak.v2/login/login-update-password.ftl`（platform テーマの親）は、送信前にポリシーの文言を出さない。
+    `password-validation.ftl` の画面内の検査は `length`・`maxLength`・`lowerCase`・`upperCase`・`digits`・`specialChars` だけを、入力の
+    `change` で誤りとして出す。realm のポリシーは `length(12) and passwordHistory(5) and regexPattern(…)` で、3 種（regexPattern）と
+    5 世代（passwordHistory）はサーバーの検査で、**送信した後**にしか出ない。platform テーマもこの文言を上書きしていない
+    （`messages_ja.properties` は SC-13〜15 の 9 語だけで、ポリシーの語は無い）。よって「送信しない」案では文言に届かない。
+  - リンクを開くこと自体の影響（参考に調べた）: reset-credentials フローの `ResetPassword`（UPDATE_PASSWORD）と `ResetOTP`（CONFIGURE_TOTP。
+    既定のフローは設定を持たないので OTP の資格情報は消さない）は、どちらも**認証セッション**へ required action を足す
+    （`context.getAuthenticationSession().addRequiredAction`）。利用者には残らない。ただし文言に届かないので、開く意味が無い。
 - 決定 3: trace を切っても、html レポートのエラーメッセージ・attach に値が紛れ込む経路は残る（IADR-0630 決定 6）。記録すれば、
   成果物を上げる前の走査が拾う。
 - 決定 6: e2e-revocable の Keycloak には setup・auth-errors の BFF のセッションが残りうる。個別サインアウトをそれらに当てると、

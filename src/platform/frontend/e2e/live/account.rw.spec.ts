@@ -121,6 +121,31 @@ function recordResetLinks(mail: CapturedMail): void {
   }
 }
 
+/**
+ * 実在の 1 通が届いた後に件数を見続ける**静かな窓**（IADR-0633 決定 5）。届く順には頼らない —— 非実在の側の送出が
+ * 遅れて届いても、この窓のあいだに件数が増えれば落ちる。長さは、既存の存在秘匿の検査（`check-password-reset-mail.js` の T-10）が
+ * 非実在の申請の後に置く待ち（3 秒）の 3 倍を超える 10 秒にする。非実在の申請は実在の申請より前に出しているので、
+ * 非実在の側が待たれる時間は、実在の申請と受け取りにかかった時間の分だけさらに長い。
+ */
+const QUIET_WINDOW_MS = 10_000;
+const QUIET_POLL_MS = 1_000;
+
+/** 静かな窓のあいだ、件数が `expected` から動かないことを確かめ、最後の件数を返す。 */
+async function mailCountAfterQuietWindow(expected: number): Promise<number> {
+  const deadline = Date.now() + QUIET_WINDOW_MS;
+  let count = mailCount(cfg);
+  while (Date.now() < deadline) {
+    expect(
+      count,
+      `静かな窓（${QUIET_WINDOW_MS / 1000} 秒）のあいだ、捕捉用 MTA の件数は実在の 1 通だけ増えたまま`,
+    ).toBe(expected);
+    await new Promise((resolve) => setTimeout(resolve, QUIET_POLL_MS));
+    count = mailCount(cfg);
+  }
+  expect(count, '静かな窓の終わりの件数').toBe(expected);
+  return count;
+}
+
 /** SC-13 のログイン画面から SC-15 の申請を 1 回出し、申請後の表示を返す。 */
 async function requestReset(page: Page, username: string): Promise<string> {
   await page.goto('/login');
@@ -204,7 +229,7 @@ test(
     try {
       const before = mailCount(cfg);
 
-      // 非実在を先に出す（送出があれば、実在の 1 通より先に届く。決定 5）。
+      // 非実在を先に出す（決定 5。どちらの順でも、下の静かな窓で非実在の側の送出を待ち切る）。
       const shownAbsent = await stage(testInfo, page, cfg.kcUrl, '非実在の申請', () =>
         requestReset(page, absent),
       );
@@ -214,16 +239,17 @@ test(
       expect(shownPresent, '申請後の表示が実在／非実在で同一（存在秘匿）').toBe(shownAbsent);
 
       // 実在の 1 通が届くのを待つ（SMTP の受け取りは要求の後に終わることがある）。
-      let after = before;
       await expect(async () => {
-        after = mailCount(cfg);
-        expect(after, '捕捉用 MTA の件数').toBeGreaterThan(before);
+        expect(mailCount(cfg), '捕捉用 MTA の件数').toBeGreaterThan(before);
       }).toPass({ timeout: 30_000, intervals: [1_000, 2_000, 3_000] });
-      const ids = latestMailIds(cfg, after - before);
-      const mails: CapturedMail[] = ids.map((id) => readMail(cfg, id));
+      // 🔴 届いた後も静かな窓のあいだ件数を見続け、遅れて届く送出（非実在の側）を取りこぼさない（決定 5）。
+      const after = await mailCountAfterQuietWindow(before + 1);
+      const mails: CapturedMail[] = latestMailIds(cfg, after - before).map((id) =>
+        readMail(cfg, id),
+      );
 
       // 🔴 判定の前に、届いた本文のリセットリンクと鍵を発行値として記録する（値は出さない。決定 3）。
-      mails.forEach(recordResetLinks);
+      for (const mail of mails) recordResetLinks(mail);
 
       // 宛先と件数だけを出す（本文は出さない）。
       expect(
@@ -232,6 +258,8 @@ test(
       ).toEqual([SUBJECT_EMAIL]);
       const mail = mails[0]!;
       const failures = resetMail.evaluateResetMail({
+        // 申請の成否は、上の画面の文言（`emailSentMessage`）で既に見ている。ブラウザのフォーム送信は応答のステータスを
+        // 返さないので、ここは固定値で渡し、判定器の他の軸（件数・宛先・本文・添付）だけを効かせる。
         requestStatus: 200,
         delivered: mails.length,
         recipients: mail.recipients,
@@ -263,6 +291,10 @@ test(
       await test.step('個人情報: 利用者名は読み取り専用、属性（clearance など）は本人に見えない', () =>
         stage(testInfo, a, cfg.kcUrl, 'セッション A のログイン', async () => {
           expect(SUBJECT_ADMIN_ATTRIBUTES, `${USERNAME} の属性が realm 宣言に無い`).not.toEqual([]);
+          expect(
+            BFF_CLIENT_NAME,
+            'realm 宣言に bff クライアントの表示名が無い（B の行を特定できない）',
+          ).not.toBe('');
           const profile = (await loginToAccount(a)) as {
             username?: string;
             attributes?: Record<string, unknown>;
