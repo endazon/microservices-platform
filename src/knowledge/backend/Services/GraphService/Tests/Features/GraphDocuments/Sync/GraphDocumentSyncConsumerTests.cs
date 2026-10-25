@@ -221,6 +221,66 @@ public class GraphDocumentSyncConsumerTests
         NodeOf(db, DocA).Should().NotBeNull("除外 → 含めるでノードを作り直す");
     }
 
+    // ── FR-19, 計画 ADR-0142 決定 1・4, IADR-0636 (#2138): 個人資料の論理削除（撤収の形）と復元 ──────
+    //
+    // 撤収の形は DocumentService の唯一の発行点と同じ関数（`DocumentExposure.WithAllExcluded`）で作る。論理削除・復元は版を進めない（同じ T0）。
+
+    private static DocumentUpdated Withdrawn(DocumentUpdated ev)
+        => ev with { Attributes = DocumentExposure.WithAllExcluded(ev.Attributes) };
+
+    [Fact]
+    public async Task 個人資料を論理削除するとノードが撤収され_同じ版の復元で作り直される()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        var note = SharedNote(["bob"]);
+
+        await Consumer(db).Handle(note, ct);
+        NodeOf(db, DocA).Should().NotBeNull("陽性対照: 削除の前は共有先のグラフに出る");
+
+        await Consumer(db).Handle(Withdrawn(note), ct);
+        NodeOf(db, DocA).Should().BeNull("論理削除はノードの撤収まで及ぶ（共有先の SC-18・MCP のグラフ系ツールから外れる）");
+
+        await Consumer(db).Handle(note, ct);
+        NodeOf(db, DocA).Should().NotBeNull("復元で元の露出のまま作り直す（ADR-0142 決定 4）");
+        NodeOf(db, DocA)!.Attributes.Should().ContainKey(DocumentAttributeEncoding.SharedWithKey);
+    }
+
+    // 撤収は却下済み AI 提案を消さない（削除イベントの担当）。消すと、復元した資料で却下したはずの提案がよみがえる。
+    [Fact]
+    public async Task 論理削除の撤収は却下済みの提案を残す()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        var rejected = await SeedRejectedAsync(db, sourceFpAtRejection: "fp-1", ct);
+
+        await Consumer(db).Handle(Withdrawn(Event(docId: DocA)), ct);
+
+        NodeOf(db, DocA).Should().BeNull("前提: 撤収した");
+        db.AiSuggestions.Single(x => x.Id == rejected.Id).State.Should().Be(SuggestionState.Rejected);
+    }
+
+    // ADR-0142 決定 5・フォローアップ 1: 撤収の後に完全削除しても、グラフの削除の伝播は失敗しない（ノードは既に無い）。
+    // 撤収が残した却下済みの提案は、完全削除で消える（削除イベントの担当）。
+    [Fact]
+    public async Task 論理削除の撤収の後の完全削除は失敗せず却下済みの提案も消す()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var db = NewDb();
+        var rejected = await SeedRejectedAsync(db, sourceFpAtRejection: "fp-1", ct);
+        await Consumer(db).Handle(Withdrawn(Event(docId: DocA)), ct);
+        NodeOf(db, DocA).Should().BeNull("前提: 撤収した");
+
+        var purge = new GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer(
+            db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db),
+            NullLogger<GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer>.Instance);
+        var act = () => purge.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
+
+        await act.Should().NotThrowAsync();
+        db.AiSuggestions.Any(x => x.Id == rejected.Id).Should().BeFalse("完全削除は却下済みの提案まで消す（ADR-0057）");
+        NodeOf(db, DocB).Should().NotBeNull("陽性対照: 無関係のノードは残る");
+    }
+
     // ── FR-06, FR-17, FR-18, 計画 ADR-0141 決定 2・3, [[IADR-0551]] 決定 3 (#1961): アーカイブした文書 ──────
     //
     // アーカイブした文書はグラフ（SC-18・MCP のグラフ系ツール・AI 提案・クラスタ要約）に載せない。判定は台帳の状態。

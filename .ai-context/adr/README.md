@@ -713,3 +713,4 @@
 | [IADR-0633](./IADR-0633_bff-keyring-connection-no-cached-failure.md) | BFF のセッションストアへの遅延接続は失敗を覚えない形（PublicationOnly）を 1 か所に置き、鍵リングとヘルスチェックが同じものを使う。AbortOnConnectFail は既定のまま（#2242） | Accepted |
 | [IADR-0634](./IADR-0634_live-rw-reset-request-and-account-console.md) | live-rw のリセット申請はパスワードを変えずメールの受信までとし、リンクは発行値として記録する。アカウントコンソールは読み取り中心で、書き込みは自分で作ったセッションの個別サインアウトだけ（#2034） | Accepted |
 | [IADR-0635](./IADR-0635_e2e-live-paths-system-under-test.md) | e2e-live の pull_request.paths は試験される側（スタックが建てるイメージの中身・起動器と配備物）まで覆い、イメージに入らない変更と e2e-live の旗で当たらない配備物は外す（#2244） | Accepted |
+| [IADR-0636](./IADR-0636_private-note-soft-delete-withdrawal.md) | 論理削除した個人資料は唯一の発行点が台帳を見て撤収の形（露出 3 キーを excluded）で出し、復元で台帳の露出のまま出し直す。読み取りの判定は論理削除を必須の引数で受けて拒み、露出の変更は 409（#2138） | Accepted |

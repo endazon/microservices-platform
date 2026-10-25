@@ -34,7 +34,7 @@ public class DocumentReadOwnerSeedTests
         var access = new DocumentReadAccess(scopes, new StubContentAbacGate());
 
         var readable = await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"),
-            PrivateNoteOwnedBy("alice"), ["g-not-a-member"], TestContext.Current.CancellationToken);
+            PrivateNoteOwnedBy("alice"), ["g-not-a-member"], privateNoteDeleted: false, TestContext.Current.CancellationToken);
 
         readable.Should().BeFalse("所有者の分岐は本人の名前にしか一致しない");
         scopes.CallsFor("bob").Should().Be(1, "グループ共有の段で認可サービスの分岐を引いた");
@@ -48,7 +48,7 @@ public class DocumentReadOwnerSeedTests
         var access = new DocumentReadAccess(scopes, new StubContentAbacGate());
 
         (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"),
-            PrivateNoteOwnedBy("alice"), null, TestContext.Current.CancellationToken)).Should().BeTrue();
+            PrivateNoteOwnedBy("alice"), null, privateNoteDeleted: false, TestContext.Current.CancellationToken)).Should().BeTrue();
         scopes.CallsFor("alice").Should().Be(0);
     }
 }

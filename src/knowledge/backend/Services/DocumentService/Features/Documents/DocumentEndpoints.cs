@@ -213,6 +213,29 @@ public static class DocumentEndpoints
             .Select(s => s.SubjectId)
             .ToListAsync(ct);
 
+    // FR-19, ADR-0142 決定 1・2, IADR-0636 (#2138): **論理削除中の個人資料か**（台帳 `PrivateNote.DeletedAt` が唯一の正本）。
+    // 発行の唯一の点（`PublishUpdatedAsync`）と読み取りの唯一の判定点（`DocumentReadAccess.CanReadAsync` の引数）が使う。
+    // 組織文書は台帳を持たないので引かない（偽）。🔴 確定の中で呼ぶときは保存の後に呼ぶ（保存前の変更はクエリに映らない）。
+    internal static async Task<bool> IsDeletedPrivateNoteAsync(
+        DocumentDbContext db, Document d, CancellationToken ct = default)
+        => DocumentScopes.IsPrivateNote(d.Attributes)
+           && await db.PrivateNotes.AnyAsync(n => n.DocumentId == d.Id && n.DeletedAt != null, ct);
+
+    // 一覧用（共有先の解決と同じく 1 クエリ）。論理削除中の個人資料の文書 ID を返す。
+    internal static async Task<HashSet<Guid>> ResolveDeletedPrivateNotesAsync(
+        DocumentDbContext db, IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0)
+            return [];
+
+        var ids = documentIds.ToList();
+        var deleted = await db.PrivateNotes
+            .Where(n => ids.Contains(n.DocumentId) && n.DeletedAt != null)
+            .Select(n => n.DocumentId)
+            .ToListAsync(ct);
+        return [.. deleted];
+    }
+
     // FR-19, [[IADR-0447]] (#1447): 一覧用。**1 クエリで引いて文書ごとへ分配する**（N+1 を作らない
     // ——`PrivateNoteEnrichment.LoadAsync` が共有の件数で採っているのと同じ形）。
     // 返す辞書に**共有 0 件の文書の鍵は現れない**（呼び出し側は `GetValueOrDefault` で null 相当を得る）。
@@ -271,8 +294,15 @@ public static class DocumentEndpoints
         // **応答（`DocumentDto.SharedWith`）と同じ関数**であり、値が経路で割れない。
         var sharedWith = await ResolveSharedWithAsync(db, d.Id, ct);
 
+        // 🔴 FR-19, ADR-0142 決定 1・4, IADR-0636 決定 1 (#2138): **論理削除中の個人資料は撤収の形で出す**（露出 3 キーを `excluded` にした写し）。
+        // 全経路がここを通るので（IADR-0455）、削除中に共有の変更・タグの改名・再発行が門を通っても載り直さない。
+        // 台帳の露出（`Document.Attributes`・`PrivateNote`）は変えない —— 復元で台帳のまま出し直す（決定 4）。
+        var attributes = await IsDeletedPrivateNoteAsync(db, d, ct)
+            ? DocumentExposure.WithAllExcluded(d.Attributes)
+            : d.Attributes;
+
         await bus.PublishUpdatedAsync(d.Id, d.Title, d.Status, d.MarkdownUri,
-            d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
+            attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt,
             d.ContentFingerprint, d.HasBody, d.OriginalPath, d.DataSourceName, sharedWith, ct);
     }
 

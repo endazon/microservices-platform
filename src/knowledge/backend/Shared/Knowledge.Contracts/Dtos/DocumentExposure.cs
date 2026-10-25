@@ -50,6 +50,17 @@ public static class DocumentExposure
     // FR-19: トグルの真偽を属性値へ写す（供給側 = DocumentService が使う）。
     public static string FromToggle(bool included) => included ? Included : Excluded;
 
+    // FR-19, ADR-0142 決定 1・4, IADR-0636 (#2138): **撤収の形の写し。** 露出 3 キーをすべて `excluded` に置き換えた新しい辞書を返す
+    // （引数は変えない）。論理削除中の個人資料の `DocumentUpdated` が運ぶ属性であり、受け手は既存の ON → 全 OFF の撤収
+    // （ADR-0061 決定 4）で索引・グラフから外す。台帳の露出は変えない（復元で元の露出のまま出し直すため）。
+    public static Dictionary<string, string> WithAllExcluded(IReadOnlyDictionary<string, string> attributes)
+    {
+        ArgumentNullException.ThrowIfNull(attributes);
+        var withdrawn = new Dictionary<string, string>(attributes);
+        foreach (var key in AllKeys) withdrawn[key] = Excluded;
+        return withdrawn;
+    }
+
     // FR-19, ADR-0061 決定 3: 3 トグルを**まとめて**属性の形へ投影する。
     // **1 つでも書き漏らすと fail-closed 側（見えない側）に倒れる**ので、3 つ同時に置く口を
     // 1 つだけ用意し、呼び出し側でキーを並べさせない。

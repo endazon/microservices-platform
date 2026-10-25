@@ -67,9 +67,9 @@ public class DocumentReadContentAbacTests
         var (access, scopes, _) = Closed();
         var restricted = Org("restricted", owner: "someone-else");
 
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser(KbWriter), restricted, null, Ct)).Should().BeTrue();
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), restricted, null, Ct)).Should().BeTrue();
-        (await access.CanReadAsync(DocumentReadPrincipal.FromUser(Authenticated()), restricted, null, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser(KbWriter), restricted, null, privateNoteDeleted: false, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), restricted, null, privateNoteDeleted: false, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(DocumentReadPrincipal.FromUser(Authenticated()), restricted, null, privateNoteDeleted: false, Ct)).Should().BeTrue();
 
         access.ContentAbacEnabled.Should().BeFalse();
         scopes.CallsFor(KbWriter).Should().Be(0);
@@ -83,9 +83,9 @@ public class DocumentReadContentAbacTests
         var (access, scopes, _) = Closed();
         var note = PrivateNote("alice");
 
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), note, null, Ct)).Should().BeTrue();
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, ["bob"], Ct)).Should().BeTrue();
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("mallory"), note, null, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), note, null, privateNoteDeleted: false, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, ["bob"], privateNoteDeleted: false, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("mallory"), note, null, privateNoteDeleted: false, Ct)).Should().BeFalse();
 
         scopes.CallsFor("alice").Should().Be(0);
         scopes.CallsFor("bob").Should().Be(0, "利用者の共有先は台帳だけで決まる（門が閉じている間）");
@@ -104,10 +104,10 @@ public class DocumentReadContentAbacTests
         scopes.Grant("bob", OwnerReadSeedScopes.BranchesOf("bob"));
         var bob = DocumentReadPrincipal.RelayedUser("bob");
 
-        (await access.CanReadAsync(bob, Org("internal"), null, Ct)).Should().BeTrue("陽性対照: 階段の分岐");
-        (await access.CanReadAsync(bob, Org("restricted", owner: "carol"), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(bob, Org("restricted", owner: "bob"), null, Ct)).Should().BeTrue("所有者の分岐");
-        (await access.CanReadAsync(bob, Org("public", owner: "system"), null, Ct)).Should().BeTrue("陽性対照: public は階段で読める");
+        (await access.CanReadAsync(bob, Org("internal"), null, privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照: 階段の分岐");
+        (await access.CanReadAsync(bob, Org("restricted", owner: "carol"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(bob, Org("restricted", owner: "bob"), null, privateNoteDeleted: false, Ct)).Should().BeTrue("所有者の分岐");
+        (await access.CanReadAsync(bob, Org("public", owner: "system"), null, privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照: public は階段で読める");
 
         scopes.CallsFor("bob").Should().Be(1, "主体ごとに要求の中で高々 1 回");
     }
@@ -120,8 +120,8 @@ public class DocumentReadContentAbacTests
         scopes.Grant("alice", OwnerReadSeedScopes.BranchesOf("alice"));
         var alice = DocumentReadPrincipal.RelayedUser("alice");
 
-        (await access.CanReadAsync(alice, Org("public", owner: "carol"), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(alice, Org("public", owner: "alice"), null, Ct)).Should().BeTrue("陽性対照: 自分の文書");
+        (await access.CanReadAsync(alice, Org("public", owner: "carol"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(alice, Org("public", owner: "alice"), null, privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照: 自分の文書");
     }
 
     // ── AC-3: 所有者の判定も認可サービスが答える（コード判定を残さない） ───────────────
@@ -135,8 +135,8 @@ public class DocumentReadContentAbacTests
         scopes.Grant("alice", [[new AttributeFilter("shared_with", ["alice"])]]);
         var alice = DocumentReadPrincipal.RelayedUser("alice");
 
-        (await access.CanReadAsync(alice, PrivateNote("alice"), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(alice, Org("public", owner: "alice"), null, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(alice, PrivateNote("alice"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(alice, Org("public", owner: "alice"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
         scopes.CallsFor("alice").Should().Be(1, "所有者でも認可サービスへ問う（ADR-0121 決定 5）");
     }
 
@@ -147,9 +147,9 @@ public class DocumentReadContentAbacTests
         var (access, scopes, _) = Open();
         scopes.Grant("alice", OwnerReadSeedScopes.BranchesOf("alice"));
 
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), PrivateNote("alice"), null, Ct))
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), PrivateNote("alice"), null, privateNoteDeleted: false, Ct))
             .Should().BeTrue();
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), PrivateNote("bob"), null, Ct))
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), PrivateNote("bob"), null, privateNoteDeleted: false, Ct))
             .Should().BeFalse("他人の個人資料");
         scopes.CallsFor("alice").Should().Be(1);
     }
@@ -166,11 +166,11 @@ public class DocumentReadContentAbacTests
         scopes.GrantSharedWith("member", "member", group);
         var note = PrivateNote("carol");
 
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, ["bob"], Ct))
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, ["bob"], privateNoteDeleted: false, Ct))
             .Should().BeTrue("利用者の共有先（${current_user} の束縛）");
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("member"), note, [group], Ct))
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("member"), note, [group], privateNoteDeleted: false, Ct))
             .Should().BeTrue("グループの共有先（${current_groups} の束縛）");
-        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, [group], Ct))
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, [group], privateNoteDeleted: false, Ct))
             .Should().BeFalse("共有されていない");
     }
 
@@ -182,8 +182,8 @@ public class DocumentReadContentAbacTests
         scopes.Grant("admin", [[new AttributeFilter("confidentiality", ["restricted"])]]);
         var admin = DocumentReadPrincipal.RelayedUser("admin");
 
-        (await access.CanReadAsync(admin, PrivateNote("alice"), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(admin, Org("restricted"), null, Ct)).Should().BeTrue("陽性対照");
+        (await access.CanReadAsync(admin, PrivateNote("alice"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(admin, Org("restricted"), null, privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照");
     }
 
     // ── AC-5: 機械の主体は個人資料を読まない ────────────────────────────────────────
@@ -199,8 +199,8 @@ public class DocumentReadContentAbacTests
         ]);
         var machine = DocumentReadPrincipal.RelayedUser(KbWriter);
 
-        (await access.CanReadAsync(machine, PrivateNote(KbWriter), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(machine, Org("restricted", owner: KbWriter), null, Ct)).Should().BeTrue("陽性対照");
+        (await access.CanReadAsync(machine, PrivateNote(KbWriter), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(machine, Org("restricted", owner: KbWriter), null, privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照");
     }
 
     // T-69（#1676）: **利用者文脈の無い gRPC 呼び出し**（主体は呼び出し元サービス自身。ここでは `service-account-bff`）は、
@@ -221,9 +221,9 @@ public class DocumentReadContentAbacTests
 
         principal.IsMachine.Should().BeTrue();
         principal.AbacSubject.Should().Be(Bff);
-        (await access.CanReadAsync(principal, PrivateNote(Bff), null, Ct)).Should().BeFalse("所有者に自分の名前");
-        (await access.CanReadAsync(principal, PrivateNote("carol"), [Bff], Ct)).Should().BeFalse("共有先に自分の名前");
-        (await access.CanReadAsync(principal, Org("internal", owner: Bff), null, Ct)).Should().BeTrue("陽性対照: 所有する組織文書");
+        (await access.CanReadAsync(principal, PrivateNote(Bff), null, privateNoteDeleted: false, Ct)).Should().BeFalse("所有者に自分の名前");
+        (await access.CanReadAsync(principal, PrivateNote("carol"), [Bff], privateNoteDeleted: false, Ct)).Should().BeFalse("共有先に自分の名前");
+        (await access.CanReadAsync(principal, Org("internal", owner: Bff), null, privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照: 所有する組織文書");
         scopes.CallsFor(Bff).Should().Be(1, "分岐は実際に引かれている");
     }
 
@@ -236,8 +236,8 @@ public class DocumentReadContentAbacTests
         var (access, scopes, _) = Open(); // alice には何も与えない ＝ null
         var alice = DocumentReadPrincipal.RelayedUser("alice");
 
-        (await access.CanReadAsync(alice, PrivateNote("alice"), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(alice, Org("public", owner: "alice"), null, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(alice, PrivateNote("alice"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(alice, Org("public", owner: "alice"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
         scopes.CallsFor("alice").Should().Be(1, "問い合わせた上で読めない（段を飛ばしたのではない）");
     }
 
@@ -248,7 +248,7 @@ public class DocumentReadContentAbacTests
         var (access, scopes, _) = Open();
         scopes.Grant("", [[new AttributeFilter("confidentiality", ["public"])]]);
 
-        (await access.CanReadAsync(DocumentReadPrincipal.FromUser(Authenticated()), Org("public"), null, Ct))
+        (await access.CanReadAsync(DocumentReadPrincipal.FromUser(Authenticated()), Org("public"), null, privateNoteDeleted: false, Ct))
             .Should().BeFalse();
         scopes.CallsFor("").Should().Be(0);
     }
@@ -271,10 +271,10 @@ public class DocumentReadContentAbacTests
 
         principal.IsMachine.Should().BeTrue();
         principal.AbacSubject.Should().Be(KbWriter);
-        (await access.CanReadAsync(principal, Org("internal", owner: KbWriter), null, Ct)).Should().BeTrue();
-        (await access.CanReadAsync(principal, Org("public", owner: "system"), null, Ct)).Should().BeFalse();
-        (await access.CanReadAsync(principal, Org("public"), null, Ct)).Should().BeFalse("owner の欠落");
-        (await access.CanReadAsync(principal, Org("public", owner: "alice"), null, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(principal, Org("internal", owner: KbWriter), null, privateNoteDeleted: false, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(principal, Org("public", owner: "system"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
+        (await access.CanReadAsync(principal, Org("public"), null, privateNoteDeleted: false, Ct)).Should().BeFalse("owner の欠落");
+        (await access.CanReadAsync(principal, Org("public", owner: "alice"), null, privateNoteDeleted: false, Ct)).Should().BeFalse();
     }
 
     // ── AC-11: 門は要求の中で最初に読んだ値に固定する ──────────────────────────────
@@ -289,12 +289,57 @@ public class DocumentReadContentAbacTests
         var restricted = Org("restricted");
         var machine = DocumentReadPrincipal.RelayedUser(KbWriter);
 
-        (await access.CanReadAsync(machine, restricted, null, Ct)).Should().BeTrue();
+        (await access.CanReadAsync(machine, restricted, null, privateNoteDeleted: false, Ct)).Should().BeTrue();
         gate.Open();
-        (await access.CanReadAsync(machine, restricted, null, Ct)).Should().BeTrue("同じ要求の中では閉じた判定のまま");
+        (await access.CanReadAsync(machine, restricted, null, privateNoteDeleted: false, Ct)).Should().BeTrue("同じ要求の中では閉じた判定のまま");
         gate.Reads.Should().Be(1);
 
         var next = new DocumentReadAccess(scopes, gate);
-        (await next.CanReadAsync(machine, restricted, null, Ct)).Should().BeFalse("次の要求から内容の ABAC が効く");
+        (await next.CanReadAsync(machine, restricted, null, privateNoteDeleted: false, Ct)).Should().BeFalse("次の要求から内容の ABAC が効く");
+    }
+
+    // ── FR-19, SC-03, ADR-0142 決定 2（2026-10-24 の補完）, IADR-0636 決定 2 (#2138): 論理削除中の個人資料は誰にも返さない ─────
+
+    // 門が閉じている枝: 所有者・利用者の共有先とも、削除中は読めない。同じ資料・同じ主体で削除中でなければ読める（陽性対照）。
+    [Fact]
+    public async Task 門が閉じている間も論理削除中の個人資料は所有者にも共有先にも返らない()
+    {
+        var (access, _, _) = Closed();
+        var note = PrivateNote("alice");
+        var alice = DocumentReadPrincipal.RelayedUser("alice");
+        var bob = DocumentReadPrincipal.RelayedUser("bob");
+
+        (await access.CanReadAsync(alice, note, ["bob"], privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照: 所有者");
+        (await access.CanReadAsync(bob, note, ["bob"], privateNoteDeleted: false, Ct)).Should().BeTrue("陽性対照: 共有先");
+        (await access.CanReadAsync(alice, note, ["bob"], privateNoteDeleted: true, Ct)).Should().BeFalse("所有者も SC-03 では開けない");
+        (await access.CanReadAsync(bob, note, ["bob"], privateNoteDeleted: true, Ct)).Should().BeFalse("共有先は開けない");
+    }
+
+    // 門が開いた枝: 認可サービスの分岐が許しても、削除中は読めない（分岐を問う前に止まる）。
+    [Fact]
+    public async Task 門が開いても論理削除中の個人資料は分岐に依らず返らない()
+    {
+        var (access, scopes, _) = Open();
+        scopes.Grant("alice", OwnerReadSeedScopes.BranchesOf("alice"));
+        scopes.Grant("bob", OwnerReadSeedScopes.BranchesOf("bob"));
+        var note = PrivateNote("alice");
+
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), note, null, privateNoteDeleted: false, Ct))
+            .Should().BeTrue("陽性対照: 所有者の分岐");
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, ["bob"], privateNoteDeleted: false, Ct))
+            .Should().BeTrue("陽性対照: 共有先の分岐");
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), note, null, privateNoteDeleted: true, Ct))
+            .Should().BeFalse();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("bob"), note, ["bob"], privateNoteDeleted: true, Ct))
+            .Should().BeFalse();
+    }
+
+    // 境界: 論理削除は個人資料の台帳の状態であり、組織文書には効かない（印を誤って渡しても組織文書の判定を変えない）。
+    [Fact]
+    public async Task 論理削除の印は組織文書の判定を変えない()
+    {
+        var (access, _, _) = Closed();
+        (await access.CanReadAsync(DocumentReadPrincipal.RelayedUser("alice"), Org("internal"), null, privateNoteDeleted: true, Ct))
+            .Should().BeTrue();
     }
 }

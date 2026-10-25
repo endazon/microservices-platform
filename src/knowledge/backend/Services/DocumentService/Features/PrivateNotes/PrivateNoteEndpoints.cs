@@ -1,4 +1,6 @@
 using DocumentService.Domain;
+using DocumentService.Domain.Ports;
+using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes.Create;
 using DocumentService.Features.PrivateNotes.GetQuota;
 using DocumentService.Features.PrivateNotes.List;
@@ -96,6 +98,21 @@ public static class PrivateNoteEndpoints
     {
         var note = await db.PrivateNotes.FindAsync([id], ct);
         return note is not null && note.OwnerId == owner ? note : null;
+    }
+
+    // FR-19, ADR-0142 決定 1・4, ADR-0027 §決定, IADR-0636 決定 1 (#2138): **論理削除・復元の確定。** 台帳の変更を保存し、状態が変わったときは
+    // 門を通して `DocumentUpdated` を同じトランザクションで出す（Transactional Outbox。IADR-0608）。形は唯一の発行点が台帳から選ぶ
+    // （削除中なら撤収の形・復元後なら台帳の露出のまま）。露出が 3 つとも OFF なら門で止まる。文書の行が無い（移行前の不整合）なら保存だけ。
+    internal static async Task SaveDeletionStateAsync(DocumentDbContext db, IDocumentUpdatedPublisher bus,
+        Guid documentId, bool changed, CancellationToken ct)
+    {
+        var doc = changed ? await db.Documents.FindAsync([documentId], ct) : null;
+        if (doc is null)
+        {
+            await db.SaveChangesAsync(ct);
+            return;
+        }
+        await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
     }
 
     internal static async Task<bool> ActivePathExistsAsync(DocumentDbContext db, string owner,
