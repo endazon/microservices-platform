@@ -21,9 +21,9 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 // NFR-18, IADR-0522: セッションストアのヘルスチェック用の接続（下の AddRedis）。構成は使う時に読む。
-var sessionStoreHealthConnection = new Lazy<StackExchange.Redis.IConnectionMultiplexer>(
-    () => StackExchange.Redis.ConnectionMultiplexer.Connect(BffSessionOptions.From(builder.Configuration).SessionStoreConfiguration()),
-    LazyThreadSafetyMode.PublicationOnly);
+// NFR-07, [[IADR-0633]] (#2242): 失敗を覚えない遅延は鍵リングと同じ置き場（SessionStoreConnection）から作る。
+var sessionStoreHealthConnection = SessionStoreConnection.Lazy(
+    () => StackExchange.Redis.ConnectionMultiplexer.Connect(BffSessionOptions.From(builder.Configuration).SessionStoreConfiguration()));
 builder.Services.AddPlatformHealthChecks()
     // NFR-18, ADR-0131, IADR-0522 (#1839): セッションストアの疎通。接続先とパスワードはセッションと同じ
     // `BffSession` の値から組む（ヘルスチェック専用の `Redis:ConnectionString` は廃した —— 置き場が 2 つだと
