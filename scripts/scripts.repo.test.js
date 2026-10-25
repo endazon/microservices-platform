@@ -13780,7 +13780,7 @@ exit $RC
       assert.deepStrictEqual([...new Set(out.calls.map((c) => c.method))], ['GET'], 'dry-run が GET 以外を送った');
       const listed = out.logs.filter((l) => /^ {2}- /.test(l)).map((l) => l.split(' ')[3]);
       assert.deepStrictEqual(new Set(listed), new Set([...E2E_IDS, 'c1']), '列挙が e2e- の一致と違う');
-      assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件（消すには')), out.logs.join('\n'));
+      assert.ok(out.logs.some((l) => l.includes('dry-run: 残骸 8 件・後始末済み 2 件（残骸に数えない）（消すには')), out.logs.join('\n'));
       // #2032 / IADR-0631: 削除の口が無い種類の無効化済み（データソース s3・MCP クライアント c3）は後始末済みで、残骸に数えない。
       const settled = out.logs.filter((l) => /^ {2}= /.test(l)).map((l) => l.split(' ')[3]);
       assert.deepStrictEqual(settled, ['s3', 'c3'], '無効化済みを後始末済みとして列挙していない');
@@ -13843,7 +13843,7 @@ exit $RC
       const text = dry.logs.join('\n');
       assert.match(text, /見ていない視点: e2e-noaccess, e2e-trading-owner/);
       assert.match(text, /private-notes@e2e-noaccess: セッションが無効（401）/);
-      assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）/);
+      assert.match(text, /残骸 8 件（ただし見ていない視点 2: この視点の残骸は数えていない）・後始末済み 2 件/);
       assert.strictEqual(runSweep([...target, '--delete'], sc).code, 1, '消す実行で視点が欠けたのに exit 0');
       // 文書: 「所有者は自分の文書を読める」が無ければ admin の一覧は admin が作った文書を含まない → 文書の一覧を数えずに欠けとして出す。
       const noOwner = runSweep(target, { noOwnerPolicy: true });

@@ -22,12 +22,32 @@ function isTestRow(row: Row): boolean {
   );
 }
 
+/**
+ * 並べ替えのキー（`id`・`key`・`name` の順に最初に値のあるもの。どれも無ければ行全体の JSON）。辞書によっては `id` を持たないので、
+ * `id` だけで並べると順序が応答の並びのまま残り、並びが変わっただけで差分に見える（#2238 のレビュー）。
+ */
+function sortKeyOf(row: Row): string {
+  for (const k of ['id', 'key', 'name']) {
+    const v = row[k];
+    if (v !== undefined && v !== null && v !== '') return `${k}:${String(v)}`;
+  }
+  return `json:${JSON.stringify(row)}`;
+}
+
+/** 行を比べられる形に揃える（試験が作る行を除き、件数の項目を外し、安定したキーで並べる）。純関数。 */
+export function normalizeRows(rows: readonly Row[]): Row[] {
+  return rows
+    .filter((r) => !isTestRow(r))
+    .map(contentOf)
+    .sort((a, b) => sortKeyOf(a).localeCompare(sortKeyOf(b)));
+}
+
 /** 件数の項目を除いた行（辞書の中身だけを比べる）。 */
 function contentOf(row: Row): Row {
   return Object.fromEntries(Object.entries(row).filter(([k]) => !/count$/i.test(k)));
 }
 
-/** 既存のポリシーと辞書の写し（`e2e-` の行を除き、件数の項目を外し、ID で並べる）。 */
+/** 既存のポリシーと辞書の写し（`e2e-` の行を除き、件数の項目を外し、安定したキーで並べる）。 */
 export async function dictionarySnapshot(
   request: APIRequestContext,
 ): Promise<Record<string, Row[]>> {
@@ -37,10 +57,7 @@ export async function dictionarySnapshot(
     expect(res.status(), `GET ${s.path}（${s.name}）`).toBe(200);
     const rows = s.rows(await res.json());
     expect(Array.isArray(rows), `${s.name} の形が違う`).toBe(true);
-    out[s.name] = (rows as Row[])
-      .filter((r) => !isTestRow(r))
-      .map(contentOf)
-      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    out[s.name] = normalizeRows(rows as Row[]);
   }
   return out;
 }

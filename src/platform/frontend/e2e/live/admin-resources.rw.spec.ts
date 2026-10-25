@@ -9,10 +9,10 @@
 //   `e2e-` の行と件数の項目を除いて一致することを見る（IADR-0631 決定 4）。
 // - 🔴 作るポリシーは**何も新しく許さない**: 利用者 clearance=restricted × 文書 confidentiality=restricted の read（seed の「restricted 取扱者は
 //   全区分を読める」に含まれる）。作った間も同じ実行の他の試験の認可が変わらない（IADR-0631 決定 2）。
-// - M-076 の SC-02: 登録フォームは本文を持たないが、本文の無い文書も索引のメタデータ点（タイトル）を持つので、タイトルの runId で検索に出る。
-//   `E2E_SEARCH_HITS=1` のときだけ判定する（IADR-0627・IADR-0631 決定 3）。
+// - 🔴 M-076 は SC-02（検索）ではなく SC-03（`/docs/<id>`）で見る（IADR-0631 決定 3）。SC-05 で登録した文書は本文の所在（MarkdownUri）を
+//   持たず、取り込みは本文の所在が無ければ索引に何も書かない（IngestionService の DocumentUpdatedConsumer「MarkdownUri is null, skipping
+//   ingestion」。PR #2238 の初回の e2e-live で実測: 120 秒待っても検索に出ない）。網羅表の「SC-02 で見える」は #2013 で訂正する。
 import { expect, test, type Page } from '@playwright/test';
-import type { SearchResponse } from '../../src/lib/api/generated/bff.schemas';
 import { parseLiveEnv, stateFile } from './support/env';
 import { DEFAULT_AUTH_DIR } from './support/paths';
 import { createCleanup, e2eName } from './support/cleanup';
@@ -37,7 +37,7 @@ const T = {
   archived: ja('文書をアーカイブしました。'),
   remove: ja('削除'),
   docDeleted: ja('文書を削除しました。'),
-  searchHeading: ja('検索結果一覧'),
+  docNotFound: ja('文書が見つかりませんでした。'),
   sourcesHeading: ja('データソース'),
   newSource: ja('＋ ソース登録'),
   sourceForm: ja('データソース登録'),
@@ -63,11 +63,6 @@ const T = {
   deletePolicy: (policyName: string) => ja('ポリシーを削除: {policyName}', { policyName }),
 };
 
-const HITS_REASON =
-  'E2E_SEARCH_HITS=1 が無い（索引が空であり得る環境では、検索に出ることを判定しない。IADR-0627）';
-/** 取り込みを待つ上限（公開は非同期に索引へ写る）。 */
-const INDEX_WAIT = { timeout: 120_000, intervals: [3_000, 5_000, 10_000] };
-
 /** 画面の操作が送った BFF の要求の応答を待つ（method と pathname で特定する）。 */
 function bffResponse(page: Page, method: string, path: string | RegExp) {
   return page.waitForResponse((r) => {
@@ -75,6 +70,20 @@ function bffResponse(page: Page, method: string, path: string | RegExp) {
     const p = new URL(r.url()).pathname;
     return typeof path === 'string' ? p === path : path.test(p);
   });
+}
+
+/** SC-03（`/docs/<id>`）を別のページで開き、BFF の応答の状態と表示（見出し／見つからない）を確かめる。 */
+async function expectDocument(page: Page, id: string, title: string, visible: boolean) {
+  const doc = await page.context().newPage();
+  try {
+    const responded = bffResponse(doc, 'GET', `/bff/documents/${id}`);
+    await doc.goto(`/docs/${id}`);
+    expect((await responded).status(), 'GET /bff/documents/{id}').toBe(visible ? 200 : 404);
+    if (visible) await expect(doc.getByRole('heading', { name: title, level: 1 })).toBeVisible();
+    else await expect(doc.getByText(T.docNotFound, { exact: true })).toBeVisible();
+  } finally {
+    await doc.close();
+  }
 }
 
 /** `<select>` の中から表示が `prefix` で始まる選択肢の表示（ラベル）を引く（属性の ID は実行ごとに違うので、ラベルで選ぶ）。 */
@@ -106,7 +115,7 @@ test.afterEach(async ({ page }, testInfo) => {
 
 // SC-05, SC-02, UC-03, FR-06: M-076。
 test(
-  'M-076: e2e-admin が文書を登録 → 公開 → SC-02 の検索で見える → アーカイブ → 削除できる',
+  'M-076: e2e-admin が文書を登録 → 公開（SC-03 で開ける）→ アーカイブ → 削除（SC-03 で見つからない）できる',
   { tag: ['@p0', '@live-rw'] },
   async ({ page }, testInfo) => {
     const title = e2eName(cfg.runId, 'doc', testInfo.retry);
@@ -139,28 +148,8 @@ test(
       await expect(row.getByRole('button', { name: T.publish, exact: true })).toHaveCount(0);
     });
 
-    await test.step('SC-02 の検索で見える（タイトルの runId で引く）', async () => {
-      if (!cfg.searchHits) {
-        testInfo.annotations.push({ type: 'SC-02 を判定していない', description: HITS_REASON });
-        return;
-      }
-      const search = await page.context().newPage();
-      try {
-        await expect(async () => {
-          const responded = bffResponse(search, 'POST', '/bff/search');
-          await search.goto(`/search?q=${encodeURIComponent(cfg.runId ?? '')}`);
-          const res = await responded;
-          expect(res.status(), 'POST /bff/search').toBe(200);
-          const body = (await res.json()) as SearchResponse;
-          expect(body.results.map((r) => r.documentId)).toContain(id);
-        }).toPass(INDEX_WAIT);
-        await expect(
-          search.getByRole('heading', { name: T.searchHeading, level: 1 }),
-        ).toBeVisible();
-        await expect(search.getByRole('link', { name: title })).toBeVisible();
-      } finally {
-        await search.close();
-      }
+    await test.step('公開した文書は SC-03 で開ける', async () => {
+      await expectDocument(page, id, title, true);
     });
 
     await test.step('アーカイブ', async () => {
@@ -176,6 +165,10 @@ test(
       expect((await deleted).status(), 'DELETE /bff/documents/{id}').toBe(204);
       await expect(page.getByText(T.docDeleted, { exact: true })).toBeVisible();
       await expect(row).toHaveCount(0);
+    });
+
+    await test.step('削除した文書は SC-03 で見つからない（BFF 404）', async () => {
+      await expectDocument(page, id, title, false);
     });
   },
 );
@@ -235,12 +228,14 @@ test(
     await test.step('検証（dry-run）は保存しない', async () => {
       const validated = bffResponse(page, 'POST', '/bff/admin/authz/policies/validate');
       await form.getByRole('button', { name: T.validate, exact: true }).click();
-      expect((await validated).status(), 'POST /bff/admin/authz/policies/validate').toBe(200);
-      await expect(
-        page
-          .getByText(T.noConflict, { exact: true })
-          .or(page.getByText(T.conflict, { exact: true })),
-      ).toBeVisible();
+      const res = await validated;
+      expect(res.status(), 'POST /bff/admin/authz/policies/validate').toBe(200);
+      // 🔴 結果は決まっている: 検証（AuthorizationService の AbacValidation.ValidatePolicy）は要求と属性辞書だけを見て、既存のポリシーとは
+      // 比べない。条件は辞書に定義済みのキーと許可値（利用者 clearance=restricted・文書 confidentiality=restricted）で、文書の条件のキーは
+      // 1 つ、動的束縛は無い。辞書が変わらないことは前後の突き合わせ（afterEach）が見ているので、「矛盾なし」（valid=true・errors 空）に固定する。
+      expect(await res.json(), '検証の結果').toEqual({ valid: true, errors: [] });
+      await expect(page.getByText(T.noConflict, { exact: true })).toBeVisible();
+      await expect(page.getByText(T.conflict, { exact: true })).toHaveCount(0);
       const listed = await page.request.get('/bff/admin/authz/policies');
       expect(((await listed.json()) as { name: string }[]).map((p) => p.name)).not.toContain(name);
     });

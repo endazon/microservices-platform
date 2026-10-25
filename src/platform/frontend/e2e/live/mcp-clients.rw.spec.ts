@@ -7,7 +7,8 @@
 //   `admin-resources.rw.spec.ts` と分けた）。応答からは clientId を取り、**後始末（無効化）を積んでから** secret を記録し
 //   （`support/issuedSecrets.ts`。成果物の走査が探す）、画面の「閉じる」で表示を消す。secret に触れる assertion を置かない。
 // - 🔴 **BFF に MCP クライアントの削除の口は無い**（無効化だけ）。網羅表の「削除」は流せないので、無効化までを流す。無効化済みの行は残り、
-//   sweep は後始末済みとして数えない（IADR-0631 決定 1）。属性は付けない（何も読めない無人アカウント。登録者の部分集合の判定も呼ばれない）。
+//   sweep は後始末済みとして数えない（IADR-0631 決定 1）。属性は所属部門だけ（無人は 1 つ以上要る。clearance が無いので何も読めず、
+//   clearance・タグではないので登録者の部分集合の判定も呼ばれない。IADR-0631 決定 5）。
 import { expect, test, type Page } from '@playwright/test';
 import { parseLiveEnv, stateFile } from './support/env';
 import { DEFAULT_AUTH_DIR } from './support/paths';
@@ -30,6 +31,9 @@ const T = {
   clientId: ja('クライアント ID'),
   displayName: ja('表示名'),
   register: ja('登録'),
+  attribute: ja('属性'),
+  value: ja('値'),
+  addAttribute: ja('属性を追加'),
   close: ja('閉じる'),
   disable: ja('無効化'),
   disabled: ja('無効（即時接続拒否）'),
@@ -63,6 +67,12 @@ test(
     await page.getByLabel(T.kind).selectOption('service-account');
     await page.getByLabel(T.clientId).fill(name);
     await page.getByLabel(T.displayName).fill(name);
+    // 無人は ABAC 属性が 1 つ以上要る（05_screens §SC-12。画面の検証が送信の前に止める。PR #2238 の初回の e2e-live で実測）。
+    // 所属部門だけを付ける（e2e-admin 自身の部門。clearance・タグではないので登録者の部分集合の判定の対象外で、clearance が無いので何も読めない）。
+    const assignment = page.getByTestId('attribute-assignment');
+    await assignment.getByLabel(T.attribute).selectOption('department');
+    await assignment.getByLabel(T.value).selectOption('engineering');
+    await page.getByRole('button', { name: T.addAttribute, exact: true }).click();
     const registered = bffResponse(page, 'POST', '/bff/admin/mcp-clients');
     await page.getByRole('button', { name: T.register, exact: true }).click();
     const res = await registered;
