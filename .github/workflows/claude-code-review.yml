@@ -107,7 +107,7 @@ jobs:
       # 他スタックは actions/setup-node / actions/setup-python 等に置き換える）。
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
 
       # レビューは PR オープン/更新で自動起動するため、モデル指定は PR 本文/タイトルの
       # 「@claude opus / sonnet / haiku」で切り替える。未指定時は既定 claude-sonnet-5-5。
