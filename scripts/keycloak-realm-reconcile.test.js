@@ -320,6 +320,27 @@ ok('client の属性（backchannel.logout.url）が違えば client.update 1 件
   assert.ok(/attributes/.test(ops[0].reason));
 });
 
+// ［2026-10-25 / #2245 / IADR-0524 の追記］既存の realm（webOrigins が空の account-console）へ宣言の `+` を当てる。
+// 当てるのは account-console の client.update 1 件だけで、稼働の表現（rootUrl・redirectUris・余剰の属性）は保ち、当てた後は 0 件。
+ok('既存の realm の account-console の webOrigins が空なら client.update 1 件で + を入れ、ほかの欄は保ち、当てた後は 0 件（#2245）', () => {
+  const declared = REALM.clients.find((c) => c.clientId === 'account-console');
+  assert.deepStrictEqual(declared.webOrigins, ['+'], '宣言が + を持たない（この試験の前提）');
+  const live = liveFrom(REALM);
+  const ac = live.clients.find((c) => c.clientId === 'account-console');
+  ac.webOrigins = [];
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['client.update']);
+  assert.strictEqual(ops[0].path, `/admin/realms/platform/clients/${ac.id}`);
+  assert.ok(/webOrigins/.test(ops[0].reason), ops[0].reason);
+  assert.deepStrictEqual(ops[0].body.webOrigins, ['+']);
+  assert.strictEqual(ops[0].body.rootUrl, declared.rootUrl);
+  assert.deepStrictEqual(ops[0].body.redirectUris, declared.redirectUris);
+  assert.strictEqual(ops[0].body.attributes['client.secret.creation.time'], '1700000000', '余剰の属性が消えた');
+  // 冪等: PUT の本文を稼働へ当てた後は計画が 0 件。
+  Object.assign(ac, ops[0].body);
+  assert.deepStrictEqual(opsOf(REALM, live), []);
+});
+
 // ［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］従前は「secret が違えば client.update」を固定していた。
 // 🔴 それは**認証基盤と Vault を対で回した値を、次の起動で認証基盤側だけ開発用の値へ戻す**動きだった（片側だけ書いた状態を作る）。
 ok('既存の client の secret が宣言と違っても計画は 0 件（回した値を戻さない。ADR-0124 決定 1）', () => {
