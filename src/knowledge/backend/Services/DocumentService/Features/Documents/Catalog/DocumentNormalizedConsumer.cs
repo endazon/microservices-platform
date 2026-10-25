@@ -101,8 +101,8 @@ public class DocumentNormalizedConsumer(
                 ev.Attributes, tags, fingerprint, ev.AssetUris,
                 ev.HasBody, ev.OriginalPath, ev.DataSourceName, ev.NormalizedAt);
             db.Documents.Add(doc);
-            logger.LogInformation("Cataloged normalized document {Id} title={Title}",
-                ev.DocumentId, ev.Title);
+            // NFR-28, NFR-19 (#2131): **表題を出さない**（文書 ID だけ）。理由は IngestionService の `DocumentUpdatedConsumer` と同じ。
+            logger.LogInformation("Cataloged normalized document {Id}", ev.DocumentId);
         }
         else
         {

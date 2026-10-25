@@ -491,6 +491,28 @@ public class DocumentUpdatedConsumerTests
         logger2.Warnings.Should().NotContain(w => w.Contains("hasBody"));
     }
 
+    // ── NFR-28, NFR-19, FR-19 (#2131): 表題をログへ出さない ──────────────
+
+    // Information は既定で集約・保持される水準であり、表題（個人資料の題名を含む）が文書 1 件ごとに積もる。
+    // 境界: 改行・行区切り（U+2028）・制御文字を含む表題と、表題の材料になる所在。全水準・構造化の値まで見る。
+    [Fact]
+    public async Task Consumer_ShouldNotLogTitleOrOriginalPath_AtAnyLevel()
+    {
+        const string marker = "秘密の相談";
+        var logger = new CapturingLogger<DocumentUpdatedConsumer>();
+        var store = new RecordingVectorStore();
+        var (consumer, _) = Build(store, new StubContentReader("# 見出し\n\n本文"), logger: logger);
+        var ev = SampleEvent(originalPath: $"/notes/{marker}.md") with { Title = $"私の日記\n2026\u2028{marker}\u0007" };
+
+        await HandleAsync(consumer, ev);
+
+        store.Upserts.Should().NotBeEmpty("前提: 取り込みの経路（ログ行のある経路）を通った");
+        logger.Carries(marker).Should().BeFalse("表題・所在をどの水準のログにも出さない");
+        // 陰性対照: 行そのものは残り、鍵は文書 ID である（ログを丸ごと消して緑にする実装を通さない）。
+        logger.Entries.Should().Contain(e =>
+            e.Level == LogLevel.Information && e.Values.Contains(ev.DocumentId.ToString()));
+    }
+
     // ── ADR-0127 / #1746 / [[IADR-0497]]: 高機密文書は埋め込まず語彙索引にだけ載せる ──────────────
 
     // 機密区分の属性を任意の形で持つ（欠落・空・未知を表すため）。
@@ -639,6 +661,13 @@ file class CapturingLogger<T> : ILogger<T>
 {
     public List<string> Warnings { get; } = [];
 
+    // #2131: 全水準の行（書式化後の文言と構造化の値）。表題が**どの水準にも**出ないことを見るため。
+    public List<(LogLevel Level, string Message, List<string> Values)> Entries { get; } = [];
+
+    public bool Carries(string fragment) => Entries.Any(e =>
+        e.Message.Contains(fragment, StringComparison.Ordinal)
+        || e.Values.Any(v => v.Contains(fragment, StringComparison.Ordinal)));
+
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
     public bool IsEnabled(LogLevel logLevel) => true;
@@ -646,7 +675,12 @@ file class CapturingLogger<T> : ILogger<T>
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
         Func<TState, Exception?, string> formatter)
     {
-        if (logLevel >= LogLevel.Warning) Warnings.Add(formatter(state, exception));
+        var message = formatter(state, exception);
+        if (logLevel >= LogLevel.Warning) Warnings.Add(message);
+        var values = state is IEnumerable<KeyValuePair<string, object?>> pairs
+            ? pairs.Select(p => p.Value?.ToString() ?? string.Empty).ToList()
+            : [];
+        Entries.Add((logLevel, message, values));
     }
 }
 
