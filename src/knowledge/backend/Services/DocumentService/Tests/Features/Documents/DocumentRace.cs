@@ -3,6 +3,8 @@ using DocumentService.Features.Documents;
 using DocumentService.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -20,6 +22,10 @@ internal sealed class RaceTarget
     public Guid? Id { get; set; }
     public int Remaining { get; set; } = 1;
     public int Raced { get; set; }
+
+    // true なら、確定の口ではなく**文書行を書く保存の直前**に窓を開ける（`DocumentRace.RaceAtSave`）。
+    // 確定の関数の中で文書を読む口（タグの改名）は、確定の口の手前で開けても読み直しで追い付いてしまい、負けないためである。
+    public bool AtSave { get; init; }
 }
 
 internal static class DocumentRace
@@ -29,6 +35,9 @@ internal static class DocumentRace
         => factory.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
         {
             services.AddSingleton(target);
+            if (target.AtSave)
+                services.ConfigureDbContext<DocumentDbContext>((sp, o) => o.AddInterceptors(
+                    new RaceAtSave(sp.GetRequiredService<IServiceScopeFactory>(), target)));
             services.RemoveAll<IDocumentUpdatedPublisher>();
             services.AddScoped<IDocumentUpdatedPublisher>(sp => new RacingPublisher(
                 new RecordingDocumentUpdatedPublisher(sp.GetRequiredService<RecordingMessageBus>()),
@@ -39,9 +48,25 @@ internal static class DocumentRace
                 sp.GetRequiredService<DocumentDbContext>(), sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<RaceTarget>()));
         }));
 
+    // 勝つ側の確定の中で、もう一度窓を開けない（勝つ側の保存も同じ割り込みを通る）。
+    private static readonly AsyncLocal<bool> Racing = new();
+
     private static async Task RaceAsync(IServiceScopeFactory scopes, RaceTarget target, CancellationToken ct)
     {
-        if (target.Id is not { } id || target.Remaining <= 0) return;
+        if (target.Id is not { } id || target.Remaining <= 0 || Racing.Value) return;
+        Racing.Value = true;
+        try
+        {
+            await WinAsync(scopes, target, id, ct);
+        }
+        finally
+        {
+            Racing.Value = false;
+        }
+    }
+
+    private static async Task WinAsync(IServiceScopeFactory scopes, RaceTarget target, Guid id, CancellationToken ct)
+    {
         target.Remaining--;
         target.Raced++;
         using var scope = scopes.CreateScope();
@@ -63,7 +88,8 @@ internal static class DocumentRace
 
         public async Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default)
         {
-            await RaceAsync(scopes, target, ct);
+            if (!target.AtSave)
+                await RaceAsync(scopes, target, ct);
             await inner.CommitAsync(saveAndPublish, ct);
         }
     }
@@ -78,9 +104,22 @@ internal static class DocumentRace
 
         public async Task SaveChangesAndFlushAsync(CancellationToken ct = default)
         {
-            if (db.ChangeTracker.Entries<DocumentService.Domain.Document>().Any(e => e.Entity.Id == target.Id))
+            if (!target.AtSave && db.ChangeTracker.Entries<DocumentService.Domain.Document>().Any(e => e.Entity.Id == target.Id))
                 await RaceAsync(scopes, target, ct);
             await inner.SaveChangesAndFlushAsync(ct);
+        }
+    }
+
+    // 文書行を書く保存の直前（対象の文書が更新・削除として追跡されているとき）に窓を開ける。
+    private sealed class RaceAtSave(IServiceScopeFactory scopes, RaceTarget target) : SaveChangesInterceptor
+    {
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context is { } db && db.ChangeTracker.Entries<DocumentService.Domain.Document>()
+                    .Any(e => e.Entity.Id == target.Id && e.State is EntityState.Modified or EntityState.Deleted))
+                await RaceAsync(scopes, target, cancellationToken);
+            return result;
         }
     }
 }

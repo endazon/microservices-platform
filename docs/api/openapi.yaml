@@ -268,7 +268,11 @@ paths:
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 見つからない }
-        "409": { description: 同名のタグが既に辞書にある（自分自身は除く） }
+        "409":
+          description: |
+            同名のタグが既に辞書にある（自分自身は除く）。
+            または、再発行が並行する文書の確定に上限（3 回）まで負けた（`error: version_conflict`。`message` に再送を促す文。
+            改名も再発行も確定していない。同じ要求の再送で再開できる。IADR-0637 決定 6）
         "502": { description: DocumentService へ到達できない }
     delete:
       x-roles: [platform-admin]
@@ -2178,7 +2182,9 @@ paths:
         - 🔴 **`dryRun` は必須**（省略は 400）。`true` は何も発行せず、カーソルより後ろの全件の内訳を返す。
         - 並び: `createdAt` 昇順、同時刻は `id` 昇順（`GET /documents/page` と同じキーセット）。走査の間ずっと在った文書はちょうど 1 回ずつ選ばれる。
           `createdBefore` を走査の開始時刻に固定すると、途中で作られた文書（作成の経路で発行済み）は選ばれない。
-        - 台帳は書き換えない（版も更新時刻も動かない）。中身は通常の経路と同じ（共有先・タグの表示名・本文指紋・本文の所在）。
+        - 台帳の内容は書き換えない（版も更新時刻も動かない）。進むのは発行の連番（`EventSequence`）だけである（IADR-0637）。
+          中身は通常の経路と同じ（共有先・タグの表示名・本文指紋・本文の所在）。
+        - ページの確定が並行する文書の確定に負けたら、ページを読み直してやり直す（上限 3 回）。上限を超えたら何も確定せずに 409 を返す。
         - 露出の 3 トグルが OFF の個人資料は発行しない（`skippedByGate` に数え、カーソルはその先へ進む）。
         - dry-run も発行も 1 呼び出しごとにログへ 1 行残す（認証済みの主体と `requestedBy` / `reason` の札）。
         - 発行は耐久アウトボックスを持たない。200 はブローカへの到達の保証ではない（確かめ方は Qdrant の `points_count`）。
@@ -2235,6 +2241,16 @@ paths:
           description: 未認証
         "403":
           description: 管理者でない
+        "409":
+          description: ページの確定が並行する文書の確定に上限（3 回）まで負けた。このページは 1 件も確定していない（IADR-0637 決定 6）
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, resumeCursor]
+                properties:
+                  error: { type: string, enum: [version_conflict] }
+                  resumeCursor: { type: [string, "null"], description: "負けたページの先頭のカーソル（＝要求の `cursor`。先頭のページなら null）。次の要求の `cursor` にそのまま渡せば再開できる" }
 
   /documents/archive-bodyless:
     post:
