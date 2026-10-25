@@ -148,7 +148,7 @@ related_specs:
 
 - 単一文書の 5 経路は、`DocumentVersionConflict.AfterLostSaveAsync`（#2103 と同じ形）へ写す。
   - Archive・Publish・PutBody・SyncConflicts/Resolve（負け得るのは元の資料を書く `local` だけ）・AddTag。
-  - AddTag は gRPC だけの口である。利用の場が `AddDocumentTagStatus.VersionConflict` を返し、`ToProto` がその枝で `ABORTED` を投げる。
+  - AddTag は gRPC だけの口である。利用の場が `AddDocumentTagStatus.VersionConflict` を返し、応答を作る唯一の点 `Respond` が写像の前で `ABORTED` を投げる（`ToProto` は投げない）。
     - 既定の枝（`NOT_WRITABLE`）へ化けさせない。
     - proto の結果の値は足さない。
     - 呼び出し元（graph）はどの `RpcException` も 502 として承認を確定しないので、挙動は従前と同じである。

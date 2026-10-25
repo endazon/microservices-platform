@@ -35,7 +35,7 @@ plan_refs:
 | Archive（`POST /documents/{id}/archive`） | `SaveChangesAndPublishUpdatedIfIndexableAsync` 1 回 | 文書の更新 | `DocumentVersionConflict.AfterLostSaveAsync` |
 | Publish（`POST /documents/{id}/publish`） | 同上 | 同上 | 同上 |
 | PutBody（`PUT /documents/{id}/body`） | 同上（本文のオブジェクトは確定の前に同じキーへ上書き済み） | 同上 | 同上 |
-| SyncConflicts/Resolve（`POST /private-notes/sync/conflicts/{id}/resolve`） | `local` は元の資料の更新。`both` は別名資料の新規作成。`server` は競合の記録だけ | **`local` だけ**（`both`・`server` は元の文書行を書かない） | 同上 |
+| SyncConflicts/Resolve（`POST /private-notes/conflicts/{id}/resolve`） | `local` は元の資料の更新。`both` は別名資料の新規作成。`server` は競合の記録だけ | **`local` だけ**（`both`・`server` は元の文書行を書かない） | 同上 |
 | AddTag（gRPC `DocumentTagWrite/AddTag`。REST は #1902 で撤去済み） | 同上 | 同上 | 利用の場の結果 `VersionConflict` → gRPC `ABORTED` |
 | StripUntrustedBoundary（`POST /documents/strip-untrusted-boundary`） | ページ全件を 1 回で確定 | ページの文書の更新 | `DocumentVersionConflict.ProblemForBatch(message)` |
 | ArchiveAstQuotes（`POST /documents/archive-ast-quotes`） | 同上 | 同上 | 同上 |
