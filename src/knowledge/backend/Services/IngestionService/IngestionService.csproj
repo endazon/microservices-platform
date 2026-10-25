@@ -14,7 +14,6 @@
     <None Remove="Tests/**" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit.RabbitMQ" />
     <!-- ADR-0027 §決定 必須設定 1 / E3b: 本プロジェクトは Wolverine ホストを起こす（ingest 段）。
          WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は
          **ホストを起こす各プロジェクトが足す**（Directory.Packages.props の定め）。

@@ -52,7 +52,7 @@
     "IngestionCompleted": {
       "publishers": {
         "knowledge/IngestionService": [
-          "masstransit"
+          "wolverine"
         ]
       },
       "subscribers": {}

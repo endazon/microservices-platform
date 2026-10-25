@@ -13,9 +13,8 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 文書をチャンク化し Qdrant（検索インデックス）へ登録する
 //
 // 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
-// 発行（IngestionCompleted）は MassTransit のまま —— その辺は本 PR の射程外であり、
-// 辺は原子的に動かす（IADR-0234 決定 3）。発行は IIngestionCompletedPublisher（ポート）越しで、
-// 1 ファイル 1 トランスポートを保つ。
+// 発行（IngestionCompleted）は IIngestionCompletedPublisher（ポート）越しで、1 ファイル 1 トランスポートを保つ
+// （［2026-10-25 / #2134］発行も Wolverine へ移った。IADR-0234 単位 E4）。
 //
 // 🔴 #1640: **外への呼び出し（本文の取得・埋め込み・Qdrant）はすべて呼び出しごとの期限の下で行う**（`IngestionTimeouts`・
 // `ConsumerCallTimeouts`）。受け口の ct は Wolverine の実行期限を含むため、期限が無いと止まった依存先は
@@ -24,7 +23,7 @@ namespace IngestionService.Features.Ingestion.Ingest;
 // 埋め込みはチャンクごとに総枠（`EmbeddingBudget`）を判定し、使い切ったら残りを呼ばずに時間切れとして投げる。
 // ［2026-10-17 / #1746・[[IADR-0560]]］語彙索引への書き込みの輪（高機密の文書・埋め込み待ちの点）も同じ値の総枠で打ち切る
 // （呼び出し先 `lexical-budget`）。
-// ［#1771］この辺の移行は IADR-0234 の単位 E4 として追跡する。購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
+// ［#1771］IngestionCompleted の購読者は結線しない（planning#741 項目 6 の裁定・2026-10-09）。
 public class DocumentUpdatedConsumer(
     IDocumentContentReader reader,
     IChunkingService chunker,
@@ -325,7 +324,7 @@ public class DocumentUpdatedConsumer(
         if (!await FinishAsync(ev, written, ct))
             return;
 
-        // FR-02: 取り込み完了イベントを発行する（発行は MassTransit のまま。ポート越し）。
+        // FR-02: 取り込み完了イベントを発行する（ポート越し。Wolverine・非耐久。#2134）。
         // 購読者は無く、結線もしない（#1771 / planning#741 項目 6）。検索への反映は上の Qdrant 登録で成立している。
         // ［2026-10-14 / #1908］チャンク数は書いた点の数（埋めた数 ＋ 埋め込み待ちの数）である。
         await bus.PublishCompletedAsync(ev.DocumentId, chunkCount + pendingCount, DateTimeOffset.UtcNow, ct);

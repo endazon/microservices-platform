@@ -19,11 +19,10 @@ namespace IngestionService.Tests;
 public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
     : IClassFixture<IntrospectionEndpointTests.Factory>
 {
-    // MassTransit の "masstransit-bus"（ready）は AddMassTransit が暗黙に登録する（IngestionCompleted の発行側のブローカ疎通）。
-    private const string MassTransitBus = "masstransit-bus";
-
+    // ［2026-10-25 / #2134］IngestionCompleted の発行も Wolverine へ移し MassTransit を外したので、"masstransit-bus" は無い
+    // （ブローカは Wolverine の 1 つだけ。DataSourceService の E1 と同じ）。
     private static readonly string[] OwnDependencies =
-        [WolverineExtensions.BrokerHealthCheckName, MassTransitBus, QdrantHealthCheck.Name];
+        [WolverineExtensions.BrokerHealthCheckName, QdrantHealthCheck.Name];
 
     private sealed class FixedCheck(HealthStatus status) : IHealthCheck
     {
@@ -53,7 +52,7 @@ public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
     }
 
     [Fact]
-    public void readinessに載るのはブローカの2スタックと自前のQdrantだけ()
+    public void readinessに載るのはWolverineのブローカと自前のQdrantだけ()
     {
         var registrations = factory.Services.GetRequiredService<IOptions<HealthCheckServiceOptions>>().Value.Registrations;
 
@@ -74,7 +73,6 @@ public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
 
     [Theory]
     [InlineData(WolverineExtensions.BrokerHealthCheckName)]
-    [InlineData(MassTransitBus)]
     [InlineData(QdrantHealthCheck.Name)]
     public async Task readyは自前の依存の1つが落ちると503(string down)
     {

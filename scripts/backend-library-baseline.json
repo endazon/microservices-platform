@@ -21,12 +21,6 @@
     "src/knowledge/backend/Services/DocumentService/Tests/DocumentService.Tests.csproj": [
       "MassTransit"
     ],
-    "src/knowledge/backend/Services/IngestionService/IngestionService.csproj": [
-      "MassTransit"
-    ],
-    "src/knowledge/backend/Services/IngestionService/Tests/IngestionService.Tests.csproj": [
-      "MassTransit"
-    ],
     "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": [
       "MassTransit"
     ],

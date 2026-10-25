@@ -96,10 +96,6 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
                 }));
             builder.ConfigureServices(services =>
             {
-                // 実 RabbitMQ 接続を避けるため MassTransit をテストハーネスへ差し替える。
-                services.RemoveAll<IBusControl>();
-                services.AddMassTransitTestHarness();
-
                 // ADR-0027 / E3b: ingest 段の購読は Wolverine へ移った。
                 // 🔴 **これが無いとテストが約 135 秒ハングする** —— Program.cs が UseWolverine +
                 // UseRabbitMq を呼ぶため、テストホストの起動が実ブローカへの接続を試みる
