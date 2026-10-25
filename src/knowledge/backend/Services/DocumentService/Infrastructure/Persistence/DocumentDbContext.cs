@@ -65,6 +65,9 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             // 版を進めない変更（露出トグル等）も、読んだ後に版が進んでいれば負ける（黙って上書きしない）。
             // 409 への写像は `DocumentVersionConflict`（`Update` / `UpdateMetadata` / `Delete` / 露出トグルの口）。
             e.Property(d => d.Version).IsConcurrencyToken();
+            // FR-02, IADR-0637 (#2150): 発行の連番も並行トークンである（版を進めない状態の変化どうしの並行も、後から保存する側が負ける）。
+            // 既存の行は 0 から始まる（migration の列の既定値）。
+            e.Property(d => d.EventSequence).IsConcurrencyToken();
             e.Property(d => d.MarkdownUri).HasMaxLength(2048);
             e.Property(d => d.OriginalUri).HasMaxLength(2048);
             e.Property(d => d.ContentType).HasMaxLength(200);

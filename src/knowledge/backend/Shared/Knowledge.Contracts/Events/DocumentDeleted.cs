@@ -7,4 +7,7 @@ namespace Knowledge.Contracts.Events;
 // （後方互換は持たせない＝旧 URN 固定は撤廃）。
 public record DocumentDeleted(
     Guid DocumentId,
-    DateTimeOffset DeletedAt);
+    DateTimeOffset DeletedAt,
+    // FR-02, FR-06, IADR-0637 (#2150): 削除した文書の**最後の発行の連番 + 1**（`DocumentUpdated.Sequence` と同じ列）。
+    // 受け手（Wiki）は削除と更新を同じ鍵で比べる。**末尾・既定値付きで足す**（[[IADR-0122]] 決定 2）。`null` は旧形式。
+    long? Sequence = null);

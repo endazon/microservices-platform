@@ -1,3 +1,5 @@
+using DocumentService.Features.Documents;
+using Microsoft.EntityFrameworkCore;
 using DocumentService.Domain.Ports;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
@@ -36,7 +38,16 @@ internal static class DeleteNoteEndpoint
             // ADR-0099 決定 5 (#1446): 削除の内訳は `deleted=1`（方向は端末 → サーバ＝push）。
             SyncAuditRecorder.Success(db, audit, device.OwnerId, device, SyncOps.Delete,
                 added: 0, updated: 0, deleted: 1, now, extra: "count=1");
-            await PrivateNoteEndpoints.SaveDeletionStateAsync(db, bus, id, changed: !wasDeleted, ct);
+            // FR-02, [[IADR-0597]] / IADR-0637 (#2150): 発行の連番は並行トークンである。読んだ後に別の発行が確定していれば確定ごと負ける
+            // （削除の印も残らない）。#2103 と同じ 409 `version_conflict` を返す（500 にしない）。
+            try
+            {
+                await PrivateNoteEndpoints.SaveDeletionStateAsync(db, bus, id, changed: !wasDeleted, ct);
+            }
+            catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+            {
+                return await DocumentVersionConflict.AfterLostSaveAsync(db, id, expectedVersion: null, ct);
+            }
             return Results.Ok(new { deletedAt = note.DeletedAt, purgeAt = note.PurgeAt });
         });
     }

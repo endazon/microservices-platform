@@ -3317,6 +3317,12 @@
             "type": "Guid",
             "required": true,
             "position": 0
+          },
+          "Sequence": {
+            "source": "positional",
+            "type": "long?",
+            "required": false,
+            "position": 2
           }
         }
       },
@@ -3435,6 +3441,12 @@
             "type": "string?",
             "required": false,
             "position": 9
+          },
+          "Sequence": {
+            "source": "positional",
+            "type": "long?",
+            "required": false,
+            "position": 12
           },
           "SharedWith": {
             "source": "positional",

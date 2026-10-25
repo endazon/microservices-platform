@@ -218,8 +218,10 @@ public sealed class PrivateNoteMaintenanceService(
         // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
         // FR-19, ADR-0096 決定 1, ADR-0057 決定 1・3, IADR-0604 (#2042): **行の削除と同じトランザクションに積んで確定する**
         // （Transactional Outbox）。確定の後に送出が落ちても Outbox の表に残り、再送される（索引の撤去が失われない）。
+        // FR-02, IADR-0637 (#2150): 削除は最後の発行の連番 + 1 を運ぶ（文書の行が無ければ連番なし）。
+        var sequences = docs.ToDictionary(d => d.Id, d => d.EventSequence + 1);
         foreach (var id in ids)
-            await deletedBus.PublishDeletedAsync(id, now, ct);
+            await deletedBus.PublishDeletedAsync(id, now, sequences.TryGetValue(id, out var s) ? s : null, ct);
         await deletedBus.SaveChangesAndFlushAsync(ct);
 
         // 🔴 件数と所有者だけ。**タイトルは載せない。**
@@ -257,8 +259,10 @@ public sealed class PrivateNoteMaintenanceService(
         // ADR-0027 / E3a: DocumentDeleted の発行は Wolverine（IDocumentDeletedPublisher 経由）。
         // FR-19, ADR-0037 決定 5, ADR-0057 決定 1・3, IADR-0604 (#2042): **行の削除と同じトランザクションに積んで確定する**
         // （Transactional Outbox）。従前は事後通知と使用量の再計算の後に発行しており、その間に落ちると再発行の起点が消えた。
+        // FR-02, IADR-0637 (#2150): 削除は最後の発行の連番 + 1 を運ぶ（文書の行が無ければ連番なし）。
+        var sequences = docs.ToDictionary(d => d.Id, d => d.EventSequence + 1);
         foreach (var id in ids)
-            await deletedBus.PublishDeletedAsync(id, now, ct);
+            await deletedBus.PublishDeletedAsync(id, now, sequences.TryGetValue(id, out var s) ? s : null, ct);
         await deletedBus.SaveChangesAndFlushAsync(ct);
 
         foreach (var byOwner in due.GroupBy(n => n.OwnerId))

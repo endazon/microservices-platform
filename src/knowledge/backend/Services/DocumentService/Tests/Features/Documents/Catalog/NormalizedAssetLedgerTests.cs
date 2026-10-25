@@ -39,6 +39,7 @@ public sealed class NormalizedAssetLedgerTests
             string? contentFingerprint = null, bool hasBody = true,
             string? originalPath = null, string? dataSourceName = null,
             List<string>? sharedWith = null,
+            long? sequence = null,
             CancellationToken ct = default) => Task.CompletedTask;
     }
 

@@ -19,9 +19,9 @@ public sealed class RecordingDocumentDeletedPublisher(DocumentDbContext db, Reco
 {
     private readonly List<DocumentDeleted> _pending = [];
 
-    public Task PublishDeletedAsync(Guid documentId, DateTimeOffset deletedAt, CancellationToken ct = default)
+    public Task PublishDeletedAsync(Guid documentId, DateTimeOffset deletedAt, long? sequence = null, CancellationToken ct = default)
     {
-        _pending.Add(new DocumentDeleted(documentId, deletedAt));
+        _pending.Add(new DocumentDeleted(documentId, deletedAt, sequence));
         return Task.CompletedTask;
     }
 

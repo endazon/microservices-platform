@@ -48,4 +48,9 @@ public record DocumentUpdated(
     //
     // **末尾・既定値付きで足す**（[[IADR-0122]] 決定 2）。`null` は「共有先を運ばない発行元」であり、
     // 空リストと同じく**誰とも共有されていない**として読む（deny 側）。
-    List<string>? SharedWith = null);
+    List<string>? SharedWith = null,
+    // FR-02, FR-19, IADR-0637 (#2150 / #2251): **文書ごとの単調な発行の連番**（発行元 DocumentService の `Document.EventSequence`）。
+    // `UpdatedAt` を進めない変化（露出・共有・論理削除・復元・タグの改名・再発行）も含め、発行のたびに確定と同じトランザクションで 1 つ進む。
+    // 受け手は双方に連番があれば連番で順序を判定し、無ければ従来どおり `UpdatedAt` で判定する（段 2）。
+    // **末尾・既定値付きで足す**（[[IADR-0122]] 決定 2）。`null` は「連番を運ばない発行元（旧形式・Outbox に残った旧メッセージ）」である。
+    long? Sequence = null);

@@ -23,13 +23,13 @@ public sealed class RecordingDocumentUpdatedPublisher(RecordingMessageBus bus) :
         Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
         string? contentFingerprint = null, bool hasBody = true,
         string? originalPath = null, string? dataSourceName = null,
-        List<string>? sharedWith = null, CancellationToken ct = default)
+        List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
     {
         if (_pending is null)
             throw new InvalidOperationException(
                 "DocumentUpdated は IDocumentUpdatedPublisher.CommitAsync の関数の中でだけ積める（IADR-0608 決定 2）。");
         _pending.Add(new DocumentUpdated(documentId, title, status, markdownUri, attributes, tags, updatedAt,
-            contentFingerprint, hasBody, originalPath, dataSourceName, sharedWith));
+            contentFingerprint, hasBody, originalPath, dataSourceName, sharedWith, sequence));
         return Task.CompletedTask;
     }
 

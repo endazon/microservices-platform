@@ -49,7 +49,8 @@ internal static class DeleteDocumentEndpoint
             // FR-06, ADR-0027 §決定, ADR-0057 決定 1・3, IADR-0604 (#2042): **発行は DB の確定と同じトランザクションに積む**
             // （Transactional Outbox）。従前は確定の後に素の発行を呼んでおり、その間に落ちると再発行の起点が消えた。
             // 確定（`SaveChangesAndFlushAsync`）が版の競合で負ければ、積んだ発行も巻き戻って 1 通も出ない。
-            await deletedBus.PublishDeletedAsync(id, deletedAt, ct);
+            // FR-02, IADR-0637 (#2150): 削除は最後の発行の連番 + 1 を運ぶ（Wiki は削除と更新を同じ鍵で比べる）。
+            await deletedBus.PublishDeletedAsync(id, deletedAt, doc.EventSequence + 1, ct);
             try
             {
                 await deletedBus.SaveChangesAndFlushAsync(ct);

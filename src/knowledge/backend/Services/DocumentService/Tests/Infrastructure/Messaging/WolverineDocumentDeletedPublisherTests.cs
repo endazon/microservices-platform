@@ -37,7 +37,7 @@ public class WolverineDocumentDeletedPublisherTests
         var at = DateTimeOffset.UtcNow;
 
         db.DocumentDeletionMarks.Add(DocumentDeletionMark.For(id, at));
-        await publisher.PublishDeletedAsync(id, at, Ct);
+        await publisher.PublishDeletedAsync(id, at, ct: Ct);
         var act = () => publisher.SaveChangesAndFlushAsync(Ct);
 
         await act.Should().NotThrowAsync("確定済みの削除に失敗を返さない（イベントは Outbox の表から再送される）");

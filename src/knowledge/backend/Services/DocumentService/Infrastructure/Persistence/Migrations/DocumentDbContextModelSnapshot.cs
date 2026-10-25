@@ -155,6 +155,10 @@ namespace DocumentService.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<long>("EventSequence")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("HasBody")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
