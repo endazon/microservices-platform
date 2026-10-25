@@ -41,10 +41,12 @@ related_specs:
 2. **ポリシーは何も新しく許さない形で作る**: 利用者 `clearance=restricted` × 文書 `confidentiality=restricted` の read。seed の
    「restricted 取扱者は全区分を読める」に含まれるので、作った間も認可の結果が変わらない。
 3. **M-076 は SC-02（検索）ではなく SC-03（`/docs/<id>`）で見る**（公開の後に開けて見出しがタイトル、削除の後に BFF 404 で「文書が見つかりません
-   でした」）。SC-05 で登録した文書は本文の所在（`MarkdownUri`）を持たず、取り込みは本文の所在が無ければ索引に何も書かない
-   （`IngestionService` の `DocumentUpdatedConsumer`「MarkdownUri is null, skipping ingestion」。メタデータ点は本文の所在があって本文が空の
-   ときだけ）。PR #2238 の初回の e2e-live で実測した（120 秒待っても検索に出ず、試験の 60 秒で打ち切られた）。網羅表の「SC-02 で見える」は
-   #2013 で訂正する。当初の本決定（タイトルの runId で検索に出る）は誤りだった。
+   でした」）。根拠は 2 つ:
+   - ①計画 SC-05 の入力表はタイトル・機密区分・`doc_scope`・タグだけで本文が無い。SC-05 で作った文書が SC-02 に出ることを計画は約束していない。
+   - ②SC-05 で登録した文書は本文の所在（`MarkdownUri`）を持たず、取り込みは本文の所在が無ければ索引に何も書かない（`IngestionService` の
+     `DocumentUpdatedConsumer`「MarkdownUri is null, skipping ingestion」。メタデータ点は本文の所在があって本文が空のときだけ）。
+     PR #2238 の初回の e2e-live で実測した（120 秒待っても検索に出ず、試験の 60 秒で打ち切られた）。
+   網羅表の「SC-02 で見える」は #2013 で訂正する。当初の本決定（タイトルの runId で検索に出る）は誤りだった。
 4. **既存のポリシーと辞書に差分が無いことを各 test の前後で見る**（ポリシー・属性辞書・タグ辞書・関係の型の辞書の GET。`e2e-` の行と
    件数の項目〔`usageCount` など〕は除き、ID で並べて比べる）。
 5. **無人の MCP クライアントは属性を所属部門（e2e-admin 自身の `department=engineering`）だけで登録し、client secret は記録しない**。

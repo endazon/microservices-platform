@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — live-rw の管理リソース（SC-05 文書・SC-06 データソース・SC-09 ポリシー・SC-12 MCP クライアント）の作成と後始末（E-52）
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-05, SC-06, SC-09, SC-12, SC-02, SC-03, FR-05, FR-06, FR-16, UC-03, UC-05, UC-09, NFR, IADR-0629, IADR-0630, IADR-0631]
 author: claude
 created: 2026-10-25
@@ -19,13 +19,13 @@ issue: "#2032"
 
 ## 受け入れ基準（#2032 ＋ オーケストレーターの条件 2026-10-25）
 
-- [ ] M-076: e2e-admin が SC-05 で `e2e-<runId>-doc-…` を登録 → 公開（SC-03 で開ける）→ アーカイブ → 削除（SC-03 で 404）—— live-rw
+- [x] M-076: e2e-admin が SC-05 で `e2e-<runId>-doc-…` を登録 → 公開（SC-03 で開ける）→ アーカイブ → 削除（SC-03 で 404）—— live-rw
       （網羅表の「SC-02 で見える」は流せない: SC-05 の文書は本文の所在を持たず索引に入らない。IADR-0631 決定 3）
-- [ ] M-082: SC-06 で `e2e-<runId>-source-…`（接続先は到達しないダミー）を登録 → 無効化。手動同期は押さない —— live-rw
-- [ ] M-092: SC-09 で `e2e-<runId>-policy-…` を検証（dry-run。保存されない）→ 保存 → 削除 —— live-rw
-- [ ] M-104: SC-12 で無人クライアント `e2e-<runId>-mcp-…` を登録（secret は記録しない・成果物の走査の対象に足す）→ 無効化 —— live-rw
-- [ ] 既存のポリシー・属性辞書・タグ辞書・関係の型の辞書に差分が無い（各 test の前後で GET を突き合わせる。`e2e-` の行は除く） —— live-rw
-- [ ] e2e-live で skip 0・失効 6・走査 0、sweep の dry-run で残骸 0・見ていない視点 0 —— live の実走
+- [x] M-082: SC-06 で `e2e-<runId>-source-…`（接続先は到達しないダミー）を登録 → 無効化。手動同期は押さない —— live-rw
+- [x] M-092: SC-09 で `e2e-<runId>-policy-…` を検証（dry-run。保存されない）→ 保存 → 削除 —— live-rw
+- [x] M-104: SC-12 で無人クライアント `e2e-<runId>-mcp-…` を登録（secret は記録しない・成果物の走査の対象に足す）→ 無効化 —— live-rw
+- [x] 既存のポリシー・属性辞書・タグ辞書・関係の型の辞書に差分が無い（各 test の前後で GET を突き合わせる。`e2e-` の行は除く） —— live-rw
+- [x] e2e-live で skip 0・失効 6・走査 0、sweep の dry-run で残骸 0・見ていない視点 0 —— live の実走
 
 ## 判断（IADR-0631）
 
@@ -54,8 +54,8 @@ issue: "#2032"
     行の「無効化」→「無効」。
   - M-092: `/admin/abac` → 名前・read・条件 2 つ → 検証（POST validate 200・一覧は増えない）→ 保存（応答の ID を `track` DELETE）→ 行の「削除」→ 消える。
 - `e2e/live/mcp-clients.rw.spec.ts`（e2e-admin・trace 等を切る）:
-  - M-104: `/admin/mcp-clients` → 種別「無人」・ID・表示名・属性は付けない（何も読めない無人アカウント。属性が無ければ登録者の部分集合の判定も呼ばれない）→ 登録（応答から clientId を取り `track` disable → secret を記録）→
-    （属性は department=engineering）secret の枠を閉じる → 行の「無効化」→「無効（即時接続拒否）」。
+  - M-104: `/admin/mcp-clients` → 種別「無人」・ID・表示名・属性は所属部門 `department=engineering` だけ（無人は属性が 1 つ以上要る。clearance が無いので何も読めず、
+    登録者の部分集合の判定の対象外）→ 登録（応答から clientId を取り `track` disable → secret を記録）→ secret の枠を閉じる → 行の「無効化」→「無効（即時接続拒否）」。
 
 ## 母集合（規則 9・10）
 
@@ -75,4 +75,8 @@ issue: "#2032"
 - `tsc -p tsconfig.node.json` 0 件・eslint 0 件（警告 0。SC-02 の段を SC-03 へ替えて分岐が無くなった）・prettier 緑。文書の検査は緑。
 - 初回の e2e-live（head 0a1dabab・run 40151991220）が赤: M-076 は検索に出ない（本文の所在が無く索引に入らない）、M-104 は登録の要求が送られない
   （無人は属性が要る）。いずれも根本原因を直した（上の判断 3・5）。L1 に辞書の並べ替え（id の無い行・逆順）の 1 件を足した（27 passed）。
-- live: e2e-live（PR）で ro,rw を流した結果は PR に書く。
+- live（受け入れ基準の根拠）: PR #2238 の e2e-live run 40153848469（head ad2f657c・層 ro,rw）が緑。
+  - 52 passed・skip 0（live-rw の M-076・M-082・M-092・M-104 を含む）。teardown の失効 6。
+  - 成果物の走査: 「資格情報 12 個・発行値 2 個の値は載っていない」（発行値は M-067 の端末トークンと M-104 の client secret）＝ 走査 0。
+  - sweep の dry-run: 残骸 0・見ていない視点 0・**後始末済み 2 件**（M-082 のデータソースと M-104 の MCP クライアント。いずれも無効化済み）。
+  - 既存のポリシー・辞書: 4 つの test の afterEach の突き合わせがすべて一致（不一致なら test が落ちる）。
