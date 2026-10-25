@@ -149,7 +149,9 @@ public class DocumentUpdatedConsumer(
             return;
         }
 
-        logger.LogInformation("Ingesting document {Id} title={Title}", ev.DocumentId, ev.Title);
+        // NFR-28, NFR-19 (#2131): **表題を出さない。** Information は既定で集約・保持される水準であり、表題（個人資料の題名を含む・
+        // 利用者が入力した文書メタデータ）が文書 1 件ごとにログ基盤へ積もる。運用者が引く鍵は文書 ID で足りる（IADR-0541 と同じ線引き）。
+        logger.LogInformation("Ingesting document {Id}", ev.DocumentId);
 
         // 🔴 FR-02, FR-05, ADR-0016, [[IADR-0595]] 決定 2・3 (#2101): **旧版の点をいつ消すか。**
         //

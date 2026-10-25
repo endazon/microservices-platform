@@ -30,9 +30,12 @@ public class RawDocumentFetchedConsumer(
     public async Task Handle(RawDocumentFetched ev, Envelope envelope, CancellationToken ct)
     {
 
+        // NFR-28, NFR-19 (#2131): **原本の所在を Information に出さない。** 表題は所在のファイル名から作られるので、
+        // 所在を出せば表題を出すのと同じである（個人資料の題名を含む）。鍵は取得 ID で足りる（所在は変換ジョブの台帳が持つ）。
+        // 異常時の行（下の `Conversion rejected`）は、運用者が原本を直すために所在を残す（IADR-0541 と同じ線引き）。
         logger.LogInformation(
-            "Converting raw document: SourceId={SourceId} Path={Path} Type={Type}",
-            ev.SourceId, ev.OriginalPath, ev.ContentType);
+            "Converting raw document: FetchId={FetchId} SourceId={SourceId} Type={Type}",
+            ev.FetchId, ev.SourceId, ev.ContentType);
 
         // SC-07: 変換開始を記録（受信・再試行の都度）。
         await jobs.StartAsync(ev, ct);
