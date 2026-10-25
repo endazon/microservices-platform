@@ -295,7 +295,7 @@ public class WikiSyncOrderingTests
         DocumentSyncOrdering.IsStaleDelete(mark, T3, null).Should().BeFalse(); // 削除の再配送は適用する
     }
 
-    // ── 🔴 FR-13, IADR-0638 決定 4 (#2150 / #2251) 段 2: 規則 11 の表の P1〜P5（Wiki）──
+    // ── 🔴 FR-13, IADR-0639 決定 4 (#2150 / #2251) 段 2: 規則 11 の表の P1〜P5（Wiki）──
     //
     // 鍵は辞書順 (時刻〔マイクロ秒〕, 連番)、削除は (DeletedAt, Sequence)。印の保存の精度（マイクロ秒）への丸めは実 PostgreSQL の試験
     // （`Knowledge.IntegrationTests` の `WikiSyncMarkPostgresTests`）が測る（InMemory はティックのまま保存するので丸めの変異を捕まえられない）。

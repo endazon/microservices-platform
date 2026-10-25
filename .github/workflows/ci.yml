@@ -1042,7 +1042,7 @@ jobs:
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # 🔴 Testcontainers（実 RabbitMQ / Postgres / SeaweedFS）を起動するテストは PR から外す
       # （IADR-0232 決定 3・改定 3。利用者裁定 2026-08-22「PR の精度低下は、どこかで回収できるなら
       # ある程度許容する。AI コーディング→PR→CI→AI コーディングのループ効率を上げよ」）。
@@ -1149,7 +1149,7 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       - name: Restore and build the whole backend.slnx (${{ matrix.unit }})
         env:
           UNIT: ${{ matrix.unit }}
@@ -1279,7 +1279,7 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # 🔴 リポジトリ直下から呼ぶ（integration.yml と同じ）。SDK は作業ディレクトリから global.json を探すので、
       #    submodule の中へ cd すると submodule 自身の global.json が効き、MSP の構成ではなくなる。
       - name: Restore, build and test as MSP composes it (${{ matrix.unit }}, unit tests only)
@@ -1437,7 +1437,7 @@ jobs:
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       - name: Format check (${{ matrix.unit }})
         run: dotnet format "src/${{ matrix.unit }}/backend/backend.slnx" --verify-no-changes
 
@@ -1531,7 +1531,7 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       - name: Stage, build and test unit templates (as placed under src/)
         run: |
           set -euo pipefail

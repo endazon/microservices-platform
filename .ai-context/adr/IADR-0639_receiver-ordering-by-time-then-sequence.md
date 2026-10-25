@@ -1,5 +1,5 @@
 ---
-title: IADR-0638 受け手（取り込み・グラフ・Wiki）は DocumentUpdated を辞書順 (UpdatedAt, Sequence)、DocumentDeleted を (DeletedAt, Sequence) で比べ、印より厳密に古いものだけを捨てる。連番を第 1 の鍵にしない（文書 ID の再利用で連番が 0 へ戻る）。グラフに撤収・削除の後も残る印の表を足し、取り込みは点にも連番を載せる
+title: IADR-0639 受け手（取り込み・グラフ・Wiki）は DocumentUpdated を辞書順 (UpdatedAt, Sequence)、DocumentDeleted を (DeletedAt, Sequence) で比べ、印より厳密に古いものだけを捨てる。連番を第 1 の鍵にしない（文書 ID の再利用で連番が 0 へ戻る）。グラフに撤収・削除の後も残る印の表を足し、取り込みは点にも連番を載せる
 type: impl-adr
 status: Accepted
 related_ids: [FR-02, FR-13, FR-17, FR-19, ADR-0027, ADR-0057, ADR-0061, ADR-0142, IADR-0637, IADR-0595, IADR-0596, IADR-0636]
@@ -10,13 +10,14 @@ related_specs:
   - ../specs/20261026_2150_document-event-sequence-stage2.md
 ---
 
-# IADR-0638: 受け手は (時刻, 連番) の辞書順で比べる（#2150 / #2251 段 2）
+# IADR-0639: 受け手は (時刻, 連番) の辞書順で比べる（#2150 / #2251 段 2）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
 - 日付: 2026-10-26
 - 決定者: claude（#2150 / #2251 段 2。比較の鍵の案 (a) はコーディネーターの判断 2026-10-26）
+- 〔採番注記〕当初は IADR-0638 を採ったが、#2267（setup-dotnet の厳密な版。IADR-0638）が先にマージされたので、先着尊重で 0639 へ改番した（2026-10-26）。改番の前のコミットの件名 2 件は IADR-0638 を名指すが、書き換えない（amend しない運用）。
 - 改訂する決定: [IADR-0637](./IADR-0637_document-event-sequence.md) 決定 3 の最後の項（「段 2 の受け手は、両方に連番があれば連番で比べ、どちらかに無ければ `UpdatedAt` で比べる」）
 
 ## 起点・関連

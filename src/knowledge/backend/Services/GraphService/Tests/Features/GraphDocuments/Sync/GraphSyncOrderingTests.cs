@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GraphService.Tests.Features.GraphDocuments.Sync;
 
-// 🔴 FR-17, FR-19, IADR-0638 (#2150 / #2251) 段 2: **グラフの順序の門と墓石。** 作業仕様書の規則 11 の表の P1〜P5 を 1 対 1 で写す。
+// 🔴 FR-17, FR-19, IADR-0639 (#2150 / #2251) 段 2: **グラフの順序の門と墓石。** 作業仕様書の規則 11 の表の P1〜P5 を 1 対 1 で写す。
 //
 // 鍵は辞書順 (時刻, 連番)、削除は (DeletedAt, Sequence)。時刻は保存の精度（マイクロ秒）へ丸めて比べる。
 // 時刻には**マイクロ秒より細かい端数**（+3 ティック）を持たせる —— 丸めを外すと、同じ時刻の古い版を端数の分だけ新しいと読み、P1・P3 が赤になる。

@@ -90,7 +90,7 @@ related_specs:
 - `DocumentUpdated` と `DocumentDeleted` の末尾に `long? Sequence = null` を足す（IADR-0122 決定 2。`check-contract-schema` は非破壊 2 件）。
 - 旧い電文（outbox に残った発行・旧い送り手）は null として読める。
 - 段 2 の受け手は、両方に連番があれば連番で比べ、どちらかに無ければ `UpdatedAt` で比べる。
-- ［2026-10-26 追記 / #2150 段 2］**この項は [IADR-0638](./IADR-0638_receiver-ordering-by-time-then-sequence.md) で改訂した。** 受け手は辞書順 (時刻, 連番) で比べ、連番を第 1 の鍵にしない。文書 ID の再利用（IADR-0596 決定 2）で、作り直した文書の連番が 0 へ戻るためである。上の文は記録として残す。
+- ［2026-10-26 追記 / #2150 段 2］**この項は [IADR-0639](./IADR-0639_receiver-ordering-by-time-then-sequence.md) で改訂した。** 受け手は辞書順 (時刻, 連番) で比べ、連番を第 1 の鍵にしない。文書 ID の再利用（IADR-0596 決定 2）で、作り直した文書の連番が 0 へ戻るためである。上の文は記録として残す。
 
 ### 決定 4: 連番は並行トークンである（案 (i)）
 

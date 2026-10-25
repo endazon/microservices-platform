@@ -10,7 +10,7 @@ namespace IngestionService.Domain;
 // `AccessFingerprint` は反映した版の**判定軸（属性辞書 ＋ 共有先）の一方向の指紋**であり、次の版で判定軸が
 // 変わったかだけを見るために持つ（値そのものは持たない。[[IADR-0595]] 決定 3）。撤収した版は空文字列。
 //
-// 🔴 FR-02, FR-19, IADR-0638 決定 1・3 (#2150 / #2251): `Sequence` は反映した版の発行の連番（IADR-0637）。旧形式の電文・移行前の印は null。
+// 🔴 FR-02, FR-19, IADR-0639 決定 1・3 (#2150 / #2251): `Sequence` は反映した版の発行の連番（IADR-0637）。旧形式の電文・移行前の印は null。
 // 前後は辞書順 (UpdatedAt〔ミリ秒〕, Sequence) で決める（`DocumentEventOrder`。連番を第 1 の鍵にしない —— 文書 ID の再利用で 0 へ戻る）。
 public sealed record DocumentIndexVersion(DateTimeOffset UpdatedAt, string AccessFingerprint, long? Sequence = null)
 {
@@ -25,7 +25,7 @@ public static class DocumentIndexOrdering
     // 🔴 **索引に反映済みの版より厳密に古い更新は反映しない**（skip して ack する）。等しい版は反映する
     // （再配送・再発行は同じ版を運ぶ。冪等な上書きで収束する）。版の印が無い（初回・移行前）なら反映する。
     //
-    // 🔴 IADR-0638 決定 1 (#2150 / #2251): 同じ時刻（ミリ秒）で連番が小さい更新も古い（版を進めない状態の変化の逆転）。
+    // 🔴 IADR-0639 決定 1 (#2150 / #2251): 同じ時刻（ミリ秒）で連番が小さい更新も古い（版を進めない状態の変化の逆転）。
     // どちらかに連番が無ければ時刻だけで比べる（現行と同じ）。
     public static bool IsStale(DocumentIndexVersion? indexed, DateTimeOffset incoming, long? incomingSequence)
         => indexed is not null && IsOlder(incoming, incomingSequence, indexed.UpdatedAt, indexed.Sequence);

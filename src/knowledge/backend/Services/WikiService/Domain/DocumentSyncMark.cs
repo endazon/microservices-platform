@@ -21,7 +21,7 @@ public class DocumentSyncMark
     // 最後に反映したのが削除か。削除と同じ時刻の更新も古いとして扱う（削除は同じ文書の最後の出来事である）。
     public bool Deleted { get; private set; }
 
-    // 🔴 FR-13, IADR-0638 決定 4 (#2150 / #2251): 反映した版の発行の連番（IADR-0637）。旧形式の電文・移行前の印は null。
+    // 🔴 FR-13, IADR-0639 決定 4 (#2150 / #2251): 反映した版の発行の連番（IADR-0637）。旧形式の電文・移行前の印は null。
     // 前後は辞書順 (AppliedAt, AppliedSequence)（`DocumentEventOrder`。連番を第 1 の鍵にしない —— 文書 ID の再利用で 0 へ戻る）。
     public long? AppliedSequence { get; private set; }
 
@@ -54,7 +54,7 @@ public static class DocumentSyncOrdering
 
     // 🔴 **反映済みの版より厳密に古い更新は反映しない**（ack して捨てる）。等しい版は反映する（再配送・再発行は同じ版を運ぶ）。
     // 削除を反映済みなら、削除と同じ時刻の更新も反映しない。印が無い（初回・移行前）なら反映する。
-    // ［IADR-0638 決定 4］同じ時刻なら連番で比べる（双方に連番があるとき）。削除の鍵は (DeletedAt, Sequence)。
+    // ［IADR-0639 決定 4］同じ時刻なら連番で比べる（双方に連番があるとき）。削除の鍵は (DeletedAt, Sequence)。
     public static bool IsStaleUpdate(DocumentSyncMark? mark, DateTimeOffset updatedAt, long? sequence)
     {
         if (mark is null) return false;

@@ -657,7 +657,7 @@ public class QdrantIngestionVectorStore(
         if (updatedAt is { } at)
             payload["updated_at"] = new Value { IntegerValue = at.ToUnixTimeMilliseconds() };
 
-        // FR-02, IADR-0638 決定 3 (#2150 / #2251): 版の発行の連番。旧版の点の後始末が、同じ時刻の新しい版の点を消さないために持つ。
+        // FR-02, IADR-0639 決定 3 (#2150 / #2251): 版の発行の連番。旧版の点の後始末が、同じ時刻の新しい版の点を消さないために持つ。
         // 連番の無い電文（旧形式）では書かない（読む側は「連番なし」＝時刻だけで比べる）。
         if (sequence is { } seq)
             payload[SequenceKey] = new Value { IntegerValue = seq };
@@ -808,7 +808,7 @@ public class QdrantIngestionVectorStore(
     internal const string IndexVersionUpdatedAtKey = "updated_at";
     internal const string IndexVersionAccessKey = "access_fingerprint";
 
-    // FR-02, IADR-0638 決定 3 (#2150 / #2251): 版の印と点の両方が持つ、発行の連番のキー（無ければ連番なし）。
+    // FR-02, IADR-0639 決定 3 (#2150 / #2251): 版の印と点の両方が持つ、発行の連番のキー（無ければ連番なし）。
     internal const string SequenceKey = "sequence";
 
     public async Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
@@ -890,7 +890,7 @@ public class QdrantIngestionVectorStore(
     //   - 文書の点であること（`document_id`）
     //   - `updated_at` が `version` より**厳密に新しくない**こと（新しい版の点は残す。`updated_at` を持たない古い点は消す）
     //   - この取り込みで書いた点（`keep`）でないこと
-    //   - ［IADR-0638 決定 3］同じ時刻でも、点と版の両方に連番があり、点の連番の方が大きければ残す（同じ時刻の新しい版の点）。
+    //   - ［IADR-0639 決定 3］同じ時刻でも、点と版の両方に連番があり、点の連番の方が大きければ残す（同じ時刻の新しい版の点）。
     //     連番を持たない点（旧点）は時刻だけで比べる（同じ時刻なら消す。現行と同じ）。
     internal static Filter BuildSupersededFilter(Guid documentId, DateTimeOffset version, long? sequence, IEnumerable<Guid> keep)
     {
@@ -949,7 +949,7 @@ public class QdrantIngestionVectorStore(
         return filter;
     }
 
-    // IADR-0638 決定 3: ペイロードの連番（無い・整数でなければ null）。
+    // IADR-0639 決定 3: ペイロードの連番（無い・整数でなければ null）。
     internal static long? SequenceOf(IDictionary<string, Value> payload)
         => payload.TryGetValue(SequenceKey, out var v) && v.KindCase == Value.KindOneofCase.IntegerValue ? v.IntegerValue : null;
 }

@@ -17,7 +17,7 @@ public sealed record EmbeddingPendingPoint(
     DateTimeOffset? UpdatedAt,
     List<string>? SharedWith,
     string Reason,
-    // FR-02, IADR-0638 決定 3 (#2150 / #2251): 書いたときの版の発行の連番（埋め直しで引き継ぐ。旧点は null）。
+    // FR-02, IADR-0639 決定 3 (#2150 / #2251): 書いたときの版の発行の連番（埋め直しで引き継ぐ。旧点は null）。
     long? Sequence = null)
 {
     public bool IsMetadataPoint => ChunkIndex == ChunkId.MetadataChunkIndex;

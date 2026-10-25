@@ -13,7 +13,7 @@ using global::GraphService.Infrastructure.Persistence;
 
 namespace Knowledge.IntegrationTests.GraphService;
 
-// 🔴 FR-17, FR-19, IADR-0638 決定 1・2 (#2150 / #2251) 段 2: **グラフの墓石を実 PostgreSQL で測る。**
+// 🔴 FR-17, FR-19, IADR-0639 決定 1・2 (#2150 / #2251) 段 2: **グラフの墓石を実 PostgreSQL で測る。**
 //
 // 単体の試験（InMemory）は時刻をティックのまま保存するので、保存の精度（timestamptz はマイクロ秒）への丸めを外す変異を捕まえられない。
 // ここでは本番と同じ受け口（DI から作る）・同じ文書の排他（`pg_advisory_xact_lock`）・同じ保存（migration 済みの表）で、

@@ -85,7 +85,7 @@ public class DocumentUpdatedConsumer(
         {
             logger.LogInformation(
                 "DocumentUpdated {Id}: updated_at={Incoming:O}/{IncomingSequence} is older than the indexed version {Indexed:O}/{IndexedSequence}; "
-                + "skipped (out-of-order or replayed delivery; IADR-0595, IADR-0638)",
+                + "skipped (out-of-order or replayed delivery; IADR-0595, IADR-0639)",
                 ev.DocumentId, ev.UpdatedAt, ev.Sequence, indexed!.UpdatedAt, indexed.Sequence);
             return;
         }
@@ -381,7 +381,7 @@ public class DocumentUpdatedConsumer(
     private async Task<bool> FinishAsync(DocumentUpdated ev, List<IndexedPointRef> written, CancellationToken ct)
     {
         var latest = await GetIndexVersionAsync(ev.DocumentId, ct);
-        // IADR-0638 決定 3: 追い越されたかは版の印の判定と同じ規則（辞書順 (時刻, 連番)）で決める。
+        // IADR-0639 決定 3: 追い越されたかは版の印の判定と同じ規則（辞書順 (時刻, 連番)）で決める。
         if (latest is not null && DocumentIndexOrdering.IsOlder(ev.UpdatedAt, ev.Sequence, latest.UpdatedAt, latest.Sequence))
         {
             await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, ev.Sequence, [], ct);

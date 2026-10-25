@@ -9,7 +9,7 @@ namespace GraphService.Infrastructure.Persistence;
 public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContext(options)
 {
     public DbSet<GraphDocument> Documents => Set<GraphDocument>();
-    // FR-17, IADR-0638 決定 2 (#2150 / #2251): 撤収・削除の後も残る版の印（墓石）。
+    // FR-17, IADR-0639 決定 2 (#2150 / #2251): 撤収・削除の後も残る版の印（墓石）。
     public DbSet<GraphDocumentSyncMark> SyncMarks => Set<GraphDocumentSyncMark>();
     public DbSet<EdgeType> EdgeTypes => Set<EdgeType>();
     public DbSet<Edge> Edges => Set<Edge>();
@@ -145,7 +145,7 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
                     d => new Dictionary<string, int>(d)));
         });
 
-        // FR-17, IADR-0638 決定 2 (#2150 / #2251): 版の印（墓石）。文書 1 件 1 行。ノードと別の表に置く（ノードを消しても残す）。
+        // FR-17, IADR-0639 決定 2 (#2150 / #2251): 版の印（墓石）。文書 1 件 1 行。ノードと別の表に置く（ノードを消しても残す）。
         mb.Entity<GraphDocumentSyncMark>(e =>
         {
             e.ToTable("graph_document_sync_marks");

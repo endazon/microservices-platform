@@ -339,7 +339,7 @@ public class IngestionOrderingAndAtomicityTests
                                                             && p.UpdatedAtMs == V2.ToUnixTimeMilliseconds());
     }
 
-    // ── 🔴 FR-02, FR-19, IADR-0638 (#2150 / #2251) 段 2: 規則 11 の表の P1〜P4（取り込み）──
+    // ── 🔴 FR-02, FR-19, IADR-0639 (#2150 / #2251) 段 2: 規則 11 の表の P1〜P4（取り込み）──
     //
     // 鍵は辞書順 (時刻〔ミリ秒〕, 連番)。時刻はミリ秒より細かい端数（+0.5 ms）を持たせる —— 偽物の版の印は実装と同じくミリ秒へ丸めて
     // 保存するので、丸めを外すと同じ時刻の古い版を端数の分だけ新しいと読み、P1・P3 が赤になる。
@@ -444,7 +444,7 @@ public class IngestionOrderingAndAtomicityTests
     [Fact]
     public async Task 取り込みの途中に同じ時刻の新しい版が反映されたら_古い版の後始末は新しい版の点を消さない()
     {
-        // IADR-0638 決定 3: 書き終えた後の読み直しと旧版の点の後始末を、同じ辞書順にする。
+        // IADR-0639 決定 3: 書き終えた後の読み直しと旧版の点の後始末を、同じ辞書順にする。
         var index = new StatefulIndex();
         var reader = new ScriptedReader(TwoChunks);
         var consumer = Build(index, reader);

@@ -2,7 +2,7 @@ using Knowledge.Contracts.Ordering;
 
 namespace GraphService.Domain;
 
-// 🔴 FR-17, FR-19, IADR-0638 決定 2 (#2150 / #2251): **文書ごとに、グラフへ最後に反映した版**（版の印・墓石）。
+// 🔴 FR-17, FR-19, IADR-0639 決定 2 (#2150 / #2251): **文書ごとに、グラフへ最後に反映した版**（版の印・墓石）。
 //
 // ノード（`GraphDocument`）と別の行に持つ —— 撤収（露出 OFF・アーカイブ）と削除でノードの行を消しても印は残し、その後に遅れて届いた
 // 古い `DocumentUpdated` でノードを作り直さない（#2251 の載り直し）。古い撤収が新しいノードを消すこともしない。
@@ -37,7 +37,7 @@ public class GraphDocumentSyncMark
     }
 }
 
-// FR-17, IADR-0638 決定 1 (#2150 / #2251): 到着したイベントをグラフへ反映するかの判定（純関数）。前後は契約の唯一の点で決める。
+// FR-17, IADR-0639 決定 1 (#2150 / #2251): 到着したイベントをグラフへ反映するかの判定（純関数）。前後は契約の唯一の点で決める。
 public static class GraphSyncOrdering
 {
     // PostgreSQL の timestamptz はマイクロ秒で保存する。ティックのまま比べると、同じ版の再配送が保存値より「新しい」と読めてしまい、
