@@ -170,11 +170,16 @@ public sealed class PrivateNoteMaintenanceService(
         // 引き続き真のときだけ消す。**引けない（`null`）・失敗した（例外）ときは消さない。**
         // 残る隙間は「読み直し → 1 人分の削除」だけである（名簿と DB を跨ぐ排他までは取らない）。
         var skipped = 0;
+        var lost = 0;
         foreach (var owner in purgeable)
         {
             if (!await StillPurgeableAsync(owner, ct)) { skipped++; continue; }
-            await PurgeAllOwnedAsync(owner, now, ct);
+            // FR-02, IADR-0637 (#2150): 1 人分の確定が並行する確定に負けても、他の所有者と後段の処理（90 日の削除・通知）は進める。
+            if (!await CommitIsolatedAsync(() => PurgeAllOwnedAsync(owner, now, ct))) lost++;
         }
+        if (lost > 0)
+            logger.LogWarning(
+                "退職者の個人資料の完全削除: 並行する確定に負けた {Lost} 人の分は削除せず、次周期でやり直す", lost);
 
         if (skipped > 0)
             logger.LogInformation(
@@ -240,6 +245,11 @@ public sealed class PrivateNoteMaintenanceService(
     // 1 件の実体削除の失敗で周期全体を止めると、**無関係な資料の期限超過が積み上がる**。
     // 消せなかった文書は**行を残す**ので `PurgeAt <= now` を満たしたままであり、次周期で再入する。
     // 「行だけ消してオブジェクトを残す」ことだけは絶対にしない（参照が失われ回復不能になる）。
+    //
+    // ［2026-10-26 / #2150・IADR-0637］🔴 **確定は所有者ごとに分ける。** 文書行の削除は並行トークン（版・発行の連番）で照合され、
+    // 読んだ後に同じ資料へ別の確定（復元・共有の変更・タグの改名・再発行）が入ると負ける。全件を 1 回で確定すると、1 件の負けで
+    // 他の所有者の削除も、周期の後段（版の整理・通知）も止まる（周期の catch は `RunCycleAsync` にしか無い）。負けた所有者の分は
+    // 行を残し（オブジェクトは消えていても、次周期の再入で片付く）、他は進める。
     private async Task PurgeExpiredAsync(DateTimeOffset now, CancellationToken ct)
     {
         var candidates = await db.PrivateNotes
@@ -247,10 +257,30 @@ public sealed class PrivateNoteMaintenanceService(
             .ToListAsync(ct);
         if (candidates.Count == 0) return;
 
+        var purged = 0;
+        var lost = 0;
+        foreach (var byOwner in candidates.GroupBy(n => n.OwnerId).ToList())
+        {
+            var count = 0;
+            if (await CommitIsolatedAsync(async () => count = await PurgeExpiredOfOwnerAsync(byOwner.Key, [.. byOwner], now, ct)))
+                purged += count;
+            else
+                lost++;
+        }
+
+        if (lost > 0)
+            logger.LogWarning("個人資料の自動物理削除: 並行する確定に負けた所有者 {Lost} 人の分は削除せず、次周期でやり直す", lost);
+        if (purged > 0)
+            logger.LogInformation("個人資料の自動物理削除を実行した（{Count} 件）", purged);
+    }
+
+    // 1 人分の 90 日の削除。消した件数を返す。
+    private async Task<int> PurgeExpiredOfOwnerAsync(string owner, List<PrivateNote> candidates, DateTimeOffset now, CancellationToken ct)
+    {
         // オブジェクトを先に消し、**消せたものだけ**を今周期の削除対象にする。
         var ids = await purger.PurgeIsolatedAsync(
             candidates.Select(n => n.DocumentId).ToList(), ct);
-        if (ids.Count == 0) return;
+        if (ids.Count == 0) return 0;
 
         var due = candidates.Where(n => ids.Contains(n.DocumentId)).ToList();
         var docs = await db.Documents.Where(d => ids.Contains(d.Id)).ToListAsync(ct);
@@ -265,20 +295,33 @@ public sealed class PrivateNoteMaintenanceService(
             await deletedBus.PublishDeletedAsync(id, now, sequences.TryGetValue(id, out var s) ? s : null, ct);
         await deletedBus.SaveChangesAndFlushAsync(ct);
 
-        foreach (var byOwner in due.GroupBy(n => n.OwnerId))
-        {
-            audit.Record("private-note.purge.auto", byOwner.Key, "granted",
-                $"count={byOwner.Count()}");
-            // FR-22 ①-c: 完全削除の事後通知（件数のみ。タイトルを含めない）。
-            await notifier.NotifyAsync(byOwner.Key,
-                PrivateNoteNotificationKinds.PrivateNotePurgeDone, now,
-                count: byOwner.Count(), ct: ct);
-            // 使用量が下がって閾値を割れば、警告の発火記録を再武装する（FR-22 ②）。
-            await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, byOwner.Key, now, ct);
-        }
+        audit.Record("private-note.purge.auto", owner, "granted", $"count={due.Count}");
+        // FR-22 ①-c: 完全削除の事後通知（件数のみ。タイトルを含めない）。
+        await notifier.NotifyAsync(owner,
+            PrivateNoteNotificationKinds.PrivateNotePurgeDone, now,
+            count: due.Count, ct: ct);
+        // 使用量が下がって閾値を割れば、警告の発火記録を再武装する（FR-22 ②）。
+        await PrivateNoteUsage.RecordUsageAndWarnAsync(db, notifier, owner, now, ct);
         await db.SaveChangesAsync(ct);
+        return due.Count;
+    }
 
-        logger.LogInformation("個人資料の自動物理削除を実行した（{Count} 件）", due.Count);
+    // FR-02, IADR-0637 (#2150): 所有者 1 人分の確定を隔離する。並行トークンに負けたら追跡を捨てて false を返す（他の所有者へ進む）。
+    // 負けた確定は削除の行・発行ごと巻き戻っている。それ以外の失敗は従前どおり周期の catch（`RunCycleAsync`）へ出す。
+    private async Task<bool> CommitIsolatedAsync(Func<Task> work)
+    {
+        try
+        {
+            await work();
+            return true;
+        }
+        catch (DbUpdateException ex) when (DocumentService.Features.Documents.DocumentVersionConflict.Is(ex))
+        {
+            db.ChangeTracker.Clear();
+            // 🔴 所有者 ID は出さない（監査ログ側に消した分だけ残る）。
+            logger.LogWarning(ex, "個人資料の完全削除の確定が並行する確定に負けた。この所有者の分は次周期でやり直す");
+            return false;
+        }
     }
 
     // ADR-0037 決定 16: 版履歴の保持上限。**直近 50 版から外れ、かつ作成から 90 日を超えた版**を

@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AwesomeAssertions;
-using DocumentService.Domain.Ports;
 using DocumentService.Features.Documents;
 using DocumentService.Features.ObsidianSync;
 using DocumentService.Features.ObsidianSync.Push;
@@ -10,9 +9,7 @@ using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace DocumentService.Tests.Features.Documents;
 
@@ -106,56 +103,7 @@ public class DocumentEventSequenceTests(TestWebApplicationFactory factory) : ICl
             .Which.Sequence.Should().Be(last + 1);
     }
 
-    // ── 並行（決定的に窓を開ける） ──
-
-    // 確定の関数を走らせる直前に、別のスコープで同じ文書の発行を 1 回確定させる（勝つ側）。その後に本来の確定を走らせる（負ける側）。
-    private static async Task RaceOnceAsync(IServiceScopeFactory scopes, RaceTarget target, CancellationToken ct)
-    {
-        if (target.Id is not { } id || target.Raced) return;
-        target.Raced = true;
-        using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
-        var winnerBus = new RecordingDocumentUpdatedPublisher(scope.ServiceProvider.GetRequiredService<RecordingMessageBus>());
-        var doc = await db.Documents.FindAsync([id], ct);
-        await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(winnerBus, db, doc!, ct);
-    }
-
-    private sealed class RacingPublisher(RecordingDocumentUpdatedPublisher inner, IServiceScopeFactory scopes, RaceTarget target)
-        : IDocumentUpdatedPublisher
-    {
-        public Task PublishUpdatedAsync(Guid documentId, string title, string status, string? markdownUri,
-            Dictionary<string, string> attributes, List<string> tags, DateTimeOffset updatedAt,
-            string? contentFingerprint = null, bool hasBody = true, string? originalPath = null, string? dataSourceName = null,
-            List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
-            => inner.PublishUpdatedAsync(documentId, title, status, markdownUri, attributes, tags, updatedAt,
-                contentFingerprint, hasBody, originalPath, dataSourceName, sharedWith, sequence, ct);
-
-        public async Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default)
-        {
-            await RaceOnceAsync(scopes, target, ct);
-            await inner.CommitAsync(saveAndPublish, ct);
-        }
-    }
-
-    // 完全削除は削除の発行口で確定する。確定の直前に同じ窓を開ける。
-    private sealed class RacingDeletedPublisher(RecordingDocumentDeletedPublisher inner, IServiceScopeFactory scopes, RaceTarget target)
-        : IDocumentDeletedPublisher
-    {
-        public Task PublishDeletedAsync(Guid documentId, DateTimeOffset deletedAt, long? sequence = null, CancellationToken ct = default)
-            => inner.PublishDeletedAsync(documentId, deletedAt, sequence, ct);
-
-        public async Task SaveChangesAndFlushAsync(CancellationToken ct = default)
-        {
-            await RaceOnceAsync(scopes, target, ct);
-            await inner.SaveChangesAndFlushAsync(ct);
-        }
-    }
-
-    private sealed class RaceTarget
-    {
-        public Guid? Id { get; set; }
-        public bool Raced { get; set; }
-    }
+    // ── 並行（決定的に窓を開ける。`DocumentRace`） ──
 
     // soft-delete は SC-19 の削除、plugin-delete は Obsidian 側の削除（同じ確定の関数を通る別の入口）。
     // push は Obsidian 側の既存ノートの更新（Touch する。照合済みの baseVersion の後に Touch しない変化が割り込む）、
@@ -168,18 +116,7 @@ public class DocumentEventSequenceTests(TestWebApplicationFactory factory) : ICl
     {
         // 準備から操作まで、同じ（競合を差し込む）ホストで行う（台帳と記録のバスを 1 つにする）。
         var target = new RaceTarget();
-        using var racing = factory.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
-        {
-            services.AddSingleton(target);
-            services.RemoveAll<IDocumentUpdatedPublisher>();
-            services.AddScoped<IDocumentUpdatedPublisher>(sp => new RacingPublisher(
-                new RecordingDocumentUpdatedPublisher(sp.GetRequiredService<RecordingMessageBus>()),
-                sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<RaceTarget>()));
-            services.RemoveAll<IDocumentDeletedPublisher>();
-            services.AddScoped<IDocumentDeletedPublisher>(sp => new RacingDeletedPublisher(
-                new RecordingDocumentDeletedPublisher(sp.GetRequiredService<DocumentDbContext>(), sp.GetRequiredService<RecordingMessageBus>()),
-                sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<RaceTarget>()));
-        }));
+        using var racing = DocumentRace.Host(factory, target);
         var (plugin, session, noteId) = await ExposedNoteAsync(racing);
         if (operation == "revoke")
             await session.PostAsJsonAsync($"/documents/{noteId}/shares", new { subjectType = "user", subjectId = "bob" }, Ct);
@@ -207,7 +144,7 @@ public class DocumentEventSequenceTests(TestWebApplicationFactory factory) : ICl
             _ => await session.PostAsync($"/private-notes/{noteId}/restore", null, Ct),
         };
 
-        target.Raced.Should().BeTrue("前提: 窓が開いた（勝つ側が先に確定した）");
+        target.Raced.Should().Be(1, "前提: 窓が開いた（勝つ側が先に確定した）");
         response.StatusCode.Should().Be(HttpStatusCode.Conflict, $"{operation}: 負けた側を 500 にしない");
         (await response.Content.ReadAsStringAsync(Ct)).Should().Contain("version_conflict");
         UpdatesFor(racing, noteId).Skip(countBefore).Select(e => e.Sequence).Should().Equal([before + 1],
