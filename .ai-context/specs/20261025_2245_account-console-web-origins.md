@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — エッジ越しのアカウントコンソールの token の交換が 403（Invalid origin）になるのを account-console の webOrigins で直す（#2245）
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-16, NFR, NFR-18, ADR-0026, ADR-0032, IADR-0524, IADR-0546]
 author: claude
 created: 2026-10-25
@@ -16,10 +16,11 @@ issue: "#2245"
 
 ## 受け入れ基準（#2245 ＋ オーケストレーターの条件 2026-10-25）
 
-- [ ] realm 宣言の `account-console` が `webOrigins: ["+"]` を持つ
-- [ ] `reconcile-realm.js` が既存の realm（`webOrigins` が空の `account-console`）へ同じ値を入れる。冪等（当てた後は 0 件）で、ほかの設定に触れない（試験で固定）
-- [ ] `check-realm-constraints.js` の検査 10 が `webOrigins` の欠落を止める（変異で赤になる）
-- [ ] e2e-live が緑（PR の CI。develop の試験で流れる。M-007 の緑は #2245 のマージ後に #2241 で確かめる）
+- [x] realm 宣言の `account-console` が `webOrigins: ["+"]` を持つ
+- [x] `reconcile-realm.js` が既存の realm（`webOrigins` が空の `account-console`）へ同じ値を入れる。冪等（当てた後は 0 件）で、ほかの設定に触れない（試験で固定）
+- [x] `check-realm-constraints.js` の検査 10 が `webOrigins` がちょうど `["+"]` でないことを止める（変異 4 通りで赤になる。余分な origin の追加を含む。#2246 のレビュー）
+- [x] e2e-live が緑（PR の CI・run 40180421686: 53 passed・skip 0・失効 6・走査 0・sweep の dry-run は残骸 0・後始末済み 2。develop の試験で流れ、M-007 は含まない）
+- [ ] M-007（アカウントコンソールの token の交換が 200 になり、個人情報が出る）は **#2241 で確認する**（本 PR のマージ後に #2241 が develop を取り込んで流す）
 
 ## 原因（#2241 の診断で確定）
 
@@ -51,7 +52,7 @@ realm の reconcile だけ（Keycloak は再起動しない）。SC-01 の利用
 
 ## 検証
 
-- `node scripts/check-realm-constraints.js`: 緑（実データ 0 件）。`--self-test`: 緑（新規 1: `webOrigins` を空・`+` 以外・欄ごと消すと赤）。
+- `node scripts/check-realm-constraints.js`: 緑（実データ 0 件）。`--self-test`: 緑（新規 1: `webOrigins` を空・`+` 以外・欄ごと消す・`+` に余分な origin を足す、の 4 通りで赤）。
 - `node scripts/keycloak-realm-reconcile.test.js`: 74 passed（新規 1: 空の稼働へ client.update 1 件・ほかの欄を保つ・当てた後は 0 件）。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1199 passed。`node scripts/k8s-local-up.test.js`: 394 passed。文書の検査: 緑。
 - `reconcile-realm.js` は新しい分岐を足していない（ヘッダのコメントに当たり方を書いた）。
