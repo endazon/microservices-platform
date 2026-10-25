@@ -39,6 +39,10 @@ internal static class DocumentVersionConflict
             currentVersion,
         });
 
+    // FR-02, IADR-0637 決定 6 (#2150 段 1b): 多数の文書を 1 回で確定する口（タグの改名・再発行）が並行トークンに負けたときに、
+    // 読み直してやり直す回数の上限（初回を含む）。超えたら何も確定せずに 409 を返す。
+    internal const int MaxBatchCommitAttempts = 3;
+
     // FR-02, IADR-0637 (#2150): 複数の文書を 1 回で確定する口（個人資料の完全削除など）が負けたときの応答。
     // 確定は全体が巻き戻っている（部分の結果は無い）。どの文書で負けたかは返さない（呼び出し側は全体をやり直す）。
     internal static IResult ProblemForBatch() => Results.Conflict(new { error = "version_conflict" });

@@ -158,3 +158,7 @@ public sealed record RepublishDocumentUpdatedResponse(
     int WithoutBody,
     IReadOnlyDictionary<string, int> ByConfidentiality,
     string? NextCursor);
+
+// FR-02, IADR-0637 決定 6 (#2150 段 1b): ページの確定が並行する確定に上限まで負けたときの応答。
+// `ResumeCursor` は負けたページの先頭（＝要求のカーソル。先頭のページなら null）であり、そのまま次の要求の `cursor` に渡せば再開できる。
+public sealed record RepublishConflictResponse(string Error, string? ResumeCursor);

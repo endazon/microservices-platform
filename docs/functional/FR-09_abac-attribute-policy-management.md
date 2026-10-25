@@ -3,15 +3,15 @@ title: 文書属性・タグ／ABAC ポリシー管理 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-07-02
-updated: 2026-10-06
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-09, SC-05, SC-09, UC-05]
+ids: [FR-02, FR-05, FR-09, SC-05, SC-09, UC-05]
 adrs: [ADR-0125, ADR-0004, ADR-0036, ADR-0043, ADR-0121]
-iadrs: [IADR-0500, IADR-0006, IADR-0040, IADR-0044, IADR-0129, IADR-0152, IADR-0153, IADR-0253, IADR-0482]
-specs: [20261006_1755_ast-kb-reader-confidentiality-cap, 20260927_issue-1666_sc09-dynamic-binding-conditions]
-issues: [#1755, #634, #635, #989, #1666, planning#304, planning#466, planning#470]
+iadrs: [IADR-0500, IADR-0006, IADR-0040, IADR-0044, IADR-0129, IADR-0152, IADR-0153, IADR-0253, IADR-0482, IADR-0637]
+specs: [20261026_2150_document-event-sequence-stage1b, 20261006_1755_ast-kb-reader-confidentiality-cap, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#2150, #1755, #634, #635, #989, #1666, planning#304, planning#466, planning#470]
 -->
 
 # 機能仕様書: 文書属性・タグ／ABAC ポリシー管理
@@ -107,6 +107,9 @@ BFF は `/bff/admin/authz/policies/validate`）。
   **射影（Qdrant / Wiki.js）は表示名を焼き込んだ複写なので、`DocumentUpdated` を再発行して作り直す**。
   **再発行するのはそのタグを使っている文書だけ**である（辞書の 1 語の変更で索引全体を作り直さない）。
   応答の `republishedDocuments` に件数を添える——反映は非同期なので「0 件だった」と「まだ届いていない」を切り分けられる。
+  **改名と再発行は 1 回で確定する。** 再発行は対象の文書行の発行の連番を進めるので、同じ文書への利用者の確定と並行すると負け得る。
+  負けたら全体を読み直して 3 回までやり直し、それでも負けたら**何も確定せずに 409**（`version_conflict`）を返す。本文の `message`
+  （再送を促す文）を管理者設定画面がそのまま出す。同じ要求の再送で再開できる（改名済みの名前への再送は辞書を変えず、再発行だけを行う）。
 - **過去版も新しい名前で表示される**（同 決定 4）。版履歴も識別子を持つため、改名は履歴の表示にも一様に効く。
 - **削除**（`DELETE /tags/{id}`。システム管理者限定）: **使用件数 0 件のときだけ許す**（同 決定 6）。
   1 件以上なら**件数を添えて 409** を返す（管理者設定画面「削除前に使用件数を示す」。数だけでも管理者は行動できる）。

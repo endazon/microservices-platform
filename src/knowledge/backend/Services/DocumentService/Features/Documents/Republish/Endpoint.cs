@@ -20,6 +20,9 @@ namespace DocumentService.Features.Documents.Republish;
 //   群（`write`）は運用者と機械の書き手（AST の KB 書き込み）にも開いているので、ここで積まないと彼らが全件の再発行を起こせる。
 // 🔴 **`dryRun` は必須**（省略は 400）。確かめるつもりの呼び出しが発行に倒れないようにする。
 //
+// ［2026-10-26 / #2150 段 1b / IADR-0637 決定 6］発行は文書行の連番を進めるので、ページの確定が並行する確定に負け得る。上限まで読み直して
+// やり直し、超えたら `resumeCursor`（負けたページの先頭）つきの 409 を返す。駆動スクリプトは 200 以外を失敗として数え、同じカーソルで間を置いて再試行する。
+//
 // 量の制御（ページの大きさ・間隔・取り込みのキューの深さ・DLQ の監視）と中断・再開は駆動スクリプト
 // （`scripts/republish-document-updated.js`）が持つ。口が持つのは「1 ページを選んで発行する」ことと、続きのカーソルだけである。
 //
@@ -127,27 +130,49 @@ internal static class RepublishDocumentUpdatedEndpoint
             // ページの文書だけを本体ごと読み直し、選んだ並びのまま発行する。
             // 投影から読み直しまでの間に消えた文書は飛ばす（削除の経路が `DocumentDeleted` を出している）。
             var pageIds = page.Select(r => r.Id).ToList();
-            var documents = await db.Documents.Where(d => pageIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, ct);
-            var names = await TagResolver.NamesAsync(db);
-
-            var published = 0;
-            var skippedByGate = 0;
-            // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 再発行は DB を変えないが、発行は同じ確定の口を通す
-            // （Outbox の表へ 1 トランザクションで書いてから送る。門は `CommitAsync` の外では例外になる）。
-            await bus.CommitAsync(async c =>
+            int published;
+            int skippedByGate;
+            // FR-02, IADR-0637 決定 6 (#2150 段 1b): 発行はページの文書行の連番（並行トークン）を進める。読み直しの後にページの文書へ
+            // 別の確定が入れば、ページの確定ごと巻き戻る。**追跡を捨ててページを読み直し、やり直す**（上限 `MaxBatchCommitAttempts`）。
+            // 超えたら何も確定せずに 409 `version_conflict` を返し、**負けたページの先頭のカーソル**（＝この要求のカーソル）を `resumeCursor`
+            // に載せる。部分の確定は無く、そのカーソルからの再開は冪等である（重複は受け手の版の印で吸収される）。
+            for (var attempt = 1; ; attempt++)
             {
-                foreach (var row in page)
+                var documents = await db.Documents.Where(d => pageIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, ct);
+                var names = await TagResolver.NamesAsync(db);
+                published = 0;
+                skippedByGate = 0;
+                try
                 {
-                    if (!documents.TryGetValue(row.Id, out var doc)) continue;
-                    if (!DocumentEndpoints.PassesPublishGate(doc))
+                    // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 発行は同じ確定の口を通す
+                    // （Outbox の表へ 1 トランザクションで書いてから送る。門は `CommitAsync` の外では例外になる）。
+                    await bus.CommitAsync(async c =>
                     {
-                        skippedByGate++;
-                        continue;
-                    }
-                    await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, c);
-                    published++;
+                        foreach (var row in page)
+                        {
+                            if (!documents.TryGetValue(row.Id, out var doc)) continue;
+                            if (!DocumentEndpoints.PassesPublishGate(doc))
+                            {
+                                skippedByGate++;
+                                continue;
+                            }
+                            await DocumentEndpoints.PublishUpdatedIfIndexableAsync(bus, db, doc, names, c);
+                            published++;
+                        }
+                    }, ct);
+                    break;
                 }
-            }, ct);
+                catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+                {
+                    db.ChangeTracker.Clear();
+                    if (attempt < DocumentVersionConflict.MaxBatchCommitAttempts) continue;
+                    logger.LogWarning(
+                        "Republish gave up a page of {Selected} document(s) after {Attempts} attempt(s) lost to concurrent document commits "
+                        + "by {Principal} (requestedBy {RequestedBy}; reason {Reason})",
+                        page.Count, attempt, principal, requestedBy, reason);
+                    return Results.Conflict(new RepublishConflictResponse("version_conflict", req.Cursor));
+                }
+            }
 
             logger.LogInformation(
                 "Republished DocumentUpdated for {Published} document(s) (skipped by the publish gate {Skipped}; "
@@ -167,7 +192,8 @@ internal static class RepublishDocumentUpdatedEndpoint
                 NextCursor: next));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .WithName("RepublishDocumentUpdated")
-          .Produces<RepublishDocumentUpdatedResponse>();
+          .Produces<RepublishDocumentUpdatedResponse>()
+          .Produces<RepublishConflictResponse>(StatusCodes.Status409Conflict);
     }
 
     // 絞り込みと内訳に要る列だけを投影して読む（並びは渡された問い合わせのまま）。

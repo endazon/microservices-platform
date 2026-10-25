@@ -956,6 +956,35 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  // FR-02, FR-09, SC-09, IADR-0637 決定 6 (#2150 段 1b): 改名が並行する確定に上限まで負けると、後段は何も確定せずに
+  // 409 `{ error: 'version_conflict', message }` を返す（BFF は本文を透過する）。画面は使用件数の 409 と取り違えず、
+  // 本文の `message`（再送を促す文）をそのまま出す。
+  it('shows the server message when a rename loses to concurrent commits', async () => {
+    const message = '他の変更と重なったため、改名しませんでした。もう一度改名してください。';
+    mockApi({
+      write: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [message], {
+            error: 'version_conflict',
+            message,
+          }),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.click(await screen.findByRole('button', { name: 'タグを改名: 経理' }));
+    const field = screen.getByLabelText('タグの新しい名前: 経理');
+    await user.clear(field);
+    await user.type(field, '経理部');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(message);
+    expect(alert).not.toHaveTextContent('件の文書で使われている');
+  });
+
   // 改名はキャンセルできる（**送らない**）。編集欄を開いただけで書き込みが走ってはならない。
   it('does not write anything when a rename is cancelled', async () => {
     mockApi();
