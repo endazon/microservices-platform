@@ -204,13 +204,13 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
             => Task.CompletedTask;
 
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId,
             string title, string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
             => Task.CompletedTask;
 
         // #1746: 語彙索引の口（internal の文書の試験では呼ばれない。T-53 の confidential の文書が使う）。
@@ -218,7 +218,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
         {
             Interlocked.Increment(ref _lexicalWrites);
             clock?.Advance(TimeSpan.FromSeconds(1));
@@ -229,7 +229,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
             => Task.CompletedTask;
 
         // #2101 / IADR-0595: 版を持たない偽物（印は常に無い ＝ 毎回「判定軸は不明」として先に全消しする。従前の形）。
@@ -239,7 +239,7 @@ public class EmbeddingBudgetDeadLetterPipelineTests
         public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
             => Task.CompletedTask;
 
-        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
             IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;

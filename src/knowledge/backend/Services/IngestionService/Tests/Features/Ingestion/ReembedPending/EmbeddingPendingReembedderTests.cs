@@ -397,7 +397,7 @@ public class EmbeddingPendingReembedderTests
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
             string text, int chunkIndex, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
         {
             Operations.Add($"primary-chunk:{chunkId}");
             PrimaryChunks.Add(new EmbeddingPendingPoint(chunkId, documentId, title, text, chunkIndex, markdownUri,
@@ -409,7 +409,7 @@ public class EmbeddingPendingReembedderTests
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId, string title,
             string indexText, float[] vector, string? markdownUri,
             Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
         {
             Operations.Add($"primary-metadata:{pointId}");
             PrimaryMetadata.Add(new EmbeddingPendingPoint(pointId, documentId, title, indexText,
@@ -422,12 +422,12 @@ public class EmbeddingPendingReembedderTests
 
         public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title, string text, int chunkIndex,
             string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default) =>
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title, string indexText,
             string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default) =>
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default) =>

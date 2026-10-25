@@ -3611,6 +3611,10 @@
             "value": "\"user-input\""
           }
         }
+      },
+      "Knowledge.Contracts.Ordering.DocumentEventOrder": {
+        "kind": "class",
+        "members": {}
       }
     },
     "src/platform/backend/Shared/Platform.Shared.Contracts": {

@@ -83,7 +83,7 @@ public sealed class IngestionIndexVersionQdrantTests : IAsyncLifetime
         await store.UpsertChunkAsync(VectorCollection, newer, doc, "t", "e", 4, Vec(), null, Attrs(), [], v3, ct: ct);
         await store.UpsertLexicalChunkAsync(otherDoc, other, "t", "f", 0, null, Attrs(), [], v1, ct: ct);
 
-        await store.DeleteSupersededAsync(doc, v2, [IndexedPointRef.Lexical(written)], ct);
+        await store.DeleteSupersededAsync(doc, v2, null, [IndexedPointRef.Lexical(written)], ct);
 
         (await IdsIn(LexicalCollection, ct)).Should().BeEquivalentTo([written.ToString(), otherDoc.ToString()],
             "語彙索引には書いた点と別の文書の点だけが残る（古い余り・版を持たない点・書いていない同版の点は消える）");

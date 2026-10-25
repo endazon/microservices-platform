@@ -37,7 +37,7 @@ public class GraphDocumentSyncConsumerTests
                 NullLogger<LinkEdgeSynchronizer>.Instance),
             new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-            NullLogger<GraphDocumentSyncConsumer>.Instance);
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
 
     // 本文が取れない（ストレージ未配備）。**辺を一切触らない**側の縮退。
     private sealed class NoBodyReader : IGraphContentReader
@@ -273,7 +273,7 @@ public class GraphDocumentSyncConsumerTests
 
         var purge = new GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer(
             db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db),
-            NullLogger<GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer>.Instance);
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphService.Features.GraphDocuments.Delete.DocumentDeletedConsumer>.Instance);
         var act = () => purge.Handle(new DocumentDeleted(DocA, DateTimeOffset.UtcNow), ct);
 
         await act.Should().NotThrowAsync();

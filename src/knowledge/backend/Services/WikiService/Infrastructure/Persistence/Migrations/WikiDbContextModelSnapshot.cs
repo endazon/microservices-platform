@@ -30,6 +30,9 @@ namespace WikiService.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("AppliedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<long?>("AppliedSequence")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("Deleted")
                         .HasColumnType("boolean");
 

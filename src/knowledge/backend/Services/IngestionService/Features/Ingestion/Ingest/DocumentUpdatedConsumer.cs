@@ -63,10 +63,10 @@ public class DocumentUpdatedConsumer(
             t => store.SetIndexVersionAsync(documentId, version, t), ct);
 
     // FR-02, [[IADR-0595]] 決定 2 (#2101): 旧版の点の削除（全コレクションを巡る。期限は全削除と同じ）。
-    private Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+    private Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
         IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct)
         => CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.DeleteFromAll,
-            t => store.DeleteSupersededAsync(documentId, version, keep, t), ct);
+            t => store.DeleteSupersededAsync(documentId, version, sequence, keep, t), ct);
 
     private Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct)
         => CallAsync(IngestionTimeouts.EmbeddingTarget, timeouts.Embedding,
@@ -81,12 +81,12 @@ public class DocumentUpdatedConsumer(
         // 判定は GraphService の `GraphDocument.Apply` と同じ「保持中より古いものは適用しない」。
         // 🔴 **撤収の門より前に置く。** 古い撤収が新しい版を消すこともしない（新しい版が正である）。
         var indexed = await GetIndexVersionAsync(ev.DocumentId, ct);
-        if (DocumentIndexOrdering.IsStale(indexed, ev.UpdatedAt))
+        if (DocumentIndexOrdering.IsStale(indexed, ev.UpdatedAt, ev.Sequence))
         {
             logger.LogInformation(
-                "DocumentUpdated {Id}: updated_at={Incoming:O} is older than the indexed version {Indexed:O}; "
-                + "skipped (out-of-order or replayed delivery; IADR-0595)",
-                ev.DocumentId, ev.UpdatedAt, indexed!.UpdatedAt);
+                "DocumentUpdated {Id}: updated_at={Incoming:O}/{IncomingSequence} is older than the indexed version {Indexed:O}/{IndexedSequence}; "
+                + "skipped (out-of-order or replayed delivery; IADR-0595, IADR-0639)",
+                ev.DocumentId, ev.UpdatedAt, ev.Sequence, indexed!.UpdatedAt, indexed.Sequence);
             return;
         }
 
@@ -110,7 +110,7 @@ public class DocumentUpdatedConsumer(
         {
             await DeleteFromAllAsync(ev.DocumentId, ct);
             // [[IADR-0595]] 決定 1: 撤収した版も印に残す（消した後に届いた古い更新が、撤収前の点を書き戻さないように）。
-            await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, ""), ct);
+            await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, "", ev.Sequence), ct);
             logger.LogInformation(
                 "DocumentUpdated {Id}: exposure toggles are all off; withdrew the document from every index",
                 ev.DocumentId);
@@ -130,7 +130,7 @@ public class DocumentUpdatedConsumer(
         if (DocumentArchival.IsArchived(ev.Status))
         {
             await DeleteFromAllAsync(ev.DocumentId, ct);
-            await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, ""), ct);
+            await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, "", ev.Sequence), ct);
             logger.LogInformation(
                 "DocumentUpdated {Id}: the document is archived; withdrew the document from every index",
                 ev.DocumentId);
@@ -143,7 +143,7 @@ public class DocumentUpdatedConsumer(
             // [[IADR-0595]] 決定 1: 版は進める（これより古い更新を後から反映しない）。点は書き換えていないので、
             // 判定軸の指紋は**索引に残っている点のもの**（直前の印）を引き継ぐ —— 次の版の分岐（先に消すか）を誤らせない。
             await SetIndexVersionAsync(ev.DocumentId,
-                new DocumentIndexVersion(ev.UpdatedAt, indexed?.AccessFingerprint ?? ""), ct);
+                new DocumentIndexVersion(ev.UpdatedAt, indexed?.AccessFingerprint ?? "", ev.Sequence), ct);
             logger.LogWarning("DocumentUpdated {Id}: MarkdownUri is null, skipping ingestion", ev.DocumentId);
             return;
         }
@@ -164,7 +164,7 @@ public class DocumentUpdatedConsumer(
         var access = IndexAccessFingerprint.Of(ev.Attributes, ev.SharedWith);
         if (indexed is null || !string.Equals(indexed.AccessFingerprint, access, StringComparison.Ordinal))
             await DeleteFromAllAsync(ev.DocumentId, ct);
-        await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, access), ct);
+        await SetIndexVersionAsync(ev.DocumentId, new DocumentIndexVersion(ev.UpdatedAt, access, ev.Sequence), ct);
 
         // [[IADR-0595]] 決定 2: この取り込みで書いた点（旧版の点の削除で残す）。
         var written = new List<IndexedPointRef>();
@@ -284,7 +284,7 @@ public class DocumentUpdatedConsumer(
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                 t => store.UpsertChunkAsync(embedding.Collection, chunkId, ev.DocumentId, ev.Title, text, idx,
                     embedding.Vector, markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
-                    ev.SharedWith, t), ct);
+                    ev.SharedWith, ev.Sequence, t), ct);
             written.Add(new IndexedPointRef(embedding.Collection, chunkId));
             chunkCount++;
         }
@@ -308,7 +308,7 @@ public class DocumentUpdatedConsumer(
                 var i = idx;
                 await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                     t => store.UpsertEmbeddingPendingChunkAsync(chunkId, ev.DocumentId, ev.Title, text, i,
-                        markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, pendingReason, t), ct);
+                        markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, pendingReason, ev.Sequence, t), ct);
                 written.Add(IndexedPointRef.Lexical(chunkId));
                 pendingCount++;
             }
@@ -356,7 +356,7 @@ public class DocumentUpdatedConsumer(
             var chunkId = ChunkId.Derive(ev.DocumentId, idx);
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                 t => store.UpsertLexicalChunkAsync(chunkId, ev.DocumentId, ev.Title, text, idx,
-                    markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, t), ct);
+                    markdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ev.SharedWith, ev.Sequence, t), ct);
             written.Add(IndexedPointRef.Lexical(chunkId));
             chunkCount++;
         }
@@ -381,9 +381,10 @@ public class DocumentUpdatedConsumer(
     private async Task<bool> FinishAsync(DocumentUpdated ev, List<IndexedPointRef> written, CancellationToken ct)
     {
         var latest = await GetIndexVersionAsync(ev.DocumentId, ct);
-        if (latest is not null && latest.UpdatedAtMs > ev.UpdatedAt.ToUnixTimeMilliseconds())
+        // IADR-0639 決定 3: 追い越されたかは版の印の判定と同じ規則（辞書順 (時刻, 連番)）で決める。
+        if (latest is not null && DocumentIndexOrdering.IsOlder(ev.UpdatedAt, ev.Sequence, latest.UpdatedAt, latest.Sequence))
         {
-            await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, [], ct);
+            await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, ev.Sequence, [], ct);
             logger.LogWarning(
                 "DocumentUpdated {Id}: superseded while ingesting (updated_at={Incoming:O} < indexed {Indexed:O}); "
                 + "removed the points written for the older version (IADR-0595)",
@@ -391,7 +392,7 @@ public class DocumentUpdatedConsumer(
             return false;
         }
 
-        await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, written, ct);
+        await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, ev.Sequence, written, ct);
         return true;
     }
 
@@ -463,7 +464,7 @@ public class DocumentUpdatedConsumer(
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                 t => store.UpsertLexicalMetadataPointAsync(ChunkId.DeriveMetadata(ev.DocumentId),
                     ev.DocumentId, ev.Title, indexText, ev.MarkdownUri, ev.Attributes, ev.Tags,
-                    ev.UpdatedAt, ev.SharedWith, t), ct);
+                    ev.UpdatedAt, ev.SharedWith, ev.Sequence, t), ct);
             written.Add(IndexedPointRef.Lexical(ChunkId.DeriveMetadata(ev.DocumentId)));
             logger.LogInformation(
                 "Ingestion {Id}: no body; indexed metadata only into the lexical index without embedding "
@@ -482,7 +483,7 @@ public class DocumentUpdatedConsumer(
                 t => store.UpsertMetadataPointAsync(embedding.Collection,
                     ChunkId.DeriveMetadata(ev.DocumentId), ev.DocumentId, ev.Title, indexText,
                     embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt,
-                    ev.SharedWith, t), ct);
+                    ev.SharedWith, ev.Sequence, t), ct);
             written.Add(new IndexedPointRef(embedding.Collection, ChunkId.DeriveMetadata(ev.DocumentId)));
 
             logger.LogInformation(
@@ -497,7 +498,7 @@ public class DocumentUpdatedConsumer(
             await CallAsync(IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,
                 t => store.UpsertEmbeddingPendingMetadataPointAsync(ChunkId.DeriveMetadata(ev.DocumentId),
                     ev.DocumentId, ev.Title, indexText, ev.MarkdownUri, ev.Attributes, ev.Tags,
-                    ev.UpdatedAt, ev.SharedWith, reason, t), ct);
+                    ev.UpdatedAt, ev.SharedWith, reason, ev.Sequence, t), ct);
             written.Add(IndexedPointRef.Lexical(ChunkId.DeriveMetadata(ev.DocumentId)));
             pendingMetrics.RecordWritten(1, reason);
             logger.LogWarning(

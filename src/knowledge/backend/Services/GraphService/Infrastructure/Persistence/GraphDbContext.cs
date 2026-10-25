@@ -9,6 +9,8 @@ namespace GraphService.Infrastructure.Persistence;
 public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContext(options)
 {
     public DbSet<GraphDocument> Documents => Set<GraphDocument>();
+    // FR-17, IADR-0639 決定 2 (#2150 / #2251): 撤収・削除の後も残る版の印（墓石）。
+    public DbSet<GraphDocumentSyncMark> SyncMarks => Set<GraphDocumentSyncMark>();
     public DbSet<EdgeType> EdgeTypes => Set<EdgeType>();
     public DbSet<Edge> Edges => Set<Edge>();
     // FR-18, ADR-0033 決定 7・10: AI 提案（リンク・タグを同居させる。#914）。
@@ -141,6 +143,14 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
                         : a == b,
                     d => d.Aggregate(0, (acc, kv) => HashCode.Combine(acc, kv.Key.GetHashCode(), kv.Value)),
                     d => new Dictionary<string, int>(d)));
+        });
+
+        // FR-17, IADR-0639 決定 2 (#2150 / #2251): 版の印（墓石）。文書 1 件 1 行。ノードと別の表に置く（ノードを消しても残す）。
+        mb.Entity<GraphDocumentSyncMark>(e =>
+        {
+            e.ToTable("graph_document_sync_marks");
+            e.HasKey(m => m.DocumentId);
+            e.Property(m => m.AppliedAt).IsRequired();
         });
 
         // FR-17, ADR-0033 決定 2: ノード（ABAC 属性の複製）。

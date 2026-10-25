@@ -140,9 +140,9 @@ public sealed class EmbeddingPendingReembedder(
     private Task WriteToPrimaryAsync(EmbeddingPendingPoint p, EmbeddingResult embedding, CancellationToken ct) =>
         p.IsMetadataPoint
             ? store.UpsertMetadataPointAsync(embedding.Collection, p.PointId, p.DocumentId, p.Title, p.Text,
-                embedding.Vector, p.MarkdownUri, p.Attributes, p.Tags, p.UpdatedAt, p.SharedWith, ct)
+                embedding.Vector, p.MarkdownUri, p.Attributes, p.Tags, p.UpdatedAt, p.SharedWith, p.Sequence, ct)
             : store.UpsertChunkAsync(embedding.Collection, p.PointId, p.DocumentId, p.Title, p.Text, p.ChunkIndex,
-                embedding.Vector, p.MarkdownUri, p.Attributes, p.Tags, p.UpdatedAt, p.SharedWith, ct);
+                embedding.Vector, p.MarkdownUri, p.Attributes, p.Tags, p.UpdatedAt, p.SharedWith, p.Sequence, ct);
 
     // 印の索引は最適化なので、失敗しても周期を止めない（次の周期でもう一度張る）。
     private async Task EnsureIndexOnceAsync(CancellationToken ct)

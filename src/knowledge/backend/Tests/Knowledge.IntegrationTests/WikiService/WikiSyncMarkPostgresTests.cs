@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using AwesomeAssertions;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.EntityFrameworkCore;
@@ -90,14 +91,14 @@ public sealed class WikiSyncMarkPostgresTests(PostgresFixture postgres) : IClass
         await using (var first = NewContext(cs))
         {
             var mark = DocumentSyncMark.For(id);
-            mark.RecordUpdated(T1);
+            mark.RecordUpdated(T1, null);
             first.SyncMarks.Add(mark);
             await first.SaveChangesAsync(Ct);
         }
 
         await using var second = NewContext(cs);
         var dup = DocumentSyncMark.For(id);
-        dup.RecordUpdated(T2);
+        dup.RecordUpdated(T2, null);
         second.SyncMarks.Add(dup);
         var act = () => second.SaveChangesAsync(Ct);
         var ex = (await act.Should().ThrowAsync<DbUpdateException>()).Which;
@@ -145,6 +146,62 @@ public sealed class WikiSyncMarkPostgresTests(PostgresFixture postgres) : IClass
         (await db.Pages.AsNoTracking().AnyAsync(p => p.DocumentId == id, Ct)).Should().BeFalse();
         var mark = await db.SyncMarks.AsNoTracking().SingleAsync(m => m.DocumentId == id, Ct);
         mark.Deleted.Should().BeTrue();
+    }
+
+    // 🔴 FR-13, IADR-0639 決定 4 (#2150 / #2251) 段 2: **印の連番（`AppliedSequence`）を実 PostgreSQL で測る**（migration 済みの列・
+    // timestamptz のマイクロ秒への丸め）。時刻はマイクロ秒より細かい端数つき —— 丸めを外すと、同じ時刻の古い版を端数の分だけ新しいと読む。
+    // 規則 11 の表の P1（同時刻の逆転）と P3（撤去の後の古い ON）・P2（作り直し）。
+    private static readonly DateTimeOffset Ts = T1.AddTicks(3);
+
+    private static DocumentUpdated Sequenced(Guid id, string title, DateTimeOffset at, long sequence, bool exposed = true)
+    {
+        var ev = Updated(id, title, at, "internal") with { Sequence = sequence };
+        return exposed
+            ? ev
+            : ev with { Attributes = DocumentExposure.WithAllExcluded(ev.Attributes) };
+    }
+
+    [Fact]
+    public async Task P1とP3_同じ時刻で連番の小さい古い版は反映せず_印に連番が残る()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres);
+        var cs = await CreateDatabaseAsync(postgres.ConnectionString!);
+        var id = Guid.NewGuid();
+        var wiki = new StateWikiJs();
+
+        await SyncAsync(cs, wiki, Sequenced(id, "新しい題名", Ts, 6));
+        await SyncAsync(cs, wiki, Sequenced(id, "古い題名", Ts, 5));
+
+        await using (var db = NewContext(cs))
+        {
+            (await db.Pages.AsNoTracking().SingleAsync(p => p.DocumentId == id, Ct)).Title.Should().Be("新しい題名", "P1");
+            (await db.SyncMarks.AsNoTracking().SingleAsync(m => m.DocumentId == id, Ct)).AppliedSequence.Should().Be(6);
+        }
+
+        await SyncAsync(cs, wiki, Sequenced(id, "撤去", Ts, 7, exposed: false));
+        await SyncAsync(cs, wiki, Sequenced(id, "古い ON", Ts, 6));
+
+        await using (var db = NewContext(cs))
+            (await db.Pages.AsNoTracking().AnyAsync(p => p.DocumentId == id, Ct)).Should().BeFalse("P3: 撤去の後の古い ON は載り直さない（#2251）");
+    }
+
+    [Fact]
+    public async Task P2_削除の後に同じIDで作り直された文書は連番が小さくても反映する()
+    {
+        RequiredServices.SkipUnlessObtainable(RequiredServices.Postgres);
+        var cs = await CreateDatabaseAsync(postgres.ConnectionString!);
+        var id = Guid.NewGuid();
+        var wiki = new StateWikiJs();
+
+        await SyncAsync(cs, wiki, Sequenced(id, "削除前", Ts, 8));
+        await using (var db = NewContext(cs))
+            await new DocumentDeletedConsumer(db, wiki, wiki, Calls, WikiSyncTimeouts.Default, Gate,
+                    NullLogger<DocumentDeletedConsumer>.Instance)
+                .Handle(new DocumentDeleted(id, Ts.AddSeconds(1), 9), Ct);
+        await SyncAsync(cs, wiki, Sequenced(id, "作り直し", Ts.AddSeconds(2), 1));
+
+        await using var verify = NewContext(cs);
+        (await verify.Pages.AsNoTracking().SingleAsync(p => p.DocumentId == id, Ct)).Title.Should().Be("作り直し");
     }
 
     // Wiki.js の「パスごとの今の状態」（題名・非公開）を持つ偽物。`BeforeNextUpsert` は次の push の前に 1 度だけ走る。

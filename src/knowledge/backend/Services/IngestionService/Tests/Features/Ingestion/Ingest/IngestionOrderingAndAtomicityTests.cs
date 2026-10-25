@@ -32,10 +32,11 @@ public class IngestionOrderingAndAtomicityTests
     private const string OneChunk = "# A\n\n改訂後の本文";
 
     private static DocumentUpdated Event(DateTimeOffset updatedAt, string confidentiality = "internal",
-        string status = "published", string? markdownUri = "storage://b/doc.md", List<string>? sharedWith = null)
+        string status = "published", string? markdownUri = "storage://b/doc.md", List<string>? sharedWith = null,
+        long? sequence = null)
         => new(DocId, "規程", status, markdownUri,
             new Dictionary<string, string> { ["confidentiality"] = confidentiality }, ["ops"], updatedAt,
-            SharedWith: sharedWith);
+            SharedWith: sharedWith, Sequence: sequence);
 
     private static DocumentUpdatedConsumer Build(StatefulIndex index, ScriptedReader reader, ScriptedEmbedder? embed = null)
         => new(
@@ -338,17 +339,149 @@ public class IngestionOrderingAndAtomicityTests
                                                             && p.UpdatedAtMs == V2.ToUnixTimeMilliseconds());
     }
 
+    // ── 🔴 FR-02, FR-19, IADR-0639 (#2150 / #2251) 段 2: 規則 11 の表の P1〜P4（取り込み）──
+    //
+    // 鍵は辞書順 (時刻〔ミリ秒〕, 連番)。時刻はミリ秒より細かい端数（+0.5 ms）を持たせる —— 偽物の版の印は実装と同じくミリ秒へ丸めて
+    // 保存するので、丸めを外すと同じ時刻の古い版を端数の分だけ新しいと読み、P1・P3 が赤になる。
+    // P5（削除と更新の交差）は取り込みに無い: 取り込みは `DocumentDeleted` を受けない（点の削除は Retrieval。作業仕様書の残余）。
+    // P2 は「削除の後の作り直し」の取り込み側の形（印は削除の前の最後の更新を持ち続ける）で表明する。
+
+    private static readonly DateTimeOffset Tf = V1.AddTicks(5_000);
+
+    [Fact]
+    public async Task P1_同時刻の逆転_連番の小さい古い版は反映しない()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, Event(Tf, sharedWith: ["new"], sequence: 6));
+
+        await Handle(consumer, Event(Tf, sharedWith: ["old"], sequence: 5));
+
+        index.PointsOf(DocId).Should().NotBeEmpty().And.OnlyContain(p => p.SharedWith.SequenceEqual(new[] { "new" }),
+            "同じ時刻で連番が小さいのは古い版（#2150。共有の取り消しが古い共有先で上書きされない）");
+        index.Versions[DocId].Sequence.Should().Be(6);
+    }
+
+    [Fact]
+    public async Task P1_陽性対照_同時刻で連番が大きい新しい版は反映する()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, Event(Tf, sharedWith: ["old"], sequence: 5));
+
+        await Handle(consumer, Event(Tf, sharedWith: ["new"], sequence: 6));
+
+        index.PointsOf(DocId).Should().NotBeEmpty().And.OnlyContain(p => p.SharedWith.SequenceEqual(new[] { "new" }));
+    }
+
+    [Fact]
+    public async Task P2_削除の後に同じIDで作り直された文書は連番が小さくても反映する()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, Event(Tf, sharedWith: ["before"], sequence: 8));
+        index.RemoveAllPointsOf(DocId); // 削除（点は Retrieval が消す。版の印は残る）
+
+        await Handle(consumer, Event(Tf.AddSeconds(1), sharedWith: ["recreated"], sequence: 1));
+
+        index.PointsOf(DocId).Should().NotBeEmpty().And.OnlyContain(p => p.SharedWith.SequenceEqual(new[] { "recreated" }),
+            "作り直しは削除より新しい時刻を持つ（連番は 0 から始まる）");
+    }
+
+    [Fact]
+    public async Task P3_撤収の後に遅れて届いた古いONは載り直さない()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, NoteEvent(Tf, withdrawn: false) with { Sequence = 5 });
+        await Handle(consumer, NoteEvent(Tf, withdrawn: true) with { Sequence = 6 });
+        index.PointsOf(DocId).Should().BeEmpty("前提: 撤収した");
+
+        await Handle(consumer, NoteEvent(Tf, withdrawn: false) with { Sequence = 5 });
+
+        index.PointsOf(DocId).Should().BeEmpty("撤収の後に古い ON が後着しても載り直さない（#2251）");
+    }
+
+    [Fact]
+    public async Task P3_遅れて届いた古いOFFは新しい版を撤収しない()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, NoteEvent(Tf, withdrawn: false) with { Sequence = 6 });
+
+        await Handle(consumer, NoteEvent(Tf, withdrawn: true) with { Sequence = 5 });
+
+        index.PointsOf(DocId).Should().NotBeEmpty("古い撤収で新しい版を消さない");
+    }
+
+    [Theory]
+    [InlineData(null, 3L)]
+    [InlineData(3L, null)]
+    public async Task P4_どちらかに連番が無ければ時刻だけで比べ_同時刻は反映する(long? first, long? second)
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, Event(Tf, sharedWith: ["first"], sequence: first));
+
+        await Handle(consumer, Event(Tf, sharedWith: ["second"], sequence: second));
+
+        index.PointsOf(DocId).Should().NotBeEmpty().And.OnlyContain(p => p.SharedWith.SequenceEqual(new[] { "second" }),
+            "旧形式（連番なし）が混ざれば現行どおり時刻で比べ、同じ時刻は反映する");
+    }
+
+    [Fact]
+    public async Task P4_時刻が古ければ連番が大きくても反映しない()
+    {
+        var index = new StatefulIndex();
+        var consumer = Build(index, new ScriptedReader(TwoChunks));
+        await Handle(consumer, Event(Tf, sharedWith: ["new"], sequence: 3));
+
+        await Handle(consumer, Event(Tf.AddMilliseconds(-1), sharedWith: ["old"], sequence: 9));
+
+        index.PointsOf(DocId).Should().OnlyContain(p => p.SharedWith.SequenceEqual(new[] { "new" }));
+    }
+
+    [Fact]
+    public async Task 取り込みの途中に同じ時刻の新しい版が反映されたら_古い版の後始末は新しい版の点を消さない()
+    {
+        // IADR-0639 決定 3: 書き終えた後の読み直しと旧版の点の後始末を、同じ辞書順にする。
+        var index = new StatefulIndex();
+        var reader = new ScriptedReader(TwoChunks);
+        var consumer = Build(index, reader);
+        var nested = Build(index, new ScriptedReader(OneChunk));
+        reader.OnRead = () => Handle(nested, Event(Tf, "confidential", sequence: 6));
+
+        await Handle(consumer, Event(Tf, "internal", sequence: 5));
+
+        index.PointsOf(DocId).Should().ContainSingle("同じ時刻でも連番の大きい新しい版の点だけが残る")
+            .Which.Should().Match<StatefulIndex.Point>(p => p.Confidentiality == "confidential" && p.Sequence == 6);
+    }
+
+    [Fact]
+    public async Task 連番を持たない旧点は時刻だけで比べ_同じ時刻なら新しい版の後始末で消える()
+    {
+        var index = new StatefulIndex();
+        index.Seed("voyage", Guid.NewGuid(), DocId, Tf.ToUnixTimeMilliseconds(), "internal"); // 移行前の点（連番なし）
+        index.Versions[DocId] = new DocumentIndexVersion(Tf, IndexAccessFingerprint.Of(
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, null));
+        var consumer = Build(index, new ScriptedReader(OneChunk));
+
+        await Handle(consumer, Event(Tf, sequence: 6));
+
+        index.PointsOf(DocId).Should().OnlyContain(p => p.Sequence == 6, "旧点は現行と同じに消える（連番が無いので時刻だけで比べる）");
+    }
+
     // ── 純関数 ──
 
     [Fact]
     public void 判定はミリ秒で比べ_等しい版と印の無い文書は反映する()
     {
         var indexed = new DocumentIndexVersion(V2, "x");
-        DocumentIndexOrdering.IsStale(indexed, V1).Should().BeTrue();
-        DocumentIndexOrdering.IsStale(indexed, V2).Should().BeFalse();
-        DocumentIndexOrdering.IsStale(indexed, V2.AddTicks(9_000)).Should().BeFalse("ミリ秒未満の差は等しい版として読む");
-        DocumentIndexOrdering.IsStale(indexed, V2.AddMilliseconds(-1)).Should().BeTrue();
-        DocumentIndexOrdering.IsStale(null, V1).Should().BeFalse();
+        DocumentIndexOrdering.IsStale(indexed, V1, null).Should().BeTrue();
+        DocumentIndexOrdering.IsStale(indexed, V2, null).Should().BeFalse();
+        DocumentIndexOrdering.IsStale(indexed, V2.AddTicks(9_000), null).Should().BeFalse("ミリ秒未満の差は等しい版として読む");
+        DocumentIndexOrdering.IsStale(indexed, V2.AddMilliseconds(-1), null).Should().BeTrue();
+        DocumentIndexOrdering.IsStale(null, V1, null).Should().BeFalse();
     }
 
     [Fact]
@@ -371,7 +504,7 @@ public class IngestionOrderingAndAtomicityTests
         public const string LexicalName = "lexical";
 
         public sealed record Point(string Collection, Guid Id, Guid DocumentId, long? UpdatedAtMs, string Confidentiality,
-            IReadOnlyList<string> SharedWith, string Text, bool Pending);
+            IReadOnlyList<string> SharedWith, string Text, bool Pending, long? Sequence = null);
 
         private readonly Dictionary<(string Collection, Guid Id), Point> _points = [];
         public Dictionary<Guid, DocumentIndexVersion> Versions { get; } = [];
@@ -397,13 +530,13 @@ public class IngestionOrderingAndAtomicityTests
             => _points[(collection, id)] = new Point(collection, id, documentId, updatedAtMs, confidentiality, [], "seed", false);
 
         private Task Write(string collection, Guid id, Guid documentId, DateTimeOffset? updatedAt,
-            Dictionary<string, string> attributes, List<string>? sharedWith, string text, bool pending)
+            Dictionary<string, string> attributes, List<string>? sharedWith, string text, bool pending, long? sequence)
         {
             if (_failAfter is { } n && _upserts >= n)
                 throw new IOException("qdrant write failed");
             _upserts++;
             _points[(collection, id)] = new Point(collection, id, documentId, updatedAt?.ToUnixTimeMilliseconds(),
-                attributes.GetValueOrDefault("confidentiality") ?? "", sharedWith ?? [], text, pending);
+                attributes.GetValueOrDefault("confidentiality") ?? "", sharedWith ?? [], text, pending, sequence);
             return Task.CompletedTask;
         }
 
@@ -411,34 +544,34 @@ public class IngestionOrderingAndAtomicityTests
 
         public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title, string text,
             int chunkIndex, float[] vector, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
-            => Write(collection, chunkId, documentId, updatedAt, attributes, sharedWith, text, false);
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
+            => Write(collection, chunkId, documentId, updatedAt, attributes, sharedWith, text, false, sequence);
 
         public Task UpsertMetadataPointAsync(string collection, Guid pointId, Guid documentId, string title,
             string indexText, float[] vector, string? markdownUri, Dictionary<string, string> attributes,
             List<string> tags, DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-            CancellationToken ct = default)
-            => Write(collection, pointId, documentId, updatedAt, attributes, sharedWith, indexText, false);
+            long? sequence = null, CancellationToken ct = default)
+            => Write(collection, pointId, documentId, updatedAt, attributes, sharedWith, indexText, false, sequence);
 
         public Task UpsertLexicalChunkAsync(Guid chunkId, Guid documentId, string title, string text, int chunkIndex,
             string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
-            => Write(LexicalName, chunkId, documentId, updatedAt, attributes, sharedWith, text, false);
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
+            => Write(LexicalName, chunkId, documentId, updatedAt, attributes, sharedWith, text, false, sequence);
 
         public Task UpsertLexicalMetadataPointAsync(Guid pointId, Guid documentId, string title, string indexText,
             string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, CancellationToken ct = default)
-            => Write(LexicalName, pointId, documentId, updatedAt, attributes, sharedWith, indexText, false);
+            DateTimeOffset? updatedAt = null, List<string>? sharedWith = null, long? sequence = null, CancellationToken ct = default)
+            => Write(LexicalName, pointId, documentId, updatedAt, attributes, sharedWith, indexText, false, sequence);
 
         public Task UpsertEmbeddingPendingChunkAsync(Guid chunkId, Guid documentId, string title, string text,
             int chunkIndex, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt, List<string>? sharedWith, string reason, CancellationToken ct = default)
-            => Write(LexicalName, chunkId, documentId, updatedAt, attributes, sharedWith, text, true);
+            DateTimeOffset? updatedAt, List<string>? sharedWith, string reason, long? sequence = null, CancellationToken ct = default)
+            => Write(LexicalName, chunkId, documentId, updatedAt, attributes, sharedWith, text, true, sequence);
 
         public Task UpsertEmbeddingPendingMetadataPointAsync(Guid pointId, Guid documentId, string title,
             string indexText, string? markdownUri, Dictionary<string, string> attributes, List<string> tags,
-            DateTimeOffset? updatedAt, List<string>? sharedWith, string reason, CancellationToken ct = default)
-            => Write(LexicalName, pointId, documentId, updatedAt, attributes, sharedWith, indexText, true);
+            DateTimeOffset? updatedAt, List<string>? sharedWith, string reason, long? sequence = null, CancellationToken ct = default)
+            => Write(LexicalName, pointId, documentId, updatedAt, attributes, sharedWith, indexText, true, sequence);
 
         public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
         {
@@ -455,8 +588,8 @@ public class IngestionOrderingAndAtomicityTests
             return Task.CompletedTask;
         }
 
-        // 実装のフィルタと同じ条件: 文書の点 ∧ ¬(updated_at > version) ∧ ¬(この取り込みで書いた点)。
-        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+        // 実装のフィルタと同じ条件: 文書の点 ∧ ¬(updated_at > version) ∧ ¬(同じ時刻で点と版の両方に連番があり点の連番が大きい) ∧ ¬(この取り込みで書いた点)。
+        public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
             IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default)
         {
             var ms = version.ToUnixTimeMilliseconds();
@@ -464,6 +597,7 @@ public class IngestionOrderingAndAtomicityTests
             foreach (var key in _points
                          .Where(p => p.Value.DocumentId == documentId
                                      && !(p.Value.UpdatedAtMs is { } at && at > ms)
+                                     && !(sequence is { } seq && p.Value.Sequence is { } ps && p.Value.UpdatedAtMs == ms && ps > seq)
                                      && !kept.Contains(p.Key))
                          .Select(p => p.Key).ToList())
                 _points.Remove(key);

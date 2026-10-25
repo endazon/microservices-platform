@@ -53,7 +53,7 @@ public class TagEdgeSyncTests
             var consumer = new GraphDocumentSyncConsumer(
                 db, TimeProvider.System, reader, TagEdgesForTests.Links(db), new TermProfileSynchronizer(db),
                 TagEdgesForTests.Synchronizer(db, max, locks), ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-                NullLogger<GraphDocumentSyncConsumer>.Instance);
+                NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
             _tick++;
             await consumer.Handle(new DocumentUpdated(
                 id, title, "published", "storage://b/x.md",
@@ -66,7 +66,7 @@ public class TagEdgeSyncTests
         {
             await using var db = Open();
             await new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db, max, locks),
-                    NullLogger<DocumentDeletedConsumer>.Instance)
+                    NoOpTagEdgeLocks.Instance, NullLogger<DocumentDeletedConsumer>.Instance)
                 .Handle(new DocumentDeleted(id, T0.AddDays(1)), ct);
         }
 

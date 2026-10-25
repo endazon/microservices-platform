@@ -51,7 +51,7 @@ internal sealed class SharedIndexIngestionVectorStore(
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Record(collection);
         return index.UpsertAsync(
@@ -63,7 +63,7 @@ internal sealed class SharedIndexIngestionVectorStore(
         string indexText, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Record(collection);
         return index.UpsertAsync(
@@ -82,7 +82,7 @@ internal sealed class SharedIndexIngestionVectorStore(
         string text, int chunkIndex, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Record(LexicalCollectionName);
         return Lexical.UpsertAsync(
@@ -94,7 +94,7 @@ internal sealed class SharedIndexIngestionVectorStore(
         string indexText, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         DateTimeOffset? updatedAt = null, List<string>? sharedWith = null,
-        CancellationToken ct = default)
+        long? sequence = null, CancellationToken ct = default)
     {
         Record(LexicalCollectionName);
         return Lexical.UpsertAsync(
@@ -109,7 +109,7 @@ internal sealed class SharedIndexIngestionVectorStore(
     public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
         => Task.CompletedTask;
 
-    public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version,
+    public Task DeleteSupersededAsync(Guid documentId, DateTimeOffset version, long? sequence,
         IReadOnlyCollection<IndexedPointRef> keep, CancellationToken ct = default) => Task.CompletedTask;
 
     // 取り込みは「全コレクションから消す」。索引が 1 つしか無いのでそのまま 1 回消す。

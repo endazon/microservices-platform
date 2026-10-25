@@ -366,6 +366,26 @@ namespace GraphService.Infrastructure.Migrations
                     b.ToTable("graph_documents", (string)null);
                 });
 
+            modelBuilder.Entity("GraphService.Domain.GraphDocumentSyncMark", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("AppliedSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("Deleted")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("DocumentId");
+
+                    b.ToTable("graph_document_sync_marks", (string)null);
+                });
+
             modelBuilder.Entity("GraphService.Domain.GraphDocumentTag", b =>
                 {
                     b.Property<Guid>("DocumentId")

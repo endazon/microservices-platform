@@ -79,10 +79,10 @@ public sealed class IndexStatusQdrantTests : IAsyncLifetime
         await writer.UpsertLexicalChunkAsync(Guid.NewGuid(), lexicalOnly, "高機密", "本文", 0, null,
             new() { ["confidentiality"] = "restricted" }, [], ct: ct);
         await writer.UpsertEmbeddingPendingChunkAsync(Guid.NewGuid(), pending, "待ち", "本文", 0, null,
-            new(attrs), [], null, null, EmbeddingPendingReasons.Transient, ct);
+            new(attrs), [], null, null, EmbeddingPendingReasons.Transient, ct: ct);
         await writer.UpsertChunkAsync(_primary, Guid.NewGuid(), partial, "一部", "本文 1", 0, Vector(), null, new(attrs), [], ct: ct);
         await writer.UpsertEmbeddingPendingChunkAsync(Guid.NewGuid(), partial, "一部", "本文 2", 1, null,
-            new(attrs), [], null, null, EmbeddingPendingReasons.Transient, ct);
+            new(attrs), [], null, null, EmbeddingPendingReasons.Transient, ct: ct);
         await writer.UpsertChunkAsync(_primary, Guid.NewGuid(), outsidePage, "外", "本文", 0, Vector(), null, new(attrs), [], ct: ct);
 
         var page = new[] { embedded, lexicalOnly, pending, partial, absent };

@@ -43,7 +43,7 @@ public class QdrantIndexVersionStoreTests
     {
         var keep = Guid.NewGuid();
 
-        var filter = QdrantIngestionVectorStore.BuildSupersededFilter(DocId, Version, [keep]);
+        var filter = QdrantIngestionVectorStore.BuildSupersededFilter(DocId, Version, null, [keep]);
 
         filter.Must.Should().ContainSingle().Which.Field.Should().Match<FieldCondition>(f =>
             f.Key == "document_id" && f.Match.Keyword == DocId.ToString());
@@ -53,8 +53,39 @@ public class QdrantIndexVersionStoreTests
         filter.MustNot[0].Field.Range.HasGte.Should().BeFalse("等しい版の点（書いていないもの）は消す");
         filter.MustNot[1].HasId.HasId.Should().ContainSingle().Which.Uuid.Should().Be(keep.ToString());
 
-        QdrantIngestionVectorStore.BuildSupersededFilter(DocId, Version, []).MustNot.Should().ContainSingle(
+        QdrantIngestionVectorStore.BuildSupersededFilter(DocId, Version, null, []).MustNot.Should().ContainSingle(
             "書いた点が無ければ ID の除外は付けない（空の has_id は何にも当たらない条件になる）");
+    }
+
+    // FR-02, IADR-0639 決定 3 (#2150 / #2251): 版に連番があるとき、同じ時刻で連番の大きい点（同じ時刻の新しい版の点）を残す条件を足す。
+    // 連番の無い点（旧点）はこの条件に当たらないので、時刻だけで比べられる（同じ時刻なら消える）。
+    [Fact]
+    public void 版に連番があれば_同じ時刻で連番の大きい点を残す条件が付き_無ければ付かない()
+    {
+        var filter = QdrantIngestionVectorStore.BuildSupersededFilter(DocId, Version, 5, []);
+
+        filter.MustNot.Should().HaveCount(2);
+        var sameTimeNewer = filter.MustNot[1].Filter.Must;
+        sameTimeNewer.Should().HaveCount(2);
+        sameTimeNewer[0].Field.Key.Should().Be("updated_at");
+        sameTimeNewer[0].Field.Range.Gte.Should().Be(Version.ToUnixTimeMilliseconds());
+        sameTimeNewer[0].Field.Range.Lte.Should().Be(Version.ToUnixTimeMilliseconds());
+        sameTimeNewer[1].Field.Key.Should().Be(QdrantIngestionVectorStore.SequenceKey);
+        sameTimeNewer[1].Field.Range.Gt.Should().Be(5);
+
+        QdrantIngestionVectorStore.BuildSupersededFilter(DocId, Version, null, []).MustNot.Should().ContainSingle(
+            "連番の無い版（旧形式の電文）は現行と同じ条件だけ");
+    }
+
+    [Fact]
+    public void 版の印は連番を往復で保ち_連番の無い印は連番なしとして読む()
+    {
+        var withSequence = QdrantIngestionVectorStore.BuildIndexVersionPoint(DocId, new DocumentIndexVersion(Version, "fp", 7));
+        QdrantIngestionVectorStore.ReadIndexVersion(withSequence.Payload)!.Sequence.Should().Be(7);
+
+        var legacy = QdrantIngestionVectorStore.BuildIndexVersionPoint(DocId, new DocumentIndexVersion(Version, "fp"));
+        legacy.Payload.ContainsKey(QdrantIngestionVectorStore.SequenceKey).Should().BeFalse();
+        QdrantIngestionVectorStore.ReadIndexVersion(legacy.Payload)!.Sequence.Should().BeNull();
     }
 
     // 全コレクション（モデル別 ＋ 語彙索引）を巡り、残す点はコレクションごとに分けて渡す
@@ -66,7 +97,7 @@ public class QdrantIndexVersionStoreTests
         var inVoyage = Guid.NewGuid();
         var inLexical = Guid.NewGuid();
 
-        await NewStore(invoker).DeleteSupersededAsync(DocId, Version,
+        await NewStore(invoker).DeleteSupersededAsync(DocId, Version, null,
             [new IndexedPointRef(Voyage, inVoyage), IndexedPointRef.Lexical(inLexical)],
             TestContext.Current.CancellationToken);
 
@@ -80,11 +111,11 @@ public class QdrantIndexVersionStoreTests
     public async Task 旧版の削除は語彙索引が無ければ飛ばし_ベクトルのコレクションが無ければ投げる()
     {
         var lexicalMissing = new RecordingCallInvoker { MissingCollection = Lexical };
-        await NewStore(lexicalMissing).DeleteSupersededAsync(DocId, Version, [], TestContext.Current.CancellationToken);
+        await NewStore(lexicalMissing).DeleteSupersededAsync(DocId, Version, null, [], TestContext.Current.CancellationToken);
         lexicalMissing.Deletes.Select(d => d.CollectionName).Should().Equal(Voyage, Ruri);
 
         var vectorMissing = new RecordingCallInvoker { MissingCollection = Ruri };
-        var act = () => NewStore(vectorMissing).DeleteSupersededAsync(DocId, Version, [],
+        var act = () => NewStore(vectorMissing).DeleteSupersededAsync(DocId, Version, null, [],
             TestContext.Current.CancellationToken);
         (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.NotFound);
     }

@@ -1,3 +1,5 @@
+using Knowledge.Contracts.Ordering;
+
 namespace WikiService.Domain;
 
 // FR-13, FR-06, ADR-0027, [[IADR-0596]] 決定 1 (#2102): **文書ごとに、Wiki へ最後に反映した版**（版の印）。
@@ -19,19 +21,24 @@ public class DocumentSyncMark
     // 最後に反映したのが削除か。削除と同じ時刻の更新も古いとして扱う（削除は同じ文書の最後の出来事である）。
     public bool Deleted { get; private set; }
 
+    // 🔴 FR-13, IADR-0639 決定 4 (#2150 / #2251): 反映した版の発行の連番（IADR-0637）。旧形式の電文・移行前の印は null。
+    // 前後は辞書順 (AppliedAt, AppliedSequence)（`DocumentEventOrder`。連番を第 1 の鍵にしない —— 文書 ID の再利用で 0 へ戻る）。
+    public long? AppliedSequence { get; private set; }
+
     public long Revision { get; private set; }
 
     private DocumentSyncMark() { }
 
     public static DocumentSyncMark For(Guid documentId) => new() { DocumentId = documentId };
 
-    public void RecordUpdated(DateTimeOffset updatedAt) => Record(updatedAt, deleted: false);
+    public void RecordUpdated(DateTimeOffset updatedAt, long? sequence) => Record(updatedAt, sequence, deleted: false);
 
-    public void RecordDeleted(DateTimeOffset deletedAt) => Record(deletedAt, deleted: true);
+    public void RecordDeleted(DateTimeOffset deletedAt, long? sequence) => Record(deletedAt, sequence, deleted: true);
 
-    private void Record(DateTimeOffset at, bool deleted)
+    private void Record(DateTimeOffset at, long? sequence, bool deleted)
     {
         AppliedAt = DocumentSyncOrdering.ToStoredPrecision(at);
+        AppliedSequence = sequence;
         Deleted = deleted;
         Revision++;
     }
@@ -47,15 +54,17 @@ public static class DocumentSyncOrdering
 
     // 🔴 **反映済みの版より厳密に古い更新は反映しない**（ack して捨てる）。等しい版は反映する（再配送・再発行は同じ版を運ぶ）。
     // 削除を反映済みなら、削除と同じ時刻の更新も反映しない。印が無い（初回・移行前）なら反映する。
-    public static bool IsStaleUpdate(DocumentSyncMark? mark, DateTimeOffset updatedAt)
+    // ［IADR-0639 決定 4］同じ時刻なら連番で比べる（双方に連番があるとき）。削除の鍵は (DeletedAt, Sequence)。
+    public static bool IsStaleUpdate(DocumentSyncMark? mark, DateTimeOffset updatedAt, long? sequence)
     {
         if (mark is null) return false;
-        var incoming = ToStoredPrecision(updatedAt);
-        return incoming < mark.AppliedAt || (mark.Deleted && incoming <= mark.AppliedAt);
+        var order = DocumentEventOrder.Compare(ToStoredPrecision(updatedAt), sequence, mark.AppliedAt, mark.AppliedSequence);
+        return order < 0 || (mark.Deleted && order == 0);
     }
 
     // 🔴 **反映済みの版より厳密に古い削除は適用しない。** 文書 ID は変換が決定的に採番するので、削除の後に同じ ID で作り直された
     // 文書がある。その版を反映した後に遅れて届いた古い削除で、作り直したページを消さない。等しい時刻（削除の再配送）は適用する。
-    public static bool IsStaleDelete(DocumentSyncMark? mark, DateTimeOffset deletedAt)
-        => mark is not null && ToStoredPrecision(deletedAt) < mark.AppliedAt;
+    public static bool IsStaleDelete(DocumentSyncMark? mark, DateTimeOffset deletedAt, long? sequence)
+        => mark is not null
+           && DocumentEventOrder.IsOlder(ToStoredPrecision(deletedAt), sequence, mark.AppliedAt, mark.AppliedSequence);
 }

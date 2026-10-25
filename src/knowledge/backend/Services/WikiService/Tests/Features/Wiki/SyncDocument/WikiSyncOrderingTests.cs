@@ -280,19 +280,165 @@ public class WikiSyncOrderingTests
     [Fact]
     public void 判定は保存の精度で比べ_削除と同じ時刻の更新は古い()
     {
-        DocumentSyncOrdering.IsStaleUpdate(null, T1).Should().BeFalse();
+        DocumentSyncOrdering.IsStaleUpdate(null, T1, null).Should().BeFalse();
 
         var mark = DocumentSyncMark.For(DocId);
-        mark.RecordUpdated(T2.AddTicks(7)); // マイクロ秒未満は保存されない
-        DocumentSyncOrdering.IsStaleUpdate(mark, T2.AddTicks(3)).Should().BeFalse(); // 同じ版の再配送（精度の内）
-        DocumentSyncOrdering.IsStaleUpdate(mark, T2.AddTicks(-10)).Should().BeTrue(); // 1 マイクロ秒でも古い
-        DocumentSyncOrdering.IsStaleDelete(mark, T2).Should().BeFalse();
-        DocumentSyncOrdering.IsStaleDelete(mark, T1).Should().BeTrue();
+        mark.RecordUpdated(T2.AddTicks(7), null); // マイクロ秒未満は保存されない
+        DocumentSyncOrdering.IsStaleUpdate(mark, T2.AddTicks(3), null).Should().BeFalse(); // 同じ版の再配送（精度の内）
+        DocumentSyncOrdering.IsStaleUpdate(mark, T2.AddTicks(-10), null).Should().BeTrue(); // 1 マイクロ秒でも古い
+        DocumentSyncOrdering.IsStaleDelete(mark, T2, null).Should().BeFalse();
+        DocumentSyncOrdering.IsStaleDelete(mark, T1, null).Should().BeTrue();
 
-        mark.RecordDeleted(T3);
-        DocumentSyncOrdering.IsStaleUpdate(mark, T3).Should().BeTrue();
-        DocumentSyncOrdering.IsStaleUpdate(mark, T4).Should().BeFalse();
-        DocumentSyncOrdering.IsStaleDelete(mark, T3).Should().BeFalse(); // 削除の再配送は適用する
+        mark.RecordDeleted(T3, null);
+        DocumentSyncOrdering.IsStaleUpdate(mark, T3, null).Should().BeTrue();
+        DocumentSyncOrdering.IsStaleUpdate(mark, T4, null).Should().BeFalse();
+        DocumentSyncOrdering.IsStaleDelete(mark, T3, null).Should().BeFalse(); // 削除の再配送は適用する
+    }
+
+    // ── 🔴 FR-13, IADR-0639 決定 4 (#2150 / #2251) 段 2: 規則 11 の表の P1〜P5（Wiki）──
+    //
+    // 鍵は辞書順 (時刻〔マイクロ秒〕, 連番)、削除は (DeletedAt, Sequence)。印の保存の精度（マイクロ秒）への丸めは実 PostgreSQL の試験
+    // （`Knowledge.IntegrationTests` の `WikiSyncMarkPostgresTests`）が測る（InMemory はティックのまま保存するので丸めの変異を捕まえられない）。
+
+    private static readonly DateTimeOffset Ts = T1.AddTicks(3);
+
+    private static DocumentUpdated Sequenced(string title, DateTimeOffset at, long? sequence, Dictionary<string, string>? extra = null)
+        => Updated(title, at, extra: extra) with { Sequence = sequence };
+
+    private static async Task DeleteAsync(ServiceProvider provider, DateTimeOffset deletedAt, long? sequence)
+    {
+        using var scope = provider.CreateScope();
+        var sp = scope.ServiceProvider;
+        await new DocumentDeletedConsumer(
+                sp.GetRequiredService<WikiDbContext>(),
+                sp.GetRequiredService<IWikiJsClient>(),
+                sp.GetRequiredService<IWikiContentReader>(),
+                sp.GetRequiredService<ConsumerCallTimeouts>(),
+                sp.GetRequiredService<WikiSyncTimeouts>(),
+                sp.GetRequiredService<WikiJsWriteGate>(),
+                sp.GetRequiredService<ILogger<DocumentDeletedConsumer>>())
+            .Handle(new DocumentDeleted(DocId, deletedAt, sequence), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task P1_同時刻の逆転_連番の小さい古い版は反映しない()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("新しい題名", Ts, 6));
+
+        await SyncAsync(provider, Sequenced("古い題名", Ts, 5));
+
+        PageOf(provider)!.Title.Should().Be("新しい題名", "同じ時刻で連番が小さいのは古い版（#2150）");
+    }
+
+    [Fact]
+    public async Task P1_陽性対照_同時刻で連番が大きい新しい版は反映する()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("古い題名", Ts, 5));
+
+        await SyncAsync(provider, Sequenced("新しい題名", Ts, 6));
+
+        PageOf(provider)!.Title.Should().Be("新しい題名");
+    }
+
+    [Fact]
+    public async Task P2_削除の後に同じIDで作り直された文書は連番が小さくても反映する()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("削除前", Ts, 8));
+        await DeleteAsync(provider, Ts.AddSeconds(1), 9);
+        PageRows(provider).Should().Be(0, "前提: 削除した");
+
+        await SyncAsync(provider, Sequenced("作り直し", Ts.AddSeconds(2), 1));
+
+        PageOf(provider)!.Title.Should().Be("作り直し", "作り直しは削除より新しい時刻を持つ（連番は 0 から始まる）");
+    }
+
+    [Fact]
+    public async Task P3_撤去の後に遅れて届いた古いONは載り直さない()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("露出 ON", Ts, 5));
+        await SyncAsync(provider, Sequenced("露出 OFF", Ts, 6, Excluded()));
+        PageRows(provider).Should().Be(0, "前提: 撤去した");
+
+        await SyncAsync(provider, Sequenced("露出 ON", Ts, 5));
+
+        PageRows(provider).Should().Be(0, "撤去の後に古い ON が後着しても載り直さない（#2251）");
+    }
+
+    [Fact]
+    public async Task P3_遅れて届いた古いOFFは新しい版を撤去しない()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("新しい版", Ts, 6));
+
+        await SyncAsync(provider, Sequenced("古い OFF", Ts, 5, Excluded()));
+
+        PageOf(provider)!.Title.Should().Be("新しい版", "古い撤去で新しい版を消さない");
+    }
+
+    [Theory]
+    [InlineData(null, 3L)]
+    [InlineData(3L, null)]
+    public async Task P4_どちらかに連番が無ければ時刻だけで比べ_同時刻は反映する(long? first, long? second)
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("一つ目", Ts, first));
+
+        await SyncAsync(provider, Sequenced("二つ目", Ts, second));
+
+        PageOf(provider)!.Title.Should().Be("二つ目", "旧形式（連番なし）が混ざれば現行どおり時刻で比べる");
+    }
+
+    [Fact]
+    public async Task P4_時刻が古ければ連番が大きくても反映しない()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("新しい", Ts, 3));
+
+        await SyncAsync(provider, Sequenced("古い", Ts.AddMilliseconds(-1), 9));
+
+        PageOf(provider)!.Title.Should().Be("新しい");
+    }
+
+    [Fact]
+    public async Task P5_削除の後に遅れて届いた古い更新はページを作り直さない()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("削除前", Ts, 8));
+        await DeleteAsync(provider, Ts, 9);
+
+        await SyncAsync(provider, Sequenced("削除前", Ts, 8));
+
+        PageRows(provider).Should().Be(0, "削除と同じ時刻で連番の小さい更新は古い");
+    }
+
+    [Fact]
+    public async Task P5_作り直しの後に遅れて届いた古い削除は適用しない()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("作り直し", Ts.AddSeconds(2), 1));
+
+        await DeleteAsync(provider, Ts.AddSeconds(1), 9);
+
+        PageOf(provider)!.Title.Should().Be("作り直し", "作り直しより前の削除で、作り直したページを消さない");
+    }
+
+    [Fact]
+    public async Task P5_陽性対照_更新の後の削除は適用し印に連番が残る()
+    {
+        using var provider = BuildProvider();
+        await SyncAsync(provider, Sequenced("削除前", Ts, 8));
+
+        await DeleteAsync(provider, Ts.AddSeconds(1), 9);
+
+        PageRows(provider).Should().Be(0);
+        using var scope = provider.CreateScope();
+        var mark = scope.ServiceProvider.GetRequiredService<WikiDbContext>().SyncMarks.AsNoTracking().Single(m => m.DocumentId == DocId);
+        mark.Deleted.Should().BeTrue();
+        mark.AppliedSequence.Should().Be(9);
     }
 }
 
