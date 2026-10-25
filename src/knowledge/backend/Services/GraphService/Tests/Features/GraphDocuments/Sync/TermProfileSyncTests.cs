@@ -71,7 +71,7 @@ public class TermProfileSyncTests
                 NullLogger<LinkEdgeSynchronizer>.Instance),
             new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
             ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-            NullLogger<GraphDocumentSyncConsumer>.Instance);
+            NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
         return (consumer, reader);
     }
 
@@ -166,7 +166,7 @@ public class TermProfileSyncTests
         await consumer.Handle(Event("fp-1", T0), ct);
         db.TermProfiles.Count(p => p.DocumentId == DocA).Should().Be(1, "陽性対照");
 
-        await new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db), NullLogger<DocumentDeletedConsumer>.Instance)
+        await new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db), NoOpTagEdgeLocks.Instance, NullLogger<DocumentDeletedConsumer>.Instance)
             .Handle(new DocumentDeleted(DocA, T0.AddDays(2)), ct);
 
         db.TermProfiles.Count(p => p.DocumentId == DocA).Should().Be(0);

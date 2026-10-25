@@ -1,3 +1,5 @@
+using GraphService.Domain;
+using GraphService.Domain.Ports;
 using GraphService.Features.GraphDocuments.Sync;
 using GraphService.Infrastructure.Persistence;
 using Knowledge.Contracts.Events;
@@ -29,6 +31,7 @@ public class DocumentDeletedConsumer(
     GraphDbContext db,
     LinkEdgeSynchronizer links,
     TagEdgeSynchronizer tagEdges,
+    ITagEdgeLocks locks,
     ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -39,10 +42,30 @@ public class DocumentDeletedConsumer(
     // 🔴 [[IADR-0521]] 決定 7 (#1396): 共有タグの差分（タグを空にする）は `DocumentUpdated` の受け口と
     // **同じ排他**を取る（`GraphDocumentRemoval` → `TagEdgeSynchronizer`）。取らないと、削除と同時に
     // 同じタグへ入った文書が、消えた文書への辺を残す。排他はこのトランザクションの確定で解ける。
+    // 🔴 FR-17, IADR-0638 決定 1・2 (#2150 / #2251): **順序の門。** 文書の排他を先に取り、版の印（墓石）を読む。印より厳密に古い削除
+    // （作り直した文書の版を反映した後に遅れて届いた削除）は適用しない。適用したら、同じトランザクションで印を「削除済み」にする
+    // （その後に遅れて届いた古い更新でノードを作り直さない）。
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
         await using var tx = await GraphSyncTransaction.BeginAsync(db, ct);
+        await locks.LockDocumentAsync(ev.DocumentId, ct);
+        var mark = await db.SyncMarks.FirstOrDefaultAsync(m => m.DocumentId == ev.DocumentId, ct);
+        if (GraphSyncOrdering.IsStaleDelete(mark, ev.DeletedAt, ev.Sequence))
+        {
+            logger.LogInformation(
+                "Skipped stale DocumentDeleted for {DocumentId} (deleted={DeletedAt:o}/{Sequence} applied={AppliedAt:o}/{AppliedSequence})",
+                ev.DocumentId, ev.DeletedAt, ev.Sequence, mark!.AppliedAt, mark.AppliedSequence);
+            return;
+        }
+
         await RemoveAsync(ev, ct);
+        if (mark is null)
+        {
+            mark = GraphDocumentSyncMark.For(ev.DocumentId);
+            db.SyncMarks.Add(mark);
+        }
+        mark.RecordDeleted(ev.DeletedAt, ev.Sequence);
+        await db.SaveChangesAsync(ct);
         if (tx is not null)
             await tx.CommitAsync(ct);
     }

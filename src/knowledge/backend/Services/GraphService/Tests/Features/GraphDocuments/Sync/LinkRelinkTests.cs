@@ -45,7 +45,7 @@ public class LinkRelinkTests
                 db, TimeProvider.System, new FixedReader(body), TagEdgesForTests.Links(db),
                 new TermProfileSynchronizer(db), TagEdgesForTests.Synchronizer(db),
                 ConsumerTimeoutsForTests.Calls(), GraphSyncTimeouts.Default,
-                NullLogger<GraphDocumentSyncConsumer>.Instance);
+                NoOpTagEdgeLocks.Instance, NullLogger<GraphDocumentSyncConsumer>.Instance);
             _tick++;
             await consumer.Handle(new DocumentUpdated(
                 id, title, "published", "storage://b/x.md",
@@ -57,7 +57,7 @@ public class LinkRelinkTests
         {
             await using var db = Open();
             await new DocumentDeletedConsumer(db, TagEdgesForTests.Links(db), TagEdgesForTests.Synchronizer(db),
-                    NullLogger<DocumentDeletedConsumer>.Instance)
+                    NoOpTagEdgeLocks.Instance, NullLogger<DocumentDeletedConsumer>.Instance)
                 .Handle(new DocumentDeleted(id, T0.AddDays(1)), ct);
         }
 
