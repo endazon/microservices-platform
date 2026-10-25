@@ -3326,6 +3326,10 @@
           }
         }
       },
+      "Knowledge.Contracts.Events.DocumentEventOrder": {
+        "kind": "class",
+        "members": {}
+      },
       "Knowledge.Contracts.Events.DocumentNormalized": {
         "kind": "record",
         "members": {

@@ -715,3 +715,4 @@
 | [IADR-0635](./IADR-0635_e2e-live-paths-system-under-test.md) | e2e-live の pull_request.paths は試験される側（スタックが建てるイメージの中身・起動器と配備物）まで覆い、イメージに入らない変更と e2e-live の旗で当たらない配備物は外す（#2244） | Accepted |
 | [IADR-0636](./IADR-0636_private-note-soft-delete-withdrawal.md) | 論理削除した個人資料は唯一の発行点が台帳を見て撤収の形（露出 3 キーを excluded）で出し、復元で台帳の露出のまま出し直す。読み取りの判定は論理削除を必須の引数で受けて拒み、露出の変更は 409（#2138） | Accepted |
 | [IADR-0637](./IADR-0637_document-event-sequence.md) | 文書ごとの単調な発行の連番を唯一の発行点で進めて更新・削除のイベントの末尾に運び、連番そのものを並行トークンにする。新たに負け得る単一文書の経路と完全削除は 409 version_conflict へ写し、多数文書の 2 経路・既存の 8 経路・受け手の比較は段 1b・1c・2 に分ける（#2150 / #2251） | Accepted |
+| [IADR-0638](./IADR-0638_receiver-ordering-by-time-then-sequence.md) | 受け手（取り込み・グラフ・Wiki）は更新を辞書順 (UpdatedAt, Sequence)・削除を (DeletedAt, Sequence) で比べ、印より厳密に古いものだけを捨てる。連番を第 1 の鍵にしない（文書 ID の再利用）。グラフに撤収・削除の後も残る印の表を足し、取り込みは点にも連番を載せる（#2150 / #2251） | Accepted |
