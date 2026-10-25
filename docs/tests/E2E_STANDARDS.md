@@ -9,7 +9,7 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+iadrs: [IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
 specs: [20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
 issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
@@ -170,9 +170,13 @@ issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #
 - **sweep**: 残骸を掃く `scripts/e2e-live-sweep.js`（**接頭辞 `e2e-` の一致だけ**。接頭辞が一致しないものは消さない）。
   **［2026-10-25］既定は dry-run**（列挙だけ）で、消すには `--delete` を明示する。**向け先は使い捨てのスタックだけ**
   （`--edge-url`・`--auth-dir`・`--stack` は既定値を持たず、kubectl の context が `k3d-e2e-live` でなければ止まる）。
-  セッションは live-setup の storageState を使うので、`E2E_SWEEP=dry-run|delete` と `E2E_SWEEP_STACK` を与えると teardown が失効の前に流す
+  セッションは live-setup の storageState を使うので、`E2E_SWEEP=dry-run|delete` と `E2E_STACK` を与えると teardown が失効の前に流す
   （`e2e-live.yml` は dry-run）。作成日時の窓（`--older-than`）は持たない —— 使い捨てのスタックには並行する実行が無い。
-  一覧は種類を作り得る役割すべての視点で取り（個人資料は 6 役割、管理の種類は admin）、見ていない視点があれば件数に必ず添える。
+  一覧は種類を作り得る役割すべての視点で取り（個人資料は e2e-revocable を除く 5 役割、管理の種類は admin）、見ていない視点があれば件数に必ず添える。
+- **［2026-10-25］live-rw（書き込み）は使い捨てのスタックの中だけで流す**。層に `rw` を含むときは `E2E_STACK` が要り、globalSetup が
+  sweep と同じ判定（kubectl の context が `k3d-e2e-live`）で向け先を確かめ、違えば止まる。`e2e-live.yml` の既定の層は `ro,rw`（rw は ro の後）。
+  作るものの名前は `e2e-<runId>-<種類>-r<再試行>`（runId は実行ごとに 1 回だけ決まる。`E2E_RUN_ID` で固定できる）。
+  **e2e-revocable では作らない**（そのセッションは失効の試験が実行の中で無効にし、sweep はその視点を見ない）。
 - **［2026-10-25］L2 の ABAC の対照**: 検索用 seed は public の 1 件と internal の 1 件を持つ。`e2e-user`（clearance=internal）には 2 件とも見え、
   `e2e-noaccess`（clearance=public）には public だけが見える。public の 1 件を見えない側の陽性対照にし、見えない側の判定の前に見える側で
   2 件とも索引に入ったことを確かめる（取り込み前の空で緑にしない）。検索のヒット・候補・文書 ID を要る test は **`E2E_SEARCH_HITS=1`** のときだけ

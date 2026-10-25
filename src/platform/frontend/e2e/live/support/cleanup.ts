@@ -31,6 +31,17 @@ interface Cleanup {
   run(testInfo: TestInfo): Promise<Leftover[]>;
 }
 
+/**
+ * 作るものの名前（`e2e-<runId>-<種類>-r<再試行>`。#2031 / IADR-0630 決定 3）。再試行は前の試行の名前と重ならない。
+ * runId は config が実行ごとに 1 回だけ決める（`E2E_RUN_ID`）。
+ */
+export function e2eName(runId: string | null, kind: string, retry: number): string {
+  if (!runId) throw new Error('E2E_RUN_ID が無い（playwright.live.config.ts が実行ごとに決める）');
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(kind))
+    throw new Error(`名前の種類は英小文字・数字・ハイフン: ${kind}`);
+  return `${PREFIX}${runId}-${kind}-r${retry}`;
+}
+
 export function createCleanup(request: APIRequestContext): Cleanup {
   const entries: { name: string; steps: CleanupStep[] }[] = [];
   return {

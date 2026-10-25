@@ -39,7 +39,8 @@ export const OPTION_NAMES = [
   'E2E_SEARCH_HITS',
   'E2E_KEEP_SESSIONS',
   'E2E_SWEEP',
-  'E2E_SWEEP_STACK',
+  'E2E_STACK',
+  'E2E_RUN_ID',
 ] as const;
 
 export interface LiveEnv {
@@ -66,9 +67,20 @@ export interface LiveEnv {
    * （#2030 / IADR-0629）。未設定は掃かない。`delete` だけが消し、`dry-run` は列挙だけ。
    */
   sweep: 'off' | 'dry-run' | 'delete';
-  /** `E2E_SWEEP_STACK`: sweep の向け先の使い捨てのスタック（k3d のクラスタ名）。`E2E_SWEEP` を与えたら必須（既定値は持たない）。 */
-  sweepStack: string | null;
+  /**
+   * `E2E_STACK`: 書き込みの向け先の使い捨てのスタック（k3d のクラスタ名）。**`E2E_SWEEP` を与えたとき・層に `rw` を含むときは必須**
+   * （既定値は持たない）。判定は `scripts/lib/disposable-stack.js`（sweep と live-rw の門の単一の実装。#2031 / IADR-0630）。
+   */
+  stack: string | null;
+  /**
+   * `E2E_RUN_ID`: 作るものの名前 `e2e-<runId>-…` の runId（英小文字と数字 4〜16 字。IADR-0630 決定 3）。未設定なら config が 1 回だけ
+   * 決めて環境変数へ置き、ワーカーが引き継ぐ。読み込みの時点で未設定なら null。
+   */
+  runId: string | null;
 }
+
+/** runId の形（名前の接頭辞 `e2e-<runId>-` に入る）。 */
+const RUN_ID = /^[a-z0-9]{4,16}$/;
 
 const SWEEP_MODES = ['dry-run', 'delete'] as const;
 
@@ -171,16 +183,27 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       'E2E_SWEEP が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
     );
   }
-  const sweepStack = read('E2E_SWEEP_STACK') ?? null;
-  if (rawSweep !== '' && sweepStack === null) {
+  const stack = read('E2E_STACK') ?? null;
+  if (rawSweep !== '' && stack === null) {
     throw new Error(
-      'E2E_SWEEP が設定されているのに E2E_SWEEP_STACK が無い（sweep の向け先は明示する。既定値は持たない）',
+      'E2E_SWEEP が設定されているのに E2E_STACK が無い（sweep の向け先は明示する。既定値は持たない）',
     );
   }
-  if (sweepStack !== null && rawSweep === '') {
+  // #2031 / IADR-0630: live-rw（書き込み）は使い捨てのスタックの中だけで流す。向け先を明示しなければここで止める
+  // （context の照合は globalSetup が `scripts/lib/disposable-stack.js` で行う）。
+  if (live && layers.includes('rw') && stack === null) {
     throw new Error(
-      'E2E_SWEEP_STACK が設定されているのに E2E_SWEEP が無い（どちらで流すかを明示する）',
+      'E2E_LAYER に rw があるのに E2E_STACK が無い（書き込みは使い捨てのスタックの中だけ。向け先は明示する）',
     );
+  }
+  if (stack !== null && rawSweep === '' && !layers.includes('rw')) {
+    throw new Error(
+      'E2E_STACK が設定されているのに E2E_SWEEP も層の rw も無い（何に向けるかを明示する）',
+    );
+  }
+  const runId = read('E2E_RUN_ID') ?? null;
+  if (runId !== null && !RUN_ID.test(runId)) {
+    throw new Error(`E2E_RUN_ID の値域外: ${runId}（英小文字と数字 4〜16 字）`);
   }
   return {
     live,
@@ -192,7 +215,8 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     searchHits: rawHits === '1',
     keepSessions: rawKeep === '' ? [] : [rawKeep as Role],
     sweep: rawSweep === '' ? 'off' : (rawSweep as 'dry-run' | 'delete'),
-    sweepStack,
+    stack,
+    runId,
   };
 }
 

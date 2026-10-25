@@ -16,6 +16,12 @@ import { DEFAULT_AUTH_DIR, LOCAL_ENV_FILE } from './e2e/live/support/paths';
 // 手元の資格情報（任意）。既にある環境変数は上書きしない。例示は `e2e/live/env.e2e.example`。
 if (existsSync(LOCAL_ENV_FILE)) process.loadEnvFile(LOCAL_ENV_FILE);
 
+// #2031 / IADR-0630 決定 3: 作るものの名前 `e2e-<runId>-…` の runId を**この実行で 1 回だけ**決める。config は各ワーカーでも
+// 読み込まれるので、決めた値を環境変数へ置き、後から起動するワーカーが同じ値を引き継ぐ（与えられていればそれを使う）。
+if (!process.env.E2E_RUN_ID && process.env.E2E_LIVE === '1') {
+  process.env.E2E_RUN_ID = Date.now().toString(36);
+}
+
 const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
 
 // 標準エラーへ書く（Knip など config を読み込むだけの道具は標準出力を JSON として読む）。
@@ -71,7 +77,12 @@ const projects: Project[] = cfg.live
         // `Set-Cookie`（セッション cookie）を記録する。失敗した段は spec が文字で attach する（IADR-0624 決定 3）。
         use: { trace: 'off', screenshot: 'off', video: 'off' },
       },
-      ...cfg.layers.map((layer) => LAYER_PROJECTS[layer]),
+      // IADR-0630 決定 4: rw は同じ実行で ro を選んでいれば ro の後に流す（到達の試験と書き込みを並べない）。
+      ...cfg.layers.map((layer) =>
+        layer === 'rw' && cfg.layers.includes('ro')
+          ? { ...LAYER_PROJECTS.rw, dependencies: ['live-setup', 'live-ro'] }
+          : LAYER_PROJECTS[layer],
+      ),
     ]
   : [];
 

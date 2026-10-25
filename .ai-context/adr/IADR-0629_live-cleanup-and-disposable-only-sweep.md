@@ -80,3 +80,9 @@ related_specs:
 - 🔴 残余（視点）: 文書の視点は e2e-admin だけである。admin が作らない文書（データソースの同期・外部ユニットの取り込み）で名前が `e2e-` で始まり、
   admin の ABAC スコープの外にあるものは見えない。L3 は文書を admin でしか作らない（作成の口が admin だけ）ので、L3 の残骸は見える。
 - 実測（PR #2234 の e2e-live・使い捨てのスタック）: dry-run が 6 種類すべての一覧を読め、残骸 0（ABAC ポリシーの一覧 9 件は seed）。
+
+## ［2026-10-25 追記 / #2031］
+
+- 決定 3 の判定（一覧と kubectl の context の照合）は `scripts/lib/disposable-stack.js` へ移し、live-rw の門と共有する（IADR-0630 決定 1）。
+- 決定 4 の `E2E_SWEEP_STACK` は `E2E_STACK` へ改めた（IADR-0630 決定 2）。
+- 決定 5 の個人資料の視点から e2e-revocable を外した（そのセッションは失効の試験が実行の中で無効にする。代わりに e2e-revocable では作らない。IADR-0630 決定 5）。

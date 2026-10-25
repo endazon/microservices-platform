@@ -28,13 +28,12 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawnSync } = require('child_process');
 const { requireLiveOptIn, withoutLiveFlag } = require('./lib/live-opt-in.js');
+// IADR-0630: 使い捨てのスタックの判定は live-rw の門と同じ実装を使う（一覧を 2 か所に持たない）。
+const { DISPOSABLE_STACKS, checkTarget, kubeContext } = require('./lib/disposable-stack.js');
 
 const TAG = '[e2e-live-sweep]';
 const PREFIX = 'e2e-';
-/** 向けてよい使い捨てのスタック（k3d のクラスタ名。e2e-live.yml の CLUSTER）。 */
-const DISPOSABLE_STACKS = ['e2e-live'];
 const CSRF_HEADER = 'X-MSP-CSRF';
 const MAX_PAGES = 50;
 
@@ -61,8 +60,12 @@ const ALL_ROLES = ['user', 'operator', 'admin', 'noaccess', 'revocable', 'tradin
  *   - 文書・ABAC ポリシー・データソース・タグ・MCP クライアント: 作成は platform-admin だけ → 視点は e2e-admin だけ。
  *     文書の一覧は ABAC で絞られる。admin が自分で作った文書が admin に見えるのは seed の「所有者は自分の文書を読める」
  *     （action read・`owner: ${current_user}`）があるときだけなので、`precondition` で毎回確かめ、無ければ視点の欠けとして出す。
- *   - 個人資料: 作成は認証だけ（全役割）で、一覧は**本人のものだけ** → 視点は 6 役割すべて。消すのは見えた本人。
+ *   - 個人資料: 作成は認証だけ（全役割）で、一覧は**本人のものだけ** → 視点は e2e-revocable を除く 5 役割。消すのは見えた本人。
+ *     🔴 e2e-revocable を外す理由（IADR-0630 決定 5）: そのセッションは失効の試験が実行の中で無効にするので、teardown の時点で一覧を
+ *     読めない（PR #2234 の e2e-live で実測: 401）。代わりに **e2e-revocable では作らない**（L1 が live の spec で固定する）。
  */
+/** 個人資料の視点（e2e-revocable を除く。上の注記）。 */
+const NOTE_VIEWERS = ALL_ROLES.filter((r) => r !== 'revocable');
 const OWNER_READ = (p) =>
   p && p.action === 'read' && p.isActive !== false && p.documentConditions &&
   JSON.stringify(p.documentConditions.owner) === JSON.stringify(['${current_user}']);
@@ -95,7 +98,7 @@ const KINDS = [
   },
   {
     kind: 'private-notes',
-    viewers: ALL_ROLES,
+    viewers: NOTE_VIEWERS,
     deleter: 'viewer',
     async list(get) {
       const body = await get('/bff/private-notes');
@@ -187,29 +190,6 @@ function parseArgs(argv) {
   opts.edgeUrl = url.origin;
   opts.mode = opts.mode || 'dry-run';
   return opts;
-}
-
-/** 向け先が使い捨てのスタックか（要求の前に呼ぶ）。違えば例外。 */
-function checkTarget(stack, currentContext) {
-  if (!DISPOSABLE_STACKS.includes(stack)) {
-    throw new Error(`--stack は使い捨てのスタックだけを受ける（${DISPOSABLE_STACKS.join(' / ')}）: ${stack}`);
-  }
-  let ctx;
-  try {
-    ctx = String(currentContext() || '').trim();
-  } catch (e) {
-    throw new Error(`kubectl の current-context を読めない（どのクラスタへ当たるか分からないまま流さない）: ${e.message}`);
-  }
-  if (ctx !== `k3d-${stack}`) {
-    throw new Error(`kubectl の current-context が k3d-${stack} でない（${ctx || '空'}）。使い捨てのスタックの外へは向けない`);
-  }
-}
-
-function kubeContext() {
-  const r = spawnSync('kubectl', ['config', 'current-context'], { encoding: 'utf8' });
-  if (r.error) throw r.error;
-  if (r.status !== 0) throw new Error(String(r.stderr || '').trim() || `exit ${r.status}`);
-  return r.stdout;
 }
 
 /** storageState の cookie から、到達先へ送る Cookie ヘッダを作る（値は返り値にしか載せない）。 */
@@ -381,7 +361,7 @@ async function main(argv, deps = {}) {
   return sweep(opts, { fetch: deps.fetch || globalThis.fetch, readState, log });
 }
 
-module.exports = { PREFIX, DISPOSABLE_STACKS, ALL_ROLES, KINDS, isSweepable, parseArgs, checkTarget, cookieHeader, sweep, main };
+module.exports = { PREFIX, DISPOSABLE_STACKS, ALL_ROLES, NOTE_VIEWERS, KINDS, isSweepable, parseArgs, checkTarget, cookieHeader, sweep, main };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then(

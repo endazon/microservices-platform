@@ -3,7 +3,8 @@
 # ■ 何をするか
 #   integration-stack.yml と同じ起動器（k3d ＋ scripts/k8s-local-up.sh --live）でスタックを起こし、試験アカウント e2e-* 6 名を
 #   **このジョブの中で作った使い捨ての値**で足し（gen-e2e-accounts.js → Secret platform-infra/e2e-accounts → realm の後追い）、
-#   `playwright.live.config.ts` を E2E_LIVE=1 で流す。nightly は層 ro（setup ＋ live-ro）。dispatch で層を選べる。
+#   `playwright.live.config.ts` を E2E_LIVE=1 で流す。nightly と PR は層 ro,rw（setup ＋ live-ro ＋ live-rw。rw は ro の後）。dispatch で層を選べる。
+#   書き込み（rw）はこの使い捨てのスタックの中だけで流す（E2E_STACK と kubectl の context の門。IADR-0630）。
 #
 # ■ 秘密の扱い（🔴 必読）
 #   - **リポジトリの secret を 1 つも使わない。** 資格情報はジョブの中で乱数から作り、`::add-mask::` で伏せ、ジョブの終わりにスタックごと消える。
@@ -27,7 +28,7 @@ on:
       layer:
         description: "E2E_LAYER（ro / rw / trading / llm のカンマ区切り。IADR-0569 決定 4）"
         type: string
-        default: "ro"
+        default: "ro,rw"
   # live の土台そのものを変える PR でだけ走らせる（秘密を使わないので fork でも安全。必須にはしない）。
   pull_request:
     types: [opened, synchronize, reopened]
@@ -39,6 +40,7 @@ on:
       - "scripts/check-e2e-artifact-secrets.js"
       - "scripts/gen-e2e-accounts.js"
       - "scripts/e2e-live-sweep.js"
+      - "scripts/lib/disposable-stack.js"
       # 試験アカウントの realm 宣言とその投入・偽スタックも live の結果を変える（requiredActions の件と同じ種類の変更）。
       - "deploy/keycloak/**"
       - "deploy/local/keycloak-setup/**"
@@ -64,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      E2E_LAYER: ${{ github.event_name == 'workflow_dispatch' && inputs.layer || 'ro' }}
+      E2E_LAYER: ${{ github.event_name == 'workflow_dispatch' && inputs.layer || 'ro,rw' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,7 +162,8 @@ jobs:
           # 向け先はこのジョブの使い捨てのスタックだけ（sweep が kubectl の current-context = k3d-<stack> を確かめる）。消さない
           # —— スタックはジョブの終わりに丸ごと消える。ここでは一覧の口が全種類読めることと、afterEach の消し損ねが無いことを見る。
           E2E_SWEEP: dry-run
-          E2E_SWEEP_STACK: ${{ env.CLUSTER }}
+          # IADR-0630: sweep と live-rw の門が同じ向け先（このジョブの使い捨てのスタック）を読む。
+          E2E_STACK: ${{ env.CLUSTER }}
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e-live.json
         run: |
           set -euo pipefail
