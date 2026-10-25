@@ -11,6 +11,9 @@
         "knowledge/GraphService": [
           "wolverine"
         ],
+        "knowledge/IngestionService": [
+          "wolverine"
+        ],
         "knowledge/RetrievalService": [
           "wolverine"
         ],
