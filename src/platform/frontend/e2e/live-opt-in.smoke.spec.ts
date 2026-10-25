@@ -803,6 +803,15 @@ test('e2e-revocable を失効させる試験は専用の project で、同じ実
   expect(liveProjects({ live: false, layers: ['ro'] })).toEqual([]);
 });
 
+test('e2e-revocable のリセット申請・アカウントコンソールは live-rw で流れ、失効の project には載らない（#2034 / IADR-0634 決定 1）', () => {
+  // live-rw は live-ro（auth-errors）の後、live-rw-revocation は live-rw の後（上の試験）。ここではファイルの載り先を一覧で固定する。
+  const r = runLive({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw', E2E_STACK: 'e2e-live' }, ['--list']);
+  expect(r.status, r.out).toBe(0);
+  expect(r.out).toMatch(/\[live-rw\] › account\.rw\.spec\.ts:.*M-006/);
+  expect(r.out).toMatch(/\[live-rw\] › account\.rw\.spec\.ts:.*M-007/);
+  expect(r.out).not.toMatch(/\[live-rw-revocation\] › account\.rw\.spec\.ts:/);
+});
+
 test('資格情報が欠けていれば Keycloak へ送る前に例外で止め、文言は変数名だけ（値を出さない。#2239 のレビュー）', () => {
   const pw = envName('REVOCABLE', 'PASSWORD');
   const otp = envName('REVOCABLE', 'TOTP', 'SECRET');
