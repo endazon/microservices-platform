@@ -13715,6 +13715,7 @@ exit $RC
       assert.ok(block, 'e2e-live.yml の pull_request.paths が読めない');
       return [...block[1].matchAll(/- "(.*)"/g)].map((m) => m[1]);
     };
+    // 🔴 簡易の再実装: `*` と `**` と `!` だけを扱う（`?`・`[]`・`{}` は扱わない）。これらを使うパターンを paths へ足すときは、先にここを広げる。
     const globToRegExp = (glob) => new RegExp(`^${glob
       .replace(/[.+^${}()|[\]\\]/g, '\\$&')
       .replace(/\*\*\//g, '\u0000')

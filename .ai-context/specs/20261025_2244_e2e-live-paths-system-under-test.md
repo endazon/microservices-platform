@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — e2e-live の pull_request.paths を、試験される側（e2e-live が建てるイメージと配備物）まで広げる（#2244）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, NFR-30, IADR-0569, IADR-0625, IADR-0635]
 author: claude
 created: 2026-10-25
@@ -16,10 +16,10 @@ issue: "#2244"
 
 ## 受け入れ基準（#2244 ＋ オーケストレーターの条件 2026-10-25）
 
-- [ ] BFF だけを変える PR で e2e-live が起動する
-- [ ] docs だけ・`.ai-context` だけを変える PR では起動しない
-- [ ] paths の一覧（足すもの・外すもの）を `scripts.repo.test.js` で固定する（代表の変更で起動する／しないを判定する）
-- [ ] 必須チェックが恒久 pending にならない（e2e-live は必須ではない）ことを確かめ、根拠を書く
+- [x] BFF だけを変える PR で e2e-live が起動する
+- [x] docs だけ・`.ai-context` だけを変える PR では起動しない
+- [x] paths の一覧（足すもの・外すもの）を `scripts.repo.test.js` で固定する（代表の変更で起動する／しないを判定する）
+- [x] 必須チェックが恒久 pending にならない（e2e-live は必須ではない）ことを確かめ、根拠を書く
 
 ## 母集合の取り方（規則 9: 記憶で挙げない）
 
@@ -67,4 +67,5 @@ e2e-live（`ro,rw`）が**実際に建てて配備するもの**から引いた�
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1200 passed（新規 1: 起動する 21 例・起動しない 13 例・土台の実在・行の順序）。
   変異: `src/platform/backend/**` を消すと「起動しない: src/platform/backend/…」、`!src/**/*.Tests/**` を消すと「起動してしまう: …Tests…」で赤。
 - `check-workflow-job-refs.js`・`check-ai-workflow-config.js`・`check-ci-latency.js`: 緑。文書の検査: 緑。
-- PR 自身が `.github/workflows/e2e-live.yml` を変えるので、e2e-live が起動する（結果を PR に書く）
+- PR 自身の e2e-live（`.github/workflows/e2e-live.yml` を変えたので新しい paths で起動。head aeb9bde4・run 40188650131・層 ro,rw）: success。
+  55 passed・skip 0・失効 6・走査 0（成果物 2 ファイルに資格情報 12 個・発行値 8 個の値は無い）・sweep の dry-run は残骸 0 件・後始末済み 2 件。
