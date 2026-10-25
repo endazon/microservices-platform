@@ -29,25 +29,62 @@ on:
         description: "E2E_LAYER（ro / rw / trading / llm のカンマ区切り。IADR-0569 決定 4）"
         type: string
         default: "ro,rw"
-  # live の土台そのものを変える PR でだけ走らせる（秘密を使わないので fork でも安全。必須にはしない）。
+  # live の土台を変える PR と、**試験される側**（e2e-live が建てるイメージと配備物）を変える PR で走らせる（秘密を使わないので fork でも安全。必須にはしない）。
+  # NFR, #2244 / IADR-0635: 母集合は run の実測（[2/7] が建てる 20 個のイメージ）・Dockerfile の COPY・起動器（k8s-local-up.sh --live）が当てる配備物から引いた。
+  # 🔴 順序が効く（後の行が前の行を上書きする）。足す行 → 外す行（`!`）→ live の試験の行、の順に置く。一覧と代表の判定は scripts.repo.test.js が固定する。
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      # --- 試験される側: イメージの中身（scripts/k8s-local-images.sh の対応表が指す Dockerfile の COPY） ---
+      - "src/Directory.Build.props"
+      - "src/Directory.Packages.props"
+      - "src/platform/backend/**"
+      - "src/knowledge/backend/**"
+      - "src/ai-stock-trading"
+      - "src/package.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
+      - "src/lingui.config.ts"
+      - "src/platform/frontend/**"
+      - "src/knowledge/frontend/**"
+      - "src/packages/ui/**"
+      - "deploy/bootstrap/sc22-secret-items.json"
+      # --- 試験される側: 起動器と配備物（e2e-live の旗 LOCALEDGE・ABACSEED・SEARCHSEED・LOCALEMBED で当たるもの） ---
+      - "scripts/k8s-local-up.sh"
+      - "scripts/k8s-local-images.sh"
+      - "scripts/lib/**"
+      - "scripts/check-stack-ready.js"
+      - "scripts/seed-abac-policies.js"
+      - "scripts/seed-search-documents.js"
+      - "deploy/helm/microservices-platform/**"
+      - "deploy/local/**"
+      - "deploy/keycloak/**"
+      - "deploy/mail-relay/**"
+      # --- 外す: イメージに入らない・e2e-live の旗では当たらない変更 ---
+      - "!src/**/Tests/**"
+      - "!src/**/*.Tests/**"
+      - "!src/**/*.test.ts"
+      - "!src/**/*.test.tsx"
+      - "!src/platform/frontend/e2e/**"
+      - "!**/*.md"
+      - "!deploy/local/vault/**"
+      - "!deploy/local/vault-persistence/**"
+      - "!deploy/local/argocd/**"
+      - "!deploy/local/headlamp/**"
+      - "!deploy/local/edge-istio/**"
+      - "!deploy/local/edge-istio-reset-floor/**"
+      - "!deploy/local/synthetic-monitor/**"
+      - "!deploy/local/reloader/**"
+      # --- live の試験そのもの（外す行の後に置き、モックの E2E を外した中から戻す） ---
       - ".github/workflows/e2e-live.yml"
       - "src/platform/frontend/playwright.live.config.ts"
       - "src/platform/frontend/e2e/live/**"
+      - "src/platform/frontend/e2e/support/**"
       - "scripts/check-e2e-skips.js"
       - "scripts/check-e2e-artifact-secrets.js"
       - "scripts/gen-e2e-accounts.js"
       - "scripts/e2e-live-sweep.js"
       - "scripts/lib/disposable-stack.js"
-      # 試験アカウントの realm 宣言とその投入・偽スタックも live の結果を変える（requiredActions の件と同じ種類の変更）。
-      - "deploy/keycloak/**"
-      - "deploy/local/keycloak-setup/**"
-      - "src/platform/frontend/e2e/support/**"
-      # live-ro の ABAC の対照と検索のヒットが依存する seed（IADR-0627）。
-      - "deploy/local/search-seed/**"
-      - "deploy/local/abac-seed/**"
 
 concurrency:
   group: e2e-live-${{ github.event.pull_request.number || github.ref }}

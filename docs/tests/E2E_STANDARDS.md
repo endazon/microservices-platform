@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0634, IADR-0632, IADR-0631, IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261025_2034_live-rw-account, 20261025_2033_live-rw-revocation, 20261025_2032_live-rw-admin-resources, 20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
+iadrs: [IADR-0635, IADR-0634, IADR-0632, IADR-0631, IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261025_2244_e2e-live-paths-system-under-test, 20261025_2034_live-rw-account, 20261025_2033_live-rw-revocation, 20261025_2032_live-rw-admin-resources, 20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
 
 # E2E テスト基準
@@ -277,7 +277,7 @@ issues: [#2013, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #2028, #
 | --- | --- | --- | --- | --- |
 | L1 | `frontend.yml` の `e2e-shard` ジョブ（2 シャード）と、まとめる `e2e` ジョブ（check 名は `e2e`） | PR・push（フロントの `paths:` に当たるとき） | いいえ（`paths:` を持つため。§2.1） | blob/html report・trace（常時・14 日） |
 | （Keycloak のテーマの axe） | `keycloak-theme-a11y.yml` の `keycloak-theme-a11y` ジョブ（現状あり。使い捨ての Keycloak をジョブの中で起こす） | テーマ・realm・compose・axe の土台を変える PR・push、dispatch | いいえ | 失敗時のみ html report・test-results（7 日） |
-| L2 | `e2e-live.yml` の `e2e-live` ジョブ（**［2026-10-24］配備**。統合スタックの k3d 上。稼働中の PoC に対する self-hosted runner は未配備） | nightly・dispatch・live の土台を変える PR | いいえ | html report・test-results（`!cancelled()`・14 日。**上げる前に資格情報の値を走査**し、載っていれば赤にして上げない）＋ skip 一覧（step summary） |
+| L2 | `e2e-live.yml` の `e2e-live` ジョブ（**［2026-10-24］配備**。統合スタックの k3d 上。稼働中の PoC に対する self-hosted runner は未配備） | nightly・dispatch・live の土台を変える PR・**試験される側**（スタックが建てるイメージの中身＝バックエンド・フロントエンド、起動器と配備物）を変える PR［2026-10-25］。試験だけ・文書だけ・e2e-live の旗では当たらない配備物の変更では起動しない | いいえ | html report・test-results（`!cancelled()`・14 日。**上げる前に資格情報の値を走査**し、載っていれば赤にして上げない）＋ skip 一覧（step summary） |
 | L3 / L3-T / L3-L | 同 `e2e-live.yml` の `workflow_dispatch` 入力 `layer`（`rw` / `trading` / `llm`）を `E2E_LAYER` へ渡す。`trading` は閉場判定を job の先頭に置く | dispatch のみ | いいえ | 同上 ＋ 復元ログ |
 
 - live 層の job の先頭で、対象イメージの作成時刻と develop の HEAD の日付を比べ、7 日より古ければ `::warning::` を出して

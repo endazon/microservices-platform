@@ -13705,6 +13705,83 @@ exit $RC
       // 証明書の検証を外さない。
       assert.doesNotMatch(code, /E2E_INSECURE_TLS/, 'e2e-live.yml が証明書の検証を外している');
     });
+
+    // NFR, #2244 / IADR-0635: pull_request.paths は試験される側（e2e-live が建てるイメージと配備物）まで覆い、
+    // イメージに入らない・e2e-live の旗では当たらない変更では起動しない。GitHub の paths の意味（後の行が前の行を上書きする・
+    // `!` は外す・`*` は `/` を越えない・`**` は越える）で、代表の変更を判定する。
+    const e2eLivePaths = () => {
+      const wf = fsA.readFileSync(pathA.join(ROOT_A, '.github/workflows/e2e-live.yml'), 'utf8');
+      const block = /\n  pull_request:\n[\s\S]*?\n    paths:\n((?:\s+(?:#.*|- ".*")\n)+)/.exec(wf);
+      assert.ok(block, 'e2e-live.yml の pull_request.paths が読めない');
+      return [...block[1].matchAll(/- "(.*)"/g)].map((m) => m[1]);
+    };
+    // 🔴 簡易の再実装: `*` と `**` と `!` だけを扱う（`?`・`[]`・`{}` は扱わない）。これらを使うパターンを paths へ足すときは、先にここを広げる。
+    const globToRegExp = (glob) => new RegExp(`^${glob
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*\*\//g, '\u0000')
+      .replace(/\*\*/g, '\u0001')
+      .replace(/\*/g, '[^/]*')
+      .replace(/\u0000/g, '(?:.*/)?')
+      .replace(/\u0001/g, '.*')}$`);
+    const triggers = (patterns, files) => files.some((f) => {
+      let included = false;
+      for (const p of patterns) {
+        const neg = p.startsWith('!');
+        if (globToRegExp(neg ? p.slice(1) : p).test(f)) included = !neg;
+      }
+      return included;
+    });
+    ok('#2244: e2e-live は BFF・バックエンド・フロントエンド・配備物を変える PR で起動し、docs・試験だけ・旗の外の配備物では起動しない', () => {
+      const paths = e2eLivePaths();
+      const run = (f) => triggers(paths, [f]);
+      for (const f of [
+        'src/platform/backend/Bff/Platform.Bff/Foundation/Session/SessionStoreConnection.cs', // #2243 の形
+        'src/platform/backend/Services/AuthorizationService/Program.cs',
+        'src/knowledge/backend/Services/DocumentService/Program.cs',
+        'src/Directory.Packages.props',
+        'src/ai-stock-trading', // submodule の更新（AST のイメージを建てる）
+        'src/platform/frontend/src/app/Layout.tsx',
+        'src/knowledge/frontend/src/features/search/SearchPage.tsx',
+        'src/packages/ui/src/index.ts',
+        'src/pnpm-lock.yaml',
+        'deploy/bootstrap/sc22-secret-items.json',
+        'deploy/helm/microservices-platform/values.yaml',
+        'deploy/local/infra/valkey.yaml',
+        'deploy/local/values-local.yaml',
+        'deploy/keycloak/microservices-platform-realm.json',
+        'deploy/mail-relay/reset-floor.js',
+        'scripts/k8s-local-up.sh',
+        'scripts/lib/local-image-tag.sh',
+        'scripts/check-stack-ready.js',
+        '.github/workflows/e2e-live.yml',
+        'src/platform/frontend/e2e/live/account.rw.spec.ts', // 外したモックの E2E の中から戻す
+        'src/platform/frontend/e2e/support/axe.ts',
+      ]) assert.ok(run(f), `起動しない: ${f}`);
+      for (const f of [
+        'docs/tests/E2E_STANDARDS.md',
+        '.ai-context/specs/20261025_2244_e2e-live-paths-system-under-test.md',
+        'src/platform/backend/README.md',
+        'src/platform/backend/Bff/Platform.Bff.Tests/BffKeyRingConnectionRecoveryTests.cs',
+        'src/knowledge/backend/Services/DocumentService/Tests/DocumentServiceTests.cs',
+        'src/platform/frontend/src/app/Layout.test.tsx',
+        'src/platform/frontend/e2e/shell.spec.ts', // モックの E2E（frontend.yml が流す）
+        'deploy/local/vault/eso/bootstrap.sh',
+        'deploy/local/argocd/README.md',
+        'deploy/local/edge-istio/traefik-service-off.yaml',
+        'deploy/local/reloader/values.yaml',
+        'deploy/istio/istiod-values-local.yaml',
+        '.github/workflows/ci.yml',
+      ]) assert.ok(!run(f), `起動してしまう: ${f}`);
+      // 🔴 足す行の土台が実在する（改名で黙って覆いが外れない）。
+      for (const p of paths.filter((x) => !x.startsWith('!'))) {
+        const root = p.replace(/\/?\*\*.*$/, '');
+        assert.ok(fsA.existsSync(pathA.join(ROOT_A, root)), `paths の土台が無い: ${p}`);
+      }
+      // 外す行は足す行の後、live の試験の行は外す行の後（順序が効く）。
+      const firstNeg = paths.findIndex((x) => x.startsWith('!'));
+      const lastNeg = paths.length - 1 - [...paths].reverse().findIndex((x) => x.startsWith('!'));
+      assert.ok(firstNeg > 0 && paths.indexOf('src/platform/frontend/e2e/live/**') > lastNeg, 'paths の順序（足す → 外す → live の試験）が崩れた');
+    });
   }
 
   // --- NFR / #2030 / IADR-0629: live E2E の残骸掃き（e2e-live-sweep.js）—— 接頭辞 e2e- 以外を消さない ----------------
