@@ -16,10 +16,10 @@ issue: "#2242"
 
 ## 受け入れ基準（#2242）
 
-- [ ] 最初の接続が失敗し、その後 Valkey が回復したら、次の `/bff/auth/login` は pod（プロセス）を作り直さずに 302 を返す（xUnit で固定）
-- [ ] 鍵リングの接続とセッションストアのヘルスチェックの接続が、同じ「失敗を覚えない」遅延の方針を使う（xUnit で固定）
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes`（BFF の slnx）が通る
-- [ ] e2e-live が緑（PR の CI）
+- [x] 最初の接続が失敗し、その後 Valkey が回復したら、次の `/bff/auth/login` は pod（プロセス）を作り直さずに 302 を返す（xUnit で固定）
+- [x] 鍵リングの接続とセッションストアのヘルスチェックの接続が、同じ「失敗を覚えない」遅延の方針を使う（xUnit で固定）
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes`（BFF の slnx）が通る
+- [x] e2e-live が緑（PR の CI）
 
 ## 原因（調べた結果）
 
@@ -53,4 +53,10 @@ BFF の再配備だけ（設定・Secret・Valkey は変えない）。平日の
 
 ## 検証
 
-- `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes`（`src/platform/backend/backend.slnx`）
+- 受け入れ基準 1・2: `BffKeyRingConnectionRecoveryTests`（3 件）。変異（遅延を `ExecutionAndPublication` へ戻す）で 2 件が赤になることを確かめた。
+- 受け入れ基準 3（手元。容量を節約するため範囲を絞った）: `dotnet test` は `Platform.Bff.Tests` だけで 1117 passed・6 skipped
+  （skip は docker の Valkey コンテナが要る `BffSessionStoreValkeyTests` 5 件とベンチマーク 1 件で、もとからある）。`dotnet build backend.slnx` 警告 0、
+  `dotnet format backend.slnx --verify-no-changes` 差分なし。slnx 全体の test は PR の CI（CI ワークフロー success）。
+- 受け入れ基準 4: e2e-live（`workflow_dispatch`、head 65604215、層 ro,rw、run 40173848829）が success。53 passed・skip 0・失効 6・
+  成果物の走査 0（資格情報 12 個・発行値 2 個）・sweep の dry-run は残骸 0 件・後始末済み 2 件。BFF のみの変更は e2e-live の
+  `pull_request.paths` に入らないので、オーケストレーターが手で起動した。
