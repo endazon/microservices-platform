@@ -182,13 +182,15 @@ public class DocumentConflictMappingTests(TestWebApplicationFactory factory) : I
         UpdatesFor(racing, id).Skip(countBefore).Select(e => e.Sequence).Should().Equal([before + 1]);
     }
 
-    // gRPC は競合を `ABORTED` にする。既定の枝（`NOT_WRITABLE`）へ化けさせない。
+    // gRPC は競合を `ABORTED` にする（応答を作る唯一の点 `Respond`）。既定の枝（`NOT_WRITABLE`）へ化けさせない。陽性対照も置く。
     [Fact]
     public void タグの追加の競合はgRPCでABORTEDになり書けないへ化けない()
     {
-        var act = () => DocumentTagWriteGrpcService.ToProto(AddDocumentTagStatus.VersionConflict);
+        var act = () => DocumentTagWriteGrpcService.Respond(AddDocumentTagStatus.VersionConflict);
 
         act.Should().Throw<RpcException>().Which.StatusCode.Should().Be(StatusCode.Aborted);
+        DocumentTagWriteGrpcService.Respond(AddDocumentTagStatus.Applied).Result
+            .Should().Be(Knowledge.Contracts.Grpc.Document.V1.TagWriteResult.Applied, "陽性対照: 競合でなければ写像のとおり");
     }
 
     public static TheoryData<string> BatchOperations() => ["archive-ast-quotes", "archive-bodyless", "strip-untrusted-boundary"];

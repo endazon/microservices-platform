@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using System.Text;
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
@@ -7,6 +6,7 @@ using DocumentService.Features.PrivateNotes;
 using DocumentService.Infrastructure.Persistence;
 using FluentValidation;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
@@ -38,7 +38,7 @@ internal static class ResolveSyncConflictEndpoint
         g.MapPost("/{id:guid}/resolve", async (Guid id, ResolveSyncConflictRequest req,
             IValidator<ResolveSyncConflictRequest> validator, HttpContext http,
             DocumentDbContext db, IObjectStorageClient storage, IPrivateNoteNotifier notifier,
-            IAuditLogger audit, IDocumentUpdatedPublisher bus, CancellationToken ct) =>
+            IAuditLogger audit, IDocumentUpdatedPublisher bus, ILoggerFactory loggers, CancellationToken ct) =>
         {
             if (PrivateNoteEndpoints.SubjectOf(http) is not { } owner) return Results.Unauthorized();
 
@@ -94,8 +94,6 @@ internal static class ResolveSyncConflictEndpoint
             }
             // `server`: 何もしない（資料はサーバ版のまま。版も進まない）。
 
-            if (!string.IsNullOrEmpty(conflict.LocalContentUri))
-                await storage.DeleteAsync(conflict.LocalContentUri, ct);
             conflict.Resolve(req.Resolution, now);
             // #1474: 確定した後に門を通す（`local` は元の資料・`both` は別名資料）。
             // FR-20, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
@@ -113,6 +111,22 @@ internal static class ResolveSyncConflictEndpoint
             catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
             {
                 return await DocumentVersionConflict.AfterLostSaveAsync(db, doc.Id, expectedVersion: null, ct);
+            }
+
+            // FR-20, IADR-0637 決定 7 (#2150 段 1c): 退避したローカル本文は**確定の後に**消す。従前は確定の前に消しており、確定が負けると
+            // 衝突は未解決のまま残るのに本文だけが消え、`local` を選び直すと空の本文が書かれた（409 をやり直せる失敗にするための順序）。
+            // 確定の後に消せなかった分は孤児として残るだけで、解決の結果は変わらない（失敗は応答にしない）。
+            if (!string.IsNullOrEmpty(conflict.LocalContentUri))
+            {
+                try
+                {
+                    await storage.DeleteAsync(conflict.LocalContentUri, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    loggers.CreateLogger(typeof(ResolveSyncConflictEndpoint).FullName!).LogWarning(ex,
+                        "解決した衝突 {ConflictId} の退避したローカル本文を消せなかった（解決は確定済み。オブジェクトは残る）", conflict.Id);
+                }
             }
 
             // FR-22 ②: `both` で使用量が増えるため、警告の跨ぎを再評価する。

@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore;
 using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.Documents.AddTag;
 

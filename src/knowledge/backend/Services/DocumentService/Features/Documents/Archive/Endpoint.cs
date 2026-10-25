@@ -1,6 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DocumentService.Features.Documents.Archive;
