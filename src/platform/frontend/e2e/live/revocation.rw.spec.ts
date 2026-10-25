@@ -41,6 +41,9 @@ const T = {
   notesHeading: ja('個人資料'),
 };
 
+/** 失効が業務の API にも効くことを見る口（e2e-revocable が読める、認証だけの保護された GET。本人の個人資料の一覧）。 */
+const BUSINESS_API = '/bff/private-notes';
+
 /** 無効化の後、BFF のセッションが消えるのを待つ上限（バックチャネルログアウトは非同期に届く）。 */
 const REVOKE_WAIT = { timeout: 30_000, intervals: [1_000, 2_000, 5_000] };
 
@@ -68,11 +71,12 @@ function bffResponse(page: Page, method: string, path: string) {
 
 // 🔴 後始末: e2e-revocable を有効へ戻す。戻らなければ赤（決定 4。cleanup.ts は失敗しても test を落とさないので使わない）。
 test.afterEach(async ({ page }) => {
-  if (!(await subjectUser(page.request)).enabled) {
-    const res = await page.request.post(
-      `/bff/admin/users/${encodeURIComponent((await subjectUser(page.request)).id)}/enable`,
-      { headers: { 'X-MSP-CSRF': '1' }, failOnStatusCode: false },
-    );
+  const user = await subjectUser(page.request);
+  if (!user.enabled) {
+    const res = await page.request.post(`/bff/admin/users/${encodeURIComponent(user.id)}/enable`, {
+      headers: { 'X-MSP-CSRF': '1' },
+      failOnStatusCode: false,
+    });
     expect(res.status(), 'POST /bff/admin/users/{id}/enable（後始末）').toBe(200);
   }
   expect((await subjectUser(page.request)).enabled, `${USERNAME} が有効に戻っていない`).toBe(true);
@@ -144,11 +148,13 @@ test(
             '/bff/auth/me（無効化の後）',
           ).toBe(401);
         }).toPass(REVOKE_WAIT);
+        // 業務の API（読み取り）にも失効が効く（`/bff/auth/me` 以外の、保護された口）。
+        expect(
+          (await subject.request.get(BUSINESS_API)).status(),
+          `GET ${BUSINESS_API}（無効化の後）`,
+        ).toBe(401);
         await subject.goto('/my/notes');
         await expect(subject).toHaveURL(/\/login(\?|$)/);
-        await expect(subject.getByRole('heading', { name: T.notesHeading, level: 1 })).toHaveCount(
-          0,
-        );
       });
 
       await test.step('M-109: 再有効化すると「有効」に戻り、失効したセッションは戻らない', async () => {
@@ -160,6 +166,10 @@ test(
         expect(
           (await subject.request.get('/bff/auth/me')).status(),
           '/bff/auth/me（再有効化の後）',
+        ).toBe(401);
+        expect(
+          (await subject.request.get(BUSINESS_API)).status(),
+          `GET ${BUSINESS_API}（再有効化の後も旧セッションのまま）`,
         ).toBe(401);
       });
     } finally {

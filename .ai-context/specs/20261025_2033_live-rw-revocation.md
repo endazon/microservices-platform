@@ -18,7 +18,7 @@ issue: "#2033"
 
 ## 受け入れ基準（#2033 ＋ オーケストレーターの条件 2026-10-25）
 
-- [ ] M-009: e2e-admin が SC-17 で e2e-revocable を無効化すると、別 context でログインしていた e2e-revocable の `/bff/*` が 401 になり、保護画面は `/login` へ倒れる —— live-rw
+- [ ] M-009: e2e-admin が SC-17 で e2e-revocable を無効化すると、別 context でログインしていた e2e-revocable の `/bff/auth/me` と業務の API（`GET /bff/private-notes`）が 401 になり、保護画面は `/login` へ倒れる。再有効化の後も旧セッションのままは 401 —— live-rw
 - [ ] M-109: e2e-admin が SC-17 で e2e-revocable を再有効化すると「有効」に戻る（セッションは戻らない）—— live-rw
 - [ ] afterEach で e2e-revocable が有効に戻っていることを API で確かめ、戻っていなければ有効化を送り、それでも戻らなければ赤 —— live-rw
 - [ ] e2e-revocable を失効させる試験は、他の試験が e2e-revocable の状態を使い終わってから流れる（project の依存で固定。L1 で固定）
@@ -35,7 +35,8 @@ issue: "#2033"
 1. **順序を project の依存で固定する**: `revocation.rw.spec.ts` は層 `rw` の project（`live-rw`）から外し（`testIgnore`）、専用の project
    `live-rw-revocation` で流す。`live-rw-revocation` は同じ実行で選んだ `live-ro`・`live-rw` の両方に依存する。e2e-revocable の状態を使う他の試験
    （live-ro の auth-errors＝ログインの異常系とログアウト、E-54 の SC-15 リセット申請・SC-16 アカウントコンソール）は `live-ro`・`live-rw` に
-   置くので、無効化は必ずその後になる。L1 が config の project の依存（`--list --reporter=json` の config）を見て固定する。
+   置くので、無効化は必ずその後になる。L1 が project の組み立ての純関数（`e2e/live/support/projects.ts` の `liveProjects`）を直接呼び、依存を固定する
+   （Playwright の JSON 出力の config は project の依存を含まないので、純関数へ分けた）。
 2. **e2e-revocable は新しくログインする**: setup の state のセッションは auth-errors のログアウト（バックチャネルで subject の全セッション）で
    既に失効している。別 context でパスワードと**次の周期の** OTP を入れてログインする（`otpPolicyCodeReusable: false`。直前の試験が同じ周期の
    6 桁を使っていても重ならない）。誤りは送らない（brute force の数えを増やさない。auth-errors は誤りの直後に正しいログインで数えを戻している）。

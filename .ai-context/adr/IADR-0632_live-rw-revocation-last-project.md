@@ -52,3 +52,4 @@ SC-17 の無効化は「無効化と全セッション失効は 1 つの操作�
 
 - e2e-revocable の状態を使う試験を足すときは `live-ro` か `live-rw` に置く（`live-rw-revocation` には置かない）。
 - teardown は e2e-revocable の `/bff/auth/me` が 401 なら失効済みとして数える（失効 6 のまま）。
+- 依存先（live-ro / live-rw）が落ちると live-rw-revocation は流れない。その場合は依存先の失敗で CI が赤になるので、失効の試験が黙って抜けることはない。
