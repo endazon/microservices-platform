@@ -109,6 +109,9 @@
  *   見るもの: 対の宣言 / `account-console` の既定スコープ（`basic`・`profile`）・`fullScopeAllowed=false`・audience 解決と
  *   `account` のロールだけを載せる写像 / `account` の `view-profile`・`manage-account` / スコープの割当（`clientScopeMappings`）/
  *   既定ロールの合成 / 人の seed 利用者の割当。共有の `roles` スコープを広げる直し方は採らない（他のクライアントのトークンが変わる）。
+ *   ［2026-10-25 追記 / #2245 / IADR-0524 の追記］`account-console` の `webOrigins` に `+` を求める。エッジ（TLS 終端）の後ろで転送ヘッダを
+ *   読ませないので、Keycloak から見た要求の origin は `http://…` になり、ブラウザの `Origin: https://…` と一致しない。`webOrigins` が空だと
+ *   token の交換が CORS の `Invalid origin`（403・イベントなし）で落ち、アカウントコンソールが「何らかの問題が発生しました」になる。
  *
  * 検査11: **Keycloak が自分で付けるクライアントスコープを宣言に書いていないか**（NFR・#2208・IADR-0618）。
  * 背景: Keycloak 26 はサービスアカウントを持つ client の作成・更新（PUT）のたびに既定スコープ `service_account` を足す。
@@ -1732,6 +1735,10 @@ function collectAccountConsoleGaps(realm, { realmName = AUTH_POLICY_REALM } = {}
   if (basic && !(basic.protocolMappers || []).some((m) => m && m.protocolMapper === 'oidc-sub-mapper' && String(mapperConfig(m)['access.token.claim']) === 'true')) {
     gap('clientScopes[basic]', 'sub をアクセストークンへ出す写像（oidc-sub-mapper・access.token.claim=true）が無い');
   }
+  // ［2026-10-25 / #2245］token の交換（ブラウザから同一 origin の fetch）は CORS の検査を受ける。`+` は redirect URI から frontend の origin を作る。
+  if (!(consoleClient.webOrigins || []).includes('+')) {
+    gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].webOrigins`, '+ が無い。エッジ（TLS 終端）の後ろでは要求の origin が http になり、ブラウザの Origin（https）と一致しないので、token の交換が 403（Invalid origin・イベントなし）で落ちる（#2245）');
+  }
   if (consoleClient.fullScopeAllowed !== false) {
     gap(`clients[${ACCOUNT_CONSOLE_CLIENT}].fullScopeAllowed`, 'false でない。利用者の全ロール（platform-admin 等）がアカウントコンソールのトークンへ載る（載せるのはスコープの割当で許した account のロールだけ）');
   }
@@ -3273,6 +3280,10 @@ function selfTest() {
     && acHas(acMut((r) => { acClient(r).defaultClientScopes = ['basic']; }), /profile/) });
   cases.push({ name: '検査10: basic スコープの sub の写像が無いと赤', pass:
     acHas(acMut((r) => { r.clientScopes.find((x) => x.name === 'basic').protocolMappers = []; }), /oidc-sub-mapper/) });
+  cases.push({ name: '検査10（#2245）: account-console の webOrigins から + を外す・空にする・欄ごと消すと赤', pass:
+    acHas(acMut((r) => { acClient(r).webOrigins = []; }), /webOrigins/)
+    && acHas(acMut((r) => { acClient(r).webOrigins = ['https://keycloak.localhost']; }), /Invalid origin/)
+    && acHas(acMut((r) => { delete acClient(r).webOrigins; }), /webOrigins/) });
   cases.push({ name: '検査10: fullScopeAllowed を外す（未設定＝true）と赤', pass:
     acHas(acMut((r) => { delete acClient(r).fullScopeAllowed; }), /fullScopeAllowed/) });
   cases.push({ name: '検査10: audience 解決・client ロールの写像を外すと赤／写像が account に絞られていないと赤', pass:

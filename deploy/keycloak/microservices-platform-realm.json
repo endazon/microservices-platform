@@ -1278,7 +1278,7 @@
     {
       "clientId": "account-console",
       "name": "${client_account-console}",
-      "description": "SC-16, #1894, IADR-0546: アカウントコンソール（SPA・公開クライアント）。basic で sub、profile で利用者名、写像で account のロールだけを resource_access へ載せる。共有の roles スコープは変えない",
+      "description": "SC-16, #1894, IADR-0546: アカウントコンソール（SPA・公開クライアント）。basic で sub、profile で利用者名、写像で account のロールだけを resource_access へ載せる。共有の roles スコープは変えない。webOrigins は +（#2245。エッジ越しの token 交換の Invalid origin を防ぐ）",
       "rootUrl": "${authBaseUrl}",
       "baseUrl": "/realms/platform/account/",
       "enabled": true,
@@ -1294,7 +1294,9 @@
       "redirectUris": [
         "/realms/platform/account/*"
       ],
-      "webOrigins": [],
+      "webOrigins": [
+        "+"
+      ],
       "attributes": {
         "post.logout.redirect.uris": "+",
         "pkce.code.challenge.method": "S256"

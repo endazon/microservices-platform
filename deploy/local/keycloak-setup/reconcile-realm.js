@@ -83,6 +83,9 @@
  *   🔴 宣言にこのスコープを書かない（scripts/check-realm-constraints.js の検査11 が同じ定数で止める）。
  *
  * 集合欄（redirectUris / webOrigins / scope 割当 / enabledEventTypes …）は**宣言が全集合**（置換）。
+ *   ［2026-10-25 / #2245 / IADR-0524 の追記］`account-console` の `webOrigins: ["+"]` も、この比べ方で既存の realm へ当たる
+ *   （空の稼働へ client.update 1 件。稼働の表現へ宣言を合成して PUT するので、ほかの欄は変えない。当てた後は 0 件）。
+ *   新しい分岐は足していない（keycloak-realm-reconcile.test.js が固定する）。
  * 実体（client / role / group / mapper / user）は**加算的**（宣言に無い余剰は消さない）。
  *
  * ## 収束
