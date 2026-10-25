@@ -21,6 +21,7 @@ import { assertDisposableStack, prepareIssuedSecretsFile } from './live/support/
 import { createRequire } from 'node:module';
 import { recordIssuedSecret } from './live/support/issuedSecrets';
 import { normalizeRows } from './live/support/dictionaries';
+import { liveProjects } from './live/support/projects';
 import { submitOtp, submitPassword } from './live/support/login';
 import { stateFile } from './live/support/env';
 
@@ -773,4 +774,30 @@ test('辞書の突き合わせは e2e- の行と件数の項目を除き、id �
   expect(forward.map((r) => r.name ?? r.key ?? 'json')).not.toContain('e2e-r1-tag');
   expect(forward.some((r) => 'usageCount' in r)).toBe(false);
   expect(normalizeRows([...rows, { name: 'c-tag' }])).not.toEqual(forward);
+});
+
+test('e2e-revocable を失効させる試験は専用の project で、同じ実行で選んだ live-ro・live-rw の後に流れる（#2033 / IADR-0632 決定 1）', () => {
+  const deps = (layers: ('ro' | 'rw')[]) =>
+    Object.fromEntries(
+      liveProjects({ live: true, layers }).map((p) => [p.name, p.dependencies ?? []]),
+    );
+  const both = deps(['ro', 'rw']);
+  expect(both['live-rw-revocation']).toEqual(['live-setup', 'live-ro', 'live-rw']);
+  expect(both['live-rw']).toEqual(['live-setup', 'live-ro']);
+  // rw だけでも live-rw の後。rw を選ばなければ project ごと無い。
+  expect(deps(['rw'])['live-rw-revocation']).toEqual(['live-setup', 'live-rw']);
+  expect(deps(['ro'])).not.toHaveProperty('live-rw-revocation');
+  // live-rw は失効の試験を流さない（流すのは live-rw-revocation だけ）。
+  const rw = liveProjects({ live: true, layers: ['rw'] }).find((p) => p.name === 'live-rw')!;
+  const revocation = liveProjects({ live: true, layers: ['rw'] }).find(
+    (p) => p.name === 'live-rw-revocation',
+  )!;
+  expect(String(rw.testIgnore)).toBe(String(revocation.testMatch));
+  expect(String(revocation.testMatch)).toContain('revocation');
+  // 実際の一覧でも、失効の試験は live-rw-revocation にだけ載る。
+  const r = runLive({ E2E_LIVE: '1', E2E_LAYER: 'ro,rw', E2E_STACK: 'e2e-live' }, ['--list']);
+  expect(r.status, r.out).toBe(0);
+  expect(r.out).toMatch(/\[live-rw-revocation\] › revocation\.rw\.spec\.ts:/);
+  expect(r.out).not.toMatch(/\[live-rw\] › revocation\.rw\.spec\.ts:/);
+  expect(liveProjects({ live: false, layers: ['ro'] })).toEqual([]);
 });

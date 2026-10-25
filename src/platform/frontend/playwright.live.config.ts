@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
-import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/test';
-import { parseLiveEnv, type Layer } from './e2e/live/support/env';
+import { defineConfig, devices } from '@playwright/test';
+import { parseLiveEnv } from './e2e/live/support/env';
+import { liveProjects } from './e2e/live/support/projects';
 import { DEFAULT_AUTH_DIR, LOCAL_ENV_FILE } from './e2e/live/support/paths';
 
 // NFR / IADR-0569 決定 3・4 / IADR-0624（#2025）: **live 層（稼働中の PoC・統合スタック）の config**。
@@ -31,60 +32,7 @@ if (!cfg.live) {
   );
 }
 
-type Project = NonNullable<PlaywrightTestConfig['projects']>[number];
-
-/** 層の project（IADR-0569 決定 3 の表）。`live-setup` に依存する。 */
-const LAYER_PROJECTS: Record<Layer, Project> = {
-  ro: {
-    name: 'live-ro',
-    testMatch: /\.ro\.spec\.ts$/,
-    workers: 2,
-    retries: 1,
-    dependencies: ['live-setup'],
-  },
-  rw: {
-    name: 'live-rw',
-    testMatch: /\.rw\.spec\.ts$/,
-    workers: 1,
-    retries: 1,
-    dependencies: ['live-setup'],
-  },
-  trading: {
-    name: 'trading',
-    testMatch: /\.trading\.spec\.ts$/,
-    workers: 1,
-    retries: 0,
-    use: { trace: 'on' },
-    dependencies: ['live-setup'],
-  },
-  llm: {
-    name: 'llm',
-    testMatch: /\.llm\.spec\.ts$/,
-    workers: 1,
-    retries: 0,
-    dependencies: ['live-setup'],
-  },
-};
-
-const projects: Project[] = cfg.live
-  ? [
-      {
-        name: 'live-setup',
-        testMatch: /\.setup\.ts$/,
-        workers: 1,
-        retries: 0,
-        // 🔴 setup は trace・スクリーンショット・動画を残さない。trace は `fill` の値（パスワード）と応答の
-        // `Set-Cookie`（セッション cookie）を記録する。失敗した段は spec が文字で attach する（IADR-0624 決定 3）。
-        use: { trace: 'off', screenshot: 'off', video: 'off' },
-      },
-      // IADR-0630 決定 4: rw は同じ実行で ro を選んでいれば ro の後に流す（到達の試験と書き込みを並べない）。
-      ...cfg.layers.map((layer) =>
-        layer === 'rw' && cfg.layers.includes('ro')
-          ? { ...LAYER_PROJECTS.rw, dependencies: ['live-setup', 'live-ro'] }
-          : LAYER_PROJECTS[layer],
-      ),
-    ]
-  : [];
+const projects = liveProjects(cfg);
 
 export default defineConfig({
   testDir: './e2e/live',
