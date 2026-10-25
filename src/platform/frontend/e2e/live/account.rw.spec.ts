@@ -160,29 +160,38 @@ async function requestReset(page: Page, username: string): Promise<string> {
 }
 
 /**
- * Keycloak の応答のうち失敗（4xx・5xx）と、届かなかった要求を、段の診断（`notes`）へ積む。値は出さない ——
- * 載せるのは method・path・status と、JSON の `error`・`error_description`（OAuth の誤りの種類。秘密ではない）だけ。
- * 成功の本文（トークン）は読まない。
+ * Keycloak の応答のうち失敗（4xx・5xx）と、届かなかった要求を、段の診断（`notes`）と `failures` へ積む（#2034 の調べ。
+ * オーケストレーターの条件 2026-10-25）。載せるのは method・path（query は捨てる —— `code`・`state`・`session_state` を残さない）・
+ * status と、JSON の `error`・`error_description`（OAuth の誤りの種類。秘密ではない）だけ。本文・header の値は載せない。
+ * 🔴 コールバックに載る認可コードは、念のため発行値として記録する（成果物の走査が探す）。
  */
-function watchKeycloakFailures(page: Page, notes: string[]): void {
+function watchKeycloakFailures(page: Page, notes: string[], failures: string[]): void {
+  page.on('request', (r) => {
+    const url = new URL(r.url());
+    const code = url.origin === cfg.kcUrl ? url.searchParams.get('code') : null;
+    if (code && code.length >= 12) recordIssuedSecret(cfg, 'E2E_ISSUED_AUTH_CODE', code);
+  });
   page.on('response', (r) => {
     const url = new URL(r.url());
     if (url.origin !== cfg.kcUrl || r.status() < 400) return;
     const line = `keycloak ${r.request().method()} ${url.pathname} → ${r.status()}`;
     void r
       .json()
-      .then((body: { error?: unknown; error_description?: unknown }) =>
-        notes.push(
+      .then(
+        (body: { error?: unknown; error_description?: unknown }) =>
           `${line} (error=${String(body.error ?? '')} / ${String(body.error_description ?? '')})`,
-        ),
       )
-      .catch(() => notes.push(line));
+      .catch(() => line)
+      .then((entry) => {
+        failures.push(entry);
+        notes.push(entry);
+      });
   });
   page.on('requestfailed', (r) => {
     const url = new URL(r.url());
-    notes.push(
-      `request failed: ${r.method()} ${url.origin}${url.pathname} (${r.failure()?.errorText ?? ''})`,
-    );
+    const entry = `request failed: ${r.method()} ${url.origin}${url.pathname} (${r.failure()?.errorText ?? ''})`;
+    failures.push(entry);
+    notes.push(entry);
   });
 }
 
@@ -192,7 +201,8 @@ function watchKeycloakFailures(page: Page, notes: string[]): void {
  */
 async function loginToAccount(page: Page, notes: string[]): Promise<unknown> {
   const creds = credentialsOf(SUBJECT, process.env);
-  watchKeycloakFailures(page, notes);
+  const failures: string[] = [];
+  watchKeycloakFailures(page, notes, failures);
   const profile = page.waitForResponse(
     (r) =>
       r.request().method() === 'GET' &&
@@ -214,10 +224,16 @@ async function loginToAccount(page: Page, notes: string[]): Promise<unknown> {
   // 誤りの画面が先なら個人情報の待ちは捨てる（後の時間切れで落とさない）。
   profile.catch(() => undefined);
   const first = await Promise.race([profile, consoleError]);
-  if (first === 'none') throw new Error('個人情報の応答も誤りの画面も 90 秒のうちに出なかった');
+  // 失敗の応答の本文（error の種類）を読み終えるのを少し待ってから文言に添える。
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (first === 'none') {
+    throw new Error(
+      `個人情報の応答も誤りの画面も 90 秒のうちに出なかった。Keycloak の失敗の応答: ${failures.join(' | ') || '（なし）'}`,
+    );
+  }
   if (first === 'error') {
     throw new Error(
-      'アカウントコンソールが初期化に失敗した（誤りの画面）。Keycloak の失敗の応答は failed-stage の notes を見る',
+      `アカウントコンソールが初期化に失敗した（誤りの画面）。Keycloak の失敗の応答: ${failures.join(' | ') || '（なし）'}`,
     );
   }
   expect(first.status(), 'GET account（個人情報）').toBe(200);
