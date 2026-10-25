@@ -18,6 +18,10 @@ namespace DocumentService.Features.PrivateNotes.Purge;
 // オブジェクトを先に消す。失敗すれば例外が出て `SaveChangesAsync` へ到達せず行が残る。
 internal static class PurgePrivateNotesEndpoint
 {
+    // FR-19, IADR-0637 決定 7 (#2150 段 1c / #2259 のレビュー 🟡 2): 負けたときに、先に消した本文の実体は戻らないことと、やり直しで片付くことを伝える。
+    internal const string PurgeConflictMessage =
+        "他の変更と重なったため、完全削除しませんでした。本文の実体は消えている場合がありますが、資料は削除済みのまま残っています。もう一度完全削除してください。";
+
     internal static void Map(RouteGroupBuilder g)
     {
         g.MapPost("/purge", async (PurgePrivateNotesRequest req,
@@ -66,7 +70,7 @@ internal static class PurgePrivateNotesEndpoint
             }
             catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
             {
-                return DocumentVersionConflict.ProblemForBatch();
+                return DocumentVersionConflict.ProblemForBatch(PurgeConflictMessage);
             }
             // 削除を確定させてから使用量を再計算する（先に計算すると purge 分が残って見える）。
             // 使用量が下がって閾値を割れば、警告の発火記録がここで再武装される（FR-22 ②）。

@@ -2,6 +2,7 @@ using DocumentService.Domain;
 using DocumentService.Domain.Ports;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Features.Documents.AddTag;
 
@@ -83,7 +84,16 @@ public sealed class AddDocumentTagUseCase(DocumentDbContext db, IDocumentUpdated
             return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
 
         // FR-06, ADR-0027 §決定, IADR-0608 (#2168): 保存と発行を 1 トランザクションで確定する（Transactional Outbox）。
-        names = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
+        // FR-02, [[IADR-0597]] / IADR-0637 決定 7 (#2150 段 1c): 読んだ後に同じ文書へ別の確定が入れば確定ごと負ける。
+        // 例外のまま輸送へ出さず、結果として返す（gRPC は `ABORTED` にする。`NOT_WRITABLE` へ畳まない）。
+        try
+        {
+            names = await DocumentEndpoints.SaveChangesAndPublishUpdatedIfIndexableAsync(bus, db, doc, ct);
+        }
+        catch (DbUpdateException ex) when (DocumentVersionConflict.Is(ex))
+        {
+            return AddDocumentTagOutcome.VersionConflict;
+        }
         return AddDocumentTagOutcome.Ok(await DocumentEndpoints.ToDtoAsync(db, doc, names, ct));
     }
 }
@@ -96,6 +106,8 @@ public sealed record AddDocumentTagOutcome(
     List<string>? UnknownTags = null)
 {
     public static AddDocumentTagOutcome NotWritable { get; } = new(AddDocumentTagStatus.NotWritable);
+
+    public static AddDocumentTagOutcome VersionConflict { get; } = new(AddDocumentTagStatus.VersionConflict);
 
     public static AddDocumentTagOutcome Ok(DocumentDto document) =>
         new(AddDocumentTagStatus.Applied, document);
@@ -110,4 +122,6 @@ public enum AddDocumentTagStatus
     NotWritable = 0,
     Applied = 1,
     UnknownTag = 2,
+    // FR-02, IADR-0637 決定 7 (#2150 段 1c): 並行する確定に負けた（何も確定していない。やり直せる）。
+    VersionConflict = 3,
 }
