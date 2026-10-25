@@ -93,8 +93,8 @@ test.describe('e2e-user の個人資料（書き込み）', () => {
 
   let cleanup: ReturnType<typeof createCleanup>;
 
-  test.beforeEach(({ page }) => {
-    cleanup = createCleanup(page.request);
+  test.beforeEach(({ page, storageState }) => {
+    cleanup = createCleanup(page.request, storageState);
   });
 
   test.afterEach(async ({}, testInfo) => {

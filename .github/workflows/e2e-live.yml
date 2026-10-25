@@ -165,6 +165,8 @@ jobs:
           # IADR-0630: sweep と live-rw の門が同じ向け先（このジョブの使い捨てのスタック）を読む。
           E2E_STACK: ${{ env.CLUSTER }}
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e-live.json
+          # #2031 / IADR-0630 決定 6: 実行の中で発行された値（端末トークン・試験キー）を spec が追記する先（0600）。下の走査が探す。
+          E2E_ISSUED_SECRETS_FILE: ${{ runner.temp }}/e2e-issued-secrets.env
         run: |
           set -euo pipefail
           set -a; . "$RUNNER_TEMP/e2e-accounts.env"; set +a
@@ -189,6 +191,7 @@ jobs:
           test -f "$RUNNER_TEMP/e2e-accounts.env" || { echo "::error::試験アカウントを作った後なのに値のファイルが無い（走査できない成果物は上げない）"; exit 1; }
           node scripts/check-e2e-artifact-secrets.js \
             --env-file "$RUNNER_TEMP/e2e-accounts.env" \
+            --issued-file "$RUNNER_TEMP/e2e-issued-secrets.env" \
             --scan src/platform/frontend/playwright-report \
             --scan src/platform/frontend/test-results
 
@@ -217,7 +220,7 @@ jobs:
       - name: Tear down
         if: always()
         run: |
-          rm -f "$RUNNER_TEMP/e2e-accounts.env"
+          rm -f "$RUNNER_TEMP/e2e-accounts.env" "$RUNNER_TEMP/e2e-issued-secrets.env"
           k3d cluster delete "${CLUSTER}" || true
 
   # 日次・dispatch の失敗を issue にする（PR では起票しない）。

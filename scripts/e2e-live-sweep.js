@@ -62,7 +62,7 @@ const ALL_ROLES = ['user', 'operator', 'admin', 'noaccess', 'revocable', 'tradin
  *     （action read・`owner: ${current_user}`）があるときだけなので、`precondition` で毎回確かめ、無ければ視点の欠けとして出す。
  *   - 個人資料: 作成は認証だけ（全役割）で、一覧は**本人のものだけ** → 視点は e2e-revocable を除く 5 役割。消すのは見えた本人。
  *     🔴 e2e-revocable を外す理由（IADR-0630 決定 5）: そのセッションは失効の試験が実行の中で無効にするので、teardown の時点で一覧を
- *     読めない（PR #2234 の e2e-live で実測: 401）。代わりに **e2e-revocable では作らない**（L1 が live の spec で固定する）。
+ *     読めない（PR #2234 の e2e-live で実測: 401）。代わりに **e2e-revocable では作らない**（作る側の部品 `createCleanup` が実行時に止める）。
  */
 /** 個人資料の視点（e2e-revocable を除く。上の注記）。 */
 const NOTE_VIEWERS = ALL_ROLES.filter((r) => r !== 'revocable');

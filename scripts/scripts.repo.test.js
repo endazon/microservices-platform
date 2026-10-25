@@ -13645,7 +13645,7 @@ exit $RC
     // --- NFR / #2026 / IADR-0625: live E2E（e2e-live.yml）の門 ------------------------------------------------------
     for (const [file, names] of [
       ['check-e2e-skips.js', ['ある project の test がすべて skip なら赤', 'skip でない test が 0 件なら赤', 'test が 0 件のレポートは例外']],
-      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外']],
+      ['check-e2e-artifact-secrets.js', ['1 つも読めなければ例外', 'trace の zip（deflate）の中の値を見つける', '埋め込む base64 の zip', '壊れた zip は例外', 'base32 形', '値の base64 形', 'Basic 認証', '入れ子が上限を超えたら例外', '発行値（端末トークン）が成果物にあれば', '発行値のファイルの形が違えば例外']],
     ]) {
       ok(`#2026: ${file} の自己試験が通る`, () => {
         const r = spawnA(process.execPath, [pathA.join(__dirname, file), '--self-test'], { cwd: ROOT_A, encoding: 'utf8' });
@@ -13920,6 +13920,10 @@ exit $RC
       assert.match(wf, /\n {2}CLUSTER: e2e-live\n/, 'スタックの名前が使い捨てのスタックの一覧と違う');
       assert.doesNotMatch(wf, /E2E_SWEEP: delete|--delete/, 'e2e-live.yml が消す指定をしている');
       assert.match(wf, /- "scripts\/e2e-live-sweep\.js"/, 'paths に sweep 本体が無い');
+      // #2031 / IADR-0630 決定 6: 実行の中で発行された値を記録する先を live の実行に渡し、成果物の走査がそれを探し、最後に消す。
+      assert.match(wf, /\n\s+E2E_ISSUED_SECRETS_FILE: \$\{\{ runner\.temp \}\}\/e2e-issued-secrets\.env\n/, 'live の実行に発行値の記録先を渡していない');
+      assert.match(wf, /--issued-file "\$RUNNER_TEMP\/e2e-issued-secrets\.env"/, '成果物の走査が発行値を探していない');
+      assert.match(wf, /rm -f "\$RUNNER_TEMP\/e2e-accounts\.env" "\$RUNNER_TEMP\/e2e-issued-secrets\.env"/, '発行値の記録を消していない');
     });
   }
 

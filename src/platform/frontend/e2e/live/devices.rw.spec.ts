@@ -6,6 +6,7 @@
 //   スクリーンショットと動画は画面を記録するので、このファイルでは 3 つとも切る（Playwright はファイルの先頭か config でしか
 //   切り替えられないので、M-062 / M-063 の `private-notes.rw.spec.ts` と分けた）。発行の応答からは deviceId だけを取り、応答の直後に
 //   画面を開き直してトークンの表示を消す（以降の失敗の error-context にも載らない）。トークンに触れる assertion を置かない。
+//   トークンは発行の直後に `support/issuedSecrets.ts` で記録し、成果物の走査（`check-e2e-artifact-secrets.js --issued-file`）が探す。
 // - 端末の名前は `e2e-<runId>-device-r<再試行>`。作った直後に後始末（失効）を積む。端末の行は失効の後も履歴として残る（網羅表のとおり。
 //   BFF に端末の行を消す口は無い）。
 import { expect, test, type Page } from '@playwright/test';
@@ -13,6 +14,7 @@ import { parseLiveEnv, stateFile } from './support/env';
 import { DEFAULT_AUTH_DIR } from './support/paths';
 import { createCleanup, e2eName } from './support/cleanup';
 import { ja } from './support/catalog';
+import { recordIssuedSecret } from './support/issuedSecrets';
 
 const cfg = parseLiveEnv(process.env, DEFAULT_AUTH_DIR);
 
@@ -42,8 +44,8 @@ function bffResponse(page: Page, method: string, path: string) {
 
 let cleanup: ReturnType<typeof createCleanup>;
 
-test.beforeEach(({ page }) => {
-  cleanup = createCleanup(page.request);
+test.beforeEach(({ page, storageState }) => {
+  cleanup = createCleanup(page.request, storageState);
 });
 
 test.afterEach(async ({}, testInfo) => {
@@ -63,8 +65,10 @@ test(
     await page.getByRole('button', { name: T.issue, exact: true }).click();
     const res = await issued;
     expect(res.status(), 'POST /bff/private-notes/devices').toBe(201);
-    // 応答から deviceId だけを取る（トークンは変数に残さない・出さない）。
-    const deviceId = ((await res.json()) as { deviceId: string }).deviceId;
+    const body = (await res.json()) as { deviceId: string; token: string };
+    // 🔴 トークンは成果物の走査が探せるように記録するだけで、出さない・比べない（IADR-0630 決定 6。失効の後も同じに扱う）。
+    recordIssuedSecret(cfg, 'E2E_ISSUED_DEVICE_TOKEN', body.token);
+    const deviceId = body.deviceId;
     cleanup.track(name, { method: 'DELETE', path: `/bff/private-notes/devices/${deviceId}` });
     // 画面を開き直してトークンの表示を消す（以降の失敗の記録に平文が載らない）。
     await page.reload();

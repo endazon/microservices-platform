@@ -10,8 +10,8 @@ author: Claude
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
 iadrs: [IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
+specs: [20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2031, #2030, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
 
 # E2E テスト基準

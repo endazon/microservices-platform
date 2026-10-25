@@ -44,8 +44,10 @@ PoC へ向けた `E2E_LAYER=rw` は書き込みをそのまま流す。作るも
 3. **runId**: `E2E_RUN_ID`（英小文字と数字 4〜16 字）。未設定なら config が実行ごとに 1 回だけ決めて環境変数へ置き、ワーカーが引き継ぐ。
    名前は `e2e-<runId>-<種類>-r<再試行>`（`support/cleanup.ts` の e2eName）。再試行が前の試行の名前と重ならない。
 4. **rw は ro の後に流す**（同じ実行で ro を選んでいれば `live-rw` は `live-ro` に依存する）。e2e-live の既定の層を `ro,rw` にする。
-5. **sweep の個人資料の視点から e2e-revocable を外し、e2e-revocable では作らない**。L1 が「`revocable` を参照する live の spec は
-   `createCleanup` を呼ばない」と「teardown が要る state の役割（SWEEP_ROLES）＝ sweep の視点の和集合」を固定する。
+5. **sweep の個人資料の視点から e2e-revocable を外し、e2e-revocable では作らない**。作らない規則は**実行時に止める**:
+   作る側の部品 `createCleanup(request, storageState)` が context の storageState（`<authDir>/<role>.json`）から役割を引き、
+   e2e-revocable・役割の分からない state では例外にする（spec の文字列の一致では、定数経由の参照を見逃し、コメントで誤検知する。
+   PR #2237 のレビュー）。L1 はその門と「teardown が要る state の役割（SWEEP_ROLES）＝ sweep の視点の和集合」を固定する。
 6. **トークンを記録しない**（M-067）: その spec のファイルは trace・スクリーンショット・動画を切り（Playwright はファイルの先頭か config でしか
    切り替えられない）、発行の応答から deviceId だけを取り、応答の直後に画面を開き直してトークンの表示を消す。
 7. **共有の動的束縛は SC-03（`/docs/<id>`）で判定し、SC-02（検索）では判定しない**。作った個人資料は本文を持たず、露出「横断検索に含める」は

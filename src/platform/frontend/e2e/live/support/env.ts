@@ -41,6 +41,7 @@ export const OPTION_NAMES = [
   'E2E_SWEEP',
   'E2E_STACK',
   'E2E_RUN_ID',
+  'E2E_ISSUED_SECRETS_FILE',
 ] as const;
 
 export interface LiveEnv {
@@ -77,6 +78,11 @@ export interface LiveEnv {
    * 決めて環境変数へ置き、ワーカーが引き継ぐ。読み込みの時点で未設定なら null。
    */
   runId: string | null;
+  /**
+   * `E2E_ISSUED_SECRETS_FILE`: 実行の中で発行された値（端末トークン・試験キー）を spec が追記する先（`support/issuedSecrets.ts`）。
+   * 成果物の走査が探す（IADR-0630 決定 6）。未設定なら記録しない（手元の実行）。
+   */
+  issuedSecretsFile: string | null;
 }
 
 /** runId の形（名前の接頭辞 `e2e-<runId>-` に入る）。 */
@@ -217,6 +223,7 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     sweep: rawSweep === '' ? 'off' : (rawSweep as 'dry-run' | 'delete'),
     stack,
     runId,
+    issuedSecretsFile: read('E2E_ISSUED_SECRETS_FILE') ?? null,
   };
 }
 

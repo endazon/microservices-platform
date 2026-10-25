@@ -6,7 +6,12 @@
 // - 404 は消えたとみなす（test の本文が消した・論理削除の後に完全削除へ進んだ）。それ以外の失敗でも**残りの後始末を続け**、
 //   消せなかったものを「未削除一覧」として test に attach する（test は落とさない。残りは sweep が拾う）。
 // - 状態変更の要求には `X-MSP-CSRF` を付ける（BFF の 2 枚目の壁。値に意味は無い。SPA の apiClient と同じ）。
+// - 🔴 **e2e-revocable では作らない**（IADR-0630 決定 5）。そのセッションは失効の試験が実行の中で無効にするので、sweep はその視点を
+//   見ない。作る側の部品が**実行時に**止める: `createCleanup` は context の storageState（`<authDir>/<role>.json`）から役割を引き、
+//   e2e-revocable・役割の分からない state では例外にする（spec の文字列の一致ではなく、呼んだ時点で止める）。
+import { basename } from 'node:path';
 import type { APIRequestContext, TestInfo } from '@playwright/test';
+import { ROLES, type Role } from './env';
 
 const PREFIX = 'e2e-';
 
@@ -42,7 +47,37 @@ export function e2eName(runId: string | null, kind: string, retry: number): stri
   return `${PREFIX}${runId}-${kind}-r${retry}`;
 }
 
-export function createCleanup(request: APIRequestContext): Cleanup {
+/** 作ってはならない役割（そのセッションが実行の中で失効する）。 */
+const NO_CREATE_ROLES: readonly Role[] = ['revocable'];
+
+/**
+ * 作る側の役割を storageState から引く（`test.use({ storageState: stateFile(…) })` の値。ファイル名が `<role>.json`）。
+ * 役割が分からない・作ってはならない役割なら例外。
+ */
+export function creatorRole(storageState: unknown): Role {
+  if (typeof storageState !== 'string') {
+    throw new Error(
+      '後始末は storageState のファイル（<role>.json）で動く context でだけ作る（作る側の役割が分からない）',
+    );
+  }
+  const name = basename(storageState).replace(/\.json$/, '');
+  if (!(ROLES as readonly string[]).includes(name)) {
+    throw new Error(`storageState の役割が分からない: ${basename(storageState)}`);
+  }
+  if ((NO_CREATE_ROLES as readonly string[]).includes(name)) {
+    throw new Error(
+      `e2e-${name} では作らない（そのセッションは失効の試験が実行の中で無効にし、sweep はその視点を見ない。IADR-0630 決定 5）`,
+    );
+  }
+  return name as Role;
+}
+
+/**
+ * 後始末の部品を作る。`storageState` は test の fixture の `storageState`（その context の役割）をそのまま渡す。
+ * 🔴 e2e-revocable の context では例外になり、test は何も作る前に止まる。
+ */
+export function createCleanup(request: APIRequestContext, storageState: unknown): Cleanup {
+  creatorRole(storageState);
   const entries: { name: string; steps: CleanupStep[] }[] = [];
   return {
     track(name, ...steps) {

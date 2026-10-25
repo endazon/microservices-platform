@@ -23,7 +23,7 @@ issue: "#2031"
       current-context = `k3d-<stack>`・stack が使い捨てのスタックの一覧にあることを確かめ、違えば例外で止まる（sweep と同じ門・同じ実装）—— L1 ＋ 単体
 - [ ] M-062: e2e-user が `e2e-<runId>-note-…` を作成 → e2e-operator へ個人指定で共有 → 取消 → 論理削除 → 完全削除が画面で通る —— live-rw
 - [ ] M-063: 共有の前と取消の後は e2e-operator の SC-03（`/docs/<id>`）が「文書が見つかりませんでした」（BFF 404）、共有中だけ見える（動的束縛） —— live-rw
-- [ ] M-067: SC-20 で端末 `e2e-<runId>-device-…` を登録 → トークン発行（**表示を記録しない**）→ 個別失効で「失効済み」 —— live-rw
+- [ ] M-067（発行したトークンは 0600 のファイルへ記録し、成果物の走査が探す。失効済みも同じ）: SC-20 で端末 `e2e-<runId>-device-…` を登録 → トークン発行（**表示を記録しない**）→ 個別失効で「失効済み」 —— live-rw
 - [ ] 作ったものは afterEach の `cleanup.ts` が消し、e2e-live の sweep の dry-run が **残骸 0・見ていない視点 0** —— live の実走
 
 ## 判断（IADR-0630）
@@ -36,7 +36,8 @@ issue: "#2031"
 4. **rw は ro の後に流す**（同じ実行で ro を選んでいれば `live-rw` は `live-ro` に依存する）。ro の到達の試験と書き込みを並べない。
 5. **sweep の個人資料の視点から e2e-revocable を外す**。e2e-revocable のセッションは失効の試験（auth-errors.ro・E-53）が実行の中で
    無効にするので、teardown の時点で一覧を読めない（PR #2234 の e2e-live で実測: 401）。代わりに **e2e-revocable で作らない**ことを規則にし、
-   L1 が「`revocable` を参照する live の spec は後始末を積まない（`createCleanup` を呼ばない）」を固定する。
+   作る側の部品 `createCleanup(request, storageState)` が storageState の役割を引き、e2e-revocable なら**実行時に例外**で止める
+   （レビューで正規表現の静的な走査から改めた）。L1 がその門を単体で固定する。
 6. **トークンを記録しない**（M-067）: その test は trace・スクリーンショット・動画を切り、発行の応答から `deviceId` だけを取り、
    応答を待った直後に画面を開き直してトークンの表示を消す（失敗時の error-context にも載らない）。トークンの値に触れる assertion を置かない。
 7. **SC-02（検索）での見え方は判定しない**（M-063 は SC-03 で見る）。作った個人資料は本文を持たず、露出の「横断検索に含める」は既定 OFF なので
@@ -68,7 +69,8 @@ issue: "#2031"
 ## 検証
 
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: 1199 passed（#2031 の判定器の 1 件を足し、#2030 節の視点の期待を 5 役割へ改めた）。
-- L1 `e2e/live-opt-in.smoke.spec.ts`: 25 passed（新規 3: rw の門・runId と名前・視点の和集合と revocable の規則。既存の sweep の 2 件を `E2E_STACK` へ改めた）。
+- L1 `e2e/live-opt-in.smoke.spec.ts`: 26 passed（新規 4: rw の門・runId と名前・視点の和集合と e2e-revocable の実行時の門・発行値の記録と走査。既存の sweep の 2 件を `E2E_STACK` へ改めた）。
+- 発行値（レビュー後の追加）: `check-e2e-artifact-secrets.js --self-test` 16 件（新規 2: 発行値が成果物にあれば赤・ファイルの形が違えば例外）。
 - `E2E_LIVE=1 E2E_LAYER=ro,rw E2E_STACK=e2e-live … --list`: 48 件（live-rw に M-062/M-063 と M-067）。
 - `tsc -p tsconfig.node.json` 0 件・eslint 0 件・prettier 緑。文書の検査は緑。
 - live: e2e-live（PR）で ro,rw を流し、rw の 2 件が通ること・sweep の dry-run が残骸 0・見ていない視点 0 であること（結果は PR に書く）。

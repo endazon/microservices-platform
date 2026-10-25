@@ -16,9 +16,10 @@ import { nextPeriodOtp, otpFor, remainingSeconds, wrongOtpFor } from './live/sup
 import { ja, jaPattern, parsePo } from './live/support/catalog';
 import { startFakeLiveStack } from './support/fakeLiveStack';
 import { revokeSessions, runSweep, sweepArgs, SWEEP_ROLES } from './live/support/teardown';
-import { createCleanup, e2eName } from './live/support/cleanup';
+import { createCleanup, creatorRole, e2eName } from './live/support/cleanup';
 import { assertDisposableStack } from './live/support/readiness';
 import { createRequire } from 'node:module';
+import { recordIssuedSecret } from './live/support/issuedSecrets';
 import { submitOtp, submitPassword } from './live/support/login';
 import { stateFile } from './live/support/env';
 
@@ -547,7 +548,7 @@ test('後始末は積んだ逆順に /bff/* へ X-MSP-CSRF つきで送り、404
   const port = (server.address() as { port: number }).port;
   const request = await playwright.request.newContext({ baseURL: `http://127.0.0.1:${port}` });
   try {
-    const cleanup = createCleanup(request);
+    const cleanup = createCleanup(request, '/tmp/auth/user.json');
     // 名前が e2e- で始まらない・/bff/ 以外へ送る後始末は、積む時点で例外（sweep が拾えない・画面を経由させない）。
     expect(() => cleanup.track('doc-1', { method: 'DELETE', path: '/bff/documents/1' })).toThrow(
       /e2e- で始める/,
@@ -672,20 +673,72 @@ test('E2E_RUN_ID は英小文字と数字 4〜16 字だけを受け、名前は 
   expect(() => e2eName('mabc1234', 'Note', 0)).toThrow(/英小文字/);
 });
 
-test('teardown が要る state の役割は sweep の視点の和集合と一致し、e2e-revocable で後始末を積む live の spec は無い（IADR-0630 決定 5）', () => {
+test('teardown が要る state の役割は sweep の視点の和集合と一致し、e2e-revocable の context では後始末の部品が実行時に例外で止める（IADR-0630 決定 5）', () => {
   const sweep = createRequire(import.meta.url)('../../../../scripts/e2e-live-sweep.js') as {
     KINDS: { viewers: string[] }[];
   };
   const union = [...new Set(sweep.KINDS.flatMap((k) => k.viewers))].sort();
   expect([...SWEEP_ROLES].sort()).toEqual(union);
   expect(SWEEP_ROLES).not.toContain('revocable');
-  // e2e-revocable のセッションは実行の中で失効するので、sweep はその視点を見ない。代わりにその役割では作らない。
-  const dir = fileURLToPath(new URL('./live/', import.meta.url));
-  const offenders = readdirSync(dir)
-    .filter((f) => f.endsWith('.spec.ts'))
-    .filter((f) => {
-      const text = readFileSync(join(dir, f), 'utf8');
-      return /['"]revocable['"]/.test(text) && /createCleanup\(/.test(text);
-    });
-  expect(offenders, 'e2e-revocable を使い、後始末を積む live の spec').toEqual([]);
+  // 作る側の門: storageState のファイル名から役割を引く。e2e-revocable・役割の分からない state では作らせない。
+  const request = {} as Parameters<typeof createCleanup>[0];
+  expect(creatorRole(stateFile('/tmp/auth', 'user'))).toBe('user');
+  expect(creatorRole(stateFile('/tmp/auth', 'trading-owner'))).toBe('trading-owner');
+  expect(() => createCleanup(request, stateFile('/tmp/auth', 'revocable'))).toThrow(
+    /e2e-revocable では作らない/,
+  );
+  expect(() => createCleanup(request, '/tmp/auth/someone.json')).toThrow(/役割が分からない/);
+  expect(() => createCleanup(request, undefined)).toThrow(/役割が分からない/);
+  expect(() => createCleanup(request, { cookies: [], origins: [] })).toThrow(/役割が分からない/);
+});
+
+test('発行された値（端末トークン）は 0600 のファイルへ記録され、偽の成果物に載れば走査が赤になる（値は出さない。IADR-0630 決定 6）', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-issued-'));
+  try {
+    const sink = join(dir, 'issued.env');
+    const token = ['dev', 'tok', 'L1fixture', 'Zx9Yw8Vu7'].join('-');
+    // 記録先が無ければ何もしない（手元の実行）。名前・値の形が違えば例外（値は文言に入れない）。
+    recordIssuedSecret({ issuedSecretsFile: null }, 'E2E_ISSUED_DEVICE_TOKEN', token);
+    expect(() => recordIssuedSecret({ issuedSecretsFile: sink }, 'DEVICE_TOKEN', token)).toThrow(
+      /E2E_ISSUED_/,
+    );
+    expect(() =>
+      recordIssuedSecret({ issuedSecretsFile: sink }, 'E2E_ISSUED_DEVICE_TOKEN', `${token}\nx`),
+    ).toThrow(/記録できない値/);
+    recordIssuedSecret({ issuedSecretsFile: sink }, 'E2E_ISSUED_DEVICE_TOKEN', token);
+    expect(statSync(sink).mode & 0o777).toBe(0o600);
+    expect(readFileSync(sink, 'utf8')).toBe(`E2E_ISSUED_DEVICE_TOKEN=${token}\n`);
+
+    // 偽の成果物と、試験アカウントの資格情報の偽の値（走査器は資格情報が 1 つも無いと例外にする）。
+    const envFile = join(dir, 'accounts.env');
+    writeFileSync(envFile, `E2E_ADMIN_PASSWORD=${['Pw', 'L1fixture', 'Q1w2E3r4'].join('-')}\n`);
+    const scanWith = (content: string) => {
+      const target = mkdtempSync(join(dir, 'report-'));
+      writeFileSync(join(target, 'error-context.md'), content);
+      return spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(
+            new URL('../../../../scripts/check-e2e-artifact-secrets.js', import.meta.url),
+          ),
+          '--env-file',
+          envFile,
+          '--issued-file',
+          sink,
+          '--scan',
+          target,
+        ],
+        { encoding: 'utf8' },
+      );
+    };
+    const leaked = scanWith(`Error: expected row\n  - code "${token}"\n`);
+    expect(leaked.status, leaked.stderr).toBe(1);
+    expect(leaked.stderr).toContain('E2E_ISSUED_DEVICE_TOKEN#1');
+    expect(`${leaked.stdout}${leaked.stderr}`).not.toContain(token);
+    const clean = scanWith('Error: expected row\n');
+    expect(clean.status, clean.stderr).toBe(0);
+    expect(clean.stdout).toContain('発行値 1 個');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
