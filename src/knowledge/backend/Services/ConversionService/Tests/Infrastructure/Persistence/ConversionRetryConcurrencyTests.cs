@@ -75,7 +75,7 @@ public class ConversionRetryConcurrencyTests
         loser.Should().BeNull("読んだ failed が保存の時点で queued に変わっていた —— 2 回目の発行をさせない");
         await using var reader = NewDb(name);
         (await new EfConversionJobStore(reader).GetAsync(id, Ct))!.Status.Should().Be(ConversionJobStatus.Queued);
-        dbA.ChangeTracker.Entries().Should().BeEmpty("負けた変更は追跡から捨てる（同じ確定の後続の保存が書き戻さない）");
+        dbA.ChangeTracker.Entries().Should().BeEmpty("負けたジョブと図の追跡は外す（同じ確定の後続の保存が書き戻さない）");
     }
 
     // 境界: 割り込みがジョブの状態を変えなければ（並行していない）、従前どおり再変換できる。

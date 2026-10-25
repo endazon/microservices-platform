@@ -135,8 +135,10 @@ public sealed class EfConversionJobStore(ConversionJobDbContext db) : IConversio
         {
             // 🔴 FR-12, UC-06, #2159: **並行する再変換に負けた**（読んだ後に別の再変換が queued へ進めた）。状態は並行トークンなので
             // `UPDATE … WHERE "Status" = 'failed'` が 0 行になった。発行させない（null）。負けた保存は EF の保存点まで巻き戻っている。
-            // 追跡中の変更（queued・補正の破棄）は捨てる —— 残すと同じ確定の中の後続の保存が負けた変更を書き戻す。
-            db.ChangeTracker.Clear();
+            // 負けた変更（queued・補正の破棄）は**このジョブと図の追跡だけ**を外して捨てる —— 残すと同じ確定の中の後続の保存が書き戻す。
+            // DbContext 全体（`ChangeTracker.Clear()`）は捨てない: 同じ確定（スコープ）に他の書き込みが載っていれば、それまで消してしまう。
+            db.Entry(job).State = EntityState.Detached;
+            foreach (var figure in job.Figures) db.Entry(figure).State = EntityState.Detached;
             return null;
         }
         return job.ToEvent();

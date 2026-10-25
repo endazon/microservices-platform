@@ -45,13 +45,14 @@ plan_refs:
 | 再変換（`PrepareRetryAsync`） | failed → queued | 並行する再変換が先に queued にした | **null を返し、端点は 409 `not_retryable`（現在の状態を読み直して返す）**。発行しない |
 | 取り込み開始（`StartAsync`） | 任意 → processing | 同じジョブの別の遷移が先に入った（同じ原本の再配送が並行した等） | 例外が受け口へ出て、Wolverine の再試行（2・10・30 秒）で読み直してやり直す。従前は後勝ちで黙って上書きしていた |
 | 成功・失敗（`SucceedAsync` / `FailAsync`） | processing → succeeded / failed | 同上 | 同上 |
-| 人手補正（`ApplyCorrectionAsync`） | succeeded のまま本文の参照を差し替え | 補正の最中に同じジョブが再処理へ入った | 例外（端点は 500 になり得る）。従前は再処理の結果を補正の本文で上書きし得た。**頻度は低く、本 issue では写し方を変えない**（残余） |
+| 人手補正（`ApplyCorrectionAsync`） | succeeded のまま本文の参照を差し替え | 補正の最中に同じジョブが再処理へ入った | 例外（端点は 500 になり得る）。従前は再処理の結果を補正の本文で上書きし得た。**頻度は低く、本 issue では写し方を変えない**（残余 → #2255） |
 
 ## 負けた側の応答
 
 - 端点（`Retry/Endpoint.cs`）は従前から「ストアが null を返したら 409 `not_retryable`」である。**応答の形は変えない**（画面は `error` で分岐する）。
   ただし `status` は要求の最初に読んだ値（`failed`）ではなく、**読み直した現在の状態**を返す（#2103 の `AfterLostSaveAsync` が現在版を読み直すのと同じ。負けた側に「失敗のまま」と見せない）。
-- 並行の負けは確定（`CommitAsync`）の中で起きる。ストアは並行例外を捕まえて追跡中の変更を捨て（`ChangeTracker.Clear()`）、null を返す。確定は何も積まずにコミットする（発行 0）。
+- 並行の負けは確定（`CommitAsync`）の中で起きる。ストアは並行例外を捕まえて、**負けたジョブと図の追跡だけを外し**（`EntityState.Detached`）、null を返す。確定は何も積まずにコミットする（発行 0）。
+  - DbContext 全体（`ChangeTracker.Clear()`）にしない理由: 同じ確定（スコープ）に他の書き込みが載ったとき、それまで黙って捨ててしまうため（AI レビュー 🟡 1。範囲を負けた実体に限れば、後から確定に書き込みを足しても壊れない）。
 
 ## 母集合（規則 9）
 
@@ -61,7 +62,7 @@ plan_refs:
 ## 受け入れ基準
 
 - [x] AC1（並行・決定的）: 同じジョブへの再変換が並行し、片方の保存の直前にもう片方が確定しても、`RawDocumentFetched` は 1 回だけ出る。負けた側の `PrepareRetryAsync` は null を返し、ジョブは queued のまま（器: 保存の割り込みで窓を開ける）。
-- [ ] AC2（実 PostgreSQL。**`Category=Integration` で PR の CI では走らない。`integration.yml` の dispatch で確かめる**）: 同じ窓を実 PostgreSQL ＋ 実ブローカで開け（先の確定がジョブ行の行ロックを持つ間に後の再変換を流し、ロック待ちになったことを `pg_locks` で確かめてから先を確定する）、受け手に届くのは 1 通だけ（`Category=Integration`）。
+- [x] AC2（実 PostgreSQL。`Category=Integration`。**`integration.yml` run 40200968420 / job 121191874583（head 2797f1f9）で緑**: knowledge の統合試験は宣言 114・実走 129・合格 129・失敗 0）: 同じ窓を実 PostgreSQL ＋ 実ブローカで開け（先の確定がジョブ行の行ロックを持つ間に後の再変換を流し、ロック待ちになったことを `pg_locks` で確かめてから先を確定する）、受け手に届くのは 1 通だけ（`Category=Integration`）。
 - [x] AC3: 負けた側の端点は 409 `not_retryable` で、`status` は読み直した現在の状態（queued）。500 にならない。
 - [x] AC4（陽性対照）: 並行しない再変換は従前どおり 202 で 1 通出る。既存の再変換・取り込み・補正の試験が緑。
 - [x] AC5: スナップショットとモデルに差が無い（`HasPendingModelChanges` が偽）。
