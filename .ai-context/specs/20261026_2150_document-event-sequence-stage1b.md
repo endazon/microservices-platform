@@ -96,9 +96,10 @@ plan_refs:
 
 - [x] 改名は 1 回負けても読み直して確定する。やり直した再発行は、勝った側の後の連番と新しい名前を運ぶ。
 - [x] 改名は上限まで負けたら、409 と SC-09 が出す文言を返す。改名の再発行は 1 通も出ない。
-- [x] 実 PostgreSQL で、上限まで負けた改名は辞書の名前ごと巻き戻る。同じ要求の再送で確定する（`Knowledge.IntegrationTests` の `DocumentBatchCommitRetryTests`。dispatch はコーディネーター）。
+- [ ] 実 PostgreSQL で、上限まで負けた改名は辞書の名前ごと巻き戻る。同じ要求の再送で確定する（`Knowledge.IntegrationTests` の `DocumentBatchCommitRetryTests`）。**根拠: Integration run 40210322433 待ち**（dispatch はコーディネーター）。
 - [x] 改名済みの名前への再送は、辞書を変えずに再発行だけを行う（冪等）。
-- [x] 再発行は 1 回負けても読み直して確定する。上限まで負けたら、負けたページの先頭のカーソルを返す。そこからの再開で、そのページを発行する（単体・実 PostgreSQL の両方）。
+- [x] 再発行は 1 回負けても読み直して確定する。上限まで負けたら、負けたページの先頭のカーソルを返す。そこからの再開で、そのページを発行する（単体）。
+- [ ] 同じことを実 PostgreSQL で確かめる（`DocumentBatchCommitRetryTests`）。**根拠: Integration run 40210322433 待ち**。
 - [x] SC-09 は、改名の 409 の `message` を既存の経路で出す。
   - `apiClient` が本文の `message` を `details` に入れる。
   - 画面はそれを出し、使用件数の 409 と取り違えない。
@@ -113,6 +114,22 @@ plan_refs:
 ## 残余
 
 - 使用件数が大きいタグでは、ロック時間が N に比例する。PoC の SC-09 の使用件数で N が大きいと分かれば、R2（バッチ化）か保存の集約へ移す（#2260）。
+- **改名の経路の HTTP の期限（#2261 の AI レビュー 🟡 2。実コードで引いた）**:
+
+  | 区間 | 期限 | 根拠 |
+  | --- | --- | --- |
+  | SPA → BFF（`fetch`） | 無し | `src/platform/frontend/src/lib/api/apiClient.ts` の `fetch(...)` は signal を渡さない |
+  | 入口（Traefik） | 応答の期限は無し | リポジトリの配備物（`deploy/local/edge/traefik-entrypoint.yaml`・`platform-frontend-ingress.yaml`）に期限の設定が無く、Traefik の既定に従う。既定はバックエンドの応答ヘッダーの待ちと書き込みが無制限（上流の既定で、ここでは確かめていない）。稼働のクラスタの値は見ていない（触らない） |
+  | BFF → DocumentService（名前つきの `HttpClient` `DocumentService`） | **100 秒**（`HttpClient.Timeout` の既定） | `src/platform/backend/Bff/Platform.Bff/Program.cs:173` は `Timeout` を設定せず、BFF に resilience handler・`ConfigureHttpClientDefaults` も無い |
+  | DocumentService の要求 | 無し | `AddRequestTimeouts` は無い |
+  | DB の命令 | 1 命令ごとに 30 秒（Npgsql の既定） | 改名の命令は 1 件ごとの UPDATE・INSERT で短い。トランザクション全体の期限は無い |
+
+  - 結論: **見積もり（N = 22,564 で約 25〜45 秒）は、いちばん短い期限（BFF → DocumentService の 100 秒）に当たらない**（余裕は約 2.2 倍）。
+  - 見積もりは実測ではない。2.2 倍を超えて外れれば当たる。当たったときの振る舞い:
+    - BFF の要求が取り消される。
+    - DocumentService の要求の取り消し（`ct`）が確定を止め、トランザクションは巻き戻る。
+    - 管理者には失敗が返り、何も確定していない。再送は同じ長さになる。
+  - そのため、PoC で確かめる手当て（改名のログの `ElapsedMs` が 100 秒の半分を超えたら R2 へ移す）を #2260 に追記した。
 - 1c の 8 経路（#2258）は、まだ 409 へ写していない。
 - 受け手の連番の比較は段 2 である。
 

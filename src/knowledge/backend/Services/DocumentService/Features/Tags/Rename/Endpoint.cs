@@ -46,12 +46,13 @@ internal static class RenameTagEndpoint
             // 409 `version_conflict` を返す（未処理の範囲は要求の全体であり、同じ要求の再送で再開できる。部分の確定は無い）。
             // 改名は管理者のまれな操作であり、確定の間の行ロックは利用者の編集を失敗させず待たせるだけである（見積もりは IADR-0637 決定 6）。
             var clock = Stopwatch.StartNew();
-            Tag? tag = null;
+            Tag tag;
             List<Document> affected = [];
             for (var attempt = 1; ; attempt++)
             {
-                tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id, ct);
-                if (tag is null) return Results.NotFound();
+                var found = await db.Tags.FirstOrDefaultAsync(t => t.Id == id, ct);
+                if (found is null) return Results.NotFound();
+                tag = found;
 
                 // SC-09「新しい名前は既存値と重複しない」。**自分自身は除く**——
                 // 同じ名前への改名（実質の no-op）を 409 にしても利用者は何も直せない。
@@ -131,7 +132,7 @@ internal static class RenameTagEndpoint
             // **再発行件数 ＝ 使用件数である**（どちらも「現行版でこのタグを持つ文書の数」。
             // `LoadWithUsageAsync` と同じ母集合を使っており、2 通りの数え方を持たない）。
             return Results.Ok(new RenameTagResponse(
-                new TagDto(tag!.Id, tag.Name, affected.Count), affected.Count));
+                new TagDto(tag.Id, tag.Name, affected.Count), affected.Count));
         }).WithName("RenameTag").Produces<RenameTagResponse>();
     }
 }
