@@ -130,8 +130,8 @@ internal static class RepublishDocumentUpdatedEndpoint
             // ページの文書だけを本体ごと読み直し、選んだ並びのまま発行する。
             // 投影から読み直しまでの間に消えた文書は飛ばす（削除の経路が `DocumentDeleted` を出している）。
             var pageIds = page.Select(r => r.Id).ToList();
-            var published = 0;
-            var skippedByGate = 0;
+            int published;
+            int skippedByGate;
             // FR-02, IADR-0637 決定 6 (#2150 段 1b): 発行はページの文書行の連番（並行トークン）を進める。読み直しの後にページの文書へ
             // 別の確定が入れば、ページの確定ごと巻き戻る。**追跡を捨ててページを読み直し、やり直す**（上限 `MaxBatchCommitAttempts`）。
             // 超えたら何も確定せずに 409 `version_conflict` を返し、**負けたページの先頭のカーソル**（＝この要求のカーソル）を `resumeCursor`
