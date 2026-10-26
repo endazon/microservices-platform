@@ -9,10 +9,11 @@
 # 🔴 呼んでよいのは「クラスタが無かった」ときだけ（reuse の経路から呼ばない。既存のクラスタ＝PoC を消さないため）。
 # 🔴 作り直しは試験の skip ではない。作り直した後のスタックで、全ての門が同じように走る。回数は出力と注記に残す。
 
-# 上限の値を検める（起動前に落とす）。正の整数（秒）だけを受け付ける。
+# 上限の値を検める（クラスタに触る前に落とす）。正の整数（秒）だけを受け付ける。
+#   K3D_DIAG_TIMEOUT は診断の 1 コマンドごとの上限（既定 20 秒）。
 k3d_create_validate_timeouts() {
   local name value
-  for name in K3D_CREATE_TIMEOUT K3D_NODE_READY_TIMEOUT; do
+  for name in K3D_CREATE_TIMEOUT K3D_NODE_READY_TIMEOUT K3D_DIAG_TIMEOUT; do
     value="${!name:-}"
     [ -z "$value" ] && continue
     case "$value" in
@@ -21,23 +22,50 @@ k3d_create_validate_timeouts() {
   done
 }
 
-# 失敗した試行の診断。どれが失敗しても続ける（診断で止まらない）。
+# 診断の 1 コマンドを上限つきで走らせる（K3D_DIAG_TIMEOUT 秒・既定 20）。
+# 🔴 docker のデーモンが固まっていると、上限の無い診断がそこで止まり、元の 30 分の無言が戻る。1 コマンドずつ上限を掛け、
+#   診断全体（最大 7 コマンド）を約 2 分に収める。timeout が無い環境は上限なしで走らせる（作成の側と同じく warn は出してある）。
+k3d_diag_run() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 5 "${K3D_DIAG_TIMEOUT:-20}" "$@"
+  else
+    "$@"
+  fi
+}
+
+# 失敗した試行の診断。どれが失敗しても・上限を超えても続ける（診断で止まらない）。
 k3d_create_diagnose() {
-  local cluster="$1" node
-  echo "---- k3d diagnostics (cluster ${cluster}) ----" >&2
-  docker ps -a >&2 || true
+  local cluster="$1" node rc
+  echo "---- k3d diagnostics (cluster ${cluster}; 1 コマンドの上限 ${K3D_DIAG_TIMEOUT:-20}s) ----" >&2
+  command -v timeout >/dev/null 2>&1 || echo "WARN: timeout（coreutils）が無いので、診断を上限なしで走らせる" >&2
+  k3d_diag_run docker ps -a >&2 || echo "    (docker ps -a が失敗した・上限を超えた: exit $?)" >&2
   for node in "k3d-${cluster}-server-0" "k3d-${cluster}-agent-0"; do
     echo "---- docker logs --tail 200 ${node} ----" >&2
-    docker logs --tail 200 "$node" >&2 2>&1 || true
+    k3d_diag_run docker logs --tail 200 "$node" >&2 2>&1 || echo "    (docker logs が失敗した・上限を超えた: exit $?)" >&2
     # 2 回目の事象（#2261 の CI）: flannel が subnet.env を書かないとノードは Ready にならない。名指しで出す。
-    if ! docker exec "$node" test -f /run/flannel/subnet.env >/dev/null 2>&1; then
+    rc=0; k3d_diag_run docker exec "$node" test -f /run/flannel/subnet.env >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+      echo "    ${node}: /run/flannel/subnet.env の有無を確かめられなかった（docker exec が上限を超えた）" >&2
+    elif [ "$rc" -ne 0 ]; then
       echo "    ${node}: /run/flannel/subnet.env が無い（flannel がノードのサブネットを書いていない）" >&2
     fi
   done
   echo "---- docker info ----" >&2
-  docker info >&2 || true
-  kubectl get nodes -o wide >&2 2>&1 || true
+  k3d_diag_run docker info >&2 || echo "    (docker info が失敗した・上限を超えた: exit $?)" >&2
+  k3d_diag_run kubectl get nodes -o wide --request-timeout=15s >&2 2>&1 || true
   echo "---- end of k3d diagnostics ----" >&2
+}
+
+# 作成の引数から期待するノード数（server 1 ＋ --agents N）を数える。
+k3d_expected_nodes() {
+  local agents=0 prev=""
+  for a in "$@"; do
+    [ "$prev" = "--agents" ] && agents="$a"
+    case "$a" in --agents=*) agents="${a#--agents=}" ;; esac
+    prev="$a"
+  done
+  case "$agents" in ''|*[!0-9]*) agents=0 ;; esac
+  echo $((1 + agents))
 }
 
 # 1 試行。成功で 0、失敗で 1。失敗の理由を 1 行出す。
@@ -58,7 +86,22 @@ k3d_create_attempt() {
     fi
     return 1
   fi
-  if ! kubectl wait --for=condition=Ready node --all --timeout="${ready_timeout}s"; then
+  # ノードが登録される前の `kubectl wait … node --all` は "no matching resources found" で即座に失敗する
+  #   （要らない作り直しになる）。同じ上限の中で、期待する数のノードが見えるまで待ってから Ready を待つ。
+  local expected seen=0 deadline remaining
+  expected="$(k3d_expected_nodes "$@")"
+  deadline=$((SECONDS + ready_timeout))
+  while :; do
+    seen="$(kubectl get nodes -o name --request-timeout=5s 2>/dev/null | grep -c '^node/' || true)"
+    [ "${seen:-0}" -ge "$expected" ] && break
+    if [ "$SECONDS" -ge "$deadline" ]; then
+      echo "ERROR: ノードが上限 ${ready_timeout} 秒のうちに揃わなかった（期待 ${expected}・見えた ${seen:-0}）" >&2
+      return 1
+    fi
+    sleep 1
+  done
+  remaining=$((deadline - SECONDS)); [ "$remaining" -lt 1 ] && remaining=1
+  if ! kubectl wait --for=condition=Ready node --all --timeout="${remaining}s"; then
     echo "ERROR: ノードが上限 ${ready_timeout} 秒のうちに Ready にならなかった" >&2
     return 1
   fi

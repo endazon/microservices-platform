@@ -2615,16 +2615,17 @@ CI の使い捨てスタック（integration-stack・e2e-live・cutover-rehearsa
 | 段 | 上限（env・既定） | 超えたとき |
 | --- | --- | --- |
 | `k3d cluster create` | `K3D_CREATE_TIMEOUT`・300 秒 | 診断を出し、この実行が作ったクラスタを消して 1 回だけ作り直す |
-| 全ノードの Ready 待ち（`kubectl wait --for=condition=Ready node --all`） | `K3D_NODE_READY_TIMEOUT`・180 秒 | 同上 |
+| 期待する数のノード（server 1 ＋ agent 1）の登録 → 全ノードの Ready 待ち（`kubectl wait --for=condition=Ready node --all`） | `K3D_NODE_READY_TIMEOUT`・180 秒（登録と Ready で 1 つの上限を分け合う） | 同上 |
 
 - **診断**: `docker ps -a`・`docker info`・ノードのコンテナ（`k3d-<クラスタ>-server-0`・`-agent-0`）の `docker logs --tail 200`・`kubectl get nodes -o wide`。
-  `/run/flannel/subnet.env` が無いノードは名指しで出る。
+  `/run/flannel/subnet.env` が無いノードは名指しで出る。**1 コマンドごとに上限 `K3D_DIAG_TIMEOUT`（既定 20 秒）を掛ける**ので、docker のデーモンが固まっていても診断全体は約 2 分で終わる。
+- ノードが登録される前に Ready を待つと即座に失敗する（要らない作り直しになる）ので、先に期待する数のノードが見えるまで待つ。
 - **作り直しは 1 回まで。** 2 回目も失敗したら起動器は止まり、ジョブは赤になる（CI の失敗の自動起票で issue になる）。
 - **作り直しは試験の skip ではない。** 作り直した後のスタックで、全ての門が同じように走る。
 - **作り直しは見える。** 起動器の出力の `k3d recreate count: 1`、GitHub Actions の注記（`k3d cluster recreated`）、ジョブの要約の 1 行。
   注記が続く（例: 同じ週に 3 回以上）なら、ランナーの資源か k3s の版を疑って起票する。上限を延ばすのは、正常な作成が上限に届くと実測で分かってからにする。
 - **既存のクラスタ（PoC を含む）には効かない。** 作成の経路（クラスタが無いとき）だけで働き、既存のクラスタは消さない・作り直さない。
-- 上限は正の整数（秒）だけを受け付ける。それ以外は起動前に止まる。
+- 上限は正の整数（秒）だけを受け付ける。それ以外は、k3d の経路でクラスタに触る前に止まる（Rancher Desktop の経路では使わない値なので見ない）。
 
 ## 定期点検（年次）
 

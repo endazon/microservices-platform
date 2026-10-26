@@ -37,13 +37,15 @@ related_specs:
 ### 決定 1: 作成の 1 試行を「上限つきの作成 → 上限つきの Ready 待ち」とする
 
 - `k3d cluster create` を coreutils の `timeout` で包む（`K3D_CREATE_TIMEOUT` 秒・既定 300）。`timeout` が無い環境は包まずに warn を出す。
-- その後 `kubectl wait --for=condition=Ready node --all --timeout=<K3D_NODE_READY_TIMEOUT>s`（既定 180）で全ノードの Ready を待つ。
-- 上限は正の整数（秒）だけを受け付ける。それ以外は、クラスタに触る前に止める。
+- その後、同じ上限 `K3D_NODE_READY_TIMEOUT`（既定 180 秒）の中で、期待する数のノード（server 1 ＋ `--agents` の数）が `kubectl get nodes -o name` に見えるまで 1 秒おきに待ち、残りの時間で `kubectl wait --for=condition=Ready node --all` を待つ。
+  - ノードが登録される前の `kubectl wait … node --all` は "no matching resources found" で即座に失敗し、要らない作り直しになるためである（監査の指摘）。
+- 上限は正の整数（秒）だけを受け付ける。それ以外は、k3d の経路でクラスタに触る前に止める（Rancher Desktop の経路では使わない値なので見ない）。
 - 既定の値は、CI のステップの上限 30 分に 2 試行（(300 + 180) × 2 秒＝ 16 分）と診断が収まるように選んだ。
 
 ### 決定 2: 失敗したら診断を出し、この実行が作ったクラスタだけを消して 1 回だけ作り直す
 
-- 診断: `docker ps -a`・`docker info`・ノードのコンテナ（`k3d-<cluster>-server-0`・`-agent-0`）の `docker logs --tail 200`・`kubectl get nodes -o wide`。各ノードで `/run/flannel/subnet.env` の有無を見て、無ければ名指しする。
+- 診断: `docker ps -a`・`docker info`・ノードのコンテナ（`k3d-<cluster>-server-0`・`-agent-0`）の `docker logs --tail 200`・`kubectl get nodes -o wide --request-timeout=15s`。各ノードで `/run/flannel/subnet.env` の有無を見て、無ければ名指しする。
+- 診断の 1 コマンドごとに上限 `K3D_DIAG_TIMEOUT`（既定 20 秒）を掛け、全体を約 2 分に収める。docker のデーモンが固まると、上限の無い診断がそこで止まり、元の 30 分の無言が戻るためである（監査の指摘）。`timeout` が無い環境は上限なしで走らせ、warn を出す。
 - 作り直しは 1 回まで。2 回目も失敗したら、診断を出して止まる。
 - 作成の経路（`k3d cluster list` でクラスタが無かったとき）だけで働く。既存のクラスタ（reuse の経路。PoC を含む）は消さない・作り直さない。
 
@@ -73,5 +75,5 @@ related_specs:
 - 戻す条件・見直す条件:
   - 注記が続く（例: 同じ週に 3 回以上）なら、ランナーの資源か k3s の版を疑って起票する。
   - 正常な作成が上限に届くと実測で分かったら、上限を延ばす（本 IADR への日付つき追記で残す）。
-- 試験: `scripts/k8s-local-up.test.js` が、既定の値、作成の失敗・上限超過・Ready にならないときの 1 回の作り直し、2 回とも失敗したときに止まること、reuse で何もしないこと、上限の値の検査を固定する。
+- 試験: `scripts/k8s-local-up.test.js` が、既定の値、作成の失敗・上限超過・Ready にならないときの 1 回の作り直し、2 回とも失敗したときに止まること、reuse で何もしないこと、上限の値の検査（k3d の経路だけ）、ノードの登録の待ち（0 件・1 件の間は作り直さない・揃わなければ失敗）、docker が固まっても診断が上限で終わることを固定する。
 - 残余: 作り直しの回数を run をまたいで集計する仕組みは置いていない（注記を見る）。

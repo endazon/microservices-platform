@@ -31,7 +31,7 @@ issue: "#2273"
 ## 方針
 
 - 作成の 1 試行を「`k3d cluster create`（上限つき）→ 全ノードの Ready 待ち（上限つき）」とする。
-  - 作成の上限は `K3D_CREATE_TIMEOUT`（秒。既定 300）。coreutils の `timeout` で包む。`timeout` が無い環境（macOS の素の環境）は包まずに warn を出す。
+  - 作成の上限は `K3D_CREATE_TIMEOUT`（秒。既定 300）。診断の 1 コマンドの上限は `K3D_DIAG_TIMEOUT`（秒。既定 20）。coreutils の `timeout` で包む。`timeout` が無い環境（macOS の素の環境）は包まずに warn を出す。
   - Ready 待ちは `kubectl wait --for=condition=Ready node --all --timeout=<K3D_NODE_READY_TIMEOUT>s`（既定 180）。
 - 試行が失敗したら、診断を出す。
   - `docker ps -a`・`docker info`・ノードのコンテナ（`k3d-<cluster>-server-0`・`k3d-<cluster>-agent-0`）の `docker logs --tail 200`。
@@ -56,6 +56,9 @@ issue: "#2273"
 - [x] 2 回とも失敗したら、作り直しは 1 回のまま止まる（exit 非 0。3 回目の作成を呼ばない）
 - [x] 既存のクラスタ（reuse）では、作成も削除も Ready 待ちも呼ばない
 - [x] 上限は env で変えられ、数値でない値は起動前に止める
+- [x] ［監査の指摘］診断の 1 コマンドごとに上限（`K3D_DIAG_TIMEOUT`・既定 20 秒）を掛ける。docker が固まるスタブで、診断が上限で終わり作り直しへ進むことを確かめる
+- [x] ［監査の指摘］上限の値の検査は k3d の経路で、クラスタに触る前に行う。Rancher Desktop の経路では止めない
+- [x] ［監査の指摘］Ready の前に、同じ上限の中で期待する数（server 1 ＋ agents）のノードが見えるまで待つ。最初の数回が 0 件・1 件でも作り直さない。揃わなければその試行は失敗する
 
 ## 母集合（規則 9: 誤りの側の文字列で全文を走査した）
 
