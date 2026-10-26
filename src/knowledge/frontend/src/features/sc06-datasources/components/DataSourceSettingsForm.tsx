@@ -19,7 +19,12 @@ import { sourceTypeLabel } from '../types/syncState';
 //   （後段は全置換。伏せた値は `***` のまま送り、後段が既存値を保つ）。何も変わっていなければ送らない。
 // - 後段の検証の理由（`ConnectionUriPolicy` の `{ error }` 形の 400・RFC 7807 の 400）は、画面の結果表示が出す（`toMessages`）。
 
-/** 応答で伏せられて返った値（後段の `SecretMask.Placeholder` と同じ文字列）。判定は値で行い、キー名では行わない。 */
+/**
+ * 応答で伏せられて返った値（後段の `SecretMask.Placeholder` と同じ文字列）。判定は値で行い、キー名では行わない。
+ * 既知の制約（#2122）: 非秘密キーの値として利用者が `***` そのものを保存すると、次に開いたときに伏せた値と区別できず
+ * 読み取り専用で描く（後段は秘密キーでなければ `***` を普通の値として保存する）。キー名で判定すれば区別できるが、
+ * 判定の規則（`KeyMarkers`）を SPA に複写しないことを優先した。値を変えるには API を使う。
+ */
 const MASKED = '***';
 const MAX_NAME = 200;
 const MAX_URI = 500;
@@ -33,9 +38,10 @@ interface ConfigRow {
   masked: boolean;
 }
 
+// 並びは文字コードの順（実行環境のロケールに依らない。localeCompare は環境で順が変わる）。
 function rowsOf(config: Record<string, string> | null | undefined): ConfigRow[] {
   return Object.entries(config ?? {})
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value], i) => ({ id: i, key, value, masked: value === MASKED }));
 }
 

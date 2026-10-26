@@ -1078,6 +1078,27 @@ describe('DataSourceManagementPage (SC-06)', () => {
       );
     });
 
+    // テスト仕様書 13-f: 秘密らしいキーへの平文は**画面で止めない**。秘密キーの判定規則（後段の KeyMarkers）を画面へ写さない。
+    // 後段は移送の段（#458 の段 S4）まで受け付けて保存し、応答では伏せる（実測）。画面は注意書きだけを出す。
+    it('does not block a plain value under a secret-like key, leaving the rule to the server', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
+      const { user } = await openSettings();
+      const form = within(screen.getByRole('form', { name: 'データソースの設定変更' }));
+
+      expect(
+        form.getByText(/パスワード・トークンなどの認証情報はここに書かず/),
+      ).toBeInTheDocument();
+      await user.click(form.getByRole('button', { name: '＋ 設定を追加' }));
+      await user.type(form.getByLabelText('設定のキー 3'), 'password');
+      await user.type(form.getByLabelText('設定の値 3'), 'plain-0570');
+      await user.click(form.getByRole('button', { name: '変更を保存' }));
+
+      await waitFor(() => expect(patches()).toHaveLength(1));
+      expect(patches()[0]).toEqual({
+        config: { apiToken: '***', spaceKey: 'ENG', password: 'plain-0570' },
+      });
+    });
+
     // 何も変えていなければ保存できない（無変更の PATCH を送らない）。同じキーが 2 つあれば保存できない。
     it('cannot save without a change or with a duplicate key', async () => {
       mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));

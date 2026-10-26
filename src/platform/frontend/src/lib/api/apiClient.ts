@@ -130,6 +130,8 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
 //   - **識別子の形（`invalid_transition` のような機械の符号）でないこと** —— 後段は符号を `error` に入れて画面が分岐に使う
 //     （本文の `body` で引き続き読める）。符号を利用者へ文として見せない。
 // 値は文字列として `details` に入るだけで、画面は文字として描く（HTML として解釈しない）。
+// 🔴 この形は**英単語 1 語の理由（`Forbidden`・`invalid` 等）も符号として出さない**（空白・句読点・非 ASCII を含まないため）。
+//   その場合の画面は従来どおりの既定の文（「入力内容に誤りがあります。」）であり、後退ではない。文の理由は空白か日本語を含む。
 const MACHINE_CODE = /^[A-Za-z0-9_.:-]+$/;
 
 async function parseProblemDetails(res: Response): Promise<{ details: string[]; body: unknown }> {
