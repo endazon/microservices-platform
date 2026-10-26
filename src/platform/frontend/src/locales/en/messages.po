@@ -1973,8 +1973,8 @@ msgid "個人資料の管理へ"
 msgstr "Manage private notes"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
-msgstr "Private notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day."
+msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。30 日が過ぎると、この資料は復元できない形で削除されます。"
+msgstr "Private notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day. After 30 days, they are deleted and cannot be restored."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料を作成しました。"

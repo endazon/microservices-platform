@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { activate } from '@foundation/i18n';
 
 // SC-20, UC-11, FR-20（#451）: Obsidian 連携設定画面。
 //
@@ -169,6 +170,10 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  // I18nProvider はロケール変更を購読して再描画する。act の外で切り替えると警告になる。
+  act(() => {
+    activate('ja');
+  });
 });
 
 describe('SC-20 Obsidian 連携設定: 固定文言', () => {
@@ -200,6 +205,32 @@ describe('SC-20 Obsidian 連携設定: 固定文言', () => {
     expect(handling.textContent).toMatch(/同期対象フォルダに入れた私的なメモも/);
     // 🔴 削除の説明と同じ段落にまとめない（別の性質の注意であり、まとめると読み飛ばされる）。
     expect(handling.textContent).not.toMatch(/90\s*日を過ぎると/);
+  });
+
+  // FR-20, SC-20（#2114）: 3 段落目は計画の確定文言どおり（1 字も足さない）。
+  // 🔴 SC-19 にだけある削除の 1 文（ADR-0096 決定 1）は、計画の SC-20 の確定文言に無いので出さない（環流中）。
+  it('🔴 業務関連資料の段落は計画の確定文言どおりで、SC-19 にだけある削除の文を出さない', async () => {
+    respond();
+    await renderPage();
+
+    const handling = await screen.findByText(/同期した資料は業務関連資料として扱われます/);
+    expect(handling.textContent).toBe(
+      '同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。',
+    );
+    expect(handling.textContent).not.toMatch(/30\s*日が過ぎると/);
+  });
+
+  it('en ロケールでも業務関連資料の段落が閲覧の文と締めの文を含む', async () => {
+    activate('en');
+    respond();
+    await renderPage();
+
+    const handling = await screen.findByText(/Synced notes are treated as work-related material/);
+    expect(handling.textContent).toMatch(
+      /administrators may view them for 30 days from your last day\./,
+    );
+    expect(handling.textContent).toMatch(/once they enter the knowledge base\.$/);
+    expect(handling.textContent).not.toMatch(/After 30 days/);
   });
 
   it('期限切れトークンがプラグイン設定に残る旨の固定文言を出す', async () => {
