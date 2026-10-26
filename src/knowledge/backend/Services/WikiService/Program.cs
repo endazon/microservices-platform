@@ -110,7 +110,7 @@ builder.Services.AddSingleton<IWikiJsReplicaWriteLock>(sp =>
         connStr, sp.GetRequiredService<ILogger<PostgresWikiJsReplicaWriteLock>>());
 });
 builder.Services.AddSingleton(sp => new WikiJsWriteGate(maxParallelWrites, sp.GetRequiredService<IWikiJsReplicaWriteLock>()));
-// FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934): 恒久的な失敗（slug の一意制約・本文の NoSuchKey）で記録だけして終えた同期の計数。
+// FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934): 恒久的な失敗（本文の NoSuchKey・値の長さ）で記録だけして終えた同期の計数。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<WikiSyncSkippedMetrics>();
 builder.Services.AddOpenTelemetry()

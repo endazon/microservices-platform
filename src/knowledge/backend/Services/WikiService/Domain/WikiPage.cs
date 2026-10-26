@@ -71,10 +71,6 @@ public class WikiPage
         SyncedAt = DateTimeOffset.UtcNow;
     }
 
-    // 🔴 FR-13, [[IADR-0541]] 決定 1 (#1934): 保存時の slug の競合（23505 `IX_Pages_Slug`）を受けて付け替える。
-    // 付け替え先は `SlugCandidates` の末尾（文書 ID 32 桁の接尾辞）に限る（受け口が決める）。
-    public void ReassignSlug(string slug) => Slug = slug;
-
     // slug 列の長さ（WikiDbContext の HasMaxLength と同じ値）。
     public const int SlugMaxLength = 500;
 
@@ -86,6 +82,7 @@ public class WikiPage
 
     // 🔴 FR-13, [[IADR-0541]] 決定 1 (#1934): **slug の候補列。題名だけでは一意にならない**（同じ見出しのニュース・
     // 重複して作られた同名の規程が同じ slug へ写り、`IX_Pages_Slug` の 23505 で同期が恒久的に失敗した）。
+    // ［2026-10-26 / #2108・[[IADR-0644]]］索引は一意でなくなった（ADR-0091 決定 1）。候補列は旧形式の URL が 1 件に決まるために残す。
     // 候補は [題名由来, 題名由来-文書IDの先頭8桁, 題名由来-文書ID 32桁]。**後ろほど一意で、末尾は文書 ID を丸ごと含む**ので、
     // 文書 ID の一意性（`IX_Pages_DocumentId`）から他の文書の末尾の候補とは重ならない。
     // 題名由来の部分が空（記号だけの題名）なら素の候補を飛ばし `doc-<8桁>` から始める（空の slug を作らない）。
