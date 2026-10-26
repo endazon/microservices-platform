@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using System.Diagnostics.Metrics;
 using System.Net;
 using Amazon.S3;
@@ -228,7 +229,7 @@ public class DocumentBodyMissingTests
         RecordingCompletedPublisher completed, BodyMissingMetrics bodyMissing, ILogger<DocumentUpdatedConsumer> logger)
         => new(reader, new MarkdownChunkingService(), new FixedEmbedder(), store, completed,
             ConsumerTimeoutsForTests.Calls(), ConsumerTimeoutsForTests.Timeouts, TimeProvider.System,
-            TestMeterFactory.NewEmbeddingPendingMetrics(), bodyMissing, logger);
+            TestMeterFactory.NewEmbeddingPendingMetrics(), bodyMissing, logger, new DocumentIndexLocks());
 
     private static IHost BuildHost(ScriptedStorage storage)
         => new HostBuilder()
@@ -245,6 +246,8 @@ public class DocumentBodyMissingTests
                 .AddMetrics()
                 .AddSingleton<EmbeddingPendingMetrics>()
                 .AddSingleton<BodyMissingMetrics>()
+                // #2263 / IADR-0640: 受け口は文書ごとの排他を必須で受ける（本番の Program.cs と同じく単一のインスタンス）。
+                .AddSingleton<DocumentIndexLocks>()
                 .AddSingleton(IngestionTimeouts.Default)
                 .AddSingleton(TimeProvider.System)
                 .AddSingleton<IDocumentContentReader>(Reader(storage))

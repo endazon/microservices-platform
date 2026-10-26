@@ -6,6 +6,8 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Domain.Ports;
 using IngestionService.Features.Ingestion.Ingest;
 using IngestionService.Features.Ingestion.ReembedPending;
+using IngestionService.Features.Ingestion.RemoveDeleted;
+using IngestionService.Common.Concurrency;
 using IngestionService.Features.Indexing.GetIndexStatuses;
 using IngestionService.Common.Observability;
 using Knowledge.Contracts.Events;
@@ -89,6 +91,8 @@ builder.Services.AddSingleton<IIngestionVectorStore>(sp => new QdrantIngestionVe
 // ［2026-10-05 / #1746］[[IADR-0497]] 決定 4: 語彙索引の 1 本も削除の対象なので数に入れる（＋1）。
 var ingestionTimeouts = IngestionTimeouts.From(builder.Configuration, embeddingCollections.Count + 1);
 builder.Services.AddSingleton(ingestionTimeouts);
+// 🔴 FR-02, FR-06, IADR-0640 決定 3 (#2263): 取り込み・削除の受け口と埋め直しを、文書ごとに直列にする（プロセスで 1 つ）。
+builder.Services.AddSingleton<DocumentIndexLocks>();
 builder.Services.AddPlatformConsumerTimeouts();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
@@ -138,8 +142,10 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 // FR-15, ADR-0018, IADR-0029: 自己申告（イントロスペクション）— この段（ingest）の実効値を申告する。
 // これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
 // ingest は Wolverine 段（E3b）なので AddWolverineStep で申告する。
+// FR-06, IADR-0640 (#2263): 削除の段（ingestion-delete）も申告する。
 builder.Services.AddPlatformIntrospection("ingestion-service", pipeline,
-    i => i.AddWolverineStep<DocumentUpdatedConsumer>());
+    i => i.AddWolverineStep<DocumentUpdatedConsumer>()
+        .AddWolverineStep<DocumentDeletedConsumer>());
 
 // NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
 // 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ
@@ -162,17 +168,21 @@ builder.Host.UseWolverine(opts =>
     // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
     // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
     var step = opts.AddPlatformWolverineStep<DocumentUpdatedConsumer>(pipeline);
+    // 🔴 FR-06, FR-19, IADR-0640 決定 1 (#2263): 削除の段。版の印を削除済みの墓石にする（削除の後の古い更新で取り込み直さない）。
+    var deleteStep = opts.AddPlatformWolverineStep<DocumentDeletedConsumer>(pipeline);
 
     // 手順 3（購読側の束ね）/ #992: 自分のキューをイベント型名の fan-out exchange へ束ねる。
     // **キュー名を分けるだけでは何も届かない** —— 束ねて初めて発行が届く。
     // FR-14 / #1801: 段宣言（step）を渡す。queue 宣言があればそれ、無ければイベント型名で束ね・購読し、
     // `enabled: false` の段ではキューを束ねずリスナーも立てない（WolverineExtensions の段宣言版）。
     opts.UsePlatformRabbitMq(rabbitConnection).AutoProvision()
-        .BindPlatformQueue<DocumentUpdated>("ingestion-service", step);
+        .BindPlatformQueue<DocumentUpdated>("ingestion-service", step)
+        .BindPlatformQueue<DocumentDeleted>("ingestion-service", deleteStep);
 
     // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う
     // （fan-out の保存: wiki-service / graph-service と別キューになりサービス名前置で分かれる）。
     opts.ListenToPlatformQueue<DocumentUpdated>("ingestion-service", step);
+    opts.ListenToPlatformQueue<DocumentDeleted>("ingestion-service", deleteStep);
 
     // FR-02, IADR-0234 単位 E4 (#2134): 発行側の経路宣言（IADR-0314）。fan-out exchange `IngestionCompleted` へ出す。
     // 宣言が無いと、Wolverine は送り先の無い発行として捨てる（ローカルの規約ルーティングは共通既定が切っている）。
@@ -184,6 +194,9 @@ builder.Host.UseWolverine(opts =>
     // FR-02, ADR-0027 (#1640): 取り込みの受け口の実行期限（既定 435 秒。［2026-10-23 / #2101］420 → 435）。Wolverine の既定 60 秒では、埋め込みの回数が
     // チャンク数に比例する大きな文書を止まっていなくても切ってしまう。他のメッセージ型の既定は変えない。
     opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentUpdated>(ingestionTimeouts.Handler));
+    // 🔴 IADR-0640 決定 3 (#2263): 削除の受け口は、同じ文書の取り込み（最長でこの期限）の終わりを排他で待つ。期限は取り込みの受け口と同じ値にする
+    // （待ちは取り込み 1 回分を超えない。再試行の鎖も同じ数値なので、ブローカの未確認の上限に収まる —— IngestionTimeouts.From が検査する式と同じ）。
+    opts.Policies.Add(new HandlerExecutionTimeoutPolicy<DocumentDeleted>(ingestionTimeouts.Handler));
     // #1640: 埋め込みの総枠を使い切った文書は再試行せずデッドレターへ（大きすぎる文書は何度試しても収まらない）。
     // 呼び出しごとの時間切れは上の共通既定どおり再試行する。
     opts.Policies.Add(new EmbeddingBudgetDeadLetterPolicy());

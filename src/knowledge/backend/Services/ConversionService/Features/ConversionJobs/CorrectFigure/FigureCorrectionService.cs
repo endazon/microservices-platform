@@ -31,10 +31,13 @@ public enum FigureCorrectionStatus
     JobBusy,
     // 本文を読めなかった／図の埋め込みが見つからなかった。**補正は保存しない。**
     BodyUnavailable,
+    // FR-12, #2255: 確かめた後にジョブの状態が変わった（同じ原本の再配送で再処理が始まった等）。**補正は記録せず、再発行もしない。**
+    JobChanged,
 }
 
+// CurrentStatus は JobChanged のときの、読み直した現在の状態。
 public record FigureCorrectionOutcome(FigureCorrectionStatus Status, string? MarkdownUri = null,
-    int CorrectedFigures = 0);
+    int CorrectedFigures = 0, string? CurrentStatus = null);
 
 public class FigureCorrectionService(
     IConversionJobStore jobs,
@@ -48,7 +51,7 @@ public class FigureCorrectionService(
         var job = await jobs.GetAsync(jobId, ct);
         if (job is null) return new(FigureCorrectionStatus.JobNotFound);
         // 変換中の本文は動いている。書き換えると変換側の保存に上書きされる。
-        if (job.Status == ConversionJobStatus.Processing || job.Status == ConversionJobStatus.Queued)
+        if (ConversionJob.IsBusy(job.Status))
             return new(FigureCorrectionStatus.JobBusy);
 
         var figure = await jobs.GetFigureAsync(jobId, figureId, ct);
@@ -75,7 +78,18 @@ public class FigureCorrectionService(
         // 本文は同じキーへ保存し直す（DocumentId が決定的なため参照先は変わらない）。
         var markdownUri = await objectStore.SaveMarkdownAsync(
             $"{job.DocumentId:N}/document.md", replaced, ct);
-        await jobs.ApplyCorrectionAsync(jobId, figureId, request.Language, request.Code, markdownUri, ct);
+        var written = await jobs.ApplyCorrectionAsync(jobId, figureId, request.Language, request.Code, markdownUri, ct);
+        if (written == CorrectionWrite.Missing) return new(FigureCorrectionStatus.FigureNotFound);
+        if (written == CorrectionWrite.JobChanged)
+        {
+            // 🔴 FR-12, UC-06, #2255: 状態は**読み直した現在の値**を返す（#2159 の再変換の負けた側と同じ。最初に確かめた succeeded を返さない）。
+            // 本文のファイルは補正版で上書き済みになり得るが、再発行しないので取り込みへは届かず、再処理が成功すれば書き直される（作業仕様書の残余）。
+            var current = await jobs.GetAsync(jobId, ct);
+            logger.LogWarning(
+                "Manual correction not recorded for job {JobId} figure {FigureId}: job status changed to {Status}",
+                jobId, ForLog(figureId), current?.Status);
+            return new(FigureCorrectionStatus.JobChanged, CurrentStatus: current?.Status);
+        }
 
         // 05_screens:313「補正結果は取り込みへ再投入する」。DocumentId は決定的なので重複登録にならない。
         // **ABAC 属性とタグは原本イベントから復元して載せる。** 空で再発行すると取り込み側が機密区分を

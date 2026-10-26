@@ -807,6 +807,8 @@ public class QdrantIngestionVectorStore(
     internal const string IndexVersionCollectionName = "knowledge_document_index_versions";
     internal const string IndexVersionUpdatedAtKey = "updated_at";
     internal const string IndexVersionAccessKey = "access_fingerprint";
+    // FR-06, FR-19, IADR-0640 決定 1・4 (#2263): 削除の墓石の旗（真のときだけ書く。キーの無い旧い印は削除済みでないと読む）。
+    internal const string IndexVersionDeletedKey = "deleted";
 
     // FR-02, IADR-0639 決定 3 (#2150 / #2251): 版の印と点の両方が持つ、発行の連番のキー（無ければ連番なし）。
     internal const string SequenceKey = "sequence";
@@ -850,7 +852,7 @@ public class QdrantIngestionVectorStore(
             [DocumentIdKey] = new Value { StringValue = documentId.ToString() },
             [IndexVersionUpdatedAtKey] = new Value { IntegerValue = version.UpdatedAtMs },
             [IndexVersionAccessKey] = new Value { StringValue = version.AccessFingerprint },
-        }.WithSequence(version.Sequence));
+        }.WithSequence(version.Sequence).WithDeleted(version.Deleted));
 
     // [[IADR-0595]] 決定 1: 版の印を読み戻す（純関数）。版の読めない点は null（印が無いのと同じに扱う —— 判定軸は「不明」になり、
     // 取り込みは旧版の点を先に消す側〔fail-closed〕へ倒れる）。
@@ -859,7 +861,10 @@ public class QdrantIngestionVectorStore(
         if (!payload.TryGetValue(IndexVersionUpdatedAtKey, out var at) || at.KindCase != Value.KindOneofCase.IntegerValue)
             return null;
         var access = payload.TryGetValue(IndexVersionAccessKey, out var a) ? a.StringValue : "";
-        return new DocumentIndexVersion(DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue), access, SequenceOf(payload));
+        var deleted = payload.TryGetValue(IndexVersionDeletedKey, out var d)
+                      && d.KindCase == Value.KindOneofCase.BoolValue && d.BoolValue;
+        return new DocumentIndexVersion(DateTimeOffset.FromUnixTimeMilliseconds(at.IntegerValue), access, SequenceOf(payload),
+            deleted);
     }
 
     // FR-02, FR-05, [[IADR-0595]] 決定 2 (#2101): 旧版の点を全コレクションから消す（`DeleteByDocumentFromAllAsync` と同じ巡り方）。
@@ -961,6 +966,14 @@ internal static class SequencePayloadExtensions
     {
         if (sequence is { } seq)
             payload[QdrantIngestionVectorStore.SequenceKey] = new Value { IntegerValue = seq };
+        return payload;
+    }
+
+    // IADR-0640 決定 1 (#2263): 版の印のペイロードへ削除の旗を足す（墓石のときだけ）。
+    internal static Dictionary<string, Value> WithDeleted(this Dictionary<string, Value> payload, bool deleted)
+    {
+        if (deleted)
+            payload[QdrantIngestionVectorStore.IndexVersionDeletedKey] = new Value { BoolValue = true };
         return payload;
     }
 }

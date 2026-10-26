@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using IngestionService.Common.Observability;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
@@ -26,8 +27,14 @@ public sealed class EmbeddingPendingReembedder(
     EmbeddingPendingMetrics metrics,
     EmbeddingPendingOptions options,
     IngestionTimeouts timeouts,
-    ILogger<EmbeddingPendingReembedder> logger)
+    ILogger<EmbeddingPendingReembedder> logger,
+    DocumentIndexLocks locks)
 {
+    // 🔴 FR-02, FR-06, IADR-0640 決定 3 (#2263): 点の読み直しから主への書き込み・待ちの点の削除までを、同じ文書の削除と交差させない
+    // （読み直した後に削除が点を消すと、ここで主へ書いた点が削除した文書の点として残る）。
+    // 必須の引数にする（既定値で私的な排他を作ると、削除の受け口と別の排他になる。#2270 のレビュー）。
+    private readonly DocumentIndexLocks _locks = locks;
+
     private bool _indexEnsured;
 
     // 高機密として残した点・復元できなかった点の ID（プロセス内の記憶。#1924 の監査とレビュー）。
@@ -64,13 +71,16 @@ public sealed class EmbeddingPendingReembedder(
                 break;
             }
 
-            var current = await WithTimeoutAsync(timeouts.VectorStore,
-                t => store.GetEmbeddingPendingAsync(point.PointId, t), ct);
-            if (current is null || current.UpdatedAt != point.UpdatedAt || current.Text != point.Text)
-                continue;
+            using (await _locks.AcquireAsync(point.DocumentId, ct))
+            {
+                var current = await WithTimeoutAsync(timeouts.VectorStore,
+                    t => store.GetEmbeddingPendingAsync(point.PointId, t), ct);
+                if (current is null || current.UpdatedAt != point.UpdatedAt || current.Text != point.Text)
+                    continue;
 
-            await WithTimeoutAsync(timeouts.VectorStore, t => WriteToPrimaryAsync(current, embedding, t), ct);
-            await WithTimeoutAsync(timeouts.VectorStore, t => store.DeleteEmbeddingPendingAsync(point.PointId, t), ct);
+                await WithTimeoutAsync(timeouts.VectorStore, t => WriteToPrimaryAsync(current, embedding, t), ct);
+                await WithTimeoutAsync(timeouts.VectorStore, t => store.DeleteEmbeddingPendingAsync(point.PointId, t), ct);
+            }
             reembedded++;
         }
 

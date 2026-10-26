@@ -47,8 +47,19 @@ public interface IConversionJobStore
     Task<RawDocumentFetched?> GetSourceEventAsync(Guid id, CancellationToken ct = default);
 
     // UC-06, IADR-0154: 補正を記録し、更新後の本文 URI をジョブへ反映する。
-    Task ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
+    // 🔴 FR-12, #2255: 書く時点のジョブが変換中なら書かない。保存が並行する状態の変化に負けたら投げずに JobChanged を返す。
+    Task<CorrectionWrite> ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
         string markdownUri, CancellationToken ct = default);
+}
+
+// FR-12, UC-06, #2255: 補正の記録の結果。
+public enum CorrectionWrite
+{
+    Applied,
+    // ジョブか図が見つからない（記録していない）。
+    Missing,
+    // 確かめた後にジョブの状態が変わった（再処理が始まった等）。**記録していない。**
+    JobChanged,
 }
 
 // IADR-0043: EF Core（Postgres）実装。ConversionJobDbContext は scoped のため本ストアも scoped で登録する。
@@ -167,15 +178,32 @@ public sealed class EfConversionJobStore(ConversionJobDbContext db) : IConversio
         return job?.ToEvent();
     }
 
-    public async Task ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
+    public async Task<CorrectionWrite> ApplyCorrectionAsync(Guid jobId, string figureId, string language, string code,
         string markdownUri, CancellationToken ct = default)
     {
         var job = await db.ConversionJobs.Include(j => j.Figures)
             .FirstOrDefaultAsync(j => j.Id == jobId, ct);
         var figure = job?.Figures.FirstOrDefault(f => f.FigureId == figureId);
-        if (job is null || figure is null) return;
+        if (job is null || figure is null) return CorrectionWrite.Missing;
+        // 🔴 FR-12, UC-06, #2255 窓 B: 補正の口が最初に確かめてから、ここで読むまでの間に再処理が始まっていれば書かない。
+        // 確かめ直さないと、読んだ processing のまま並行トークンの照合も通り、処理中のジョブへ補正を黙って書く。
+        if (ConversionJob.IsBusy(job.Status))
+            return CorrectionWrite.JobChanged;
         figure.TryApplyCorrection(language, code);
         job.MarkCorrected(markdownUri);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // 🔴 FR-12, UC-06, #2255 窓 A: ここで読んだ後・保存の前に状態が変わった（`UPDATE … WHERE "Status" = @読んだ状態` が 0 行）。
+            // 投げると補正の口は 500 になる。負けた変更（補正・本文の参照）は**このジョブと図の追跡だけ**を外して捨てる
+            // （#2159 の PrepareRetryAsync と同じ。DbContext 全体は捨てない）。
+            db.Entry(job).State = EntityState.Detached;
+            foreach (var f in job.Figures) db.Entry(f).State = EntityState.Detached;
+            return CorrectionWrite.JobChanged;
+        }
+        return CorrectionWrite.Applied;
     }
 }

@@ -51,6 +51,8 @@ public class EmbeddingBudgetDeadLetterPipelineTests
                 .AddMetrics()
                 .AddSingleton<IngestionService.Common.Observability.EmbeddingPendingMetrics>()
                 .AddSingleton<IngestionService.Common.Observability.BodyMissingMetrics>()
+                // #2263 / IADR-0640: 受け口は文書ごとの排他を必須で受ける（本番の Program.cs と同じく単一のインスタンス）。
+                .AddSingleton<IngestionService.Common.Concurrency.DocumentIndexLocks>()
                 .AddSingleton(timeouts)
                 .AddSingleton<TimeProvider>(clock)
                 .AddSingleton<IDocumentContentReader>(reader)

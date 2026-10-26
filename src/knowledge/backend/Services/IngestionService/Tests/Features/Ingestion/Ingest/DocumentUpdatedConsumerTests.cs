@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using AwesomeAssertions;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
@@ -56,7 +57,7 @@ public class DocumentUpdatedConsumerTests
             TimeProvider.System,
             metrics ?? TestMeterFactory.NewEmbeddingPendingMetrics(),
             bodyMissing ?? TestMeterFactory.NewBodyMissingMetrics(),
-            logger ?? NullLogger<DocumentUpdatedConsumer>.Instance);
+            logger ?? NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks());
         return (consumer, completed);
     }
 

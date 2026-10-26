@@ -88,6 +88,22 @@ public class QdrantIndexVersionStoreTests
         QdrantIngestionVectorStore.ReadIndexVersion(legacy.Payload)!.Sequence.Should().BeNull();
     }
 
+    // 🔴 FR-06, IADR-0640 決定 1・4 (#2263): 削除の墓石は旗を往復で保ち、旗の無い旧い印は削除済みでないと読む（migration 不要）。
+    [Fact]
+    public void 版の印は削除の墓石の旗を往復で保ち_旗の無い旧い印は削除済みでないと読む()
+    {
+        var tombstone = QdrantIngestionVectorStore.BuildIndexVersionPoint(DocId, DocumentIndexVersion.Tombstone(Version, 9));
+        tombstone.Payload[QdrantIngestionVectorStore.IndexVersionDeletedKey].BoolValue.Should().BeTrue();
+        var read = QdrantIngestionVectorStore.ReadIndexVersion(tombstone.Payload)!;
+        read.Deleted.Should().BeTrue();
+        read.Sequence.Should().Be(9);
+        read.AccessFingerprint.Should().BeEmpty();
+
+        var live = QdrantIngestionVectorStore.BuildIndexVersionPoint(DocId, new DocumentIndexVersion(Version, "fp", 7));
+        live.Payload.ContainsKey(QdrantIngestionVectorStore.IndexVersionDeletedKey).Should().BeFalse("旗は墓石のときだけ書く");
+        QdrantIngestionVectorStore.ReadIndexVersion(live.Payload)!.Deleted.Should().BeFalse();
+    }
+
     // 全コレクション（モデル別 ＋ 語彙索引）を巡り、残す点はコレクションごとに分けて渡す
     // （同じ ID の点が別のコレクションに残っていれば消す —— 埋め込み待ち → 主への移動）。
     [Fact]
