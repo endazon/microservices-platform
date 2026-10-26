@@ -137,6 +137,9 @@ builder.Services.AddScoped<ISimilarityCandidateSource>(sp =>
         == AiSuggestionSimilarityOptions.None
         ? sp.GetRequiredService<UnconfiguredSimilarityCandidateSource>()
         : sp.GetRequiredService<TermOverlapSimilarityCandidateSource>());
+// FR-18, ADR-0034 決定 5 (#2119): 提案の LLM 送信の監査（封に入った文書 ID の集合・起点・要求者）。DocumentService と同じ実装。
+builder.Services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger,
+    Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger>();
 builder.Services.AddScoped<AiSuggestionGenerator>();
 
 // FR-18, SC-03, SC-05, SC-09, ADR-0063 決定 1〜3, IADR-0364 (#1187 / #1014): DocumentService との

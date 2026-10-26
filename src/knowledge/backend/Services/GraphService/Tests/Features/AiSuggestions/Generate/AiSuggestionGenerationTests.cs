@@ -148,17 +148,20 @@ public class AiSuggestionGenerationTests
     }
 
     private static AiSuggestionGenerator Generator(
-        GraphDbContext db, ISimilarityCandidateSource similarity, ISuggestionLlmClient llm)
+        GraphDbContext db, ISimilarityCandidateSource similarity, ISuggestionLlmClient llm,
+        RecordingAuditLogger? audit = null)
         => new(new EfGraphStore(db), similarity, llm, new FixedDictionary("設計"),
-            new TagSuggestionDropMetrics(new DummyMeterFactory()), db, TimeProvider.System);
+            new TagSuggestionDropMetrics(new DummyMeterFactory()), db, TimeProvider.System,
+            audit ?? new RecordingAuditLogger());
 
     private static (AiSuggestionGenerator Generator, CapturingHandler Handler) GatewayGenerator(
-        GraphDbContext db, ISimilarityCandidateSource similarity, Func<string, string> respond)
+        GraphDbContext db, ISimilarityCandidateSource similarity, Func<string, string> respond,
+        RecordingAuditLogger? audit = null)
     {
         var handler = new CapturingHandler(respond);
         var client = new LlmGatewayGrpcSuggestionClient(
             new HttpBackedCompletionClient(handler), NullLogger<LlmGatewayGrpcSuggestionClient>.Instance);
-        return (Generator(db, similarity, client), handler);
+        return (Generator(db, similarity, client, audit), handler);
     }
 
     // 起点 1 件・スコープ内候補 1 件・スコープ外候補 1 件を置く。
@@ -409,6 +412,106 @@ public class AiSuggestionGenerationTests
 
         created.Should().BeEmpty("縮退した応答は提案の根拠にならない");
         db.AiSuggestions.Should().BeEmpty();
+    }
+
+    // ── #2119: LLM 送信の監査（FR-18 受け入れ基準「スコープ外本文が LLM へ送信されないことを監査ログで確認できる」） ──
+
+    private static IReadOnlyList<Guid> DocumentsOf(RecordingAuditLogger.Entry e)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(e.Detail ?? "", @"documents=([0-9a-f,-]*) count=(\d+)$");
+        m.Success.Should().BeTrue($"detail の形が違う: {e.Detail}");
+        var ids = m.Groups[1].Value.Length == 0 ? [] : m.Groups[1].Value.Split(',').Select(Guid.Parse).ToList();
+        ids.Should().HaveCount(int.Parse(m.Groups[2].Value), "count は封に入った数");
+        return ids;
+    }
+
+    // A-01 🔴 FR-18, ADR-0034 決定 5 (#2119): 生成 1 回（LLM 1 回）につき監査ログが 1 行。要求者・起点・封に入った文書 ID を含み、
+    // **本文・題名を含まない**。スコープ外の ID は現れない。
+    [Fact]
+    public async Task One_generation_writes_one_audit_line_with_the_sealed_document_ids_and_no_titles()
+    {
+        using var db = NewDb();
+        var (origin, visible, hidden) = await SeedAsync(db);
+        var audit = new RecordingAuditLogger();
+        var (generator, handler) = GatewayGenerator(
+            db,
+            new StubSimilarity(new SimilarityCandidate(visible, 0.8), new SimilarityCandidate(hidden, 0.9)),
+            _ => "[]", audit);
+
+        await generator.GenerateAsync(origin, InternalOnly(), TestContext.Current.CancellationToken);
+
+        handler.Sent.Should().HaveCount(1, "対照: LLM を 1 回呼んでいる");
+        var e = audit.Entries.Should().ContainSingle().Which;
+        e.Action.Should().Be(AiSuggestionGenerator.LlmSendAuditAction);
+        e.Subject.Should().Be("test-user", "要求者（その実行の唯一のスコープの持ち主）");
+        e.Outcome.Should().Be("sent");
+        e.Detail.Should().StartWith($"origin={origin} ");
+        DocumentsOf(e).Should().BeEquivalentTo([visible]);
+        e.Detail.Should().NotContain(hidden.ToString(), "スコープ外の文書は封に入らない＝監査にも現れない");
+        foreach (var title in new[] { "起点-社内議事録", "社内設計メモ", "極秘人事評価" })
+            e.Detail.Should().NotContain(title, "本文・題名は監査ログへ載せない");
+    }
+
+    // A-02 🔴 (#2119): **監査の集合は、実際の送信本文に現れる候補の ID の集合と一致する**（封から書いている）。
+    // 候補列挙や類似度の結果から書く実装（スコープ外を含み得る・上限で切った後と食い違う）を区別する。
+    [Fact]
+    public async Task Audited_document_set_equals_the_candidates_actually_sent()
+    {
+        using var db = NewDb();
+        var (origin, visible, hidden) = await SeedAsync(db);
+        var extra = Guid.NewGuid();
+        db.Documents.Add(Doc(extra, "候補-社内手順書", "internal"));
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        var audit = new RecordingAuditLogger();
+        var (generator, handler) = GatewayGenerator(
+            db,
+            new StubSimilarity(new SimilarityCandidate(visible, 0.8), new SimilarityCandidate(hidden, 0.9),
+                new SimilarityCandidate(extra, 0.7)),
+            _ => "[]", audit);
+
+        await generator.GenerateAsync(origin, InternalOnly(), TestContext.Current.CancellationToken);
+
+        var audited = DocumentsOf(audit.Entries.Should().ContainSingle().Which);
+        var sent = new[] { visible, hidden, extra }.Where(id => handler.Sent[0].Contains(id.ToString())).ToList();
+        audited.Should().BeEquivalentTo(sent);
+        audited.Should().BeEquivalentTo([visible, extra], "対照: スコープ内の 2 件が封に入る");
+    }
+
+    // A-03 (#2119・陰性対照): LLM を呼ばない経路では監査ログを書かない（送っていない）。
+    [Fact]
+    public async Task No_audit_line_when_the_llm_is_not_called()
+    {
+        using var db = NewDb();
+        var (origin, visible, hidden) = await SeedAsync(db);
+        var audit = new RecordingAuditLogger();
+        var (generator, handler) = GatewayGenerator(db, new StubSimilarity(new SimilarityCandidate(visible, 0.9)), _ => "[]", audit);
+        var (noCandidates, handler2) = GatewayGenerator(db, new StubSimilarity(new SimilarityCandidate(hidden, 0.9)), _ => "[]", audit);
+        var ct = TestContext.Current.CancellationToken;
+
+        await generator.GenerateAsync(hidden, InternalOnly(), ct);                                             // 起点が見えない
+        await generator.GenerateAsync(origin, new AccessScopeResponse("test-user", [], false), ct);             // スコープ未付与
+        await noCandidates.GenerateAsync(origin, InternalOnly(), ct);                                          // 候補がスコープ外だけ
+
+        handler.Sent.Should().BeEmpty();
+        handler2.Sent.Should().BeEmpty();
+        audit.Entries.Should().BeEmpty("LLM へ何も送っていないので、送信の監査は残さない");
+    }
+
+    // A-04 (#2119): LLM が縮退（送れなかった・拒否）しても、送信の試みの行は残る（送る前に書く）。
+    [Fact]
+    public async Task Audit_line_is_written_even_when_the_gateway_degrades()
+    {
+        using var db = NewDb();
+        var (origin, visible, _) = await SeedAsync(db);
+        var audit = new RecordingAuditLogger();
+        var client = new LlmGatewayGrpcSuggestionClient(
+            new HttpBackedCompletionClient(new DegradedHandler(false, null, visible)),
+            NullLogger<LlmGatewayGrpcSuggestionClient>.Instance);
+
+        await Generator(db, new StubSimilarity(new SimilarityCandidate(visible, 0.9)), client, audit)
+            .GenerateAsync(origin, InternalOnly(), TestContext.Current.CancellationToken);
+
+        DocumentsOf(audit.Entries.Should().ContainSingle().Which).Should().BeEquivalentTo([visible]);
     }
 
     private sealed class DegradedHandler(bool sent, string? stopReason, Guid target) : HttpMessageHandler

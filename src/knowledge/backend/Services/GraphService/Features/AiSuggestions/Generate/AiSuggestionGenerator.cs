@@ -4,6 +4,7 @@ using GraphService.Infrastructure.Persistence;
 using GraphService.Domain.Ports;
 using Microsoft.EntityFrameworkCore;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 
 namespace GraphService.Features.AiSuggestions.Generate;
 
@@ -40,8 +41,12 @@ public sealed class AiSuggestionGenerator(
     ITagDictionaryReader tagDictionary,
     TagSuggestionDropMetrics dropMetrics,
     GraphDbContext db,
-    TimeProvider clock)
+    TimeProvider clock,
+    IAuditLogger audit)
 {
+    // FR-18, ADR-0034 決定 5 (#2119): LLM へ送る直前の監査の操作種別。
+    public const string LlmSendAuditAction = "graph.ai_suggestion.llm_send";
+
     // 類似度側へ要求する件数。**スコープで落ちるぶんを見込んで多めに引く**が、
     // **落ちた数に応じて引き直しはしない**（上記の側チャネル）。
     public const int SimilarityFetchCount = 50;
@@ -106,6 +111,16 @@ public sealed class AiSuggestionGenerator(
             origin, candidates, types.Select(t => t.Name).ToList(), tagNames, scope);
         if (prompt is null)
             return [];
+
+        // FR-18 受け入れ基準「スコープ外本文が LLM へ送信されないことを監査ログで確認できる」, ADR-0034 決定 5 (#2119):
+        // **送る直前に、封に入った文書 ID の集合・起点・要求者を 1 行残す。**
+        // 🔴 **封（prompt）から書く** —— 候補列挙や類似度の結果から書くと、「実際に送ったもの」と一致する保証が無い。
+        // 🔴 **本文・題名・辞書の値は載せない**（ID は GUID で利用者の資料に由来しない。4 引数は AuditLogger が無害化する）。
+        // 🔴 **落とした件数は書かない**（ADR-0051 決定 2）。送信の試みを残すので、LLM の失敗より**前**に書く。
+        audit.Record(LlmSendAuditAction, scope.UserId, "sent",
+            $"origin={prompt.OriginDocumentId} "
+            + $"documents={string.Join(',', prompt.Candidates.Select(c => c.DocumentId))} "
+            + $"count={prompt.Candidates.Count}");
 
         // [5] LLM。
         var proposals = await llm.ProposeAsync(prompt, ct);

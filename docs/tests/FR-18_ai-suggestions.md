@@ -3,15 +3,15 @@ title: FR-18 AI 提案（リンク・タグ）テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-10-10
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-18, SC-03, SC-05, SC-09, NFR-09, NFR-16]
 adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0117]
 iadrs: [IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412, IADR-0530]
-specs: [20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers]
-issues: [#1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887]
+specs: [20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers]
+issues: [#1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887, #2119]
 -->
 
 # テスト仕様書: AI 提案（リンク・タグ）
@@ -94,6 +94,7 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-56 | 所有者の無い組織文書・所有者つき文書・他人の個人資料と辞書のタグ。グラフの client の実トークンの形。承認者が管理者かを答える名簿の代役（管理者・管理者でない・引けない）。名簿の実物側は偽の身元プロバイダの既定の利用者（管理者・運用者・無効化された利用者）（`DocumentTagWriteAdminRoleTests`・`GrpcApproverRoleDirectoryTests`・`GrpcUserDirectoryTests`・`KeycloakIdentityAdminClientTests`） | 反映の gRPC 面を、要求の `user_roles` に管理者あり・なしで呼ぶ。名簿の「この 1 人はこのロールを持つか」を呼ぶ。Keycloak の実効ロールの読み口を呼ぶ | **要求が管理者を名乗っても名簿が管理者でないと答えれば反映されない**（版が 1 のまま）。要求にロールが無くても名簿が管理者と答えれば反映される（陽性対照）。名簿を引けなければ所有者でない承認者の要求は要求の失敗（書けないへ畳まない）。所有者の要求・個人資料では名簿を引かない。名簿は実効ロールで答え、無効化された利用者は持たない・ロール名は序数一致・居ないは応答・引けないは status・管理者の利用者トークンは門で拒否。Keycloak は合成ロールを展開した口を読む。要求のロールを再び信じる・引けないを「管理者でない」へ畳む・無効化の確認を落とす・直接の割当を読む・所有者でも名簿を引く変異は赤 | 管理者の上書きの判定の入力 | 自動 |
 | T-57 | BFF の構成に計測専用の鍵が無い・偽 | `POST /bff/graph/suggestions/generate/{id}` | **404**（ルート表に載らない）。後段の生成は呼ばれない | 生成は製品の口ではない（既定で閉じる） | 自動 |
 | T-58 | 計測専用の鍵が真 | システム管理者／運用者／一般利用者／未認証で同じ要求 | 管理者は後段の生成の口へ**資格情報つきで** POST し本文が素通りする（陽性対照）。運用者・一般利用者は 403、未認証は 401 で、後段へ行かない。後段の 404 はそのまま返す | 計測の口は管理者限定・存在秘匿を破らない | 自動 |
+| T-59 | 起点・スコープ内の候補 2 件・スコープ外の候補 1 件（類似度はスコープを跨いで 3 件とも返す）。LLM の正常・縮退の両方 | 提案を生成する（LLM を 1 回呼ぶ）。起点が見えない・スコープ未付与・候補がスコープ外だけ（LLM を呼ばない）も試す | **LLM を呼ぶ生成 1 回につき監査ログが 1 行**（操作 `graph.ai_suggestion.llm_send`・主体は要求者・結果 `sent`）。詳細は起点と**封に入った文書 ID の集合**で、**実際の送信本文に現れる候補の ID の集合と一致する**。スコープ外の ID・本文・題名を含まない。LLM が縮退しても行は残る（送る前に書く）。**LLM を呼ばない経路では行を出さない**（陰性対照） | スコープ外本文が LLM へ送信されないことを監査ログで確認できる | 自動 |
 
 ## 変異試験（類似度候補の供給元）
 
@@ -120,7 +121,7 @@ T-36 が、「照合しない」実装は T-35 が捕まえる —— 陽性・�
 - `AiSuggestionStateMachineTests`（T-01・T-02・T-07〜T-12。ドメイン層）
 - `AiSuggestionEndpointsTests`（T-03〜T-06・T-13・T-14。API 層）
 - `GraphDocumentSyncConsumerTests`（T-15。購読ハンドラ経由の発火。指紋同値・不明・追い越しの否定形と対で置く）
-- `AiSuggestionGenerationTests`（T-16〜T-22・T-47。生成経路。要求ペイロードを捕捉して照合する）
+- `AiSuggestionGenerationTests`（T-16〜T-22・T-47・T-59。生成経路。要求ペイロードを捕捉して照合する。T-59 は送信の監査ログ）
 - `SuggestionPromptGateTests`（T-23〜T-25。**型でしか表せない境界**を走査で固定する）
 - `TermProfileTests`（T-41〜T-44 の純粋計算部。ドメイン層）
 - `TermOverlapSimilarityCandidateSourceTests`（T-41・T-42・T-45・T-46。供給元）
@@ -142,8 +143,12 @@ T-36 が、「照合しない」実装は T-35 が捕まえる —— 陽性・�
    「渡せる値が存在しない」の差は後段フィルタの有無ではなく、**非許可ノードを持つ値が
    呼び出しの引数として存在し得るか**である（この判断の記録は実装 ADR 側にある）。
 
-**監査ログでの確認は本表の対象外である。** 監査ログの出力そのものは実装済みだが、
-その内容を検証するテストは置いていない（1 の 7 本が、ログを見るまでもなく送信自体を否定している）。
+3. **監査ログで確認できること**（T-59。［2026-10-26 追加］）。
+   ［2026-10-26 訂正］従前の本節は「監査ログの出力そのものは実装済みだが、その内容を検証するテストは置いていない」としていたが、
+   **生成経路に監査の出力は 1 件も無かった**（記述が実装と食い違っていた）。
+   LLM へ送る直前に、**封に入った文書 ID の集合・起点・要求者**を 1 行残すようにした（本文・題名は載せない）。
+   T-59 は、その集合が**実際の送信本文に現れる候補の ID の集合と一致する**ことまで固定する。
+   「監査ログで確認できる」は、ログに書かれた集合が送ったものと同じであって初めて成り立つ。
 
 ### 変異試験で確かめたこと
 
