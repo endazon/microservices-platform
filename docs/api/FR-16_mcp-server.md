@@ -4,14 +4,14 @@ type: api-spec
 status: draft
 author: claude
 created: 2026-08-23
-updated: 2026-10-23
+updated: 2026-10-26
 ---
 <!-- trace:
 ids: [FR-15, FR-16, UC-08, UC-09, SC-12]
 adrs: [ADR-0004, ADR-0018, ADR-0021, ADR-0024, ADR-0034, ADR-0054, ADR-0062, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134]
-iadrs: [IADR-0594, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533]
-specs: [20261023_2045_edge-mcp-entry, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#2045, #1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255]
+iadrs: [IADR-0594, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0373, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533, IADR-0645]
+specs: [20261026_2117_mcp-publication-configmap, 20261023_2045_edge-mcp-entry, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260828_issue-452_sc12-mcp-client-management, 20260904_issue-1190_mcp-project-attribute-ban, 20260926_1515_mcp-tool-declarations-grpc, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#2045, #1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #1611, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255, #2117]
 -->
 
 # 通信仕様書: MCP サーバー
@@ -344,6 +344,16 @@ issues: [#2045, #1859, #445, #452, #1020, #1190, #1514, #1515, #1516, #1517, #16
 
 Git 管理の JSON を `Mcp:PublicationConfigPath` で指す。**検証を通らない構成は適用しない**
 （起動時に失敗させる）。
+
+**配送（Helm / GitOps）**: 公開構成は Helm の values `services.mcp.mcpPublication` に **JSON の文字列のまま**
+（`mcpPublication: |` のブロック）書く。設定すると chart が ConfigMap `mcp-publication-config` を描いて mcp-service へ
+`/etc/microservices-platform/mcp` に読み取り専用でマウントし、`Mcp__PublicationConfigPath` でそのファイルを指す。
+構成の sha256 を Pod テンプレートの注記（`checksum/mcp-publication`）に持つので、values を変えると Git → 同期 → ロールアウトで反映される。
+**未設定（既定）ならイメージに焼き込んだ既定**（`Configuration/mcp-publication.json`）を読む。
+
+**CI の検証**: 配備ファイル（`deploy/` 以下の YAML）に書いた公開構成と、イメージの既定は、PR の時点で
+**起動時と同じ読み込み・同じ検証器**に通る（バックエンドの単体試験）。規則を別の言語へ写さないために、values を YAML の木ではなく
+JSON の文字列で持つ。描画の時点では JSON として読めることだけを確かめ、ブロック以外の書き方は CI で誤りにする（黙って検証を素通りさせない）。
 
 ```json
 {

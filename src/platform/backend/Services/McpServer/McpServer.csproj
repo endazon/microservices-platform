@@ -43,8 +43,8 @@
     <ProjectReference Include="..\..\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <!-- FR-16, ADR-0024: 宣言的公開構成の既定（空＝非公開）。実環境では Helm values からマウントし
-         Mcp:PublicationConfigPath で指す。 -->
+    <!-- FR-16, ADR-0024, IADR-0645: 宣言的公開構成のイメージの既定。Helm values の services.mcp.mcpPublication を
+         設定した配備では ConfigMap mcp-publication-config をマウントし Mcp:PublicationConfigPath で指す（こちらは読まない）。 -->
     <Content Update="Configuration\mcp-publication.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

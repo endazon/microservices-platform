@@ -1017,6 +1017,14 @@ services:
         secretKeyRef:
           name: mcp-client-admin-oidc
           key: client-secret
+    # FR-16, ADR-0024, IADR-0645 (#2117): 宣言的公開構成（許可リスト）の差し替え。**公開構成の JSON を文字列のまま**書く
+    # （`mcpPublication: |` のブロック。YAML の木にしない —— CI は配備ファイルからこのブロックを取り出し、McpServer の
+    # 検証器そのもの〔ToolPublicationConfigValidator〕に通す。McpServer.Tests の PublicationConfigDeploymentFilesTests）。
+    # 設定すると ConfigMap mcp-publication-config を描き、/etc/microservices-platform/mcp へマウントして
+    # Mcp__PublicationConfigPath で指す（変更は checksum/mcp-publication でロールアウトする）。
+    # **空（既定）ならイメージに焼き込んだ既定**（src/platform/backend/Services/McpServer/Configuration/mcp-publication.json）を読む。
+    # 書式と検証項目は docs/api/FR-16_mcp-server.md §宣言的公開構成。描画の試験は scripts/helm-mcp-publication.test.js。
+    mcpPublication: ""
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
