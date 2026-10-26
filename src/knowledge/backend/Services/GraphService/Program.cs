@@ -335,9 +335,11 @@ builder.Host.UseWolverine(opts =>
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）— graph-delete 段（#1016）と
 // graph-sync 段（#911）を申告する。
+// FR-15, IADR-0029 フォローアップ 2 (#2118): 選択中のオブジェクトストレージ（object-storage）も申告する。
 builder.Services.AddPlatformIntrospection("graph-service", pipeline, i => i
     .AddWolverineStep<DocumentDeletedConsumer>()
-    .AddWolverineStep<GraphDocumentSyncConsumer>());
+    .AddWolverineStep<GraphDocumentSyncConsumer>()
+    .AddObjectStoragePort(builder.Configuration));
 
 var app = builder.Build();
 

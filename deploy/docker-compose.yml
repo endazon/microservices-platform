@@ -1197,6 +1197,7 @@ services:
       Introspection__Services__graph-service: http://graph-service:8081
       Introspection__Services__llm-gateway: http://llm-gateway:8081
       Introspection__Services__notification-service: http://notification-service:8081
+      Introspection__Services__mcp-server: http://mcp-service:8081
     # FR-15, #146: 正の pipeline.json をそのまま読み取り専用でマウントする（複製しない・単一の真実源）。
     # ローダは生の pipeline.json を "Pipeline" セクションへ包んで読む（PipelineExtensions）。
     volumes:
@@ -1246,8 +1247,11 @@ services:
     build:
       context: ..
       dockerfile: src/platform/backend/Services/McpServer/Dockerfile
+    # FR-15 / NFR-16, IADR-0462 (#2118): 8081 は east-west gRPC の h2c ポート（構成情報 API の自己申告の収集口）。
+    # helm の grpcPort と同じ値。host へは公開しない。
     expose:
       - "8080"
+      - "8081"
     # NFR-16, IADR-0591: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
     volumes: *infra-ca-volumes
     environment:
@@ -1255,6 +1259,8 @@ services:
       # ADR-0002 / #1012: 専用 DB。deploy/create-multiple-dbs.sh が `mcp_svc` を作る。
       # 起動時に MigrateAsync が走るため、DB が無いとクラッシュループする（graph_svc の先例と同型）。
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=mcp_svc;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
+      # FR-15 / NFR-16, IADR-0462 (#2118): h2c リスナ（自己申告の面）。未設定ならリスナを立てない。/mcp・/mcp-clients（8080）はそのまま。
+      Grpc__Port: "8081"
       # FR-16, ADR-0024 §5: 自己申告の収集先。appsettings の既定と同値だが、
       # **収集先が構成で決まることを manifest 側でも見えるようにする**（既定へ黙って寄りかからない）。
       # FR-16 / NFR-09 / NFR-16, ADR-0029 / ADR-0075, IADR-0462（#1515, #1255 経路 ④-a）, IADR-0533 決定 3 (#1517):

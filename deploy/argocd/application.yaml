@@ -30,11 +30,12 @@ spec:
     path: deploy/helm/microservices-platform
     helm:
       releaseName: microservices-platform
-      # FR-15, IADR-0029 フォローアップ 3 (#144): 構成バージョンの GitOps 注入。
-      # appliedBy は argocd 固定。gitCommit / appliedAt は「実適用リビジョン」を CD パイプラインが
-      # 同期時に上書きする（`argocd app set microservices-platform --helm-set config.gitCommit=<sha>
-      # --helm-set config.appliedAt=<iso8601>`、または release automation が values-<env>.yaml を更新）。
-      # ArgoCD ネイティブ Helm は build 変数をパラメータへ自動展開しないため、SHA 供給は CD 側で行う。
+      # FR-15, IADR-0029 フォローアップ 3 (#144), IADR-0646 (#2118): 構成バージョンの GitOps 注入。
+      # appliedBy は argocd 固定。**gitCommit は Argo CD のビルド変数 $ARGOCD_APP_REVISION（同期した解決済みの完全なリビジョン）**
+      # で与える —— Argo CD の Helm は標準のビルド変数をパラメータへ置換する（User Guide の Helm §Build Environment）。
+      # ［2026-10-26 訂正］従前の注記「ネイティブ Helm は build 変数をパラメータへ自動展開しない」は誤りだった（IADR-0646）。
+      # appliedAt に当たるビルド変数は無いので、従来どおり CD が同期時に上書きする
+      # （`argocd app set microservices-platform --helm-set config.appliedAt=<iso8601>`、または values-<env>.yaml を更新）。
       # 手順は docs/operations/operations.md「構成バージョンの注入」を参照。
       # FR-15, IADR-0046, IADR-0069 (#192): 構成バージョン**履歴**（config.history[i].*）も同じ経路で供給する。
       # 各適用リビジョンを新しい順の要素として CD が --helm-set config.history[i].{gitCommit,appliedAt,appliedBy,hadDrift}
@@ -42,6 +43,11 @@ spec:
       parameters:
         - name: config.appliedBy
           value: argocd
+        # FR-15, IADR-0646 (#2118): 適用リビジョンのコミット ID。forceString は数字だけの sha を数として読ませないため。
+        #   🔴 `$` を `$$` にしない（`$$` はビルド変数の置換を止める書き方である）。
+        - name: config.gitCommit
+          value: $ARGOCD_APP_REVISION
+          forceString: true
         # NFR-20, ADR-0007, IADR-0605 (#2132): 自製イメージの不変のタグ（ビルドした git の sha）。**配備する人／CD が Git で更新する。**
         #   空のままでは chart の描画が落ち、同期は ComparisonError で止まる（latest で配らない）。forceString は数字だけの sha を
         #   数として読ませないため（chart は文字列でない値を拒む）。更新・ロールバックの手順は docs/operations/operations.md

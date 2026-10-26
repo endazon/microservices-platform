@@ -104,6 +104,13 @@ cd "$ROOT"
 . "$ROOT/scripts/lib/local-image-tag.sh" || exit 3
 IMAGE_TAG="$(resolve_local_image_tag "$ROOT")" || exit 1
 export IMAGE_TAG
+# FR-15, IADR-0029 フォローアップ 3, IADR-0646 (#2118): 構成バージョンのコミット ID（構成ビューアの「構成バージョン」）。
+#   [6/7] の helm へ --set-string config.gitCommit=<HEAD の完全な sha> で渡す。変更のある作業ツリー・detached HEAD でも HEAD は実在のコミットである。
+#   🔴 **作り物の値を渡さない。** HEAD を読めなければ何もする前に止める（上のイメージのタグと同じ姿勢）。上書きの口は持たない。
+if ! CONFIG_GIT_COMMIT="$(git -C "$ROOT" rev-parse --verify HEAD 2>/dev/null)" || [ -z "$CONFIG_GIT_COMMIT" ]; then
+  echo "ERROR: $ROOT の git の HEAD を読めません。構成バージョン（config.gitCommit）に実在のコミット ID を渡せないので止めます（IADR-0646）。" >&2
+  exit 1
+fi
 INFRA_NS="platform-infra"
 MSP_NS="microservices-platform"
 
@@ -1084,7 +1091,7 @@ if [ -n "$DEPT_SYNC_DECLARE" ]; then
 fi
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}" \
+  -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" --set-string "config.gitCommit=${CONFIG_GIT_COMMIT}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}" \
   "${LLM_KEYLESS_ARGS[@]+"${LLM_KEYLESS_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
 # NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける

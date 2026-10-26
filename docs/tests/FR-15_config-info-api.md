@@ -3,15 +3,15 @@ title: FR-15 構成情報 API（実効構成・ドリフト検出） テスト�
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-10-10
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-15, SC-11, NFR-16]
 adrs: [ADR-0018, ADR-0029, ADR-0075]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0268, IADR-0379, IADR-0462, IADR-0465, IADR-0533]
-specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260911_issue-1382_drift-timeout-stops-host, 20260926_1514_introspection-grpc-fanout, 20260926_1537_conversion-introspection-grpc-wiring, 20260927_issue-1630_caller-cancel-controls-tce, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#444, #1382, #1514, #1255, #1537, #1630, #1517]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0268, IADR-0379, IADR-0462, IADR-0465, IADR-0533, IADR-0646]
+specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260911_issue-1382_drift-timeout-stops-host, 20260926_1514_introspection-grpc-fanout, 20260926_1537_conversion-introspection-grpc-wiring, 20260927_issue-1630_caller-cancel-controls-tce, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
+issues: [#444, #1382, #1514, #1255, #1537, #1630, #1517, #2118]
 -->
 
 # テスト仕様書: 構成情報 API（実効構成・ドリフト検出）
@@ -55,7 +55,10 @@ issues: [#444, #1382, #1514, #1255, #1537, #1630, #1517]
 | 2e | ポート差し替え | 構成でポート実装が入れ替わり、段登録・実効構成は不変 | `Platform.Shared.Infrastructure.Tests/Foundation/Pipeline/PortSwapCompositionTests` |
 | 2f | 自己申告の gRPC 面 | s2s で DI の申告と同じ申告・`target` の null と空文字の往復・トークン無し=UNAUTHENTICATED・利用者トークン（管理者）=PERMISSION_DENIED（ループバックの実 Kestrel） | `Platform.Shared.Infrastructure.Tests/Foundation/Introspection/IntrospectionGrpcTests` |
 | 2g | 宛先と収集 | `Introspection:Services` の宛先を gRPC で集める・撤去した旧キー `Introspection:GrpcServices` が残っていれば起動を止める・配線不備は到達不能＋Error・不達は Warning・空の service は到達不能・期限・取り消し・収集器と s2s の発行側は常に登録する | `…/Introspection/IntrospectionGrpcTests`・`…/Introspection/ConfigInspectionGrpcRegistrationTests` |
-| 2h | 配線 | compose・helm の全収集先（13）が `Introspection__Services__*` に gRPC 宛先（:8081）を持ち、旧キー `Introspection__GrpcServices__*` が 1 件も無く、`grpcPort` / `Grpc__Port` が揃い、収集先の本番 Program.cs が h2c リスナを立てる／14 サービスの本番配線に gRPC 面が `ServiceCaller` 付きで張られる | `…/Introspection/IntrospectionGrpcDeploymentWiringTests`・各サービスの `IntrospectionEndpointTests` / `IntrospectionGrpcFaceTests` |
+| 2h | 配線 | compose・helm の全収集先（14。［2026-10-26］MCP サーバーを足した）が `Introspection__Services__*` に gRPC 宛先（:8081）を持ち、旧キー `Introspection__GrpcServices__*` が 1 件も無く、`grpcPort` / `Grpc__Port` が揃い、収集先の本番 Program.cs が h2c リスナを立てる／14 サービスの本番配線に gRPC 面が `ServiceCaller` 付きで張られる | `…/Introspection/IntrospectionGrpcDeploymentWiringTests`・各サービスの `IntrospectionEndpointTests` / `IntrospectionGrpcFaceTests` |
+| 2j | ポートの申告（［2026-10-26 追加］） | オブジェクトストレージを使う全サービスが `object-storage` を申告する（`Program.cs` の走査。0 件を緑にしない）・構成済みなら実クライアントとホスト:ポートだけ（資格情報・userinfo・クエリを載せない）・未構成なら縮退クライアントを接続先なしで・wiki-service が `wiki-sync` を実装とホスト:ポートで | `Platform.Shared.Infrastructure.Tests/Composable/Adapters/Storage/ObjectStoragePortIntrospectionTests`・`WikiService.Tests/IntrospectionGrpcFaceTests` |
+| 2k | コネクタの申告（［2026-10-26 追加］。狭い読み） | データソースサービスの申告のコネクタが DI に登録したプラグインの集合と一致し、すべて有効 | `DataSourceService.Tests/IntrospectionEndpointTests` |
+| 2l | 構成バージョンの注入（［2026-10-26 追加］） | Argo CD の Application が `config.gitCommit=$ARGOCD_APP_REVISION`（forceString）を渡す・描画で BFF の `Config__GitCommit` に載る・既定は空（陰性対照）・起動器が HEAD の完全なコミット ID を 1 つだけ渡し、読めなければ止まる・変異 | `scripts/helm-config-version.test.js`・`scripts/k8s-local-up.test.js`（#2118 の節） |
 | 2i | 自己申告の REST の収集（撤去） | REST の受け口 `GET /internal/introspection` と、その収集を撤去したので、この行の表明は無くなった。1 宛先の失敗の隔離・取り消しの扱いは 2g が gRPC で持つ。REST の受け口が 404 を返すことは変換サービスの `IntrospectionEndpointTests` が見る | — |
 | 3 | ポリシー | ConfigViewer の OR 判定・AdminOnly 非侵食 | `AuthorizationService.Tests/ConfigViewerPolicyTests` |
 | 4 | ロール展開 | realm_access.roles → Role クレーム変換 | `AuthorizationService.Tests/KeycloakRolesClaimsTransformationTests` |

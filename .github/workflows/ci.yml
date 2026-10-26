@@ -830,6 +830,13 @@ jobs:
       - name: Test helm MCP publication config delivery (render, negative, mutation)
         if: ${{ !cancelled() }}
         run: node scripts/helm-mcp-publication.test.js
+      # FR-15, IADR-0029 フォローアップ 3, IADR-0646 (#2118): 構成バージョンのコミット ID が配備で空でない値になることを固定する ——
+      # Argo CD の Application が config.gitCommit に $ARGOCD_APP_REVISION（forceString）を渡す、**実際に helm template で描いて**
+      # 与えた値が BFF の Config__GitCommit に載る・既定は空（陰性対照）、変異。起動器の経路は k8s-local-up.test.js が持つ。
+      # helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test helm config version injection (Argo CD parameter, render, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-config-version.test.js
 
       # NFR-18, IADR-0577: ブローカへの名乗り（サービスごとのユーザー）を**実際に helm template で描いて**固定する —— 既定と values-local の
       # 両方で、ブローカへ繋ぐ Deployment の集合が users.txt と一致し、ユーザー msp-<名前>・Secret msp-rabbitmq-users の同名のキー（非 optional）・

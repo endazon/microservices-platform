@@ -1,5 +1,6 @@
 using Amazon.Runtime;
 using Amazon.S3;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +45,23 @@ public static class ObjectStorageExtensions
     }
 
     // 書き込み側（ConversionService）でバケットの存在・バージョニングを起動時に保証する。
+    // FR-15, ADR-0018, ADR-0014 / ADR-0106, IADR-0029 フォローアップ 2 (#2118): 選択中のオブジェクトストレージのポート実装を
+    // 自己申告へ載せる（計画 10_composability §5「ポート実装の選択（…ストレージ…）」）。
+    // **判定は AddPlatformObjectStorage と同じ `IsConfigured`** であり、別の条件で書かない（申告と実体が食い違う）。
+    // 接続先はエンドポイントのホスト:ポートだけ（資格情報は載せない。IntrospectionTarget）。
+    public const string IntrospectionPort = "object-storage";
+
+    public static IntrospectionBuilder AddObjectStoragePort(
+        this IntrospectionBuilder builder, IConfiguration configuration)
+    {
+        var options = new ObjectStorageOptions();
+        configuration.GetSection(ObjectStorageOptions.SectionName).Bind(options);
+        return options.IsConfigured
+            ? builder.AddPort(IntrospectionPort, nameof(S3ObjectStorageClient),
+                IntrospectionTarget.HostAndPort(options.Endpoint))
+            : builder.AddPort(IntrospectionPort, nameof(NullObjectStorageClient));
+    }
+
     public static IServiceCollection AddPlatformObjectStorageBootstrap(
         this IServiceCollection services)
     {

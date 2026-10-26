@@ -24,6 +24,20 @@ public class IntrospectionGrpcFaceTests(TestWebApplicationFactory factory)
         report!.Service.Should().Be("wiki-service");
     }
 
+    // FR-15, FR-13, ADR-0011, 計画 10_composability §4・§5 (#2118): 閲覧エンジン同期（wiki-sync）のポートを、選択中の実装と
+    // 接続先（ホスト:ポートだけ。試験の構成は既定の http://wiki-js:3000/graphql）で申告する。オブジェクトストレージのポートも申告する。
+    [Fact]
+    public void 閲覧エンジン同期とオブジェクトストレージのポートを申告する()
+    {
+        var report = factory.Services.GetRequiredService<Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto>();
+
+        var wiki = report.Ports.Should().ContainSingle(p => p.Port == Program.WikiSyncPort).Which;
+        wiki.Implementation.Should().Be(nameof(WikiService.Infrastructure.ExternalServices.WikiJsGraphQlClient));
+        wiki.Target.Should().Be("wiki-js:3000");
+        report.Ports.Should().ContainSingle(p =>
+            p.Port == Platform.Shared.Infrastructure.Composable.Adapters.Storage.ObjectStorageExtensions.IntrospectionPort);
+    }
+
     // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):
     // 本番の Program.cs が**自己申告の gRPC 面**を `ServiceCaller` 付きで張っている。
     // 経路は宛先の側が面を持たないと 1 つも移らない（扇形）ので、宛先ごとに固定する。

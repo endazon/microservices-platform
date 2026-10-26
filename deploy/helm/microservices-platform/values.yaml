@@ -954,6 +954,9 @@ services:
     replicas: 1
     image: microservices-platform/mcp-service
     port: 8080
+    # FR-15, NFR-16, IADR-0462, IADR-0533 (#2118): 構成情報 API（BFF の Introspection__Services__mcp-server）が自己申告を集める
+    # h2c の口。readiness は 8080 のまま。外部 AI エージェントの入口（/mcp・edge.mcp）は 8080 であり、この口はエッジへ出さない。
+    grpcPort: 8081
     # FR-16, FR-05, SC-12, ADR-0062 決定 3 (#1185): 無人アカウントへ渡す機密区分・タグが
     # 登録者の集合の部分集合かを判定するため、登録者の ABAC 属性と認可スコープをここから解決する。
     # graph と同じ落とし穴を踏まないように明示する —— **不達でも 5xx にならず deny 側へ縮退する**
@@ -1203,6 +1206,9 @@ services:
         value: "http://llmgateway-service:8081"
       - name: Introspection__Services__notification-service
         value: "http://notification-service:8081"
+      # FR-15, FR-16, IADR-0029 フォローアップ 2 (#2118): MCP サーバーの自己申告（services.mcp.grpcPort）。
+      - name: Introspection__Services__mcp-server
+        value: "http://mcp-service:8081"
       # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・依存の報告口 /health/dependencies の UriHealthCheck）。
       # NFR-06 / IADR-0602 (#2105): 下流 4 サービスの疎通は readiness に入れない（1 つの停止で全画面を 503 にしない）。
       # appsettings 既定はローカル用ポート（5001-5009）のため、k8s Service の実 DNS（:8080）へ上書きする。
