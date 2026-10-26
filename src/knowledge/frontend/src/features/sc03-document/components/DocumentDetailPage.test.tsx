@@ -356,6 +356,33 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.queryByRole('link', { name: /fileserver/ })).not.toBeInTheDocument();
   });
 
+  // 🔴 SC-03 (#2121): リンクにするのは **URL として解析してスキームが http: / https: のときだけ**。
+  // `javascript:` / `data:` は大小文字の揺れを含めて等幅の文字列になる。リンクは新規タブで、opener も referrer も渡さない。
+  it.each([
+    ['javascript:alert(1)'],
+    ['JaVaScRiPt:alert(1)'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['https//files.example.co.jp/keihi.docx'],
+  ])('renders %s as plain text, never as a link', async (uri) => {
+    respond({ detail: { ...DETAIL, originalUri: uri } });
+    await renderPage();
+
+    expect(await screen.findByText(uri)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: uri })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('link').map((l) => l.getAttribute('href'))).not.toContain(uri);
+  });
+
+  it('opens the original in a new tab without opener or referrer, including an upper-case scheme', async () => {
+    const upper = 'HTTPS://files.example.co.jp/keihi.docx';
+    respond({ detail: { ...DETAIL, originalUri: upper } });
+    await renderPage();
+
+    const link = await screen.findByRole('link', { name: upper });
+    expect(link).toHaveAttribute('href', 'https://files.example.co.jp/keihi.docx');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
   // 🔴 FR-06, SC-03 (#2121): 原本の所在が無いとき、**正規化済み Markdown（markdownUri・本文の sourceUri）を「原本」として出さない。**
   // 修正前は `content.sourceUri ?? doc.markdownUri` で、どちらへ落ちても正規化済み Markdown を指していた。
   it('never shows the normalized markdown as the original when the original location is unknown', async () => {

@@ -261,6 +261,23 @@ function ContentView({
  * 「ナレッジグラフで見る」は **hi-fi モックの同じ行（422 右）**の要素であり、常に出す ——
  * Wiki と違い、辿り着ける先の有無を前もって引く必要が無い（SC-18 は起点があれば必ず描ける）。
  */
+/**
+ * 原本の所在をリンクにしてよいときだけ、その href を返す（#2121）。
+ *
+ * 🔴 **URL として解析し、スキームが `http:` か `https:` のときだけ**リンクにする（前方一致の正規表現では判定しない）。
+ * `javascript:` / `data:` / `vbscript:` は大小文字の揺れ（`JaVaScRiPt:`）を含めてリンクにしない（`URL` はスキームを小文字へ正規化する）。
+ * `HTTPS://` のような大文字の http(s) は http(s) そのものなのでリンクにする。解析できない値（UNC・相対パス）は等幅表記。
+ */
+function linkableHttpHref(uri: string | null | undefined): string | null {
+  if (!uri) return null;
+  try {
+    const url = new URL(uri);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function SourceLinks({ doc }: { doc: DocumentDto }) {
   const wiki = useWikiPageIndex();
   const hasWikiPage = wiki.documentIds?.has(doc.id) ?? false;
@@ -269,7 +286,7 @@ function SourceLinks({ doc }: { doc: DocumentDto }) {
   // 従前の `content.sourceUri ?? doc.markdownUri` は、どちらへ落ちても正規化済み Markdown を「原本」と表示していた。
   // 所在が無ければ「—」（推測した所在を出さない）。
   const sourceUri = doc.originalUri ?? null;
-  const isHttp = !!sourceUri && /^https?:\/\//i.test(sourceUri);
+  const href = linkableHttpHref(sourceUri);
   return (
     <p className="mb-n3 flex flex-wrap items-center gap-n2 text-sm">
       {hasWikiPage && (
@@ -288,9 +305,9 @@ function SourceLinks({ doc }: { doc: DocumentDto }) {
         <Trans>原本</Trans>:
       </span>
       {sourceUri ? (
-        isHttp ? (
+        href ? (
           <a
-            href={sourceUri}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
             className="text-brand hover:underline"
