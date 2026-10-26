@@ -1079,7 +1079,8 @@ describe('DataSourceManagementPage (SC-06)', () => {
     });
 
     // テスト仕様書 13-f: 秘密らしいキーへの平文は**画面で止めない**。秘密キーの判定規則（後段の KeyMarkers）を画面へ写さない。
-    // 後段は移送の段（#458 の段 S4）まで受け付けて保存し、応答では伏せる（実測）。画面は注意書きだけを出す。
+    // 後段は移送の段（#458 の段 S4。https://github.com/endazon/microservices-platform/issues/458#issuecomment-6000743367）まで受け付けて保存し、応答では伏せる（実測）。
+    // 画面は注意書きだけを出す。
     it('does not block a plain value under a secret-like key, leaving the rule to the server', async () => {
       mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
       const { user } = await openSettings();
