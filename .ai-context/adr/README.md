@@ -719,3 +719,4 @@
 | [IADR-0639](./IADR-0639_receiver-ordering-by-time-then-sequence.md) | 受け手（取り込み・グラフ・Wiki）は更新を辞書順 (UpdatedAt, Sequence)・削除を (DeletedAt, Sequence) で比べ、印より厳密に古いものだけを捨てる。連番を第 1 の鍵にしない（文書 ID の再利用）。グラフに撤収・削除の後も残る印の表を足し、取り込みは点にも連番を載せる（#2150 / #2251） | Accepted |
 | [IADR-0640](./IADR-0640_ingestion-delete-tombstone.md) | 取り込みは DocumentDeleted を受けて版の印を削除済みの墓石にし、印と等しい鍵を含む削除の後の古い更新で取り込み直さない。古い削除は適用しない。取り込み・削除の受け口と埋め直しは文書ごとに直列にする（#2263） | Accepted |
 | [IADR-0641](./IADR-0641_llm-api-key-fail-fast.md) | LLM ゲートウェイは Claude のエンドポイントが有効なのに API キーが空なら起動時に止まる。鍵なしで動かす検証スタックは Llm:AllowMissingApiKey=true を明示する（#2136） | Accepted |
+| [IADR-0642](./IADR-0642_k3d-create-timeout-and-recreate.md) | 起動器は k3d クラスタの作成を上限つき（300 秒）で行い、全ノードの Ready を明示で待ち（180 秒）、失敗したら診断を出してこの実行のクラスタだけを 1 回作り直す（#2273） | Accepted |

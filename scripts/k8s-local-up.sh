@@ -42,6 +42,11 @@ set -euo pipefail
 live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
 live_opt_in_require "k8s-local-up.sh"
 
+# NFR, IADR-0642 (#2273): k3d クラスタの作成の上限・作り直し（scripts/lib/k3d-create.sh）。上限の値は最初に検める。
+# shellcheck source=scripts/lib/k3d-create.sh
+. "$(dirname "$0")/lib/k3d-create.sh" || exit 3
+k3d_create_validate_timeouts || exit 1
+
 # SC-15 / ADR-0097 決定 2 (#1500): RESET_FLOOR は末尾の istio-edge-up.sh が読む。そこでも 0 / 1 以外を拒むが、
 # 🔴 **長い起動の最後で落ちるより、最初に落とす**（監査 #1518）。空（未設定と同じ＝既定 1）・0・1 だけを受け付ける。
 case "${RESET_FLOOR:-}" in
@@ -233,7 +238,11 @@ if [ "$RUNTIME" = "k3d" ]; then
   K3S_IMAGE="${K3S_IMAGE:-rancher/k3s:v1.35.4-k3s1@sha256:475e036b3fd595472c13ec708c148ffd95459d5f9e40e6df76ba4d5b27098570}"
   CREATE_ARGS+=(--image "$K3S_IMAGE")
   if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
-    k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
+    # NFR, IADR-0642 (#2273): 上限（K3D_CREATE_TIMEOUT・既定 300 秒）で包み、全ノードの Ready を明示で待つ
+    #   （K3D_NODE_READY_TIMEOUT・既定 180 秒）。失敗したら診断を出し、この実行が作ったクラスタだけを消して 1 回だけ作り直す。
+    #   従前は素で呼び、ノードの起動で止まるとステップの上限 30 分を無言で使い切った（#2257 ほか同型 2 回）。
+    #   🔴 reuse の経路（下の else。PoC を含む既存のクラスタ）では呼ばない —— 既存のクラスタを消さない。
+    k3d_create_with_retry "$CLUSTER" "${CREATE_ARGS[@]}" || exit 1
   else
     echo "    cluster '$CLUSTER' exists — reuse"
   fi

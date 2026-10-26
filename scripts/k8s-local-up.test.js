@@ -201,6 +201,13 @@ const K3D_STUB = [
   '#!/usr/bin/env bash',
   'echo "k3d $*" >> "$STUB_LOG"',
   'if [ "${1:-}" = "cluster" ] && [ "${2:-}" = "list" ] && [ "${STUB_CLUSTER_EXISTS:-}" != "1" ]; then exit 1; fi',
+  // NFR, IADR-0642 (#2273): 作成の失敗の模型。n 回目の `cluster create` について、
+  //   STUB_K3D_CREATE_FAILS（回数）以下なら非 0 で返し、STUB_K3D_CREATE_HANGS（回数）以下なら止まる（`exec sleep` ＝ timeout が殺せる）。
+  'if [ "${1:-}" = "cluster" ] && [ "${2:-}" = "create" ]; then',
+  '  n=$(( $(cat "$STUB_LOG.k3d-creates" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_LOG.k3d-creates"',
+  '  [ "$n" -le "${STUB_K3D_CREATE_FAILS:-0}" ] && { echo "FATA[0042] Failed to create cluster" >&2; exit 1; }',
+  '  [ "$n" -le "${STUB_K3D_CREATE_HANGS:-0}" ] && exec sleep 30',
+  'fi',
   'exit 0',
   '',
 ].join('\n');
@@ -274,6 +281,8 @@ const DOCKER_STUB = [
   'fi',
   // #1699: STUB_BACKUP_IMAGE_ABSENT=1 で、k3d のノードに platform-backup のイメージが無い世界を作る（crictl inspecti が非0）。
   'if [ "${STUB_BACKUP_IMAGE_ABSENT:-}" = "1" ]; then case "$*" in "exec "*"crictl inspecti "*platform-backup*) exit 1;; esac; fi',
+  // NFR, IADR-0642 (#2273): STUB_FLANNEL_ABSENT（空白区切りのノードのコンテナ名）に挙げたノードには subnet.env が無い。
+  'case "$*" in "exec "*" test -f /run/flannel/subnet.env") for n in ${STUB_FLANNEL_ABSENT:-}; do [ "$2" = "$n" ] && exit 1; done;; esac',
   'exit 0',
   '',
 ].join('\n');
@@ -346,6 +355,9 @@ const HELM_STUB = [
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
+  // NFR, IADR-0642 (#2273): ノードの Ready 待ち。n 回目が STUB_NODE_READY_FAILS（回数）以下なら非 0（Ready にならない）。
+  'case "$*" in "wait --for=condition=Ready node --all "*) n=$(( $(cat "$STUB_LOG.node-ready" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB_LOG.node-ready";',
+  '  [ "$n" -le "${STUB_NODE_READY_FAILS:-0}" ] && { echo "error: timed out waiting for the condition on nodes/k3d-testcluster-agent-0" >&2; exit 1; }; exit 0;; esac',
   // #1864 監査: `… | kubectl apply -f -` の標準入力を読み切る。読まずに終わると書き手（realm の追随の `sed … | kubectl apply -f -`）が
   //   SIGPIPE で落ち、pipefail の下で非 0 になる（タイミング次第で揺れる）。追随を fail-closed にしたので、揺れが up の失敗として出る。
   'case "$*" in *"apply -f -") cat >/dev/null 2>&1 || true;; esac',
@@ -528,6 +540,12 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'TAGSEED', // #1359: タグ辞書の門。漏れていると既定のバイト等価が崩れる
     'LOCALEMBED',
     'LLM_KEYLESS', // #2136 / IADR-0641: 鍵なしの起動の opt-out。漏れていると既定のバイト等価が崩れる
+    // #2273 / IADR-0642: 作成の上限・作り直し。上限が漏れていると既定の値の試験が別の値で走り、
+    //   GitHub Actions の env が漏れていると、試験の作り直しが CI の実物の注記・ジョブの要約へ書かれる。
+    'K3D_CREATE_TIMEOUT',
+    'K3D_NODE_READY_TIMEOUT',
+    'GITHUB_ACTIONS',
+    'GITHUB_STEP_SUMMARY',
     'SYNTHETIC', // #1287: 合成監視の門。漏れていると既定のバイト等価が崩れる
     'SYNTHETIC_ROLLOUT_TIMEOUT',
     'HEADLAMP_OIDC_ISSUER_URL',
@@ -4197,6 +4215,109 @@ ok('LOCALEMBED=1: helm upgrade へ deterministicLocal の --set が 1 つだけ�
     1,
     `LOCALEMBED=1 だけで --set が複数付いている: ${line}`,
   );
+});
+
+// --- IADR-0642 (#2273): k3d クラスタの作成の上限・診断・1 回の作り直し -----------------------------------
+//
+// CI の使い捨てスタックの作成が、ノードの起動や flannel の subnet.env の欠落で止まり、ステップの上限 30 分を
+// 無言で使い切った（同型 2 回）。上限の値・診断の中身・作り直しが 1 回までであること・既存のクラスタに触らないことを固定する。
+// 🔴 作り直しは起動器のクラスタの作成だけに限る（試験の時間による救済ではない）。
+
+const k3dCreates = (lines) => lines.filter((l) => l.startsWith(`k3d cluster create ${CLUSTER} `));
+const nodeReadyWaits = (lines) => lines.filter((l) => l.startsWith('kubectl wait --for=condition=Ready node --all '));
+const DIAG_LINES = [
+  'docker ps -a',
+  'docker info',
+  `docker logs --tail 200 k3d-${CLUSTER}-server-0`,
+  `docker logs --tail 200 k3d-${CLUSTER}-agent-0`,
+];
+
+ok('IADR-0642 既定: 作成は 1 回・上限 300 秒と Ready 待ち 180 秒を出し、作り直しは 0・削除も診断もしない', () => {
+  assert.strictEqual(DEFAULT.status, 0, DEFAULT.stderr);
+  assert.strictEqual(k3dCreates(DEFAULT.lines).length, 1);
+  assert.ok(DEFAULT.stdout.includes('k3d cluster create: 上限 300s・ノードの Ready 待ち 180s・作り直しは 1 回まで'), DEFAULT.stdout);
+  assert.ok(DEFAULT.stdout.includes('k3d recreate count: 0'));
+  const waits = nodeReadyWaits(DEFAULT.lines);
+  assert.deepStrictEqual(waits, ['kubectl wait --for=condition=Ready node --all --timeout=180s']);
+  assert.ok(DEFAULT.lines.indexOf(k3dCreates(DEFAULT.lines)[0]) < DEFAULT.lines.indexOf(waits[0]), '作成より前に Ready を待っている');
+  assert.ok(!anyLineHas(DEFAULT.lines, 'k3d cluster delete'), '既定で削除している');
+  for (const d of DIAG_LINES) assert.ok(!DEFAULT.lines.includes(d), `既定で診断を出している: ${d}`);
+});
+
+function withSummary(extraEnv) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'k3d-summary-'));
+  const summary = path.join(dir, 'summary.md');
+  fs.writeFileSync(summary, '');
+  const r = runUp({ GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary, ...extraEnv });
+  const text = fs.readFileSync(summary, 'utf8');
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { ...r, summary: text };
+}
+
+function assertRecreatedOnce(r, label) {
+  assert.strictEqual(r.status, 0, `${label}: 作り直しの後に起動が続いていない: ${r.stderr}`);
+  const creates = k3dCreates(r.lines);
+  assert.strictEqual(creates.length, 2, `${label}: 作成の回数が 2 ではない`);
+  const del = r.lines.indexOf(`k3d cluster delete ${CLUSTER}`);
+  assert.ok(del > r.lines.indexOf(creates[0]) && del < r.lines.lastIndexOf(creates[1]), `${label}: 1 回目と 2 回目の間で消していない`);
+  for (const d of DIAG_LINES) assert.ok(r.lines.indexOf(d) !== -1 && r.lines.indexOf(d) < del, `${label}: 消す前に診断を出していない: ${d}`);
+  assert.ok(r.stdout.includes('k3d recreate count: 1'), `${label}: 作り直しの回数が出ていない`);
+  assert.ok(r.stdout.includes('::warning title=k3d cluster recreated::'), `${label}: GitHub Actions の注記が無い`);
+  assert.strictEqual((r.summary.match(/was recreated once/g) || []).length, 1, `${label}: ジョブの要約に 1 行ない: ${r.summary}`);
+}
+
+ok('IADR-0642: 作成が失敗したら、診断を出し、この実行のクラスタを消して 1 回だけ作り直し、起動を続ける', () => {
+  const r = withSummary({ STUB_K3D_CREATE_FAILS: '1' });
+  assertRecreatedOnce(r, '作成の失敗');
+  assert.ok(r.stderr.includes('ERROR: k3d cluster create が失敗した（exit 1）'), r.stderr);
+});
+
+ok('IADR-0642: 作成が上限を超えたら（上限 1 秒・止まる k3d）、上限超過として 1 回だけ作り直す', () => {
+  const r = withSummary({ STUB_K3D_CREATE_HANGS: '1', K3D_CREATE_TIMEOUT: '1' });
+  assertRecreatedOnce(r, '上限超過');
+  assert.ok(r.stderr.includes('ERROR: k3d cluster create が上限 1 秒を超えた'), r.stderr);
+});
+
+ok('IADR-0642: ノードが Ready にならなければ、subnet.env の無いノードを名指しして 1 回だけ作り直す', () => {
+  const r = withSummary({ STUB_NODE_READY_FAILS: '1', STUB_FLANNEL_ABSENT: `k3d-${CLUSTER}-agent-0` });
+  assertRecreatedOnce(r, 'Ready にならない');
+  assert.strictEqual(nodeReadyWaits(r.lines).length, 2);
+  assert.ok(r.stderr.includes('ERROR: ノードが上限 180 秒のうちに Ready にならなかった'), r.stderr);
+  assert.ok(r.stderr.includes(`k3d-${CLUSTER}-agent-0: /run/flannel/subnet.env が無い`), r.stderr);
+  assert.ok(!r.stderr.includes(`k3d-${CLUSTER}-server-0: /run/flannel/subnet.env が無い`), '在るノードまで名指ししている');
+});
+
+ok('IADR-0642: 2 回とも失敗したら、3 回目を呼ばずに止まる（作り直しは 1 回まで）', () => {
+  const r = withSummary({ STUB_K3D_CREATE_FAILS: '2' });
+  assert.notStrictEqual(r.status, 0, '2 回とも失敗したのに起動が続いた');
+  assert.strictEqual(k3dCreates(r.lines).length, 2, '作成を 3 回以上呼んでいる');
+  assert.strictEqual(r.lines.filter((l) => l === `k3d cluster delete ${CLUSTER}`).length, 1);
+  assert.ok(r.stderr.includes('作り直しの後も失敗した（作り直しは 1 回まで。k3d recreate count: 1）'), r.stderr);
+  assert.ok(!anyLineHas(r.lines, 'helm upgrade'), '止まらずに先へ進んだ');
+});
+
+ok('IADR-0642: 既存のクラスタ（reuse）では、作成・削除・Ready 待ちのどれも呼ばない', () => {
+  const r = runUp({ STUB_CLUSTER_EXISTS: '1', STUB_K3D_CREATE_FAILS: '9' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(k3dCreates(r.lines).length, 0);
+  assert.ok(!anyLineHas(r.lines, 'k3d cluster delete'), '既存のクラスタを消している');
+  assert.strictEqual(nodeReadyWaits(r.lines).length, 0);
+});
+
+ok('IADR-0642: 上限が正の整数でなければ、クラスタに触る前に止める', () => {
+  for (const [k, v] of [['K3D_CREATE_TIMEOUT', 'abc'], ['K3D_CREATE_TIMEOUT', '0'], ['K3D_NODE_READY_TIMEOUT', '5m'], ['K3D_NODE_READY_TIMEOUT', '-1']]) {
+    const r = runUp({ [k]: v });
+    assert.notStrictEqual(r.status, 0, `${k}=${v} で止まらない`);
+    assert.ok(r.stderr.includes(`ERROR: ${k} は正の整数（秒）で与えます: '${v}'`), r.stderr);
+    assert.ok(!r.lines.some((l) => l.startsWith('k3d ')), `${k}=${v} でクラスタに触った`);
+  }
+});
+
+ok('IADR-0642: 上限は env で変えられる（作成 600 秒・Ready 待ち 240 秒）', () => {
+  const r = runUp({ K3D_CREATE_TIMEOUT: '600', K3D_NODE_READY_TIMEOUT: '240' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes('上限 600s・ノードの Ready 待ち 240s'), r.stdout);
+  assert.deepStrictEqual(nodeReadyWaits(r.lines), ['kubectl wait --for=condition=Ready node --all --timeout=240s']);
 });
 
 // --- IADR-0641 (#2136): 鍵なしの起動の opt-out（LLM_KEYLESS=1） -----------------------------------
