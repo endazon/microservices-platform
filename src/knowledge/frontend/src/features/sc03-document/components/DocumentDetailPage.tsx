@@ -172,7 +172,7 @@ function DocumentDetail({
 
         <ContentView content={content} hasBody={doc.hasBody !== false} />
         {/* hi-fi の順: 本文 → 導線の行 → AI 提案。 */}
-        <SourceLinks doc={doc} content={content.data} />
+        <SourceLinks doc={doc} />
         {/* 05_screens §SC-03:「本文の下部に表示し、その場で承認／却下できる」。0 件なら欄ごと出ない。 */}
         {/* 緊急アクセスは**閲覧だけ**（planning#841 裁定 1）。承認の欄（書き込みの導線）は出さない。 */}
         {!viaBreakGlass && <AiSuggestionPanel documentId={doc.id} />}
@@ -187,15 +187,21 @@ function DocumentDetail({
           <AttributeList attributes={doc.attributes} tags={doc.tags} />
         </Panel>
 
-        {/* 版履歴は**補助情報**である。取れない・0 件のときは**欄ごと出さない**——
-            本体（本文と属性）の読みを妨げないためであり、`QueryState` へは寄せない
-            （失敗を `role="alert"` で割り込ませる相手ではない。
-            不在は `DocumentDetailPage.test.tsx` が固定している）。 */}
-        {versions.isSuccess && versions.data.length > 0 ? (
-          <Panel heading={<Trans>バージョン</Trans>}>
-            <VersionTable versions={versions.data} />
-          </Panel>
-        ) : null}
+        {/* 版履歴は**補助情報**である（取れなくても本文・属性は読める）。
+            🔴 FR-06, SC-03, 05_screens §共通シェルの状態表示の規約 (#2121): **失敗と 0 件を描き分ける**（規約は個別画面の記述より優先する）。
+            従前は取れない・0 件のどちらも欄ごと消え、利用者は失敗を「版が無い」と読んでいた。
+            判定順（失敗 → 待ち → 空 → 本体）と再試行は共通の `QueryState` が持つ。縮退は版履歴の欄だけに閉じる。 */}
+        {/* 欄に名前を付ける（region）。版履歴の失敗の alert を欄の中で探せるようにする（他の欄の alert と取り違えない）。 */}
+        <Panel heading={<Trans>バージョン</Trans>} aria-label={t`バージョン`}>
+          <QueryState
+            query={versions}
+            isEmpty={(data) => data.length === 0}
+            empty={<EmptyState title={t`版履歴はまだありません。`} />}
+            errorTitle={t`版履歴を取得できませんでした。`}
+          >
+            {(data) => <VersionTable versions={data} />}
+          </QueryState>
+        </Panel>
       </div>
     </section>
   );
@@ -246,6 +252,23 @@ function ContentView({
 }
 
 /**
+ * 原本の所在をリンクにしてよいときだけ、その href を返す（#2121）。
+ *
+ * 🔴 **URL として解析し、スキームが `http:` か `https:` のときだけ**リンクにする（前方一致の正規表現では判定しない）。
+ * `javascript:` / `data:` / `vbscript:` は大小文字の揺れ（`JaVaScRiPt:`）を含めてリンクにしない（`URL` はスキームを小文字へ正規化する）。
+ * `HTTPS://` のような大文字の http(s) は http(s) そのものなのでリンクにする。解析できない値（UNC・相対パス）は等幅表記。
+ */
+function linkableHttpHref(uri: string | null | undefined): string | null {
+  if (!uri) return null;
+  try {
+    const url = new URL(uri);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 出典元（原本）リンクと、SC-04（Wiki）・SC-18（ナレッジグラフ）への導線。
  * `http(s)` のときだけリンク化し、`storage://` 等は等幅表記で参照だけ示す（押せないものを押させない）。
  *
@@ -256,11 +279,15 @@ function ContentView({
  * 「ナレッジグラフで見る」は **hi-fi モックの同じ行（422 右）**の要素であり、常に出す ——
  * Wiki と違い、辿り着ける先の有無を前もって引く必要が無い（SC-18 は起点があれば必ず描ける）。
  */
-function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentContentDto }) {
+function SourceLinks({ doc }: { doc: DocumentDto }) {
   const wiki = useWikiPageIndex();
   const hasWikiPage = wiki.documentIds?.has(doc.id) ?? false;
-  const sourceUri = content?.sourceUri ?? doc.markdownUri ?? null;
-  const isHttp = !!sourceUri && /^https?:\/\//i.test(sourceUri);
+  // 🔴 FR-06, SC-03, SC-05, IADR-0561 (#2121): **「原本」は原本の所在（台帳の originalUri）だけを指す。**
+  // 本文の応答の `sourceUri` の中身は `markdownUri`（正規化済み Markdown の参照）であり、どちらも原本ではない。
+  // 従前の `content.sourceUri ?? doc.markdownUri` は、どちらへ落ちても正規化済み Markdown を「原本」と表示していた。
+  // 所在が無ければ「—」（推測した所在を出さない）。
+  const sourceUri = doc.originalUri ?? null;
+  const href = linkableHttpHref(sourceUri);
   return (
     <p className="mb-n3 flex flex-wrap items-center gap-n2 text-sm">
       {hasWikiPage && (
@@ -279,9 +306,9 @@ function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentCon
         <Trans>原本</Trans>:
       </span>
       {sourceUri ? (
-        isHttp ? (
+        href ? (
           <a
-            href={sourceUri}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
             className="text-brand hover:underline"

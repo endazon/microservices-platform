@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
@@ -35,6 +35,8 @@ const DETAIL = {
   title: '経費精算規程 v3.2',
   status: 'published',
   markdownUri: 'storage://normalized/keihi.md',
+  // FR-06, SC-05 (#1923) / #2121: 原本の所在（台帳）。「原本」はこれだけを指す。
+  originalUri: 'https://files.example.co.jp/keihi.docx',
   version: 3,
   attributes: { confidentiality: 'internal', department: 'accounting' },
   tags: ['経理', '規程'],
@@ -45,7 +47,8 @@ const CONTENT = {
   id: DOC_ID,
   title: DETAIL.title,
   markdown: '# 経費精算規程\n\n## 4. 精算スケジュール\n締め日は毎月25日とする。',
-  sourceUri: 'https://files.example.co.jp/keihi.docx',
+  // BFF は本文の応答の sourceUri に markdownUri（正規化済み Markdown の参照）を入れる（#2121 で実物に合わせた）。
+  sourceUri: 'storage://normalized/keihi.md',
 };
 const VERSIONS = [
   {
@@ -336,23 +339,66 @@ describe('DocumentDetailPage (SC-03)', () => {
   });
 
   // 原本リンクは http(s) のときだけリンク化する（押せないものを押させない）。
+  // FR-06, SC-03 (#2121): **「原本」は原本の所在（originalUri）だけを指す。**
   it('links to the original only when it is an http(s) uri', async () => {
     respond();
     await renderPage();
 
-    expect(await screen.findByRole('link', { name: CONTENT.sourceUri })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: DETAIL.originalUri })).toHaveAttribute(
       'href',
-      CONTENT.sourceUri,
+      DETAIL.originalUri,
     );
 
-    // storage:// はリンクにしない。
-    respond({ content: { ...CONTENT, sourceUri: 'storage://normalized/keihi.md' } });
+    // http(s) でない所在（UNC 等）はリンクにしない。
+    respond({ detail: { ...DETAIL, originalUri: '\\\\fileserver\\share\\keihi.docx' } });
     await renderPage();
-    await waitFor(() =>
-      expect(
-        screen.queryByRole('link', { name: 'storage://normalized/keihi.md' }),
-      ).not.toBeInTheDocument(),
-    );
+    expect(await screen.findByText('\\\\fileserver\\share\\keihi.docx')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /fileserver/ })).not.toBeInTheDocument();
+  });
+
+  // 🔴 SC-03 (#2121): リンクにするのは **URL として解析してスキームが http: / https: のときだけ**。
+  // `javascript:` / `data:` は大小文字の揺れを含めて等幅の文字列になる。リンクは新規タブで、opener も referrer も渡さない。
+  it.each([
+    ['javascript:alert(1)'],
+    ['JaVaScRiPt:alert(1)'],
+    ['data:text/html,<script>alert(1)</script>'],
+    ['https//files.example.co.jp/keihi.docx'],
+  ])('renders %s as plain text, never as a link', async (uri) => {
+    respond({ detail: { ...DETAIL, originalUri: uri } });
+    await renderPage();
+
+    expect(await screen.findByText(uri)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: uri })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('link').map((l) => l.getAttribute('href'))).not.toContain(uri);
+  });
+
+  it('opens the original in a new tab without opener or referrer, including an upper-case scheme', async () => {
+    const upper = 'HTTPS://files.example.co.jp/keihi.docx';
+    respond({ detail: { ...DETAIL, originalUri: upper } });
+    await renderPage();
+
+    const link = await screen.findByRole('link', { name: upper });
+    expect(link).toHaveAttribute('href', 'https://files.example.co.jp/keihi.docx');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  // 🔴 FR-06, SC-03 (#2121): 原本の所在が無いとき、**正規化済み Markdown（markdownUri・本文の sourceUri）を「原本」として出さない。**
+  // 修正前は `content.sourceUri ?? doc.markdownUri` で、どちらへ落ちても正規化済み Markdown を指していた。
+  it('never shows the normalized markdown as the original when the original location is unknown', async () => {
+    respond({
+      detail: { ...DETAIL, originalUri: null },
+      content: { ...CONTENT, sourceUri: 'https://normalized.example/keihi.md' },
+    });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
+    expect(await screen.findByText('原本', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText('storage://normalized/keihi.md')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'https://normalized.example/keihi.md' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('https://normalized.example/keihi.md')).not.toBeInTheDocument();
   });
 
   // UC-07 / #1200: Wiki 閲覧への導線は**権限内の Wiki 台帳にこの文書が載っているとき**だけ出し、
@@ -452,12 +498,41 @@ describe('DocumentDetailPage (SC-03)', () => {
   });
 
   // 版履歴は補助情報。取れなくても本体表示は続ける。
-  it('keeps the document readable when the version history fails', async () => {
+  // 🔴 SC-03, 05_screens §共通シェルの状態表示の規約 (#2121): **失敗は 0 件と区別して描く**（role="alert" ＋再試行）。
+  // 修正前は失敗でも 0 件でもパネルごと消え、利用者は「版が無い」と読んでいた（本試験は従前その見え方を固定していた）。
+  it('shows a retryable error in the version panel when the version history fails, keeping the document readable', async () => {
     respond({ versions: ApiError.fromStatus(500) });
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('バージョン')).not.toBeInTheDocument());
+    expect(screen.getByText('締め日は毎月25日とする。', { exact: false })).toBeInTheDocument();
+    // 版履歴の欄の中の alert だけを見る（他の欄が alert を出しても取り違えない）。
+    const panel = await screen.findByRole('region', { name: 'バージョン' });
+    const alert = await within(panel).findByRole('alert');
+    expect(alert).toHaveTextContent('版履歴を取得できませんでした。');
+    expect(screen.queryByText('版履歴はまだありません。')).not.toBeInTheDocument();
+
+    // 再試行は同じ取得をやり直す（2 回目は成功させる）。
+    const before = mocks.apiRequest.mock.calls.filter((c) =>
+      String(c[0]).endsWith('/versions'),
+    ).length;
+    respond();
+    await userEvent.setup().click(within(alert).getByRole('button', { name: '再試行' }));
+    expect(await screen.findByText('§4 改定')).toBeInTheDocument();
+    const after = mocks.apiRequest.mock.calls.filter((c) =>
+      String(c[0]).endsWith('/versions'),
+    ).length;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  // SC-03 (#2121): 0 件は「まだありません」と描く（失敗とは別の状態。エラーを出さない）。
+  it('shows the empty state when the version history has no versions', async () => {
+    respond({ versions: [] });
+    await renderPage();
+
+    expect(await screen.findByText('版履歴はまだありません。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'バージョン' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   // SC-03, IADR-0135 決定 7［2026-08-06 追記］: 版履歴が**本文なし**（204）で返っても画面は落ちない。
@@ -471,7 +546,8 @@ describe('DocumentDetailPage (SC-03)', () => {
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText('バージョン')).not.toBeInTheDocument());
+    // #2121: 配列でない値は 0 件として読み、空の表示になる（エラーにも本体にもならない）。
+    expect(await screen.findByText('版履歴はまだありません。')).toBeInTheDocument();
   });
 
   // SC-03, SC-18, FR-17, UC-10 (#1240): **ナレッジグラフビュー（SC-18）への導線。**
