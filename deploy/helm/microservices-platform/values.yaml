@@ -796,6 +796,10 @@ services:
     #   🔴 呼び出し側の期限はこの値より短く保つこと。延ばすなら下の extraEnv に足す（docs/operations/operations.md）。
     # FR-11, IADR-0566 (#1997): 逐次（CompleteStream）のイベントの間の無通信の期限は env Llm__AnthropicStreamIdleTimeoutSeconds（秒）。
     #   chart は値を置かない（未設定＝ Llm__AnthropicTimeoutSeconds と同じ値）。
+    # FR-11, IADR-0641 (#2136): 🔴 Secret の anthropic-api-key が**空**なら、ゲートウェイは起動時に止まる
+    #   （Claude のエンドポイントが有効なとき。従前は起動し、最初の呼び出しの 401 で初めて分かった）。ローリング更新なら古い Pod は残る。
+    #   鍵なしで動かす検証スタックだけが env Llm__AllowMissingApiKey="true" を置く（CI の使い捨てスタックは起動器の LLM_KEYLESS=1・compose）。
+    #   本番の既定にも values-local（PoC も使う）にも置かない。
     extraEnv:
       - name: Llm__ApiKey
         secretKeyRef:

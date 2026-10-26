@@ -179,6 +179,7 @@
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicClientFactoryTests",
       "AnthropicClientWiringTests",
+      "ClaudeApiKeyStartupValidationTests",
       "ClaudeProviderContentBlockLogTests",
       "ClaudeProviderRequestShapeTests",
       "ClaudeProviderSdkRiskTests",

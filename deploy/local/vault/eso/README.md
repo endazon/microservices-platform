@@ -71,7 +71,7 @@ env が空でないときの差し替え・値の違う構成値）を覚え、�
 ANTHROPIC_API_KEY=sk-... VAULT=1 ESO=1 bash scripts/k8s-local-up.sh --live
 ```
 
-空既定＝外部 LLM を呼ばない（現行の空既定と同値・fail-safe）。**リポジトリに平文値は置かない**（gitleaks green）。
+空既定＝外部 LLM を呼ばない（現行の空既定と同値・fail-safe）。［2026-10-26 / #2136・IADR-0641］ただし鍵が空なら LLM ゲートウェイは起動時に止まる（鍵なしで起こすのは `LLM_KEYLESS=1` の使い捨てスタックだけ）。**リポジトリに平文値は置かない**（gitleaks green）。
 Vault は既定で永続化されている（OpenBao の raft ストレージ＋PVC・Pod 内ラッパーが自動 unseal。`deploy/local/vault-persistence/`）ので Pod 再起動では消えない。`vault-data` PVC を消したとき・`PERSIST=0`（インメモリ）の Vault を再起動したときは `bash deploy/local/vault/eso/bootstrap.sh` を再実行する。
 
 ## 確認 / 挙動

@@ -942,6 +942,7 @@ if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-${wikijs_apikey_existing}}"
 fi
 # fail-safe: 空=外部 LLM を呼ばない（ADR-0010 ルーティングは明示設定時のみ有効）。
+#   ［2026-10-26 / #2136・IADR-0641］ただし鍵が空なら LLM ゲートウェイは起動時に止まる（鍵なしで起こすのは LLM_KEYLESS=1 の使い捨てスタックだけ）。
 # IADR-0096 (#310): ESO=1 のときは llm-provider-credentials を Vault→ExternalSecret 供給に委譲し、手動 apply は
 # スキップする（ExternalSecret が Secret を所有＝二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
 if [ "${ESO:-}" != "1" ]; then
@@ -1038,6 +1039,17 @@ if [ "${LOCALEMBED:-}" = "1" ]; then
   echo "==> [opt-in] deterministic local embedding (tier A, in-process; 使い捨てスタック専用・#992)"
   LOCALEMBED_ARGS="--set embedding.deterministicLocal.enabled=true"
 fi
+# FR-11, IADR-0641 (#2136): opt-in（既定オフ）。**鍵なしで動かす使い捨てのスタック専用**（CI の integration-stack・
+#   e2e-live・cutover-rehearsal）。LLM ゲートウェイは Claude の API キーが空なら起動時に止まるので、鍵を持たない
+#   スタックでは env Llm__AllowMissingApiKey=true を足して起動させる（Claude への呼び出しは 401 で失敗する）。
+# 🔴 **PoC（残しておく配備）には立てない。** PoC は実鍵を持つ。立てると、鍵が空になったときに起動で止まらなくなる。
+#   values-local.yaml には置かない（PoC も同じファイルを使うため）。extraEnv はリストの置換なので extraEnvAppend に足す
+#   （values-local も values.yaml も llmgateway の extraEnvAppend を持たない）。既定（未設定）は引数を 1 バイトも足さない。
+LLM_KEYLESS_ARGS=()
+if [ "${LLM_KEYLESS:-}" = "1" ]; then
+  echo "==> [opt-in] LLM gateway starts without the Claude API key (使い捨てスタック専用・#2136)"
+  LLM_KEYLESS_ARGS=(--set-json 'services.llmgateway.extraEnvAppend=[{"name":"Llm__AllowMissingApiKey","value":"true"}]')
+fi
 echo "==> [6/7] helm upgrade --install (values-local)"
 echo "    image tag: ${IMAGE_TAG}（ロールバックは前のタグで helm upgrade。docs/operations/operations.md §イメージのタグの固定とロールバック）"
 # NFR, IADR-0210 決定 7, #1688: **後から Recreate へ変えた Deployment は、既存リリースに RollingUpdate の既定値
@@ -1061,7 +1073,8 @@ if [ -n "$DEPT_SYNC_DECLARE" ]; then
 fi
 # shellcheck disable=SC2086  # ISTIO_MESH_ARGS / LOCALEMBED_ARGS は空か複数フラグ。意図的に分割する。
 helm upgrade --install msp deploy/helm/microservices-platform \
-  -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}"
+  -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}" \
+  "${LLM_KEYLESS_ARGS[@]+"${LLM_KEYLESS_ARGS[@]}"}"
 if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
 # NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける
 #   （ExternalSecret を先に消す。残すと ESO が Secret を作り直す。ESO の CRD が無いクラスタでは何もしない）。
