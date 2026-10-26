@@ -1,0 +1,25 @@
+# FR-16, ADR-0024, IADR-0645 (#2117):
+# CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
+#
+# MCP の公開構成の差し替え（services.mcp.mcpPublication）は既定で空なので、既定の描画だけを検査すると
+# ConfigMap mcp-publication-config・マウント・Mcp__PublicationConfigPath は 1 度も描画・スキーマ突合されない。
+# scripts/check-deploy-manifests.js は chart の `ci/*.yaml` を走査で見つけ、この values でも helm lint / helm template /
+# kubeconform を回す。scripts/helm-mcp-publication.test.js も「設定あり」をこのファイルで描く。
+# McpServer.Tests の PublicationConfigDeploymentFilesTests はこの JSON を McpServer の検証器に通し（CI の検証）、
+# ファイルに書いて起動時の読み込み（ToolPublicationConfigLoader）にも通す。
+#
+# 🔴 イメージの既定（Configuration/mcp-publication.json）とは**わざと違う**中身にしてある（公開名の付け替えと
+#    無人アカウントの属性割当を含む）。同じ中身だと、差し替えが効かずに既定を読んでいても試験が通ってしまう。
+services:
+  mcp:
+    mcpPublication: |
+      {
+        "version": "ci-2026-10-26",
+        "tools": [
+          { "name": "retrieval.search_documents", "service": "retrieval-service", "published_name": "search_documents" },
+          { "name": "document.get_document", "service": "document-service" }
+        ],
+        "service_account_attributes": {
+          "batch-agent": { "doc_scope": "organization", "confidentiality": "internal" }
+        }
+      }

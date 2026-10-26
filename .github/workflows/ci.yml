@@ -823,6 +823,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-mcp-client-provisioning.test.js
 
+      # FR-16, ADR-0024, IADR-0645 (#2117): MCP の宣言的公開構成（services.mcp.mcpPublication）が ConfigMap で mcp-service に届くことを
+      # **実際に helm template で描いて**固定する —— 既定と values-local は描かない（イメージの既定を読む）、ci/ の values では ConfigMap の値が
+      # values の文字列そのもので、マウント先と Mcp__PublicationConfigPath と checksum が揃う、壊れた JSON・mcp 以外・extraEnv との併記は描画で止まる、変異。
+      # 中身の検証は McpServer.Tests（build-test）が検証器そのもので行う。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
+      - name: Test helm MCP publication config delivery (render, negative, mutation)
+        if: ${{ !cancelled() }}
+        run: node scripts/helm-mcp-publication.test.js
+
       # NFR-18, IADR-0577: ブローカへの名乗り（サービスごとのユーザー）を**実際に helm template で描いて**固定する —— 既定と values-local の
       # 両方で、ブローカへ繋ぐ Deployment の集合が users.txt と一致し、ユーザー msp-<名前>・Secret msp-rabbitmq-users の同名のキー（非 optional）・
       # 共通の 1 組（rabbitmq-app / guest）が無い、旧キーは描画で止まる、変異。helm が要るのでこのジョブ（既存ジョブへの段の追加・起動条件は不変）。

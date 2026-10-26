@@ -1,0 +1,21 @@
+# FR-16, ADR-0024, IADR-0645 (#2117): MCP の宣言的公開構成（許可リスト）の GitOps 配送。
+# services.mcp.mcpPublication（公開構成の JSON を文字列のまま）を ConfigMap にし、mcp-service へマウントする
+# （deployment.yaml の $mcpPublication）。構成変更は Git → ArgoCD 同期 → checksum/mcp-publication によるロールアウトで反映される。
+# 🔴 中身の検証（初期公開範囲・公開名の一意性・属性割当の禁止）は McpServer の検証器が CI（xUnit）と起動時の 2 か所で行う。
+#    ここで見るのは「JSON として読める」ことだけである（規則を Go テンプレートへ写すと 2 か所になり片方だけが緩む）。
+{{- $svc := .Values.services.mcp | default dict }}
+{{- if and $svc.enabled $svc.mcpPublication }}
+{{- $parsed := fromJson $svc.mcpPublication }}
+{{- if hasKey $parsed "Error" }}
+{{- fail (printf "services.mcp.mcpPublication が JSON として読めません（%s）。公開構成は JSON の文字列で書きます（IADR-0645）。" (get $parsed "Error")) }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-publication-config
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+data:
+  mcp-publication.json: {{ $svc.mcpPublication | quote }}
+{{- end }}

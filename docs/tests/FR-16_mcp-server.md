@@ -3,15 +3,15 @@ title: FR-16 MCP サーバー統合 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-23
-updated: 2026-10-16
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-16, FR-19, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0061, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134, ADR-0141]
-iadrs: [IADR-0551, IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533]
-specs: [20261016_1961_archive-effect-exclusion, 20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1961, #1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255, #1517, planning#784]
+iadrs: [IADR-0551, IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533, IADR-0645]
+specs: [20261026_2117_mcp-publication-configmap, 20261016_1961_archive-effect-exclusion, 20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#1961, #1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255, #1517, #2117, planning#784]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -79,6 +79,9 @@ P-2 はその違いだけを見るテストである。
 | A-9 | 正しい構成（ただし収集先がすべて到達不能） | **落ちない**（陽性対照。収集の一時失敗は次の周期へ持ち越す） |
 | A-10 | 構成ファイルが存在しない | **落ちない**。公開 0 件として起動する（「壊れている」と「まだ何も公開していない」を区別する） |
 | A-11 | 🔴 同じサービスの同じツール名の申告が 2 つある（［2026-09-27 追加］） | 突合は**落ちない**。そのツールだけを公開せず（どちらかを推測しない）重複の構成ドリフトとして現れ、**他のサービスのツールは公開される**。同じ入力では結果が変わらない |
+| A-12 | 🔴 Helm values（`services.mcp.mcpPublication`）に公開構成を書く（［2026-10-26 追加］） | ConfigMap が描かれて mcp-service にだけマウントされ、`Mcp__PublicationConfigPath` がマウント先を指し、構成の sha256 の注記でロールアウトする。**未設定（既定・values-local）は何も描かず、イメージの既定を読む** |
+| A-13 | 🔴 McpServer が ConfigMap の中身で起動する（［2026-10-26 追加］） | values の文字列（＝ ConfigMap の値）を読み込み先に指すと、その中身のツールが読まれる（イメージの既定と取り違えると赤） |
+| A-14 | 🔴 不正な公開構成を配備ファイルに書く（［2026-10-26 追加］） | **CI で落ちる**。配備ファイルの公開構成を取り出し、起動時と同じ読み込み（同じ検証器）に通す。初期公開範囲外・公開名の重複・個人資料や MCP から外すプロジェクトの属性割当・壊れた JSON・ブロック以外の書き方のいずれも赤。0 件の走査は緑にしない |
 
 ### 🔴 A-8 について —— 「例外を投げること」と「サービスが止まること」は別の主張である
 
@@ -536,6 +539,8 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 - `scripts/check-mcp-client-provisioning.js --live`（統合スタックの門） — 稼働の認可サーバーでの実測（C-29〜C-34・C-48・C-58・C-67〜C-69）。`--self-test` が判定器そのものを固定する
 - `scripts/scripts.repo.test.js`（#1818 の節） — 警報の定義（C-49）
 - `scripts/helm-mcp-client-provisioning.test.js` — 配備の描画（C-35。変異で赤になることも）
+- `scripts/helm-mcp-publication.test.js` — 公開構成の ConfigMap 配送の描画（A-12。描画で止まる条件と変異で赤になることも）
+- `PublicationConfigDeploymentFilesTests` — 配備ファイルの公開構成の CI 検証と、ConfigMap の中身での起動（A-13・A-14）
 - `LogForgingSanitizationTests` — 要求由来のツール名をログへ落とす際の制御文字除去
 - 供給元 3 サービスの自己申告テスト（各サービスのテストプロジェクト直下に 1 本ずつ） — 申告の内容と選別（D-1〜D-8）
 - 収集と実効カタログの結合テスト（統合テストプロジェクトの `McpTools/` 配下） — 実サービスからの収集と反映（I-1〜I-5）

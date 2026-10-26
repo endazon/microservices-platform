@@ -154,7 +154,7 @@ ok('変異: 検証の部分を外す・既定のストアを落とす・マウ�
   };
   assert.ok(mutate(';SSL Mode=VerifyFull;', ';SSL Mode=Require;').some((v) => /VerifyFull/.test(v)), '検証を緩めた変異を捕まえない');
   assert.ok(mutate('"/etc/ssl/certs:/etc/platform-infra-ca"', '"/etc/platform-infra-ca"').some((v) => /SSL_CERT_DIR/.test(v)), '既定のストアを落とした変異を捕まえない');
-  assert.ok(mutate('{{- if or $pipelineMount $vaultToken $infraCaMount }}\n          volumeMounts:', '{{- if or $pipelineMount $vaultToken }}\n          volumeMounts:')
+  assert.ok(mutate('{{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication }}\n          volumeMounts:', '{{- if or $pipelineMount $vaultToken $mcpPublication }}\n          volumeMounts:')
     .some((v) => /マウントしない/.test(v)), 'マウントを外した変異を捕まえない');
 });
 
