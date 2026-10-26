@@ -44,7 +44,7 @@ import {
 } from '../types/quota';
 import { SYNC_TONES, syncKeyOf } from '../types/noteBadges';
 // [[IADR-0451]] (#1455): 公開範囲の語彙は SC-03 と共有するためユニットの `lib/` にある。
-import { DEPARTURE_NOTICE, VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
+import { VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
 import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19PrivateNotesRoute';
 import { BreakGlassPanel } from './BreakGlassPanel';
 import { QuotaPanel } from './QuotaPanel';
@@ -147,9 +147,7 @@ function TagCell({ tags }: { tags: string[] }) {
 }
 
 export function PrivateNotesPage() {
-  const { t, i18n } = useLingui();
-  // #2114: 退職時の扱いの 2 文は `lib/private-notes` の 1 か所で定義する（SC-19 / SC-20 で共有）。
-  const departureNotice = i18n._(DEPARTURE_NOTICE);
+  const { t } = useLingui();
 
   const notes = usePrivateNotes();
   const actions = usePrivateNoteActions();
@@ -272,9 +270,16 @@ export function PrivateNotesPage() {
       {/*
         05_screens §SC-19「業務関連資料としての扱い」の固定文言。
         🔴 **折りたたみやツールチップの中に隠さない。** 書き始める前に見える位置に置く。
+        🔴 FR-19, ADR-0096 決定 1（#2114）: 「30 日間、管理者が閲覧することがあります」だけを出す形は採らない（2026-09-11 追加）。
+        削除は配備済み（IADR-0431。PrivateNoteMaintenanceService.PurgeDepartedOwnersAsync）なので、計画の暫定文言
+        （「退職後の保管期間は定まっていません」）ではなく削除の 1 文を出す。SC-20 の 3 段落目は計画の確定文言どおりで、この 1 文を持たない。
       */}
       <Alert tone="info" label={t`取り扱い`}>
-        <Trans>個人資料は業務関連資料として扱われます。{departureNotice}</Trans>
+        <Trans>
+          個人資料は業務関連資料として扱われます。退職時には、退職日から 30
+          日間、管理者が閲覧することがあります。30
+          日が過ぎると、この資料は復元できない形で削除されます。
+        </Trans>
       </Alert>
 
       <QuotaPanel usage={usage} deletedBytes={deletedBytes(all)} />

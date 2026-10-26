@@ -3,8 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
-import { activate, i18n } from '@foundation/i18n';
-import { DEPARTURE_NOTICE } from '../../../lib/private-notes';
+import { activate } from '@foundation/i18n';
 
 // SC-19, UC-11, FR-19/FR-21（#451）: 個人資料管理画面。
 //
@@ -185,7 +184,7 @@ describe('SC-19 個人資料管理: 一覧と固定文言', () => {
   });
 
   // FR-19, SC-19, ADR-0096 決定 1（#2114）: 「30 日間、管理者が閲覧することがあります」だけを出し続ける形は採らない。
-  // 削除は配備済み（IADR-0431）なので、暫定文言ではなく削除の 1 文を出す。
+  // 削除は配備済み（IADR-0431。PrivateNoteMaintenanceService.PurgeDepartedOwnersAsync）なので、暫定文言ではなく削除の 1 文を出す。
   it('🔴 固定文言に「30 日が過ぎると、この資料は復元できない形で削除されます」を含む', async () => {
     respond();
     await renderPage();
@@ -194,8 +193,6 @@ describe('SC-19 個人資料管理: 一覧と固定文言', () => {
     expect(notice.textContent).toMatch(
       /30\s*日が過ぎると、この資料は復元できない形で削除されます。/,
     );
-    // 文言の定義は 1 か所（SC-20 と共有する記述子）。
-    expect(notice.textContent).toContain(i18n._(DEPARTURE_NOTICE));
     // 暫定文言（削除の未配備の間だけのもの）は出さない。
     expect(notice.textContent).not.toMatch(/定まっていません/);
   });

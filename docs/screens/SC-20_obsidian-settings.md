@@ -3,15 +3,15 @@ title: Obsidian 連携設定 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-28
-updated: 2026-10-26
+updated: 2026-09-12
 author: claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, SC-19, SC-20, UC-11]
 adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0096, ADR-0099]
-iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0338, IADR-0352, IADR-0437, IADR-0444, IADR-0446, IADR-0447, IADR-0431]
-specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261026_2114_private-note-departure-disposal-notice]
-issues: [#451, #1098, #1153, #1441, #1442, #1446, #1447, #2114, planning#614, planning#618]
+iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0338, IADR-0352, IADR-0437, IADR-0444, IADR-0446, IADR-0447]
+specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching]
+issues: [#451, #1098, #1153, #1441, #1442, #1446, #1447, planning#614, planning#618]
 -->
 
 # 画面仕様書: Obsidian 連携設定
@@ -52,7 +52,7 @@ Obsidian プラグイン（社内配布）から個人資料を同期するた�
 | --- | --- | --- |
 | 1 | 同期範囲の固定文言 | 「同期できるのは本人が作成した個人資料のみ」「公開範囲を変えても同期は継続」 |
 | 2 | 削除の扱いの固定文言 | 90 日保管・**90 日を過ぎると復元できない**・週次と 7 日前の通知。削除済み一覧への導線を添える |
-| 3 | 業務関連資料としての扱いの固定文言 | 退職日から 30 日・**30 日を過ぎると復元できない形で削除される**・**同期対象に入れた私的なメモも同じ扱い**。退職の 2 文は個人資料管理画面と**共有の 1 か所で定義**する（🔴 削除の 1 文は計画の本画面の確定文言にはまだ無い。同じ資料について 2 画面の説明が食い違わないよう個人資料管理画面に揃え、計画へ追随を求める）。🔴 **削除の説明とは別の段落**に置き、**同期対象範囲の区画の中**（フォルダを足す入力欄の隣）へ置く |
+| 3 | 業務関連資料としての扱いの固定文言 | 退職日から 30 日・**同期対象に入れた私的なメモも同じ扱い**。🔴 **削除の説明とは別の段落**に置き、**同期対象範囲の区画の中**（フォルダを足す入力欄の隣）へ置く |
 | 4 | 接続手順 | 端末名 → トークン発行 → プラグインへ貼る。有効期限 30 日・**自動更新は行わない**旨を明記 |
 | 5 | 発行結果 | **平文のトークンをその場に一度だけ表示**し、「再表示できない（再発行のみ可）」を同じ枠に置く |
 | 6 | 再発行の注意（固定文言） | 期限切れのトークンは**プラグイン設定に残る**ので入れ直しが要る |

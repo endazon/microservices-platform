@@ -28,25 +28,31 @@ issue: "#2114"
 
 ## 方針
 
-- 退職の扱いの 2 文（「退職時には、退職日から 30 日間、管理者が閲覧することがあります。30 日が過ぎると、この資料は復元できない形で削除されます。」）を
-  `lib/private-notes/departureNotice.ts` の 1 つのメッセージ記述子（`msg`）として定義し、`lib/private-notes/index.ts` から公開する。
-  SC-19 と SC-20 は、各々の前後の文（「個人資料は……」「同期した資料は……」「同期対象フォルダに入れた私的なメモも……」）の `Trans` に
-  プレースホルダとして差し込む（文の間の区切りは各言語の訳が持つ。英語の空白を JSX に書かない）。
-- **SC-20 にも足す（判断点）。** 計画の SC-20 の確定文言には無いが、
-  - SC-20 の 3 段落目が言う「同じ扱い」の対象（同期した個人資料）は ADR-0096 決定 1 の削除の対象と同じである。
-  - SC-19 で「採らない」とした形（30 日で終わると読ませたまま、その後どうなるかを書かない）を SC-20 に残すと、同じ資料について 2 画面の説明が食い違う。
-  - 計画の SC-20 の文言の追随は planning へ環流する（マージ後に起票。本 PR では起票しない）。
-- 削除の説明（90 日の段落）とは引き続き別の段落に置く（SC-20 の「まとめない」）。追加する 1 文は 90 日の文ではない。
-- en の訳: "When you leave the company, administrators may view them for 30 days from your last day. After 30 days, they are deleted and cannot be restored."（両画面の前の文の主語〔Private notes / Synced notes〕を `them` / `they` で受ける）。
+［2026-10-26 改訂 / #2282 の監査］初版は SC-20 にも削除の 1 文を足し、退職の 2 文を共有の記述子 1 つで定義していた。
+次の 2 点で改めた。
+
+- **SC-20 は計画の確定文言どおりに戻す。** 計画にない 1 文を足すのは計画からの逸脱であり（CLAUDE.md 禁止事項）、判断するのは画面の持ち主（計画）である。
+  SC-20 の 3 段落目への追加は、マージ後に planning へ提案する（同じ資料が ADR-0096 決定 1 で削除されるのに、2 画面の説明が食い違う）。
+- **共有の記述子はやめる。** 共有する文は「閲覧の 1 文」だけになる。しかも共有モジュールを SC-19 と SC-20 の 2 つの遅延ルートから引くと、
+  Rollup が 1 kB 未満の共有チャンクを 1 本切り出し、`check-chunk-budget` の床（12 本）を超えた。
+  ペイロードを変えずに 1 文を共有する方法が無いので、各画面の `Trans` に書く（develop と同じ形）。
+
+改訂後の方針:
+
+- SC-19 の固定文言の `Trans` に「30 日が過ぎると、この資料は復元できない形で削除されます。」を足す（1 つのメッセージのまま）。
+- SC-20 は変えない。試験で「計画の確定文言どおり（削除の 1 文を含まない）」を固定する。
+- en の訳: "Private notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day. After 30 days, they are deleted and cannot be restored."
+- 初期ロードの床: Lingui の ja / en カタログは入口チャンクに入るため、足した文の訳の分（+140 B）だけ増える。計画の文言であり避けられないので、
+  `check-chunk-budget --update` で床を上げ、帰属を `scripts/chunk-budget-baseline.json` の `$comment` に残す。
 
 ## 受け入れ基準
 
-- [x] SC-19: 固定文言に「30 日が過ぎると、この資料は復元できない形で削除されます」が出る（ja）。修正前は赤
-- [x] SC-20: 業務関連資料の段落に同じ 1 文が出る。90 日の文は同じ段落に無いまま（既存の試験が緑のまま）。修正前は赤
-- [x] en カタログ: 両画面の段落が英語で削除の文を含む（en ロケールで描いた試験）
-- [x] 文言の定義が 1 か所: 退職の 2 文は `lib/private-notes` の記述子 1 つだけが持ち、両画面がそれを使う（両画面の描画が同じ記述子の訳を含むことを試験で固定）
+- [x] SC-19: 固定文言に「30 日が過ぎると、この資料は復元できない形で削除されます」が出る（ja / en）。暫定文言（「定まっていません」）は出ない。修正前は赤
+- [x] SC-20: 業務関連資料の段落が計画の確定文言どおりで、削除の 1 文を含まない（ja は全文一致、en も削除の文を含まない）
 - [x] カタログを再生成し（`pnpm run i18n`）、未翻訳キーが無い
-- [x] 画面仕様書 SC-19 / SC-20・テスト仕様書を改める
+- [x] `check-chunk-budget --require`: 1 kB 未満の遅延チャンクは 12 本のまま。初期ロードの床の引き上げは帰属つき
+- [x] 画面仕様書 SC-19・テスト仕様書（SC-19 / SC-20）を改める
+- 取り下げた基準: 「文言の定義が 1 か所」（共有する文が 1 文だけになり、共有の形がチャンクの床を割るため。上記）
 
 ## 母集合（規則 9）
 
@@ -55,10 +61,13 @@ issue: "#2114"
 | 当たり | 扱い | 理由 |
 | --- | --- | --- |
 | `sc19-private-notes/components/PrivateNotesPage.tsx` | **直す** | 本件 |
-| `sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx` | **直す** | 複製 |
+| `sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx` | 外す（改訂） | 計画の確定文言どおり。追加は planning へ提案する |
+| `sc20-obsidian-settings/components/ObsidianSettingsPage.test.tsx` | **直す** | 確定文言どおりであることを固定する |
 | `sc19-private-notes/components/PrivateNotesPage.test.tsx` | **直す** | 旧形を固定している |
 | `platform/frontend/src/locales/{ja,en}/messages.po`（と生成物 `messages.ts`） | **直す**（再生成） | カタログ |
-| `docs/screens/SC-19_private-notes.md`・`docs/screens/SC-20_obsidian-settings.md`・`docs/tests/SC-19_*`・`docs/tests/SC-20_*` | **直す** | 文言そのものは引いていないが、固定文言の行に削除の文を足したことを書く |
+| `docs/screens/SC-19_private-notes.md`・`docs/tests/SC-19_*`・`docs/tests/SC-20_*` | **直す** | 文言そのものは引いていないが、固定文言の行に削除の文を足したこと（SC-20 は足さないこと）を書く |
+| `docs/screens/SC-20_obsidian-settings.md` | 外す（改訂） | 画面は変えない |
+| `scripts/chunk-budget-baseline.json` | **直す**（`--update`） | 初期ロードの床（帰属つき） |
 | `docs/how-to/obsidian-plugin-install.md:63` | 外す | 退職の扱いを述べていない（業務関連資料になることだけ） |
 | AST（submodule） | 外す | 本画面を持たない |
 
