@@ -65,6 +65,13 @@ winget install Helm.Helm
 ```
 
 > どちらも実体は k3s（ADR-0008）。A は内蔵 k3s をそのまま、B は k3d が k3s-in-docker を作る。
+>
+> **B（k3d）でクラスタを新しく作るとき**、起動器は作成を上限つきで行う（#2273 / [IADR-0642](../../.ai-context/adr/IADR-0642_k3d-create-timeout-and-recreate.md)）。
+> `k3d cluster create` は `K3D_CREATE_TIMEOUT` 秒（既定 300）、ノードの登録と全ノードの Ready 待ちは合わせて `K3D_NODE_READY_TIMEOUT` 秒（既定 180）、
+> 診断の 1 コマンドは `K3D_DIAG_TIMEOUT` 秒（既定 20）。
+> 超えたら診断（`docker ps -a`・ノードの `docker logs`・flannel の `subnet.env` の有無）を出し、**その実行が作ったクラスタだけを**消して 1 回だけ作り直す。
+> 既存のクラスタを再利用するときは何もしない（消さない）。遅いマシンで上限に届くなら値を延ばす（正の整数の秒）。
+> CI で延ばすときは、2 試行と診断（1 試行 = 作成 ＋ 30 ＋ 登録と Ready ＋ 診断 7 × (診断の上限 ＋ 5) 秒）がステップの上限 30 分に収まることを確かめる（運用仕様書 §使い捨てスタックの k3d クラスタの作成が止まる・作り直した）。
 
 **どちらでも Node.js 22 が要る**（`winget install OpenJS.NodeJS.LTS`）。`k8s-local-up.sh` は [3/7] で realm の取り込み元を作るときに
 `node` で試験アカウントのプレースホルダを処理する（無いと止まる。下の「試験アカウント（e2e-*）」）。
