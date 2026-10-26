@@ -506,6 +506,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // BFF で潰れていないことの検証に用いる）。
     public string? LastDataSourceUpdateBody { get; internal set; }
 
+    // FR-01, SC-06, IADR-0472 (#2109): 書き込みの口（POST・PUT・PATCH・sync）の失敗の応答（状態コード・content-type・本文）。
+    // null なら既定の成功。BFF が本文を透過するかを見るために、後段が返す実際の形（ValidationProblem 等）を与える。
+    public (HttpStatusCode Status, string ContentType, string Body)? DataSourceWriteFailure { get; set; }
+
     // SC-22, 計画 ADR-0126, IADR-0501 (#458 段 S2): 群「データソースの資格情報」の成員（`GET /datasources/credentials`）と、
     // 参照の配置（`PUT /datasources/{id}/credentials/{key}/reference`）のスタブ。
     public List<DataSourceCredentialItemDto> StubDataSourceCredentials { get; set; } = [];
@@ -1390,6 +1394,16 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 var current = member?.Properties.FirstOrDefault(p => p.Name == segments[4])?.Supply;
                 var supply = current is null or DataSourceCredentialSupplies.Absent ? DataSourceCredentialSupplies.Reference : current;
                 return Json(HttpStatusCode.OK, new DataSourceCredentialReferenceResultDto(segments[4], supply));
+            }
+
+            // #2109: 書き込みの口の失敗（後段の実際の本文）。
+            if (owner.DataSourceWriteFailure is { } failure
+                && (method == HttpMethod.Post || method == HttpMethod.Put || method == HttpMethod.Patch))
+            {
+                return Task.FromResult(new HttpResponseMessage(failure.Status)
+                {
+                    Content = new StringContent(failure.Body, System.Text.Encoding.UTF8, failure.ContentType),
+                });
             }
 
             if (path.EndsWith("/sync", StringComparison.Ordinal))

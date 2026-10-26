@@ -89,6 +89,89 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
         _factory.LastDataSourceUpdateBody.Should().Contain("smb://relocated/share");
     }
 
+    // ---- FR-01, FR-05, SC-06, ADR-0074 決定 4, ADR-0115 決定 5 (#2109): 保存しない理由を画面へ届ける ----
+    //
+    // 後段は検証に通らない写像・部門を 400 の RFC7807（`errors`）で、確認先を引けないときを 502 の `message` で返す。
+    // 従前の BFF は状態コードだけを返して本文を捨て、SC-06 には「入力内容に誤りがあります。」しか出なかった。
+    // 本文は ASP.NET Core の `Results.ValidationProblem` が実際に描く形（後段の `OwnerMappingValidation`）。
+    internal const string ValidationProblemBody =
+        """{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"errors":["写像先の利用者が存在しません: nobody。利用者識別子（ログイン名）で指定してください。"]}}""";
+    private const string UnverifiableBody = """{"message":"部門グループを確認できなかったため保存していません。時間をおいて再試行してください。"}""";
+
+    private async Task<HttpResponseMessage> SendWriteAsync(string method)
+    {
+        var client = _factory.CreateClient();
+        var ct = TestContext.Current.CancellationToken;
+        return method switch
+        {
+            "POST" => await client.PostAsJsonAsync("/bff/datasources",
+                new CreateDataSourceRequest("規程集", "filesystem", "smb://fs01/share"), ct),
+            "PUT" => await client.PutAsJsonAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}",
+                new UpdateDataSourceRequest("規程集", "filesystem", "smb://fs01/share"), ct),
+            "PATCH" => await client.PatchAsJsonAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}",
+                new PatchDataSourceRequest(ConnectionUri: "smb://relocated/share"), ct),
+            "SYNC" => await client.PostAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}/sync", content: null, ct),
+            _ => throw new ArgumentOutOfRangeException(nameof(method)),
+        };
+    }
+
+    [Theory]
+    [InlineData("POST")]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task Write_RelaysDownstreamValidationProblemBody(string method)
+    {
+        _factory.DataSourceWriteFailure = (HttpStatusCode.BadRequest, "application/problem+json", ValidationProblemBody);
+        try
+        {
+            var resp = await SendWriteAsync(method);
+
+            resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+            (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be(ValidationProblemBody,
+                "保存しない理由（errors）を作り替えずに画面へ渡す");
+        }
+        finally
+        {
+            _factory.DataSourceWriteFailure = null;
+        }
+    }
+
+    // 確認先を引けない 502 の理由（`message`）も、手動同期の 4xx も透過する。
+    [Theory]
+    [InlineData("POST", HttpStatusCode.BadGateway)]
+    [InlineData("PATCH", HttpStatusCode.BadGateway)]
+    [InlineData("SYNC", HttpStatusCode.Conflict)]
+    public async Task Write_RelaysDownstreamFailureBodyForOtherStatuses(string method, HttpStatusCode status)
+    {
+        _factory.DataSourceWriteFailure = (status, "application/json", UnverifiableBody);
+        try
+        {
+            var resp = await SendWriteAsync(method);
+
+            resp.StatusCode.Should().Be(status);
+            (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be(UnverifiableBody);
+        }
+        finally
+        {
+            _factory.DataSourceWriteFailure = null;
+        }
+    }
+
+    // ★ 陽性対照: 成功の扱いは変えない（登録は 201 と Location、更新は 200 と本文）。
+    [Fact]
+    public async Task Write_SuccessIsUnchanged()
+    {
+        var created = await SendWriteAsync("POST");
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        created.Headers.Location!.ToString().Should().Be($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
+
+        var patched = await SendWriteAsync("PATCH");
+        patched.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await patched.Content.ReadFromJsonAsync<DataSourceDto>(TestContext.Current.CancellationToken))!.Id
+            .Should().Be(BffTestFactory.StubDataSourceId);
+    }
+
     // 計画 §SC-06「登録・更新・無効化は管理者限定」。**運用者は閲覧できるが更新はできない。**
     // グループ既定（admin ＋ operator）に AdminOnly を積んで実効させている（IADR-0128 と同じ形）。
     [Theory]

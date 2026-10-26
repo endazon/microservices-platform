@@ -3,15 +3,15 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-10-03
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, SC-06, UC-04, NFR-18]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027, ADR-0074, ADR-0115]
 iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199, IADR-0295, IADR-0468, IADR-0472, IADR-0493]
-specs: [20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation, 20261003_458_connector-secret-vault-reference]
-issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557, planning#344, planning#361]
+specs: [20261026_2109_datasource-bff-relay-error-body, 20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation, 20261003_458_connector-secret-vault-reference]
+issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557, #2109, planning#344, planning#361]
 -->
 
 # テスト仕様書: データソース登録・同期・カタログ化
@@ -111,6 +111,8 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557
 | T-66 | 値域が定まる前に保存された部門（値域の外）を持つソースで、部門を変えずに機密区分・ライフサイクルを編集／部門を変える | `PATCH` / `PUT /datasources/{id}` | 部門を変えない編集は**値域を照会せずに 200**（値域が引けない状態でも通る）。部門を変えれば照会し、値域の外は 400・引けなければ 502（大小文字だけの違いも「変えた」） | 旧データの部門で無関係な編集を止めない。値域の外の値を新しく書かせない | 自動（xUnit） |
 | T-67 | 資格情報の参照（`apiToken` / `password` の項目に `vault:…`）を `Config` に持つ Wiki・SaaS・業務DB のソースを同期（取得 2 件） | `DataSourceSyncService.SyncAsync` ＋ 資格情報の解決器 | 解決器は 1 回の同期で**1 回だけ**呼ばれ、探索と全取得が同じ解決済みの値を使う。同期の途中で版が変わっても 1 回の同期の中では混ざらず、次の同期が新しい版を使う。`Config` に資格情報が無ければ解決器を呼ばず認証なしで同期する | 資格情報の読み口を 1 本にし、実行時に取得する。1 回の同期で版を混ぜない | 自動（xUnit） |
 | T-68 | 資格情報が解決できない（表に無い参照・解決器が未配備・形の誤り・大文字の接頭辞・解決した値が空・解決器の例外） | 同上 | 外部へ**要求を 1 件も出さず**（業務DB へは接続しない）、`credentials not resolved for credential #<番号> (<理由>)` で失敗（項目のキー名も出さない）。直近エラー・連続失敗に載り watermark は進めない。ログ・直近エラー・応答に値・参照のパス・解決器の例外文が出ない | 参照を平文として相手へ渡さない（fail-closed）。資格情報の所在を漏らさない | 自動（xUnit） |
+| T-69 | 後段が登録・更新・部分更新で 400 の RFC7807（`errors`）、登録・部分更新で 502 の `message`、手動同期で 409 を返す。陽性対照として成功（201・200） | BFF の書き込みの口へ送る | 後段と同じ状態コード・content-type・本文を返す（保存しない理由を作り替えない）。成功の扱い（201 と Location・200 と本文）は変わらない。修正前は本文が空 | 保存しない理由の透過 | 自動 |
+| T-70 | BFF が透過した実際の 400 本文（`application/problem+json`）。陰性対照として本文の無い 400（従前の BFF） | データソース管理画面で写像を更新する（`apiRequest` は本物、`fetch` だけを差し替える） | 本文の `errors` の理由が画面に出る。本文が無ければ「入力内容に誤りがあります。」だけで理由は出ない | 同上（画面） | 自動 |
 
 ## テストデータ
 
@@ -138,7 +140,7 @@ issues: [#195, #217, #218, #219, #458, #516, #534, #537, #580, #627, #754, #1557
 - 資格情報の露出封鎖: `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DataSourceCredentialExposureTests.cs`（T-46〜T-52。**すべて秘密を実際に通す陽性対照**であり、マスクを外す変異で落ちることを実測している）
 - 明示した部門の値域検証: `src/knowledge/backend/Services/DataSourceService/Tests/Features/DataSources/DepartmentDomainEndpointTests.cs`（T-60〜T-63・T-66）、`.../Tests/Infrastructure/ExternalServices/DepartmentDomainDirectoryTests.cs`（T-62）、`src/platform/backend/Services/AuthorizationService/Tests/Features/Users/Directory/GrpcUserDirectoryTests.cs`・`.../Tests/Infrastructure/ExternalServices/KeycloakIdentityAdminClientTests.cs`（T-64）、`src/knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.test.tsx`（T-65）
 - 登録者の部門グループからの補完: `src/knowledge/backend/Services/DataSourceService/Tests/Domain/RegistrantDepartmentTests.cs`（T-53〜T-55・T-58・T-59）、`.../Tests/Domain/DataSourceTests.cs`・`.../Tests/Features/DataSources/RegistrantDepartmentEndpointTests.cs`（T-53〜T-57）
-- BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
+- BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403・書き込みの口の失敗の本文の透過 T-69）、画面: `src/knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.test.tsx`（T-70）
 - 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項

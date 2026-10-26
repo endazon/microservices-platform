@@ -854,6 +854,59 @@ describe('DataSourceManagementPage (SC-06)', () => {
       expect(await screen.findByText(/写像先の利用者が存在しません: nobody/)).toBeInTheDocument();
     });
 
+    // FR-01, FR-05, SC-06, ADR-0074 決定 4 (#2109): **BFF の実際の応答の形で**理由を出す（`ApiError` を直接作らない）。
+    // 本文は後段の `Results.ValidationProblem` が描き BFF が透過する形（`BffDataSourceEndpointTests.ValidationProblemBody` と同じ値）。
+    // `apiRequest` は本物を通し、`fetch` だけを差し替える —— 400 の本文から `errors` を取り出す経路まで含めて見る。
+    const BFF_400_BODY =
+      '{"type":"https://tools.ietf.org/html/rfc9110#section-15.5.1","title":"One or more validation errors occurred.","status":400,"errors":{"errors":["写像先の利用者が存在しません: nobody。利用者識別子（ログイン名）で指定してください。"]}}';
+
+    async function submitMappingThroughRealApiClient(response: Response) {
+      const actual = await vi.importActual<typeof import('@foundation/api/apiClient')>(
+        '@foundation/api/apiClient',
+      );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      mocks.apiRequest
+        .mockResolvedValueOnce(jsonResponse([ACTIVE_SOURCE]))
+        .mockImplementationOnce((path: string, init?: RequestInit) =>
+          actual.apiRequest(path, init),
+        );
+      const user = userEvent.setup();
+      await renderPage();
+
+      await user.click(await screen.findByRole('button', { name: '既定属性' }));
+      await user.click(screen.getByRole('button', { name: '＋ 写像を追加' }));
+      await user.type(screen.getByLabelText('ソース側の利用者 1'), 'src');
+      await user.type(screen.getByLabelText('基盤の利用者 1'), 'nobody');
+      await user.click(screen.getByRole('button', { name: '更新する' }));
+    }
+
+    it('shows the server reason from the actual BFF 400 body (problem+json relayed by the BFF)', async () => {
+      try {
+        await submitMappingThroughRealApiClient(
+          new Response(BFF_400_BODY, {
+            status: 400,
+            headers: { 'content-type': 'application/problem+json; charset=utf-8' },
+          }),
+        );
+
+        expect(await screen.findByText(/写像先の利用者が存在しません: nobody/)).toBeInTheDocument();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    // ★ 陰性対照: 従前の BFF の応答（本文を捨てた 400）では理由は出ない —— 上の試験が本文を読んでいることの証明。
+    it('cannot show the reason when the BFF drops the 400 body (the former behaviour)', async () => {
+      try {
+        await submitMappingThroughRealApiClient(new Response(null, { status: 400 }));
+
+        expect(await screen.findByText('入力内容に誤りがあります。')).toBeInTheDocument();
+        expect(screen.queryByText(/写像先の利用者が存在しません/)).not.toBeInTheDocument();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     // 予約値 `system` は**文書側の属性**に入る値であって写像表の値ではない。
     // 補助文がそれを伝える（`lib/abac/owner.ts` の規約）。
     it('tells the admin what happens when a mapping is missing', async () => {
