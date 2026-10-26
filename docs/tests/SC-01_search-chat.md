@@ -3,15 +3,15 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-05
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-11, FR-13, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01, UC-07]
-adrs: [ADR-0031, ADR-0066, ADR-0073]
+adrs: [ADR-0054, ADR-0031, ADR-0066, ADR-0073]
 iadrs: [IADR-0009, IADR-0037, IADR-0126, IADR-0308, IADR-0365]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff]
-issues: [#502, #539, #1065, #1200]
+specs: [20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff]
+issues: [#502, #539, #1065, #1200, #2111]
 -->
 
 # テスト仕様書: 検索／チャット質問画面
@@ -125,6 +125,8 @@ AI 分析ダッシュボードと共有する部品なので、テストも 1 �
 | T-42 | **候補が無いときは中立文言**（「権限が無い」と区別しない。存在秘匿の方針） | `uses a neutral message when there are no candidates at all` |
 | T-43 | **1 軸の失敗で他の軸の候補まで失わない** | `degrades one failing axis without losing the others` |
 | T-44 | ★ 本画面が選択を**質問と一緒に送る**（SSE の要求本文） | `SearchChatPage.test.tsx` の `sends the selected scope with the question` |
+| T-45 | ★ **個人資料の出典は「個人資料」で描き、組織文書と区別する**。Wiki の台帳に載っていても個人資料が勝つ（Wiki の導線へ送らない）。同じ回答の組織文書は「組織文書」のまま | `SearchChatPage.test.tsx` の `renders a private-note citation as personal even when the wiki ledger lists the document` |
+| T-46 | 種別の判定を渡さない呼び出し（右レール）でも、文書スコープで個人資料を区別する | `CitationList.test.tsx` の `marks a private-note source as personal from its docScope when no kindOf is given` |
 
 ## 未決事項
 

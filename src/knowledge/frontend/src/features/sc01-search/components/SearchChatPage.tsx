@@ -25,9 +25,8 @@ import { useWikiPageIndex } from '../../../lib/wiki-pages';
 // 出典の対応印（脚注方式。裁定 6）・直近 N 件の履歴を足した（第 4 弾「体験の穴」(3)）。
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-01_search-chat.md §hi-fi モックアップとの対応）:
-//   - 個人資料まわり（「個人資料を含める」トグル・出典行の 👤）: FR-19 / FR-21 であり
-//     IADR-0119 決定 1 が着手を保留している（**繰り延べであって放棄ではない**）。出典リストの
-//     語彙（`CitationKind.personal`）は foundation 側に用意してあり、契約に印が入れば判定を足すだけでよい。
+//   - 「個人資料を含める」トグル（FR-19 / FR-21）。［2026-10-26 / #2111］出典行の個人資料の印（👤・「個人資料」）は
+//     契約 `CitationDto.docScope` で描くようにした（`citationKind`）。着手保留は IADR-0119 の追補・IADR-0142 で解除済み。
 //
 // **［2026-08-10 訂正 / #553］従前ここには「対象範囲フィルタ（タグ／フォルダ）は実装しない。
 // planning#197 で裁定待ち」と書いてあった。この記述は実装と食い違っていた** ——
@@ -246,9 +245,9 @@ function Sc01Citations({
     <CitationList
       citations={citations}
       citePrefix={citePrefix}
-      kindOf={(c) => citationKind(c.documentId, wiki.documentIds)}
+      kindOf={(c) => citationKind(c.documentId, wiki.documentIds, c.docScope)}
       renderTitle={(c) =>
-        citationKind(c.documentId, wiki.documentIds) === 'wiki' ? (
+        citationKind(c.documentId, wiki.documentIds, c.docScope) === 'wiki' ? (
           <Link to="/wiki" search={{ doc: c.documentId }} className="text-accent hover:underline">
             {c.documentTitle}
           </Link>

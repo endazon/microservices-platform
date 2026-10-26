@@ -18,9 +18,8 @@
  * 出典の種別。`document` = 正規化文書（SC-03 へ）、`wiki` = Wiki ページ（SC-04 へ）、
  * `personal` = 個人資料（SC-19。05_screens §SC-01「組織文書と個人資料をアイコン＋ラベルの併用で区別」）。
  *
- * `personal` は**表示側の語彙**として持つ。`CitationDto` にはまだ個人資料の印が無く
- * （FR-19 / FR-21 は IADR-0119 決定 1 の着手保留）、`citationKind()` はこれを返さない。
- * 契約に印が入ったとき、判定だけを足せば描画は揃っている。
+ * ［2026-10-26 / #2111］`CitationDto.docScope`（ABAC 文書属性 `doc_scope`。ADR-0054）が `private-note` なら `personal`。
+ * 従前は契約に個人資料の印が無く（着手保留。保留は IADR-0119 の追補と IADR-0142 で解除済み）、`personal` を返していなかった。
  */
 export type CitationKind = 'document' | 'wiki' | 'personal';
 
@@ -39,19 +38,32 @@ export interface AskCitation {
    * 契約 `CitationDto` の必須欄。**表示名へは `CitationList` が写す**（正は計画リポジトリの用語集）。
    */
   confidentiality: string;
+  /**
+   * FR-04, FR-19, SC-01, ADR-0054（#2111）: 出典の文書スコープ（ABAC 文書属性 `doc_scope`）。
+   * `private-note` が個人資料、それ以外（`organization`）が組織文書。契約 `CitationDto` の必須欄。
+   */
+  docScope: string;
 }
+
+/** 文書スコープの値のうち個人資料を表すもの（後段の `DocumentScopes.PrivateNote` と同じ綴り。ADR-0054）。 */
+const PRIVATE_NOTE_SCOPE = 'private-note';
 
 /**
  * 出典の種別を判定する。
  *
- * 台帳が未取得・取得失敗（`undefined`）のときは常に `document` を返す——「Wiki かもしれない」を
+ * 🔴 FR-19, ADR-0054（#2111）: **個人資料（`docScope` が `private-note`）は台帳より先に見る。** 個人資料は Wiki へ同期されない
+ * （ADR-0046）ので、台帳に載ることは本来無いが、載っていても個人資料を組織文書（Wiki）として描かない。
+ *
+ * 台帳が未取得・取得失敗（`undefined`）のときは `document` を返す——「Wiki かもしれない」を
  * 推測で表示すると、利用者が到達できない導線（SC-04）へ送ることになる。`documentId` は常にあるので
  * SC-03 へは必ず辿れる。
  */
 export function citationKind(
   documentId: string,
   wikiDocumentIds: ReadonlySet<string> | undefined,
+  docScope?: string,
 ): CitationKind {
+  if (docScope === PRIVATE_NOTE_SCOPE) return 'personal';
   if (!wikiDocumentIds) return 'document';
   return wikiDocumentIds.has(documentId) ? 'wiki' : 'document';
 }

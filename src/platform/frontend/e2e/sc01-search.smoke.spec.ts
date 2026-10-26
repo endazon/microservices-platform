@@ -107,6 +107,7 @@ function citation(
     score: 0.9 - number / 10,
     snippet: `${documentTitle}の抜粋`,
     confidentiality,
+    docScope: 'organization',
   };
 }
 

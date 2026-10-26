@@ -8,7 +8,12 @@ import type { AskCitation } from './citations';
 // SC-01 / 05_screens §共通シェル（右レール AI チャット）/ 裁定 6（出典と本文の対応印）: 出典の一覧。
 // 05_screens §SC-01「区別の表示方法」: アイコン ＋ ラベルを併用し、色だけで意味を持たせない（INDEX 決定 21）。
 
-const cite = (number: number, documentId: string, confidentiality = 'internal'): AskCitation => ({
+const cite = (
+  number: number,
+  documentId: string,
+  confidentiality = 'internal',
+  docScope = 'organization',
+): AskCitation => ({
   number,
   documentId,
   documentTitle: `文書 ${number}`,
@@ -16,6 +21,7 @@ const cite = (number: number, documentId: string, confidentiality = 'internal'):
   score: 0.9,
   snippet: `抜粋 ${number}`,
   confidentiality,
+  docScope,
 });
 
 function renderList(props: Partial<Parameters<typeof CitationList>[0]> = {}) {
@@ -43,6 +49,15 @@ describe('CitationList', () => {
     });
     expect(screen.getByText('組織文書')).toBeInTheDocument();
     expect(screen.getByText('個人資料')).toBeInTheDocument();
+  });
+
+  // FR-04, FR-19, ADR-0054 (#2111): `kindOf` を渡さない呼び出し（右レール）でも、文書スコープで個人資料を区別する。
+  it('marks a private-note source as personal from its docScope when no kindOf is given', () => {
+    renderList({ citations: [cite(1, 'a', 'restricted', 'private-note'), cite(2, 'b')] });
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('個人資料');
+    expect(items[0]).not.toHaveTextContent('組織文書');
+    expect(items[1]).toHaveTextContent('組織文書');
   });
 
   // FR-04 / 05_screens §SC-01「出典への機密区分の表示」（#2017）: 表示名は用語集が正（restricted は「取扱制限」）。

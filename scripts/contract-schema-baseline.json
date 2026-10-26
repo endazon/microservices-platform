@@ -644,6 +644,12 @@
             "required": false,
             "position": 7
           },
+          "DocScope": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 8
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid",

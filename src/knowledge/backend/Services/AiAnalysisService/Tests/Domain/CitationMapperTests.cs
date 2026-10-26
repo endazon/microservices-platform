@@ -179,4 +179,43 @@ public class CitationMapperTests
         new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(), null, 0.1f, "抜粋")
             .Confidentiality.Should().Be("restricted");
     }
+
+    // ---- FR-04, FR-19, SC-01, ADR-0054 (#2111): 出典の文書スコープ（個人資料と組織文書を区別する印） ----
+
+    private static SearchResultDto ResultWithScope(string? scope) =>
+        Result("文書A", null, "本文",
+            scope is null
+                ? new Dictionary<string, string> { ["confidentiality"] = "restricted" }
+                : new Dictionary<string, string> { ["confidentiality"] = "restricted", ["doc_scope"] = scope });
+
+    [Theory]
+    [InlineData("private-note")]
+    [InlineData("Private-Note")] // DocumentScopes.IsPrivateNote と同じく大文字小文字を問わない
+    public void ToCitations_MarksPrivateNoteFromDocScope(string scope)
+    {
+        var citations = CitationMapper.ToCitations([ResultWithScope(scope)]);
+
+        citations[0].DocScope.Should().Be(DocumentScopes.PrivateNote);
+    }
+
+    // キー欠落・organization・未知値は組織文書（ADR-0054 §結果: 既存文書へ遡及付与しない。キー欠落は個人資料ではない）。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("organization")]
+    [InlineData("")]
+    [InlineData("team-note")]
+    public void ToCitations_TreatsMissingOrOtherDocScopeAsOrganization(string? scope)
+    {
+        var citations = CitationMapper.ToCitations([ResultWithScope(scope)]);
+
+        citations[0].DocScope.Should().Be(DocumentScopes.Organization);
+    }
+
+    // 既定値つきの追加（IADR-0122 決定 2）: 文書スコープを渡さない組み立て（旧発行者）は組織文書になる。
+    [Fact]
+    public void CitationDto_DefaultsDocScopeToOrganization()
+    {
+        new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(), null, 0.1f, "抜粋")
+            .DocScope.Should().Be(DocumentScopes.Organization);
+    }
 }
