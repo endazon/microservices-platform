@@ -86,7 +86,7 @@ public class TagDictionaryEnforcementTests
         var llm = new CapturingLlm(proposals);
         var generator = new AiSuggestionGenerator(
             new EfGraphStore(db), new StubSimilarity(new SimilarityCandidate(visible, 0.9)),
-            llm, new StubDictionary(dictionary), metrics, db, TimeProvider.System);
+            llm, new StubDictionary(dictionary), metrics, db, TimeProvider.System, new RecordingAuditLogger());
         return (generator, llm, probe);
     }
 
