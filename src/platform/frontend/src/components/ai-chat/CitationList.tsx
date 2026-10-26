@@ -5,9 +5,7 @@ import { BookOpen, FileText, UserRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Tag, cn } from '@platform/ui';
 import { confidentialityLabel } from '@foundation/i18n';
-import { citationAnchorId } from './citations';
-import { citationKind } from './citations';
-import type { AskCitation, CitationKind } from './citations';
+import { citationAnchorId, citationKind, type AskCitation, type CitationKind } from './citations';
 
 // SC-01 / 05_screens §共通シェル（右レール AI チャット）/ 裁定 6（出典と本文の対応印）: 出典の一覧。
 //

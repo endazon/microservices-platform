@@ -46,7 +46,7 @@ export interface AskCitation {
 }
 
 /** 文書スコープの値のうち個人資料を表すもの（後段の `DocumentScopes.PrivateNote` と同じ綴り。ADR-0054）。 */
-export const PRIVATE_NOTE_SCOPE = 'private-note';
+const PRIVATE_NOTE_SCOPE = 'private-note';
 
 /**
  * 出典の種別を判定する。
