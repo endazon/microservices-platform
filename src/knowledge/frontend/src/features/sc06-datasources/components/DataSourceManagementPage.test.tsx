@@ -560,19 +560,20 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
   // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #7・#9）。
   // まず「見えるはずの条件」——一覧が描画され、手動同期の操作が出ている状態——を確かめてから、
-  // 契約に無い操作が無いことを見る。**接続先・認証情報の「設定」編集は依然として未実装**である
-  // （#534 の射程のまま。#754 で足したのは既定属性の編集だけであり、別のボタンである）。
+  // 契約に無い操作が無いことを見る。
+  // ［2026-10-26 / #2122］**「設定」（接続先・config の編集）を置いた**ので、本試験の「不在」の表明を反転した
+  // （「まだ作っていない」ことの固定は、実装した瞬間に正しい実装を落とす。下の 2026-09-12 の注記と同じ）。
   //
   // 🔴 **［2026-09-12］「次回同期」列の不在はここから外した。** 契約（`nextSyncAt`）は #538 で
   // 揃っており、残っていたのは列の側だけだった。**「契約が無い」ことの固定と「まだ作っていない」
   // ことの固定は別物**であり、後者を残したままにすると実装した瞬間に正しい実装が落ちる。
-  it('does not render the retry state or a connection settings action', async () => {
+  it('does not render the retry state, and offers the settings action on every row to an admin', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
     await renderPage();
 
     expect(await screen.findAllByRole('button', { name: '手動同期' })).toHaveLength(2);
     expect(screen.queryByText(/再試行中/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '設定' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '設定' })).toHaveLength(2);
   });
 
   // SC-06（裁定 Q15 / #538 / IADR-0136）: **次回同期は全ソースで同じ値**である（共通間隔）。
@@ -993,6 +994,152 @@ describe('DataSourceManagementPage (SC-06)', () => {
       expect(await screen.findByText('規程集')).toBeInTheDocument();
       expect(screen.getByText(/予約値 unassigned が入ります/)).toBeInTheDocument();
       expect(screen.getByText(/写像に無い利用者は予約値 system になります/)).toBeInTheDocument();
+    });
+  });
+
+  // FR-01, UC-04, SC-06（計画 §SC-06 アクション「設定変更」・更新 API の裁定 Q16）(#2122): **設定変更（名前・接続先・config）。**
+  describe('settings edit (#2122)', () => {
+    const WIKI = {
+      ...ACTIVE_SOURCE,
+      id: '66666666-6666-6666-6666-666666666666',
+      name: '社内Wiki',
+      sourceType: 'wiki',
+      connectionUri: 'https://wiki.example/graphql',
+      config: { spaceKey: 'ENG', apiToken: '***' },
+    };
+
+    const patches = () =>
+      mocks.apiRequest.mock.calls
+        .filter(
+          ([path, init]) =>
+            path === `/datasources/${WIKI.id}` && (init as RequestInit)?.method === 'PATCH',
+        )
+        .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+
+    async function openSettings() {
+      const user = userEvent.setup();
+      await renderPage();
+      await user.click(await screen.findByRole('button', { name: '設定' }));
+      return { user };
+    }
+
+    // 🔴 PATCH は**変わった項目だけ**を送る（後段は null を現状維持と読む）。接続先だけを変えたら接続先だけ。
+    it('sends only the changed connection uri', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
+      const { user } = await openSettings();
+      const form = within(screen.getByRole('form', { name: 'データソースの設定変更' }));
+
+      const uri = form.getByLabelText(/接続先 URI/);
+      await user.clear(uri);
+      await user.type(uri, 'https://wiki2.example/graphql');
+      await user.click(form.getByRole('button', { name: '変更を保存' }));
+
+      await waitFor(() => expect(patches()).toHaveLength(1));
+      expect(patches()[0]).toEqual({ connectionUri: 'https://wiki2.example/graphql' });
+      expect(await screen.findByText('データソースの設定を更新しました。')).toBeInTheDocument();
+    });
+
+    // config の非秘密キーを変え・足すと config を全量で送る。**伏せた値（***）は *** のまま送る**（後段が既存値を保つ）。
+    it('sends the whole config when a non-secret key changes, keeping the masked value as ***', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
+      const { user } = await openSettings();
+      const form = within(screen.getByRole('form', { name: 'データソースの設定変更' }));
+
+      const spaceValue = form.getByLabelText('設定の値 2');
+      await user.clear(spaceValue);
+      await user.type(spaceValue, 'OPS');
+      await user.click(form.getByRole('button', { name: '＋ 設定を追加' }));
+      await user.type(form.getByLabelText('設定のキー 3'), 'rootPath');
+      await user.type(form.getByLabelText('設定の値 3'), '/handbook');
+      await user.click(form.getByRole('button', { name: '変更を保存' }));
+
+      await waitFor(() => expect(patches()).toHaveLength(1));
+      expect(patches()[0]).toEqual({
+        config: { apiToken: '***', spaceKey: 'OPS', rootPath: '/handbook' },
+      });
+    });
+
+    // 🔴 種別とマスク済みのキーは編集できない。マスク済みのキーには SC-22 への導線がある。
+    it('keeps the source type and masked keys read-only, pointing masked keys to SC-22', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
+      await openSettings();
+      const form = within(screen.getByRole('form', { name: 'データソースの設定変更' }));
+
+      expect(form.queryByRole('combobox')).not.toBeInTheDocument();
+      expect(form.getByText(/種別は変更できません/)).toBeInTheDocument();
+      // apiToken（伏せた値）はキーが無効化され、値の入力欄が無く、削除もできない。
+      expect(form.getByLabelText('設定のキー 1')).toHaveValue('apiToken');
+      expect(form.getByLabelText('設定のキー 1')).toBeDisabled();
+      expect(form.getByLabelText('設定の値 1')).toHaveTextContent('***');
+      expect(form.getAllByRole('button', { name: '削除' })).toHaveLength(1);
+      expect(form.getByRole('link', { name: '認証情報を設定' })).toHaveAttribute(
+        'href',
+        `/admin/secrets?datasource=${WIKI.id}`,
+      );
+    });
+
+    // 何も変えていなければ保存できない（無変更の PATCH を送らない）。同じキーが 2 つあれば保存できない。
+    it('cannot save without a change or with a duplicate key', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
+      const { user } = await openSettings();
+      const form = within(screen.getByRole('form', { name: 'データソースの設定変更' }));
+
+      expect(form.getByRole('button', { name: '変更を保存' })).toBeDisabled();
+      await user.click(form.getByRole('button', { name: '＋ 設定を追加' }));
+      await user.type(form.getByLabelText('設定のキー 3'), 'spaceKey');
+      expect(form.getByRole('alert')).toHaveTextContent('同じキーが 2 つあります: spaceKey');
+      expect(form.getByRole('button', { name: '変更を保存' })).toBeDisabled();
+      expect(patches()).toHaveLength(0);
+    });
+
+    // 運用者には「設定」が出ない（更新は管理者限定。閲覧はできる）。
+    it('does not offer settings edit to operators', async () => {
+      mocks.apiRequest.mockResolvedValue(jsonResponse([WIKI]));
+      await renderPage(['platform-operator']);
+
+      expect(await screen.findByText('社内Wiki')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '設定' })).not.toBeInTheDocument();
+    });
+
+    // 🔴 後段の検証の理由を**BFF の実際の応答の形で**出す。`ConnectionUriPolicy` の拒否は `{ "error": "…" }` 形の 400 で、
+    // BFF が透過する（#2109）。`apiRequest` は本物を通し `fetch` だけを差し替える。修正前（解析が error を読まない）は既定の文言しか出なかった。
+    it('shows the backend reason of a { error } 400 relayed by the BFF', async () => {
+      const reason =
+        'connectionUri に資格情報を含めないでください（接続先だけを書きます）。パスワード・トークンは config へ入れてください（応答ではマスクされます）。';
+      const actual = await vi.importActual<typeof import('@foundation/api/apiClient')>(
+        '@foundation/api/apiClient',
+      );
+      try {
+        vi.stubGlobal(
+          'fetch',
+          vi.fn().mockResolvedValue(
+            new Response(JSON.stringify({ error: reason }), {
+              status: 400,
+              headers: { 'content-type': 'application/json; charset=utf-8' },
+            }),
+          ),
+        );
+        mocks.apiRequest
+          .mockResolvedValueOnce(jsonResponse([WIKI]))
+          .mockImplementationOnce((path: string, init?: RequestInit) =>
+            actual.apiRequest(path, init),
+          );
+        const { user } = await openSettings();
+        const form = within(screen.getByRole('form', { name: 'データソースの設定変更' }));
+
+        const uri = form.getByLabelText(/接続先 URI/);
+        await user.clear(uri);
+        await user.type(uri, 'https://user:pass@wiki.example/graphql');
+        await user.click(form.getByRole('button', { name: '変更を保存' }));
+
+        expect(
+          await screen.findByText(/connectionUri に資格情報を含めないでください/),
+        ).toBeInTheDocument();
+        // 失敗した設定は閉じない（直して送り直せる）。
+        expect(screen.getByRole('form', { name: 'データソースの設定変更' })).toBeInTheDocument();
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 });

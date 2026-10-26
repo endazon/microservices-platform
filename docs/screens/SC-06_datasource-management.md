@@ -3,23 +3,22 @@ title: データソース管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-24
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, NFR-18, SC-05, SC-06, SC-07, SC-09, SC-17, SC-22, UC-04]
 adrs: [ADR-0036, ADR-0064, ADR-0074, ADR-0095, ADR-0115, ADR-0126]
 iadrs: [IADR-0019, IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0136, IADR-0139, IADR-0148, IADR-0199, IADR-0329, IADR-0359, IADR-0381, IADR-0392, IADR-0468, IADR-0472, IADR-0501]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes, 20260905_issue-752_connector-updated-by, 20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation, 20261003_458_connector-secret-vault-reference, 20261024_2019_sc05-sc06-sc07-e2e]
-issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #628, #752, #754, #767, #796, #1557, #2019, planning#198, planning#200, planning#299, planning#372, planning#518, planning#716]
+specs: [20261026_2122_sc06-datasource-settings-edit, 20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, 20260903_issue-1194_sc06-owner-mapping-table, 20260905_issue-1252_sc06-operator-readonly-attributes, 20260905_issue-752_connector-updated-by, 20260926_issue-754_department-from-registrant-group, 20260926_issue-1557_department-domain-validation, 20261003_458_connector-secret-vault-reference, 20261024_2019_sc05-sc06-sc07-e2e]
+issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #628, #752, #754, #767, #796, #1557, #2019, #2122, planning#198, planning#200, planning#299, planning#372, planning#518, planning#716]
 -->
 
 # 画面仕様書: データソース管理
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**未実装のまま残っている要素がある**——hi-fi の「次回同期」列
-> （**契約は #538 で揃った。残るのは表示だけ**）・行操作「設定」（**契約は #534 で揃った。残るのは
-> 編集フォームだけ**）と、共通シェルの右レール（**パンくずは #446 で実装した**）。
+> （**契約は #538 で揃った。残るのは表示だけ**）と、共通シェルの右レール（**パンくずは #446 で実装した**）。
 > **［2026-08-08 / #537］「⚠ 再試行中（3/5）」は実装した**（契約が同期健全性を持ったため）。
 > 詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
 
@@ -83,7 +82,7 @@ issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #62
 | 6 | 同期状態の**「⚠ 再試行中（3/5）」**（422） | **する** | **［2026-08-08 / #537］契約が同期健全性を持ったため実装した**（裁定 Q14）。`StatusBadge tone="warning"`（琥珀）。導出規則は §同期状態の導出 |
 | 7 | 一覧の**次回同期**列（418・420-423） | **しない** | **契約は #538 で追加済み**（`DataSourceDto.nextSyncAt`）。**表示が未実装**なので判定は「しない」である。繰り延べの理由が「契約に無い」から「表示が未実装」へ変わっただけで、画面としては出ていない。§実装しない要素 (b) |
 | 8 | 行操作「**手動同期**」（420-421） | **する** | **管理者・運用者。** `POST /bff/datasources/{id}/sync`（登録・同期の**代替フロー**）。**破壊的操作に含めない** |
-| 9 | 行操作「**設定**」（422-423） | **しない** | **契約は #534 で追加済み**（`PUT` / `PATCH`）。**編集フォームの画面実装が未了**なので判定は「しない」である（#538 と同じく、繰り延べの理由が「契約に無い」から「表示が未実装」へ変わった）。§実装しない要素 (c) |
+| 9 | 行操作「**設定**」（422-423） | **する**（［2026-10-26］） | 名前・接続先 URI・`config` の非秘密キー（値の変更・キーの追加と削除）を編集する。**種別は読み取り専用**（変えるとコネクタが入れ替わる）。**伏せた値（`***`）のキーは読み取り専用**で、秘密情報・接続設定の管理画面への導線を置く。PATCH は**変わった項目だけ**を送る。管理者だけ |
 | 10 | 「変換ジョブの状況を見る →」（426） | **する** | `/admin/conversions`への内部リンク。計画の遷移図 `SC06 → SC07` |
 | 11 | 注記「接続情報（認証情報）は Vault 管理。接続の継続失敗はアラート（同期の例外フロー）。」（427） | **する** | `Alert tone="info"`（静的な注記のため `role` を付けない） |
 | 12 | **共通シェル**: 右レール「AIチャットパネル」（429-434） | **しない** | 移行**第 4 段**（SPA 新スタック移行の決定 1・5） |
@@ -132,7 +131,7 @@ issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #62
 | --- | --- | --- | --- |
 | ~~(a) 「⚠ 再試行中（3/5）」~~ | hi-fi 422・計画側の本画面のアクション「同期異常は警告表示」・同期の例外フロー「接続失敗時は再試行し、継続失敗はアラートする」 | 従前は `Status` が **`active` / `disabled` の 2 値のみ**で、連続失敗回数・再試行上限を持つフィールドが無かった | **［2026-08-08 / #537］解消済み。** `DataSourceDto` へ同期健全性（`consecutiveFailureCount` / `retryLimit` / `lastSyncError` / `lastSyncErrorAt`）を追加し、表示まで実装した（健全性の永続化） |
 | (b) 「次回同期」列 | hi-fi 418・420-423（**是正後は全行「本日 14:00」＋「同期は全ソース共通の間隔で実行する」の注記**） | 同期は `DataSourceSyncHostedService` が**全ソース共通の間隔**（`DataSourceSync__IntervalSeconds`。既定 300 秒）で回す。**ソース別のスケジュールという概念が無い**。**2026-08-06 / #538 で `DataSourceDto.nextSyncAt`（共通間隔の次回実行時刻・全ソース同値・無効時 null）を契約へ追加した**（位相からの導出） | ~~ソース別スケジュール（cron 等）のモデル化~~ → **裁定で不採用**（計画側の裁定 Q15）。残るのは**画面側の列の追加**だけである |
-| (c) 行操作「設定」 | hi-fi 422-423 | 従前は `/bff/datasources` に**更新（`PUT` / `PATCH`）が無かった**。**［2026-08-08 / #534］契約は追加済み**（全置換 `PUT` / 部分更新 `PATCH`・**管理者限定**） | ~~データソース更新 API~~ → **契約は揃った**。残るのは**編集フォームの画面実装**だけである（#534 は契約の追加に閉じる。同型の契約追加を束ねる決定の条件 F） |
+| (c) 行操作「設定」 | hi-fi 422-423 | 従前は `/bff/datasources` に**更新（`PUT` / `PATCH`）が無かった**。**［2026-08-08 / #534］契約は追加済み**（全置換 `PUT` / 部分更新 `PATCH`・**管理者限定**） | ~~データソース更新 API~~ → **契約は揃った**。［2026-10-26］**編集フォームも着地した**（名前・接続先 URI・`config` の非秘密キー。§hi-fi 対応 #9） |
 
 実測の出所: `src/knowledge/backend/Shared/Knowledge.Contracts/Dtos/DataSourceDto.cs` ／
 `src/knowledge/backend/Services/DataSourceService/Domain/DataSource.cs` ／
@@ -154,7 +153,7 @@ issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #62
 | 一覧 | `GET /bff/datasources` | **orval 生成フック `useBffDataSourceList`** | admin / operator | `DataSourceDto[]` |
 | 登録 | `POST /bff/datasources` | `useMutation` | 同上 | `DataSourceDto`（201） |
 | 更新（全置換） | `PUT /bff/datasources/{id}` | **未使用**（契約のみ。#534） | **admin のみ** | `DataSourceDto`（200） |
-| 更新（部分） | `PATCH /bff/datasources/{id}` | **未使用**（契約のみ。#534） | **admin のみ** | `DataSourceDto`（200） |
+| 更新（部分） | `PATCH /bff/datasources/{id}` | `useMutation`（既定属性の編集・設定変更。**変わった項目だけ**を送る） | **admin のみ** | `DataSourceDto`（200） |
 | 手動同期 | `POST /bff/datasources/{id}/sync` | `useMutation` | 同上 | 202 `DataSourceSyncResultDto`（`{ fetched, failed, connectorAvailable, message }`） |
 | 無効化 | `DELETE /bff/datasources/{id}` | `useMutation` | 同上 | 204 |
 
@@ -286,7 +285,9 @@ issues: [#458, #1194, #1252, #446, #490, #502, #506, #519, #534, #537, #538, #62
    次回実行時刻を全ソース同値で返す）。**契約は #538 が追加した**（`nextSyncAt`。位相からの導出）。
    **残るのは画面側の列の追加**であり、繰り延べの理由（契約の不在）はもう無い。
    表示にあたっては `nextSyncAt` が `null`（定期同期が無効な環境）になり得ることに注意する。
-3. **コネクタ設定の編集**（同 (c)）。**裁定済み**（計画側の裁定 Q16）。**契約は #534 が追加した**
+3. **コネクタ設定の編集**（同 (c)）。［2026-10-26］**着地した**（行操作「設定」。名前・接続先 URI・`config` の非秘密キー。
+   種別と伏せた値のキーは読み取り専用で、PATCH は変わった項目だけを送る）。以下は着地前の経緯である。
+   **裁定済み**（計画側の裁定 Q16）。**契約は #534 が追加した**
    （`PUT` / `PATCH`・**管理者限定**）。**残るのは編集フォームの画面実装**であり、繰り延べの理由
    （契約の不在）はもう無い。**登録フォーム（`DataSourceForm`）を編集にも使えるようにするのが自然**だが、
    秘密の扱いは**サーバ側が守っている** —— **［2026-08-08 / PR #627 の AI レビュー 🟡］
