@@ -83,7 +83,8 @@ test('SC-04: draws the page tree, opens a page and searches — all through the 
     user: sessionUser([]),
     handlers: {
       'GET /wiki/pages': pages,
-      'GET /wiki/pages/keihi-seisan': view,
+      // FR-13, ADR-0091 決定 1 (#2108): ツリーのリンクは文書 ID（`?doc=`）で開く。
+      [`GET /wiki/pages/by-doc/${DOC_A}`]: view,
       'GET /wiki/search': hits,
     },
   });
@@ -97,11 +98,11 @@ test('SC-04: draws the page tree, opens a page and searches — all through the 
   await expect(tree.getByRole('link')).toHaveCount(2);
 
   // ★ 陰性対照 1: 選ぶ前に本文を取りに行かない（一覧だけで済ませる）。
-  expect(traffic.calls.map((c) => c.key)).not.toContain('GET /wiki/pages/keihi-seisan');
+  expect(traffic.calls.map((c) => c.key)).not.toContain(`GET /wiki/pages/by-doc/${DOC_A}`);
 
-  // ツリー → 本文。**パスの `page` が取得へ渡り、Wiki.js の HTML が描画へ届く。**
+  // ツリー → 本文。**URL の `doc`（文書 ID）が取得へ渡り、Wiki.js の HTML が描画へ届く。**
   await tree.getByRole('link', { name: '経費精算規程' }).click();
-  await expect(page).toHaveURL(/\/wiki\?page=keihi-seisan/);
+  await expect(page).toHaveURL(new RegExp(`/wiki\\?doc=${DOC_A}`));
   await expect(page.getByRole('heading', { name: '申請の手順' })).toBeVisible();
   const body = page.getByTestId('wiki-page-content');
   await expect(body.locator('b')).toHaveText('領収書');
@@ -151,6 +152,28 @@ test('SC-04: draws the page tree, opens a page and searches — all through the 
   // **正しい実装がテストを落とす**（SC-03 側の不在は「置かない」という確定事項なので固定してよいが、
   // こちらは「未確定」であって「置かない」ではない —— 同じ形に見えて根拠が違う）。
   // 実現方式が確定したら、そのときの issue が本 spec へ陽性の固定を足す。
+
+  expectBffTrafficIsComplete(traffic);
+});
+
+// FR-13, ADR-0091 決定 2, IADR-0644 (#2108): 旧形式の共有 URL（`?page=<slug>`）は slug で引いて開き、URL を `?doc=` へ書き換える。
+test('SC-04: a legacy ?page= link opens the page and the url is rewritten to ?doc=', async ({
+  page,
+}) => {
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /wiki/pages': pages,
+      'GET /wiki/pages/keihi-seisan': view,
+      [`GET /wiki/pages/by-doc/${DOC_A}`]: view,
+    },
+  });
+
+  await page.goto('/wiki?page=keihi-seisan');
+
+  await expect(page.getByRole('heading', { name: '申請の手順' })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/wiki\\?doc=${DOC_A}$`));
+  expect(traffic.calls.map((c) => c.key)).toContain('GET /wiki/pages/keihi-seisan');
 
   expectBffTrafficIsComplete(traffic);
 });

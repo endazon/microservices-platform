@@ -106,14 +106,16 @@ afterEach(() => {
 
 describe('WikiBrowsePage (SC-04) — page tree', () => {
   // UC-07 基本フロー 2 / FR-05: 権限内のページだけが並ぶ（絞りは後段。画面は届いた一覧をそのまま描く）。
-  it('renders the permitted pages as a tree of links keyed by slug and fetches no body yet', async () => {
+  // FR-13, ADR-0091 決定 1, IADR-0644 (#2108): ツリーのリンクは文書 ID（`?doc=`）。題名を変えても切れない。
+  it('renders the permitted pages as a tree of links keyed by document id and fetches no body yet', async () => {
     respond();
     await renderPage();
 
     const tree = await screen.findByRole('navigation', { name: 'ページツリー' });
     const links = within(tree).getAllByRole('link');
     expect(links.map((l) => l.textContent)).toEqual(['経費精算規程', '旅費規程']);
-    expect(links[0]).toHaveAttribute('href', '/wiki?page=keihi-seisan');
+    expect(links[0]).toHaveAttribute('href', `/wiki?doc=${DOC_A}`);
+    expect(links[1]).toHaveAttribute('href', `/wiki?doc=${DOC_B}`);
     // 何も選んでいないので本文は取りに行かない。
     // **［2026-09-12］`role="note"` の `<p>` から `EmptyState` へ寄せた**（三部品への統一。
     // 空は割り込んで知らせる事象ではないので `role` を持たない）。実装が正・テストを追随。
@@ -149,9 +151,9 @@ describe('WikiBrowsePage (SC-04) — page tree', () => {
 
 describe('WikiBrowsePage (SC-04) — page body', () => {
   // UC-07 基本フロー 1「開く」/ ADR-0073 決定 2: 本文は Wiki.js が描画した HTML をそのまま（sanitize して）描く。
-  it('opens a page by slug and renders the Wiki.js HTML sanitized', async () => {
+  it('opens a page by document id and renders the Wiki.js HTML sanitized', async () => {
     respond();
-    await renderPage('/wiki?page=keihi-seisan');
+    await renderPage(`/wiki?doc=${DOC_A}`);
 
     // ★ 陽性対照: Wiki.js の見出しが**見出しとして**描かれる（SC-03 が Markdown 原文を等幅で出すのと対照的）。
     expect(
@@ -168,9 +170,9 @@ describe('WikiBrowsePage (SC-04) — page body', () => {
       'href',
       `/wiki?doc=${DOC_B}`,
     );
-    // 取得はスラッグの経路で行う。
-    expect(calledPaths()).toContain('/wiki/pages/keihi-seisan');
-    expect(calledPaths().filter((p) => p.includes('/by-doc/'))).toEqual([]);
+    // 取得は文書 ID の経路で行う（slug の経路は呼ばない）。
+    expect(calledPaths()).toContain(`/wiki/pages/by-doc/${DOC_A}`);
+    expect(calledPaths()).not.toContain('/wiki/pages/keihi-seisan');
     // 題名・最終同期・SC-03 への復帰リンク（05_screens §SC-04 §主要素）。
     expect(screen.getByRole('heading', { name: '経費精算規程', level: 2 })).toBeInTheDocument();
     // **［2026-09-12］最終同期は `Kv` の項目名と値の対になった**（hi-fi の `.sub` 相当）。
@@ -202,12 +204,46 @@ describe('WikiBrowsePage (SC-04) — page body', () => {
     expect(calledPaths()).not.toContain('/wiki/pages/keihi-seisan');
   });
 
-  it('prefers the slug when both page and doc are present', async () => {
+  // FR-13, ADR-0091 決定 1, IADR-0644 (#2108): 両方あれば `doc` が勝ち、URL から `page` が消える。
+  // ［2026-10-26 反転］従前（IADR-0365 決定 4）は `page` が勝ち、改題で古くなった `page=` が正しい `doc=` に勝っていた。
+  it('prefers the document id when both page and doc are present and drops page from the url', async () => {
     respond();
-    await renderPage(`/wiki?page=keihi-seisan&doc=${DOC_B}`);
+    const { router } = await renderPage(`/wiki?page=keihi-seisan&doc=${DOC_A}`);
+
+    await screen.findByRole('heading', { name: '申請の手順', level: 2 });
+    expect(calledPaths()).toContain(`/wiki/pages/by-doc/${DOC_A}`);
+    expect(calledPaths()).not.toContain('/wiki/pages/keihi-seisan');
+    await waitFor(() => expect(router.state.location.search).toEqual({ doc: DOC_A }));
+  });
+
+  // FR-13, ADR-0091 決定 2, IADR-0644 (#2108): 旧形式の共有 URL（`?page=<slug>` だけ）は slug で引いて開き、
+  // 開けたら URL を `?doc=<その文書 ID>` へ書き換える（履歴を増やさない）。検索語は保つ。
+  it('opens a legacy ?page= link by slug and rewrites the url to ?doc=', async () => {
+    respond({ byDoc: VIEW_A });
+    const { router } = await renderPage('/wiki?q=%E7%B5%8C%E8%B2%BB&page=keihi-seisan');
 
     await screen.findByRole('heading', { name: '申請の手順', level: 2 });
     expect(calledPaths()).toContain('/wiki/pages/keihi-seisan');
+    await waitFor(() => expect(router.state.location.search).toEqual({ q: '経費', doc: DOC_A }));
+    expect(router.history.length).toBe(1);
+    // 書き換えた後は文書 ID の経路で開いている。ツリーの現在地も文書 ID で決まる。
+    await waitFor(() => expect(calledPaths()).toContain(`/wiki/pages/by-doc/${DOC_A}`));
+    const tree = screen.getByRole('navigation', { name: 'ページツリー' });
+    await waitFor(() =>
+      expect(within(tree).getByRole('link', { name: '経費精算規程' })).toHaveAttribute(
+        'aria-current',
+        'page',
+      ),
+    );
+  });
+
+  // ★ 陰性対照: 旧形式の URL が開けない（404 ＝ 不存在・権限外・同じ slug が複数の文書に一致）なら書き換えない。
+  it('keeps a legacy ?page= link that does not resolve as it is and shows not found', async () => {
+    respond({ page: ApiError.fromStatus(404) });
+    const { router } = await renderPage('/wiki?page=dou-mei');
+
+    expect(await screen.findByText('ページが見つかりませんでした。')).toBeInTheDocument();
+    expect(router.state.location.search).toEqual({ page: 'dou-mei' });
     expect(calledPaths().filter((p) => p.includes('/by-doc/'))).toEqual([]);
   });
 
@@ -256,7 +292,7 @@ describe('WikiBrowsePage (SC-04) — search', () => {
 
     const results = await screen.findByRole('list', { name: '検索結果' });
     expect(within(results).getByRole('link', { name: '旅費規程' }).getAttribute('href')).toContain(
-      'page=ryohi',
+      `doc=${DOC_B}`,
     );
     expect(calledPaths()).toContain(`/wiki/search?q=${encodeURIComponent('旅費')}`);
   });

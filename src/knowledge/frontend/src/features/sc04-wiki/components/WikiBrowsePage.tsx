@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -64,6 +64,27 @@ export function WikiBrowsePage() {
   const [draft, setDraft] = useState(search.q ?? '');
   const hasSelection = search.page !== undefined || search.doc !== undefined;
 
+  // 🔴 FR-13, ADR-0091 決定 1・2, IADR-0644 (#2108): 旧形式の共有 URL（`?page=<slug>`）を新形式（`?doc=<id>`）へ書き換える。
+  //   - `doc` もあれば `page` を外すだけ（`doc` が勝つ）。
+  //   - `page` だけなら、slug で開けた（後段が 1 件に決めた）ときだけ、その文書 ID へ書き換える。404 なら書き換えない。
+  //   履歴は増やさない（`replace`）—— 戻るで旧形式へ戻ると、また書き換えが走るだけになる。
+  const resolvedDoc =
+    search.page !== undefined && search.doc === undefined ? page.data?.documentId : undefined;
+  useEffect(() => {
+    if (search.page === undefined) return;
+    if (search.doc !== undefined) {
+      void navigate({
+        search: (prev: WikiSearch) => ({ ...prev, page: undefined }),
+        replace: true,
+      });
+    } else if (resolvedDoc !== undefined) {
+      void navigate({
+        search: (prev: WikiSearch) => ({ ...prev, page: undefined, doc: resolvedDoc }),
+        replace: true,
+      });
+    }
+  }, [search.page, search.doc, resolvedDoc, navigate]);
+
   function onSearch(e: React.FormEvent) {
     e.preventDefault();
     const q = draft.trim();
@@ -102,12 +123,12 @@ export function WikiBrowsePage() {
             {/* 検索していないときは照会そのものが無効（`enabled: false`）なので `QueryState` へ渡さない
                 ——無効な照会は TanStack Query では永遠に待ちである。 */}
             {search.q === undefined ? null : (
-              <SearchResults hits={hits} q={search.q} current={search.page} />
+              <SearchResults hits={hits} q={search.q} current={search.doc} />
             )}
           </Panel>
 
           <Panel heading={<Trans>ページツリー</Trans>}>
-            <PageTree pages={pages} q={search.q} current={search.page} />
+            <PageTree pages={pages} q={search.q} current={search.doc} />
           </Panel>
         </div>
 
@@ -160,8 +181,8 @@ function PageTree({
               <li key={p.id}>
                 <Link
                   to="/wiki"
-                  search={{ q, page: p.slug }}
-                  aria-current={p.slug === current ? 'page' : undefined}
+                  search={{ q, doc: p.documentId }}
+                  aria-current={p.documentId === current ? 'page' : undefined}
                   className="text-brand hover:underline aria-[current=page]:font-semibold"
                 >
                   {p.title}
@@ -207,8 +228,8 @@ function SearchResults({
               <li key={h.id}>
                 <Link
                   to="/wiki"
-                  search={{ q, page: h.slug }}
-                  aria-current={h.slug === current ? 'page' : undefined}
+                  search={{ q, doc: h.documentId }}
+                  aria-current={h.documentId === current ? 'page' : undefined}
                   className="text-brand hover:underline aria-[current=page]:font-semibold"
                 >
                   {h.title}

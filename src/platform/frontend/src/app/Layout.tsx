@@ -79,7 +79,7 @@ function NavLink({ item }: { item: NavItemView }) {
   // 🔴 **`activeOptions` を既定（前方一致 ＋ 検索パラメータの部分一致）のままにしない。**
   // 前方一致だと `/settings/risk` に居るとき「設定」（`/settings`）も活性になり、
   // **左レールに `aria-current="page"` が 2 つ立つ**（AST の 3 画面で実測）。
-  // 一方 `exact` だけでは検索パラメータまで完全一致を要求するため、`/wiki?page=…` で
+  // 一方 `exact` だけでは検索パラメータまで完全一致を要求するため、`/wiki?doc=…` で
   // 「Wiki閲覧」が消灯する（パンくずの親段と同じ罠。breadcrumbs 側のコメント参照）。
   // **パスだけを厳密に見る**のが左レールの正しい判定である。
   //
@@ -136,7 +136,7 @@ function Breadcrumb({ trail }: { trail: readonly BreadcrumbSegmentView[] }) {
             ) : (
               // 🔴 親の段は「いま居る画面」ではないので、TanStack の活性判定（既定は前方一致）に
               // `aria-current="page"` を付けさせない。SC-04（#1200）は「Wiki」を `/wiki` への親の段に置き、
-              // 葉（題名）が現在地になる —— `/wiki?page=…` で既定のままだと親と葉の両方に
+              // 葉（題名）が現在地になる —— `/wiki?doc=…` で既定のままだと親と葉の両方に
               // `aria-current` が立つ（Playwright で実測）。`exact` は検索パラメータまで完全一致を要求する。
               <Link
                 to={seg.to as '/ask'}

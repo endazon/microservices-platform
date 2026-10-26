@@ -20,8 +20,9 @@ public class WikiDbContext(DbContextOptions<WikiDbContext> options) : DbContext(
     // 同時に作ると、印より先にこの索引で 23505 になる（実 PostgreSQL の結合試験で実測）。これも保存の突き合わせの負けとして扱う。
     public const string DocumentIdIndexName = "IX_Pages_DocumentId";
 
-    // FR-13, [[IADR-0541]] 決定 3 (#1934): slug の一意索引の名前。同期の受け口が 23505 の制約名と突き合わせる
-    // （EF の既定の名前と同じ値。既存のマイグレーションの索引名を変えない）。
+    // FR-13, [[IADR-0541]] (#1934): slug の索引の名前（EF の既定の名前と同じ値。既存のマイグレーションの索引名を変えない）。
+    // ［2026-10-26 / #2108・ADR-0091 決定 1・[[IADR-0644]]］**一意でない索引にした**（slug に一意性を課さない）。
+    // slug での引き当て（旧形式の URL の互換の解決）の速さのために索引そのものは残す。
     public const string SlugIndexName = "IX_Pages_Slug";
 
     protected override void OnModelCreating(ModelBuilder mb)
@@ -41,7 +42,7 @@ public class WikiDbContext(DbContextOptions<WikiDbContext> options) : DbContext(
             e.Ignore(p => p.WikiPath);
             e.Property(p => p.Title).HasMaxLength(WikiPage.TitleMaxLength).IsRequired();
             e.Property(p => p.Slug).HasMaxLength(WikiPage.SlugMaxLength).IsRequired();
-            e.HasIndex(p => p.Slug).IsUnique().HasDatabaseName(SlugIndexName);
+            e.HasIndex(p => p.Slug).HasDatabaseName(SlugIndexName);
             e.HasIndex(p => p.DocumentId).IsUnique();
             e.Property(p => p.Attributes)
                 .HasConversion(

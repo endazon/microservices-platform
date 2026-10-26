@@ -3,15 +3,15 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-10-23
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-13, FR-19, UC-03, UC-07, FR-06]
-adrs: [ADR-0011, ADR-0046, ADR-0061, ADR-0027, ADR-0057]
-iadrs: [IADR-0596, IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529, IADR-0533]
-specs: [20261023_2102_wiki-catalog-ordering, 20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate, 20261015_1902_east-west-rest-residue]
-issues: [#2102, #2047, #66, #1879, #1902, planning#784]
+adrs: [ADR-0091, ADR-0011, ADR-0046, ADR-0061, ADR-0027, ADR-0057]
+iadrs: [IADR-0644, IADR-0596, IADR-0009, IADR-0013, IADR-0020, IADR-0021, IADR-0529, IADR-0533]
+specs: [20261026_2108_wiki-deep-link-document-id, 20261023_2102_wiki-catalog-ordering, 20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, 20261010_1879_exposure-org-docs-wiki-gate, 20261015_1902_east-west-rest-residue]
+issues: [#2102, #2047, #66, #1879, #1902, #2108, planning#784]
 -->
 
 # 機能仕様書: Wiki 文書閲覧
@@ -60,7 +60,7 @@ issues: [#2102, #2047, #66, #1879, #1902, planning#784]
 | メソッド | パス | 説明 | 権限外の挙動 |
 | --- | --- | --- | --- |
 | GET | `/wiki/pages` | 権限内ページの一覧（軽量サマリ。`WikiPath`=Wiki.js 上の閲覧パス） | `Granted=false` は空配列（列挙に出さない） |
-| GET | `/wiki/pages/{slug}` | slug 指定の個別ページ（ABAC 通過時のみ Wiki.js 本文をプロキシ） | 404（存在秘匿） |
+| GET | `/wiki/pages/{slug}` | slug 指定の個別ページ（ABAC 通過時のみ Wiki.js 本文をプロキシ）。**旧形式の共有 URL の互換の解決だけに使う**（ページの鍵は文書 ID）。slug は一意でなく、**同じ slug の文書が 2 つ以上あれば本文を返さない** | 404（存在秘匿。複数一致も同じ 404） |
 | GET | `/wiki/pages/by-doc/{documentId}` | documentId 指定の個別ページ（同上・プロキシ） | 404（存在秘匿） |
 
 ## 主要コンポーネント

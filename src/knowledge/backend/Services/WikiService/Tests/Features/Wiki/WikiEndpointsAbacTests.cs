@@ -326,6 +326,79 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // ---- FR-13, ADR-0091 決定 2, IADR-0644 (#2108): slug が複数の文書に一致するときは本文を返さない ----
+    //
+    // 台帳の slug は一意でない（ADR-0091 決定 1。一意索引を落とした）。同じ slug の行が 2 つあるとき、どれか 1 件を選んで返すと
+    // 利用者は「別の文書が出た」ことに気づけない。応答は不存在・権限外と同じ 404（IADR-0009。「複数ある」と教えない）。
+    private async Task<(Guid First, Guid Second)> SeedSameSlugAsync(string firstConfidentiality = "public", bool archiveSecond = false)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+        db.Pages.RemoveRange(db.Pages);
+        await db.SaveChangesAsync();
+
+        // 同じ題名から同じ slug を作る（同期の受け口は接尾辞を選ぶが、台帳は一意を強制しない —— 人手の行・過去の行を想定する）。
+        var first = WikiPage.CreateFromDocument(Guid.NewGuid(), "同名規程", "s3://b/a.md",
+            new() { ["confidentiality"] = firstConfidentiality }, []);
+        var second = WikiPage.CreateFromDocument(Guid.NewGuid(), "同名規程", "s3://b/b.md",
+            new() { ["confidentiality"] = "public" }, []);
+        if (archiveSecond) second.Archive();
+        first.Slug.Should().Be(second.Slug, "前提: 2 行が同じ slug を持つ");
+        db.Pages.AddRange(first, second);
+        await db.SaveChangesAsync();
+        return (first.DocumentId, second.DocumentId);
+    }
+
+    [Fact]
+    public async Task GetPageBySlug_Returns404_WhenSlugMatchesTwoPermittedDocuments()
+    {
+        await SeedSameSlugAsync();
+        factory.Scope = new AccessScopeResponse("u", [new AttributeFilter("confidentiality", ["public"])], Granted: true);
+
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{ResolveSlug("同名規程")}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound, "1 件に決まらないのに 1 件を返さない（ADR-0091 決定 2）");
+    }
+
+    // 片方が権限外でも 404。権限内の 1 件を返すと、「同名の権限外の文書があるか」が応答の違い（200 か 404 か）で分かってしまう。
+    [Fact]
+    public async Task GetPageBySlug_Returns404_WhenOneOfTheSameSlugDocumentsIsOutOfScope()
+    {
+        await SeedSameSlugAsync(firstConfidentiality: "restricted");
+        factory.Scope = new AccessScopeResponse("u", [new AttributeFilter("confidentiality", ["public"])], Granted: true);
+
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{ResolveSlug("同名規程")}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task GetPageBySlug_Returns404_WhenOneOfTheSameSlugDocumentsIsArchived()
+    {
+        await SeedSameSlugAsync(archiveSecond: true);
+        factory.Scope = new AccessScopeResponse("u", [new AttributeFilter("confidentiality", ["public"])], Granted: true);
+
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{ResolveSlug("同名規程")}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // ★ 陽性対照: 同じ 2 件でも、文書 ID の経路では各々が開ける（深いリンクの同一性は DocumentId。ADR-0091 決定 1）。
+    [Fact]
+    public async Task GetPageByDoc_StillOpensEachOfTheSameSlugDocuments()
+    {
+        var (first, second) = await SeedSameSlugAsync();
+        factory.Scope = new AccessScopeResponse("u", [new AttributeFilter("confidentiality", ["public"])], Granted: true);
+
+        foreach (var doc in new[] { first, second })
+        {
+            var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{doc}", TestContext.Current.CancellationToken);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var view = await response.Content.ReadFromJsonAsync<PageView>(TestContext.Current.CancellationToken);
+            view!.DocumentId.Should().Be(doc);
+        }
+    }
+
     private async Task ArchiveAsync(Guid documentId)
     {
         using var scope = factory.Services.CreateScope();

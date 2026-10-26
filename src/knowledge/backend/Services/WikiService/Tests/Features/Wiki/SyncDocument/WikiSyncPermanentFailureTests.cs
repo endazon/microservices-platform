@@ -32,14 +32,14 @@ namespace WikiService.Tests.Features.Wiki.SyncDocument;
 // **Wiki 同期の slug を文書 ID 由来の接尾辞で一意にし、再試行で直らない失敗は DLQ へ送らず記録して ack する。**
 //
 // - T-25（slug の一意化）: 同名の題名の別文書は両方ページになる。同じ文書の再同期は 1 ページのまま更新し slug を保つ。
-// - T-26（保存時の競合）: slug の 23505 は文書 ID 32 桁へ付け替えて保存し直す。それでも当たれば Warning＋計数で ack。
-//   文書 ID の 23505・接続断は例外のまま（再試行へ）。
+// - T-26（保存時の競合）: 文書 ID の 23505・接続断は例外のまま（再試行へ）。
+//   ［2026-10-26 / #2108・[[IADR-0644]]］slug の 23505 を付け替える・ack する試験は外した。slug の索引は一意でない（ADR-0091 決定 1）ので起こり得ない。
 // - T-27（本文の欠落の分類）・T-28（受け口）: NoSuchKey だけを欠落とし、Warning＋計数で ack。何も書かない。
 // - T-30〜T-34（#1966・[[IADR-0554]]）: Wiki.js の表題は 255 文字（符号位置）へ文字の境界で切り詰め、印を付けて数える。
 //   Wiki.js が値の長さで拒めば Warning＋計数で ack（実配送で DLQ へ行かない）。他の Wiki.js の失敗は再試行。
 // - T-29（実配送）: 本番と同じ共通既定の Wolverine で、恒久的な失敗は 1 回の試行で終わり DLQ へ行かない。DB の接続断は再試行される。
 //
-// 🔴 InMemory は一意索引を強制しない。**一意性は「slug が互いに異なる」ことで測り**、23505 は保存の割り込み（`ScriptedSaveFailures`）で再現する。
+// 🔴 InMemory は一意索引を強制しない。**slug の選び方は「slug が互いに異なる」ことで測り**、23505 は保存の割り込み（`ScriptedSaveFailures`）で再現する。
 [Trait("TestKind", "Unit")]
 public class WikiSyncPermanentFailureTests
 {
@@ -148,32 +148,6 @@ public class WikiSyncPermanentFailureTests
 
     // ---- T-26: 保存時の競合 ----
 
-    [Fact]
-    public async Task 保存時のslug競合は文書ID全桁へ付け替えて保存し直す()
-    {
-        await using var fx = new Fixture(call => call == 1 ? SlugViolation() : null);
-
-        await fx.HandleAsync(Event(DocA, "同時に来た見出し"));
-
-        fx.Pages().Should().ContainSingle().Which.Slug.Should().Be($"同時に来た見出し-{DocA:N}");
-        fx.Saves.Calls.Should().Be(2);
-        fx.Counted.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task 付け替えても衝突すれば記録してackする()
-    {
-        await using var fx = new Fixture(_ => SlugViolation());
-
-        // 例外を上げない（Wolverine はメッセージを ack する）。
-        await fx.HandleAsync(Event(DocA, "同時に来た見出し"));
-
-        fx.Saves.Calls.Should().Be(2, "付け替えて 1 度だけ保存し直す");
-        fx.Counted.Should().Equal((1L, WikiSyncSkippedMetrics.SlugConflict));
-        fx.Logger.Warnings.Should().ContainSingle().Which.Should().Contain(DocA.ToString()).And.Contain("IX_Pages_Slug");
-        fx.Pages().Should().BeEmpty();
-    }
-
     public static TheoryData<string> TransientSaveFailures => ["document-id-unique", "connection"];
 
     // 🔴 同じ文書の並行作成（IX_Pages_DocumentId の 23505）と接続断は、恒久的な失敗ではない（次の試行で直る）。
@@ -189,13 +163,14 @@ public class WikiSyncPermanentFailureTests
         var act = () => fx.HandleAsync(Event(DocA, "見出し"));
 
         (await act.Should().ThrowAsync<Exception>()).Which.Should().BeSameAs(thrown);
-        fx.Saves.Calls.Should().Be(1, "付け替えて保存し直すのは slug の一意違反だけ");
+        fx.Saves.Calls.Should().Be(1, "受け口の中で保存し直さない");
         fx.Counted.Should().BeEmpty();
     }
 
-    // 本番の索引名と、受け口が突き合わせる制約名が一致する（索引名を変えると判定が黙って外れる）。
+    // FR-13, ADR-0091 決定 1, [[IADR-0644]] (#2108): slug の索引は一意でない（名前は既存のマイグレーションのまま）。
+    // ［2026-10-26］従前は「一意索引の名前が受け口の 23505 の判定と一致する」を固定していた。受け口の判定は外した。
     [Fact]
-    public void slugの一意索引の名前は受け口の判定と一致する()
+    public void slugの索引は一意でなく名前は既存のまま()
     {
         using var db = new WikiDbContext(new DbContextOptionsBuilder<WikiDbContext>()
             .UseNpgsql("Host=localhost;Database=unused").Options);
@@ -203,7 +178,7 @@ public class WikiSyncPermanentFailureTests
         var index = db.Model.FindEntityType(typeof(WikiPage))!.GetIndexes()
             .Single(i => i.Properties.Single().Name == nameof(WikiPage.Slug));
 
-        index.IsUnique.Should().BeTrue();
+        index.IsUnique.Should().BeFalse("ADR-0091 決定 1: slug に一意性を課さない");
         index.GetDatabaseName().Should().Be(WikiDbContext.SlugIndexName).And.Be("IX_Pages_Slug");
     }
 
@@ -284,7 +259,7 @@ public class WikiSyncPermanentFailureTests
 
     // ---- T-29: 実配送（Wolverine・本番と同じ共通既定） ----
 
-    public static TheoryData<string> PermanentKinds => ["slug-conflict", "body-missing", "value-too-long"];
+    public static TheoryData<string> PermanentKinds => ["body-missing", "value-too-long"];
 
     [Theory]
     [MemberData(nameof(PermanentKinds))]
@@ -293,7 +268,7 @@ public class WikiSyncPermanentFailureTests
         var storage = new ScriptedStorage(_ => kind == "body-missing"
             ? throw new NoSuchKeyException("The specified key does not exist.")
             : "# 本文");
-        var saves = new ScriptedSaveFailures(_ => kind == "slug-conflict" ? SlugViolation() : null);
+        var saves = new ScriptedSaveFailures(_ => null);
         var wiki = new RecordingWiki(_ => kind == "value-too-long" ? ValueTooLong() : null);
         using var host = BuildHost(storage, saves, wiki);
         await host.StartAsync(Ct);
@@ -307,7 +282,7 @@ public class WikiSyncPermanentFailureTests
         session.MovedToErrorQueue.Envelopes().Should().BeEmpty("恒久的な失敗は DLQ へ送らない");
         session.MessageSucceeded.SingleMessage<DocumentUpdated>().DocumentId.Should().Be(DocA);
         storage.Calls.Should().Be(1, "再試行しない");
-        saves.Calls.Should().Be(kind == "slug-conflict" ? 2 : 0, "受け口の中の付け替えは 1 度だけ");
+        saves.Calls.Should().Be(0, "恒久的な失敗では保存しない");
         wiki.UpsertCalls.Should().Be(kind == "body-missing" ? 0 : 1, "Wiki.js へも 1 度だけ（再試行しない）");
     }
 
@@ -449,9 +424,6 @@ public class WikiSyncPermanentFailureTests
     private static Exception ValueTooLong()
         => new WikiJsInputRejectedException("create", $"doc/{DocA}", "1",
             "insert into \"pages\" (\"authorId\", ...) values ($1, ...) returning \"id\" - value too long for type character varying(255)");
-
-    private static Exception SlugViolation()
-        => new DbUpdateException("An error occurred while saving the entity changes.", PgUniqueViolation("IX_Pages_Slug"));
 
     private static PostgresException PgUniqueViolation(string constraint)
         => new(messageText: $"duplicate key value violates unique constraint \"{constraint}\"",

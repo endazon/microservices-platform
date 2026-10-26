@@ -768,7 +768,8 @@ paths:
       description: |
         後段 WikiService の `/wiki/pages/{slug}` へ中継する。意味論は文書 ID 版と同じで、
         ABAC 通過時のみ Wiki.js が描画した本文を返し、**権限外・不存在・アーカイブ済みは 404**。
-        ページツリーから本文を開く導線が使う。
+        スラッグは一意でなく、**同じスラッグの文書が 2 つ以上あれば 404**（どれか 1 件を返さない）。
+        旧形式の共有 URL（`?page=<slug>`）の互換の解決だけが使う（ページを開く導線は文書 ID 版）。
       operationId: bff-wiki-page-by-slug
       parameters:
         - name: slug
