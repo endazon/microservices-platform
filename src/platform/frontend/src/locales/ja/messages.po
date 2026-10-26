@@ -4014,6 +4014,14 @@ msgstr "無効化する"
 msgid "版"
 msgstr "版"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "版履歴はまだありません。"
+msgstr "版履歴はまだありません。"
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "版履歴を取得できませんでした。"
+msgstr "版履歴を取得できませんでした。"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
