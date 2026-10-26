@@ -3,7 +3,6 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using WikiService.Common.Observability;
 using WikiService.Domain;
 using WikiService.Infrastructure.Persistence;
@@ -26,12 +25,13 @@ namespace WikiService.Features.Wiki.SyncDocument;
 //   （UsePlatformMessagingDefaults）へ委ねる。
 //
 // 🔴 [[IADR-0541]] (#1934): **恒久的な失敗は例外にしない。** 再試行しても直らないものを DLQ へ送ると、DLQ を汚し
-// 再索引の駆動（DLQ の増分で止まる）を止める。次の 2 つだけを Warning と計数 `wiki.sync.skipped{reason}` で記録して ack する:
-//   - slug の一意制約（`IX_Pages_Slug`）に、文書 ID 32 桁の接尾辞へ付け替えてもなお当たったとき（`slug_conflict`）。
+// 再索引の駆動（DLQ の増分で止まる）を止める。次のものだけを Warning と計数 `wiki.sync.skipped{reason}` で記録して ack する:
+//   - ［2026-10-26 / #2108・[[IADR-0644]]］slug の一意制約（`slug_conflict`）は外した。slug の索引は一意でない（ADR-0091 決定 1）ので起こり得ない。
 //   - 本文のオブジェクトが無い（NoSuchKey。`WikiBodyMissingException`）とき（`body_missing`。[[IADR-0540]] と同じ判定）。
 //   - ［2026-10-16 / #1966・[[IADR-0554]]］Wiki.js が値の長さ（22001）でページを拒んだとき（`value_too_long`。`WikiJsInputRejectedException`）。
 //     表題は先に Wiki.js の列の長さ（255）へ切り詰める（計数 `wiki.sync.truncated{field=title}`）ので、残るのは表題以外の列だけである。
-//   slug は題名だけでは一意にならない（同名の別文書）ので、文書 ID 由来の接尾辞で一意にする（`WikiPage.SlugCandidates`）。
+//   slug は題名だけでは一意にならない（同名の別文書）。他の文書が使っていない候補を選ぶ（`WikiPage.SlugCandidates`）のは、
+//   旧形式の共有 URL（`?page=<slug>`）が 1 件に決まるようにするためで、台帳は一意を強制しない（#2108・ADR-0091 決定 1）。
 //
 // 🔴 ADR-0027 / E3b: **購読は Wolverine へ移した**（IPipelineStep<DocumentUpdated>・IADR-0239）。
 // wiki-delete 段（E3a）と併せて、本サービスから MassTransit は撤去済みである。
@@ -237,9 +237,8 @@ public class DocumentSyncConsumer(
 
         RecordApplied(mark, ev);
         if (!await SaveOrReconcileAsync(
-                () => SaveWithSlugFallbackAsync(page, slugCandidates[^1], ev.DocumentId, ct), ev, ct)) return;
+                async () => { await db.SaveChangesAsync(ct); return true; }, ev, ct)) return;
         // [[IADR-0541]] (#1934): 成功時のログに slug を出さない（slug は題名から作るので、機密文書の題名が毎回ログに入る）。
-        // slug を出すのは異常時（競合の付け替え・恒久的な衝突）の行だけにする。
         logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
     }
 
@@ -269,7 +268,7 @@ public class DocumentSyncConsumer(
         mark.RecordUpdated(ev.UpdatedAt, ev.Sequence);
     }
 
-    // `save` の戻り値は「保存した」か（slug の恒久的な衝突で保存しなかったら false。`SaveWithSlugFallbackAsync`）。
+    // `save` の戻り値は「保存した」か。
     // 🔴 [[IADR-0596]] 決定 3 (#2102): 保存の突き合わせで負けたら、より新しい版が保存済みなら Wiki.js をその状態へ合わせ直して ack する（false）。
     // そうでなければ（相手が古い・同じ版の並行）投げて再試行へ委ねる —— 次の試行は保存済みの印を読んで判定し直す。
     private async Task<bool> SaveOrReconcileAsync(Func<Task<bool>> save, DocumentUpdated ev, CancellationToken ct)
@@ -290,8 +289,9 @@ public class DocumentSyncConsumer(
     // FR-13, [[IADR-0541]] 決定 1・2 (#1934): slug の選び方。
     // - 既存ページの slug が今の題名の候補に入っていれば**そのまま保つ**（URL を壊さない。接尾辞付きで作られたページが、
     //   元の持ち主が消えた後の再同期で素の slug へ動くこともない）。
-    // - そうでなければ（新規・題名の変更）、**他の文書が使っていない最初の候補**を採る。全部埋まっていれば末尾（32 桁）を返し、
-    //   保存時の一意制約で判定する（`SaveWithSlugFallbackAsync`）。
+    // - そうでなければ（新規・題名の変更）、**他の文書が使っていない最初の候補**を採る。全部埋まっていれば末尾（32 桁）を返す。
+    //   ［2026-10-26 / #2108・[[IADR-0644]]］台帳は一意を強制しない（ADR-0091 決定 1）。並行の同期で同じ候補を選んでも保存は通り、
+    //   その slug は 2 行に一致する —— 旧形式の URL では開けない（決定 2 で 404）が、文書 ID の深いリンクでは開ける。
     private async Task<string> ChooseSlugAsync(
         WikiPage? existing, IReadOnlyList<string> candidates, Guid documentId, CancellationToken ct)
     {
@@ -304,60 +304,4 @@ public class DocumentSyncConsumer(
             .ToListAsync(ct);
         return candidates.FirstOrDefault(c => !taken.Contains(c)) ?? candidates[^1];
     }
-
-    // FR-13, [[IADR-0541]] 決定 3 (#1934): 保存。slug の一意制約（`IX_Pages_Slug`）に当たったら —— 空きを確かめた後に
-    // 同名の別文書が並行して同じ slug を取った競合である —— 1 度だけ文書 ID 32 桁の接尾辞へ付け替えて保存し直す。
-    // それでも当たる（または既に 32 桁だった）なら**恒久的な失敗**として記録し false を返す（呼び出し元は ack する）。
-    // 🔴 **`IX_Pages_DocumentId` の 23505（同じ文書の並行作成）・接続断などはここでは捕まえない。** 接続断は次の試行で直る。
-    // 並行作成は［2026-10-23 / #2102・[[IADR-0596]] 決定 3］保存の突き合わせの負けとして `SaveOrReconcileAsync` が受ける
-    // （次の試行に任せると、古い側は「古い」と判定して ack し、Wiki.js に自分の push を残す）。
-    private async Task<bool> SaveWithSlugFallbackAsync(WikiPage page, string fallbackSlug, Guid documentId, CancellationToken ct)
-    {
-        try
-        {
-            await db.SaveChangesAsync(ct);
-            return true;
-        }
-        catch (DbUpdateException first) when (IsSlugUniqueViolation(first) && page.Slug != fallbackSlug)
-        {
-            logger.LogInformation(
-                "Wiki sync {DocumentId}: slug {Slug} was taken concurrently; retrying with {FallbackSlug}",
-                documentId, page.Slug, fallbackSlug);
-            page.ReassignSlug(fallbackSlug);
-        }
-        catch (DbUpdateException first) when (IsSlugUniqueViolation(first))
-        {
-            RecordSlugConflict(page, documentId, first);
-            return false;
-        }
-
-        try
-        {
-            await db.SaveChangesAsync(ct);
-            return true;
-        }
-        catch (DbUpdateException again) when (IsSlugUniqueViolation(again))
-        {
-            RecordSlugConflict(page, documentId, again);
-            return false;
-        }
-    }
-
-    private void RecordSlugConflict(WikiPage page, Guid documentId, DbUpdateException ex)
-    {
-        // Wiki.js のページ（正準パス doc/<id>）は既に書いた。メタデータ行が無い間、ゲートウェイはこのページを返さない（deny-by-default）。
-        skippedMetrics.RecordSlugConflict();
-        logger.LogWarning(ex,
-            "Wiki sync {DocumentId}: slug {Slug} still violates {Index} after the document-id suffix; "
-            + "skipped without retry or dead-lettering",
-            documentId, page.Slug, WikiDbContext.SlugIndexName);
-    }
-
-    // 判定は SQLSTATE と制約名で行う（メッセージ文字列は見ない）。
-    internal static bool IsSlugUniqueViolation(DbUpdateException ex)
-        => ex.InnerException is PostgresException
-        {
-            SqlState: PostgresErrorCodes.UniqueViolation,
-            ConstraintName: WikiDbContext.SlugIndexName,
-        };
 }

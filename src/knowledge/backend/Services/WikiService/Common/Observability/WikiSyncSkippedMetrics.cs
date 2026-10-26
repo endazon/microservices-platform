@@ -5,7 +5,7 @@ namespace WikiService.Common.Observability;
 // FR-13, NFR-06, [[IADR-0541]] 決定 5 (#1934)・[[IADR-0554]] (#1966): **恒久的な失敗のため、再試行・DLQ に回さず記録だけして終えた Wiki 同期の計数。**
 //
 // - 計数 `wiki.sync.skipped`（Prometheus では `wiki_sync_skipped_total`）。タグ `reason` は有限の 2 値:
-//   - `slug_conflict`: 文書 ID 由来の接尾辞へ付け替えても slug の一意制約（`IX_Pages_Slug`）に当たった。**0 が正常**（起こり得るのは人手で同じ slug を書いた行があるときだけ）。
+//   - ［2026-10-26 / #2108・[[IADR-0644]]］`slug_conflict` は外した（slug の索引は一意でない。ADR-0091 決定 1）。
 //   - `body_missing`: 本文のオブジェクトが無い（NoSuchKey）。切り替え前の文書を再発行すると増える（取り込みの `ingestion.body_missing` と同じ母集合）。
 //   - `value_too_long`（[[IADR-0554]] 決定 5・#1966）: Wiki.js が値の長さ（PostgreSQL 22001）でページを拒んだ。表題は切り詰めるので **0 が正常**
 //     （増えたら表題以外の列〔タグ等〕が長い。Warning のログで文書を引く）。
@@ -21,7 +21,6 @@ public sealed class WikiSyncSkippedMetrics
 
     public const string CounterName = "wiki.sync.skipped";
     public const string ReasonTag = "reason";
-    public const string SlugConflict = "slug_conflict";
     public const string BodyMissing = "body_missing";
     public const string ValueTooLong = "value_too_long";
 
@@ -36,12 +35,10 @@ public sealed class WikiSyncSkippedMetrics
     {
         var meter = meterFactory.Create(MeterName);
         _skipped = meter.CreateCounter<long>(CounterName, unit: "{document}",
-            description: "恒久的な失敗（slug の一意制約・本文の NoSuchKey・Wiki.js の値の長さ）のため、再試行せずに記録だけして終えた Wiki 同期の数");
+            description: "恒久的な失敗（本文の NoSuchKey・Wiki.js の値の長さ）のため、再試行せずに記録だけして終えた Wiki 同期の数");
         _truncated = meter.CreateCounter<long>(TruncatedCounterName, unit: "{document}",
             description: "Wiki.js の列の長さに収めるため、表題を切り詰めて同期した数");
     }
-
-    public void RecordSlugConflict() => _skipped.Add(1, new KeyValuePair<string, object?>(ReasonTag, SlugConflict));
 
     public void RecordBodyMissing() => _skipped.Add(1, new KeyValuePair<string, object?>(ReasonTag, BodyMissing));
 

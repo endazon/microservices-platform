@@ -89,7 +89,6 @@ namespace WikiService.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("Slug")
-                        .IsUnique()
                         .HasDatabaseName("IX_Pages_Slug");
 
                     b.ToTable("Pages");

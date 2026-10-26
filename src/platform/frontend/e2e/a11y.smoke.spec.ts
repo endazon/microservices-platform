@@ -297,11 +297,11 @@ test('SC-04: Wiki 閲覧（ページツリーとページ本文）に WCAG 2.2 A
   };
   const traffic = await installBffSession(page, {
     user: sessionUser([]),
-    handlers: { 'GET /wiki/pages': pages, 'GET /wiki/pages/keihi-seisan': view },
+    handlers: { 'GET /wiki/pages': pages, [`GET /wiki/pages/by-doc/${DOC_ID}`]: view },
   });
 
   // ページを開いた状態で測る（ツリーだけの面と本文を持つ面では検査される要素が別物である）。
-  await page.goto('/wiki?page=keihi-seisan');
+  await page.goto(`/wiki?doc=${DOC_ID}`);
   await expect(page.getByRole('heading', { name: 'Wiki 閲覧', level: 1 })).toBeVisible();
   await expect(page.getByRole('heading', { name: '申請の手順' })).toBeVisible();
 

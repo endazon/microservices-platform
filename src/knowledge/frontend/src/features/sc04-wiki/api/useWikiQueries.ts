@@ -39,21 +39,22 @@ export function useWikiPages() {
 }
 
 /**
- * 本文。`page`（スラッグ）があればそれを、無ければ `doc`（文書 ID）を使う。
+ * 本文。`doc`（文書 ID）があればそれを、無ければ `page`（スラッグ。旧形式の共有 URL の互換）を使う。
  * どちらも無ければ何も取りに行かない（`enabled: false` のまま）。
  *
+ * 🔴 FR-13, ADR-0091 決定 1, IADR-0644 (#2108): **`doc` が勝つ**（深いリンクの同一性は DocumentId）。
  * **フックは常に 2 本とも呼ぶ**（条件で呼び分けると React のフック規則を破る）。
  */
 export function useWikiPage(search: Pick<WikiSearch, 'page' | 'doc'>) {
-  const slug = search.page ?? '';
-  const doc = slug === '' ? (search.doc ?? '') : '';
-  const bySlug = useBffWikiPageBySlug<WikiPageView, unknown>(slug, {
-    query: { queryKey: getBffWikiPageBySlugQueryKey(slug), select: okData, enabled: slug !== '' },
-  });
+  const doc = search.doc ?? '';
+  const slug = doc === '' ? (search.page ?? '') : '';
   const byDoc = useBffWikiPageByDocument<WikiPageView, unknown>(doc, {
     query: { queryKey: getBffWikiPageByDocumentQueryKey(doc), select: okData, enabled: doc !== '' },
   });
-  return slug !== '' ? bySlug : byDoc;
+  const bySlug = useBffWikiPageBySlug<WikiPageView, unknown>(slug, {
+    query: { queryKey: getBffWikiPageBySlugQueryKey(slug), select: okData, enabled: slug !== '' },
+  });
+  return doc !== '' ? byDoc : bySlug;
 }
 
 /**

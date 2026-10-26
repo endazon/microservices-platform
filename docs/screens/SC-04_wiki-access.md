@@ -3,15 +3,15 @@ title: Wiki 閲覧画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-05
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-13, FR-17, SC-01, SC-03, SC-04, SC-18, UC-07]
-adrs: [ADR-0011, ADR-0031, ADR-0073]
-iadrs: [IADR-0009, IADR-0020, IADR-0124, IADR-0134, IADR-0335, IADR-0355, IADR-0365, IADR-0386]
-specs: [20260708_issue-130_sc04-wiki-access, 20260903_issue-1199_bff-wiki-routes, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e]
-issues: [#129, #130, #1199, #1200, #1240]
+adrs: [ADR-0091, ADR-0011, ADR-0031, ADR-0073]
+iadrs: [IADR-0644, IADR-0009, IADR-0020, IADR-0124, IADR-0134, IADR-0335, IADR-0355, IADR-0365, IADR-0386]
+specs: [20261026_2108_wiki-deep-link-document-id, 20260708_issue-130_sc04-wiki-access, 20260903_issue-1199_bff-wiki-routes, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e]
+issues: [#129, #130, #1199, #1200, #1240, #2108]
 -->
 
 # 画面仕様書: Wiki 閲覧画面
@@ -52,11 +52,15 @@ WikiService（前段ゲートウェイ）** 経由で取得し、**利用者が 
 
 | パラメータ | 意味 | 取得 |
 | --- | --- | --- |
-| `page=<slug>` | ページツリー・検索結果から開いたページ | `GET /bff/wiki/pages/{slug}` |
-| `doc=<documentId>` | 検索／チャット質問画面の出典・文書詳細の「Wiki で閲覧」から開いたページ（**文書別ディープリンク**） | `GET /bff/wiki/pages/by-doc/{documentId}` |
+| `doc=<documentId>` | 開いているページ。**ページを指す唯一の鍵**（ページツリー・検索結果・検索／チャット質問画面の出典・文書詳細の「Wiki で閲覧」・本文中のページ間リンク）。題名を変えても切れない | `GET /bff/wiki/pages/by-doc/{documentId}` |
+| `page=<slug>` | **旧形式の共有 URL の互換のためだけに受ける**。画面はこの形を作らない | `GET /bff/wiki/pages/{slug}` |
 | `q=<検索語>` | 検索語 | `GET /bff/wiki/search?q=` |
 
-- `page` と `doc` が同時に来たら `page` を優先する。どちらも無ければ本文は描かず、ページを選ばせる。
+- **`doc` と `page` が同時に来たら `doc` を優先し、URL から `page` を外す**（履歴を増やさない書き換え）。どちらも無ければ本文は描かず、ページを選ばせる。
+- `page` だけで来たら（旧形式の共有 URL）、スラッグで引く。**開けたら URL を `?doc=<その文書 ID>` へ書き換える**（検索語は保つ。履歴を増やさない）。
+  開けなければ（不存在・権限外・**同じスラッグが複数の文書に一致**）中立の 404 表示のまま書き換えない。後段は同じスラッグの文書が 2 つ以上あると
+  どれも返さない（どれか 1 件を返すと、利用者は別の文書が出たことに気づけない。「複数ある」とも教えない）。
+- 改題した文書の旧形式の URL（古い題名のスラッグ）は、そのスラッグを今持つページが無ければ 404 になる（従来どおり）。`doc=` の URL は改題で切れない。
 - 文字列でない・空の値は「無い」として扱う（URL は外部由来）。
 - パンくずは `ホーム / Wiki`、ページを開くと `ホーム / Wiki / <ページの題名>`（葉は画面が取得後に渡す。「Wiki」の段は
   自画面へのリンクである親の段として置く —— 自画面の段に固定の名を置くと葉が一度も描かれない）。
@@ -118,9 +122,9 @@ sanitize してから描く**（多層防御。本文の原典は取り込み文
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| ページツリーの項目 | `?page=<slug>` へ（検索語は保つ） | `/wiki?page=…` |
+| ページツリーの項目 | `?doc=<documentId>` へ（検索語は保つ） | `/wiki?doc=…` |
 | 検索 | 入力語を `?q=` に載せ、権限内の当たりを一覧する | `/wiki?q=…` |
-| 検索結果の項目 | `?page=<slug>` へ（検索語は保つ） | `/wiki?q=…&page=…` |
+| 検索結果の項目 | `?doc=<documentId>` へ（検索語は保つ） | `/wiki?q=…&doc=…` |
 | 本文中のページ間リンク | `?doc=<documentId>` へ | `/wiki?doc=…` |
 | 文書詳細へ戻る | 文書詳細画面へ | `/docs/$id` |
 
