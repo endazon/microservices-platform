@@ -18422,6 +18422,88 @@ server.listen(0, '127.0.0.1', async () => {
         assert.match(v[0], /scripts\.test\.js 全件.*scripts-tests も success でない/);
       }
     });
+
+    // IADR-0643 (#2276): 変更ファイル以外（コマンドの出力・CI の一覧）を指す「読めていない」で赤になった実本文 2 本（同型 2 回）。
+    // #2270 の 1 回目（67df663e）は `helm template` の描画出力、#2275 の 3 回目（b5139fe6）は `gh run list` の一覧を指していた。
+    // 変更ファイルは当時の head の差分（`git diff --name-only` 相当）。どちらも N/N を申告し、変更ファイルは読んでいた。
+    const review2270 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2270-review1.txt'), 'utf8');
+    const changed2270 = [
+      '.ai-context/adr/IADR-0639_receiver-ordering-by-time-then-sequence.md',
+      '.ai-context/adr/IADR-0640_ingestion-delete-tombstone.md',
+      '.ai-context/adr/README.md',
+      '.ai-context/specs/20261026_2263_ingestion-delete-tombstone.md',
+      'deploy/helm/microservices-platform/files/pipeline.json',
+      'scripts/event-topology-baseline.json',
+      'src/knowledge/backend/Services/IngestionService/Common/Concurrency/DocumentIndexLocks.cs',
+      'src/knowledge/backend/Services/IngestionService/Domain/DocumentIndexVersion.cs',
+      'src/knowledge/backend/Services/IngestionService/Features/Ingestion/Ingest/DocumentUpdatedConsumer.cs',
+      'src/knowledge/backend/Services/IngestionService/Features/Ingestion/ReembedPending/EmbeddingPendingReembedder.cs',
+      'src/knowledge/backend/Services/IngestionService/Features/Ingestion/RemoveDeleted/DocumentDeletedConsumer.cs',
+      'src/knowledge/backend/Services/IngestionService/Infrastructure/ExternalServices/QdrantIngestionVectorStore.cs',
+      'src/knowledge/backend/Services/IngestionService/Program.cs',
+      'src/knowledge/backend/Services/IngestionService/Tests/Features/Ingestion/Ingest/IngestionOrderingAndAtomicityTests.cs',
+      'src/knowledge/backend/Services/IngestionService/Tests/Features/Ingestion/RemoveDeleted/IngestionDeleteTombstoneTests.cs',
+      'src/knowledge/backend/Services/IngestionService/Tests/Infrastructure/ExternalServices/QdrantIndexVersionStoreTests.cs',
+    ];
+    const review2275 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2275-review3.txt'), 'utf8');
+    const changed2275 = [
+      '.ai-context/adr/IADR-0642_k3d-create-timeout-and-recreate.md',
+      '.ai-context/adr/README.md',
+      '.ai-context/specs/20261026_2273_k3d-create-timeout-and-recreate.md',
+      'deploy/local/README.md',
+      'docs/operations/operations.md',
+      'scripts/k8s-local-up.sh',
+      'scripts/k8s-local-up.test.js',
+      'scripts/lib/k3d-create.sh',
+      'scripts/live-scripts.json',
+    ];
+    ok('check-review-verdict[IADR-0643]: #2270・#2275 の実本文は、変更ファイル以外を指す「読めていない」で赤にならない', () => {
+      assert.deepStrictEqual(floorRvf(review2270, changed2270, { scriptsTestsConclusion: 'success' }), []);
+      assert.deepStrictEqual(floorRvf(review2275, changed2275, { scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0643]: ★陽性対照 —— 同じ実本文でも、その文が変更ファイルを指すように書き換えると赤', () => {
+      const swap2270 = review2270.replace('描画できた。出力が大きく、全行は読んでいない。', '描画できた。`pipeline.json` の出力が大きく、全行は読んでいない。');
+      const swap2275 = review2275.replace('CI の `scripts-tests` の結論は一覧から読めていない。', '`k3d-create.sh` の出力は一覧から読めていない。');
+      assert.notStrictEqual(swap2270, review2270);
+      assert.notStrictEqual(swap2275, review2275);
+      for (const [b, c] of [[swap2270, changed2270], [swap2275, changed2275]]) {
+        const v = floorRvf(b, c, { scriptsTestsConclusion: 'success' });
+        assert.strictEqual(v.length, 1);
+        assert.match(v[0], /精読していないと書いている/);
+      }
+    });
+
+    // IADR-0643 (#2276): ★変異試験 —— 除外の 3 条件のそれぞれを外した検査器では、その条件だけが赤に保っている例が緑になる。
+    // （＝自己試験と上の陽性対照が、条件を見ていることの固定。条件を黙って緩めると、ここではなく自己試験が赤になる）
+    {
+      const SRC_RVF = fsRvf.readFileSync(pathRvf.join(__dirname, 'check-review-verdict.js'), 'utf8');
+      const mutate = (from, to) => {
+        assert.ok(SRC_RVF.includes(from), `変異の置換元が無い（検査器の書き方が変わった）: ${from}`);
+        const file = pathRvf.join(__dirname, `.mutant-check-review-verdict-${process.pid}-${Math.random().toString(36).slice(2)}.js`);
+        fsRvf.writeFileSync(file, SRC_RVF.replace(from, to));
+        try {
+          delete require.cache[file];
+          return require(file);
+        } finally {
+          fsRvf.rmSync(file, { force: true });
+        }
+      };
+      const head = '## AI コードレビュー結果\n\n変更 2 ファイル中 2 ファイルを読んだ（生成物の除外なし）。\n\n### 🔴 重大\n- なし\n\n### 🟡 推奨\n- なし\n\n### 🟢 軽微\n- なし\n\n### ✅ 確認できたこと\n- ';
+      const changed = ['src/a/foo.cs', 'src/platform/backend/Services/LlmGateway/Dockerfile'];
+      const red = (m, line) => m.findFloorViolations(head + line, changed, { scriptsTestsConclusion: 'success' }).filter((x) => /精読していないと書いている/.test(x)).length === 1;
+      const real = require('./check-review-verdict.js');
+      const cases = [
+        { name: '条件 1（対象の語）', from: 'NON_FILE_OBJECT.test(bareSentence) &&', to: 'true &&', line: '残りの半分しか読んでいない。' },
+        { name: '条件 2（ファイルを指す語）', from: '!FILE_TARGET.test(rawLine) &&', to: 'true &&', line: '`git diff` の出力が大きく、全行は読んでいない。' },
+        { name: '条件 3（変更ファイルの名前）', from: '!mentionsChangedFile(rawLine, changedFiles)', to: 'true', line: '`Dockerfile` の描画が長く、全行は読んでいない。' },
+      ];
+      for (const c of cases) {
+        ok(`check-review-verdict[IADR-0643]: ★変異 —— ${c.name}を外すと「${c.line}」が緑になる（本物は赤）`, () => {
+          assert.ok(red(real, c.line), `本物の検査器で赤でない: ${c.line}`);
+          assert.ok(!red(mutate(c.from, c.to), c.line), `変異でも赤のまま（例がその条件を試していない）: ${c.line}`);
+        });
+      }
+    }
   }
 
   // --- export-loki-logs: 経路 B の Loki から時間範囲のログを書き出す（NFR-18, ADR-0133, IADR-0543 / #1935） ---

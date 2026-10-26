@@ -343,6 +343,39 @@ const NON_GENERATED_TARGET = /テスト|Tests?\b|docs|文書|仕様|IADR|ADR|本
  */
 const PLAN_DOC = /計画書|計画の?\s*ADR|計画リポ(?:ジトリ)?|他リポ(?:ジトリ)?/g;
 
+/**
+ * 変更ファイル以外の対象（コマンドの出力・CI の一覧）についての文（#2276 / IADR-0643）。
+ *
+ * #2270 の「（`helm template` の描画は）出力が大きく、全行は読んでいない。」と、#2275 の「CI の `scripts-tests` の結論は
+ * 一覧から読めていない。」は、未精読の型に当たるが、指していたのは変更ファイルではなかった（どちらも N/N を申告し、
+ * 変更ファイルは読んでいた）。IADR-0538 §結果が既知の偽陽性として挙げた型で、計画書・他リポジトリと同じく外す。
+ *
+ * 🔴 **下限を緩めないため、3 つをすべて満たす文だけを外す**（変更ファイルを指す文は従来どおり数える）。
+ *   1. 文（「。」で切った単位。引用は外す）が NON_FILE_OBJECT を含む。
+ *   2. その文を含む行（箇条の 1 項目。**引用の中も含む** —— 「`git diff` の出力」を外さない）が FILE_TARGET を含まない。
+ *   3. その行（引用の中も含む）が、変更ファイルのパスも名前も含まない（changedFiles が渡されたとき）。
+ */
+const NON_FILE_OBJECT = /出力|描画|ログ|一覧|結論|ジョブ|check-run|\bCI\b|実行結果/;
+const FILE_TARGET =
+  /差分|diff|変更ファイル|ファイル|全文|本文|コード|テスト|試験|文書|仕様|IADR|ADR|README|\.(?:cs|csproj|props|slnx|tsx?|jsx?|ya?ml|md|json|sh|po)\b/i;
+
+/** 行（引用の中も含む）が変更ファイルのパスか名前（basename）を含むか。 */
+function mentionsChangedFile(line, changedFiles) {
+  return (changedFiles || []).some((f) => {
+    const base = f.split('/').pop();
+    return line.includes(f) || (base.length >= 4 && line.includes(base));
+  });
+}
+
+/** 未精読の型に当たった文が、変更ファイル以外の対象についての文か（上の 3 条件）。 */
+function aboutNonFileObject(bareSentence, rawLine, changedFiles) {
+  return (
+    NON_FILE_OBJECT.test(bareSentence) &&
+    !FILE_TARGET.test(rawLine) &&
+    !mentionsChangedFile(rawLine, changedFiles)
+  );
+}
+
 /** 引用（インラインコード・「」・『』）を外す。検査器そのものを論じるレビューで自己発火しないため。 */
 function stripQuotes(s) {
   return s.replace(/`[^`]*`/g, '').replace(/「[^」]*」/g, '').replace(/『[^』]*』/g, '');
@@ -361,19 +394,21 @@ function preambleOf(text) {
  *
  * @param {string} text  レビュー本文
  * @param {{ k: number }|null} decl  冒頭の申告（生成物の除外数 K を使う）
+ * @param {string[]|null} [changedFiles]  変更ファイル（#2276 の除外の条件 3。無ければ条件 3 は常に満たす）
  * @returns {{ sentence: string, generated: boolean }[]}
  */
-function findNotReadAdmissions(text, decl) {
+function findNotReadAdmissions(text, decl, changedFiles = null) {
   const k = decl ? decl.k : 0;
   const scopes = [
     { text: `${preambleOf(text)}\n${confirmedSections(normalize(text))}`, patterns: NOT_READ_PATTERNS },
     { text: notRunSections(normalize(text)), patterns: NOT_READ_PATTERNS_IN_NOT_RUN },
   ];
+  // 文は行（箇条の 1 項目）の中で「。」で切る。行は #2276 の除外の文脈（ファイルを指す語・変更ファイルの名前）に使う。
   const sentences = scopes.flatMap(({ text: t, patterns }) =>
-    t.split(/\n|(?<=。)/).map((raw) => ({ sentence: raw.trim(), patterns }))
+    t.split('\n').flatMap((line) => line.split(/(?<=。)/).map((raw) => ({ sentence: raw.trim(), line, patterns })))
   );
   const out = [];
-  for (const { sentence, patterns } of sentences) {
+  for (const { sentence, line, patterns } of sentences) {
     if (!sentence) continue;
     const bare = stripQuotes(sentence);
     const hit = patterns.some((re) => {
@@ -384,6 +419,8 @@ function findNotReadAdmissions(text, decl) {
     // 計画書は読む対象のファイルではない（🔍 の「計画書は未検証」と同じ扱い）。ただし計画書とテスト等を並べた文は数える
     // （生成物と同じ規則。AST#1346 の AI レビュー 🟢）
     if (new RegExp(PLAN_DOC.source).test(bare) && !NON_GENERATED_TARGET.test(bare.replace(PLAN_DOC, ''))) continue;
+    // #2276 / IADR-0643: コマンドの出力・CI の一覧など、変更ファイル以外の対象についての文は数えない（3 条件。上の注記）
+    if (aboutNonFileObject(bare, line, changedFiles)) continue;
     const generated = GENERATED_WORD.test(sentence) || new RegExp(GENERATED_TOKENS.source).test(sentence);
     if (generated && k > 0) {
       const rest = sentence.replace(GENERATED_TOKENS, '').replace(/生成物|自動生成/g, '');
@@ -496,7 +533,7 @@ function findFloorViolations(body, changedFiles, evidence = {}) {
 
   // 申告の数を満たすときだけ見る（満たさなければ上の (a) がすでに赤。同じ欠落を 2 度数えない）
   if (decl && decl.m !== null && decl.m + decl.k >= decl.n) {
-    for (const { sentence, generated } of findNotReadAdmissions(text, decl)) {
+    for (const { sentence, generated } of findNotReadAdmissions(text, decl, changedFiles)) {
       problems.push(
         `下限「変更ファイルは全部読む」の自己申告: ${decl.m} ファイルを読んだと申告したが、本文が精読していないと書いている —— 「${sentence.slice(0, 120)}」` +
           (generated && !decl.k ? '（生成物なら、冒頭で「生成物 K ファイルを除外」と申告して M から外す）' : '')
@@ -668,6 +705,47 @@ function selfTest() {
     );
   });
 
+  // #2276 / IADR-0643: 変更ファイル以外（コマンドの出力・CI の一覧）を指す「読めていない」は数えない。変更ファイルを指す文は数える。
+  const head2276 = '変更 2 ファイル中 2 ファイルを読んだ（生成物の除外なし）。';
+  const confirmed2276 = (...l) => `\n### ✅ 確認できたこと（このセッションで実走）\n${l.map((x) => `- ${x}`).join('\n')}\n`;
+  const notRun2276 = (...l) => `\n### 🔍 実行できなかったこと\n${l.map((x) => `- ${x}`).join('\n')}\n`;
+  const changed2276 = ['src/a/foo.cs', 'deploy/helm/microservices-platform/values.yaml', 'src/platform/backend/Services/LlmGateway/Dockerfile'];
+
+  T('下限: #2276 —— コマンドの出力・CI の一覧を指す「全行は読んでいない」「読めていない」は数えない（#2270・#2275 の 2 文）', () => {
+    const body =
+      review(head2276) +
+      confirmed2276(
+        '`helm lint`: 失敗 0。',
+        '`helm template ci-check deploy/helm/microservices-platform --set-string global.image.tag=render-only-0000000`: 描画できた。出力が大きく、全行は読んでいない。',
+        '`gh run list`: Images は success。CI の `scripts-tests` の結論は一覧から読めていない。ローカルの全件実走が成功したので下限はこれで満たす。'
+      ) +
+      notRun2276('CI の `e2e` のジョブのログは読めていない。');
+    assert.deepStrictEqual(findFloorViolations(body, changed2276, { scriptsTestsConclusion: 'success' }), []);
+  });
+
+  T('下限: #2276 ★ —— 変更ファイルを指す未精読の自認は、出力・一覧の語があっても赤のまま', () => {
+    for (const line of [
+      '`foo.cs` は全行読んでいない。', // 対象の語が無い（従来どおり）
+      '`foo.cs` の出力が大きく、全行は読んでいない。', // 変更ファイルの名前（条件 3）
+      '`src/a/foo.cs` は描画が長く、行単位では読んでいない。', // 変更ファイルのパス（条件 3）
+      '差分の出力が大きく、全行は読んでいない。', // ファイルを指す語（条件 2）
+      '`git diff` の出力が大きく、全行は読んでいない。', // 引用の中のファイルを指す語（条件 2）
+      'IADR の差分は出力が大きく、全文を読めていない。', // #1921 の 2 回目の型
+      'テストの実行結果が長く、テスト本体は全行は読んでいない。', // ファイルを指す語（テスト）
+      '`values.yaml` の描画結果は全行は読んでいない。', // 拡張子（条件 2）
+      '`Dockerfile` の描画が長く、全行は読んでいない。', // 拡張子もファイルの語も無い変更ファイルの名前（条件 3 だけが拾う）
+      '残りの半分しか読んでいない。', // 対象の語が無い（条件 1 だけが拾う）。「しか」は 🔍 の節では従来から数えない型（IADR-0538 決定 2）
+    ]) {
+      for (const where of line.includes('しか') ? [confirmed2276] : [confirmed2276, notRun2276]) {
+        const v = findFloorViolations(review(head2276) + where(line), changed2276, { scriptsTestsConclusion: 'success' })
+          .filter((x) => /精読していないと書いている/.test(x));
+        assert.strictEqual(v.length, 1, `${line}（${where === confirmed2276 ? '確認できたこと' : '🔍'}）`);
+      }
+    }
+    // 冒頭の申告の後の文（出力の語も無い #1924 の 2 回目の型）も赤のまま
+    assert.strictEqual(findFloorViolations(review(`${head2276}本文は精読していない。`), changed2276).filter((x) => /精読していないと書いている/.test(x)).length, 1);
+  });
+
   T('下限: 生成物だけを精読しない文は K>0 の申告があれば緑、K の申告が無ければ赤', () => {
     const line = '`Designer.cs` と `ModelSnapshot` は生成物なので読んでいない。要点だけ確認した `Designer.cs` もある。';
     assert.deepStrictEqual(findFloorViolations(review(`変更 5 ファイル中 3 ファイルを読んだ（生成物 2 ファイルを除外）。${line}`), []), []);
@@ -816,6 +894,9 @@ module.exports = {
   parseReadDeclaration,
   findFloorAdmissions,
   findNotReadAdmissions,
+  aboutNonFileObject,
+  NON_FILE_OBJECT,
+  FILE_TARGET,
   findFloorViolations,
   ciScriptsTestsStandsIn,
   parseChangedFiles,
