@@ -4014,6 +4014,14 @@ msgstr "Disable"
 msgid "版"
 msgstr "Version"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "版履歴はまだありません。"
+msgstr "There is no version history yet."
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "版履歴を取得できませんでした。"
+msgstr "Could not load the version history."
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
