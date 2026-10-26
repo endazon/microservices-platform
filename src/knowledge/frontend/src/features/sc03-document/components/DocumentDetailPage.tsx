@@ -191,7 +191,8 @@ function DocumentDetail({
             🔴 FR-06, SC-03, 05_screens §共通シェルの状態表示の規約 (#2121): **失敗と 0 件を描き分ける**（規約は個別画面の記述より優先する）。
             従前は取れない・0 件のどちらも欄ごと消え、利用者は失敗を「版が無い」と読んでいた。
             判定順（失敗 → 待ち → 空 → 本体）と再試行は共通の `QueryState` が持つ。縮退は版履歴の欄だけに閉じる。 */}
-        <Panel heading={<Trans>バージョン</Trans>}>
+        {/* 欄に名前を付ける（region）。版履歴の失敗の alert を欄の中で探せるようにする（他の欄の alert と取り違えない）。 */}
+        <Panel heading={<Trans>バージョン</Trans>} aria-label={t`バージョン`}>
           <QueryState
             query={versions}
             isEmpty={(data) => data.length === 0}

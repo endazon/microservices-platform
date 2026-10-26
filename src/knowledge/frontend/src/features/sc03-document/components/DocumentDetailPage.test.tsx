@@ -506,7 +506,9 @@ describe('DocumentDetailPage (SC-03)', () => {
 
     expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
     expect(screen.getByText('締め日は毎月25日とする。', { exact: false })).toBeInTheDocument();
-    const alert = await screen.findByRole('alert');
+    // 版履歴の欄の中の alert だけを見る（他の欄が alert を出しても取り違えない）。
+    const panel = await screen.findByRole('region', { name: 'バージョン' });
+    const alert = await within(panel).findByRole('alert');
     expect(alert).toHaveTextContent('版履歴を取得できませんでした。');
     expect(screen.queryByText('版履歴はまだありません。')).not.toBeInTheDocument();
 
