@@ -39,6 +39,9 @@ interface ConfigRow {
 }
 
 // 並びは文字コードの順（実行環境のロケールに依らない。localeCompare は環境で順が変わる）。
+// 前提: 行の `id` は 0 からの通し番号で、`nextId` の初期値（行数）はどの既存の行とも重ならない。
+//   `id` は描画の key と行の更新・削除の対象を決めるだけで、送る本文には入らない。行を削除しても番号は詰めず、
+//   追加は常に `nextId` から振る（削除した番号を再利用すると、React が別の行の入力状態を引き継ぐ）。
 function rowsOf(config: Record<string, string> | null | undefined): ConfigRow[] {
   return Object.entries(config ?? {})
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
