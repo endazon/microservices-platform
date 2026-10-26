@@ -175,6 +175,76 @@ describe('apiFetch', () => {
     });
   });
 
+  // ── #2122 / #2280 のクライアント側: `{ error }` 形の 4xx の理由 ──────────────────────────────
+  const stubJson = (status: number, body: unknown) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+      ),
+    );
+
+  // FR-01, SC-06 (#2122): `{ error: "<人が読む文>" }` の 400 は、その文を details に入れる（画面に理由が出る）。
+  it('extracts a human-readable `error` of a 400 when no RFC 7807 field is present', async () => {
+    const reason = 'connectionUri に資格情報を含めないでください（接続先だけを書きます）。';
+    stubJson(400, { error: reason });
+
+    await expect(apiFetch('/datasources/x', { method: 'PATCH', json: {} })).rejects.toMatchObject({
+      kind: 'validation',
+      details: [reason],
+      body: { error: reason },
+    });
+  });
+
+  // RFC 7807 の `errors` / `detail` があれば、それが勝つ（`error` は読まない）。
+  it.each([
+    [
+      { errors: { departmentCode: ['部門グループのコードではありません。'] }, error: '別の理由' },
+      '部門グループのコードではありません。',
+    ],
+    [{ detail: '写像先の利用者がいません。', error: '別の理由' }, '写像先の利用者がいません。'],
+  ])('prefers RFC 7807 fields over `error` (%j)', async (body, expected) => {
+    stubJson(400, body);
+
+    await expect(apiFetch('/datasources/x', { method: 'PATCH', json: {} })).rejects.toMatchObject({
+      details: [expected],
+    });
+  });
+
+  // 🔴 5xx の本文は読まない（後段の内部を画面へ出さない）。`error` があっても details は空＝既定の文言。
+  it('never surfaces the `error` of a 5xx body', async () => {
+    stubJson(500, { error: 'NpgsqlException: connection refused at 10.0.0.5' });
+
+    const err = await apiFetch('/datasources/x', { method: 'PATCH', json: {} }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toMatchObject({ kind: 'server', details: [] });
+  });
+
+  // 文字列でない・空・識別子の形（機械の符号）の `error` は文として出さない（本文の body では読める）。
+  it.each([
+    [{ error: 42 }],
+    [{ error: { code: 'x' } }],
+    [{ error: '   ' }],
+    [{ error: 'invalid_transition' }],
+    [{ error: 'job_busy' }],
+  ])(
+    'keeps the message generic for a non-string, blank or machine-code `error` (%j)',
+    async (body) => {
+      stubJson(409, body);
+
+      await expect(apiFetch('/x', { method: 'POST', json: {} })).rejects.toMatchObject({
+        kind: 'conflict',
+        details: [],
+        body,
+      });
+    },
+  );
+
   it('maps fetch rejection to a network error', async () => {
     vi.stubGlobal(
       'fetch',

@@ -120,6 +120,20 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
 //
 // **解析済みの本文も返す** —— `details` は文字列しか持てず、SC-09 が求める
 // **使用件数（数値）**を画面が翻訳済みの文へ差し込めないためである。
+//
+// ［2026-10-26 / #2122・#2280 のクライアント側］**`error` も最後の手段として読む。** 後段の一部は 400 の理由を
+// `{ "error": "<人が読む文>" }` で返す（DataSourceService の `ConnectionUriPolicy` 等）。BFF は本文を透過する（#2109）が、
+// ここで読まないと画面は「入力内容に誤りがあります。」しか出せない。🔴 **読むのは次をすべて満たすときだけ**:
+//   - 本関数の呼び出し元が 4xx（400 / 409）だけであること（5xx の本文は読まない＝後段の内部を画面へ出さない）。
+//   - RFC 7807 の `errors` / `detail`（と従来の `title` / `message`）が 1 つも無いこと（RFC 7807 が勝つ）。
+//   - 空でない文字列であること。
+//   - **識別子の形（`invalid_transition` のような機械の符号）でないこと** —— 後段は符号を `error` に入れて画面が分岐に使う
+//     （本文の `body` で引き続き読める）。符号を利用者へ文として見せない。
+// 値は文字列として `details` に入るだけで、画面は文字として描く（HTML として解釈しない）。
+// 🔴 この形は**英単語 1 語の理由（`Forbidden`・`invalid` 等）も符号として出さない**（空白・句読点・非 ASCII を含まないため）。
+//   その場合の画面は従来どおりの既定の文（「入力内容に誤りがあります。」）であり、後退ではない。文の理由は空白か日本語を含む。
+const MACHINE_CODE = /^[A-Za-z0-9_.:-]+$/;
+
 async function parseProblemDetails(res: Response): Promise<{ details: string[]; body: unknown }> {
   try {
     const body = (await res.clone().json()) as {
@@ -127,6 +141,7 @@ async function parseProblemDetails(res: Response): Promise<{ details: string[]; 
       detail?: unknown;
       title?: unknown;
       message?: unknown;
+      error?: unknown;
     };
     const out: string[] = [];
     if (body.errors && typeof body.errors === 'object') {
@@ -138,6 +153,13 @@ async function parseProblemDetails(res: Response): Promise<{ details: string[]; 
     if (out.length === 0 && typeof body.detail === 'string') out.push(body.detail);
     if (out.length === 0 && typeof body.title === 'string') out.push(body.title);
     if (out.length === 0 && typeof body.message === 'string') out.push(body.message);
+    if (
+      out.length === 0 &&
+      typeof body.error === 'string' &&
+      body.error.trim() !== '' &&
+      !MACHINE_CODE.test(body.error.trim())
+    )
+      out.push(body.error);
     return { details: out, body };
   } catch {
     return { details: [], body: undefined };
