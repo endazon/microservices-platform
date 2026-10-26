@@ -38,6 +38,14 @@
       "enabled": true
     },
     {
+      "name": "ingestion-delete",
+      "service": "ingestion-service",
+      "consumer": "IngestionService.Features.Ingestion.RemoveDeleted.DocumentDeletedConsumer",
+      "input": "DocumentDeleted",
+      "outputs": [],
+      "enabled": true
+    },
+    {
       "name": "wiki-sync",
       "service": "wiki-service",
       "consumer": "WikiService.Features.Wiki.SyncDocument.DocumentSyncConsumer",

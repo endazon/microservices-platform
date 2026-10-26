@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using AwesomeAssertions;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
@@ -50,7 +51,8 @@ public class IngestionOrderingAndAtomicityTests
             TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
             TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance);
+            NullLogger<DocumentUpdatedConsumer>.Instance,
+            new DocumentIndexLocks());
 
     private static Task Handle(DocumentUpdatedConsumer consumer, DocumentUpdated ev)
         => consumer.Handle(ev, TestContext.Current.CancellationToken);
@@ -344,6 +346,7 @@ public class IngestionOrderingAndAtomicityTests
     // 鍵は辞書順 (時刻〔ミリ秒〕, 連番)。時刻はミリ秒より細かい端数（+0.5 ms）を持たせる —— 偽物の版の印は実装と同じくミリ秒へ丸めて
     // 保存するので、丸めを外すと同じ時刻の古い版を端数の分だけ新しいと読み、P1・P3 が赤になる。
     // P5（削除と更新の交差）は取り込みに無い: 取り込みは `DocumentDeleted` を受けない（点の削除は Retrieval。作業仕様書の残余）。
+    // ［2026-10-26 追記 / #2263］取り込みも `DocumentDeleted` を受けるようになった（IADR-0640）。削除と更新の交差は `IngestionDeleteTombstoneTests` の Q1〜Q7 が写す。
     // P2 は「削除の後の作り直し」の取り込み側の形（印は削除の前の最後の更新を持ち続ける）で表明する。
 
     private static readonly DateTimeOffset Tf = V1.AddTicks(5_000);
@@ -484,6 +487,22 @@ public class IngestionOrderingAndAtomicityTests
         DocumentIndexOrdering.IsStale(null, V1, null).Should().BeFalse();
     }
 
+    // 🔴 FR-06, IADR-0640 決定 2 (#2263): 墓石の判定（グラフの `GraphSyncOrdering` と同じ規則）。
+    [Fact]
+    public void 墓石と等しい鍵の更新は古く_墓石より古い削除は適用せず_等しい削除は適用する()
+    {
+        var tomb = DocumentIndexVersion.Tombstone(Tf, 9);
+        DocumentIndexOrdering.IsStale(tomb, Tf, 9).Should().BeTrue("削除済みの印と等しい鍵の更新は古い");
+        DocumentIndexOrdering.IsStale(tomb, Tf, null).Should().BeTrue("連番が無ければ時刻だけ。等しければ古い");
+        DocumentIndexOrdering.IsStale(tomb, Tf.AddMilliseconds(1), 1).Should().BeFalse("作り直し（新しい時刻）は反映する");
+        DocumentIndexOrdering.IsStale(new DocumentIndexVersion(Tf, "fp", 9), Tf, 9).Should().BeFalse("削除済みでなければ等しい版は反映する（従前どおり）");
+
+        var live = new DocumentIndexVersion(Tf.AddSeconds(2), "fp", 1);
+        DocumentIndexOrdering.IsStaleDelete(live, Tf.AddSeconds(1), 9).Should().BeTrue("作り直しより前の削除は適用しない");
+        DocumentIndexOrdering.IsStaleDelete(tomb, Tf, 9).Should().BeFalse("削除の再配送は適用する");
+        DocumentIndexOrdering.IsStaleDelete(null, Tf, 9).Should().BeFalse("印が無ければ適用する");
+    }
+
     [Fact]
     public void 判定軸の指紋は鍵と共有先の順に依らず_値が変われば変わる()
     {
@@ -582,10 +601,17 @@ public class IngestionOrderingAndAtomicityTests
         public Task<DocumentIndexVersion?> GetIndexVersionAsync(Guid documentId, CancellationToken ct = default)
             => Task.FromResult(Versions.TryGetValue(documentId, out var v) ? v : null);
 
-        public Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
+        // IADR-0640 (#2263): 版の印を書く直前に 1 度だけ走る割り込み（更新の受け口が門を通った後・自分の印を書く前の窓を開ける）。
+        public Func<Task>? BeforeNextSetVersion { get; set; }
+
+        public async Task SetIndexVersionAsync(Guid documentId, DocumentIndexVersion version, CancellationToken ct = default)
         {
+            if (BeforeNextSetVersion is { } hook)
+            {
+                BeforeNextSetVersion = null;
+                await hook();
+            }
             Versions[documentId] = version with { UpdatedAt = DateTimeOffset.FromUnixTimeMilliseconds(version.UpdatedAtMs) };
-            return Task.CompletedTask;
         }
 
         // 実装のフィルタと同じ条件: 文書の点 ∧ ¬(updated_at > version) ∧ ¬(同じ時刻で点と版の両方に連番があり点の連番が大きい) ∧ ¬(この取り込みで書いた点)。
@@ -605,7 +631,7 @@ public class IngestionOrderingAndAtomicityTests
         }
     }
 
-    private sealed class ScriptedReader(string body) : IDocumentContentReader
+    internal sealed class ScriptedReader(string body) : IDocumentContentReader
     {
         public string Body { get; set; } = body;
         public bool FailNext { get; set; }
@@ -628,7 +654,7 @@ public class IngestionOrderingAndAtomicityTests
     }
 
     // public / internal は埋め込みのコレクション `voyage` へ（`Embedded=false` なら一時障害として埋め込み待ちへ）。
-    private sealed class ScriptedEmbedder : IEmbeddingService
+    internal sealed class ScriptedEmbedder : IEmbeddingService
     {
         public bool Embedded { get; set; } = true;
 
@@ -638,7 +664,7 @@ public class IngestionOrderingAndAtomicityTests
                 : new EmbeddingResult([], "", Embedded: false, Retryable: true));
     }
 
-    private sealed class NoopCompleted : IIngestionCompletedPublisher
+    internal sealed class NoopCompleted : IIngestionCompletedPublisher
     {
         public Task PublishCompletedAsync(Guid documentId, int chunkCount, DateTimeOffset completedAt,
             CancellationToken ct = default) => Task.CompletedTask;

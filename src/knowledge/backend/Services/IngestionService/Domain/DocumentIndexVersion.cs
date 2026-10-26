@@ -12,8 +12,17 @@ namespace IngestionService.Domain;
 //
 // 🔴 FR-02, FR-19, IADR-0639 決定 1・3 (#2150 / #2251): `Sequence` は反映した版の発行の連番（IADR-0637）。旧形式の電文・移行前の印は null。
 // 前後は辞書順 (UpdatedAt〔ミリ秒〕, Sequence) で決める（`DocumentEventOrder`。連番を第 1 の鍵にしない —— 文書 ID の再利用で 0 へ戻る）。
-public sealed record DocumentIndexVersion(DateTimeOffset UpdatedAt, string AccessFingerprint, long? Sequence = null)
+//
+// 🔴 FR-06, FR-19, IADR-0640 決定 1・2 (#2263): `Deleted` は削除の墓石（`DocumentDeleted` を反映した印）。時刻は `DeletedAt`、
+// 連番は削除の連番（最後の値 + 1）、指紋は空。墓石と等しい鍵の更新も古い（削除は寿命の最後の出来事。グラフの印と同じ）。
+// 旧い印（ペイロードに削除の旗が無い）は削除済みでないと読む。
+public sealed record DocumentIndexVersion(DateTimeOffset UpdatedAt, string AccessFingerprint, long? Sequence = null,
+    bool Deleted = false)
 {
+    // IADR-0640 決定 1: 削除の墓石。
+    public static DocumentIndexVersion Tombstone(DateTimeOffset deletedAt, long? sequence) =>
+        new(deletedAt, "", sequence, Deleted: true);
+
     // 比較はミリ秒で行う（点の `updated_at` と版の印は epoch ミリ秒で保存される。ティックで比べると、
     // 同じイベントの再配送が保存値より「新しい」と読めてしまい、等しいことを判定できない）。
     public long UpdatedAtMs => UpdatedAt.ToUnixTimeMilliseconds();
@@ -27,8 +36,20 @@ public static class DocumentIndexOrdering
     //
     // 🔴 IADR-0639 決定 1 (#2150 / #2251): 同じ時刻（ミリ秒）で連番が小さい更新も古い（版を進めない状態の変化の逆転）。
     // どちらかに連番が無ければ時刻だけで比べる（現行と同じ）。
+    // 🔴 IADR-0640 決定 2 (#2263): 印が削除の墓石なら、鍵が等しい更新も古い（`GraphSyncOrdering.IsStaleUpdate` と同じ）。
+    // 連番の無い旧形式の電文が削除と同じミリ秒で再配送されたとき、削除した文書を取り込み直さない。
     public static bool IsStale(DocumentIndexVersion? indexed, DateTimeOffset incoming, long? incomingSequence)
-        => indexed is not null && IsOlder(incoming, incomingSequence, indexed.UpdatedAt, indexed.Sequence);
+    {
+        if (indexed is null) return false;
+        var order = DocumentEventOrder.Compare(
+            ToStoredPrecision(incoming), incomingSequence, ToStoredPrecision(indexed.UpdatedAt), indexed.Sequence);
+        return order < 0 || (indexed.Deleted && order == 0);
+    }
+
+    // 🔴 IADR-0640 決定 2 (#2263): 印より厳密に古い削除は適用しない（作り直した文書の版を反映した後に遅れて届いた削除）。
+    // 等しい削除（再配送）は適用する（冪等）。`GraphSyncOrdering.IsStaleDelete` と同じ。
+    public static bool IsStaleDelete(DocumentIndexVersion? indexed, DateTimeOffset deletedAt, long? sequence)
+        => indexed is not null && IsOlder(deletedAt, sequence, indexed.UpdatedAt, indexed.Sequence);
 
     // a が b より厳密に古いか（時刻は保存の精度＝ミリ秒へ丸めて比べる）。版の印の判定と、書き終えた後の読み直しの両方が使う。
     public static bool IsOlder(DateTimeOffset aAt, long? aSequence, DateTimeOffset bAt, long? bSequence)

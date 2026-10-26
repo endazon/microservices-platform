@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using IngestionService.Common.Observability;
 using IngestionService.Domain;
 using IngestionService.Domain.Ports;
@@ -35,8 +36,13 @@ public class DocumentUpdatedConsumer(
     TimeProvider clock,
     EmbeddingPendingMetrics pendingMetrics,
     BodyMissingMetrics bodyMissingMetrics,
-    ILogger<DocumentUpdatedConsumer> logger) : IPipelineStep<DocumentUpdated>
+    ILogger<DocumentUpdatedConsumer> logger,
+    DocumentIndexLocks locks) : IPipelineStep<DocumentUpdated>
 {
+    // 🔴 FR-02, FR-06, IADR-0640 決定 3 (#2263): 削除の受け口（`ingestion-delete`）と文書ごとに直列にする（DI では単一のインスタンス）。
+    // 必須の引数にする（既定値で私的な排他を作ると、削除の受け口と別の排他になって直列にならない。#2270 のレビュー）。
+    private readonly DocumentIndexLocks _locks = locks;
+
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "ingest";
 
@@ -75,6 +81,13 @@ public class DocumentUpdatedConsumer(
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
+        // 🔴 IADR-0640 決定 3 (#2263): 門の読みから書き終えた後の読み直しまでを、同じ文書の削除と交差させない。
+        using var _ = await _locks.AcquireAsync(ev.DocumentId, ct);
+        await HandleLockedAsync(ev, ct);
+    }
+
+    private async Task HandleLockedAsync(DocumentUpdated ev, CancellationToken ct)
+    {
         // 🔴 FR-02, FR-05, [[IADR-0595]] 決定 1 (#2101): **順序の門。** 索引へ反映済みの版（版の印）より厳密に古い更新は
         // 反映しない（skip して ack する）。到着順の逆転・デッドレターからの再投入・撤収や削除の後に遅れて届いた古い更新が、
         // 新しい版（判定軸を厳しくした版を含む）を上書きしないためである。等しい版（再配送・再発行）は反映する。
@@ -84,9 +97,9 @@ public class DocumentUpdatedConsumer(
         if (DocumentIndexOrdering.IsStale(indexed, ev.UpdatedAt, ev.Sequence))
         {
             logger.LogInformation(
-                "DocumentUpdated {Id}: updated_at={Incoming:O}/{IncomingSequence} is older than the indexed version {Indexed:O}/{IndexedSequence}; "
-                + "skipped (out-of-order or replayed delivery; IADR-0595, IADR-0639)",
-                ev.DocumentId, ev.UpdatedAt, ev.Sequence, indexed!.UpdatedAt, indexed.Sequence);
+                "DocumentUpdated {Id}: updated_at={Incoming:O}/{IncomingSequence} is older than the indexed version {Indexed:O}/{IndexedSequence} "
+                + "(deleted={Deleted}); skipped (out-of-order or replayed delivery; IADR-0595, IADR-0639, IADR-0640)",
+                ev.DocumentId, ev.UpdatedAt, ev.Sequence, indexed!.UpdatedAt, indexed.Sequence, indexed.Deleted);
             return;
         }
 
@@ -382,13 +395,14 @@ public class DocumentUpdatedConsumer(
     {
         var latest = await GetIndexVersionAsync(ev.DocumentId, ct);
         // IADR-0639 決定 3: 追い越されたかは版の印の判定と同じ規則（辞書順 (時刻, 連番)）で決める。
-        if (latest is not null && DocumentIndexOrdering.IsOlder(ev.UpdatedAt, ev.Sequence, latest.UpdatedAt, latest.Sequence))
+        // 🔴 IADR-0640 決定 2 (#2263): 門と同じ述語（`IsStale`）で判定する —— 削除の墓石と等しい鍵の版も、追い越されたものとして点を消す。
+        if (DocumentIndexOrdering.IsStale(latest, ev.UpdatedAt, ev.Sequence))
         {
             await DeleteSupersededAsync(ev.DocumentId, ev.UpdatedAt, ev.Sequence, [], ct);
             logger.LogWarning(
-                "DocumentUpdated {Id}: superseded while ingesting (updated_at={Incoming:O} < indexed {Indexed:O}); "
-                + "removed the points written for the older version (IADR-0595)",
-                ev.DocumentId, ev.UpdatedAt, latest.UpdatedAt);
+                "DocumentUpdated {Id}: superseded while ingesting (updated_at={Incoming:O} < indexed {Indexed:O}, deleted={Deleted}); "
+                + "removed the points written for the older version (IADR-0595, IADR-0640)",
+                ev.DocumentId, ev.UpdatedAt, latest!.UpdatedAt, latest.Deleted);
             return false;
         }
 
