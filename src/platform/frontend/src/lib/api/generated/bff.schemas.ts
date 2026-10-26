@@ -452,6 +452,13 @@ export interface CitationDto {
      * **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
      */
   confidentiality: string;
+  /**
+     * FR-04, FR-19, SC-01, ADR-0054 (#2111): この出典の文書スコープ（ABAC 文書属性 `doc_scope`）。
+     * 値集合は `organization` / `private-note`。画面は `private-note` を個人資料として組織文書と区別して描く。
+     * **`enum` にしない**（`confidentiality` と同じ）。発行側は属性が無い・`private-note` 以外のとき `organization` を返す
+     * （キー欠落は個人資料ではない。ADR-0054 §結果）。`default` は書かない（`required` と同居させない）。
+     */
+  docScope: string;
 }
 
 /**

@@ -6,6 +6,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Tag, cn } from '@platform/ui';
 import { confidentialityLabel } from '@foundation/i18n';
 import { citationAnchorId } from './citations';
+import { citationKind } from './citations';
 import type { AskCitation, CitationKind } from './citations';
 
 // SC-01 / 05_screens §共通シェル（右レール AI チャット）/ 裁定 6（出典と本文の対応印）: 出典の一覧。
@@ -29,7 +30,7 @@ export interface CitationListProps {
   citations: readonly AskCitation[];
   /** 対応印のアンカー接頭辞（本文側と同じ値）。 */
   citePrefix: string;
-  /** 出典の種別。省略時は `document`。 */
+  /** 出典の種別。省略時は文書スコープだけで判定する（個人資料なら `personal`、それ以外は `document`。#2111）。 */
   kindOf?: (citation: AskCitation) => CitationKind;
   /** 表題の描き方（リンクにする等）。省略時は文字だけ。 */
   renderTitle?: (citation: AskCitation) => ReactNode;
@@ -63,7 +64,7 @@ export function CitationList({
   return (
     <ol className={cn('flex flex-col gap-1.5 text-sm', className)}>
       {citations.map((c) => {
-        const kind = kindOf?.(c) ?? 'document';
+        const kind = kindOf?.(c) ?? citationKind(c.documentId, undefined, c.docScope);
         const Icon = KIND_ICONS[kind];
         return (
           <li

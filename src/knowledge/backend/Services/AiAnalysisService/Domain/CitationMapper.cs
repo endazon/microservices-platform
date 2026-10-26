@@ -28,7 +28,10 @@ public static class CitationMapper
                 // FR-04, SC-01, #541: 出典ごとの機密区分。文書属性から読み、欠落・空・未知値は
                 // 安全側（restricted）へ縮退する。越境判定（FR-11）と同じ規則を使い、
                 // 「画面には公開と出ているのにゲートウェイは restricted 扱い」を起こさない。
-                Confidentiality: ConfidentialityLevels.FromAttributes(r.Attributes)));
+                Confidentiality: ConfidentialityLevels.FromAttributes(r.Attributes),
+                // FR-04, FR-19, SC-01, ADR-0054 (#2111): 個人資料の印。判定は `DocumentScopes.IsPrivateNote`（集合帰属）と同じで、
+                // `private-note` 以外（欠落・未知値を含む）は組織文書。
+                DocScope: DocumentScopes.IsPrivateNote(r.Attributes) ? DocumentScopes.PrivateNote : DocumentScopes.Organization));
         }
         return citations;
     }

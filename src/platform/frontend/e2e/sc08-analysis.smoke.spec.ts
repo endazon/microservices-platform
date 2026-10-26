@@ -69,6 +69,7 @@ const ANSWER: AiAnswerDto = {
       score: 0.9,
       snippet: '領収書を添付する',
       confidentiality: 'internal',
+      docScope: 'organization',
     },
   ],
   model: 'self-hosted-llm',

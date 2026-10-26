@@ -5050,7 +5050,7 @@ components:
       description: |
         FR-04: 出典（番号付き＋元文書へのリンク）。AI 回答中の [1][2] と対応する根拠で、
         利用者は `sourceUri` から元文書へ辿れる。
-      required: [number, documentId, documentTitle, chunkId, score, snippet, confidentiality]
+      required: [number, documentId, documentTitle, chunkId, score, snippet, confidentiality, docScope]
       properties:
         number: { type: integer, description: "回答本文中の [n] と対応する番号" }
         documentId: { type: string, format: uuid }
@@ -5069,6 +5069,13 @@ components:
             発行側が値を持たない場合は安全側の `restricted` へ縮退する。`default` は書かない
             ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
             **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
+        docScope:
+          type: string
+          description: |
+            FR-04, FR-19, SC-01, ADR-0054 (#2111): この出典の文書スコープ（ABAC 文書属性 `doc_scope`）。
+            値集合は `organization` / `private-note`。画面は `private-note` を個人資料として組織文書と区別して描く。
+            **`enum` にしない**（`confidentiality` と同じ）。発行側は属性が無い・`private-note` 以外のとき `organization` を返す
+            （キー欠落は個人資料ではない。ADR-0054 §結果）。`default` は書かない（`required` と同居させない）。
 
     AccessScopeResponse:
       type: object

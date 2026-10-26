@@ -227,6 +227,28 @@ describe('SearchChatPage (SC-01)', () => {
     );
   });
 
+  // FR-04, FR-19, SC-01, ADR-0054 (#2111): 個人資料の出典は「個人資料」のラベルで、組織文書と区別して描く。
+  // **台帳に載っていても個人資料が勝つ**（個人資料は Wiki へ同期されない。Wiki の導線へ送らない）。
+  it('renders a private-note citation as personal even when the wiki ledger lists the document', async () => {
+    const privateNote = { ...WIKI_CITATION, documentTitle: '自分のメモ', docScope: 'private-note' };
+    streamEvents([
+      { event: 'citations', data: JSON.stringify({ citations: [DOCUMENT_CITATION, privateNote] }) },
+      DONE_EVENT,
+    ]);
+    await renderPage();
+    await ask('締め日は？');
+
+    const link = await screen.findByRole('link', { name: '自分のメモ' });
+    expect(link).toHaveAttribute('href', `/docs/${WIKI_DOC_ID}`);
+    const row = link.closest('li')!;
+    expect(row).toHaveTextContent('個人資料');
+    expect(row).not.toHaveTextContent('組織文書');
+    // ★ 陽性対照: 同じ回答の組織文書は「組織文書」のまま。
+    expect(
+      screen.getByRole('link', { name: '経費精算規程 v3.2' }).closest('li')!,
+    ).toHaveTextContent('組織文書');
+  });
+
   // 台帳に無ければ Wiki 由来を推測しない（`sourceUri` の形も見ない）。
   it('treats a citation as a document when the ledger does not list it', async () => {
     respondDefault([]);

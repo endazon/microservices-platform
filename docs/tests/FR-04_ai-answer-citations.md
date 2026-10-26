@@ -3,15 +3,15 @@ title: AI 回答・出典提示 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-10-24
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-04, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
-adrs: []
+adrs: [ADR-0054]
 iadrs: [IADR-0111, IADR-0131, IADR-0531]
-specs: [20261010_1875_claude-5-5-models, 20261024_2017_sc01-search-e2e]
-issues: [#403, #448, #540, #541, #1875, #2017]
+specs: [20261026_2111_citation-private-note-kind, 20261010_1875_claude-5-5-models, 20261024_2017_sc01-search-e2e]
+issues: [#403, #448, #540, #541, #1875, #2017, #2111]
 -->
 
 # テスト仕様書: AI 回答・出典提示
@@ -150,6 +150,7 @@ issues: [#403, #448, #540, #541, #1875, #2017]
 | T-27 | ★ AI 分析は用途 `analysis` で呼ぶ。モデルは呼び出し側で固定しない（`Model` は null） | `AI分析は用途analysisでゲートウェイを呼ぶ` |
 | T-28 | 質問回答は用途 `rag-answer` で呼ぶ（分析と同じ用途名にしない） | `質問回答は用途ragAnswerでゲートウェイを呼ぶ` |
 | T-29 | 分析・比較・抽出の 3 種別が、検索結果を根拠にしたプロンプトとして後段へ届く | `分析比較抽出の種別がプロンプトへ反映される`（`[Theory]`） |
+| T-30 | ★ **出典の文書スコープ**: 属性 `doc_scope=private-note`（大文字小文字を問わない）は `DocScope=private-note`、欠落・`organization`・空・未知値は `organization`。旧発行者（欄なし）の組み立ても `organization` | `ToCitations_MarksPrivateNoteFromDocScope` / `ToCitations_TreatsMissingOrOtherDocScopeAsOrganization` / `CitationDto_DefaultsDocScopeToOrganization` |
 
 > 🔴 **`scripts/test-spec-coverage-baseline.json` の更新が要る**（本節が新しいテストクラスを載せたため）。
 > `node scripts/check-test-spec-coverage.js --update` で床を上げること。

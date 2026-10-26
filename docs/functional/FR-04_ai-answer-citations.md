@@ -3,15 +3,15 @@ title: AI 回答・出典提示 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-10-06
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-04, FR-03, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
-adrs: [ADR-0127]
+adrs: [ADR-0054, ADR-0127]
 iadrs: [IADR-0009, IADR-0037, IADR-0111, IADR-0131, IADR-0132, IADR-0498]
-specs: [20261006_1746_claude-rerank]
-issues: [#201, #403, #541, #1746]
+specs: [20261026_2111_citation-private-note-kind, 20261006_1746_claude-rerank]
+issues: [#201, #403, #541, #1746, #2111]
 -->
 
 # 機能仕様書: AI 回答・出典提示
@@ -49,6 +49,7 @@ issues: [#201, #403, #541, #1746]
 | `Score` | 検索スコア |
 | `Snippet` | 該当箇所の抜粋（240 文字で丸め） |
 | `Confidentiality` | **その文書の機密区分**（ABAC 文書属性 `confidentiality`）。値集合は `public` / `internal` / `confidential` / `restricted`（**`enum` にしない**——OpenAPI を BFF 契約の単一情報源とする決定に従う）。#541 |
+| `DocScope` | **その文書の文書スコープ**（ABAC 文書属性 `doc_scope`）。`organization`（組織文書）/ `private-note`（個人資料）。属性が無い・`private-note` 以外は `organization`（キー欠落は個人資料ではない）。画面は個人資料を組織文書と区別して描く（**`enum` にしない**。既定値つきの非破壊の追加） |
 
 **`Confidentiality` の供給と縮退（#541・「出典には機密区分を含める」という要求）**
 

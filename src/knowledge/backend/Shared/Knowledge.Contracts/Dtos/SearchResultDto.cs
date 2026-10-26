@@ -45,7 +45,11 @@ public record CitationDto(
     // 引用してよいか判断する最も直接的な手掛かりになる（利用者裁定 Q10 / planning#197・planning#200）。
     // 既定値を持たせて追加する（既定値の無いメンバー追加は契約上の破壊的変更。IADR-0122 決定 2）。
     // 既定は安全側（restricted）——本項目を持たない旧発行者の応答は過剰公開ではなく過剰制限へ倒す。
-    string Confidentiality = ConfidentialityLevels.SafeDefault);
+    string Confidentiality = ConfidentialityLevels.SafeDefault,
+    // FR-04, FR-19, SC-01, ADR-0054 (#2111): この出典の文書スコープ（ABAC 文書属性 `doc_scope`）。値は
+    // `organization` / `private-note`（`DocumentScopes`）。画面は個人資料を組織文書と区別して描く（05_screens §SC-01）。
+    // 既定値つきで末尾へ追加する（IADR-0122 決定 2）。既定は `organization` —— キー欠落は個人資料ではない（ADR-0054 §結果）。
+    string DocScope = DocumentScopes.Organization);
 
 // FR-04, FR-05, FR-11, SC-01, #541: 機密区分（ABAC 文書属性 confidentiality）の値集合と安全側への縮退。
 // enum ではなく文字列 + const で持つ（IADR-0131 決定 5。後段の値追加を SPA 側の破壊的変更にしない）。
