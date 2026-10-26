@@ -4303,11 +4303,17 @@ ok('IADR-0642: ノードが Ready にならなければ、subnet.env の無い�
   assert.ok(!r.stderr.includes(`k3d-${CLUSTER}-server-0: /run/flannel/subnet.env が無い`), '在るノードまで名指ししている');
 });
 
-ok('IADR-0642: 2 回とも失敗したら、3 回目を呼ばずに止まる（作り直しは 1 回まで）', () => {
+ok('IADR-0642: 2 回とも失敗したら、診断の後にこの実行のクラスタを消して、3 回目を呼ばずに止まる（作り直しは 1 回まで）', () => {
   const r = withSummary({ STUB_K3D_CREATE_FAILS: '2' });
   assert.notStrictEqual(r.status, 0, '2 回とも失敗したのに起動が続いた');
   assert.strictEqual(k3dCreates(r.lines).length, 2, '作成を 3 回以上呼んでいる');
-  assert.strictEqual(r.lines.filter((l) => l === `k3d cluster delete ${CLUSTER}`).length, 1);
+  // 1 回目の失敗の後（作り直しの前）と、2 回目の失敗の診断の後（壊れたクラスタを残さない）の 2 回。
+  const dels = r.lines.map((l, i) => (l === `k3d cluster delete ${CLUSTER}` ? i : -1)).filter((i) => i >= 0);
+  assert.strictEqual(dels.length, 2, '最後の失敗の後にクラスタを消していない');
+  const secondCreate = r.lines.lastIndexOf(k3dCreates(r.lines)[1]);
+  const lastDiag = r.lines.lastIndexOf('docker info');
+  assert.ok(dels[1] > secondCreate && dels[1] > lastDiag, '最後の削除が 2 回目の失敗の診断の後ではない');
+  assert.ok(r.stderr.includes(`作り直しの後も失敗したので、この実行が作ったクラスタ '${CLUSTER}' を消す`), r.stderr);
   assert.ok(r.stderr.includes('作り直しの後も失敗した（作り直しは 1 回まで。k3d recreate count: 1）'), r.stderr);
   assert.ok(!anyLineHas(r.lines, 'helm upgrade'), '止まらずに先へ進んだ');
 });
