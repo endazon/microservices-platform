@@ -1,4 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro';
+import { Link } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@platform/ui';
 import { AttributeDictionaryPanel } from './AttributeDictionaryPanel';
 import { EdgeTypeDictionaryPanel } from './EdgeTypeDictionaryPanel';
@@ -38,10 +39,19 @@ export function AdminAbacSettingsPage() {
 
   return (
     <section>
-      {/* モックの `.ttl`（17px / medium）。区画の切替は下の Tabs が担う。 */}
-      <h1 className="mb-n3 text-[17px] font-medium text-fg">
-        <Trans>管理者設定（ABAC）</Trans>
-      </h1>
+      {/* モックの `.ttl`（17px / medium）。区画の切替は下の Tabs が担う。
+          FR-16, SC-09 → SC-12（計画の画面遷移図・hi-fi 418「MCPクライアント管理 →」）(#2123): 行の右端に導線を置く。
+          SC-12 は実装済みで、SC-09 と同じく管理者だけが開ける（押すと NotFound になる導線ではない）。
+          文言は左ナビ・SC-12 の見出しと同じ「MCP クライアント登録管理」を使う（新しい文言を足さない。矢印は読み上げない飾り）。 */}
+      <div className="mb-n3 flex flex-wrap items-baseline justify-between gap-n2">
+        <h1 className="text-[17px] font-medium text-fg">
+          <Trans>管理者設定（ABAC）</Trans>
+        </h1>
+        <Link to="/admin/mcp-clients" className="text-xs text-brand hover:underline">
+          <Trans>MCP クライアント登録管理</Trans>
+          <span aria-hidden> →</span>
+        </Link>
+      </div>
 
       {/* 既定は「ポリシー定義」（hi-fi 417 が同区画を選択中に描く）。 */}
       <Tabs defaultValue="policies">

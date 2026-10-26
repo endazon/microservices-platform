@@ -384,6 +384,7 @@ msgstr "LLM gateway"
 msgid "LLM不調時は検索結果のみ返す縮退運転（UC-01 例外フロー）。フィルタ候補は権限内のタグ／部門／プロジェクトのみ提示。"
 msgstr "When the LLM is unavailable, only search results are returned (degraded mode, UC-01 exception flow). Filter candidates are limited to the tags, departments and projects within your permissions."
 
+#: knowledge/frontend/src/features/sc09-admin-abac/components/AdminAbacSettingsPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "MCP クライアント登録管理"
 msgstr "MCP client registration"

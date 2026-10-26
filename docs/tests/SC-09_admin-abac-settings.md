@@ -3,15 +3,15 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-28
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05, SC-17]
 adrs: [ADR-0031, ADR-0036, ADR-0116, ADR-0115, ADR-0121]
 iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477, IADR-0482]
-specs: [20260928_issue-1676_adr0121-audit-followups, 20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
-issues: [#1676, #503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
+specs: [20261026_2123_sc09-link-to-sc12, 20260928_issue-1676_adr0121-audit-followups, 20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#1676, #503, #504, #510, #535, #640, #989, #1609, #1666, #2123, planning#672]
 -->
 
 # テスト仕様書: 管理者設定（ABAC）
@@ -82,7 +82,7 @@ issues: [#1676, #503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 | 15-d | ★ **削除拒否は使用件数つき** | 計画側の管理者設定画面「削除前に使用件数を示す」／タグの正本を識別子とする実装判断 | 参照 1 件以上のタグを消そうとすると 409 になり、**画面が件数を翻訳済みの文へ差し込んで**表示する。**件数を持たない 409（重複名など）では既定の文言へ落ちる**ことも対で固定する |
 | 15-b | ★ **検証は保存しない** | 裁定 Q23「保存せず検証だけ行う」 | 「検証」を押すと `/admin/authz/policies/validate` だけを呼び、登録の口を呼ばない。「まだ保存していません」と明示する |
 | 15-c | 矛盾は**エラーではなく検証結果** | 同上（200 ＋ `valid: false`） | 矛盾の理由が一覧表示される |
-| 16 | **他 issue の射程** | 同 #5 | MCP クライアント管理へのリンクが無い（遷移先が未実装） |
+| 16 | **MCP クライアント登録管理への導線**（［2026-10-26 反転］） | 同 #5・計画の画面遷移図 | リンク「MCP クライアント登録管理」があり、押すと `/admin/mcp-clients` へ遷移する（ルーターの位置で確かめる）。従前は遷移先の未実装を理由に不在を固定していた |
 | 17 | ロケール `en` | —| 見出しが英語で描画される |
 | 18 | ★ **所有者の read ポリシーを選択だけで作る**（#1666） | 必須のポリシー・動的束縛の入力 | 辞書に `owner` が無くても「所有者（文書）」を選べ、値の選択肢は `${current_user}` の 1 つだけ。送信本文が `userConditions: {}`・`documentConditions: {owner: ["${current_user}"]}` そのもの。フォームの自由入力の欄は名前の 1 つだけ |
 | 19 | 共有先の束縛（#1666） | 同上 | `shared_with` に `${current_user}`・`${current_groups}` を積んで保存できる |
