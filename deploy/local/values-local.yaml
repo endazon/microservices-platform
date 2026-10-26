@@ -153,13 +153,14 @@ services:
     deploymentAnnotations:
       secret.reloader.stakater.com/reload: "llm-provider-credentials"
     # k8s-local-up.sh が作成する Secret llm-provider-credentials を LlmGateway の
-    # Llm__ApiKey（Anthropic）へ配線する。fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない
-    # （compose の `Llm__ApiKey: ${ANTHROPIC_API_KEY:-}` と同じ挙動）。
-    # FR-11, IADR-0641 (#2136): 鍵が空のまま起動させるため Llm__AllowMissingApiKey=true を明示する（下の 3 件目）。
-    #   無いと、Claude のエンドポイントが有効で鍵が空のゲートウェイは起動時に止まる。本番既定（values.yaml）には置かない。
+    # Llm__ApiKey（Anthropic）へ配線する。
+    # 🔴 FR-11, IADR-0641 (#2136): **鍵が空なら LLM ゲートウェイは起動時に止まる**（Claude のエンドポイントが有効なとき）。
+    #   このファイルは PoC の配備も使うので、鍵なしで起動させる opt-out（Llm__AllowMissingApiKey）は**ここに置かない**。
+    #   鍵なしで動かす CI の使い捨てスタックは、起動器の LLM_KEYLESS=1 が extraEnvAppend で足す（scripts/k8s-local-up.sh）。
+    #   compose は compose ファイルの側で opt-out を持つ（`Llm__ApiKey: ${ANTHROPIC_API_KEY:-}` と並べて置いている）。
     # 本番 chart（values.yaml）も同じ Secret の同じキーを参照する（#308）。
     # FR-02, ADR-0016, IADR-0504 (#1764): Embedding__Voyage__ApiKey（埋め込み・Voyage AI）も同じ Secret の voyage-api-key から渡す。
-    # 🔴 extraEnv はリストの置換なので、本番既定（values.yaml）と同じ 2 件をここにも書く（片方を落とすと鍵が届かない）。3 件目の opt-out はここだけに置く。
+    # 🔴 extraEnv はリストの置換なので、本番既定（values.yaml）と同じ 2 件をここにも書く（片方を落とすと鍵が届かない）。
     # optional の理由と鍵が無いときの挙動は values.yaml の同じ行。鍵の入れ方は docs/operations/voyage-embedding-key-runbook.md。
     extraEnv:
       - name: Llm__ApiKey
@@ -171,8 +172,6 @@ services:
           name: llm-provider-credentials
           key: voyage-api-key
           optional: true
-      - name: Llm__AllowMissingApiKey
-        value: "true"
 
   # #1376, AST/SC-04, AST/IADR-0321 決定 6: OpenD 認証ゲートウェイ（AST の opend Pod のサイドカー）の上流。
   # BaseUrl の既定は空＝「未構成 → 供給が無い」（fail-safe）なので、MSP 連結ローカルではここで所在を与える。

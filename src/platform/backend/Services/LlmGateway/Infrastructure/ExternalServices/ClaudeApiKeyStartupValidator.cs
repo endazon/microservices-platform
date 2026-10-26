@@ -10,7 +10,8 @@ namespace LlmGateway.Infrastructure.ExternalServices;
 // （readiness は通ったまま）。Helm は Secret の欠落では Pod を作らないが、値が空の Secret は通す。
 //
 // 鍵なしで動かす検証スタック（compose・values-local・dotnet run）は `Llm:AllowMissingApiKey=true` を明示する。
-// 値が true のときだけ効く（置いていない・true 以外は opt-out にしない＝fail-closed）。
+// 値が true（大文字小文字は問わない）のときだけ効く（置いていない・true 以外は opt-out にしない＝fail-closed）。
+// 大文字小文字を問わないのは、JSON の真偽値 true が構成では "True" として読まれるためである（appsettings.Development.json）。
 // Claude のエンドポイントがすべて無効なら、鍵を使う経路が無いので検証しない。
 //
 // 🔴 鍵の値は文言に差し込まない（設定キーの名前とエンドポイント名だけ）。
@@ -45,5 +46,5 @@ public sealed class ClaudeApiKeyStartupValidator(IConfiguration configuration) :
         string.IsNullOrWhiteSpace(configuration[AnthropicClientFactory.ApiKeyConfigKey]);
 
     public static bool IsMissingKeyAllowed(IConfiguration configuration) =>
-        bool.TryParse(configuration[AllowMissingConfigKey], out var allowed) && allowed;
+        string.Equals(configuration[AllowMissingConfigKey], "true", StringComparison.OrdinalIgnoreCase);
 }

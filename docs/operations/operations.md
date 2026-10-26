@@ -1911,14 +1911,21 @@ LLM ゲートウェイは、Claude（ティア B）のエンドポイントが�
 | 構成 | 鍵が空のとき |
 | --- | --- |
 | 本番 chart の既定（`values.yaml`） | **起動に失敗する**。Secret `llm-provider-credentials` の `anthropic-api-key` が空なら、Pod は ready にならない。ローリング更新なら古い Pod は動き続ける |
-| compose・ローカル k8s（`values-local.yaml`。PoC と CI の使い捨てスタックを含む）・`dotnet run`（Development） | 起動する。`Llm:AllowMissingApiKey=true`（env `Llm__AllowMissingApiKey`）を明示しているためで、起動時に warn を 1 行出す。Claude への呼び出しは 401 で失敗する |
+| **PoC・ローカル k8s**（起動器 `k8s-local-up.sh` ＋ `values-local.yaml`） | **起動に失敗する**（本番の既定と同じ）。PoC は実鍵を持つので、鍵が入っていれば影響は無い |
+| CI の使い捨てスタック（integration-stack・e2e-live・cutover-rehearsal）・compose・`dotnet run`（Development） | 起動する。`Llm:AllowMissingApiKey=true`（env `Llm__AllowMissingApiKey`）を明示しているためで、起動時に warn を 1 行出す。Claude への呼び出しは 401 で失敗する。CI は起動器の `LLM_KEYLESS=1` が足し、compose と Development は設定ファイルが持つ |
 | Claude のエンドポイントがすべて無効 | 起動する（鍵を使う経路が無い） |
 
-- **opt-out は値が `true` のときだけ効く。** 置いていない・`true` 以外の値は opt-out にならない。
+- **opt-out は値が `true`（大文字小文字は問わない）のときだけ効く。** 置いていない・`true` 以外の値（`yes`・`1`・前後の空白つき など）は opt-out にならない。
 - **鍵の値はログにも例外にも出ない。** 失敗の文言は設定キーの名前とエンドポイント名だけを含む。
 - **起動に失敗したとき**: Pod のログに `Llm:ApiKey` と `Llm:AllowMissingApiKey` の名前を含む起動時の検証エラーが出る。
-  鍵を保管先へ入れ（[画面からの差し替え](secret-item-console-injection-runbook.md)）、Pod を作り直す。
-  鍵なしで動かすつもりの検証スタックなら、`services.llmgateway.extraEnv` に `Llm__AllowMissingApiKey: "true"` を足す。本番には足さない。
+  戻し方は 2 つある。
+  1. **鍵を入れる**（正しい戻し方）: 保管先へ鍵を入れ（[画面からの差し替え](secret-item-console-injection-runbook.md)）、Pod を作り直す。
+     入ったことは値を表示せずに長さで確かめる（`kubectl -n microservices-platform get secret llm-provider-credentials -o jsonpath='{.data.anthropic-api-key}' | base64 -d | wc -c` が 0 でない）。
+  2. **一時的に opt-out を置く**（鍵がすぐに用意できず、テキスト生成以外の機能を先に戻したいとき）:
+     `kubectl -n microservices-platform set env deploy/llmgateway-service Llm__AllowMissingApiKey=true`。
+     次の helm upgrade で消える（chart の姿へ戻る）。鍵を入れたら `kubectl -n microservices-platform set env deploy/llmgateway-service Llm__AllowMissingApiKey-` で外す。
+     PoC で起動器を再実行するときに `LLM_KEYLESS=1` を付けると、opt-out が残り続ける。PoC では付けない。
+- **PoC で helm upgrade する前**: 鍵の Secret に値があることを、上の長さの確認で確かめる（値そのものは表示しない）。空なら、upgrade の後に LLM ゲートウェイが起動しない。
 
 ### LLM ゲートウェイの用途別 effort（LLM 送信先切替の要求 / #1875）
 

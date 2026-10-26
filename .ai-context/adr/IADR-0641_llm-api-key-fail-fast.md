@@ -43,11 +43,14 @@ related_specs:
 
 ### 決定 2: opt-out は `Llm:AllowMissingApiKey=true` の明示だけ
 
-- 値が `true` のときだけ効く。置いていない・`true` 以外（`yes`・`1` など）は opt-out にしない（fail-closed）。
+- 値が `true`（大文字小文字は問わない）のときだけ効く。置いていない・`true` 以外（`yes`・`1`・前後の空白つき など）は opt-out にしない（fail-closed）。
+  - 大文字小文字を問わないのは、JSON の真偽値 `true`（`appsettings.Development.json`）が構成では `"True"` として読まれるためである。比較は `string.Equals(..., "true", OrdinalIgnoreCase)` で明示する（`bool.TryParse` は空白も許すので使わない）。
 - opt-out で鍵なしのまま起動したときは、warn を 1 行出す。
-- 置く先は鍵なしで動かす環境だけである: compose・`deploy/local/values-local.yaml`・`appsettings.Development.json`。
-- 本番の既定（`values.yaml`・`appsettings.json`）には置かない。
-  - `scripts/helm-llm-provider-keys.test.js` が、opt-out が本番像の描画に現れず、values-local の描画に `"true"` で 1 回だけ現れることを見る。
+- 置く先は鍵なしで動かす環境だけである: compose・`appsettings.Development.json`・CI の使い捨てスタック（integration-stack・e2e-live・cutover-rehearsal）。
+  - CI は起動器 `scripts/k8s-local-up.sh` の opt-in `LLM_KEYLESS=1` が、helm upgrade に `--set-json services.llmgateway.extraEnvAppend=[…]` を足す。3 ワークフローは起動器の呼び出しのすべてで立てる。
+- 本番の既定（`values.yaml`・`appsettings.json`）と **`deploy/local/values-local.yaml` には置かない。**
+  - values-local は PoC（実鍵を持つ、残しておく唯一の配備）も使う。ここへ置くと PoC で fail-fast が効かなくなる（［2026-10-26 / #2272 の監査］初版は values-local に置いていた）。
+  - `scripts/helm-llm-provider-keys.test.js` が、opt-out が本番像にも values-local の描画にも現れず、CI の上書きを足した描画にだけ `"true"` で 1 回現れることを見る。`scripts/k8s-local-up.test.js` が、起動器が既定で足さず、`LLM_KEYLESS=1` で 1 つだけ足し、3 ワークフローが立てていることを見る。
   - 値が空の Secret で起動すると、Pod は起動に失敗する。
   - ローリング更新なら、古い Pod は動き続ける（新しい Pod が ready にならない）。
 
@@ -66,11 +69,14 @@ related_specs:
 | --- | --- | --- |
 | 既定で止め、検証スタックが明示で外す（本決定） | 採る | 本番の既定が安全側になる。外す側は名前で分かる |
 | 既定で起動し、本番だけが明示で止める | 採らない | 本番の設定を書き忘れると、今と同じく 401 まで分からない |
-| `ASPNETCORE_ENVIRONMENT` で分ける | 採らない | compose・values-local は本番と同じ環境名で動く。環境名と鍵の有無は別の軸である |
+| `ASPNETCORE_ENVIRONMENT` で分ける | 採らない | compose・ローカル k8s は本番と同じ環境名で動く。環境名と鍵の有無は別の軸である |
+| values-local に opt-out を置く（初版） | 採らない | PoC も values-local を使う。PoC で鍵が空になっても起動で止まらず、本件の目的が失われる（#2272 の監査） |
 | 検証スタックでは Claude のエンドポイントを無効にする | 採らない | 用途別のルーティングとフォールバックの挙動が本番と変わる。使い捨てスタックの試験が本番の形を見なくなる |
 
 ## 結果
 
 - 本番の既定で鍵が空なら、起動の段で分かる。
-- 検証スタックの挙動は変わらない（opt-out の下で、最初の呼び出しが 401）。
+- 鍵なしの検証スタックの挙動は変わらない（opt-out の下で、最初の呼び出しが 401）。
+- PoC は本番と同じく、鍵が空なら起動しない。PoC の helm upgrade の前に、鍵の Secret に値があることを（値を表示せずに）確かめる。
+- 起動器で鍵なしの使い捨てスタックを人が立てるとき（計測など）は `LLM_KEYLESS=1` を付ける。
 - 残余: セルフホスト・Copilot の資格情報は検証しない（既定でエンドポイントが無効。本件と別）。

@@ -40,10 +40,11 @@ issue: "#2136"
 - 起動時に検証する。条件は「`Provider == "claude"` かつ `Enabled` のエンドポイントが 1 つ以上ある」かつ「`Llm:ApiKey` が null・空・空白」である。
   - 満たせば、起動を失敗させる（`ValidateOnStart`。既存の `EmbeddingRoutingOptionsValidator` と同じ作り）。
   - Claude のエンドポイントがすべて無効なら、鍵が空でも起動する（鍵を使う経路が無い）。
-- opt-out は設定 `Llm:AllowMissingApiKey`（env `Llm__AllowMissingApiKey`）である。値が `true` のときだけ効く。
+- opt-out は設定 `Llm:AllowMissingApiKey`（env `Llm__AllowMissingApiKey`）である。値が `true`（大文字小文字は問わない）のときだけ効く。JSON の真偽値 `true` は構成では `"True"` と読まれるためである。
   - 置いていない・`true` 以外の値は opt-out にしない（fail-closed）。
   - opt-out で起動したときは、warn を 1 行出す（鍵の値は出さない。キー名だけ）。
-- opt-out を置く先は、上の表で鍵なしで動く環境だけである: compose・`values-local.yaml`・`appsettings.Development.json`。
+- opt-out を置く先は、鍵なしで動く環境だけである: compose・`appsettings.Development.json`・CI の使い捨てスタック（起動器の `LLM_KEYLESS=1` が helm upgrade に `--set-json services.llmgateway.extraEnvAppend=[…]` を足す。integration-stack・e2e-live・cutover-rehearsal の起動器の呼び出しのすべてで立てる）。
+  - **`values-local.yaml` には置かない。** PoC（実鍵を持つ、残しておく唯一の配備）も同じファイルを使うため、置くと PoC で fail-fast が効かない（［2026-10-26 / #2272 の監査］初版は values-local に置いていた）。
   - 本番の既定（`values.yaml`・`appsettings.json`）には置かない。値が空の Secret で起動すると、Pod は起動に失敗する。
   - ローリング更新なら、古い Pod は動き続ける（新しい Pod が ready にならないため）。
 - 鍵の値はログにも例外にも出さない。失敗の文言と warn は設定キーの名前とエンドポイント名だけを含む。
@@ -57,14 +58,16 @@ issue: "#2136"
 - [x] `Llm:AllowMissingApiKey` が `true` 以外（例 `yes`）なら opt-out にならず、起動が失敗する
 - [x] Claude のエンドポイントがすべて無効なら、鍵が空でも起動する
 - [x] 鍵があれば起動する。失敗の文言にも warn にも鍵の値が出ない（空白だけの鍵の場合も含む）
-- [x] compose・`values-local.yaml`・`appsettings.Development.json` に opt-out を置く。本番の既定（`values.yaml`・`appsettings.json`）には置かない。これを helm の描画で確かめる
+- [x] compose・`appsettings.Development.json`・CI の使い捨てスタック（`LLM_KEYLESS=1`）に opt-out を置く。本番の既定（`values.yaml`・`appsettings.json`）と `values-local.yaml`（PoC）には置かない。helm の描画（`helm-llm-provider-keys.test.js`）と起動器の試験（`k8s-local-up.test.js`）で確かめる
+- [x] `Llm:AllowMissingApiKey` の値は大文字小文字を問わない（`True`・`TRUE` も効く。前後の空白つきは効かない）
+- [x] PoC の helm upgrade の前に鍵の Secret に値があることを確かめる手順と、起動に失敗したときの戻し方を運用仕様書に書く
 - [x] 運用仕様書とテスト仕様書（T-46）に書く。IADR-0641 を起こす
 
 ## 修正前に赤であること（実測 2026-10-26）
 
 - 判定器を「常に通す」骨組みにし、Program.cs へ配線しない状態（＝修正前の挙動）で `ClaudeApiKeyStartupValidationTests` を走らせた。
 - 結果は `Failed: 10, Passed: 2, Total: 12`。緑の 2 本は「エンドポイントが無効なら通る」「鍵があれば起動する」で、修正前も成り立つ側である。
-- 実装後は 12 本とも緑。LlmGateway.Tests 全体は 523 本とも緑。
+- 実装後は全本緑（opt-out の大文字小文字の 3 本と空白の 1 本を足した後は 16 本）。
 
 ## 母集合（規則 9: 誤りの側の文字列で全文を走査した）
 
@@ -73,12 +76,14 @@ issue: "#2136"
 | 当たり | 扱い | 理由 |
 | --- | --- | --- |
 | `deploy/docker-compose.yml` の `Llm__ApiKey` | **直す**（opt-out を足す） | 鍵なしで動く環境 |
-| `deploy/local/values-local.yaml` の「fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない」 | **直す**（opt-out を足し、コメントを改める） | 同上。PoC・CI の使い捨てスタックもここを使う |
+| `deploy/local/values-local.yaml` の「fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない」 | **直す**（コメントだけ。opt-out は置かない） | PoC も使う。鍵が空なら止まることを書く |
+| `scripts/k8s-local-up.sh`（helm upgrade・`llm-provider-credentials` の手動 Secret の「空=外部 LLM を呼ばない」） | **直す**（opt-in `LLM_KEYLESS` を足し、コメントに注記） | CI の使い捨てスタックの opt-out の置き場 |
+| `.github/workflows/` の integration-stack・e2e-live・cutover-rehearsal（起動器の呼び出し 4 か所） | **直す**（`LLM_KEYLESS=1`） | 鍵なしで動く |
 | `deploy/helm/microservices-platform/values.yaml` の `Llm__ApiKey` | **直す**（コメントだけ） | 空の値で起動が止まることを書く。opt-out は置かない |
 | `appsettings.Development.json` | **直す**（opt-out を足す） | `dotnet run` を壊さない |
 | `deploy/local/README.md` の「空=呼ばない」 | **直す** | opt-out が要ることを足す |
-| `deploy/local/vault/eso/README.md`・`bootstrap.sh`・`externalsecret-llm.yaml` の「空＝外部 LLM を呼ばない」 | 外す | ローカルの供給側の記述で、values-local の opt-out の下ではいまも正しい |
-| `docs/operations/llm-output-token-measurement-runbook.md` の後始末 | 外す | ローカル（values-local）での手順で、opt-out の下で Pod は起動する |
+| `deploy/local/vault/eso/README.md`・`bootstrap.sh`・`externalsecret-llm.yaml` の「空＝外部 LLM を呼ばない」 | **直す**（注記を足す） | 空のままだと LLM ゲートウェイが起動しない |
+| `docs/operations/llm-output-token-measurement-runbook.md` の後始末（鍵を空へ戻す） | **直す** | PoC で鍵を空にすると、作り直されたゲートウェイが起動しない。opt-out を一時的に置く手順を足す |
 | `deploy/bootstrap/README.md`・`sc22-secret-items.json`・`secret-templates.example.yaml`・SC-22 の Runbook | 外す | 鍵の供給の仕方の記述で、起動時の扱いに触れていない |
 | `scripts/helm-llm-provider-keys.test.js` | **足す**（opt-out の置き場の判定と変異 2 本） | 既存の `optional:` と `Llm__ApiKey` の数え方は opt-out の env（リテラル値・`optional` なし）で変わらない。opt-out が本番像の描画に現れない・values-local に `"true"` で 1 回現れることを helm の描画で見る（受け入れ基準の「helm の描画で確かめる」の実体）。helm v3.16.3 で 12 本とも緑 |
 | `.github/ISSUE_TEMPLATE`・values.yaml の frontend の placeholder | 外す | 別の語 |

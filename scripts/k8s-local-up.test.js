@@ -527,6 +527,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     'SEARCHSEED',
     'TAGSEED', // #1359: タグ辞書の門。漏れていると既定のバイト等価が崩れる
     'LOCALEMBED',
+    'LLM_KEYLESS', // #2136 / IADR-0641: 鍵なしの起動の opt-out。漏れていると既定のバイト等価が崩れる
     'SYNTHETIC', // #1287: 合成監視の門。漏れていると既定のバイト等価が崩れる
     'SYNTHETIC_ROLLOUT_TIMEOUT',
     'HEADLAMP_OIDC_ISSUER_URL',
@@ -4196,6 +4197,42 @@ ok('LOCALEMBED=1: helm upgrade へ deterministicLocal の --set が 1 つだけ�
     1,
     `LOCALEMBED=1 だけで --set が複数付いている: ${line}`,
   );
+});
+
+// --- IADR-0641 (#2136): 鍵なしの起動の opt-out（LLM_KEYLESS=1） -----------------------------------
+//
+// 🔴 PoC（残しておく配備）も同じ起動器と values-local.yaml を使う。opt-out が既定で足されると、PoC で鍵が空に
+// なっても LLM ゲートウェイが起動時に止まらない。したがって「既定で現れない」「立てたら 1 つだけ現れる」
+// 「鍵なしの CI の 3 ワークフローはすべて立てている」を固定する。
+// OPTIN_TOKENS には入れない: 足す先が LOCALEMBED と同じ helm upgrade の 1 行で、単独の検出力の検査が成り立たない。
+// 既定に現れないことは下の 1 本目が直接見る。
+
+const LLM_KEYLESS_SET = `--set-json services.llmgateway.extraEnvAppend=[{"name":"Llm__AllowMissingApiKey","value":"true"}]`;
+
+ok('LLM_KEYLESS 未設定: helm upgrade に opt-out が足されない（PoC の既定）', () => {
+  const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(!line.includes('Llm__AllowMissingApiKey'), `既定なのに opt-out が付いている: ${line}`);
+  assert.ok(!line.includes('--set-json'), `既定なのに --set-json が付いている: ${line}`);
+});
+
+ok('LLM_KEYLESS=1: helm upgrade へ opt-out の --set-json が 1 つだけ足される', () => {
+  const line = runUp({ LLM_KEYLESS: '1' }).lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(line.includes(LLM_KEYLESS_SET), `opt-out が足されていない: ${line}`);
+  assert.strictEqual((line.match(/--set-json /g) || []).length, 1, `--set-json が 1 つではない: ${line}`);
+  assert.ok(!line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').includes('--set '),
+    `LLM_KEYLESS=1 だけで --set が付いている（opt-in の独立性が崩れている）: ${line}`);
+});
+
+ok('鍵なしで起動器を呼ぶ CI の 3 ワークフローは、起動器の呼び出しのすべてで LLM_KEYLESS=1 を立てる（#2136）', () => {
+  for (const wf of ['integration-stack.yml', 'e2e-live.yml', 'cutover-rehearsal.yml']) {
+    const text = readAt(REPO_ROOT, '.github', 'workflows', wf);
+    const calls = text.split('\n').map((l, i, a) => (/^\s*bash scripts\/k8s-local-up\.sh --live/.test(l) ? a[i - 1] : null))
+      .filter((l) => l !== null);
+    assert.ok(calls.length >= 1, `${wf} に起動器の呼び出しが無い`);
+    for (const prev of calls) assert.ok(/\bLLM_KEYLESS=1\b/.test(prev), `${wf} の起動器の呼び出しに LLM_KEYLESS=1 が無い: ${prev}`);
+  }
 });
 
 const CHART_VALUES = readAt(REPO_ROOT, 'deploy', 'helm', 'microservices-platform', 'values.yaml');

@@ -8,6 +8,7 @@
 # 前提: VAULT=1 で dev Vault が起動済み（platform-infra）。root トークンは vault Pod の env VAULT_DEV_ROOT_TOKEN_ID。
 # 全 vault 操作は vault Pod 内で実行する（kubectl exec）。ホストに vault CLI は不要。
 # fail-safe: seed 値は env 由来 or 空既定（空＝外部 LLM を呼ばない現行 fail-safe と同値）。平文はリポジトリに置かない。
+#   ［2026-10-26 / #2136・IADR-0641］ただし鍵が空なら LLM ゲートウェイは起動時に止まる（鍵なしで起こすのは LLM_KEYLESS=1 の使い捨てスタックだけ）。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"

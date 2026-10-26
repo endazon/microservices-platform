@@ -72,11 +72,8 @@ public class ClaudeApiKeyStartupValidationTests
     [InlineData(null)]
     public void 鍵が空なら起動時に失敗する(string? apiKey)
     {
-        var settings = new Dictionary<string, string?>();
-        if (apiKey is not null) settings[AnthropicClientFactory.ApiKeyConfigKey] = apiKey;
-        else settings[AnthropicClientFactory.ApiKeyConfigKey] = null; // appsettings.json の "" を null で上書き（未設定）
-
-        var e = StartupFailure(settings);
+        // null は appsettings.json の "" を null で上書きする（未設定）。
+        var e = StartupFailure(new Dictionary<string, string?> { [AnthropicClientFactory.ApiKeyConfigKey] = apiKey });
 
         var text = AllMessages(e);
         text.Should().Contain(AnthropicClientFactory.ApiKeyConfigKey);
@@ -110,6 +107,7 @@ public class ClaudeApiKeyStartupValidationTests
     [InlineData("1")]
     [InlineData("false")]
     [InlineData("")]
+    [InlineData(" true")]
     public void OptOutがtrue以外なら起動時に失敗する(string flag)
     {
         var e = StartupFailure(new Dictionary<string, string?>
@@ -136,6 +134,19 @@ public class ClaudeApiKeyStartupValidationTests
         logs.Entries.Should().NotContain(x => x.Message.Contains(ProbeKey));
         logs.Entries.Should().NotContain(x => x.Message.Contains(AnthropicClientFactory.ApiKeyConfigKey)
             && x.Level >= LogLevel.Warning);
+    }
+
+    // T-46 ③': opt-out の値は大文字小文字を問わない（JSON の真偽値 true は構成では "True" として読まれる）。
+    [Theory]
+    [InlineData("true")]
+    [InlineData("True")]
+    [InlineData("TRUE")]
+    public void OptOutの値は大文字小文字を問わない(string flag)
+    {
+        var result = Validate(apiKey: "", optOut: flag,
+            new LlmEndpointOptions { Name = "claude-managed", Provider = "claude", Enabled = true });
+
+        result.Succeeded.Should().BeTrue();
     }
 
     // T-46 ⑤: 判定器の単体。Claude のエンドポイントがすべて無効なら、鍵が空でも通る。
