@@ -18,7 +18,9 @@
 {{- $dbTls := and $svc.database $.Values.global.db.tls $.Values.global.db.tls.enabled }}
 {{- $mqTls := and $svc.messaging $.Values.global.messaging.tls $.Values.global.messaging.tls.enabled }}
 {{- $infraCaMount := or $dbTls $mqTls }}
-{{- /* FR-16, ADR-0024, IADR-0645 (#2117): MCP の宣言的公開構成（mcp-publication-config.yaml）をマウントする条件。 */}}
+{{- /* FR-16, ADR-0024, IADR-0645 (#2117): MCP の宣言的公開構成（mcp-publication-config.yaml）をマウントする条件。
+       $svc.enabled を重ねないのは、この range が `if $svc.enabled` の内側にあり、無効なら Deployment ごと描かれないから
+       （ConfigMap 側の `and $svc.enabled $svc.mcpPublication` と食い違って、無い ConfigMap をマウントする形は起きない）。 */}}
 {{- $mcpPublication := $svc.mcpPublication }}
 {{- if and $mcpPublication (ne $name "mcp") }}
 {{- fail (printf "services.%s.mcpPublication は書けません。MCP の公開構成は services.mcp.mcpPublication に書きます（IADR-0645）。" $name) }}

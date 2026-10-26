@@ -43,6 +43,10 @@ const ENV = 'Mcp__PublicationConfigPath';
 const CHECKSUM = 'checksum/mcp-publication';
 const OWNER = 'mcp-service';
 
+/** 正規表現へ文字列を埋め込むときの完全なエスケープ（バックスラッシュを含むすべてのメタ文字）。
+ *  本ファイルが `new RegExp(...)` へ埋め込む値はすべてこれを通す（CodeQL js/incomplete-sanitization）。 */
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 let passed = 0;
 function ok(name, fn) {
   fn();
@@ -93,13 +97,13 @@ function documents(rendered) {
 
 /** ConfigMap の data の 1 キー（`key: "..."` の JSON 文字列。helm の quote は Go の %q で、JSON の文字列として読める）。 */
 function configMapValue(doc, key) {
-  const m = new RegExp(`^ {2}${key.replace(/\./g, '\\.')}:\\s*(".*")\\s*$`, 'm').exec(doc.text);
+  const m = new RegExp(`^ {2}${escapeRe(key)}:\\s*(".*")\\s*$`, 'm').exec(doc.text);
   return m ? JSON.parse(m[1]) : null;
 }
 
 /** env の項目 `- name: X` の次行 `value: ...` を返す（無ければ null）。 */
 function envValue(text, name) {
-  const m = new RegExp(`^\\s*- name:\\s*${name}\\s*\\n\\s*value:\\s*["']?([^"'\\n]*)["']?\\s*$`, 'm').exec(text);
+  const m = new RegExp(`^\\s*- name:\\s*${escapeRe(name)}\\s*\\n\\s*value:\\s*["']?([^"'\\n]*)["']?\\s*$`, 'm').exec(text);
   return m ? m[1] : null;
 }
 
@@ -132,7 +136,7 @@ function checkConfigured(rendered, expected) {
     const v = configMapValue(cm, KEY);
     if (v !== expected) errors.push(`ConfigMap ${CONFIGMAP} の ${KEY} が values の文字列と一致しない`);
   }
-  const mounting = docs.filter((d) => d.kind === 'Deployment' && new RegExp(`name:\\s*${CONFIGMAP}\\b`).test(d.text));
+  const mounting = docs.filter((d) => d.kind === 'Deployment' && new RegExp(`name:\\s*${escapeRe(CONFIGMAP)}\\b`).test(d.text));
   const names = mounting.map((d) => d.name);
   if (names.length !== 1 || names[0] !== OWNER) errors.push(`${CONFIGMAP} をマウントする Deployment が ${JSON.stringify(names)}（${OWNER} だけであるべき）`);
   const owner = docs.find((d) => d.kind === 'Deployment' && d.name === OWNER);
@@ -140,12 +144,12 @@ function checkConfigured(rendered, expected) {
     errors.push(`Deployment ${OWNER} が描かれていない`);
     return errors;
   }
-  const mount = new RegExp(`- name:\\s*${CONFIGMAP}\\s*\\n\\s*mountPath:\\s*(\\S+)\\s*\\n\\s*readOnly:\\s*true`).exec(owner.text);
+  const mount = new RegExp(`- name:\\s*${escapeRe(CONFIGMAP)}\\s*\\n\\s*mountPath:\\s*(\\S+)\\s*\\n\\s*readOnly:\\s*true`).exec(owner.text);
   if (!mount) errors.push(`${OWNER} に ${CONFIGMAP} の読み取り専用マウントが無い`);
   const env = envValue(owner.text, ENV);
   if (env === null) errors.push(`${OWNER} に ${ENV} が無い（イメージの既定を読み続ける）`);
   if (mount && env !== null && env !== `${mount[1]}/${KEY}`) errors.push(`${ENV}=${env} がマウント先 ${mount[1]}/${KEY} を指さない`);
-  const sum = new RegExp(`^\\s*${CHECKSUM.replace('/', '\\/')}:\\s*"([0-9a-f]{64})"`, 'm').exec(owner.text);
+  const sum = new RegExp(`^\\s*${escapeRe(CHECKSUM)}:\\s*"([0-9a-f]{64})"`, 'm').exec(owner.text);
   const want = crypto.createHash('sha256').update(expected).digest('hex');
   if (!sum) errors.push(`${OWNER} の Pod テンプレートに ${CHECKSUM} が無い（構成の変更でロールアウトしない）`);
   else if (sum[1] !== want) errors.push(`${CHECKSUM} が値の sha256 と違う: ${sum[1]} / ${want}`);
@@ -232,7 +236,7 @@ function main() {
   });
 
   ok('変異: 環境変数の欠落は赤（イメージの既定を読み続ける）', () => {
-    const mutated = configured.replace(new RegExp(`- name: ${ENV}\\s*\\n\\s*value:[^\\n]*\\n`), '');
+    const mutated = configured.replace(new RegExp(`- name: ${escapeRe(ENV)}\\s*\\n\\s*value:[^\\n]*\\n`), '');
     assert.notStrictEqual(mutated, configured);
     assert.ok(checkConfigured(mutated, expected).some((e) => e.includes(`${ENV} が無い`)));
   });
