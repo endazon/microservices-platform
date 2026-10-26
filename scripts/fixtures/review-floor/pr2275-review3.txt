@@ -1,0 +1,45 @@
+**Claude finished @endazon's task in 3m 8s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/40254607564)
+
+---
+## AI コードレビュー結果
+
+変更 9 ファイル中 9 ファイルを読んだ（生成物の除外なし）。差分は全行読んだ。`scripts/lib/k3d-create.sh` は全文も読んだ。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- **2 回目も失敗したとき、壊れたクラスタが残る**（`scripts/lib/k3d-create.sh` の `k3d_create_with_retry` 末尾）。2 回目の失敗では診断を出して `return 1` するだけで、`k3d cluster delete` を呼ばない。CI の使い捨てランナーでは害がない（後始末のステップが消す）。しかし手元の PoC / 開発機では、半端なクラスタ `$CLUSTER` が残る。次の `k8s-local-up.sh` は `k3d cluster list` で見つけて、**壊れたクラスタを「既存」として reuse の経路に入れる**。作成の失敗が、次回は無言の reuse に化ける。「この実行が作った」ことは確かなので、最終失敗の診断の後にも delete を 1 回呼ぶほうが、IADR-0642 の「消すのはこの実行が作ったクラスタだけ」と整合する。2 回失敗の試験に、`k3d cluster delete` が 2 回になることを足す。変えないなら、その理由（失敗の現場を残す、など）を IADR に 1 行書く。
+
+### 🟢 軽微
+- 注記 `was recreated once` は 2 回目の試行の前に出る。2 回目も失敗して赤になる場合も「作り直した」と残るが、事実としては正しく、実害はない（前回のレビューと同じ）。
+- 前回のレビューの指摘（診断の上限、上限の値の検査を k3d の経路へ移す、最長の見積もりの是正、上限を延ばすときの注意）は、この head に反映済みである。`k3d_diag_run`・`--request-timeout`・Rancher の経路を止めない試験・約 23 分の見積もり・運用仕様書と `deploy/local/README.md` の注意を読んで確認した。
+- 前回の「`timeout -k` の下で別の終了コードで抜けるかもしれない」という指摘は、実害がない。`timeout` は TERM で止めた場合 124、KILL まで進んだ場合 137 を返し、どちらも `k3d_create_attempt` が拾っている。
+
+### ✅ 確認できたこと（このセッションで実走）
+- `node scripts/scripts.test.js`（`REQUIRE_REPO_TESTS=1` を子プロセス形で指定、前景）: `✓ 1202 tests passed`。新規 12 本を含む `k8s-local-up.test.js` もこの全件に入っている。
+- `bash -n scripts/lib/k3d-create.sh`: 出力なし（構文エラーなし）。
+- `node scripts/check-trace-blocks.js`: OK（197 件）。
+- `node scripts/gen-knowledge-graph.js --check`: OK（in-repo エッジ先の実在に違反なし）。
+- `node scripts/check-doc-links.js`: OK（1956 件）。
+- `node scripts/check-doc-updated.js --base origin/develop`: OK。
+- `node scripts/check-commit-messages.js`: 3 件すべて規約に適合。
+- `node scripts/check-plan-id-qualification.js`: OK（4016 件）。
+- `gh run list`: Images・Image Mapping・Security・PR Size・PR Title は success。E2E Live と CodeQL は確認時点で in_progress。CI の `scripts-tests` の結論は一覧から読めていない。ローカルの全件実走が成功したので下限はこれで満たす。
+- 読んで確認した点:
+  - 作り直しは 1 回までで、3 回目の作成は呼ばれない。
+  - reuse の経路（`else` 側）は作成・削除・Ready 待ちを呼ばない。
+  - 上限の検査は `k3d` の分岐の中にある。
+  - `docs/operations/operations.md` の trace ブロックに IADR-0642・仕様書・#2273 が追記されている。
+  - `live-scripts.json` に新しい lib が分類されている。
+  - 試験 12 本が受け入れ基準に写像されている。
+
+### 🔍 実行できなかったこと
+- `shellcheck`: 許可一覧に無いため未実行。PR 本文の「指摘なし」は追試できていない。
+- 実物の k3d / docker での挙動（`timeout -k` の実際の終了コード、`kubectl wait` の実挙動、flannel の `subnet.env` の位置）: 未検証。スタブによる試験の範囲に限る。PR 本文のとおり e2e-live に委ねる。
+- 同じ head の E2E Live の最終結果: 確認時点で実行中だった。ジョブ単位のログを取る手段は無い。
+- 計画書原文: 本件は NFR（無採番のメタ作業）で、PR 本文と IADR を基準にした。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ · branch `fix/NFR-2273-k3d-node-start-timeout`

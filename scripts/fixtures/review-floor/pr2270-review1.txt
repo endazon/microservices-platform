@@ -1,0 +1,47 @@
+**Claude finished @endazon's task in 5m 43s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/40244908025)
+
+---
+## AI コードレビュー結果
+
+変更 16 ファイル中 16 ファイルを読んだ（生成物の除外なし）。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- （指摘なし）
+
+### 🟢 軽微
+- `DocumentUpdatedConsumer` と `EmbeddingPendingReembedder` は `DocumentIndexLocks? locks = null` を受け、null のときは自前の `new DocumentIndexLocks()` に落ちる。DI では単一インスタンスが渡るので本番は問題ない。ただし、渡し忘れた場合に排他が黙って別インスタンスになり、削除の受け口と直列にならない。試験で渡し忘れても緑のままになる。必須引数にするか、フォールバックを試験用だと明記するとよい。
+- 墓石を持たない文書（本 PR の配備前に削除された文書）の残余は IADR-0640 と仕様書に明記済みで、範囲外として妥当。
+
+### ✅ 確認できたこと（このセッションで実走）
+- 変更ファイル 16 件の差分を行単位で読んだ。内訳はコード 8、試験 3、ADR/仕様書 4、pipeline.json、baseline。
+- 実装は IADR-0640 の決定 1〜4 と一致している。
+  - 墓石の旗、更新の門（墓石と等しい鍵は古い）、削除の門（`IsStaleDelete`）、文書ごとの排他、削除の受け口の期限を、IADR と照合した。
+  - `FinishAsync` は門と同じ `IsStale` を使う。
+  - 排他は、取り消し時と解放時に項目を残さない作りになっている。
+  - 旧い印（旗なし）は削除済みでないと読む。
+- `dotnet test .../IngestionService/Tests/IngestionService.Tests.csproj`: 279 件 緑。
+- `dotnet build src/knowledge/backend/backend.slnx`: 成功。警告 0、エラー 0。
+- `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes`: 差分なし。出力なしで終了した。
+- `scripts.test.js`（`REQUIRE_REPO_TESTS=1`、子プロセス形）: 1202 件 緑。
+- 文書系の検査はいずれも OK だった。
+  - `check-trace-blocks.js`
+  - `gen-knowledge-graph.js --check`
+  - `check-doc-links.js`
+  - `check-doc-updated.js --base origin/develop`
+  - `check-plan-id-qualification.js`
+  - `check-commit-messages.js`（2 件適合）
+- `helm lint deploy/helm/microservices-platform --set-string global.image.tag=render-only-0000000`: 失敗 0。
+- `helm template ci-check deploy/helm/microservices-platform --set-string global.image.tag=render-only-0000000`: 描画できた。出力が大きく、全行は読んでいない。
+- 変更の目的に絞った確認として、pipeline.json の `ingestion-delete` 段と baseline の追加を差分で読み、Program.cs の配線（段の追加、`BindPlatformQueue`、`ListenToPlatformQueue`、自己申告、期限ポリシー）と整合していることを確かめた。
+
+### 🔍 実行できなかったこと
+- PR 本文の変異試験（旗・削除の門・排他を外して赤を確かめる）は、書き込み不可のため追試していない。未検証。
+- Knowledge.IntegrationTests は、ビルドのみ確認した。実行はしていない。
+- 計画書原文（FR-02 / FR-06 / FR-19、ADR-0027 / ADR-0057）は CI 環境から届かない。リポジトリ内の IADR と仕様書を基準にした。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ · branch `fix/FR-02-2263-ingestion-delete-tombstone`
