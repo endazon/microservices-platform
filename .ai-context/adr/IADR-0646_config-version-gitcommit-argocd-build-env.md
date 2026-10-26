@@ -47,8 +47,12 @@ related_specs:
 
 - `k8s-local-up.sh` の `[6/7]` の helm に `--set-string config.gitCommit=$(git rev-parse --verify HEAD)` を渡す。
   変更のある作業ツリー・detached HEAD でも、HEAD は実在のコミットである。
-- **HEAD を読めなければ何もする前に止める。上書きの口は持たない。** 作り物の値（`dev-local` 等）を渡すと、構成ビューアが実在しないコミットを
-  「適用中の構成」と表示する。イメージのタグ（IADR-0605）と同じ姿勢である。
+- **作り物の値は渡さない。上書きの口は持たない。** 作り物の値（`dev-local` 等）を渡すと、構成ビューアが実在しないコミットを
+  「適用中の構成」と表示する。
+- **HEAD を読めない（git の checkout でない・git が無い）なら、警告して渡さない**（空のまま起動する）。空は作り物の値ではない。
+  表示だけの項目のためにスタックの起動を止めるのは釣り合わない。イメージのタグは `IMAGE_TAG` で上書きできるので（IADR-0605）、
+  checkout でない木（tar で配った木・エクスポートした木）からも起動し得る。
+- **読めた値が sha の形（16 進 40 桁か 64 桁）でなければ止める。** 壊れた値を「適用中の構成」として表示しない。
 - 適用日時は渡さない。同じコミットで起動し直すたびに BFF の env が変わって作り直されるのを避けるためである。
 
 ## 結果
@@ -56,4 +60,4 @@ related_specs:
 - 良い影響: 構成ビューアの構成バージョンが、Argo CD の配備でもローカルの起動器でも空でなくなる。PoC の起動器でもコミット ID が出るようになる。
 - 受け入れる代償: Argo CD のパラメータは Application 側の宣言なので、`kubectl apply` し直さない限り既存の Application には効かない（`global.image.tag` と同じ）。
 - 試験: `scripts/helm-config-version.test.js`（Application のパラメータ・描画で `Config__GitCommit` に載る・既定は空・変異）、
-  `scripts/k8s-local-up.test.js` の #2118 の節（HEAD を 1 つだけ渡す・読めなければ止まる）。
+  `scripts/k8s-local-up.test.js` の #2118 の節（HEAD を 1 つだけ渡す・読めなければ警告して渡さない・形が違えば止まる）。

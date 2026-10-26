@@ -13,7 +13,7 @@
  *      `$$`（置換を止める書き方）にしない。誤った旧注記（「ビルド変数をパラメータへ自動展開しない」）が残っていない。
  *   2. helm の描画で、config.gitCommit に与えた値が BFF の Config__GitCommit にそのまま載る（Argo CD が置換した値・起動器の値の行き先）。
  *      既定（何も与えない）は空である（陰性対照: 上の 2 経路が無いと空のままになる）。
- *   3. 起動器の経路は k8s-local-up.test.js の「#2118」の節が固定する（HEAD の完全な sha を 1 つだけ渡す・読めなければ止まる）。
+ *   3. 起動器の経路は k8s-local-up.test.js の「#2118」の節が固定する（HEAD の完全な sha を 1 つだけ渡す・読めなければ警告して渡さない・形が違えば止まる）。
  *   4. 変異: `$$ARGOCD_APP_REVISION`・パラメータの欠落・forceString の欠落を判定器へ通すと赤になる。
  *
  * 🔴 **helm が無ければ落ちる（fail-closed）。** helm-mcp-client-provisioning.test.js と同じ理由。

@@ -57,11 +57,13 @@ issue: "#2118"
   誤った注記（「自動展開しない」）を改める。`appliedAt` には相当するビルド変数が無いので、従来どおり CD が与える。
 - `scripts/k8s-local-up.sh` の `[6/7]` の helm に `--set-string config.gitCommit=$(git rev-parse HEAD)` を足す。
   - 作業ツリーに変更があっても、HEAD が detached でも、実在するコミット ID である。
-  - `git rev-parse HEAD` が失敗したら作り物の値を渡さず止める（イメージのタグの解決と同じ姿勢）。
+  - ［2026-10-26 改訂 / #2286 の監査］`git rev-parse HEAD` が失敗したら、**警告して渡さない**（空のまま起動する。空は作り物の値ではない）。
+    初版は止めていたが、表示だけの項目で起動を止めるのは釣り合わない（`IMAGE_TAG` の上書きで checkout でない木からも起動し得る）。
+    読めた値が sha の形でなければ止める。
   - PoC の起動器でも構成ビューアにコミット ID が出るようになる（PR 本文に書く）。
 - 試験:
   - `application.yaml` に当該パラメータがあること（node）。
-  - `k8s-local-up.sh` が `git rev-parse HEAD` の値を `config.gitCommit` に渡し、失敗時に止まること（k8s-local-up.test.js）。
+  - `k8s-local-up.sh` が `git rev-parse HEAD` の値を `config.gitCommit` に渡し、読めなければ警告して渡さず、形が違えば止まること（k8s-local-up.test.js）。
   - helm の描画で BFF の `Config__GitCommit` が渡した値になること（既存の描画の試験の有無を確かめ、無ければ足す）。
 - 実装 ADR: IADR-0646（Argo CD のビルド変数で注入する。IADR-0029 のフォローアップ 3 の「CD が上書き」を改める）。
 
@@ -77,7 +79,7 @@ issue: "#2118"
 - [x] 6 サービスの自己申告に `object-storage` のポートが現れ、実装と接続先（ホスト:ポートだけ）が構成どおりである。未構成なら `NullObjectStorageClient`。資格情報を載せない
 - [x] wiki-service の自己申告に `wiki-sync` のポートが現れる
 - [x] datasource-service の自己申告に登録済みコネクタ 4 種が `enabled: true` で現れ、DI の登録と一致する（狭い読み (i)）
-- [x] Argo CD の Application が `config.gitCommit` に `$ARGOCD_APP_REVISION` を渡す。`k8s-local-up.sh` が `git rev-parse HEAD` を渡し、失敗時は止まる
+- [x] Argo CD の Application が `config.gitCommit` に `$ARGOCD_APP_REVISION` を渡す。`k8s-local-up.sh` が `git rev-parse HEAD` を渡し、読めなければ警告して渡さず、形が違えば止まる
 - [x] mcp-server が BFF の収集先に入り、h2c リスナと grpcPort を持つ（配線の試験）
 - [x] 修正前は上の試験が赤
 - [x] 運用文書（構成バージョンの注入）・FR-15 の通信仕様書とテスト仕様書を改める。IADR-0029 のフォローアップ 2 に (b)(ii) を追記する

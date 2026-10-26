@@ -530,6 +530,8 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   write('docker', DOCKER_STUB);
   // FR-15, IADR-0646 (#2118): HEAD を読めない git（構成バージョンを作れない）の経路を試すときだけ置く。
   if (extraEnv.STUB_GIT_FAIL === '1') write('git', '#!/usr/bin/env bash\necho "git $*" >> "$STUB_LOG"\nexit 128\n');
+  // FR-15, IADR-0646 (#2118): 壊れた HEAD を返す git（形の検査を試すときだけ置く）。
+  if (extraEnv.STUB_GIT_HEAD) write('git', `#!/usr/bin/env bash\necho "git $*" >> "$STUB_LOG"\necho ${JSON.stringify(extraEnv.STUB_GIT_HEAD)}\n`);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
   // kubectl stub が反映の成否を決めるために読む**データ**である。
   const modelFile = path.join(workdir, 'helm-controller-model.awk');
@@ -4429,11 +4431,20 @@ ok('#2118: [6/7] の helm は config.gitCommit に HEAD の完全な sha を 1 �
   assert.strictEqual((line.match(/config\.gitCommit=/g) || []).length, 1, `config.gitCommit が 1 つではない: ${line}`);
 });
 
-ok('#2118: HEAD を読めなければ何もする前に止め、config.gitCommit を作らない', () => {
+ok('#2118: HEAD を読めなければ警告して config.gitCommit を渡さず、起動は続ける（表示だけの項目で止めない）', () => {
   const r = runUp({ STUB_GIT_FAIL: '1' });
-  assert.notStrictEqual(r.status, 0, 'HEAD を読めないのに起動器が進んだ');
-  assert.match(r.stderr, /構成バージョン（config\.gitCommit）に実在のコミット ID を渡せない/);
-  assert.ok(r.lines.some((l) => l.startsWith('git ')), '対照: git の stub が呼ばれていない（別の理由で止まった）');
+  assert.strictEqual(r.status, 0, `HEAD を読めないだけで起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.match(r.stderr, /構成バージョン（config\.gitCommit）は空のまま起動します/);
+  assert.ok(r.lines.some((l) => l.startsWith('git ')), '対照: git の stub が呼ばれていない');
+  const line = r.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(!line.includes('config.gitCommit'), `HEAD を読めないのに config.gitCommit を渡した（作り物の値）: ${line}`);
+});
+
+ok('#2118: 読めた HEAD が sha の形でなければ止め、helm へ進まない', () => {
+  const r = runUp({ STUB_GIT_HEAD: 'not-a-sha' });
+  assert.notStrictEqual(r.status, 0, 'sha の形でない HEAD で起動器が進んだ');
+  assert.match(r.stderr, /git の HEAD が sha の形ではありません/);
   assert.ok(!r.lines.some((l) => HELM_UPGRADE_RE.test(l)), '止まるべきなのに helm upgrade まで進んだ');
   assert.ok(!r.lines.some((l) => l.startsWith('k3d ')), '止まるべきなのにクラスタへ触った');
 });

@@ -44,7 +44,6 @@ public static class ObjectStorageExtensions
         return services;
     }
 
-    // 書き込み側（ConversionService）でバケットの存在・バージョニングを起動時に保証する。
     // FR-15, ADR-0018, ADR-0014 / ADR-0106, IADR-0029 フォローアップ 2 (#2118): 選択中のオブジェクトストレージのポート実装を
     // 自己申告へ載せる（計画 10_composability §5「ポート実装の選択（…ストレージ…）」）。
     // **判定は AddPlatformObjectStorage と同じ `IsConfigured`** であり、別の条件で書かない（申告と実体が食い違う）。
@@ -62,6 +61,7 @@ public static class ObjectStorageExtensions
             : builder.AddPort(IntrospectionPort, nameof(NullObjectStorageClient));
     }
 
+    // 書き込み側（ConversionService）でバケットの存在・バージョニングを起動時に保証する。
     public static IServiceCollection AddPlatformObjectStorageBootstrap(
         this IServiceCollection services)
     {

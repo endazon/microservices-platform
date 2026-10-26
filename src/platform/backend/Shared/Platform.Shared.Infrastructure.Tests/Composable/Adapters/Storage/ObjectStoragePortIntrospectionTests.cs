@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -80,9 +79,44 @@ public class ObjectStoragePortIntrospectionTests
         programs.Should().HaveCountGreaterThanOrEqualTo(6, "対照: 2026-10-26 時点で 6 サービスが使っている（走査が壊れて 0 件になったときに緑を返さない）");
         foreach (var (path, text) in programs)
         {
-            Regex.IsMatch(text, @"AddPlatformIntrospection\([\s\S]*?\.AddObjectStoragePort\(builder\.Configuration\)")
+            DeclaresObjectStoragePort(text)
                 .Should().BeTrue($"{Path.GetRelativePath(root, path)} はオブジェクトストレージを使うのに object-storage のポートを申告していない");
         }
+    }
+
+    // `AddPlatformIntrospection(` の**呼び出しの括弧の中**（括弧の対応で閉じるまで）に `.AddObjectStoragePort(builder.Configuration)` があるか。
+    // 文字列・コメントの中の括弧は数えないが、本試験の対象（Program.cs の合成ルート）では呼び出しの引数に括弧を含む文字列を書かない。
+    internal static bool DeclaresObjectStoragePort(string program)
+    {
+        const string call = "AddPlatformIntrospection(";
+        for (var start = program.IndexOf(call, StringComparison.Ordinal); start >= 0;
+             start = program.IndexOf(call, start + 1, StringComparison.Ordinal))
+        {
+            var open = start + call.Length - 1;
+            var depth = 0;
+            for (var i = open; i < program.Length; i++)
+            {
+                if (program[i] == '(') depth++;
+                else if (program[i] == ')' && --depth == 0)
+                {
+                    if (program[open..i].Contains(".AddObjectStoragePort(builder.Configuration)", StringComparison.Ordinal))
+                        return true;
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+
+    // 🔴 判定器の陰性対照（AI レビュー 🟡）: **呼び出しの外**にある AddObjectStoragePort では通らない。
+    [Theory]
+    [InlineData("builder.Services.AddPlatformIntrospection(\"svc\", pipeline, i => i.AddStep<X>());\nvar x = b.AddObjectStoragePort(builder.Configuration);", false)]
+    [InlineData("builder.Services.AddPlatformIntrospection(\"svc\", new PipelineOptions());\n// .AddObjectStoragePort(builder.Configuration)", false)]
+    [InlineData("builder.Services.AddPlatformIntrospection(\"svc\", pipeline, i => i\n    .AddStep<X>()\n    .AddObjectStoragePort(builder.Configuration));", true)]
+    [InlineData("builder.Services.AddPlatformIntrospection(\"svc\", new PipelineOptions(), i => i\n    .AddConnector(A.Type, enabled: true)\n    .AddObjectStoragePort(builder.Configuration));", true)]
+    public void 判定はAddPlatformIntrospectionの呼び出しの中だけを見る(string program, bool expected)
+    {
+        DeclaresObjectStoragePort(program).Should().Be(expected);
     }
 
     private static string RepoRoot()

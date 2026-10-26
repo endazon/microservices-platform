@@ -1011,8 +1011,10 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
   - **適用日時**に当たるビルド変数は無いので、CD が同期時に上書きする:
     `argocd app set microservices-platform --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
     （または release automation が `values-<env>.yaml` の `config.appliedAt` を更新して Git にコミットする）。
+  - **既存の配備の移行**: `config.gitCommit` のパラメータは Application の宣言にあるので、既存の Argo CD の Application は
+    `kubectl apply -f deploy/argocd/application.yaml` で適用し直すまで効かない（適用し直した後の同期からコミット ID が入る）。
 - **ローカルの k8s（起動器 `scripts/k8s-local-up.sh`）**: `[6/7]` の helm へ `config.gitCommit` に作業ツリーの HEAD の完全なコミット ID を渡す
-  （変更のある作業ツリー・detached HEAD でも実在のコミット）。HEAD を読めなければ何もする前に止める（作り物の値を渡さない。上書きの口は無い）。
+  （変更のある作業ツリー・detached HEAD でも実在のコミット）。HEAD を読めない（git の checkout でない木から起動した）なら警告して渡さず、空のまま起動する。読めた値が sha の形でなければ止める（作り物の値を渡さない。上書きの口は無い）。
   適用日時は渡さない（同じコミットで起動し直すたびに BFF が作り直されるのを避ける）。
   - 手動確認: `helm template deploy/helm/microservices-platform --set config.gitCommit=deadbeef` で
     BFF env に `Config__GitCommit=deadbeef` が反映される。
