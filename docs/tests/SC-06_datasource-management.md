@@ -28,6 +28,7 @@ issues: [#458, #501, #537, #538, #628, #754, #767, #796, #1065, #1194, #1252, #2
 > **［2026-08-06 / #538］§DataSourceService（xUnit・次回同期）を追加した。** 計画側の裁定 Q15 で
 > `NextSyncAt`（共通間隔の次回実行時刻・全ソース同値）が契約へ入ったことに伴う。**画面への「次回同期」列の
 > 追加は本作業の範囲外**であり、§テストケース 13 は当面そのまま（列が無いことを見る）である。
+> ［2026-09-12 以降］列は実装され、ケース 13 は列の不在を見なくなった（現在の内容はケース 13 を見ること）。
 
 対象（画面）: `src/knowledge/frontend/src/features/sc06-datasources/`
 テスト: `syncState.test.ts`（純関数）／ `DataSourceManagementPage.test.tsx`（Vitest + Testing Library）／

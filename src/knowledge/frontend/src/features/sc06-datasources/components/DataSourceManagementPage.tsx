@@ -39,7 +39,8 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面（05_screens: ルート /admin/sources）。
 // ソースの登録・一覧・同期状態の確認・手動同期を行い、SC-07（変換ジョブ）への導線を持つ。
 //
-// 未実装の要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）:
+// hi-fi で当初は未実装だった要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）。
+// ［2026-10-26 / #2122］以下はすべて実装済みで、各項は経緯である（残る未実装は共通シェルの右レールだけ。本画面の射程外）:
 //   - **「⚠ 再試行中（3/5）」**: **［2026-08-08 / #537］実装した。** 契約が同期健全性
 //     （`consecutiveFailureCount` / `retryLimit` / `lastSyncError`）を持ったため（裁定 Q14）。
 //   - **「次回同期」列**: **［2026-09-12］実装した。** 契約（`nextSyncAt`）は #538 で揃っており、
