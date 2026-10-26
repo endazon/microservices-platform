@@ -1973,8 +1973,8 @@ msgid "個人資料の管理へ"
 msgstr "Manage private notes"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "個人資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。"
-msgstr "Private notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day."
+msgid "個人資料は業務関連資料として扱われます。{departureNotice}"
+msgstr "Private notes are treated as work-related material. {departureNotice}"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料を作成しました。"
@@ -2493,8 +2493,8 @@ msgid "同じ資料が端末とサーバの両方で編集されたときに競�
 msgstr "A conflict is recorded when the same note is edited both on your device and on the server. You decide which one to keep after reading both texts."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
-msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
-msgstr "Synced notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day. Personal notes you put into a synced folder are treated the same way once they enter the knowledge base."
+msgid "同期した資料は業務関連資料として扱われます。{departureNotice}同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
+msgstr "Synced notes are treated as work-related material. {departureNotice} Personal notes you put into a synced folder are treated the same way once they enter the knowledge base."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "同期するフォルダを Obsidian Vault 内の相対パスで指定します。フォルダを 1 つも指定していない場合は、あなたの個人資料がすべて同期の対象です。"
@@ -4877,6 +4877,10 @@ msgstr "Add"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "追加するフォルダのパス"
 msgstr "Path of the folder to add"
+
+#: knowledge/frontend/src/lib/private-notes/departureNotice.ts
+msgid "退職時には、退職日から 30 日間、管理者が閲覧することがあります。30 日が過ぎると、この資料は復元できない形で削除されます。"
+msgstr "When you leave the company, administrators may view them for 30 days from your last day. After 30 days, they are deleted and cannot be restored."
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts

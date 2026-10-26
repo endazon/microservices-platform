@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
+import { activate, i18n } from '@foundation/i18n';
+import { DEPARTURE_NOTICE } from '../../../lib/private-notes';
 
 // SC-19, UC-11, FR-19/FR-21（#451）: 個人資料管理画面。
 //
@@ -146,6 +148,10 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  // I18nProvider はロケール変更を購読して再描画する。act の外で切り替えると警告になる。
+  act(() => {
+    activate('ja');
+  });
 });
 
 describe('SC-19 個人資料管理: 一覧と固定文言', () => {
@@ -176,6 +182,32 @@ describe('SC-19 個人資料管理: 一覧と固定文言', () => {
     expect(notice.textContent).toMatch(/退職日から 30\s*日間、管理者が閲覧することがあります/);
     // 折りたたみの中に入れていないこと（details / summary を使っていない）。
     expect(notice.closest('details')).toBeNull();
+  });
+
+  // FR-19, SC-19, ADR-0096 決定 1（#2114）: 「30 日間、管理者が閲覧することがあります」だけを出し続ける形は採らない。
+  // 削除は配備済み（IADR-0431）なので、暫定文言ではなく削除の 1 文を出す。
+  it('🔴 固定文言に「30 日が過ぎると、この資料は復元できない形で削除されます」を含む', async () => {
+    respond();
+    await renderPage();
+
+    const notice = await screen.findByText(/個人資料は業務関連資料として扱われます/);
+    expect(notice.textContent).toMatch(
+      /30\s*日が過ぎると、この資料は復元できない形で削除されます。/,
+    );
+    // 文言の定義は 1 か所（SC-20 と共有する記述子）。
+    expect(notice.textContent).toContain(i18n._(DEPARTURE_NOTICE));
+    // 暫定文言（削除の未配備の間だけのもの）は出さない。
+    expect(notice.textContent).not.toMatch(/定まっていません/);
+  });
+
+  it('en ロケールでも固定文言に削除の文を含む', async () => {
+    activate('en');
+    respond();
+    await renderPage();
+
+    const notice = await screen.findByText(/Private notes are treated as work-related material/);
+    expect(notice.textContent).toMatch(/administrators may view them for 30 days/);
+    expect(notice.textContent).toMatch(/After 30 days, they are deleted and cannot be restored\./);
   });
 
   it('本文の編集欄も編集導線も無く、Obsidian 連携への導線がある（陽性対照つき）', async () => {

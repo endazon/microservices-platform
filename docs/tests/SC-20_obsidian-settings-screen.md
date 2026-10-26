@@ -3,15 +3,15 @@ title: SC-20 Obsidian 連携設定画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-28
-updated: 2026-09-12
+updated: 2026-10-26
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-19, SC-20]
-adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0099]
-iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0352, IADR-0437, IADR-0444, IADR-0446, IADR-0447]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching]
-issues: [#451, #1442, #1446, #1447, planning#614, planning#618]
+adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0099, ADR-0096]
+iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0352, IADR-0437, IADR-0444, IADR-0446, IADR-0447, IADR-0431]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261026_2114_private-note-departure-disposal-notice]
+issues: [#451, #1442, #1446, #1447, #2114, planning#614, planning#618]
 -->
 
 # テスト仕様書: Obsidian 連携設定画面
@@ -113,6 +113,7 @@ issues: [#451, #1442, #1446, #1447, planning#614, planning#618]
 | 45 | 端末に最終同期があり履歴が 0 件なら「配備前の同期は表示されない」旨を出す | 緑（題は共通であることを陽性対照に置き、従前の案内が出ていないことを陰性の対で固定） |
 | 46 | 端末の最終同期が無ければ従前の案内を出す（端末 0 台のときも同じ） | 緑（「配備前の同期」の文言が出ていないことと対で固定） |
 | 47 | 実ブラウザでも 0 件の案内が端末の最終同期で読み分かれる | 緑（ブラウザ E2E。両側を別のケースに置く） |
+| 48 | 業務関連資料の段落が削除の 1 文（30 日を過ぎると復元できない形で削除）を含み、締めの文も残る | 緑（ja / en の両方。個人資料管理画面と同じ定義から出ていることを固定。90 日の文が同じ段落に無いことは 15 が引き続き固定） |
 
 ## ブラウザ E2E で見ていること・見ていないこと
 

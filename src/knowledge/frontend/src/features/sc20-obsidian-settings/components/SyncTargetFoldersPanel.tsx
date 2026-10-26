@@ -20,6 +20,7 @@ import { formatDateTime } from '@foundation/utils/formatDateTime';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { SyncSettingsDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { DEPARTURE_NOTICE } from '../../../lib/private-notes';
 import { useSyncSettings, useSyncSettingsActions } from '../api/useSyncSettings';
 import { canAddFolder, normalizeFolderPath } from '../types/syncFolders';
 
@@ -42,7 +43,9 @@ import { canAddFolder, normalizeFolderPath } from '../types/syncFolders';
 //   押させないためだけに同じ判定を使う。
 
 export function SyncTargetFoldersPanel() {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
+  // #2114: 退職時の扱いの 2 文は `lib/private-notes` の 1 か所で定義する（SC-19 / SC-20 で共有）。
+  const departureNotice = i18n._(DEPARTURE_NOTICE);
   const settings = useSyncSettings();
   const { update } = useSyncSettingsActions();
 
@@ -175,8 +178,8 @@ export function SyncTargetFoldersPanel() {
         */}
         <Alert tone="warning" label={t`取り扱い`}>
           <Trans>
-            同期した資料は業務関連資料として扱われます。退職時には、退職日から 30
-            日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。
+            同期した資料は業務関連資料として扱われます。{departureNotice}
+            同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。
           </Trans>
         </Alert>
       </div>

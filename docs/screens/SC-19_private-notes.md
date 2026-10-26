@@ -3,15 +3,15 @@ title: 個人資料管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-28
-updated: 2026-10-24
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11]
-adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102]
-iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612]
-specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens]
-issues: [#451, #1441, #1442, #1445, #1447, #1456, #2046, planning#614, planning#618, planning#628, planning#841]
+adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096]
+iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
+specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice]
+issues: [#451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, planning#614, planning#618, planning#628, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理
@@ -59,7 +59,7 @@ issues: [#451, #1441, #1442, #1445, #1447, #1456, #2046, planning#614, planning#
 | --- | --- | --- |
 | 1 | 資料の一覧（種別 / タイトル / 公開範囲 / 同期状態 / タグ / 更新日時 / 露出 / 操作） | 共有 UI の表構造。行のタイトル下に同期先のパスを添える。**同期状態の列は利用中タブだけ**（削除済みは契約上つねに対象外） |
 | 2 | 個人資料であることの表示 | 全行に **👤 ＋「個人資料（自分のみ）」**（アイコンは検索結果・グラフのノードと共通）。🔴 **［2026-09-13］括弧書き「（自分のみ）」が付くのは本画面だけである** —— 本画面は**本人の資料しか扱わない**ため事実と合う。**グラフのノードは所有者を判別できないため「個人資料」とだけ表示する**（括弧書きは所有者にだけ付す規則による。本画面の表示は変わらない） |
-| 3 | 業務関連資料としての扱いの固定文言 | 一覧の上部に**常時**表示（折りたたまない） |
+| 3 | 業務関連資料としての扱いの固定文言 | 一覧の上部に**常時**表示（折りたたまない）。退職日から 30 日は管理者が閲覧し得ること、**30 日を過ぎると復元できない形で削除されること**の 2 文を出す（削除は配備済みのため、未配備の間の暫定文言は出さない）。2 文は Obsidian 連携設定と**共有の 1 か所で定義**する |
 | 4 | 保存容量 | 使用量 / 上限 ＋ 内訳「うち削除済み」＋ 版履歴が非算入である旨 |
 | 5 | 段階警告 | 80%（予告）/ 95%（警告色）/ 100%（固定文言 2 段落）。**同時に 2 段は出さない** |
 | 6 | 新規作成 | タイトル（必須）＋ 同期先のパス（任意）。**本文の入力欄を置かない** |
@@ -241,7 +241,7 @@ flowchart LR
 | 削除済みの件数バッジ | する | 一覧の件数と同じ数え方（同じ応答から数える） |
 | 容量表示（使用量・上限・うち削除済み・80/95 の段階警告） | する | 内訳は削除済み行の合算（契約が「数え方を 2 つにしない」と定めている） |
 | 100% で新規作成のみ拒否・固定文言 | する | 既存資料の操作は残ることも単体テストが固定 |
-| 業務関連資料としての扱いの固定文言（隠さない） | する | 折りたたみの中に入れていないことを単体テストが固定 |
+| 業務関連資料としての扱いの固定文言（隠さない） | する | 折りたたみの中に入れていないこと、**削除の 1 文を含むこと**（ja / en）を単体テストが固定 |
 | ヘルプ文言（リンク先が見えない理由は区別できない） | する | 常時表示 |
 | リンク作成 UI（補完候補の絞り込み・404 原則） | **しない** | 🔴 **リンクを作る口が公開 API に無い。** ヘルプ文言だけは先に置いてある |
 | 他人の資料の件数・存在を示唆しない | する | 示唆表現の不在を陽性対照つきで固定 |

@@ -44,7 +44,7 @@ import {
 } from '../types/quota';
 import { SYNC_TONES, syncKeyOf } from '../types/noteBadges';
 // [[IADR-0451]] (#1455): 公開範囲の語彙は SC-03 と共有するためユニットの `lib/` にある。
-import { VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
+import { DEPARTURE_NOTICE, VISIBILITY_TONES, visibilityKeyOf } from '../../../lib/private-notes';
 import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19PrivateNotesRoute';
 import { BreakGlassPanel } from './BreakGlassPanel';
 import { QuotaPanel } from './QuotaPanel';
@@ -147,7 +147,9 @@ function TagCell({ tags }: { tags: string[] }) {
 }
 
 export function PrivateNotesPage() {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
+  // #2114: 退職時の扱いの 2 文は `lib/private-notes` の 1 か所で定義する（SC-19 / SC-20 で共有）。
+  const departureNotice = i18n._(DEPARTURE_NOTICE);
 
   const notes = usePrivateNotes();
   const actions = usePrivateNoteActions();
@@ -272,10 +274,7 @@ export function PrivateNotesPage() {
         🔴 **折りたたみやツールチップの中に隠さない。** 書き始める前に見える位置に置く。
       */}
       <Alert tone="info" label={t`取り扱い`}>
-        <Trans>
-          個人資料は業務関連資料として扱われます。退職時には、退職日から 30
-          日間、管理者が閲覧することがあります。
-        </Trans>
+        <Trans>個人資料は業務関連資料として扱われます。{departureNotice}</Trans>
       </Alert>
 
       <QuotaPanel usage={usage} deletedBytes={deletedBytes(all)} />
