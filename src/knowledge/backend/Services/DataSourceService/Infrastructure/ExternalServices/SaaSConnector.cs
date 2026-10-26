@@ -32,7 +32,9 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
     public const string HttpClientName = "SaaSConnector";
     public static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(30);
 
-    public string SourceType => "saas";
+    // FR-15 (#2118): 種別名は自己申告（AddConnector）と 1 か所で共有する。
+    public const string Type = "saas";
+    public string SourceType => Type;
 
     private const string DefaultListPath = "/api/items";
     private const string DefaultContentPath = "/api/items/{id}";

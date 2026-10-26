@@ -35,7 +35,9 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, ILogger<DatabaseConnector> logger)
     : IDataSourceConnector
 {
-    public string SourceType => "db";
+    // FR-15 (#2118): 種別名は自己申告（AddConnector）と 1 か所で共有する。
+    public const string Type = "db";
+    public string SourceType => Type;
 
     private const string DefaultContentType = "text/markdown";
 

@@ -287,8 +287,10 @@ builder.AddPlatformPipelineConfig();
 var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（catalog）の実効値を申告する。
+// FR-15, IADR-0029 フォローアップ 2 (#2118): 選択中のオブジェクトストレージ（object-storage）も申告する。
 builder.Services.AddPlatformIntrospection("document-service", pipeline,
-    i => i.AddStep<DocumentService.Features.Documents.Catalog.DocumentNormalizedConsumer>());
+    i => i.AddStep<DocumentService.Features.Documents.Catalog.DocumentNormalizedConsumer>()
+        .AddObjectStoragePort(builder.Configuration));
 
 // NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
 // 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ

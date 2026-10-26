@@ -64,10 +64,11 @@ builder.Services.AddScoped<IWikiAccessResolver, WikiAccessResolver>();
 
 // FR-13, UC-07, ADR-0011, IADR-0021: Wiki.js への同期・本文取得（GraphQL API push）。
 // API キーは環境変数/シークレット経由で注入（コミットしない）。
+// FR-15 (#2118): 接続先は自己申告の wiki-sync ポートにも載せるので、既定値を含めて 1 か所で決める。
+var wikiJsEndpoint = builder.Configuration["WikiJs:GraphQlEndpoint"] ?? "http://wiki-js:3000/graphql";
 void ConfigureWikiJsHttpClient(HttpClient c)
 {
-    c.BaseAddress = new Uri(builder.Configuration["WikiJs:GraphQlEndpoint"]
-        ?? "http://wiki-js:3000/graphql");
+    c.BaseAddress = new Uri(wikiJsEndpoint);
     var apiKey = builder.Configuration["WikiJs:ApiKey"];
     if (!string.IsNullOrWhiteSpace(apiKey))
         c.DefaultRequestHeaders.Authorization =
@@ -124,9 +125,13 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 // FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（wiki-sync / wiki-delete）の実効値を申告する。
 // 両段とも Wolverine 段（E3a / E3b）なので AddWolverineStep で申告する（IADR-0239 と同じ方針:
 // IPipelineStep<TIn> から入力型を導出し、導出できなければ起動失敗）。
+// FR-15, FR-13, ADR-0011, IADR-0029 フォローアップ 2 (#2118): 閲覧エンジン同期（wiki-sync）とオブジェクトストレージのポートも申告する
+// （計画 10_composability §4・§5）。接続先はホスト:ポートだけ（API キーは HTTP ヘッダで渡しており URL に無いが、URL もそのまま載せない）。
 builder.Services.AddPlatformIntrospection("wiki-service", pipeline, i => i
     .AddWolverineStep<DocumentSyncConsumer>()
-    .AddWolverineStep<DocumentDeletedConsumer>());
+    .AddWolverineStep<DocumentDeletedConsumer>()
+    .AddPort(WikiSyncPort, nameof(WikiJsGraphQlClient), IntrospectionTarget.HostAndPort(wikiJsEndpoint))
+    .AddObjectStoragePort(builder.Configuration));
 
 // NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
 // 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ
@@ -199,4 +204,8 @@ app.MapWikiEndpoints();
 
 app.Run();
 
-public partial class Program { }
+public partial class Program
+{
+    // FR-15, FR-13, ADR-0011 (#2118): 自己申告の閲覧エンジン同期ポート名（計画 10_composability §4「Wiki 同期ポート」）。
+    public const string WikiSyncPort = "wiki-sync";
+}

@@ -7,13 +7,15 @@ using Grpc.Net.Client;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using DataSourceService.Domain.Ports;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Pb = Platform.Shared.Contracts.Grpc.Introspection.V1;
 
 namespace DataSourceService.Tests;
 
-// FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、サービス名を申告することを検証する
-// （段は持たず、コネクタは実行時データのため静的申告対象外の存在申告のみのサービス）。
+// FR-15, IADR-0029 (#143): 自己申告エンドポイントが到達でき、サービス名を申告することを検証する（段は持たない）。
+// ［2026-10-26 / #2118・IADR-0029 フォローアップ 2］登録済みのコネクタのプラグインとオブジェクトストレージのポートも申告する。
 [Trait("TestKind", "Integration")]
 public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactory>
 {
@@ -29,6 +31,28 @@ public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactor
         var report = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
         report.Should().NotBeNull();
         report!.Service.Should().Be("datasource-service");
+    }
+
+    // 🔴 FR-15, 計画 10_composability §5「コネクタ一覧」の狭い読み (#2118): **DI に登録したコネクタのプラグインの集合**と
+    // 申告が一致し、すべて有効である。片方だけ足した（登録したが申告しない／申告したが登録しない）変更を捕まえる。
+    // 「有効・無効状態」はこの読みでは常に有効で自明である（SC-06 のデータソースを集約する読みは計画の答え待ち。別 issue）。
+    [Fact]
+    public void 登録済みのコネクタのプラグインをすべて有効として申告する()
+    {
+        var report = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
+        var registered = _factory.Services.GetServices<IDataSourceConnector>().Select(c => c.SourceType).ToList();
+
+        registered.Should().HaveCount(4, "対照: 2026-10-26 時点のプラグインは filesystem・wiki・saas・db の 4 種");
+        report.Connectors.Select(c => c.Name).Should().BeEquivalentTo(registered);
+        report.Connectors.Should().OnlyContain(c => c.Enabled);
+    }
+
+    // FR-15 (#2118): オブジェクトストレージのポートも申告する（試験の構成は未設定なので縮退クライアント）。
+    [Fact]
+    public void オブジェクトストレージのポートを申告する()
+    {
+        var report = _factory.Services.GetRequiredService<ServiceIntrospectionDto>();
+        report.Ports.Should().ContainSingle(p => p.Port == ObjectStorageExtensions.IntrospectionPort);
     }
 
     // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, IADR-0379 決定 4, IADR-0462 (#1514, #1255 経路 ⑤):

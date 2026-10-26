@@ -488,6 +488,12 @@ const KUBECTL_STUB = [
  */
 // NFR-20, IADR-0605 (#2132): runUp が既定で与える自製イメージのタグ（[2/7] のビルドと [6/7] の helm が同じ値を使うことを試験が見る）。
 const TEST_IMAGE_TAG = 'test0123456789ab';
+// FR-15, IADR-0646 (#2118): 起動器が [6/7] へ渡す構成バージョンのコミット ID。起動器は上書きの口を持たない（作り物の値を渡さない）ので、
+//   試験は同じリポジトリの HEAD を自分で読んで期待値にする。
+const HEAD_COMMIT = spawnSync('git', ['-C', REPO_ROOT, 'rev-parse', '--verify', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+const GIT_COMMIT_SET = `--set-string config.gitCommit=${HEAD_COMMIT}`;
+/** [6/7] の行から、常に付く 2 つ（イメージのタグ・構成バージョン）を除く。opt-in の --set を数えるための前処理。 */
+const withoutAlwaysSets = (line) => line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').replace(GIT_COMMIT_SET, '');
 function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-smoke-'));
   const binDir = path.join(workdir, 'bin');
@@ -522,6 +528,10 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
   ].join('\n'));
   write('helm', HELM_STUB); // #1710: 既定は PLAIN_STUB と同じ振る舞い（リリース無し）
   write('docker', DOCKER_STUB);
+  // FR-15, IADR-0646 (#2118): HEAD を読めない git（構成バージョンを作れない）の経路を試すときだけ置く。
+  if (extraEnv.STUB_GIT_FAIL === '1') write('git', '#!/usr/bin/env bash\necho "git $*" >> "$STUB_LOG"\nexit 128\n');
+  // FR-15, IADR-0646 (#2118): 壊れた HEAD を返す git（形の検査を試すときだけ置く）。
+  if (extraEnv.STUB_GIT_HEAD) write('git', `#!/usr/bin/env bash\necho "git $*" >> "$STUB_LOG"\necho ${JSON.stringify(extraEnv.STUB_GIT_HEAD)}\n`);
   // helm-controller の模型（awk）。PATH には置かない —— これはコマンドの差し替えではなく、
   // kubectl stub が反映の成否を決めるために読む**データ**である。
   const modelFile = path.join(workdir, 'helm-controller-model.awk');
@@ -4207,7 +4217,7 @@ ok('LOCALEMBED 未設定: helm upgrade の引数に --set が 1 つも足され�
   assert.ok(line, 'helm upgrade --install msp の行が無い');
   // #2132 / IADR-0605: 自製イメージのタグ（--set-string global.image.tag）は opt-in ではなく常に 1 つ付く。それを除いて数える。
   assert.ok(
-    !line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').includes('--set'),
+    !withoutAlwaysSets(line).includes('--set'),
     `既定なのに --set が付いている（バイト等価が崩れている）: ${line}`,
   );
 });
@@ -4408,8 +4418,35 @@ ok('LLM_KEYLESS=1: helm upgrade へ opt-out の --set-json が 1 つだけ足さ
   assert.ok(line, 'helm upgrade --install msp の行が無い');
   assert.ok(line.includes(LLM_KEYLESS_SET), `opt-out が足されていない: ${line}`);
   assert.strictEqual((line.match(/--set-json /g) || []).length, 1, `--set-json が 1 つではない: ${line}`);
-  assert.ok(!line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').includes('--set '),
+  assert.ok(!withoutAlwaysSets(line).includes('--set '),
     `LLM_KEYLESS=1 だけで --set が付いている（opt-in の独立性が崩れている）: ${line}`);
+});
+
+// --- FR-15, IADR-0029 フォローアップ 3, IADR-0646 (#2118): 構成バージョンのコミット ID ---------------------------
+ok('#2118: [6/7] の helm は config.gitCommit に HEAD の完全な sha を 1 つだけ渡す（作り物の値ではない）', () => {
+  assert.match(HEAD_COMMIT, /^[0-9a-f]{40}$/, `対照: 試験側で HEAD を読めていない: ${HEAD_COMMIT}`);
+  const line = DEFAULT.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(line.includes(GIT_COMMIT_SET), `HEAD のコミット ID を渡していない: ${line}`);
+  assert.strictEqual((line.match(/config\.gitCommit=/g) || []).length, 1, `config.gitCommit が 1 つではない: ${line}`);
+});
+
+ok('#2118: HEAD を読めなければ警告して config.gitCommit を渡さず、起動は続ける（表示だけの項目で止めない）', () => {
+  const r = runUp({ STUB_GIT_FAIL: '1' });
+  assert.strictEqual(r.status, 0, `HEAD を読めないだけで起動器が止まった:\n${r.stderr.slice(-600)}`);
+  assert.match(r.stderr, /構成バージョン（config\.gitCommit）は空のまま起動します/);
+  assert.ok(r.lines.some((l) => l.startsWith('git ')), '対照: git の stub が呼ばれていない');
+  const line = r.lines.find((l) => HELM_UPGRADE_RE.test(l));
+  assert.ok(line, 'helm upgrade --install msp の行が無い');
+  assert.ok(!line.includes('config.gitCommit'), `HEAD を読めないのに config.gitCommit を渡した（作り物の値）: ${line}`);
+});
+
+ok('#2118: 読めた HEAD が sha の形でなければ止め、helm へ進まない', () => {
+  const r = runUp({ STUB_GIT_HEAD: 'not-a-sha' });
+  assert.notStrictEqual(r.status, 0, 'sha の形でない HEAD で起動器が進んだ');
+  assert.match(r.stderr, /git の HEAD が sha の形ではありません/);
+  assert.ok(!r.lines.some((l) => HELM_UPGRADE_RE.test(l)), '止まるべきなのに helm upgrade まで進んだ');
+  assert.ok(!r.lines.some((l) => l.startsWith('k3d ')), '止まるべきなのにクラスタへ触った');
 });
 
 ok('鍵なしで起動器を呼ぶ CI の 3 ワークフローは、起動器の呼び出しのすべてで LLM_KEYLESS=1 を立てる（#2136）', () => {
@@ -7302,7 +7339,8 @@ const DEPT_INFO_EXPLICIT = /INFO: 部門属性の同期（DepartmentAttributeSyn
 const DEPT_INFO_DEFAULT = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は既定（DEPT_SYNC_MODE 未指定・現行に値なし。何も足さない/;
 const DEPT_INFO_OFF = /INFO: 部門属性の同期（DepartmentAttributeSync__Mode）は Off（明示: DEPT_SYNC_MODE=Off/;
 // #2132 / IADR-0605: 既定の [6/7] は自製イメージのタグ（runUp が与える TEST_IMAGE_TAG）を 1 つだけ渡す。
-const LEGACY_UPGRADE = `helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml --set-string global.image.tag=${TEST_IMAGE_TAG}`;
+// FR-15, IADR-0646 (#2118): 構成バージョンのコミット ID（HEAD）も常に 1 つ付く。
+const LEGACY_UPGRADE = `helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml --set-string global.image.tag=${TEST_IMAGE_TAG} ${GIT_COMMIT_SET}`;
 
 ok('#1850 P1: 未指定 ＋ 現行 Fix → [6/7] は Fix を宣言し直す（黙って Off へ戻さない）・引き継ぎを告げる・一時ファイルは消す', () => {
   const r = runUp({ STUB_HELM_VALUES: deptValues(modeEntry('Fix')) });

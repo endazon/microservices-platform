@@ -35,7 +35,9 @@ public sealed class WikiConnector(IHttpClientFactory httpFactory, ILogger<WikiCo
     public const string HttpClientName = "WikiConnector";
     public static readonly TimeSpan HttpTimeout = TimeSpan.FromSeconds(30);
 
-    public string SourceType => "wiki";
+    // FR-15 (#2118): 種別名は自己申告（AddConnector）と 1 か所で共有する。
+    public const string Type = "wiki";
+    public string SourceType => Type;
 
     private const string DefaultListPath = "/api/pages";
     private const string DefaultContentPath = "/api/pages/{id}/content";

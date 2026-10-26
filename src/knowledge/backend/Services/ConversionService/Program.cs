@@ -138,8 +138,10 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018, IADR-0029: 自己申告（イントロスペクション）— この段（convert）の実効値を申告する。
 // これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
+// FR-15, IADR-0029 フォローアップ 2 (#2118): 選択中のオブジェクトストレージ（object-storage）も申告する。
 builder.Services.AddPlatformIntrospection("conversion-service", pipeline,
-    i => i.AddWolverineStep<RawDocumentFetchedConsumer>());
+    i => i.AddWolverineStep<RawDocumentFetchedConsumer>()
+        .AddObjectStoragePort(builder.Configuration));
 
 // 🔴 ADR-0027 / #441 E1: **購読は Wolverine へ移した。発行は MassTransit のままである。**
 // DocumentNormalized の辺は E2 の射程であり、辺は原子的に動かす（IADR-0234 決定 3）ため

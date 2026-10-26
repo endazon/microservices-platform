@@ -39,7 +39,8 @@ public class IntrospectionGrpcDeploymentWiringTests
     {
         var targets = ReadMap(file, "Introspection__Services");
 
-        targets.Should().HaveCount(13, "対照: 収集先 13 を読めていないなら以下は何も検査していない");
+        // ［2026-10-26 / #2118］mcp-server を足して 14（MCP サーバーの自己申告。IADR-0029 フォローアップ 2）。
+        targets.Should().HaveCount(14, "対照: 収集先 14 を読めていないなら以下は何も検査していない");
         foreach (var (service, url) in targets)
             new Uri(url).Port.Should().Be(GrpcPort, $"{service} の宛先は h2c ポートを指す（HTTP/1.1 の :8080 は h2c を話さない）");
         ReadRepoFile(file).Should().NotContain("Introspection__GrpcServices__", "旧キーが残ると BFF は起動を止める");
@@ -49,7 +50,8 @@ public class IntrospectionGrpcDeploymentWiringTests
     [Fact]
     public void Every_helm_grpc_target_declares_grpc_port()
     {
-        var values = ReadRepoFile(Helm);
+        // 🔴 `services:` の節の中だけを引く（#2118: values.yaml には他の節にも `  mcp:` がある〔エッジの公開〕。先頭一致で別の節を読まない）。
+        var values = Block(ReadRepoFile(Helm), "services:");
         foreach (var (service, url) in ReadMap(Helm, "Introspection__Services"))
         {
             // helm の Deployment / Service 名は `<key>-service`（values.yaml の scaling 節の注記）。

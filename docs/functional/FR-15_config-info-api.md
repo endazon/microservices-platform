@@ -3,15 +3,15 @@ title: 構成情報 API（実効構成の可視化・ドリフト検出） 機�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-10-10
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15, SC-11, NFR-16]
 adrs: [ADR-0018, ADR-0029, ADR-0075]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462, IADR-0533]
-specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#444, #1514, #1255, #1517]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462, IADR-0533, IADR-0646]
+specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
+issues: [#444, #1514, #1255, #1517, #2118]
 -->
 
 # 機能仕様書: 構成情報 API（実効構成の可視化・ドリフト検出）
@@ -40,7 +40,7 @@ issues: [#444, #1514, #1255, #1517]
 | --- | --- |
 | 入力 | 各サービスの自己申告（イントロスペクション）エンドポイント（メッシュ内部限定）。収集先は `Introspection:Services`（構成キー＝pipeline.json の service 名 → h2c のアドレス）で注入し、east-west gRPC で収集する。［2026-10-10］REST の収集と受け口は撤去し、旧キー `Introspection:GrpcServices` が残っていれば起動を止める（詳細は [east-west gRPC 通信仕様書](../api/east-west-grpc.md) の 12 つ目の面と「REST 実装の退役」） |
 | 処理 | BFF の `ConfigInspectionService` が自己申告を集約し、宣言（pipeline.json）と突合（`DriftDetector`） |
-| 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択・コネクタ）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]）、`GET /bff/admin/config/history` → `ConfigVersionEntryDto[]`（コミット ID・適用日時・適用者・その時点のドリフト有無。新しい順） |
+| 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択〔LLM・埋め込み・ベクトル DB・オブジェクトストレージ（`object-storage`）・Wiki 同期（`wiki-sync`）・検索の補助〕・コネクタ）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]）、`GET /bff/admin/config/history` → `ConfigVersionEntryDto[]`（コミット ID・適用日時・適用者・その時点のドリフト有無。新しい順） |
 | 業務ルール | 認可・秘匿・監査（下記） |
 
 ### 認可・存在秘匿・監査
@@ -69,8 +69,10 @@ issues: [#444, #1514, #1255, #1517]
 
 ### 構成バージョン・履歴
 
-- `Config__GitCommit / AppliedAt / AppliedBy` を GitOps（ArgoCD）適用時に環境変数で注入する
-  （未注入時は空。注入配線は構成情報 API の実装 ADR のフォローアップ）。
+- `Config__GitCommit / AppliedAt / AppliedBy` を GitOps（ArgoCD）適用時に環境変数で注入する（未注入時は空）。
+  ［2026-10-26］**コミット ID は配備の 2 経路とも空でない値になる**: Argo CD の Application が `config.gitCommit` にビルド変数
+  `$ARGOCD_APP_REVISION`（同期した解決済みのリビジョン）を渡し、ローカルの起動器（k8s-local-up）は作業ツリーの HEAD の完全なコミット ID を渡す。
+  適用日時は Argo CD に相当するビルド変数が無いので CD が与える（手順は運用仕様書 §構成バージョンの注入）。
 - **適用履歴**（`GET /bff/admin/config/history`）の正データ源は **GitOps 層**（Git のコミット履歴 /
   ArgoCD リビジョン履歴）。現在バージョンと同じ注入経路で供給する `Config__History__N__{GitCommit,AppliedAt,AppliedBy,HadDrift}`
   を、API は永続化せず新しい順で surfacing する（保持範囲は GitOps 側が決定）。履歴未注入（dev/compose）時は
@@ -107,4 +109,9 @@ issues: [#444, #1514, #1255, #1517]
 
 ## 未決事項
 
-- GitOps 構成バージョン注入と conversion / ingestion ワーカーの自己申告は構成情報 API の実装 ADR のフォローアップとして追跡
+- conversion / ingestion ワーカーの自己申告は構成情報 API の実装 ADR のフォローアップとして追跡（構成バージョンのコミット ID の注入は 2026-10-26 に済んだ）
+- ［2026-10-26］**コネクタ一覧は狭い読みで申告している。** データソースサービスは登録済みのコネクタのプラグイン 4 種（filesystem・wiki・saas・db）を
+  有効として申告する。計画の「登録済みコネクタと有効・無効状態（コネクタ設計の管理情報を集約）」は、管理画面に登録したデータソースと
+  その有効・無効の集約を指すかもしれない（狭い読みでは「有効・無効」は常に有効で自明である）。どちらの読みかは計画へ問い合わせ中で、
+  広い読みは申告を要求ごとに組み立てる仕組みが要るので、答えが出るまで作らない。
+- ［2026-10-26］**MCP サーバーは収集先に入ったが、実効ツール一覧はまだ実効構成に入らない**（自己申告の契約に器が無い。別に追う）。

@@ -8,7 +8,9 @@ namespace DataSourceService.Infrastructure.ExternalServices;
 // ルート配下の対応拡張子ファイルを再帰列挙し、更新日時で増分検知する（初回はフルスキャン）。
 public sealed class FileSystemConnector(ILogger<FileSystemConnector> logger) : IDataSourceConnector
 {
-    public string SourceType => "filesystem";
+    // FR-15 (#2118): 種別名は自己申告（AddConnector）と 1 か所で共有する。
+    public const string Type = "filesystem";
+    public string SourceType => Type;
 
     // 対応フォーマット→content-type。
     //

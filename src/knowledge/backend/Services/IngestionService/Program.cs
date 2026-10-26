@@ -143,9 +143,11 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 // これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
 // ingest は Wolverine 段（E3b）なので AddWolverineStep で申告する。
 // FR-06, IADR-0640 (#2263): 削除の段（ingestion-delete）も申告する。
+// FR-15, IADR-0029 フォローアップ 2 (#2118): 選択中のオブジェクトストレージ（object-storage）も申告する。
 builder.Services.AddPlatformIntrospection("ingestion-service", pipeline,
     i => i.AddWolverineStep<DocumentUpdatedConsumer>()
-        .AddWolverineStep<DocumentDeletedConsumer>());
+        .AddWolverineStep<DocumentDeletedConsumer>()
+        .AddObjectStoragePort(builder.Configuration));
 
 // NFR, ADR-0027, #1022: ブローカ接続。**既定資格情報をイメージへ焼かない** —— appsettings.json からも
 // 撤去したため、構成が注入されていなければここで落ちる（注入漏れが「既定の資格情報で接続成功」へ

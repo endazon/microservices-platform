@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 
@@ -27,6 +28,11 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
+// FR-15, NFR-16, ADR-0029, ADR-0075, IADR-0462, IADR-0533 (#2118): east-west gRPC の h2c リスナ（`Grpc:Port`。**未設定なら立てない**）。
+// 構成情報 API（BFF）が自己申告（`ServiceIntrospection/Get`。下の MapPlatformIntrospection）を h2c で集めるための口である。
+// MCP サーバーは従来 gRPC の呼び出し側だけで、面は張っていても受ける口が無く、収集先にも入っていなかった。
+// HTTP/1.1 のポート（/mcp・/mcp-clients・/health/*）はそのまま残る。
+builder.AddPlatformGrpcListener();
 // FR-16, 計画 ADR-0134 決定 1・フォローアップ 2, [[IADR-0516]]（#1844）: `/mcp` だけはトークンの audience（mcp-server）を検証する
 // 別のスキームで認証する。管理 API（/mcp-clients。BFF が利用者のトークンを中継する）は既定のスキーム
 // （全サービス共通の audience `platform-api` を検証する。#1846 / [[IADR-0523]]）。

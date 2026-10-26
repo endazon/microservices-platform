@@ -254,6 +254,7 @@
       "IntrospectionGrpcFaceTests",
       "IntrospectionGrpcTests",
       "KeycloakRolesClaimsTransformationTests",
+      "ObjectStoragePortIntrospectionTests",
       "PipelineDeclarationEffectivenessTests",
       "PortSwapCompositionTests"
     ],

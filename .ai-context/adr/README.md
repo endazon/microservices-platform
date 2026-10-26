@@ -723,3 +723,4 @@
 | [IADR-0643](./IADR-0643_review-floor-unread-non-file-object.md) | check-review-verdict は、未精読の型に当たっても変更ファイル以外（コマンドの出力・CI の一覧）を指す文は数えない。除外は 3 条件の積に限り、変更ファイルを指す文は従来どおり数える（#2276） | Accepted |
 | [IADR-0644](./IADR-0644_wiki-deep-link-document-id.md) | SC-04 の深いリンクを文書 ID（?doc=）に一本化し、slug の一意索引を外し、slug が複数の文書に一致すれば本文を返さない。旧形式の ?page= は 1 件に決まれば ?doc= へ書き換える（#2108） | Accepted |
 | [IADR-0645](./IADR-0645_mcp-publication-helm-delivery.md) | MCP の公開構成は Helm values に JSON の文字列のまま持ち、ConfigMap で mcp-service へ配送する。CI の検証は配備ファイルから取り出して McpServer の読み込みそのものに通す（#2117） | Accepted |
+| [IADR-0646](./IADR-0646_config-version-gitcommit-argocd-build-env.md) | 構成バージョンのコミット ID は Argo CD のビルド変数 $ARGOCD_APP_REVISION で注入し、ローカルの起動器は HEAD の完全なコミット ID を渡す（#2118） | Accepted |
