@@ -101,3 +101,19 @@ issue: "#2283"
   - `Consumer_WaitsForQdrantBootstrapBeforeWriting`（成功まで書かない、成功後に書く）
   - `Consumer_ThrowsForRetry_WhenBootstrapStaysPendingBeyondLimit`
   - `DeleteConsumer_ThrowsForRetry_WhenBootstrapStaysPendingBeyondLimit`
+
+## ［2026-10-30 追記 / #2311 の CI］必須の引数にした型の生成箇所の母集合（規則 9）
+
+- 7b289f29 で、受け口 2 つと後続の器 3 つの状態を必須の引数にした。しかし検証が IngestionService.Tests だけだったので、`Knowledge.IntegrationTests` のコンパイル失敗（CS7036）を CI の `backend-build (knowledge 2/3)` で初めて知った。
+- 走査:
+  - `git grep -n "new DocumentUpdatedConsumer(\|new DocumentDeletedConsumer(\|new QdrantCjkNgramBackfillHostedService(\|new QdrantKeywordIndexDiscoveryHostedService(\|new EmbeddingPendingReembedHostedService(\|new QdrantBootstrapHostedService(" -- src`
+  - 対象は全ユニット（AST の submodule を除く）。IngestionService.Tests 以外の結果は 19 件だった。
+- 結果:
+  - **取り込みの型は 1 件**: `Knowledge.IntegrationTests/Search/IngestToSearchInProcessTests.cs:273`（`DocumentUpdatedConsumer`）。成功済みの状態を渡すように直した。
+  - 残る 18 件は、別サービスの同名の型である（GraphService・RetrievalService・WikiService の `DocumentDeletedConsumer`）。除外した。
+  - 後続の器 3 つと保証の器を、IngestionService の外で生成している箇所は 0 件だった（`git grep -n "QdrantBootstrap\|EmbeddingPendingReembedHostedService\|QdrantCjkNgramBackfill\|QdrantKeywordIndexDiscovery"` で、ヘルスチェックの文言と ObjectStorage のコメントの 3 件だけが出た）。
+  - DI で受け口を組む統合試験（`DocumentUpdatedFanOutTests` 等）は IngestionService の型を DI へ登録していない（取り込みは観測点のスタブ）。実行時の解決の失敗も無い。
+- 検証:
+  - `dotnet build src/knowledge/backend/backend.slnx`: 成功、警告 0。
+  - `Knowledge.IntegrationTests` の `IngestToSearchInProcessTests`: 8/8。
+  - IngestionService.Tests: 293/293。
