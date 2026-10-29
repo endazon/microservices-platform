@@ -71,6 +71,8 @@ describe('RequireAuth', () => {
   it('shows a loading indicator while auth state resolves', async () => {
     renderGuard({ isLoading: true });
     expect(await screen.findByRole('status')).toHaveTextContent('読み込み中');
+    // #2322: 待ちはほかの画面と同じ共通の表示（`LoadingState`。輪と文言）で描く。文字だけの <p> にしない。
+    expect(screen.getByRole('status').querySelector('svg')).not.toBeNull();
   });
 
   it('renders children when authenticated', async () => {

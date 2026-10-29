@@ -451,3 +451,17 @@ describe('Layout role tag', () => {
     expect(label([])).toBeUndefined();
   });
 });
+
+// NFR (#2322): 共通シェルは画面ごとに document.title を書く。
+describe('Layout document title', () => {
+  it('sets the screen name followed by the brand name', async () => {
+    await renderLayout(['platform-admin'], '/admin/documents');
+    expect(document.title).toBe('文書管理 - 汎用プラットフォーム');
+  });
+
+  it('uses the brand name alone for a screen the user cannot see (existence hidden)', async () => {
+    await renderLayout(['user'], '/admin/config-viewer');
+    await screen.findByRole('heading', { name: '見つかりませんでした' });
+    expect(document.title).toBe('汎用プラットフォーム');
+  });
+});

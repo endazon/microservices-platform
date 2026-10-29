@@ -57,6 +57,8 @@ export function QueryState<T>({
         action={
           canRetry ? (
             <Button
+              // #2322: 再取得の最中は押せない（連打で要求を重ねない）。終われば押せる。
+              disabled={query.isFetching}
               onClick={() => {
                 void query.refetch();
               }}

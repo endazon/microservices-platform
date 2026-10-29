@@ -129,3 +129,33 @@ export function breadcrumbTrail({
 export function breadcrumbNavLabel(): string {
   return i18n._(BREADCRUMB_NAV_LABEL_MESSAGE);
 }
+
+/**
+ * ブランド表示名（05_screens §共通シェル ［2026-08-04 確定］）。**固有名詞として扱い、ロケールで差し替えない**
+ * （翻訳カタログの対象にしない）。`Layout` の左上の表示と `index.html` の既定の `<title>` も同じ語である。
+ */
+// eslint-disable-next-line lingui/no-unlocalized-strings -- 05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外（Layout・LoginPage と同じ）。
+export const BRAND_NAME = '汎用プラットフォーム';
+
+export interface DocumentTitleOptions {
+  routePath: string | undefined;
+  roles?: readonly string[];
+  declarations?: readonly FeatureBreadcrumb[];
+}
+
+/**
+ * NFR (#2322): 画面ごとの `document.title`。「<画面名> - 汎用プラットフォーム」、画面名が無ければブランド名だけ。
+ *
+ * - 画面名は**パンくずの現在地の段**から引く。段を組む規則（存在秘匿・権限）を二重に持たないためである。
+ * - 🔴 **動的な葉（SC-03 の文書の題名）は使わない**（`leaf` を渡さない）。ブラウザの履歴とタブに文書の題名を残さない。
+ *   葉で名を持つ画面は現在地の段を持たないので、ブランド名だけになる（親の段を名乗ると別の画面に見える）。
+ * - 🔴 **存在秘匿（IADR-0009）**: 権限外・未知のパスはパンくずが空なので、どちらもブランド名だけになる。
+ */
+export function documentTitle({
+  routePath,
+  roles = [],
+  declarations = breadcrumbs(),
+}: DocumentTitleOptions): string {
+  const current = breadcrumbTrail({ routePath, roles, declarations }).at(-1);
+  return current?.kind === 'current' ? `${current.label} - ${BRAND_NAME}` : BRAND_NAME;
+}
