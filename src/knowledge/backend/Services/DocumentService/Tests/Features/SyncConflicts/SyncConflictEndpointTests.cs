@@ -324,6 +324,42 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
         pull!.Content.Should().Be("サーバ版", "空の本文が書かれていない");
     }
 
+    // #2305 の AI レビュー: `server` は本文を使わないので、ローカル版を読みに行かない（ストレージが失敗していても 200 で解決できる）。
+    [Fact]
+    public async Task serverの解決はローカル版を読まずストレージ失敗でも解決できる()
+    {
+        var (_, session, _, _) = await ConflictedNoteAsync("c-res-server-noread");
+        var conflicts = await ConflictsAsync(session);
+        string localUri;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            localUri = (await db.SyncConflicts.AsNoTracking().SingleAsync(c => c.Id == conflicts[0].Id,
+                TestContext.Current.CancellationToken)).LocalContentUri;
+        }
+
+        var reads = new System.Collections.Concurrent.ConcurrentBag<string>();
+        factory.Storage.GetTextThrows = uri =>
+        {
+            if (uri == localUri) reads.Add(uri);
+            return uri == localUri ? new IOException("storage unavailable") : null;
+        };
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await session.PostAsJsonAsync($"/private-notes/conflicts/{conflicts[0].Id}/resolve",
+                new ResolveSyncConflictRequest(SyncConflictResolutions.Server), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            factory.Storage.GetTextThrows = null;
+        }
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        reads.Should().BeEmpty("server は本文を使わないので読みに行かない");
+        (await ConflictsAsync(session)).Should().BeEmpty();
+    }
+
     // `server`: **資料は 1 バイトも変わらない**（版も進まない）。
     [Fact]
     public async Task serverの解決は資料を変えない()
