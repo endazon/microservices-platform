@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, SC-18, UC-10]
 adrs: [ADR-0033, ADR-0034, ADR-0039, ADR-0049, ADR-0054, ADR-0102]
-iadrs: [IADR-0653, IADR-0242, IADR-0274]
+iadrs: [IADR-0242, IADR-0274]
 specs: [20261030_2145_sc18-graph-details, 20260823_issue-917_sc18-graph-view]
 issues: [#2145, #917, #962, #980]
 -->

@@ -727,4 +727,3 @@
 | [IADR-0647](./IADR-0647_sc09-admin-write-audit-at-bff.md) | SC-09 の書き込み操作の監査は BFF で 1 操作 1 行に記録し、結果は後段の状態コードから決め、利用者の入力値は載せない（#2124） | Accepted |
 | [IADR-0648](./IADR-0648_rabbitmq-client-7.2.2-failed-open-leak.md) | RabbitMQ.Client を CPM の推移ピン留めで 7.2.2 へ上げ、開き損ねた接続が裏で自動回復を続けて起動の再試行のたびに漏れる欠陥を外す（#2301） | Accepted |
 | [IADR-0649](./IADR-0649_trace-wolverine-source-and-correlation-as-trace-id.md) | Wolverine の ActivitySource をトレースに加え、相関 ID はトレース ID に揃えて IHttpClientFactory の全クライアントで後段へ引き継ぐ。受けた値の形は限る（#2129） | Accepted |
-| [IADR-0653](./IADR-0653_graph-thinning-degree-counts-authorized-edges.md) | グラフの間引き（by=degree）の次数は候補集合（許可済み）の辺だけで数え、ハブ判定の次数（全辺）と分ける（#2145） | Accepted |

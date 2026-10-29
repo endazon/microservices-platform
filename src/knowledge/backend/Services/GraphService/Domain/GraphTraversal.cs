@@ -122,8 +122,8 @@ internal sealed class GraphTraversal(IGraphStore store)
             var loaded = (await store.LoadNodesAsync(unseen, ct))
                 .ToDictionary(n => n.DocumentId);
 
-            // ADR-0035 決定 2 (#947a): 次数。**ABAC で絞らない**（ポートの注記参照）。ハブ判定（下の `MaxHubDegree`）にだけ使う。
-            // ［2026-10-30 / #2145］間引き基準 `degree` には使わない（権限外の辺が並びに効くため。`Select` の注記）。
+            // ADR-0035 決定 2 (#947a): 次数。**ABAC で絞らない**（ポートの注記参照）。
+            // **ホップを跨いで累積する** —— 間引き基準 `degree` が全候補について要るためである。
             foreach (var (id, d) in await store.LoadDegreesAsync(unseen, ct))
                 degreeOf[id] = d;
 
@@ -188,7 +188,7 @@ internal sealed class GraphTraversal(IGraphStore store)
         }
 
         // ── ② 選抜 ─────────────────────────────────────────────
-        return Select(origin.DocumentId, nodes, edges, thinning, countingLimitHit);
+        return Select(origin.DocumentId, nodes, edges, degreeOf, thinning, countingLimitHit);
     }
 
     // FR-17, SC-18, ADR-0049 決定 1・3・4 (#980): 候補集合から表示分を選ぶ。
@@ -199,6 +199,7 @@ internal sealed class GraphTraversal(IGraphStore store)
         Guid originId,
         List<GraphDocument> nodes,
         List<Edge> edges,
+        IReadOnlyDictionary<Guid, int> degreeOf,
         string? thinning,
         bool countingLimitHit)
     {
@@ -217,14 +218,11 @@ internal sealed class GraphTraversal(IGraphStore store)
 
         // **距離（既定）は到達順そのもの** —— BFS の挿入順が距離の昇順である。
         // 並べ替えは**安定**でなければならない（同値の並びが実行ごとに変わると打ち切りが非決定になる）。
-        // 🔴 FR-17, FR-05, ADR-0034 決定 2, [[IADR-0653]] (#2145): 間引きの `degree` は**候補集合（許可済み）の辺だけ**で数える。
-        // ハブ判定（`MaxHubDegree`。展開の中継にしない）の次数は構造上の性質なので全辺で数える（`LoadDegreesAsync`。ポートの注記）が、
-        // **表示する品目の並び**に全辺の次数を使うと、権限外の辺の多い文書が上位に来る ＝ 見えない関係の多寡が並びから読める。
-        var visibleDegree = VisibleDegrees(edges);
+        // 🔴 FR-17, ADR-0137 決定 4 (#2145): `degree` の次数は**ABAC で絞らない全辺**のまま（ハブ判定と同じ型として受容済み）。許可済みの辺へ変えるには計画の改定が要る。
         var ordered = by switch
         {
             GraphThinning.Updated => rest.OrderByDescending(n => n.UpdatedAt).ThenBy(n => n.DocumentId),
-            GraphThinning.Degree => rest.OrderByDescending(n => visibleDegree.GetValueOrDefault(n.DocumentId))
+            GraphThinning.Degree => rest.OrderByDescending(n => degreeOf.GetValueOrDefault(n.DocumentId))
                                         .ThenBy(n => n.DocumentId),
             _ => rest.OrderBy(_ => 0),   // 到達順を保つ（OrderBy は安定ソート）
         };
@@ -246,18 +244,6 @@ internal sealed class GraphTraversal(IGraphStore store)
             TotalNodes: totalNodes,
             TotalEdges: totalEdges,
             TotalIsLowerBound: countingLimitHit);
-    }
-
-    // 候補集合（許可済みの辺だけ）での次数。両端とも許可済みの辺しか `edges` に入らない（探索の段の判定）。
-    private static Dictionary<Guid, int> VisibleDegrees(List<Edge> edges)
-    {
-        var degree = new Dictionary<Guid, int>();
-        foreach (var e in edges)
-        {
-            degree[e.SourceDocumentId] = degree.GetValueOrDefault(e.SourceDocumentId) + 1;
-            degree[e.TargetDocumentId] = degree.GetValueOrDefault(e.TargetDocumentId) + 1;
-        }
-        return degree;
     }
 
     // フロンティア側でない端点。両端がフロンティアにある辺は target 側を「相手」とみなす
