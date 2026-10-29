@@ -3,15 +3,15 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-10-22
+updated: 2026-10-29
 author: claude
 ---
 <!-- trace:
 ids: [NFR-09]
 adrs: [ADR-0132, ADR-0106]
 iadrs: [IADR-0577, IADR-0525, IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
-specs: [20261022_ast-pin-29a4d9dd, 20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
-issues: [#1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078, AST#1428, AST#1430]
+specs: [20261029_2133_runbook-derived-values, 20261022_ast-pin-29a4d9dd, 20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
+issues: [#2133, #1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078, AST#1428, AST#1430]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -54,7 +54,7 @@ LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 ARGOCD=1 \
 ```sh
 kubectl get pods -A | grep -vE "Running|Completed"                       # 空
 kubectl get externalsecret -A --no-headers \
-  -o custom-columns='R:.status.conditions[?(@.type=="Ready")].status' | sort | uniq -c   # 11 True
+  -o custom-columns='R:.status.conditions[?(@.type=="Ready")].status' | sort | uniq -c   # True の行だけ（False・Unknown・空の行が無い。件数は配備する ExternalSecret の数で変わるので見ない）
 kubectl get clustersecretstore -o custom-columns='N:.metadata.name,R:.status.conditions[?(@.type=="Ready")].status'
 ```
 

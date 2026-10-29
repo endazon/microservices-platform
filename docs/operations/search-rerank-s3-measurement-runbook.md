@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-29
 ---
 <!-- trace:
 ids: [FR-03, FR-04, SC-02, NFR-01, NFR-02, NFR-29]
 adrs: [ADR-0127, ADR-0129, ADR-0138, ADR-0076, ADR-0140]
 iadrs: [IADR-0422, IADR-0498, IADR-0559, IADR-0504, IADR-0552]
-specs: [20261017_1746_s3-ndcg-latency-and-rerank-comparison]
-issues: [#1746]
+specs: [20261029_2133_runbook-derived-values, 20261017_1746_s3-ndcg-latency-and-rerank-comparison]
+issues: [#2133, #1746]
 -->
 
 # 運用 Runbook: 再順位付けの 2 構成での計測
@@ -44,7 +44,7 @@ issues: [#1746]
 | **稼働 PoC**（経路B のローカル k8s）に、本番相当の文書が索引されている | `kubectl -n platform-infra run qdrant-check --rm -i --restart=Never --image=curlimages/curl -- sh -c 'curl -s http://qdrant:6333/collections/knowledge_chunks_voyage_3_5'` の `points_count` が 0 でない | 意味・ハイブリッドの系統が空になり、精度の差が測れない |
 | **Voyage の鍵**（検索クエリの埋め込み）が LLM ゲートウェイに入っている | [Voyage の鍵の Runbook](voyage-embedding-key-runbook.md) の手順 4（長さで測る） | ハイブリッドがキーワードだけで返り、応答に `embed-failed` が付く（計測器の dump の `degraded` に出る）。M1 のハイブリッドが「ハイブリッド（voyage）」にならない |
 | **qrels の標本**（公開してよい文書だけで作った正解ラベル） | `perf/ndcg/qrels.json`（`qrels.example.json` を複製して埋める。`.gitignore` 済み）。計測器が `正解ラベルが 1 件も無いクエリ` を 0 件と出すこと | 雛形のままだと全クエリが平均から除外される |
-| **Claude の経路**（用途 `rerank`・`rag-answer` がともに `claude-haiku-5-5`） | 運用仕様書 §LLM ゲートウェイ の割当。ゲートウェイの用途 `rerank` の effort（`Llm__PurposeEffort__rerank`。既定 `low`）を記録する | 旧モデルで測った遅延は使えない（計画の補完の注記） |
+| **Claude の経路**（用途 `rerank`・`rag-answer` のモデルの割当） | 割当は構成から引いて記録する（本文にモデル名を書かない）。既定は `src/platform/backend/Services/LlmGateway/appsettings.json` の `Llm:Routing:PurposeModels`、稼働の上書きは llmgateway-service の env `Llm__Routing__PurposeModels__rerank` / `Llm__Routing__PurposeModels__rag-answer`（`kubectl -n <ns> exec deploy/llmgateway-service -- printenv` で確かめる。無ければ既定）。ゲートウェイの用途 `rerank` の effort（`Llm__PurposeEffort__rerank`。既定 `low`）も記録する | 旧モデルで測った遅延は使えない（計画の補完の注記） |
 | **BFF のセッション Cookie**（利用者として測る。ABAC が効いた検索になる） | ブラウザで BFF にログインし、`__Host-msp-session` の値を写す。**値は資格情報である** | BFF は利用者のトークンを Bearer で受けない（401） |
 | ツール | `kubectl`・`helm`・`node`（22）・`k6`・`curl` | — |
 
@@ -177,7 +177,7 @@ kubectl -n "$NS" get deploy retrieval-service -o jsonpath='{.spec.template.spec.
 | 日時（窓の開始・終了）・環境 | 2026-10-xx 10:00〜10:40 JST・経路B |
 | 文書数（voyage と語彙索引の `points_count`） | — |
 | qrels の指紋・クエリ数・繰り返し回数 | `76de8f566aa9f56f`・30・3 |
-| モデルと effort（`rerank`・`rag-answer`） | `claude-haiku-5-5`・`low` |
+| モデルと effort（`rerank`・`rag-answer`） | 構成から引いた 2 つのモデル名・`low` |
 | 再順位付けの調整の口（候補数・本文の字数・期限・出力上限） | 20・400・8 秒・1024 |
 | nDCG@10（M1 の 3 モード・M2 の 2 モード）と差 | — |
 | `rerank-failed` の件数・`search_rerank_total` の内訳 | — |
