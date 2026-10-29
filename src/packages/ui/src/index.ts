@@ -24,6 +24,7 @@ export {
   TableRow,
   TableHeaderCell,
   TableCell,
+  type TableProps,
 } from './components/Table';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './components/Tabs';
 

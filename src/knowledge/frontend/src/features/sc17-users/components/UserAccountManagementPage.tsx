@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Alert, Button, EmptyState, Label, Note, Panel, Select, StatusBadge } from '@platform/ui';
@@ -237,6 +238,18 @@ export function UserAccountManagementPage() {
             属性割当・アカウントの無効化を行います。アカウントは人事システム
             連携で自動的に作成・更新され、この画面からは作成できません。退職者は連携により自動で
             無効化され、全セッションが失効します。
+          </Trans>
+        </p>
+        {/* #2323, 05_screens §SC-17 入力表・ハイファイ「属性は SC-09 の属性体系に定義済みの値のみ割当可」:
+            値域の定義先（SC-09）への導線。SC-09 も本画面と同じくシステム管理者だけが開ける。
+            本文中のリンクなので**下線を常に付ける**（色だけで区別しない。axe link-in-text-block）。 */}
+        <p className="text-xs text-fg-muted" data-testid="users-abac-link">
+          <Trans>
+            割り当てられる属性の値は{' '}
+            <Link to="/admin/abac" className="text-brand underline">
+              ABAC 設定
+            </Link>
+            （属性体系・タグ辞書）で定義します。
           </Trans>
         </p>
       </div>
