@@ -4397,6 +4397,10 @@ msgstr "端末とサーバで同じ資料が別々に編集されると、ここ
 msgid "端末の本文が新しい版になります。サーバ上の現在の本文は、1 つ前の版として版履歴に残ります。"
 msgstr "端末の本文が新しい版になります。サーバ上の現在の本文は、1 つ前の版として版履歴に残ります。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "端末の本文が記録されていません。"
+msgstr "端末の本文が記録されていません。"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末を接続する"
 msgstr "端末を接続する"

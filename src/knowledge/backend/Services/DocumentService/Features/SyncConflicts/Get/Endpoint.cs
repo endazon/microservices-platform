@@ -41,7 +41,9 @@ internal static class GetSyncConflictEndpoint
             return Results.Ok(new SyncConflictDetailDto(summary.Id, summary.NoteId, summary.Title,
                 summary.VaultPath, summary.DetectedAt, summary.DeviceId, summary.DeviceName,
                 summary.LocalBaseVersion, summary.ServerVersion, localContent, serverContent,
-                localUnavailable, serverUnavailable));
+                localUnavailable, serverUnavailable,
+                // FR-20, SC-20 (#2307): 参照が無い（取り出しの失敗ではない）。画面は local / both を押せなくする。
+                LocalContentMissing: string.IsNullOrEmpty(conflict.LocalContentUri)));
         });
     }
 

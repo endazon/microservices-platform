@@ -4397,6 +4397,10 @@ msgstr "Conflicts appear here when the same note is edited separately on your de
 msgid "端末の本文が新しい版になります。サーバ上の現在の本文は、1 つ前の版として版履歴に残ります。"
 msgstr "The text from your device becomes the new version. The text currently on the server is kept in the version history as the previous version."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "端末の本文が記録されていません。"
+msgstr "The text from your device was not recorded."
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "端末を接続する"
 msgstr "Connect a device"
