@@ -233,7 +233,12 @@ export function PrivateNotesPage() {
     setSelected(() => failedIds);
     const restoredCount = ids.length - failedIds.length;
     const failedCount = failedIds.length;
-    setNotice(t`${restoredCount} 件を復元しました。${failedCount} 件は復元できませんでした。`);
+    // 全件が失敗したら「0 件を復元しました」とは言わない（戻ったものが無いのに成功のように読める）。
+    setNotice(
+      restoredCount === 0
+        ? t`${failedCount} 件は復元できませんでした。`
+        : t`${restoredCount} 件を復元しました。${failedCount} 件は復元できませんでした。`,
+    );
   }
 
   function confirmPurge() {

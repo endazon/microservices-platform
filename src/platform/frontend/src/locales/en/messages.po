@@ -77,6 +77,10 @@ msgstr "{displayName} (deactivated)"
 msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
 msgstr "Only terms searched at least {effectiveMinCount} times are shown."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{failedCount} 件は復元できませんでした。"
+msgstr "{failedCount} could not be restored."
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h} (max)"

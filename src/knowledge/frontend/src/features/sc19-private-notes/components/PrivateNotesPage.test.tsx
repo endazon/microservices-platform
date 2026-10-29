@@ -539,6 +539,22 @@ describe('SC-19 個人資料管理: 一括復元の完了通知', () => {
     expect(await screen.findByText('選択した個人資料を復元しました。')).toBeInTheDocument();
   });
 
+  // 全件が失敗したら「0 件を復元しました」は出さない（戻ったものが無いのに成功のように読める）。
+  it('全件が失敗したら、戻らなかった件数だけを出し、選択は全部残す', async () => {
+    respondRestore(() =>
+      Promise.reject(new ApiError('conflict', '保存容量の上限に達しました。', 409)),
+    );
+    const user = userEvent.setup();
+    await renderPage('/my/notes?tab=trash');
+
+    await restoreBoth(user);
+
+    expect(await screen.findByText('2 件は復元できませんでした。')).toBeInTheDocument();
+    expect(screen.queryByText(/件を復元しました/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('古い議事録 を選択')).toBeChecked();
+    expect(screen.getByLabelText('下書き を選択')).toBeChecked();
+  });
+
   it('一部が失敗したら、戻った件数と戻らなかった件数を出し、失敗した資料は選んだまま残す', async () => {
     // 非 2xx は `apiRequest` が `ApiError` を投げる（本ファイルは `apiRequest` を差し替えているので、投げる形で与える）。
     respondRestore((path) =>
