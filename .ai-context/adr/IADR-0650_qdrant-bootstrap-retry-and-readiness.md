@@ -54,6 +54,24 @@ related_specs:
   - 埋め込み待ちの埋め直し
 - 状態は `Common/Concurrency` に置く。Features から Infrastructure を引かないためである。
 
+### 決定 4: 受け口（取り込み・削除）も保証の成功を上限つきで待つ（#2311 のレビュー）
+
+- **事実（実測）**: hosted service の登録順は次のとおりで、開始は直列（`ServicesStartConcurrently=false`）である。
+  1. 保証
+  2. 2-gram の後付け
+  3. 発見
+  4. 埋め直し
+  5. Wolverine（2 つ）
+  6. Web
+- 従前は保証が `StartAsync` の中で await していたので、Wolverine の受信は保証の 1 回目の後に始まった（その 1 回が失敗しても始まった）。**`BackgroundService` にしたことで、受信が保証より先に始まる窓が新しくできた。**
+- 窓の中で書くと、コレクションが無く失敗する。共通の再試行は `RetryWithCooldown(2, 10, 30 秒)`、つまり 4 試行で待ちの合計は 42 秒である。使い切るとデッドレターへ移る（`UsePlatformMessagingDefaults`）。**Qdrant の停止が約 42 秒を超えると、取り込みが失われ得る**（デッドレターからの手での再投入が要る）。再試行だけでは吸収しきれない。
+- 決定: 2 つの受け口（`DocumentUpdatedConsumer` と `DocumentDeletedConsumer`）の入口で、`QdrantBootstrapState.WaitForConsumerAsync` を待つ。
+  - 待つ場所は排他の外である。
+  - 上限は既定 60 秒（保証の待ちの上限 30 秒の 2 倍）。超えたら `QdrantBootstrapPendingException` を投げ、再試行の鎖へ返す。
+  - 1 配信で待てる時間は、最大で 4 × 60 秒 ＋ 42 秒 ＝ 約 282 秒である。どの試行も受け口の実行期限（435 秒）の中に収まる。待ちは実行期限の中で数えるので、`EnsureRetryChainFits` の式（期限 × 試行 ＋ 待ち）も変わらない。
+- 保証が成功した後は、待たずに通る（`IsEnsured` の即時判定）。
+- 後続の器と受け口は、状態を**必須の引数**で受ける。登録を忘れたときに待たずに走ることを、型で防ぐ。
+
 ## 却下した案
 
 - **upsert の経路で保証を呼び直す（遅延作成）**: 書き込みごとに存在確認が要る。また、索引の欠落は書き込みでは現れない（#1116）ので、索引の保証の漏れを塞げない。
@@ -63,4 +81,5 @@ related_specs:
 ## 帰結・残余リスク
 
 - Qdrant に届かない間、取り込みの Deployment は available にならない。これは意図した挙動で、`check-stack-ready` で捕まる。
+- Qdrant の停止が 1 配信の待ちの上限（約 282 秒）を超えると、その間に届いた取り込み・削除はデッドレターへ移る。これは従前（保証の成功の後に Qdrant が止まった場合）と同じ扱いで、再投入の手順は既存のデッドレターの運用に従う。
 - 一度成功した後に Qdrant 側でコレクションが消えた場合は、検出しない（従前と同じ）。検索側の readiness が Degraded を出す（[IADR-0318](./IADR-0318_qdrant-fulltext-payload-index.md) 系）。

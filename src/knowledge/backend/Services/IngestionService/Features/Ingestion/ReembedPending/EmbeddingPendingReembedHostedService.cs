@@ -19,11 +19,11 @@ public sealed class EmbeddingPendingReembedHostedService(
     EmbeddingPendingOptions options,
     TimeProvider clock,
     ILogger<EmbeddingPendingReembedHostedService> logger,
-    QdrantBootstrapState? bootstrap = null) : BackgroundService
+    QdrantBootstrapState bootstrap) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (bootstrap is not null && !await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
+        if (!await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
             return;
 
         while (!stoppingToken.IsCancellationRequested)

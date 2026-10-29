@@ -77,3 +77,27 @@ issue: "#2283"
 - 取り込みの Pod は、Qdrant の保証が成功するまで Ready にならない。Qdrant が起きていれば、数秒の差で従来どおり Ready になる。
 - Qdrant に届かない間は、Deployment が available にならない。これは意図した挙動で、`check-stack-ready` で捕まる。
 - 起動器の引数・Secret・migration の変更は無い。新しいイメージへの更新で Pod は作り直されるが、手順の追加は無い。
+
+## ［2026-10-30 追記 / #2311 のレビュー］受け口も保証の成功を待つ
+
+- **順序の実測**: 本番の Program.cs を、外部の転送を切った試験ホストで組んだ。`IHostedService` の登録順は次のとおりで、`HostOptions.ServicesStartConcurrently=false`（直列）だった。使った試験は使い捨てで、コミットしない。
+  1. Telemetry
+  2. DataProtection
+  3. HealthCheckPublisher
+  4. **QdrantBootstrap**
+  5. CjkNgramBackfill
+  6. KeywordIndexDiscovery
+  7. EmbeddingPendingReembed
+  8. **Wolverine ×2**
+  9. GenericWebHost
+- 従前は保証の `StartAsync` が await するので、受信は保証の 1 回目の後だった。`BackgroundService` にすると、受信が保証より先に始まる。**新しい窓である。**
+- **再試行で吸収できるか**: 共通既定（`UsePlatformMessagingDefaults`）は `RetryWithCooldown(2 s, 10 s, 30 s)`。つまり 4 試行で待ちの合計は 42 秒で、その後デッドレターへ移る。保証の所要は、Qdrant が正常なら数秒である。一方、停止が 42 秒程度を超えると、窓の中で受けた取り込みはデッドレターへ落ちる。**必ず吸収されるとは言えない。**
+- 方針: 2 つの受け口（取り込み・削除）の入口で、`QdrantBootstrapState.WaitForConsumerAsync` を待つ（IADR-0650 決定 4）。
+  - 上限は 60 秒で、超えたら `QdrantBootstrapPendingException` を投げて再試行の鎖へ返す。
+  - 1 配信で待てるのは最大で約 282 秒。各試行は受け口の実行期限 435 秒に収まる。
+  - 排他の外で待つ。
+- 後続の器 3 つと受け口 2 つは、状態を必須の引数で受ける（レビュー 🟡 2）。試験は `QdrantBootstrapStateForTests.Ensured()` を渡す。
+- 試験と red→green: 次の 3 件は、待ちの 1 行を外す変異で 3 件とも赤、戻して緑になる。
+  - `Consumer_WaitsForQdrantBootstrapBeforeWriting`（成功まで書かない、成功後に書く）
+  - `Consumer_ThrowsForRetry_WhenBootstrapStaysPendingBeyondLimit`
+  - `DeleteConsumer_ThrowsForRetry_WhenBootstrapStaysPendingBeyondLimit`

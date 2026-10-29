@@ -272,7 +272,8 @@ public class EmbeddingPendingReembedderTests
         var reembedder = new EmbeddingPendingReembedder(store, new FixedEmbedding(embedded: true),
             TestMeterFactory.NewEmbeddingPendingMetrics(), options, IngestionTimeouts.Default, new CapturingLogger(), new DocumentIndexLocks());
         var hostLogger = new CapturingHostLogger();
-        var hosted = new EmbeddingPendingReembedHostedService(reembedder, options, TimeProvider.System, hostLogger);
+        var hosted = new EmbeddingPendingReembedHostedService(reembedder, options, TimeProvider.System, hostLogger,
+            QdrantBootstrapStateForTests.Ensured());
 
         await hosted.StartAsync(Ct);
         var deadline = DateTime.UtcNow.AddSeconds(10);

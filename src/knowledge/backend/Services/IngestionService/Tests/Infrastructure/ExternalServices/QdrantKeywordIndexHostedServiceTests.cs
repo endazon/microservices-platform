@@ -132,7 +132,7 @@ public class QdrantKeywordIndexHostedServiceTests
     {
         var store = new RecordingStore { FailDiscovery = fail };
         var discovery = new QdrantKeywordIndexDiscoveryHostedService(Provider(store),
-            NullLogger<QdrantKeywordIndexDiscoveryHostedService>.Instance);
+            NullLogger<QdrantKeywordIndexDiscoveryHostedService>.Instance, QdrantBootstrapStateForTests.Ensured());
 
         await discovery.StartAsync(TestContext.Current.CancellationToken);
         await (discovery.ExecuteTask ?? Task.CompletedTask);

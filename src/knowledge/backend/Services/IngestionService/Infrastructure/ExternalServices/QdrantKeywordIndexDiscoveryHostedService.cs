@@ -17,12 +17,12 @@ namespace IngestionService.Infrastructure.ExternalServices;
 public sealed class QdrantKeywordIndexDiscoveryHostedService(
     IServiceProvider services,
     ILogger<QdrantKeywordIndexDiscoveryHostedService> logger,
-    QdrantBootstrapState? bootstrap = null) : BackgroundService
+    QdrantBootstrapState bootstrap) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // FR-02, [[IADR-0650]] (#2283): コレクションの保証が成功してから始める（保証は失敗すると再試行するので、登録順だけでは前後が決まらない）。
-        if (bootstrap is not null && !await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
+        if (!await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
             return;
         using var scope = services.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IIngestionVectorStore>();
