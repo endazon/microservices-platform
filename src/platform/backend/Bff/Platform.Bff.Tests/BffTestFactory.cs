@@ -48,6 +48,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-04 BFF テスト: 後段 AiAnalysisService への転送を捕捉・スタブ化する
     public string? LastForwardedAuthorization { get; private set; }
+    // NFR-19 / #2129: 認可サービスの管理 API へ届いた相関 ID（X-Correlation-ID。無ければ null）。
+    public string? LastAuthzCorrelationId { get; private set; }
 
     // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の主体として扱う識別子。
     // 実配備の Keycloak クライアント名と同じ綴りにしておく（両側の一致は本テストで固定する）。
@@ -886,6 +888,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var method = request.Method;
+            owner.LastAuthzCorrelationId = request.Headers.TryGetValues("X-Correlation-ID", out var correlation)
+                ? string.Join(",", correlation) : null;
 
             // FR-09 (SC-09): 後段不達を再現する（BFF が 502 へ縮退することの検証用）。scope 解決は対象外。
             if (owner.AuthzManagementThrows && path.StartsWith("/authz/", StringComparison.Ordinal)
