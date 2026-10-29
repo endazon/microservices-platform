@@ -1615,10 +1615,20 @@ function adminEdgeClosedCheck(hosts, adminEdge, statusOf) {
   };
 }
 
-/** エッジ越しの HTTP の状態だけを測る（本文は読まない。TLS はローカル CA なので検証しない＝fetchDiscovery と同じ）。測れなければ 0。 */
+/**
+ * エッジ越しの HTTP の状態だけを測る（本文は捨てる。TLS はローカル CA なので検証しない＝fetchDiscovery と同じ）。測れなければ 0。
+ *
+ * #2197: `-o /dev/null` を渡さない。node から直接起こした Windows の curl には /dev/null が無く、本文の書き込みに失敗して
+ * 終了コード 23 になる（全件「測れなかった」）。本文は標準出力へ出させ、`-w` で末尾の 1 行に状態コードを置いて読む
+ * （wikiJsGraphql と同じ形。OS ごとの分岐を持たない）。本文が maxBuffer を超えたら spawnSync が失敗し 0 になる＝緑にしない。
+ */
 function fetchStatus(url) {
-  const r = spawnSync('curl', ['-sk', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '30', url], { encoding: 'utf8' });
-  const code = Number(String(r.stdout || '').trim());
+  const r = spawnSync('curl', ['-sk', '-w', '\\n%{http_code}', '--max-time', '30', url], {
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const last = String(r.stdout || '').split('\n').pop().trim();
+  const code = /^\d{3}$/.test(last) ? Number(last) : NaN;
   return r.status === 0 && Number.isInteger(code) ? code : 0;
 }
 
@@ -2696,6 +2706,7 @@ module.exports = {
   discoverAdminHosts,
   evaluateAdminEdgeClosed,
   adminEdgeClosedCheck,
+  fetchStatus, // #2197: curl に /dev/null を渡さないことを試験が PATH のスタブで確かめる
   evaluatePodDnsOutput,
   evaluateWikiJs,
   wikiJsGraphql, // #1793: 引数に API キーを載せないことを試験が実走で確かめる
