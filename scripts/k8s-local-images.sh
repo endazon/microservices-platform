@@ -92,6 +92,7 @@ LOCAL_ONLY_IMAGES=(
 )
 
 k3d_images=()
+k3d_required=()   # NFR, #2274: 取り込みを確かめるのは本体（MAPPING）だけ。LOCAL_ONLY は不在でも起動を止めない（下の #1564 と同じ扱い。CronJob の門が見る）
 for entry in "${MAPPING[@]}"; do
   # エントリを最大 4 フィールドへ分解する（2 フィールド時は f3/f4 が空文字）。
   IFS='|' read -r image f2 f3 f4 <<< "$entry" || true
@@ -114,6 +115,7 @@ for entry in "${MAPPING[@]}"; do
   else
     docker build -f "${dockerfile}" "${build_args[@]}" -t "${ref}" "${context}"
     k3d_images+=("${ref}")
+    k3d_required+=("${ref}")
   fi
 done
 
@@ -181,9 +183,45 @@ warn_local_only_failed() {
 }
 [ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
 
+# NFR, #2274: 取り込んだイメージが**全ノードに実際に在る**かを確かめる。k3d は取り込みに失敗しても 0 で返ることがある
+#   （integration-stack の run 40288649179: tools ノードが tarball を消した後で ctr が開いて「no such file」になり、全ノードで失敗したのに
+#   「Successfully imported 20 image(s)」と言って 0 で返った。Pod は Pending のまま 28 分待って門で落ちた）。
+#   無ければ標準出力へ「<ノード> <イメージ>」を 1 行ずつ書いて 1 を返す。ノードを列挙できなければ 2（確かめられないを「在る」にしない）。
+#   ノードは k3d の server / agent のコンテナ（serverlb・tools はイメージを持たない）。確かめ方は lib/backup-cronjob-gate.sh と同じ crictl。
+#   対象は本体（k3d_required）だけ。LOCAL_ONLY（バックアップのイメージ）は不在でも起動を止めない —— 置くかどうかは CronJob の門が決める。
+k3d_missing_images() {
+  local nodes node ref
+  nodes="$(docker ps --format '{{.Names}}' --filter "label=k3d.cluster=${CLUSTER}" 2>/dev/null | grep -E -- '-(server|agent)-[0-9]+$' || true)"
+  [ -n "$nodes" ] || return 2
+  local rc=0
+  for node in $nodes; do
+    for ref in "${k3d_required[@]}"; do
+      docker exec "$node" crictl inspecti "$ref" >/dev/null 2>&1 || { echo "$node $ref"; rc=1; }
+    done
+  done
+  return "$rc"
+}
+
 if [ "$RUNTIME" = "k3d" ]; then
   echo "==> k3d image import (${#k3d_images[@]}) -> cluster ${CLUSTER}"
   k3d image import "${k3d_images[@]}" -c "${CLUSTER}"
+  # NFR, #2274: 確かめて、入っていなければ 1 回だけやり直す。それでも入らなければ止める（配備へ進むと Pod が Pending のまま門で落ちる）。
+  missing_rc=0; missing="$(k3d_missing_images)" || missing_rc=$?
+  if [ "$missing_rc" -eq 1 ]; then
+    echo "WARN: k3d image import は成功を返したが、取り込みがノードに入っていない（$(printf '%s\n' "$missing" | wc -l | tr -d ' ') 件）。1 回だけやり直す。" >&2
+    k3d image import "${k3d_images[@]}" -c "${CLUSTER}"
+    missing_rc=0; missing="$(k3d_missing_images)" || missing_rc=$?
+  fi
+  if [ "$missing_rc" -eq 2 ]; then
+    echo "ERROR: k3d クラスタ ${CLUSTER} のノードを列挙できず、イメージの取り込みを確かめられない（docker ps --filter label=k3d.cluster=${CLUSTER}）。" >&2
+    exit 1
+  fi
+  if [ "$missing_rc" -ne 0 ]; then
+    echo "ERROR: やり直しても、次のノードにイメージが入っていない（k3d image import が成功を返しても入らないことがある。#2274）:" >&2
+    printf '%s\n' "$missing" | sed 's/^/  /' >&2
+    echo "       k3d image import ${k3d_images[*]:0:1} … -c ${CLUSTER} を手で再実行するか、起動器を再実行してください。" >&2
+    exit 1
+  fi
 fi
 # 長いビルド出力に埋もれないよう、最後にもう一度出す。
 [ "${#local_only_failed[@]}" -eq 0 ] || warn_local_only_failed
