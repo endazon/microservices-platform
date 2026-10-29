@@ -37,7 +37,8 @@ public class DocumentUpdatedConsumer(
     EmbeddingPendingMetrics pendingMetrics,
     BodyMissingMetrics bodyMissingMetrics,
     ILogger<DocumentUpdatedConsumer> logger,
-    DocumentIndexLocks locks) : IPipelineStep<DocumentUpdated>
+    DocumentIndexLocks locks,
+    QdrantBootstrapState bootstrap) : IPipelineStep<DocumentUpdated>
 {
     // 🔴 FR-02, FR-06, IADR-0640 決定 3 (#2263): 削除の受け口（`ingestion-delete`）と文書ごとに直列にする（DI では単一のインスタンス）。
     // 必須の引数にする（既定値で私的な排他を作ると、削除の受け口と別の排他になって直列にならない。#2270 のレビュー）。
@@ -81,6 +82,8 @@ public class DocumentUpdatedConsumer(
     // ADR-0027 / E3b: Wolverine のハンドラ。
     public async Task Handle(DocumentUpdated ev, CancellationToken ct)
     {
+        // 🔴 FR-02, [[IADR-0650]] 決定 4 (#2283): コレクション・索引の保証の成功を（上限まで）待ってから始める。排他の外で待つ。
+        await bootstrap.WaitForConsumerAsync(ct);
         // 🔴 IADR-0640 決定 3 (#2263): 門の読みから書き終えた後の読み直しまでを、同じ文書の削除と交差させない。
         using var _ = await _locks.AcquireAsync(ev.DocumentId, ct);
         await HandleLockedAsync(ev, ct);

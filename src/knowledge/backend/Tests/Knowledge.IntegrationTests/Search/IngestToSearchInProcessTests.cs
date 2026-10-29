@@ -284,9 +284,18 @@ public sealed class IngestToSearchInProcessTests : IAsyncLifetime
             new IngestionService.Common.Observability.EmbeddingPendingMetrics(new QdrantTestMeterFactory()),
             new IngestionService.Common.Observability.BodyMissingMetrics(new QdrantTestMeterFactory()),
             NullLogger<DocumentUpdatedConsumer>.Instance,
-            new IngestionService.Common.Concurrency.DocumentIndexLocks());
+            new IngestionService.Common.Concurrency.DocumentIndexLocks(),
+            // FR-02, IADR-0650 決定 4 (#2283): 受け口は保証の成功を待つ。本試験は索引を自前で用意するので、成功済みを渡す。
+            EnsuredBootstrap());
 
         await consumer.Handle(ev, TestContext.Current.CancellationToken);
+    }
+
+    private static IngestionService.Common.Concurrency.QdrantBootstrapState EnsuredBootstrap()
+    {
+        var state = new IngestionService.Common.Concurrency.QdrantBootstrapState();
+        state.MarkEnsured();
+        return state;
     }
 
     private async Task<List<SearchResultDto>> SearchAsync(string query, string? mode = null)

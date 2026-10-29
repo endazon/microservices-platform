@@ -13,7 +13,7 @@ namespace GraphService.Features.AiSuggestions.Reject;
 // 形にしない（#993 / IADR-0272 決定 2）。
 //
 // 却下回数を増やし、両端の**本文指紋**を控える（解除の判定に使う）。
-// 指紋は呼び出し側が与える —— 本サービスは本文を持たない。
+// ［2026-10-30 / #2144］指紋は自分の複製（取り込みの同期が保つ `BodyHash`）から読む。本文そのものは持たないが、指紋は持っている。
 //
 // FR-18, ADR-0063 決定 3・4, IADR-0364 決定 3 (#1187): **承認と同じ資格**（①起点文書への write
 // **または** ②管理者ロール）で判定する。却下レコードは永久保持され再提案を止める（ADR-0033 決定 10）
@@ -39,8 +39,22 @@ internal static class RejectAiSuggestionEndpoint
             if (!await AiSuggestionEndpoints.CanDecideAsync(suggestion, writeScope, http.User, db, ct))
                 return AiSuggestionEndpoints.NotFound();
 
-            if (!suggestion.TryReject(req?.SourceFingerprint, req?.TargetFingerprint,
-                    clock.GetUtcNow()))
+            // FR-18, ADR-0033 決定 10, [[IADR-0300]] 決定 3 (#2144): **両端の本文指紋は自分の複製（`Documents.BodyHash`）から読む。**
+            // BFF は本文を送らない（SPA は指紋を持てない。IADR-0276 決定 2）ので、従前は常に null で控えていた。解除の発火は外側の門
+            // （本文指紋の変化）で決まるので変わらないが、`ReinstatedReason` が初回の解除で `both` に化けていた。
+            // 複製に指紋が無い（取り込み前・本文なし）ときだけ呼び出し側の値を使う（内部の呼び出し元の互換）。
+            var endpointIds = suggestion.TargetDocumentId is { } targetId
+                ? new[] { suggestion.SourceDocumentId, targetId }
+                : [suggestion.SourceDocumentId];
+            var hashes = await db.Documents.AsNoTracking()
+                .Where(d => endpointIds.Contains(d.DocumentId))
+                .ToDictionaryAsync(d => d.DocumentId, d => d.BodyHash, ct);
+            var sourceFingerprint = hashes.GetValueOrDefault(suggestion.SourceDocumentId) ?? req?.SourceFingerprint;
+            var targetFingerprint = suggestion.TargetDocumentId is { } t
+                ? hashes.GetValueOrDefault(t) ?? req?.TargetFingerprint
+                : null;
+
+            if (!suggestion.TryReject(sourceFingerprint, targetFingerprint, clock.GetUtcNow()))
                 return Results.Conflict(new { error = "invalid_transition", state = suggestion.State });
 
             await db.SaveChangesAsync(ct);

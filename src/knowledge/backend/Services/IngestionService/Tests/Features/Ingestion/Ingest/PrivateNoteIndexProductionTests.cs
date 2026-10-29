@@ -55,7 +55,7 @@ public class PrivateNoteIndexProductionTests
             TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
             TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks());
+            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks(), QdrantBootstrapStateForTests.Ensured());
         return (consumer, index);
     }
 

@@ -147,6 +147,7 @@ public static class GraphBffEndpoints
         // **SPA は指紋を持てない** —— `AiSuggestionDto` は指紋を公開面へ出さないと決めてある
         // （[[IADR-0276]] 決定 2。出すと文書を読めない利用者に本文の変化を判定させる副次経路になる）。
         // 帰結は [[IADR-0300]] 決定 3 に実測つきで書いた（**解除の発火条件は変わらない**）。
+        // ［2026-10-30 / #2144］指紋は後段が自分の複製から読むようになった（`ReinstatedReason` の精度の差も消えた）。
         g.MapPost("/suggestions/{id:guid}/reject", (Guid id, IHttpClientFactory httpFactory,
                 HttpContext http, CancellationToken ct)
             => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/{id}/reject", httpFactory, http, ct))

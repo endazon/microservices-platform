@@ -55,7 +55,7 @@ public class IngestionTimeoutTests
             ConsumerTimeoutsForTests.Calls(), timeouts, clock ?? TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(),
             TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks());
+            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks(), QdrantBootstrapStateForTests.Ensured());
 
     // T-18: 止まった依存先（本文・埋め込み・既存チャンクの削除・チャンクの登録・メタデータ点の登録）は、
     // 受け口の ct が立つより前に、その呼び出し先の時間切れとして投げられる（再試行・デッドレターへ）。
@@ -202,7 +202,7 @@ public class IngestionTimeoutTests
             ports, new MarkdownChunkingService(), ports, ports, ports,
             ConsumerTimeoutsForTests.Calls(), timeouts, clock, pending,
             TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks());
+            NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks(), QdrantBootstrapStateForTests.Ensured());
 
     // `ingestion.embedding_pending.written` の合計を数える（この試験の器が作った Meter だけを聞く）。
     private static SumListener PendingWrittenListener(TestMeterFactory factory) => new(factory, EmbeddingPendingMetrics.WrittenCounterName);
