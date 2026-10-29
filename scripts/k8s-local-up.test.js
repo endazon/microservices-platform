@@ -324,6 +324,11 @@ const DOCKER_STUB = [
   // IADR-0642: STUB_DOCKER_DIAG_HANG=1 で、診断のコマンド（ps -a・info・logs・exec の subnet.env の確かめ）が固まる（デーモンが応答しない世界）。
   'if [ "${STUB_DOCKER_DIAG_HANG:-}" = "1" ]; then case "$*" in "ps -a" | "info" | "logs --tail "* | "exec "*" test -f /run/flannel/subnet.env") exec sleep 60;; esac; fi',
   'case "$*" in "exec "*" test -f /run/flannel/subnet.env") for n in ${STUB_FLANNEL_ABSENT:-}; do [ "$2" = "$n" ] && exit 1; done;; esac',
+  // NFR, #2274: k3d のノードの列挙（`docker ps --format … --filter label=k3d.cluster=<名>`）。既定はサーバ 1・エージェント 1。
+  'case "$*" in "ps --format "*"label=k3d.cluster="*) for a in "$@"; do case "$a" in label=k3d.cluster=*) c="${a#label=k3d.cluster=}";; esac; done; printf "k3d-%s-server-0\\nk3d-%s-agent-0\\nk3d-%s-serverlb\\n" "$c" "$c" "$c"; exit 0;; esac',
+  // NFR, #2274: STUB_IMPORT_LOST=<回数> で、`k3d image import` の最初の <回数> 回がノードへ入らなかった世界を作る
+  //   （k3d が tarball を消してから ctr が開いて「no such file」になっても、k3d は Successfully imported と言って 0 で返る。run 40288649179）。
+  'if [ -n "${STUB_IMPORT_LOST:-}" ]; then case "$*" in "exec "*"crictl inspecti "*) [ "$(grep -c "^k3d image import" "$STUB_LOG")" -le "$STUB_IMPORT_LOST" ] && exit 1;; esac; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -6227,6 +6232,36 @@ ok('🔴 #1689: Rancher（nerdctl）の経路でも、資格情報ヘルパー�
   assertBackupWarnCommon(r);
   assert.match(r.stderr, HINT_CREDS, 'nerdctl の経路でビルドのログを分類できていない');
   assert.doesNotMatch(r.stderr, HINT_BUMP, 'nerdctl の経路で資格情報の失敗を版上げへ導いた');
+});
+
+// --- NFR, #2274: k3d image import が黙って入らなかったら、確かめて 1 回だけやり直し、入らなければ配備へ進まない ---------------
+// integration-stack の赤（run 40288649179）: k3d が tarball を消した後で ctr が開いて「no such file」になり、全ノードへの取り込みが
+// 失敗したのに k3d は「Successfully imported 20 image(s)」と言って 0 で返った。Pod は 28 分 Pending のまま門で落ちた。
+ok('🔴 #2274: 取り込みが黙って失敗したら確かめてやり直し、入れば起動を続ける', () => {
+  const r = runUp({ STUB_IMPORT_LOST: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-2000));
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('k3d image import ')).length, 2, 'やり直していない');
+  assert.ok(r.lines.some((l) => /^docker exec k3d-\S+-agent-0 crictl inspecti /.test(l)), 'エージェントのノードを確かめていない');
+  assert.ok(!r.lines.some((l) => /^docker exec \S+-serverlb /.test(l)), 'ロードバランサのコンテナを確かめている（イメージを持たない）');
+  assert.match(r.stderr, /取り込み.*入っていない/, 'やり直しの理由を出していない');
+});
+
+ok('🔴 #2274: やり直しても入らなければ配備（helm upgrade）へ進まず止まり、ノードとイメージを名指す', () => {
+  const r = runUp({ STUB_IMPORT_LOST: '2' });
+  assert.notStrictEqual(r.status, 0, '取り込みが失敗したのに起動器が止まらなかった');
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('k3d image import ')).length, 2, 'やり直しは 1 回だけ');
+  assert.ok(!r.lines.some((l) => l.startsWith('helm upgrade ')), 'イメージが無いのに helm で配備へ進んだ');
+  assert.match(r.stderr, /ERROR: やり直しても/, '止めた理由を出していない');
+  assert.match(r.stderr, /^ {2}k3d-\S+-(server|agent)-0 k3d-local\//m, 'どのノードのどのイメージか名指していない');
+});
+
+ok('#2274: 陽性対照 —— 取り込みが入っていれば 1 回だけで、確かめも通る', () => {
+  const r = runUp({});
+  assert.strictEqual(r.lines.filter((l) => l.startsWith('k3d image import ')).length, 1);
+  // 本体のイメージ（bff）を server と agent の両方で確かめている（バックアップの門の crictl と取り違えない）。
+  for (const node of ['server-0', 'agent-0'])
+    assert.ok(r.lines.some((l) => new RegExp(`^docker exec k3d-\\S+-${node} crictl inspecti k3d-local/microservices-platform/bff:`).test(l)),
+      `${node} で本体のイメージの取り込みを確かめていない`);
 });
 
 ok('#1564: 陽性対照 —— compose 由来の本体のイメージ（MAPPING）のビルド失敗は、従来どおり起動を止める', () => {
