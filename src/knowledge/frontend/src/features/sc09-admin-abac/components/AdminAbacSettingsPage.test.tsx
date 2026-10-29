@@ -1302,14 +1302,17 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  // 遷移先の画面（MCP クライアント管理）が未実装（#445 待ち）のリンクを置かない——押すと
-  // NotFound が出て、権限による秘匿と未実装が区別できなくなる。
-  it('does not link to the MCP client screen while it does not exist', async () => {
+  // FR-16, SC-09 → SC-12（計画の画面遷移図・hi-fi 418）(#2123): MCP クライアント管理への導線がある。
+  // ［2026-10-26 反転］従前は「遷移先が未実装（#445 待ち）のリンクを置かない」として不在を固定していたが、SC-12 は実装済みである。
+  // 遷移はルーターの位置で確かめる（試験から SC-12 の feature を import しない。feature 間の import は lint が禁じる）。
+  it('links to the MCP client screen (SC-12) and navigates there', async () => {
     mockApi();
-    await renderPage();
+    const { router } = await renderPage();
 
-    expect(await screen.findByRole('tab', { name: 'ポリシー定義' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /MCP/ })).not.toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: 'MCP クライアント登録管理' });
+    expect(link).toHaveAttribute('href', '/admin/mcp-clients');
+    await userEvent.setup().click(link);
+    await waitFor(() => expect(router.state.location.pathname).toBe('/admin/mcp-clients'));
   });
 
   // ADR-0031: 文言は Lingui のカタログ（ja / en）。
