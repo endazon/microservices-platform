@@ -77,6 +77,8 @@
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
       "AskAttributeFilterTests",
+      "AskQuestionValidationTests",
+      "AskRequestValidatorTests",
       "CitationMapperTests",
       "RagAnswerContractTests",
       "RagOrchestratorDegradedModelTests",
