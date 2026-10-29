@@ -62,7 +62,11 @@ builder.Services.AddPlatformHealthChecks()
     .AddPlatformWolverineBroker()
     .AddCheck<QdrantHealthCheck>(
         QdrantHealthCheck.Name, failureStatus: HealthStatus.Unhealthy,
-        tags: [HealthCheckExtensions.ReadyTag], timeout: TimeSpan.FromSeconds(5));
+        tags: [HealthCheckExtensions.ReadyTag], timeout: TimeSpan.FromSeconds(5))
+    // FR-02, [[IADR-0650]] (#2283): コレクション・索引の保証が一度成功するまで NotReady（書き込めないスタックを Ready に見せない）。
+    .AddCheck<QdrantBootstrapHealthCheck>(
+        QdrantBootstrapHealthCheck.Name, failureStatus: HealthStatus.Unhealthy,
+        tags: [HealthCheckExtensions.ReadyTag]);
 
 // FR-02, ADR-0016: モデル別コレクション（既定は voyage/1024 だけ）の定義（起動時作成・残存防止削除に使用）。
 // 🔴 #2137: 既定（appsettings.json の Embedding:Collections）は検索サービスの appsettings.json にも同じ値を置く（検索が文書の削除の対象を
@@ -97,6 +101,9 @@ builder.Services.AddPlatformConsumerTimeouts();
 builder.Services.TryAddSingleton(TimeProvider.System);
 
 // FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する
+// [[IADR-0650]] (#2283): 成功するまで上限つきのバックオフで再試行する（起動は塞がない）。状態は readiness と後続の器が読む。
+builder.Services.AddSingleton<QdrantBootstrapState>();
+builder.Services.AddSingleton<QdrantBootstrapMetrics>();
 builder.Services.AddHostedService<QdrantBootstrapHostedService>();
 // FR-03, #1118 / [[IADR-0339]] 決定 2: 既存の点へ日本語 2-gram（`text_ngram`）を後付けする（起動後・非同期）。
 // **上のブートストラップより後に登録する**（索引を張ってから埋める。hosted service は登録順に始まる）。

@@ -43,7 +43,8 @@ public class DocumentUpdatedConsumerTests
         IEmbeddingService? embed = null,
         ILogger<DocumentUpdatedConsumer>? logger = null,
         IngestionService.Common.Observability.EmbeddingPendingMetrics? metrics = null,
-        IngestionService.Common.Observability.BodyMissingMetrics? bodyMissing = null)
+        IngestionService.Common.Observability.BodyMissingMetrics? bodyMissing = null,
+        QdrantBootstrapState? bootstrap = null)
     {
         var completed = new RecordingCompletedPublisher();
         var consumer = new DocumentUpdatedConsumer(
@@ -57,12 +58,66 @@ public class DocumentUpdatedConsumerTests
             TimeProvider.System,
             metrics ?? TestMeterFactory.NewEmbeddingPendingMetrics(),
             bodyMissing ?? TestMeterFactory.NewBodyMissingMetrics(),
-            logger ?? NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks());
+            logger ?? NullLogger<DocumentUpdatedConsumer>.Instance, new DocumentIndexLocks(),
+            bootstrap ?? QdrantBootstrapStateForTests.Ensured());
         return (consumer, completed);
     }
 
     private static Task HandleAsync(DocumentUpdatedConsumer consumer, DocumentUpdated ev)
         => consumer.Handle(ev, TestContext.Current.CancellationToken);
+
+    // FR-02, [[IADR-0650]] 決定 4 (#2283 / #2311 のレビュー): 受け口は Qdrant の保証の成功を待ってから書く。
+    // 保証の器は起動を塞がないので、Wolverine の受信が保証より先に始まる。待たずに書くとコレクションが無く失敗し、
+    // 再試行の鎖を Qdrant の停止が超えるとデッドレターへ落ちる。成功の後は書く（陽性の対照）。
+    [Fact]
+    public async Task Consumer_WaitsForQdrantBootstrapBeforeWriting()
+    {
+        var store = new RecordingVectorStore();
+        var bootstrap = new QdrantBootstrapState();
+        var (consumer, _) = Build(store, new StubContentReader("# A\n\nまる"), bootstrap: bootstrap);
+
+        var handling = HandleAsync(consumer, SampleEvent());
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        store.Upserts.Should().BeEmpty("保証が成功するまで書かない");
+        handling.IsCompleted.Should().BeFalse();
+
+        bootstrap.MarkEnsured();
+        await handling.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        store.Upserts.Should().NotBeEmpty("保証の成功の後に書く");
+    }
+
+    // 待ちには上限がある。超えたら例外で Wolverine の再試行の鎖へ返し、黙って書きに行かない（ストアに触れない）。
+    [Fact]
+    public async Task Consumer_ThrowsForRetry_WhenBootstrapStaysPendingBeyondLimit()
+    {
+        var store = new RecordingVectorStore();
+        var (consumer, _) = Build(store, new StubContentReader("# A\n\nまる"),
+            bootstrap: new QdrantBootstrapState(TimeSpan.FromMilliseconds(50)));
+
+        var act = () => HandleAsync(consumer, SampleEvent());
+
+        await act.Should().ThrowAsync<QdrantBootstrapPendingException>();
+        store.Upserts.Should().BeEmpty();
+        store.DeletedFromAll.Should().BeEmpty();
+    }
+
+    // 削除の受け口も同じ（コレクションが無いと全コレクションからの削除が投げる）。
+    [Fact]
+    public async Task DeleteConsumer_ThrowsForRetry_WhenBootstrapStaysPendingBeyondLimit()
+    {
+        var store = new RecordingVectorStore();
+        var consumer = new IngestionService.Features.Ingestion.RemoveDeleted.DocumentDeletedConsumer(store,
+            ConsumerTimeoutsForTests.Calls(), ConsumerTimeoutsForTests.Timeouts, new DocumentIndexLocks(),
+            NullLogger<IngestionService.Features.Ingestion.RemoveDeleted.DocumentDeletedConsumer>.Instance,
+            new QdrantBootstrapState(TimeSpan.FromMilliseconds(50)));
+
+        var act = () => consumer.Handle(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow),
+            TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<QdrantBootstrapPendingException>();
+        store.DeletedFromAll.Should().BeEmpty();
+    }
 
     // T-01 / T-02: パイプラインが消費し、パース本文由来のチャンクが索引登録される
     [Fact]
