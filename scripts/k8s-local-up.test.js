@@ -60,6 +60,13 @@ const SHARD_COUNT = (() => {
 if (SHARD === null && SHARD_COUNT > 1) {
   const RESULT_RE = /^K8S_UP_SHARD_RESULT passed=(\d+) total=(\d+)$/m;
   const started = Date.now();
+  // NFR, #2291: 試験はリポジトリの作業ツリーへ書かない（子の bash が書いたものも含めて）。全シャードの前後で
+  //   `git status --porcelain` が一致することを確かめる。一瞬だけ置いて消すものは、子の fs の守り（下の REPO_ROOT の節）が捕まえる。
+  const treeState = () => {
+    const g = spawnSync('git', ['-C', path.resolve(__dirname, '..'), 'status', '--porcelain', '--ignore-submodules=none', '--untracked-files=all'], { encoding: 'utf8' });
+    return g.status === 0 ? g.stdout : null; // git が無い・作業ツリーでない環境では突合しない
+  };
+  const treeBefore = treeState();
   const children = Array.from({ length: SHARD_COUNT }, (_, i) => new Promise((resolve) => {
     const child = spawn(process.execPath, [__filename], {
       env: { ...process.env, K8S_UP_TEST_SHARD: `${i}/${SHARD_COUNT}` },
@@ -91,6 +98,13 @@ if (SHARD === null && SHARD_COUNT > 1) {
       failed = true;
       process.stderr.write(`✗ 振り分けの計上が合わない: 実行の和=${sum} 総数=${[...totals].join(',')}\n`);
     }
+    const treeAfter = treeBefore === null ? null : treeState();
+    if (treeBefore !== null && treeAfter !== treeBefore) {
+      failed = true;
+      const before = new Set(treeBefore.split('\n'));
+      const added = (treeAfter ?? '').split('\n').filter((l) => l && !before.has(l));
+      process.stderr.write(`✗ 試験の前後で作業ツリーの状態が変わった（#2291。試験はリポジトリへ書かない。試験中に手で編集したなら再実行する）:\n${added.join('\n') || '（消えた項目あり）'}\n`);
+    }
     if (failed) {
       process.exitCode = 1;
       return;
@@ -102,6 +116,31 @@ if (SHARD === null && SHARD_COUNT > 1) {
 }
 
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+// NFR, #2291: 🔴 **試験はリポジトリの作業ツリーへ書かない。** 並列の別シャードの試験が作業ツリーの状態を読む
+//   （#2132 の IMAGE_TAG は `git status --porcelain` で -dirty- を決める）ので、一瞬だけ置くファイルでも結果を反転させる
+//   （#2195 の変異の写しを scripts/ へ置いていた事故）。この試験のプロセスから REPO_ROOT の下へ書く fs の呼び出しを例外にする。
+//   bash の子が書くものは、親の「前後の git status の突合」（上の並列実行の節）が捕まえる。
+{
+  const insideRepo = (p) => {
+    if (typeof p !== 'string' && !(p instanceof URL) && !Buffer.isBuffer(p)) return false; // fd への書き込みは対象外
+    const rel = path.relative(REPO_ROOT, path.resolve(p instanceof URL ? p.pathname : String(p)));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  };
+  const guard = (name, argIndexes) => {
+    const orig = fs[name];
+    fs[name] = function guardedRepoWrite(...args) {
+      for (const i of argIndexes) {
+        if (insideRepo(args[i])) throw new Error(`k8s-local-up.test.js はリポジトリの作業ツリーへ書かない（#2291）: fs.${name}(${String(args[i])})。一時ディレクトリを使う`);
+      }
+      return orig.apply(this, args);
+    };
+  };
+  for (const [name, idx] of [
+    ['writeFileSync', [0]], ['appendFileSync', [0]], ['copyFileSync', [1]], ['cpSync', [1]], ['mkdirSync', [0]],
+    ['mkdtempSync', [0]], ['rmSync', [0]], ['unlinkSync', [0]], ['renameSync', [0, 1]], ['symlinkSync', [1]], ['chmodSync', [0]],
+  ]) guard(name, idx);
+}
 // #953: `kind: HelmChartConfig` の宣言。**ハーネスの入力でもある**（下の helm-controller 模型が読む）。
 // REPO_ROOT 相対の形も持つ —— stub は cwd=REPO_ROOT で走るため、既定値は相対で渡す。
 const TRAEFIK_MANIFEST_REL = 'deploy/local/edge/traefik-entrypoint.yaml';
@@ -494,7 +533,9 @@ const HEAD_COMMIT = spawnSync('git', ['-C', REPO_ROOT, 'rev-parse', '--verify', 
 const GIT_COMMIT_SET = `--set-string config.gitCommit=${HEAD_COMMIT}`;
 /** [6/7] の行から、常に付く 2 つ（イメージのタグ・構成バージョン）を除く。opt-in の --set を数えるための前処理。 */
 const withoutAlwaysSets = (line) => line.replace(`--set-string global.image.tag=${TEST_IMAGE_TAG}`, '').replace(GIT_COMMIT_SET, '');
-function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
+// `source`（#2291）: 起動器の写し（一時ディレクトリの絶対パス）を、`$0` を `script` にしたまま `.` で読み込んで走らせる。
+//   起動器は ROOT と lib の読み込みを `$0` から決めるので、写しをリポジトリへ置かずに実物と同じ ROOT で走る。
+function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } = {}) {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-smoke-'));
   const binDir = path.join(workdir, 'bin');
   fs.mkdirSync(binDir);
@@ -614,7 +655,8 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT } = {}) {
     ...extraEnv,
   };
 
-  const r = spawnSync('bash', [script, CLUSTER], {
+  const args = source === null ? [script, CLUSTER] : ['-c', 'f="$1"; shift; . "$f" "$@"', script, source, CLUSTER];
+  const r = spawnSync('bash', args, {
     cwd,
     env,
     encoding: 'utf8',
@@ -6733,17 +6775,22 @@ ok('IADR-0576: 起動器は ESO の有無によらず Secret platform-infra/abac
 const ESO_BASE_SECRETS = ['keycloak-smtp', 'reset-gate-oidc', 'abac-seeder-oidc'];
 const createdSecret = (r, name) => r.lines.some((l) => l.startsWith(`kubectl create secret generic ${name} -n platform-infra `));
 const forceSyncLine = (r, name) => r.lines.findIndex((l) => new RegExp(`^kubectl -n platform-infra annotate externalsecret ${name} force-sync=\\d+ --overwrite$`).test(l));
-/** 起動器の写しを scripts/ に置いて走らせる（ROOT は $0 から決まる）。変異が空振りしていれば落とす。 */
+/**
+ * 起動器の写しを一時ディレクトリに置いて走らせる。変異が空振りしていれば落とす。
+ * NFR, #2291: 🔴 写しを scripts/ に置かない —— 並列の別シャードの #2132（IMAGE_TAG の -dirty-）が作業ツリーの状態を読み、
+ *   一瞬だけ在る写しで結果が反転していた。ROOT は `$0` から決まるので、`$0` を実物のパスにしたまま写しを読み込む（runUp の source）。
+ */
 function runMutatedUp(env, mutate) {
   const src = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
   const out = mutate(src);
   assert.notStrictEqual(out, src, '変異が実物と同一（置換が空振りしている）');
-  const rel = path.join('scripts', `.k8s-local-up.mutant-2195-${process.pid}.sh`);
-  fs.writeFileSync(path.join(REPO_ROOT, rel), out);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'k8s-up-mutant-2195-'));
+  const copy = path.join(dir, 'k8s-local-up.sh');
+  fs.writeFileSync(copy, out);
   try {
-    return runUp(env, { script: rel });
+    return runUp(env, { source: copy });
   } finally {
-    fs.rmSync(path.join(REPO_ROOT, rel), { force: true });
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 }
 

@@ -95,6 +95,10 @@ test('SC-03: the id in the path reaches the fetch, and the body renders as norma
   await expect(page.locator('pre')).toContainText('## 申請の手順');
   await expect(page.locator('pre b')).toHaveCount(0);
 
+  // ★ FR-06, SC-03 (#2121): 版履歴 0 件は**空として**描く（失敗と区別する）。従前は欄ごと消えていた。
+  await expect(page.getByRole('heading', { name: 'バージョン', level: 2 })).toBeVisible();
+  await expect(page.getByText('版履歴はまだありません。')).toBeVisible();
+
   // ★ 陰性対照 2: 取得は**パスの id で**行う。取り違え（別 id・空 id）はここで落ちる。
   expect(traffic.calls.map((c) => c.key)).toContain(`GET /documents/${ID}`);
 

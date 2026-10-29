@@ -22,6 +22,7 @@ import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/utils/apiErrors';
 import { ApiError } from '@foundation/api/ApiError';
 import { DataSourceForm } from './DataSourceForm';
+import { DataSourceSettingsForm } from './DataSourceSettingsForm';
 import { DataSourceAttributesForm } from './DataSourceAttributesForm';
 import { DataSourceAttributesView } from './DataSourceAttributesView';
 import { formatDateTime, sourceTypeLabel, syncStateView } from '../types/syncState';
@@ -38,7 +39,8 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面（05_screens: ルート /admin/sources）。
 // ソースの登録・一覧・同期状態の確認・手動同期を行い、SC-07（変換ジョブ）への導線を持つ。
 //
-// 未実装の要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）:
+// hi-fi で当初は未実装だった要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）。
+// ［2026-10-26 / #2122］以下はすべて実装済みで、各項は経緯である（残る未実装は共通シェルの右レールだけ。本画面の射程外）:
 //   - **「⚠ 再試行中（3/5）」**: **［2026-08-08 / #537］実装した。** 契約が同期健全性
 //     （`consecutiveFailureCount` / `retryLimit` / `lastSyncError`）を持ったため（裁定 Q14）。
 //   - **「次回同期」列**: **［2026-09-12］実装した。** 契約（`nextSyncAt`）は #538 で揃っており、
@@ -48,7 +50,8 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 //   - **行操作「設定」**: **［2026-08-08 / #534］契約側の更新 API（PUT / PATCH）は揃った。**
 //     **［2026-08-28 追記 / #754］既定属性（`confidentiality` / `department` / `lifecycle`）の
 //     編集フォームを置いた**（計画 §SC-06「登録・**更新**フォームは既定属性 3 つを持つ」）。
-//     接続先・認証情報の編集は依然として未実装であり、#534 の射程のまま残る。
+//     ［2026-10-26 / #2122］**接続先・`config`（非秘密キー）の編集を置いた**（行操作「設定」・`DataSourceSettingsForm`）。
+//     認証情報は SC-22（Vault）であり、本画面では伏せた値を読み取り専用で示して導線を置くだけである（計画 ADR-0126 決定 1）。
 //   - **既定属性・owner 写像表の閲覧**: **［2026-09-05 追記 / #1252］実装した。**
 //     ADR-0074 決定 1 は写像表を「既定属性 3 つと同じ面・**同じ権限**（**閲覧は管理者・運用者**、
 //     登録・更新は管理者限定）」に置くと定めるが、**描画点が「既定属性」ボタン（管理者のみ）から
@@ -62,6 +65,8 @@ export function DataSourceManagementPage() {
   // FR-05, UC-04, SC-06（#754）: 既定属性を編集中のソース ID（null なら閉じている）。
   // **行ごとにフォームを持たず、画面に 1 つだけ開く** —— 登録フォームと同じ扱いである。
   const [editingId, setEditingId] = useState<string | null>(null);
+  // FR-01, UC-04, SC-06（#2122）: 設定（名前・接続先・config）を編集中のソース ID。既定属性と同じく画面に 1 つだけ開く。
+  const [settingsId, setSettingsId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const sources = useDataSources();
   const actions = useDataSourceActions();
@@ -78,6 +83,7 @@ export function DataSourceManagementPage() {
   // 一覧から引く（ID だけを持つ）。一覧が再取得されれば編集フォームの初期値も最新に追随し、
   // 削除・無効化で行が消えたときはフォームも自然に閉じる。
   const editingSource = items.find((source) => source.id === editingId) ?? null;
+  const settingsSource = items.find((source) => source.id === settingsId) ?? null;
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDataSourceActions()` の
   // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに同じ穴が空く。
   const mutations = Object.values(actions);
@@ -171,6 +177,27 @@ export function DataSourceManagementPage() {
         />
       )}
 
+      {settingsSource && (
+        <DataSourceSettingsForm
+          key={settingsSource.id}
+          source={settingsSource}
+          submitting={patch.isPending}
+          onCancel={() => setSettingsId(null)}
+          onSubmit={(input) => {
+            beginOperation();
+            patch.mutate(
+              { id: settingsSource.id, data: input },
+              {
+                onSuccess: () => {
+                  setSettingsId(null);
+                  setNotice(t`データソースの設定を更新しました。`);
+                },
+              },
+            );
+          }}
+        />
+      )}
+
       {notice && (
         <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
           {notice}
@@ -243,7 +270,13 @@ export function DataSourceManagementPage() {
                   busy={sync.isPending || disable.isPending}
                   onEditAttributes={() => {
                     beginOperation();
+                    setSettingsId(null);
                     setEditingId(source.id);
+                  }}
+                  onEditSettings={() => {
+                    beginOperation();
+                    setEditingId(null);
+                    setSettingsId(source.id);
                   }}
                   onSync={() => {
                     beginOperation();
@@ -304,6 +337,7 @@ function SourceRow({
   canWrite,
   busy,
   onEditAttributes,
+  onEditSettings,
   onSync,
   onDisable,
 }: {
@@ -311,6 +345,7 @@ function SourceRow({
   canWrite: boolean;
   busy: boolean;
   onEditAttributes: () => void;
+  onEditSettings: () => void;
   onSync: () => void;
   onDisable: () => void;
 }) {
@@ -368,6 +403,13 @@ function SourceRow({
               （計画 §SC-06「登録・更新・無効化は管理者限定」）。**無効なソースでも開く** ——
               無効化は論理削除であり、再有効化に備えた属性の整備は無効中にも起こる
               （バックエンドの更新系が `disabled` を弾かないのと同じ理由）。 */}
+          {/* FR-01, UC-04, SC-06（計画 §SC-06 アクション「設定変更」/ #2122）: 名前・接続先・config の非秘密キー。
+              更新にあたるので管理者限定（既定属性と同じ）。無効なソースでも開く（同じ理由）。 */}
+          {canWrite && (
+            <Button type="button" size="sm" disabled={busy} onClick={onEditSettings}>
+              <Trans>設定</Trans>
+            </Button>
+          )}
           {canWrite && (
             <Button type="button" size="sm" disabled={busy} onClick={onEditAttributes}>
               <Trans>既定属性</Trans>

@@ -44,6 +44,7 @@ msgstr "(stopped)"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "（必須）"
 msgstr "(required)"
@@ -213,6 +214,10 @@ msgstr "+ Add mapping"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "＋ 新規登録"
 msgstr "+ New document"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "＋ 設定を追加"
+msgstr "+ Add setting"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "⚠ ドリフト（明細へ）"
@@ -636,6 +641,7 @@ msgstr "Keyword search only →"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
@@ -714,6 +720,10 @@ msgstr "Connectors"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コネクタの一覧"
 msgstr "List of connectors"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "コネクタの設定（config）"
+msgstr "Connector settings (config)"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コネクタは Git（GitOps）の宣言で定義します。"
@@ -1160,6 +1170,14 @@ msgstr "Credentials that data source connectors use to connect (API tokens for W
 msgid "データソースの管理画面でデータソースを登録すると、ここに項目が増えます。"
 msgstr "Register a data source on the data source management screen to add an item here."
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "データソースの設定を更新しました。"
+msgstr "Updated the data source settings."
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "データソースの設定変更"
+msgstr "Edit data source settings"
+
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "データソースの資格情報"
 msgstr "Data source credentials"
@@ -1321,6 +1339,10 @@ msgstr "Path"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "パスワード"
 msgstr "Password"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "パスワード・トークンなどの認証情報はここに書かず、「秘密情報・接続設定の管理」画面で設定します。伏せて表示されている項目（***）は認証情報であり、ここでは変更できません。"
+msgstr "Do not write credentials such as passwords or tokens here; set them on the Secrets and connection settings screen. Masked items (***) are credentials and cannot be changed here."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "パスワード（確認のためもう一度）"
@@ -2355,6 +2377,7 @@ msgid "利用者一覧を取得できませんでした。"
 msgstr "Could not load the user list."
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/OwnerMappingRows.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
@@ -2485,6 +2508,10 @@ msgstr "Cancel"
 msgid "受信"
 msgstr "Received"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "同じキーが 2 つあります: {duplicate}"
+msgstr "The same key appears twice: {duplicate}"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "同じパスの資料が既にあります。Obsidian 側でファイル名を変えてください。"
 msgstr "A note with the same path already exists. Rename the file in Obsidian."
@@ -2607,6 +2634,7 @@ msgid "同期異常（{failures}/{limit}）"
 msgstr "Sync failing ({failures}/{limit})"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 msgid "名前"
 msgstr "Name"
 
@@ -2716,6 +2744,10 @@ msgstr "Open the converted document"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "変更メモ"
 msgstr "Change note"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "変更を保存"
+msgstr "Save changes"
 
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "外部 LLM の API キー"
@@ -3119,8 +3151,13 @@ msgid "接続先"
 msgstr "Target"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 msgid "接続先 URI"
 msgstr "Connection URI"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "接続先だけを書きます。パスワード・トークンを URI に含めないでください。"
+msgstr "Enter only the destination. Do not include passwords or tokens in the URI."
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "接続先は実行時 config（opsLinks）で注入します。配備済みのツールの URL を設定してください。"
@@ -4015,6 +4052,14 @@ msgstr "Disable"
 msgid "版"
 msgstr "Version"
 
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "版履歴はまだありません。"
+msgstr "There is no version history yet."
+
+#: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
+msgid "版履歴を取得できませんでした。"
+msgstr "Could not load the version history."
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
@@ -4287,6 +4332,7 @@ msgstr "Could not load the secret items."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
@@ -4297,6 +4343,10 @@ msgstr "Type"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "種別:"
 msgstr "Kind:"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "種別は変更できません。別の種別にするときは、新しいデータソースとして登録してください。"
+msgstr "The type cannot be changed. To use a different type, register a new data source."
 
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "種類"
@@ -4655,9 +4705,25 @@ msgstr "Notation"
 msgid "記録なし"
 msgstr "No record"
 
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+msgid "設定"
+msgstr "Settings"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "設定した条件"
 msgstr "Conditions you added"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "設定のキー {position}"
+msgstr "Setting key {position}"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "設定の値 {position}"
+msgstr "Setting value {position}"
+
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
+msgid "設定を変更: {sourceName}"
+msgstr "Edit settings: {sourceName}"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
@@ -4730,6 +4796,7 @@ msgid "認証情報の状態"
 msgstr "Credential status"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 msgid "認証情報を設定"
 msgstr "Set credentials"
 

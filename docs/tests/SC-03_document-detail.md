@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-24
+updated: 2026-10-26
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-19, SC-21, UC-01, UC-02, UC-07, UC-10, UC-11]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102, ADR-0106]
 iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451, IADR-0461, IADR-0544, IADR-0610, IADR-0611, IADR-0612]
-specs: [20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens]
-issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #1905, #2046, planning#841]
+specs: [20261026_2121_sc03-version-error-and-original-link, 20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens]
+issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #1905, #2046, #2121, planning#841]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -78,14 +78,15 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #19
 | 2 | 属性ラベル | `confidentiality` → 「機密区分」、`department` → 「部門」、未知キーはそのまま。**値は変換しない** | 計画側の文書詳細画面 §主要素 |
 | 3 | Wiki 導線 | 権限内の Wiki 台帳にこの文書が載っているときだけ `/wiki?doc=<id>` へのリンク。台帳の取得が終わってから否定する（読み込み中に出さないだけの実装を緑にしない） | Wiki で閲覧する 基本 1 |
 | 3-b | Wiki 導線（台帳が読めない） | 導線を出さず、本体表示は続く | 同上 |
-| 4 | 原本リンク | `http(s)` はリンク、`storage://` 等は等幅表記（リンクにしない） | 計画側の文書詳細画面 §主要素 |
+| 4 | 原本リンク | 原本の所在（`originalUri`）を指す。**URL として解析してスキームが `http:` / `https:` のときだけ**リンク（新規タブ・`rel="noopener noreferrer"`。大文字の `HTTPS:` も http(s)）、それ以外（`javascript:` / `data:` を大小文字の揺れを含めて・UNC・解析できない値）は等幅表記（リンクにしない）。**所在が無ければ正規化済み Markdown（`markdownUri`・本文の `sourceUri`）を出さない**（［2026-10-26］従前はそちらへ落ちていた） | 計画側の文書詳細画面 §主要素・アクション |
 | 5 | 404 | 中立「文書が見つかりませんでした。」 | **AI 分析の例外** / 権限外は 404 とする存在秘匿 |
 | 6 | 5xx | `role="alert"`（404 とは別表示。サーバの状態であって文書の有無ではない） | — |
 | 7 | 本文取得失敗 | 詳細は表示、本文領域のみ「本文は利用できません。」へ縮退 | — |
 | 7-b | **本文なし**（原本が本文を持たない） | 本文の位置へ「本文なし（原本を参照）」（検索結果と同じ文言）。本文の描画へは落ちない。**取得失敗とは別の状態である** | テキスト層を持たない PDF を本文なしで確定させる裁定（決定 3・決定 4） |
 | 7-c | **陽性対照**: 本文ありの文書（項目を持たない旧応答を含む） | 本文なしの表示は出ず、従来どおり本文が描かれる（「常に出る」実装を落とす） | 同上 |
 | 8 | 版履歴の取得抑止 | 詳細が 404 のとき、**版履歴を要求しない** | 画面のサーバー状態の持ち方（実装判断） |
-| 9 | 版履歴の失敗 | 版履歴パネルを出さず、本体表示は継続 | — |
+| 9 | 版履歴の失敗 | 版履歴パネルの中で `role="alert"` のエラーと再試行（押すと同じ取得をやり直す）。本体表示は継続。［2026-10-26］従前はパネルごと消えて 0 件と区別できなかった | 共通シェルの状態表示の規約 |
+| 9-b | 版履歴 0 件 | 「版履歴はまだありません。」（エラーを出さない）。本文なし（204）も 0 件として読む。E2E（smoke）でも確かめる | 共通シェルの状態表示の規約 |
 | 10 | **グラフ導線** | `/graph?root=<id>&hops=2&by=distance` へのリンクが在る。**`href` の起点まで見る**（`to` だけでは「押しても何も見えない導線」が緑になる） | 計画側の文書詳細画面 §知識グラフ |
 | 10-b | **グラフ導線（秘匿時）** | 404 のときは導線を描かない（陰性対照） | グラフ探索のアクセス制御（存在秘匿） |
 | 11 | ロケール `en` | 見出しが英語で描画される | —|
