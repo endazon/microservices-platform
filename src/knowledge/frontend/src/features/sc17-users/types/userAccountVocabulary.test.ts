@@ -180,6 +180,20 @@ describe('userAccountVocabulary (SC-17)', () => {
     ).toEqual(['roles-required']);
   });
 
+  // #2126（#2340 のレビュー）: 集合値の属性（タグ）に辞書に無い要素があれば保存させない（後段も 400 で拒む）。
+  // 要素ごとに照合する（後段と同じ）。単一値の属性の判定は変えない。
+  it('reports a set-valued attribute element that is not in the dictionary', () => {
+    const issues = (tags: string) =>
+      validateAssignment({
+        roles: ['platform-admin'],
+        attributes: { clearance: 'internal', tags },
+        definitions,
+      });
+    expect(issues('経理,旧タグ')).toEqual(['attribute-value-not-in-dictionary']);
+    // 陽性対照: 辞書に在る要素だけなら妥当。
+    expect(issues('経理')).toEqual([]);
+  });
+
   // #1610: 必須は機密区分上限だけ。部門もタグも無くて妥当（部門は「部門なし」を選べる）。
   it('requires the clearance but neither the department nor the optional tag', () => {
     expect(

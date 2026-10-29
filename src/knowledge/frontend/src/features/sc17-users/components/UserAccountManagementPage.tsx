@@ -8,6 +8,13 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { PlatformUserDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import {
+  isSetValuedUserAttribute,
+  joinUserAttribute,
+  sameUserAttributeValue,
+  splitUserAttribute,
+  unknownUserAttributeValues,
+} from '../../../lib/abac';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import {
@@ -61,6 +68,7 @@ function useIssueLabels(): Record<AssignmentIssue, string> {
   return {
     'roles-required': t`ロールは 1 件以上を割り当ててください（権限を外すときは無効化を使います）。`,
     'required-attribute-missing': t`機密区分上限は必須です。`,
+    'attribute-value-not-in-dictionary': t`辞書に無いタグの値があります。チェックを外してから保存してください（辞書に無い値は保存できません）。`,
   };
 }
 
@@ -445,25 +453,79 @@ export function UserAccountManagementPage() {
                 </Select>
               </div>
             ))}
-            {/* 任意属性（計画の「タグ」）。**必須にしない。** */}
-            {optional.map((definition) => (
-              <div key={definition.key}>
-                <Label htmlFor={`user-attr-${definition.key}`}>{definition.label}</Label>
-                <Select
-                  id={`user-attr-${definition.key}`}
-                  selectSize="sm"
-                  value={editor.draftAttributes[definition.key] ?? ''}
-                  onChange={(e) => editor.setAttribute(definition.key, e.target.value)}
-                >
-                  <option value="">{t`指定しない`}</option>
-                  {definition.allowedValues.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ))}
+            {/* 任意属性（計画の「タグ」）。**必須にしない。**
+                #2126, 05_screens §SC-17 入力表「ABAC 属性（タグ）| 任意 | 複数選択」: 集合値のキー（タグ）は
+                許可値ごとのチェックボックスで描き、契約へはカンマで連結して送る（後段の UserAttributeEncoding と同じ規則）。
+                並びは許可値の順（選んだ順ではない）。全部外せばキーごと送らない。 */}
+            {optional
+              .filter((d) => isSetValuedUserAttribute(d.key))
+              .map((definition) => {
+                const chosen = splitUserAttribute(editor.draftAttributes[definition.key]);
+                // #2126（#2340 のレビュー）: 辞書に無い既存の値は**黙って落とさない**。後段は辞書外の値を 400 で拒むので、
+                // 「辞書に無い値」として見える形で出し（チェック済み）、利用者が外すまで保存させない（validateAssignment）。
+                const unknown = unknownUserAttributeValues(
+                  editor.draftAttributes[definition.key],
+                  definition.allowedValues,
+                );
+                // 🔴 照合は大文字小文字を区別しない（後段と同じ。`sameUserAttributeValue`）。区別すると、保存値 `sales`・
+                // 許可値 `Sales` が辞書外にもチェック済みにも入らず、別のタグに触ったときに黙って落ちる（#2340 の再レビュー）。
+                const has = (list: readonly string[], value: string) =>
+                  list.some((v) => sameUserAttributeValue(v, value));
+                // 並びは許可値の順（辞書の綴りで書き戻す）、辞書に無い値はその後ろ（入力の並び）。
+                const toggle = (value: string) => {
+                  const next = has(chosen, value)
+                    ? chosen.filter((v) => !sameUserAttributeValue(v, value))
+                    : [...chosen, value];
+                  editor.setAttribute(
+                    definition.key,
+                    joinUserAttribute([
+                      ...definition.allowedValues.filter((v) => has(next, v)),
+                      ...unknown.filter((v) => has(next, v)),
+                    ]),
+                  );
+                };
+                return (
+                  <fieldset key={definition.key}>
+                    <legend className="text-sm font-medium text-fg">{definition.label}</legend>
+                    {definition.allowedValues.map((value) => (
+                      <label key={value} className="mr-4 inline-flex items-center gap-1 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={has(chosen, value)}
+                          onChange={() => toggle(value)}
+                        />
+                        {value}
+                      </label>
+                    ))}
+                    {unknown.map((value) => (
+                      <label key={value} className="mr-4 inline-flex items-center gap-1 text-sm">
+                        <input type="checkbox" checked onChange={() => toggle(value)} />
+                        {t`${value}（辞書に無い値）`}
+                      </label>
+                    ))}
+                  </fieldset>
+                );
+              })}
+            {optional
+              .filter((d) => !isSetValuedUserAttribute(d.key))
+              .map((definition) => (
+                <div key={definition.key}>
+                  <Label htmlFor={`user-attr-${definition.key}`}>{definition.label}</Label>
+                  <Select
+                    id={`user-attr-${definition.key}`}
+                    selectSize="sm"
+                    value={editor.draftAttributes[definition.key] ?? ''}
+                    onChange={(e) => editor.setAttribute(definition.key, e.target.value)}
+                  >
+                    <option value="">{t`指定しない`}</option>
+                    {definition.allowedValues.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
           </div>
 
           {editor.issues.length > 0 && (

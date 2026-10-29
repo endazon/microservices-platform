@@ -9,6 +9,7 @@ import {
   validateRegistration,
 } from '../types/mcpClientVocabulary';
 import type { AttributeEntry, ClientKind, RegistrationIssue } from '../types/mcpClientVocabulary';
+import { addUserAttributeValue } from '../../../lib/abac';
 
 // SC-12, UC-09, FR-16: クライアント登録フォームの**クライアント状態**
 // （計画 13_frontend-stack §ディレクトリ構成 の `hooks/`。IADR-0309 決定 1）。
@@ -93,9 +94,17 @@ export function useMcpClientRegistrationForm(
 
   const addEntry = () => {
     if (!attributeKey || !attributeValue) return;
+    // #2126: 集合値のキー（タグ）は既存の値へ足す（05_screens §SC-12「タグの集合」）。単一値のキーは後勝ち。
     setEntries((prev) => [
       ...prev.filter((e) => e.key !== attributeKey),
-      { key: attributeKey, value: attributeValue },
+      {
+        key: attributeKey,
+        value: addUserAttributeValue(
+          attributeKey,
+          prev.find((e) => e.key === attributeKey)?.value,
+          attributeValue,
+        ),
+      },
     ]);
     setAttributeValue('');
   };

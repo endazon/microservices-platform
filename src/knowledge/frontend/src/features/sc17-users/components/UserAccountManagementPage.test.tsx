@@ -106,14 +106,16 @@ function departmentResponse(path: string) {
 }
 
 /** 経路ごとに応答を振り分ける（1 画面が複数本引くため、URL で分けないと取り違える）。 */
-function mockApi(overrides: { users?: unknown; roles?: readonly string[] } = {}) {
+function mockApi(
+  overrides: { users?: unknown; roles?: readonly string[]; attributes?: unknown } = {},
+) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (String(path).includes('/admin/users/assignable-roles')) {
       return Promise.resolve(jsonResponse(overrides.roles ?? ROLES));
     }
     if (String(path).endsWith('/department')) return Promise.resolve(departmentResponse(path));
     if (String(path).includes('/authz/attributes'))
-      return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(overrides.attributes ?? ATTRIBUTES));
     if (String(path).includes('/admin/users')) {
       return Promise.resolve(jsonResponse(overrides.users ?? USERS));
     }
@@ -470,6 +472,101 @@ describe('UserAccountManagementPage (SC-17)', () => {
     expect(screen.queryByLabelText('部門（部門グループ）')).not.toBeInTheDocument();
   });
 
+  // #2126（#2340 のレビュー）: 辞書に無い既存のタグを黙って落とさない。後段は辞書外の値を 400 で拒む
+  // （`UserAssignmentValidation` は集合値の要素ごとに辞書と照合する）ので、見える形で示し、利用者が外すまで保存させない。
+  it('shows a tag value that is not in the dictionary and refuses to save until it is removed', async () => {
+    mockApi({
+      users: [
+        { ...USERS[0], attributes: { ...USERS[0].attributes, tags: '経営,旧タグ' } },
+        ...USERS.slice(1),
+      ],
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '田中 太郎');
+
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    expect(within(tags).getByRole('checkbox', { name: '経営' })).toBeChecked();
+    const unknown = within(tags).getByRole('checkbox', { name: '旧タグ（辞書に無い値）' });
+    expect(unknown).toBeChecked();
+
+    // 別のタグを触っても、辞書に無い値は下書きに残る（黙って落とさない）。保存は止まる。
+    await user.click(within(tags).getByRole('checkbox', { name: '経理' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByTestId('assignment-issues')).toHaveTextContent('辞書に無いタグの値');
+    const attributeWrites = () =>
+      mocks.apiRequest.mock.calls.filter(([path]) =>
+        String(path).endsWith('/admin/users/u-tanaka/attributes'),
+      );
+    expect(attributeWrites()).toHaveLength(0);
+
+    // 利用者が明示的に外せば保存できる。
+    await user.click(unknown);
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(attributeWrites()).toHaveLength(1));
+    expect(JSON.parse(String((attributeWrites()[0][1] as RequestInit).body)).attributes.tags).toBe(
+      '経営,経理',
+    );
+  });
+
+  // #2126（#2340 の再レビュー）: 照合は大文字小文字を区別しない（後段の UserAssignmentValidation・UserAttributeEncoding と同じ）。
+  // 保存値 `sales`・許可値 `Sales` は辞書に在る値として印が付き、別のタグに触っても落ちない（辞書の綴りで書き戻す）。
+  it('matches a stored tag to the dictionary without regard to case and keeps it when another tag changes', async () => {
+    mockApi({
+      users: [
+        { ...USERS[0], attributes: { ...USERS[0].attributes, tags: 'sales' } },
+        ...USERS.slice(1),
+      ],
+      attributes: ATTRIBUTES.map((a) =>
+        a.key === 'tags' ? { ...a, allowedValues: ['Sales', '経理'] } : a,
+      ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '田中 太郎');
+
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    expect(within(tags).getByRole('checkbox', { name: 'Sales' })).toBeChecked();
+    expect(within(tags).queryByRole('checkbox', { name: /辞書に無い値/ })).not.toBeInTheDocument();
+
+    await user.click(within(tags).getByRole('checkbox', { name: '経理' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/admin/users/u-tanaka/attributes') &&
+            JSON.parse(String((init as RequestInit)?.body)).attributes.tags === 'Sales,経理',
+        ),
+      ).toBe(true),
+    );
+  });
+
+  // #2126, 05_screens §SC-17 入力表「ABAC 属性（タグ）| 任意 | 複数選択」: タグは複数選べ、契約へはカンマで連結して送る。
+  it('lets the tag attribute take several values and sends them joined by commas', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '田中 太郎');
+
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    await user.click(within(tags).getByRole('checkbox', { name: '経理' }));
+    await user.click(within(tags).getByRole('checkbox', { name: '経営' }));
+    await user.selectOptions(screen.getByLabelText('機密区分上限 *'), 'internal');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/admin/users/u-tanaka/attributes') &&
+            // 並びは許可値の順（経営・経理）。選んだ順ではない。
+            JSON.parse(String((init as RequestInit)?.body)).attributes.tags === '経営,経理',
+        ),
+      ).toBe(true),
+    );
+  });
+
   // 🔴 05_screens §SC-17: **タグは任意**（過剰拒否の否定側）。タグ未設定でも保存できる。
   it('does not require the optional tag attribute', async () => {
     mockApi();
@@ -477,8 +574,9 @@ describe('UserAccountManagementPage (SC-17)', () => {
     await renderPage();
     await openEditor(user, '田中 太郎');
 
-    // 陽性対照: 任意属性の入力欄は在り、既定は未選択である。
-    expect(screen.getByLabelText('タグ')).toHaveValue('');
+    // 陽性対照: 任意属性の入力欄は在り、既定は未選択である（#2126: タグは複数選択のチェックボックス）。
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    for (const box of within(tags).getAllByRole('checkbox')) expect(box).not.toBeChecked();
 
     await user.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>

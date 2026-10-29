@@ -3,6 +3,7 @@ import type {
   PlatformUserDto,
   UserDepartmentDto,
 } from '@foundation/api/generated/bff.schemas';
+import { isSetValuedUserAttribute, unknownUserAttributeValues } from '../../../lib/abac';
 
 // SC-17, UC-05, FR-05, FR-09: 本画面の語彙と入力規則（純関数）。
 //
@@ -147,7 +148,11 @@ export function departmentsInUse(users: readonly PlatformUserDto[]): string[] {
 }
 
 /** 入力規則を満たさない理由の識別子（**文言は持たない**。呼び出し側が写す）。 */
-export type AssignmentIssue = 'roles-required' | 'required-attribute-missing';
+export type AssignmentIssue =
+  | 'roles-required'
+  | 'required-attribute-missing'
+  // #2126: 集合値の属性（タグ）に辞書に無い要素がある。後段は 400 で拒むので、黙って落とさず利用者に外させる。
+  | 'attribute-value-not-in-dictionary';
 
 /**
  * 保存前の検証（満たさない理由の識別子を返す。空なら妥当）。
@@ -170,6 +175,14 @@ export function validateAssignment(input: {
     (d) => !input.attributes[d.key] || input.attributes[d.key].trim().length === 0,
   );
   if (missing) issues.push('required-attribute-missing');
+
+  // #2126: 集合値の属性の要素は辞書の許可値と大文字小文字を無視して照合する（後段の UserAssignmentValidation と同じ）。
+  const unknown = input.definitions.some(
+    (d) =>
+      isSetValuedUserAttribute(d.key) &&
+      unknownUserAttributeValues(input.attributes[d.key], d.allowedValues).length > 0,
+  );
+  if (unknown) issues.push('attribute-value-not-in-dictionary');
 
   return issues;
 }
