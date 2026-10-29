@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-12 原本の正規化変換
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-10-10
+updated: 2026-10-29
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-12, UC-06, SC-07]
 adrs: [ADR-0010, ADR-0012, ADR-0014, ADR-0027, ADR-0070]
 iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162, IADR-0296, IADR-0298, IADR-0320, IADR-0351, IADR-0356, IADR-0388, IADR-0533]
-specs: [20260703_FR-12_document-normalization-pipeline, 20260927_issue-1621_diagram-coder-timeout-retain, 20260927_issue-1641_pandoc-timeout-and-kill, 20260927_issue-1654_external-process-runner-followups, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254, #1621, #1641, #1654, #1255, #1517]
+specs: [20261029_2128_integration-pandoc-poppler, 20260703_FR-12_document-normalization-pipeline, 20260927_issue-1621_diagram-coder-timeout-retain, 20260927_issue-1641_pandoc-timeout-and-kill, 20260927_issue-1654_external-process-runner-followups, 20260829_issue-447_fr12-golden-files, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1120_extract-media-path-rewrite, 20260903_issue-1192_pdf-text-layer-extraction, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254, #1621, #1641, #1654, #1255, #1517, #2128]
 -->
 
 # テスト仕様書: 原本の正規化変換
@@ -91,6 +91,9 @@ issues: [#118, #379, #447, #506, #520, #525, #658, #1097, #1120, #1192, #1254, #
   走らなかったケースが Passed として報告され、実行実績が無いのに緑に見えるためである。
   T-09 / T-19 は pandoc 未導入環境で skip され、T-10 / T-10b は pandoc 導入環境で skip される
   （どちらの環境でも「両方が走った」ことにはならない。**skip 件数を実行結果に必ず出すこと**）。
+  ［2026-10-29］**両方の向きがどこかで走るように配線した。** 回収実行（develop への push・日次の統合ワークフロー）は
+  pandoc と poppler-utils（pdftotext）を入れてから全試験を走らせるので、ツールを要する向き（pandoc 4 件・pdftotext 5 件）は
+  そこで走る。ツールが無いときの向き（失敗・縮退）は PR の CI（ツール無し）で走る。導入の配線は `scripts.repo.test.js` が固定する。
 - T-22 は Dockerfile を読む静的なテストであり、**焼いたイメージに pandoc が実在するか**は見ない。
   実在するかは配備側の readiness（`pandoc` チェック）が見る。この 2 段を混同しない。
 - **T-13 は C# のテストではなく検査器で持つ**（`scripts.repo.test.js` が CI から起動する）。

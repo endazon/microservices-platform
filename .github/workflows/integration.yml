@@ -74,6 +74,17 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
+      # NFR / #2128 段 1: ConversionService の外部ツール依存の試験（実 pandoc 4・実 pdftotext 5）を実走させる。
+      # ツールが無いと Assert.SkipUnless で Skipped になり、どのワークフローでも走っていなかった（監査 run 39538321988 で Skipped: 9）。
+      # 版は本番イメージ（ConversionService/Dockerfile）と同じ noble の apt に揃う。
+      # 🔴 失敗を握り潰さない（|| true を付けない）。入らなければ 9 件が黙って Skipped に戻り、緑のまま回収が空になる。
+      # 逆向きの 4 件（Assert.SkipWhen。ツールが無いときの失敗・縮退）はここで Skipped になるが、ci.yml（PR。ツール無し）で走る。
+      - name: Install conversion tools (pandoc / poppler-utils)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends pandoc poppler-utils
+          pandoc --version
+          pdftotext -v
       # 自動起票が本当に動くかを実測するための入口（IADR-0232 残余リスク）。
       # 自動起票は失敗時にしか走らないため、平時は常に skip で緑になる ——
       # 意図的に失敗させない限り「壊れていること」に永久に気付けない。
