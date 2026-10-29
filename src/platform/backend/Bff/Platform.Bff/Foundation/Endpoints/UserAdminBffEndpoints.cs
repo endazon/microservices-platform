@@ -1,4 +1,5 @@
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 
@@ -16,10 +17,24 @@ namespace Platform.Bff.Foundation.Endpoints;
 //
 // 🔴 **新規作成の口を持たない。** 計画 05_screens §SC-17 アクション
 // 「本画面から新規作成はしない」。後段にも無く、ここにも作らない（二重に閉じる）。
+//
+// FR-09, SC-17, ADR-0116 決定 1, NFR-28, [[IADR-0647]] (#2298): **書き込み 5 口は監査ログに 1 操作 1 行を残す**（計画 §SC-17
+// 「操作は監査ログに記録」）。SC-09（#2124）と同じ形 —— outcome は後段の状態コードから決め、detail は対象の利用者 ID と
+// 状態コードだけで、**入力値（属性値・部門・ロール名）は載せない**。後段は記録しない（二重にならない）。読み取りは残さない。
 public static class UserAdminBffEndpoints
 {
     /// <summary>後段（AuthorizationService）の named HttpClient 名。Program.cs の登録と一致させる。</summary>
     public const string ClientName = "AuthorizationService";
+
+    // FR-09, SC-17 (#2298): 監査の action（書き込み 5 口）。
+    public const string AttributesReplaceAction = "user.attributes.replace";
+    public const string DepartmentReplaceAction = "user.department.replace";
+    public const string RolesReplaceAction = "user.roles.replace";
+    public const string DisableAction = "user.disable";
+    public const string EnableAction = "user.enable";
+
+    /// <summary>監査する書き込みの宛名（action と対象の利用者 ID）。</summary>
+    internal sealed record AuditOf(IAuditLogger Audit, string Action, string Target);
 
     public static IEndpointRouteBuilder MapUserAdminBffEndpoints(this IEndpointRouteBuilder app)
     {
@@ -40,8 +55,9 @@ public static class UserAdminBffEndpoints
 
         // SC-17: ABAC 属性の割当（差し替え）。辞書外の値・必須欠落は後段が 400 で拒む。
         // ［2026-09-27 / #1610］部門（`department`）は含められない（後段が 400）。部門は下の `/department` で変える。
-        g.MapPut("/{userId}/attributes", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/attributes", ct))
+        g.MapPut("/{userId}/attributes", (string userId, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/attributes", ct,
+                new(a, AttributesReplaceAction, userId)))
             .WithName("BffUserAdminReplaceUserAttributes");
 
         // FR-05, FR-09, SC-17, 計画 ADR-0116 決定 1, IADR-0473 (#1610): 部門 ＝ 部門グループの所属。
@@ -51,22 +67,26 @@ public static class UserAdminBffEndpoints
             Proxy(f, h, HttpMethod.Get, $"/authz/users/{Uri.EscapeDataString(userId)}/department", ct))
             .WithName("BffUserAdminGetUserDepartment").Produces<UserDepartmentDto>();
 
-        g.MapPut("/{userId}/department", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/department", ct))
+        g.MapPut("/{userId}/department", (string userId, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/department", ct,
+                new(a, DepartmentReplaceAction, userId)))
             .WithName("BffUserAdminReplaceUserDepartment").Produces<UserDepartmentDto>();
 
         // SC-17: ロール割当（差し替え。併任可）。空集合・定義外ロールは後段が 400 で拒む。
-        g.MapPut("/{userId}/roles", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/roles", ct))
+        g.MapPut("/{userId}/roles", (string userId, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Put, $"/authz/users/{Uri.EscapeDataString(userId)}/roles", ct,
+                new(a, RolesReplaceAction, userId)))
             .WithName("BffUserAdminReplaceUserRoles");
 
         // SC-17 アクション「無効化→全セッション即時失効」。**2 つで 1 つの操作**なので口も 1 つにする。
-        g.MapPost("/{userId}/disable", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Post, $"/authz/users/{Uri.EscapeDataString(userId)}/disable", ct))
+        g.MapPost("/{userId}/disable", (string userId, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Post, $"/authz/users/{Uri.EscapeDataString(userId)}/disable", ct,
+                new(a, DisableAction, userId)))
             .WithName("BffUserAdminDisableUser");
 
-        g.MapPost("/{userId}/enable", (string userId, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Post, $"/authz/users/{Uri.EscapeDataString(userId)}/enable", ct))
+        g.MapPost("/{userId}/enable", (string userId, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Post, $"/authz/users/{Uri.EscapeDataString(userId)}/enable", ct,
+                new(a, EnableAction, userId)))
             .WithName("BffUserAdminEnableUser");
 
         return app;
@@ -81,7 +101,8 @@ public static class UserAdminBffEndpoints
     // （転送・502 縮退・本文の透過を写すと、片方だけが古くなる）。🔴 **認可は呼び出し側の群が
     // 決める** —— このヘルパは認可を一切見ない（あちらは認証のみ、こちらは AdminOnly）。
     internal static async Task<IResult> Proxy(
-        IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct)
+        IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct,
+        AuditOf? audit = null)
     {
         var client = httpFactory.CreateClient(ClientName);
         using var req = new HttpRequestMessage(method, path);
@@ -103,13 +124,18 @@ public static class UserAdminBffEndpoints
             using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             var respContentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
-            return Results.Content(body, respContentType, statusCode: (int)resp.StatusCode);
+            var status = (int)resp.StatusCode;
+            if (audit is not null)
+                AdminWriteAudit.Record(audit.Audit, http.User, audit.Action, audit.Target, status);
+            return Results.Content(body, respContentType, statusCode: status);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
             BffDownstreamFailure.Report(http, "AuthorizationService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             // 後段不達は 502（管理 API のため存在秘匿は不要。呼び出し側で再試行できる）。
+            if (audit is not null)
+                AdminWriteAudit.Record(audit.Audit, http.User, audit.Action, audit.Target, StatusCodes.Status502BadGateway);
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
     }

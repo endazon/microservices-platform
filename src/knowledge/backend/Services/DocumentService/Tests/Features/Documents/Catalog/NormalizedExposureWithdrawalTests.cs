@@ -114,10 +114,9 @@ public sealed class NormalizedExposureWithdrawalTests
             Attributes: after,
             Tags: [],
             NormalizedAt: DateTimeOffset.UtcNow), ct);
-        (await harness.Consumed.Any<DocumentNormalized>(ct)).Should().BeTrue();
-        // 消費されたことと成功したことは別である（fault でも Consumed には載る）。
-        (await harness.Published.Any<Fault<DocumentNormalized>>(ct))
-            .Should().BeFalse("consumer が落ちていれば発行の有無の検査は無意味になる");
+        // NFR, #2306: 消費の完了（発行を含む）を待ち、失敗が無いことを見る（`Consumed.Any` はハーネスの非活動の窓で打ち切られる）。
+        // 前提の行は既に在るので、「再正規化が当たった」（題名が変わった）も確かめる。
+        await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, id, d => d.Title == newTitle);
 
         var scope = provider.CreateScope();
         return (publisher, scope.ServiceProvider.GetRequiredService<DocumentDbContext>(), provider);

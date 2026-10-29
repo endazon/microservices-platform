@@ -3,15 +3,15 @@ title: SC-17 ユーザーアカウント管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-29
-updated: 2026-10-23
+updated: 2026-10-30
 author: implementation-agent
 ---
 <!-- trace:
-ids: [FR-05, FR-09, SC-09, SC-17, UC-05, NFR-09]
+ids: [FR-05, FR-09, SC-09, SC-17, UC-05, NFR-09, NFR-28]
 adrs: [ADR-0004, ADR-0026, ADR-0031, ADR-0032, ADR-0115, ADR-0116]
-iadrs: [IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473, IADR-0420, IADR-0429, IADR-0477, IADR-0607]
-specs: [20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1630_caller-cancel-controls-tce, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership]
-issues: [#1609, #1610, #452, #438, #1101, #439, #1573, #1589, #1596, #1605, #1630, planning#672]
+iadrs: [IADR-0647, IADR-0009, IADR-0035, IADR-0040, IADR-0044, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0251, IADR-0273, IADR-0286, IADR-0301, IADR-0329, IADR-0330, IADR-0473, IADR-0420, IADR-0429, IADR-0477, IADR-0607]
+specs: [20261030_2298_sc17-admin-write-audit, 20260829_issue-452_sc17-user-account-management, 20260831_issue-1101_identity-admin-keycloak-provider, 20260905_issue-439_session-revocation-e2e, 20260926_issue-1573_department-attribute-follows-group, 20260926_issue-1589_realm-machine-judgement-premises, 20260926_issue-1596_realm-login-grants-and-username-source, 20260927_issue-1605_checker-residual-precision, 20260927_issue-1630_caller-cancel-controls-tce, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1610_sc17-department-edits-group-membership]
+issues: [#2298, #1609, #1610, #452, #438, #1101, #439, #1573, #1589, #1596, #1605, #1630, planning#672]
 -->
 
 # テスト仕様書: ユーザーアカウント管理
@@ -113,6 +113,7 @@ issues: [#1609, #1610, #452, #438, #1101, #439, #1573, #1589, #1596, #1605, #163
 | T-65 | ［2026-09-27 / #1610］部門グループに 2 つ属する利用者 | 部門を変える／画面で開く | 409（理由に「複数の部門グループ」）で**何も書かない**。画面は部門欄を出さず、所属と「複数の部門グループに所属（この画面では変更できません）」を示し、保存しても部門の要求は飛ばない。境界層は 409 を透過する | 複数の部門グループの利用者は本画面から変えない | 自動 |
 | T-66 | ［2026-09-27 / #1610］外す段が失敗する／補償の最後（目的のグループから外す）まで失敗する／**元のグループの外しは反映されたが補償の入れ直しが失敗する**／部門なしを選んで同じ失敗になる／入れる段が失敗する／realm を読めない | 部門を変える／画面で保存する | 外す段の失敗は元に戻し（目的のグループから外し元に残す）502「元に戻しました」。補償が失敗したら目的のグループを残し（**部門グループ 0 個にしない**）502「元に戻せませんでした」と読み直した実際の所属。**入れ直しが失敗したときは目的のグループから外さない**（外すと 0 個になる）。読み直した所属が 0 個（部門なしを選んだ人など）のときは「部門グループを 1 つも持たない状態にはしていません」と**言わない**。入れる段の失敗は何も外さない。realm を読めないときは 503 で何も変えない。画面は理由をそのまま出す。境界層は 502 / 503 を透過する。🔴 外す段を飛ばす変異・「入れ直しがすべて成功したときだけ目的のグループから外す」の条件を外す変異・0 個でも一文を出す変異でそれぞれ赤になる | 途中の失敗で黙って部門を失わせない・失敗の説明に嘘を書かない | 自動 |
 | T-67 | ［2026-09-27 / #1610］部門の読み取り（所属・属性・選択肢） | 画面で編集を開く | 部門欄の選択肢は realm の部門グループのコード ＋「部門なし」（属性辞書の部門の許可値からは作らない）。初期値はいまの所属。属性が追随済みなら「属性に反映済み」（成功）、未反映なら「属性は部門の同期で追随します（未反映）」（注意）を**色 ＋ アイコン ＋ 文言**で示す。読めないときは選択肢を推測で出さず理由を出す | 部門欄の選択肢は realm の部門グループ・色だけで意味を持たせない | 自動 |
+| T-68 | ［2026-10-30 / #2298］システム管理者。後段が成功する／検証エラー（400）を返す／届かない | 属性・部門・ロールを差し替える、無効化する、有効化する。一覧・選択肢・部門を読む | 書き込み 5 口のそれぞれで監査が 1 件だけ出る（action `user.attributes.replace`・`user.department.replace`・`user.roles.replace`・`user.disable`・`user.enable`、利用者名、`granted`、`target=<利用者 ID> status=<code>`）。入力値（属性値・部門・ロール名）は載せない。400 は `denied`、不達（502）は `failed` で 1 件残る。読み取りは残さない（`BffUserAdminAuditTests`） | 操作は監査ログに記録 | 自動 |
 
 ## ブラウザ E2E（［2026-08-31 追記 / #1099］置いた）
 

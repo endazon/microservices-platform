@@ -45,8 +45,9 @@ public static class FeedbackBffEndpoints
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
 
             var resp = await client.PostAsJsonAsync("/feedback", req, ct);
+            // FR-08 (#2280): 入力検証の 400（`{ "error": "<文>" }`）を本文ごと返す（`BffFailureRelay`）。
             if (!resp.IsSuccessStatusCode)
-                return Results.StatusCode((int)resp.StatusCode);
+                return await BffFailureRelay.RelayAsync(resp, ct);
 
             var dto = await resp.Content.ReadFromJsonAsync<FeedbackDto>(ct);
             // 新規(201)/更新(200) の区別を保つため、後段のステータスをそのまま透過する。

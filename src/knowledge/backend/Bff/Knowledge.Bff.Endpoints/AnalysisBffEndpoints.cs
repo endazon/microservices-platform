@@ -44,8 +44,9 @@ public static class AnalysisBffEndpoints
             PropagateSynthetic(client, isSynthetic);
 
             var resp = await client.PostAsJsonAsync("/analysis/ask", req, ct);
+            // FR-04, NFR-06 (#2280): 失敗は本文ごと返す（後段の理由を画面へ届ける。`BffFailureRelay`）。
             if (!resp.IsSuccessStatusCode)
-                return Results.StatusCode((int)resp.StatusCode);
+                return await BffFailureRelay.RelayAsync(resp, ct);
 
             var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(ct);
             if (answer is null) return Results.StatusCode(StatusCodes.Status502BadGateway);
@@ -78,8 +79,9 @@ public static class AnalysisBffEndpoints
             PropagateSynthetic(client, isSynthetic);
 
             var resp = await client.PostAsJsonAsync("/analysis/analyze", req, ct);
+            // FR-07, SC-08 (#2280): 入力検証の 400（`{ "error": "<文>" }`）を本文ごと返す。SC-08 は理由を `ErrorState` に出す。
             if (!resp.IsSuccessStatusCode)
-                return Results.StatusCode((int)resp.StatusCode);
+                return await BffFailureRelay.RelayAsync(resp, ct);
 
             var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(ct);
             if (answer is null) return Results.StatusCode(StatusCodes.Status502BadGateway);

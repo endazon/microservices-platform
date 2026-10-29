@@ -483,6 +483,7 @@
       "McpClientEndpointTests"
     ],
     "docs/tests/SC-17_user-account-management.md": [
+      "BffUserAdminAuditTests",
       "BffUserAdminEndpointTests",
       "DepartmentAttributeReconciliationTests",
       "DepartmentAttributeSyncTests",
