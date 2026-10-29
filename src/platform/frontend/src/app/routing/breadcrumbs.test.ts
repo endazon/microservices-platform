@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@lingui/core';
-import { breadcrumbTrail, breadcrumbs } from './breadcrumbs';
+import { BRAND_NAME, breadcrumbTrail, breadcrumbs, documentTitle } from './breadcrumbs';
 import type { FeatureBreadcrumb } from './featureRegistry';
 import { ENTRY_ROUTE_PATH } from './entryPath';
 // 実アプリのルータを import すると、合成点の登録（ナビ・パンくず）が副作用で走る。
@@ -308,5 +308,34 @@ describe('registered breadcrumbs (実アプリの宣言)', () => {
     // 葉を持つ画面は、葉が無いときにも自画面の名が消えないよう親の段を持つ（`ホーム / Wiki`）。
     const wiki = registered().find((d) => d.routePath === '/wiki');
     expect(wiki?.parents?.map((c) => c.to)).toEqual(['/wiki']);
+  });
+});
+
+// NFR (#2322): 画面ごとの document.title。パンくずの宣言から画面名を引き、ブランド表示名を後ろに付ける。
+describe('documentTitle', () => {
+  const title = (routePath: string | undefined, roles: readonly string[] = []) =>
+    documentTitle({ routePath, roles, declarations: DECLARATIONS });
+
+  it('宣言の画面名とブランド表示名を並べる', () => {
+    expect(title('/ask')).toBe('検索・チャット質問 - 汎用プラットフォーム');
+    expect(title('/admin/documents', [ADMIN])).toBe('文書管理 - 汎用プラットフォーム');
+    expect(BRAND_NAME).toBe('汎用プラットフォーム');
+  });
+
+  it('自画面の名を親の段に置く画面（SC-04 相当）は、その名を使う', () => {
+    expect(title('/wiki')).toBe('Wiki - 汎用プラットフォーム');
+  });
+
+  // 🔴 動的な葉（SC-03 の文書の題名）は title に使わない —— ブラウザの履歴とタブに文書の題名を残さない。
+  // 親の段（検索結果）を名乗ると別の画面に見えるので、ブランド名だけにする。
+  it('葉で名を持つ画面（SC-03 相当）はブランド名だけ', () => {
+    expect(title('/docs/$id')).toBe('汎用プラットフォーム');
+  });
+
+  // 🔴 存在秘匿（IADR-0009）: 権限外と未知のパスは同じ title になる。
+  it('権限外と未知のパスはブランド名だけで、区別が付かない', () => {
+    expect(title('/admin/documents', ['user'])).toBe('汎用プラットフォーム');
+    expect(title('/no-such-screen')).toBe('汎用プラットフォーム');
+    expect(title(undefined)).toBe('汎用プラットフォーム');
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
@@ -8,7 +8,11 @@ import { useAuth } from '@foundation/auth/useAuth';
 import { useRoles, hasAnyRole, PlatformRole } from '@foundation/auth/roles';
 import { navGroups } from '@foundation/routing/nav';
 import type { NavItemView } from '@foundation/routing/nav';
-import { breadcrumbTrail, breadcrumbNavLabel } from '@foundation/routing/breadcrumbs';
+import {
+  breadcrumbTrail,
+  breadcrumbNavLabel,
+  documentTitle,
+} from '@foundation/routing/breadcrumbs';
 import type { BreadcrumbSegmentView } from '@foundation/routing/breadcrumbs';
 import { BreadcrumbLeafContext } from '@foundation/routing/breadcrumbLeaf';
 import { appConfig } from '@foundation/config/runtimeConfig';
@@ -169,6 +173,11 @@ export function Layout() {
     select: (s): string | undefined => s.matches.at(-1)?.fullPath as string | undefined,
   });
   const trail = breadcrumbTrail({ routePath, leaf: breadcrumbLeaf, roles });
+  // NFR (#2322): 画面ごとの title。葉（文書の題名）は使わない・権限外はブランド名だけ（`documentTitle` の注記）。
+  const title = documentTitle({ routePath, roles });
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
   // 表示名は BFF セッションの身元（/bff/auth/me の name = preferred_username）から。
   const name = user?.name || i18n._(msg`ユーザー`);
   // アバターの頭文字。**サロゲートペアを割らない**ため `Array.from` で 1 文字目を取る。

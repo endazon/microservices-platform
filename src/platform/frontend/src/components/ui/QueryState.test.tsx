@@ -41,6 +41,31 @@ describe('QueryState（isError → isPending → isEmpty → 本体）', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 
+  // #2322: 再取得の最中は再試行を押せない（連打で要求が重ならない）。
+  it('失敗: 再取得の最中は再試行ボタンが押せず refetch を呼ばない', async () => {
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    render(
+      <QueryState query={fakeQuery<string[]>({ isError: true, isFetching: true, refetch })}>
+        {() => null}
+      </QueryState>,
+    );
+
+    const button = screen.getByRole('button', { name: '再試行' });
+    expect(button).toBeDisabled();
+    await userEvent.click(button);
+    expect(refetch).not.toHaveBeenCalled();
+  });
+
+  // 陽性対照: 再取得が終われば押せる。
+  it('失敗: 再取得していなければ再試行ボタンは押せる', () => {
+    render(
+      <QueryState query={fakeQuery<string[]>({ isError: true, isFetching: false })}>
+        {() => null}
+      </QueryState>,
+    );
+    expect(screen.getByRole('button', { name: '再試行' })).toBeEnabled();
+  });
+
   it('失敗: errorTitle は画面固有の説明に差し替えられる', () => {
     render(
       <QueryState

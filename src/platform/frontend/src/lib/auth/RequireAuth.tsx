@@ -2,6 +2,7 @@ import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
+import { LoadingState } from '@platform/ui';
 import { Navigate, useRouterState } from '@tanstack/react-router';
 import { useAuth } from './useAuth';
 
@@ -17,7 +18,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const from = useRef(pathname).current;
 
   if (isLoading) {
-    return <p role="status">{i18n._(msg`読み込み中…`)}</p>;
+    // #2322: 待ちはほかの画面と同じ共通の表示（輪と文言。`role="status"` は Spinner が持つ）。
+    return <LoadingState label={i18n._(msg`読み込み中…`)} />;
   }
   if (!isAuthenticated) {
     return <Navigate to="/login" replace search={{ from }} />;
