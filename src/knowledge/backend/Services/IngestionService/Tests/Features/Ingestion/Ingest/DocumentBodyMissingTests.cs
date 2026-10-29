@@ -229,7 +229,7 @@ public class DocumentBodyMissingTests
         RecordingCompletedPublisher completed, BodyMissingMetrics bodyMissing, ILogger<DocumentUpdatedConsumer> logger)
         => new(reader, new MarkdownChunkingService(), new FixedEmbedder(), store, completed,
             ConsumerTimeoutsForTests.Calls(), ConsumerTimeoutsForTests.Timeouts, TimeProvider.System,
-            TestMeterFactory.NewEmbeddingPendingMetrics(), bodyMissing, logger, new DocumentIndexLocks());
+            TestMeterFactory.NewEmbeddingPendingMetrics(), bodyMissing, logger, new DocumentIndexLocks(), QdrantBootstrapStateForTests.Ensured());
 
     private static IHost BuildHost(ScriptedStorage storage)
         => new HostBuilder()
@@ -248,6 +248,7 @@ public class DocumentBodyMissingTests
                 .AddSingleton<BodyMissingMetrics>()
                 // #2263 / IADR-0640: 受け口は文書ごとの排他を必須で受ける（本番の Program.cs と同じく単一のインスタンス）。
                 .AddSingleton<DocumentIndexLocks>()
+                .AddSingleton(QdrantBootstrapStateForTests.Ensured())
                 .AddSingleton(IngestionTimeouts.Default)
                 .AddSingleton(TimeProvider.System)
                 .AddSingleton<IDocumentContentReader>(Reader(storage))

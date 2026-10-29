@@ -86,8 +86,9 @@ public static class SearchBffEndpoints
                     // 後段 RetrievalService が分岐間 OR で評価する。
                     new SearchRequest(req.Query, topK, req.AttributeFilters, scope.ToContractScope(),
                         req.Mode, req.SortBy), ct);
+                // FR-03 (#2280): 失敗は本文ごと返す（`BffFailureRelay`。いまの後段は理由の本文を持たない）。
                 if (!searchResp.IsSuccessStatusCode)
-                    return Results.StatusCode((int)searchResp.StatusCode);
+                    return await BffFailureRelay.RelayAsync(searchResp, ct);
 
                 var result = await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct);
 

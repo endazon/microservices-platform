@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Http.Json;
 using AwesomeAssertions;
@@ -105,6 +106,43 @@ public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactor
             edges[0].AutoSource.Should().BeNull("承認済みの辺は自動抽出の内訳を持たない");
             return Task.CompletedTask;
         });
+    }
+
+    // FR-18, ADR-0033 決定 10, IADR-0300 決定 3 (#2144): 却下は**本文を送らない**（BFF と同じ形）でも、両端の本文指紋を
+    // 自分の複製（BodyHash）から控える。控えた指紋は再提示（解除）の判定に使われ、片端だけが変わったときの理由がその端になる
+    // （従前は null を控え、初回の解除が常に both に化けた）。
+    [Fact]
+    public async Task Rejecting_without_a_body_records_both_fingerprints_from_the_replica()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var source = Guid.NewGuid();
+        var target = Guid.NewGuid();
+        var type = EdgeType.Create($"t-{Guid.NewGuid():N}", EdgeTypeLayer.Core, false);
+        var suggestion = AiSuggestion.CreateLink(source, target, type.Id, "根拠", DateTimeOffset.UtcNow);
+        await _factory.SeedAsync(db =>
+        {
+            db.EdgeTypes.Add(type);
+            db.Documents.Add(GraphDocument.Create(source, "起点", new Dictionary<string, string> { ["confidentiality"] = "internal" },
+                "hash-source", DateTimeOffset.UtcNow));
+            db.Documents.Add(GraphDocument.Create(target, "先", new Dictionary<string, string> { ["confidentiality"] = "internal" },
+                "hash-target", DateTimeOffset.UtcNow));
+            db.AiSuggestions.Add(suggestion);
+            return Task.CompletedTask;
+        });
+
+        var resp = await _factory.CreateClient().PostAsync($"/graph/suggestions/{suggestion.Id}/reject",
+            content: null, TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        AiSuggestion? stored = null;
+        await ReadAsync(async db => stored = await db.AiSuggestions.AsNoTracking()
+            .SingleAsync(x => x.Id == suggestion.Id, TestContext.Current.CancellationToken));
+        stored!.SourceFingerprint.Should().Be("hash-source");
+        stored.TargetFingerprint.Should().Be("hash-target");
+
+        // 控えた指紋が再提示の判定に使われる: 先の本文だけが変わったら、理由は target（both ではない）。
+        stored.TryReinstate("hash-source", "hash-target-v2", DateTimeOffset.UtcNow).Should().BeTrue();
+        stored.ReinstatedReason.Should().Be("target");
     }
 
     // S-05 🔴 pending / rejected の提案は辺を 1 本も作らない。

@@ -293,8 +293,11 @@ function ConflictDetail({
                 aria-label={t`ローカル版の本文`}
                 className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-divider bg-bg p-2 text-xs"
               >
-                {/* NFR-19 (#2141): 取り出せなかったことを空の本文と区別して示す。 */}
-                {data.localContentUnavailable ? (
+                {/* NFR-19 (#2141): 取り出せなかったことを空の本文と区別して示す。
+                    FR-20 (#2307): 参照が記録されていない（再試行しても直らない）ことは、障害とは別の文言で示す。 */}
+                {data.localContentMissing ? (
+                  <span className="text-fg-muted">{t`端末の本文が記録されていません。`}</span>
+                ) : data.localContentUnavailable ? (
                   <span className="text-fg-muted">{t`本文を取り出せませんでした（ストレージの障害）。`}</span>
                 ) : (
                   data.localContent
@@ -319,10 +322,11 @@ function ConflictDetail({
           </div>
           {/* 🔴 3 択だけを置く。自動解決の択は無い（上の注記）。 */}
           <div className="flex flex-wrap gap-2">
-            {/* NFR-19 (#2141): ローカル版を取り出せないまま local / both は選ばせない（後段も 503 で確定しない）。 */}
+            {/* NFR-19 (#2141): ローカル版を取り出せないまま local / both は選ばせない（後段も 503 で確定しない）。
+                FR-20 (#2307): 参照が無いときも同じ（後段は 409 で確定しない）。 */}
             <Button
               variant="secondary"
-              disabled={disabled || data.localContentUnavailable}
+              disabled={disabled || data.localContentUnavailable || data.localContentMissing}
               onClick={() => onChoose('local')}
             >
               <Trans>ローカルを採用</Trans>
@@ -332,7 +336,7 @@ function ConflictDetail({
             </Button>
             <Button
               variant="secondary"
-              disabled={disabled || data.localContentUnavailable}
+              disabled={disabled || data.localContentUnavailable || data.localContentMissing}
               onClick={() => onChoose('both')}
             >
               <Trans>両方を残す（別名保存）</Trans>

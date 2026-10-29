@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -11,14 +12,20 @@ namespace IngestionService.Features.Ingestion.ReembedPending;
 // 🔴 **例外はここで必ず捕まえる**（`QdrantCjkNgramBackfillHostedService` と同じ理由。未捕捉はホストを止める）。
 // 1 周期の失敗（Qdrant・ゲートウェイの不達・時間切れ）は Warning で残して次の周期へ進む。
 // 🔴 **ブートストラップ（`QdrantBootstrapHostedService`）より後に登録する**（語彙索引のコレクションを作ってから数える）。
+// ［2026-10-30 / #2283］ブートストラップは成功するまで裏で再試行するようになったので、登録順だけでは足りない。
+// **保証の成功（`QdrantBootstrapState`）を待ってから最初の周期を走らせる**（[[IADR-0650]]）。
 public sealed class EmbeddingPendingReembedHostedService(
     EmbeddingPendingReembedder reembedder,
     EmbeddingPendingOptions options,
     TimeProvider clock,
-    ILogger<EmbeddingPendingReembedHostedService> logger) : BackgroundService
+    ILogger<EmbeddingPendingReembedHostedService> logger,
+    QdrantBootstrapState bootstrap) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
+            return;
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try

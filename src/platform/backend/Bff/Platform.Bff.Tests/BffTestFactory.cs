@@ -512,6 +512,15 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // null なら既定の成功。BFF が本文を透過するかを見るために、後段が返す実際の形（ValidationProblem 等）を与える。
     public (HttpStatusCode Status, string ContentType, string Body)? DataSourceWriteFailure { get; set; }
 
+    // FR-04, FR-07, FR-08, FR-17, FR-03 (#2280): 入力を受ける口の後段の失敗（後段名・状態コード・content-type・本文）。
+    // null なら既定の応答。BFF が失敗の本文を透過するかを見るために、後段が返す実際の形を与える。
+    public (string Service, HttpStatusCode Status, string ContentType, string Body)? DownstreamFailure { get; set; }
+
+    internal HttpResponseMessage? DownstreamFailureFor(string service, HttpRequestMessage request) =>
+        DownstreamFailure is { } f && f.Service == service && (request.Method != HttpMethod.Get || service == "GraphService")
+            ? new HttpResponseMessage(f.Status) { Content = new StringContent(f.Body, System.Text.Encoding.UTF8, f.ContentType) }
+            : null;
+
     // SC-22, 計画 ADR-0126, IADR-0501 (#458 段 S2): 群「データソースの資格情報」の成員（`GET /datasources/credentials`）と、
     // 参照の配置（`PUT /datasources/{id}/credentials/{key}/reference`）のスタブ。
     public List<DataSourceCredentialItemDto> StubDataSourceCredentials { get; set; } = [];
@@ -767,6 +776,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     ? string.Join(",", syntheticValues)
                     : null;
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (owner.DownstreamFailureFor("AiAnalysisService", request) is { } analysisFailure)
+                return Task.FromResult(analysisFailure);
 
             // IADR-0037: /analysis/ask/stream は SSE を返す（BFF は逐次中継する）。
             if (path.EndsWith("/ask/stream", StringComparison.Ordinal))
@@ -798,6 +809,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
         {
             owner.LastFeedbackForwardedAuthorization = request.Headers.Authorization?.ToString();
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            if (owner.DownstreamFailureFor("FeedbackService", request) is { } feedbackFailure)
+                return Task.FromResult(feedbackFailure);
 
             HttpResponseMessage response;
             if (path.Contains("/stats"))
@@ -1546,6 +1559,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
             var auth = request.Headers.Authorization?.ToString()
                 ?? (request.Headers.TryGetValues("Authorization", out var v) ? string.Join(",", v) : null);
             owner.LastGraphForwardedAuthorization = auth;
+            if (owner.DownstreamFailureFor("GraphService", request) is { } graphFailure)
+                return graphFailure;
 
             // FR-17, SC-09, #1241: 辺の型**辞書**（`/graph/edge-types` および `/{id}`）。
             // 🔴 **カタログ（`/graph/edge-types/catalog`）はここに入らない。** 末尾で判別する ——
@@ -1646,6 +1661,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
             var body = request.Content is null
                 ? null
                 : await request.Content.ReadAsStringAsync(cancellationToken);
+            if (owner.DownstreamFailureFor("RetrievalService", request) is { } searchFailure)
+                return searchFailure;
 
             // FR-04, #540: 権限内属性値の照会は別の応答を返す（同じ後段の別の口）。
             if (request.RequestUri?.AbsolutePath.EndsWith("/attribute-values", StringComparison.Ordinal) == true)

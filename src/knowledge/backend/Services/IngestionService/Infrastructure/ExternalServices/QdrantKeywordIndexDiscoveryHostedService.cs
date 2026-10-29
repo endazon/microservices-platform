@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using IngestionService.Domain.Ports;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -15,10 +16,14 @@ namespace IngestionService.Infrastructure.ExternalServices;
 // 🔴 **例外はここで必ず捕まえる**（未捕捉例外は既定でホストを止める）。索引の欠落で取り込みを落とさない。
 public sealed class QdrantKeywordIndexDiscoveryHostedService(
     IServiceProvider services,
-    ILogger<QdrantKeywordIndexDiscoveryHostedService> logger) : BackgroundService
+    ILogger<QdrantKeywordIndexDiscoveryHostedService> logger,
+    QdrantBootstrapState bootstrap) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // FR-02, [[IADR-0650]] (#2283): コレクションの保証が成功してから始める（保証は失敗すると再試行するので、登録順だけでは前後が決まらない）。
+        if (!await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
+            return;
         using var scope = services.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IIngestionVectorStore>();
         try

@@ -3,15 +3,15 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-10-24
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-02, FR-03, FR-04, FR-05, SC-01, SC-02, SC-08, UC-04, NFR-06]
 adrs: [ADR-0070, ADR-0027, ADR-0127, ADR-0016, ADR-0092]
-iadrs: [IADR-0613, IADR-0595, IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
-specs: [20261024_2066_ingestion-budget-opt-in-collections, 20261023_2101_ingestion-ordering-and-atomicity, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
-issues: [#2066, #2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
+iadrs: [IADR-0650, IADR-0613, IADR-0595, IADR-0560, IADR-0085, IADR-0540, IADR-0536, IADR-0502, IADR-0149, IADR-0358, IADR-0368, IADR-0390, IADR-0478, IADR-0497, IADR-0025]
+specs: [20261030_2283_qdrant-bootstrap-retry, 20261024_2066_ingestion-budget-opt-in-collections, 20261023_2101_ingestion-ordering-and-atomicity, 20261017_1746_s4-stop-creating-empty-ruri-collection, 20261017_1746_s4-doc-follow-and-lexical-write-budget, 20261015_1931_ingestion-body-missing, 20261014_1908_lexical-only-chunks-while-embedding-unavailable, 20261006_1760_qdrant-keyword-indexes, 20260627_FR-02_ingestion-pipeline, 20261005_1746_high-confidentiality-lexical-index, 20260903_issue-1193_bodyless-document-metadata-index, 20260905_issue-1247_ingest-to-search-integration, 20260927_issue-1640_consumer-outbound-call-timeouts]
+issues: [#2283, #2066, #2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1760]
 -->
 
 # テスト仕様書: 取り込み
@@ -90,6 +90,7 @@ issues: [#2066, #2101, #2047, #1931, #1908, #536, #1193, #1247, #1640, #1746, #1
 | T-61 | **追い越し** | 古い版の取り込みの最中（本文の取得の中）に新しい版を丸ごと取り込む | 古い版の点は残らず、新しい版の点だけが残る（書き終えた後の印の読み直し） | 同上 |
 | T-62 | **判定と指紋の純関数** | 版の比較・判定軸の指紋 | 比較はミリ秒（等しい版と印の無い文書は反映、1 ミリ秒でも古ければ弾く）。指紋は鍵・共有先の順と重複に依らず、値が変われば変わる | 同上 |
 | T-63 | **版の印と旧版の削除の写像** | gRPC を記録 | 旧版のフィルタは「文書の点 ∧ ¬(`updated_at` > 版) ∧ ¬(書いた点)」。全コレクションを巡り、残す点はコレクションごとに分ける。語彙索引が無ければ飛ばし、ベクトルのコレクションが無ければ投げる。版の印は 3 項目だけでベクトルを持たず、コレクションが無ければ「印は無い」と読み、最初の書き込みで作る（`QdrantIndexVersionStoreTests`） | 同上 |
+| T-64 | **起動時の索引の保証の再試行** | 起動時にコレクションの保証が 3 回失敗し、4 回目に通る（Qdrant に届かない起動の模擬）。停止要求。保証の前後で readiness を引く。後続の器（属性キーの発見・埋め込み待ちの埋め直し） | 上限つきの倍々の待ち（1 秒から上限 30 秒）で成功するまで再試行し、コレクションと索引 4 種を作る。失敗は計数 `ingestion.qdrant_bootstrap.failures` に回数どおり数える。停止要求で待ちを抜け、例外を漏らさない。readiness の `qdrant-bootstrap` は成功まで Unhealthy、成功後 Healthy（対照）で、`/health/ready` に載る。後続の器は保証の成功まで始めない。受け口（取り込み・削除）は保証の成功まで書かず、上限を超えたら例外で再試行へ返す（ストアに触れない）。1 回きりに戻す変異・待ちを外す変異で赤になる（`QdrantKeywordIndexHostedServiceTests`・`HealthEndpointTests`・`EmbeddingPendingReembedderTests`・`DocumentUpdatedConsumerTests`） | 取り込み: 索引の作成 |
 
 ## 段間結合（取り込み → 索引 → 検索ヒット）
 

@@ -341,6 +341,9 @@ jobs:
               `node scripts/check-trace-blocks.js` / `node scripts/gen-knowledge-graph.js --check` /
               `node scripts/check-doc-links.js` / `node scripts/check-doc-updated.js --base origin/develop` /
               `node scripts/check-commit-messages.js` / `node scripts/check-plan-id-qualification.js`。
+              🔴 **1 本ずつ単体で実行する。`; echo "exit:$?"` や `| echo …` を繋がない**（#2317。この形は
+              権限拒否になり、6 本とも実行されないままジョブが赤になった。MSP#2311・MSP#2316）。終了コードは
+              ツールの結果が示す（非 0 なら結果に出る）ので、`echo` で取り直す必要は無い。
             - **`deploy/helm/**` の差分があれば**、変更した chart に `helm lint <chart>` と
               `helm template ci-check <chart>` を走らせる（`ci/*.yaml` があれば `-f` でも回す）。
               `deploy/helm/microservices-platform` は自製イメージのタグが無いと描画で止まる（#2132。仕様）ので、
@@ -461,6 +464,10 @@ jobs:
               `|` `&&` でつなぐほど、鎖のどこかに未許可コマンドが混ざる確率が上がり、拒否されると
               **鎖全体が実行されない**（前段の結果も得られない）。1 コマンドずつ実行すること。
               なお `$?` はパイプの後では直前の 1 コマンドの結果しか表さないため、判定にも使えない。
+            - **終了コードを `echo` で取り直さない（`cmd; echo "exit:$?"` / `cmd | echo …` / `cmd && echo ok`）。**
+              2 段でも拒否される（#2317。`$?` の展開を含む複合形は許可の判定を通らない）。コマンドは単体で実行し、
+              ツールの結果が示す終了コードを読む。環境変数などで子プロセスの終了コードが要るときは、上の
+              **子プロセス形**（`node -e "…process.exit(r.status===null?1:r.status);"`）を単体で使う。
             - レビュー本文の末尾に **「実行できなかったこと」節を必ず設ける**。拒否された、または
               実行を諦めたツール／コマンドと、**それによって裏付けが取れていない主張**を列挙する。
               何も無かった場合は「なし」と 1 行書く（節自体を省略しない）。
