@@ -766,9 +766,14 @@ export function McpClientManagementPage() {
           >
             {(view) => (
               <>
-                {/* 一覧は**表**にする（モックは縦並びだが、名前とサービスの 2 項目を持つため
+                {/* 一覧は**表**にする（モックは縦並びだが、名前・サービス・説明・スコープ・分類の複数項目を持つため
                   列見出しのある表のほうが読み手に速い）。**参照専用**で操作の列は置かない。 */}
-                <Table data-testid="published-tools">
+                <Table
+                  data-testid="published-tools"
+                  // #2323: 列を足したので横にはみ出し得る。受け皿をキーボードで操作できる領域にする
+                  // （axe scrollable-region-focusable）。
+                  scrollRegionLabel={t`公開ツールの一覧`}
+                >
                   <TableCaption>{t`公開ツールの一覧`}</TableCaption>
                   <TableHead>
                     <TableRow>
@@ -778,6 +783,16 @@ export function McpClientManagementPage() {
                       <TableHeaderCell>
                         <Trans>提供サービス</Trans>
                       </TableHeaderCell>
+                      {/* #2323, 11_mcp-server-integration §公開構成: 実効構成の項目。値は識別子のまま出す。 */}
+                      <TableHeaderCell>
+                        <Trans>説明</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>必要スコープ</Trans>
+                      </TableHeaderCell>
+                      <TableHeaderCell>
+                        <Trans>送信可否分類</Trans>
+                      </TableHeaderCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -785,6 +800,9 @@ export function McpClientManagementPage() {
                       <TableRow key={tool.name}>
                         <TableCell className="font-medium">{tool.name}</TableCell>
                         <TableCell className="text-xs text-fg-muted">{tool.service}</TableCell>
+                        <TableCell className="text-xs">{tool.description}</TableCell>
+                        <TableCell className="font-mono text-xs">{tool.requiredScope}</TableCell>
+                        <TableCell className="font-mono text-xs">{tool.egressClass}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
