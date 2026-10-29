@@ -3,15 +3,15 @@ title: SC-19 個人資料管理画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-10-26
+updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, UC-11, SC-19, SC-20]
 adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0057, ADR-0098, ADR-0096]
 iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice]
-issues: [#451, #1441, #1445, #1447, #2046, #2114, planning#614, planning#618, planning#841]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2324_sc19-bulk-restore-notice]
+issues: [#451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#618, planning#841]
 -->
 
 # テスト仕様書: 個人資料管理画面
@@ -135,6 +135,7 @@ issues: [#451, #1441, #1445, #1447, #2046, #2114, planning#614, planning#618, pl
 | 65 | 実ブラウザで 資料の選択 → 確認ダイアログ → 発動 → 残り時間 → 早期終了 を踏める | ブラウザ E2E（識別子が出ないこと・開くまで引かないことも見る） |
 | 66 | 残り 0 の後、サーバが有効を返す間は間隔を置いて引き直し（上限あり）、失効が返れば止まる。上限で止め、再確認の導線を出す。送信中は確認ダイアログを閉じない | 緑（端末の時計が進んでいる場合を再現。引き直しが止まることと、送信中の Esc で閉じず失敗が残ることを固定） |
 | 67 | 業務関連資料の固定文言が「30 日が過ぎると、この資料は復元できない形で削除されます」を含み、未配備の間の暫定文言を出さない | 緑（ja / en の両方） |
+| 68 | ［2026-10-30 / #2324］復元（単票・一括）の完了通知は全件の結果を受けてから出し、一部が失敗したら戻った件数と戻らなかった件数を出す（戻らなかった資料は選んだまま残す）。全件が失敗したら戻らなかった件数だけを出す | 緑（後段の応答を止めている間は通知が出ないこと・1 件だけ失敗・全件失敗を固定） |
 
 ## ブラウザ E2E で見ていること・見ていないこと
 
