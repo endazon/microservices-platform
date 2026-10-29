@@ -145,17 +145,9 @@ public static class DataSourceBffEndpoints
     }
 
     // FR-01, FR-05, SC-06, ADR-0074 決定 4, ADR-0115 決定 5 (#2109): 書き込みの口の失敗は、後段の状態コード・content-type・本文を
-    // **作り替えずに**返す（`DocumentBffEndpoints.RelayAsync` と同じ形）。後段は保存しない理由を 400 の RFC7807（`errors`）や
-    // 502 の `message` で返す。従前は状態コードだけを返して本文を捨て、SC-06 に理由が届かなかった。
-    // 本文の無い失敗（後段が本文を持たない）は空のまま同じ状態コードで返る。
-    private static async Task<IResult> RelayFailureAsync(HttpResponseMessage resp, CancellationToken ct)
-    {
-        var content = await resp.Content.ReadAsStringAsync(ct);
-        if (content.Length == 0)
-            return Results.StatusCode((int)resp.StatusCode);
-        var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
-        return Results.Content(content, contentType, statusCode: (int)resp.StatusCode);
-    }
+    // **作り替えずに**返す。［2026-10-30 / #2280］実体は他の BFF の口と共用の `BffFailureRelay` へ移した。
+    private static Task<IResult> RelayFailureAsync(HttpResponseMessage resp, CancellationToken ct) =>
+        BffFailureRelay.RelayAsync(resp, ct);
 
     // FR-05: 利用者の資格情報を後段へ引き継ぐ named client を生成する。
     private static HttpClient CreateForwardingClient(IHttpClientFactory httpFactory, HttpContext http)

@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-10-26
+updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-22, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
 adrs: [ADR-0091, ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101, ADR-0104, ADR-0110, ADR-0116]
 iadrs: [IADR-0644, IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0429, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0473, IADR-0537, IADR-0545, IADR-0544, IADR-0561, IADR-0565, IADR-0610, IADR-0611]
-specs: [20261026_2109_datasource-bff-relay-error-body, 20261026_2108_wiki-deep-link-document-id, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay, 20261026_2255_figure-correction-job-changed-409]
-issues: [#1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, #2255, #2108, #2109, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841]
+specs: [20261030_2280_bff-relay-input-failure-body, 20261026_2109_datasource-bff-relay-error-body, 20261026_2108_wiki-deep-link-document-id, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay, 20261026_2255_figure-correction-job-changed-409]
+issues: [#2280, #1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, #2255, #2108, #2109, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -117,11 +117,11 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/tags` | **AdminOnly**（運用者も不可。管理者設定画面はシステム管理者ロール限定） | —| `useBffTagCreate`（**#640**。名前の重複は 409） |
 | PUT | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。タグの正本を識別子とする実装判断・決定 1。応答の `republishedDocuments` は射影の再発行件数） |
 | DELETE | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。管理者設定画面「削除前に使用件数を示す」のため**本文ごと透過する**） |
-| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | —| `useBffSearch`（**mutation**。検索結果一覧は操作関数 `bffSearch` を `useQuery` に据える。生成クライアント採用の決定 2） |
-| POST | `/bff/analysis/ask` | 同上 | —| `useBffAnalysisAsk`（**画面は呼んでいない**） |
+| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る）。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける） | —| `useBffSearch`（**mutation**。検索結果一覧は操作関数 `bffSearch` を `useQuery` に据える。生成クライアント採用の決定 2） |
+| POST | `/bff/analysis/ask` | 同上。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける） | —| `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | —| **無し（SSE。`apiStream`）** |
-| POST | `/bff/analysis/analyze` | 同上 | —| `useBffAnalysisAnalyze` |
-| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521） | —| `useBffSubmitFeedback` |
+| POST | `/bff/analysis/analyze` | 同上。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける）（入力検証の 400 は `{ "error": "<文>" }`） | —| `useBffAnalysisAnalyze` |
+| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521）。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける） | —| `useBffSubmitFeedback` |
 | GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521） | —| `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画側の運用ダッシュボード「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る）。［2026-10-14 / #1923］**ページで返す**（`offset` / `limit`。既定 50・上限 100）。`total` は ABAC で絞った後の件数だけで、権限外の文書は窓にも数にも入らない。［2026-10-15 / #1923 段 2］並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）。絞り込みは ABAC の後に当て、`unfilteredTotal` / `statusCounts` は絞り込み前（ABAC 後）の数。［2026-10-17］タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲（`createdFrom` / `createdBefore`）も同じ作法で当て、`sourceCounts` / `projectCounts` を返す（どれも省略可・省略は従前どおり）。［2026-10-20 / #1993］ページの文書の索引の状態（`indexStatuses`）を添える（ページの ID だけを取り込み側へ 1 回で問い合わせる。引けなければ全件 `unknown` で一覧は 200） | —| `useBffDocumentList` |
@@ -140,6 +140,9 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | PATCH | `/bff/datasources/{id}` | **admin のみ**。**後段の失敗（検証の 400・確認先を引けない 502 等）は状態コードと本文をそのまま返す**（保存しない理由を画面へ届ける） | —| `useBffDataSourcePatch` |
 | DELETE | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourceDelete` |
 | POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。計画側の裁定による）。後段の失敗は状態コードと本文をそのまま返す | —| `useBffDataSourceSync` |
+
+**［2026-10-30］失敗の本文の透過は、利用者の入力を受ける口に限る。** 透過するのは、データソースの書き込み（POST・PUT・PATCH・同期）・質問（`/bff/analysis/ask`）・分析・評価の送信・検索・グラフの近傍（`/bff/graph/{documentId}/neighbors` を含むグラフの読み取りの中継）である。
+読み取りの口（一覧・個別・集計・辞書）は状態コードだけを返す。後段が理由の本文を持たず、画面は状態コードで表示を分けるためである。グラフの 404 は後段が本文を持たないので、透過しても存在の秘匿は変わらない。
 
 **［2026-09-03］データソースの 3 つの書き込み口（`POST` / `PUT` / `PATCH`）は `ownerMappings`（所有者の写像表）を受ける。**
 **後段が写像先の実在を検証し、実在しない値を含む要求は 400（RFC7807。理由に値が載る）で拒否して 1 対も保存しない。**
