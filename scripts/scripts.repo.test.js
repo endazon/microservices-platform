@@ -19338,4 +19338,97 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(dotnetVersionViolations(gj).out.some((e) => e.includes('global-json-file')));
     });
   }
+
+  // --- NFR (#2197): check-stack-ready の G4b・G4c は curl に出力先（/dev/null）を渡さない ------------------------------
+  //
+  // node から直接起こした Windows の curl には /dev/null が無く、本文の書き込みに失敗して終了コード 23 になる（状態コードは
+  // 標準出力に出ているのに「測れなかった」になる）。PATH のスタブで「-o /dev/null は 23 で終わる」curl を模し、
+  // fetchStatus が状態コードを読めることを確かめる。Linux の挙動は実物の curl と手元の HTTP サーバで確かめる。
+  {
+    const fs2197 = require('fs');
+    const os2197 = require('os');
+    const path2197 = require('path');
+    const { spawnSync: spawn2197 } = require('child_process');
+    const CSR2197 = path2197.join(__dirname, 'check-stack-ready.js');
+    // Windows を模した curl: 引数を $STUB_LOG へ控え、`-o /dev/null` を渡されたら状態コードを出したうえで 23 で終わる。
+    // 本文は $STUB_BODY（末尾の改行なし）、`-w` の書式の %{http_code} を $STUB_CODE に置き換えて出す。
+    const CURL2197 = [
+      '#!/usr/bin/env bash',
+      'printf "%s\\n" "$@" > "$STUB_LOG"',
+      'prev=""; w=""; devnull=0',
+      'for a in "$@"; do',
+      '  if [ "$prev" = "-o" ] && [ "$a" = "/dev/null" ]; then devnull=1; fi',
+      '  if [ "$prev" = "-w" ]; then w="$a"; fi',
+      '  prev="$a"',
+      'done',
+      'out="${w//%\\{http_code\\}/$STUB_CODE}"',
+      'out="${out//\\\\n/$\'\\n\'}"',
+      'if [ "$devnull" = 1 ]; then printf "%s" "$out"; exit 23; fi',
+      'printf "%s%s" "$STUB_BODY" "$out"',
+      'exit "${STUB_EXIT:-0}"',
+      '',
+    ].join('\n');
+    const runFetch = (env) => {
+      const dir = fs2197.mkdtempSync(path2197.join(os2197.tmpdir(), 'msp-2197-'));
+      try {
+        fs2197.writeFileSync(path2197.join(dir, 'curl'), CURL2197, { mode: 0o755 });
+        const log = path2197.join(dir, 'argv.log');
+        const code = 'const { fetchStatus } = require(process.argv[1]); process.stdout.write(String(fetchStatus("https://keycloak.localhost/admin/")));';
+        const r = spawn2197(process.execPath, ['-e', code, CSR2197], {
+          encoding: 'utf8',
+          env: { ...process.env, PATH: `${dir}${path2197.delimiter}${process.env.PATH}`, STUB_LOG: log, STUB_BODY: '', STUB_CODE: '403', ...env },
+        });
+        assert.strictEqual(r.status, 0, r.stderr);
+        return { status: Number(r.stdout), argv: fs2197.readFileSync(log, 'utf8').split('\n').filter(Boolean) };
+      } finally {
+        fs2197.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('NFR / #2197: /dev/null を開けない curl（Windows を模す）でも fetchStatus は状態コードを読む', () => {
+      const { status, argv } = runFetch({ STUB_BODY: '<html>Forbidden</html>' });
+      assert.strictEqual(status, 403, `状態コードを読めていない（終了コード 23 を失敗として扱っている）: ${argv.join(' ')}`);
+    });
+
+    ok('NFR / #2197: curl の引数に /dev/null も -o も載らない（OS に依らない形）', () => {
+      const { argv } = runFetch({});
+      assert.ok(!argv.includes('/dev/null'), argv.join(' '));
+      assert.ok(!argv.includes('-o') && !argv.some((a) => /^--output(=|$)/.test(a)), argv.join(' '));
+      // 要求の形（GET・TLS 検証なし・上限 30 秒・URL）は変えない
+      for (const a of ['-sk', '--max-time', '30', 'https://keycloak.localhost/admin/']) assert.ok(argv.includes(a), `${a} が無い: ${argv.join(' ')}`);
+      assert.ok(!argv.includes('-I') && !argv.includes('--head') && !argv.includes('-X'), argv.join(' '));
+    });
+
+    ok('NFR / #2197: 本文に数字だけの行が在っても・末尾に改行が無くても、状態コードは末尾の行から読む', () => {
+      assert.strictEqual(runFetch({ STUB_BODY: '200\n404\n503', STUB_CODE: '404' }).status, 404);
+      assert.strictEqual(runFetch({ STUB_BODY: 'no-newline-200', STUB_CODE: '200' }).status, 200);
+      assert.strictEqual(runFetch({ STUB_BODY: '', STUB_CODE: '302' }).status, 302);
+    });
+
+    ok('NFR / #2197: curl が失敗したら 0（測れないを緑にしない）', () => {
+      assert.strictEqual(runFetch({ STUB_EXIT: '7', STUB_CODE: '000' }).status, 0);
+      assert.strictEqual(runFetch({ STUB_EXIT: '28', STUB_CODE: '403' }).status, 0);
+    });
+
+    ok('NFR / #2197: Linux の実物の curl で、手元の HTTP サーバの 403 を 403 と測る（挙動を変えていない）', () => {
+      if (process.platform === 'win32' || spawn2197('curl', ['--version'], { encoding: 'utf8' }).status !== 0) {
+        console.log('    - (curl が無い・Windows なので実物の測りは飛ばす)');
+        return;
+      }
+      // サーバは別プロセスに置く（fetchStatus は spawnSync で待つので、同じプロセスでは応答できない）。
+      const code = [
+        'const http = require("http"); const { execFile } = require("child_process");',
+        'const srv = http.createServer((q, s) => { s.writeHead(403, { "content-type": "text/html" }); s.end("<html>Forbidden\\n403\\n</html>"); });',
+        'srv.listen(0, "127.0.0.1", () => {',
+        '  const url = `http://127.0.0.1:${srv.address().port}/admin/`;',
+        '  execFile(process.execPath, ["-e", "const { fetchStatus } = require(process.argv[1]); process.stdout.write(String(fetchStatus(process.argv[2])));", process.argv[1], url],',
+        '    (err, out) => { srv.close(); process.stdout.write(err ? `ERR ${err.message}` : out); });',
+        '});',
+      ].join('\n');
+      const r = spawn2197(process.execPath, ['-e', code, CSR2197], {
+        encoding: 'utf8', timeout: 60000, env: { ...process.env, NO_PROXY: '127.0.0.1,localhost', no_proxy: '127.0.0.1,localhost' },
+      });
+      assert.strictEqual(r.stdout, '403', r.stdout + r.stderr);
+    });
+  }
 };
