@@ -3,15 +3,15 @@ title: FR-16 MCP サーバー統合 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-23
-updated: 2026-10-26
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-16, FR-19, UC-08, UC-09, SC-12, NFR-09, NFR-16]
 adrs: [ADR-0004, ADR-0018, ADR-0024, ADR-0029, ADR-0034, ADR-0036, ADR-0046, ADR-0054, ADR-0061, ADR-0062, ADR-0075, ADR-0086, ADR-0088, ADR-0117, ADR-0121, ADR-0123, ADR-0134, ADR-0141]
-iadrs: [IADR-0551, IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533, IADR-0645]
-specs: [20261026_2117_mcp-publication-configmap, 20261016_1961_archive-effect-exclusion, 20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1961, #1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255, #1517, #2117, planning#784]
+iadrs: [IADR-0651, IADR-0551, IADR-0529, IADR-0527, IADR-0524, IADR-0269, IADR-0292, IADR-0297, IADR-0366, IADR-0379, IADR-0462, IADR-0479, IADR-0483, IADR-0516, IADR-0523, IADR-0533, IADR-0645]
+specs: [20261030_2142_mcp-tools-list-changed, 20261026_2117_mcp-publication-configmap, 20261016_1961_archive-effect-exclusion, 20261010_1879_exposure-org-docs-wiki-gate, 20261009_1859_loopback-port-optional, 20261009_1859_keycloak-26-upgrade, 20260823_issue-445_mcp-server-integration, 20260828_issue-1020_internal-mcp-tools, 20260903_issue-1185_unattended-account-attribute-subset, 20260926_1515_mcp-tool-declarations-grpc, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1516_mcp-tool-execution-grpc, 20260927_issue-1611_mcp-tool-execution-ports, 20260927_issue-1671_mcp-envelope-attribute-allowlist, 20261008_1786_sc12-keycloak-provisioning, 20261009_1817_sc12-provisioning-wiring, 20261009_1818_sc12-idp-drift-detection, 20261009_1829_sc12-disable-mirror-to-idp, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit, 20261009_1846_service-audience-validation, 20261010_issue-1255-1517_east-west-rest-retirement]
+issues: [#2142, #1961, #1879, #1859, #445, #1020, #1185, #1515, #1516, #1604, #1608, #1622, #1611, #1671, #1786, #1817, #1818, #1829, #1844, #1845, #1846, #1255, #1517, #2117, planning#784]
 -->
 
 # テスト仕様書: MCP サーバー統合
@@ -245,6 +245,18 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | C-85 | 再発行の拒否の監査 | 有人の再発行は `denied` で残す |
 | C-86 | 値の漏れ（否定形・陽性対照つき） | 登録・再発行・失敗の経路を通した後、ホストの全ログ（整形済みの本文・構造化の値・例外）に値が無い。監査の行とアプリケーションのログを捕まえていること自体も確かめる |
 | C-87 | 書き込み口が無いときの再発行 | 503 で何も書かない |
+
+## ツール一覧の変化の通知（［2026-10-30 追加］）
+
+| ID | 観点 | 期待 |
+| --- | --- | --- |
+| L-1 | 公開ツールの集合が変わる（実効一覧の版が進む） | `subscriptions/listen` で tools の list_changed を求めたクライアントへ `notifications/tools/list_changed` が届く。サーバーは `capabilities.tools.listChanged` を申告する |
+| L-2 | 内容の変わらない突合（版が進まない） | 届かない（陰性の対照） |
+| L-3 | 実効一覧の突合 | 版が進んだときだけ、新しい版で 1 回合図する |
+| L-4 | listen を開いたまま最長の寿命（既定 10 分）に達する | 空の結果で閉じる（開き直しで認証を通り直す） |
+| L-5 | 同じ主体が上限（既定 4 本）を超えて listen を開く | 超えた要求を断り、開いている listen は切らない。全体の上限（既定 256 本）も数える |
+| L-6 | tools の list_changed を求めない listen | 受付（扱う種類なし）の後にすぐ閉じる（接続を保持しない） |
+| L-7 | 同時本数の枠の鍵 | 鍵は `sub`。表示名が同じでも sub が違えば互いを締め出さない。sub の無いトークンの listen は断る（共有の枠を作らない） |
 
 ## データ越境の受け入れ基準
 
@@ -512,7 +524,8 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 
 ## 実装マッピング
 
-- `ToolCatalogTests` — 公開構成の許可リストと実効一覧・重複した申告（A-11）
+- `ToolCatalogTests` — 公開構成の許可リストと実効一覧・重複した申告（A-11）・版が進んだときだけの合図（L-3）
+- `ToolListChangedNotificationTests` — 版が進むと listen しているクライアントへ list_changed が届く（L-1）・進まなければ届かない（L-2）・寿命（L-4）・同時本数の上限（L-5）・tools を求めない listen（L-6）・枠の鍵（L-7）。実物の SDK のクライアントで `/mcp` に繋ぐ
 - `ToolInvocationServiceTests` — 単一経路の統制（登録確認 → 公開確認 → 個人資料の除外 → 越境 → 監査）
 - `ToolPublicationConfigValidatorTests` — 構成の値域と拒否条件
 - `ToolPublicationFailFastTests` — 要求受付前の同期検証（A-8〜A-10）
@@ -563,7 +576,10 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 
 ## 未実施・残件
 
-- ツール一覧変化のクライアントへの通知は未実装である（実効一覧の版は進むが配信しない）。
+- ~~ツール一覧変化のクライアントへの通知は未実装である（実効一覧の版は進むが配信しない）。~~
+  ［2026-10-30］実効一覧の版が進んだとき、`subscriptions/listen` を開いているクライアントへ `notifications/tools/list_changed` を送るようにした（L-1・L-2）。
+  🔴 **届くのは 2026-07-28 の改訂の `subscriptions/listen` を開いたクライアントだけである。** MCP 面は無状態の Streamable HTTP で動いており、
+  初期化の握手の利用者（2025-11-25 以前）へは要求の外の通知を送る道が無い（その利用者は `tools/list` を引き直して知る）。
 - ［2026-10-08 追加 / 2026-10-09 改訂］認可サーバーへの書き込みは、配備の配線を入れ（無人の登録・差し替えは 503 にならない）、
   稼働の認可サーバーでの実測を統合スタックの門に載せた（C-29〜C-34）。**門は日次・develop への push・手動でしか走らず、PR では走らない。**
   ［2026-10-09 / #1818］登録簿と認可サーバーの食い違いの検知（定期の照合と警報）を入れた（C-36〜C-49）。照合は直さない。**統合スタックには観測の器が無いので、

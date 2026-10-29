@@ -3,15 +3,15 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-10-26
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-08, SC-18, SC-19, UC-01, UC-07]
 adrs: [ADR-0054, ADR-0031, ADR-0036, ADR-0037, ADR-0043, ADR-0066, ADR-0073, ADR-0102]
 iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151, IADR-0308, IADR-0355, IADR-0365, IADR-0435, IADR-0436, IADR-0437, IADR-0438, IADR-0439, IADR-0440]
-specs: [20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260912_frontend-nocturne-and-experience-gaps, 20261024_2017_sc01-search-e2e]
-issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, #1200, #1456, #2017, #2111, planning#197, planning#200, planning#237, planning#244, planning#628]
+specs: [20261030_2321_ask-question-length, 20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260912_frontend-nocturne-and-experience-gaps, 20261024_2017_sc01-search-e2e]
+issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, #1200, #1456, #2017, #2111, #2321, planning#197, planning#200, planning#237, planning#244, planning#628]
 -->
 
 # 画面仕様書: 検索／チャット質問画面
@@ -234,6 +234,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 > **最大長について**: 計画側の本画面の入力表は「1文字以上、**最大長制限**」とだけ書き、値を定めていない。
 > 実装は `maxLength=1000` を置く。根拠は BFF ではなく画面側の暴発防止であり、
 > **計画が値を定めた場合はそれに従う**（§未決事項）。
+> ［2026-10-30 追記］後段（回答の端点 2 つ）も同じ 1000 文字で拒む（400）。画面を通らない呼び出しも上限なしに LLM へ届かない。値を変えるときは画面と後段の定数を同時に変える。
 
 ## アクション・イベント
 

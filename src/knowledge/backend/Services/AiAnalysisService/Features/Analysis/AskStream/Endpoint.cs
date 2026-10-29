@@ -4,6 +4,7 @@ using System.Text.Json;
 using AiAnalysisService.Common.Observability;
 using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
+using FluentValidation;
 
 namespace AiAnalysisService.Features.Analysis.AskStream;
 
@@ -20,9 +21,17 @@ internal static class AskStreamEndpoint
 
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/ask/stream", async (AskRequest req, IRagOrchestrator rag,
+        g.MapPost("/ask/stream", async (AskRequest req, IValidator<AskRequest> validator, IRagOrchestrator rag,
             RagStreamMetrics metrics, HttpContext http, CancellationToken ct) =>
         {
+            // SC-01, FR-04 (#2321): 質問の必須と最大長。**SSE のヘッダを書く前**に検証し、400 を JSON で返す
+            // （ヘッダを書いた後では状態コードを変えられない）。未認証の縮退より前に置く（`/ask` と同じ順）。
+            if (AskRequestValidator.Reject(validator, req) is { } rejected)
+            {
+                await rejected.ExecuteAsync(http);
+                return;
+            }
+
             // NFR-02, ADR-0076 決定 5, IADR-0354 (#1204): TTFT の**起点**。
             // ミドルウェア（相関 ID・認証）を通過した後のハンドラ入口である。その差分は本計器に
             // 含まれないが、同じ経路を丸ごと測る http_server_request_duration_seconds との差で観測できる。

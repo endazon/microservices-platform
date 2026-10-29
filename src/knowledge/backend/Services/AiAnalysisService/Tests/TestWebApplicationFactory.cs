@@ -88,6 +88,10 @@ internal sealed class StubRagOrchestrator : IRagOrchestrator
     public Dictionary<string, List<string>>? LastAskFilters { get; private set; }
     public Dictionary<string, List<string>>? LastStreamFilters { get; private set; }
 
+    // #2321: 呼ばれた回数（入力検証で弾いた要求が RAG・LLM へ届かないことを測る）。
+    public int AskCalls { get; private set; }
+    public int StreamCalls { get; private set; }
+
     public void ResetRecording()
     {
         LastAskFilters = null;
@@ -99,6 +103,7 @@ internal sealed class StubRagOrchestrator : IRagOrchestrator
         Dictionary<string, List<string>>? attributeFilters = null,
         CancellationToken ct = default)
     {
+        AskCalls++;
         LastAskFilters = attributeFilters;
         return Task.FromResult(Answer("テスト回答 [1]"));
     }
@@ -113,6 +118,7 @@ internal sealed class StubRagOrchestrator : IRagOrchestrator
         Dictionary<string, List<string>>? attributeFilters = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        StreamCalls++;
         LastStreamFilters = attributeFilters;
         yield return new AskCitationsEvent(
             [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(), "s3://bucket/a.md", 0.9f, "抜粋")]);
