@@ -241,6 +241,8 @@ test('SC-20/UC-11 (#1442): a conflict is resolved by the person from three expli
     ...conflict(),
     localContent: '端末で書いた本文',
     serverContent: 'サーバに保存されている本文',
+    localContentUnavailable: false,
+    serverContentUnavailable: false,
   };
   const traffic = await installBffSession(page, {
     user: sessionUser([]),

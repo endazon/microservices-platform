@@ -2051,6 +2051,10 @@ export interface SyncConflictDetailDto {
   serverVersion: number;
   localContent: string;
   serverContent: string;
+  /** NFR-19 (#2141): ローカル版の本文をストレージから取り出せなかった（`localContent` は空）。空の本文とは別である。 */
+  localContentUnavailable: boolean;
+  /** NFR-19 (#2141): サーバ版の本文をストレージから取り出せなかった（`serverContent` は空）。 */
+  serverContentUnavailable: boolean;
 }
 
 /**

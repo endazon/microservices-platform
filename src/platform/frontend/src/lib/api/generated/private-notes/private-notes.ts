@@ -2480,6 +2480,11 @@ export type bffSyncConflictResolveResponse409 = {
   status: 409
 }
 
+export type bffSyncConflictResolveResponse503 = {
+  data: void
+  status: 503
+}
+
 export type bffSyncConflictResolveResponse507 = {
   data: void
   status: 507
@@ -2488,7 +2493,7 @@ export type bffSyncConflictResolveResponse507 = {
 export type bffSyncConflictResolveResponseSuccess = (bffSyncConflictResolveResponse200) & {
   headers: Headers;
 };
-export type bffSyncConflictResolveResponseError = (bffSyncConflictResolveResponse400 | bffSyncConflictResolveResponse401 | bffSyncConflictResolveResponse403 | bffSyncConflictResolveResponse404 | bffSyncConflictResolveResponse409 | bffSyncConflictResolveResponse507) & {
+export type bffSyncConflictResolveResponseError = (bffSyncConflictResolveResponse400 | bffSyncConflictResolveResponse401 | bffSyncConflictResolveResponse403 | bffSyncConflictResolveResponse404 | bffSyncConflictResolveResponse409 | bffSyncConflictResolveResponse503 | bffSyncConflictResolveResponse507) & {
   headers: Headers;
 };
 

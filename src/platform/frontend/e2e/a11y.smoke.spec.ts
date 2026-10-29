@@ -554,6 +554,8 @@ const obsidianHandlers = {
     ...syncConflict,
     localContent: '端末で書いた本文',
     serverContent: 'サーバに保存されている本文',
+    localContentUnavailable: false,
+    serverContentUnavailable: false,
   } satisfies SyncConflictDetailDto,
   'GET /private-notes/sync-history': [],
 };

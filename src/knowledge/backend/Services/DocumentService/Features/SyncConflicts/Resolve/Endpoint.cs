@@ -69,8 +69,15 @@ internal static class ResolveSyncConflictEndpoint
                 return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
 
             var now = DateTimeOffset.UtcNow;
-            var localContent = await Get.GetSyncConflictEndpoint.ReadAsync(storage,
-                conflict.LocalContentUri, ct);
+            // `server` は本文を使わないので読みに行かない（#2305 の AI レビュー。障害の経路を減らす）。
+            var (localContent, localUnavailable) = req.Resolution == SyncConflictResolutions.Server
+                ? (string.Empty, false)
+                : await Get.GetSyncConflictEndpoint.ReadAsync(storage, conflict.LocalContentUri,
+                    loggers.CreateLogger(typeof(ResolveSyncConflictEndpoint).FullName!), "local", ct);
+            // 🔴 NFR-19, #2141: ローカル版の本文を取り出せないまま `local` / `both` を確定しない。従前は取り出しの失敗を
+            // 空文字に畳んでいたので、**空の本文が新しい版として書かれた**。何も確定せず 503 を返す（競合は未解決のまま残り、選び直せる）。
+            if (localUnavailable && req.Resolution != SyncConflictResolutions.Server)
+                return Results.Json(new { error = "local_content_unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
             // 索引の生産側へ流す候補（`server` は資料を変えないので null のまま）。
             Document? written = null;
 

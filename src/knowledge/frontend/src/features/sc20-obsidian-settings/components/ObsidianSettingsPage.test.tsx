@@ -89,6 +89,8 @@ const CONFLICT_DETAIL = {
   ...CONFLICT_SUMMARY,
   localContent: '端末で書いた本文',
   serverContent: 'サーバに保存されている本文',
+  localContentUnavailable: false,
+  serverContentUnavailable: false,
 };
 
 // #1446: 同期履歴（主要素 6）。**本ファイルの既定は 0 件**である —— 履歴の行の描画は
@@ -99,11 +101,13 @@ function respond({
   folders = FOLDERS as unknown[],
   conflicts = [CONFLICT_SUMMARY] as unknown[],
   history = [] as unknown[],
+  conflictDetail = CONFLICT_DETAIL as unknown,
 }: {
   devices?: unknown[];
   folders?: unknown[];
   conflicts?: unknown[];
   history?: unknown[];
+  conflictDetail?: unknown;
 } = {}) {
   // apiRequest が受けるパスは /bff 接頭辞を**除いた**形である（bffFetch が付け直す）。
   mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
@@ -133,7 +137,7 @@ function respond({
       );
     }
     if (path.startsWith('/private-notes/conflicts/')) {
-      return Promise.resolve(jsonResponse(CONFLICT_DETAIL));
+      return Promise.resolve(jsonResponse(conflictDetail));
     }
     if (path.endsWith('/reissue')) return Promise.resolve(jsonResponse(ISSUED_TOKEN));
     if (path.endsWith('/revoke-all')) return Promise.resolve(jsonResponse({ revokedCount: 4 }));
@@ -615,6 +619,28 @@ describe('SC-20 Obsidian 連携設定: 競合の解決（#1442）', () => {
     // 2 ペイン（ローカル版／サーバ版）が並ぶ。
     expect(await screen.findByLabelText('ローカル版の本文')).toHaveTextContent('端末で書いた本文');
     expect(screen.getByLabelText('サーバ版の本文')).toHaveTextContent('サーバに保存されている本文');
+  });
+
+  // NFR-19 (#2141): 本文を取り出せなかったときは空の本文と区別して示す。ローカル版が無いまま `local` / `both` は選ばせない
+  // （サーバは 503 で確定しないが、押せる形にしない）。`server` は本文を使わないので選べる。
+  it('本文を取り出せなかった側は「取り出せませんでした」と示し、ローカル版が無ければ local と both を押せない', async () => {
+    respond({
+      conflictDetail: { ...CONFLICT_DETAIL, localContent: '', localContentUnavailable: true },
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await screen.findByRole('cell', { name: '設計メモ' });
+    await user.click(within(conflictPanel()).getByRole('button', { name: '本文を見て解決する' }));
+
+    expect(await screen.findByLabelText('ローカル版の本文')).toHaveTextContent(
+      '本文を取り出せませんでした',
+    );
+    expect(screen.getByLabelText('サーバ版の本文')).toHaveTextContent('サーバに保存されている本文');
+    const resolution = within(screen.getByRole('region', { name: '競合の解決' }));
+    expect(resolution.getByRole('button', { name: 'ローカルを採用' })).toBeDisabled();
+    expect(resolution.getByRole('button', { name: '両方を残す（別名保存）' })).toBeDisabled();
+    expect(resolution.getByRole('button', { name: 'サーバを採用' })).toBeEnabled();
   });
 
   it('🔴 3 択だけを置き、自動解決の選択肢を置かない（陽性対照つき）', async () => {

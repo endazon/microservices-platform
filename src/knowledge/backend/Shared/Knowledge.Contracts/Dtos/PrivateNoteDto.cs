@@ -157,7 +157,9 @@ public record SyncConflictDetailDto(
     int LocalBaseVersion,
     int ServerVersion,
     string LocalContent,
-    string ServerContent);
+    string ServerContent,
+    bool LocalContentUnavailable = false,
+    bool ServerContentUnavailable = false);
 
 // FR-20, SC-20 主要素 5, ADR-0037 決定 7: 競合の解決。値は `SyncConflictResolutions` の 3 つ。
 // **自動解決（後勝ち）の値は存在しない。**
