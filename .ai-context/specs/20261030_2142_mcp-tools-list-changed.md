@@ -66,3 +66,7 @@ issue: "#2142"
 - **red→green**: 上限の判定と寿命の打ち切りを外す変異で 2 件が赤、戻すと緑になった。
 - ［#2315 のレビュー］試験の listen は、開いたことを受付（`notifications/subscriptions/acknowledged`）の受信で待つ。従前は `Task.Delay(500)` で待っており、混んだ CI で取りこぼし得た。
 - ［#2315 のレビュー］tools を求めない listen は、受付の後にすぐ閉じる。試験は `toolsを求めないlistenは受付の後にすぐ閉じる` で、無期限に待つ形へ戻す変異で赤になる。
+- ［#2315 のレビュー］同時本数の枠の鍵を、表示名（`Identity.Name`。無ければ共有の "anonymous"）から `sub` へ改めた。`sub` の無いトークンは listen 自体を断る。
+  - 試験: `同時listenの枠はsubごとで表示名を共有しない` と `subの無いトークンのlistenは断る`。
+  - **red→green**: 旧の鍵へ戻す変異で 2 件赤、戻すと緑。
+- ［#2315 のレビュー］`ToolCatalog.Changed` のコメントの型名を `ToolListChangedSubscription` に直した。

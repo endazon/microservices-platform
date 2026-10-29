@@ -33,7 +33,7 @@ public sealed class ToolCatalog(ILogger<ToolCatalog> logger)
     public int Version => _snapshot.Version;
 
     // FR-16, ADR-0024 §2, [[IADR-0651]] (#2142): 版が進んだ（公開ツールの集合・中身が変わった）ときに、新しい版で 1 回だけ呼ぶ。
-    // 購読側（`ToolListChangedSignal`）が MCP の `notifications/tools/list_changed` へ写す。内容が変わらない突合では呼ばない。
+    // 購読側（`ToolListChangedSubscription`）が MCP の `notifications/tools/list_changed` へ写す。内容が変わらない突合では呼ばない。
     public event Action<int>? Changed;
 
     // 公開名からツールを引く。**構成に無いツールは null を返す。**

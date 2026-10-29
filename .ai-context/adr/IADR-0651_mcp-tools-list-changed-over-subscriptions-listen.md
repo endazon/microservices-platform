@@ -47,6 +47,8 @@ related_specs:
 - 上限は `ToolListChangedListenLimits` が持つ。
   - **寿命**: 1 本の listen は最長 10 分で空の結果を返して閉じる。クライアントは開き直す。
   - **同時本数**: 主体ごと 4 本、プロセス全体 256 本。超えた要求は `InvalidRequest` で断り、開いている listen は切らない。
+  - 主体の鍵はトークンの `sub`（JwtBearer の既定の写像で NameIdentifier になる）である（#2315 のレビュー）。表示名（preferred_username）は一意でも必須でもないので、鍵にしない。
+  - **`sub` の無いトークンは listen 自体を断る**（`InvalidRequest`）。トークンの検証は `sub` を必須にしていない（実測。試験のトークンは sub 無しで `/mcp` を通る）。共有の枠を作ると、sub の無い利用者どうしが互いを締め出せる。
 - 既存の上限では抑えられないので、アプリの中に置いた。確かめた事実は次のとおりである。
   - SDK の `IdleTimeout` / `MaxIdleSessionCount` は有状態のセッションの上限で、無状態の要求には効かない。
   - エッジ（`deploy/helm/microservices-platform/templates/edge.yaml` の `/mcp` の VirtualService）に timeout の設定は無い。

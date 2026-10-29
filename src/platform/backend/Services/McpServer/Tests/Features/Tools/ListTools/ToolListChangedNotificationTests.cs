@@ -25,25 +25,31 @@ public class ToolListChangedNotificationTests(McpAudienceAuthenticationTests.Fac
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static string Token() =>
-        new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+    // 既定は sub つき（実在の利用者のトークンと同じ形）。`subject: null` で sub の無いトークンを作る。
+    private static string Token(string? subject = "user-1")
+    {
+        var claims = new Dictionary<string, object> { ["azp"] = "human-x", ["preferred_username"] = "poc-user" };
+        if (subject is not null) claims["sub"] = subject;
+        return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = McpAudienceAuthenticationTests.Factory.Issuer,
             Audience = McpAudienceAuthentication.Audience,
             IssuedAt = DateTime.UtcNow,
             Expires = DateTime.UtcNow.AddMinutes(5),
-            Claims = new Dictionary<string, object> { ["azp"] = "human-x", ["preferred_username"] = "poc-user" },
+            Claims = claims,
             SigningCredentials = new SigningCredentials(McpAudienceAuthenticationTests.Factory.Key, SecurityAlgorithms.HmacSha256),
         });
+    }
 
     private static McpToolDeclaration Decl(string name) => new(name, "説明", """{"type":"object"}""", "read", "internal");
 
     // 受付（`notifications/subscriptions/acknowledged`）の受信の数も返す（listen が開いたことを時間ではなく受付で待つ）。
     private static async Task<(SdkMcpClient Client, Func<int> Received, Func<int> Acknowledged)> ConnectAsync(
-        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> host, string? protocolVersion)
+        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> host, string? protocolVersion,
+        string? subject = "user-1")
     {
         var http = host.CreateClient();
-        http.DefaultRequestHeaders.Authorization = new("Bearer", Token());
+        http.DefaultRequestHeaders.Authorization = new("Bearer", Token(subject));
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = new Uri(http.BaseAddress!, "/mcp"),
@@ -159,6 +165,40 @@ public class ToolListChangedNotificationTests(McpAudienceAuthenticationTests.Fac
         var completed = await Task.WhenAny(listen, Task.Delay(TimeSpan.FromSeconds(15), Ct));
         completed.Should().BeSameAs(listen, "送る通知が無いので保持しない");
         listen.IsCompletedSuccessfully.Should().BeTrue();
+    }
+
+    // ［#2315 のレビュー］同時本数の枠の鍵は sub。表示名が同じでも sub が違えば互いを締め出さない（陽性の対照）。
+    [Fact]
+    public async Task 同時listenの枠はsubごとで表示名を共有しない()
+    {
+        await using var host = factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.RemoveAll<ToolListChangedListenLimits>();
+            s.AddSingleton(new ToolListChangedListenLimits { MaxPerSubject = 1 });
+        }));
+        var (alice, _, aliceAcks) = await ConnectAsync(host, protocolVersion: null, subject: "alice");
+        await using var _a = alice;
+        var (bob, _, bobAcks) = await ConnectAsync(host, protocolVersion: null, subject: "bob");
+        await using var _b = bob;
+
+        var (aliceListen, _) = await StartListenAsync(alice, aliceAcks);
+        using var _al = aliceListen;
+        var (bobListen, _) = await StartListenAsync(bob, bobAcks);
+        using var _bl = bobListen;
+        await aliceListen.CancelAsync();
+        await bobListen.CancelAsync();
+    }
+
+    // ［#2315 のレビュー］sub の無いトークンは listen 自体を断る（共有の枠を作らない）。トークンの検証は sub を必須にしていない（通る）。
+    [Fact]
+    public async Task subの無いトークンのlistenは断る()
+    {
+        var (client, _, acknowledged) = await ConnectAsync(factory, protocolVersion: null, subject: null);
+        await using var _c = client;
+
+        var act = async () => await StartListenAsync(client, acknowledged);
+
+        await act.Should().ThrowAsync<ModelContextProtocol.McpProtocolException>();
     }
 
     // ［#2315 の監査］listen は最長の寿命で閉じる（開き直すたびに認証を通り直す）。

@@ -69,8 +69,14 @@ public static class ToolListChangedSubscription
         RequestContext<SubscriptionsListenRequestParams> request, ToolCatalog catalog,
         ToolListChangedListenLimits limits, CancellationToken ct)
     {
-        // 主体は `/mcp` の認証が決めた利用者（audience を検証したトークン）。名前が無ければ 1 つの枠に寄せる（安全側）。
-        var subject = request.User?.Identity?.Name ?? "anonymous";
+        // 主体は `/mcp` の認証が決めた利用者の `sub`（JwtBearer の既定の写像で NameIdentifier になる）。表示名（preferred_username）は
+        // 一意でも必須でもないので枠の鍵にしない。🔴 ［#2315 のレビュー］**sub の無いトークンは listen 自体を断る**
+        // （トークンの検証は sub を必須にしていない。共有の枠を作ると、sub の無い利用者どうしが互いを締め出せる）。
+        var subject = request.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? request.User?.FindFirst("sub")?.Value;
+        if (string.IsNullOrWhiteSpace(subject))
+            throw new McpProtocolException(
+                "subscriptions/listen には利用者を特定できるトークン（sub）が要ります。", McpErrorCode.InvalidRequest);
         if (!limits.TryAcquire(subject))
             throw new McpProtocolException(
                 "subscriptions/listen の同時接続の上限に達しています。開いている listen を閉じてから開き直してください。",

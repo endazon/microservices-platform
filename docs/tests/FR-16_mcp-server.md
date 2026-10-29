@@ -256,6 +256,7 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | L-4 | listen を開いたまま最長の寿命（既定 10 分）に達する | 空の結果で閉じる（開き直しで認証を通り直す） |
 | L-5 | 同じ主体が上限（既定 4 本）を超えて listen を開く | 超えた要求を断り、開いている listen は切らない。全体の上限（既定 256 本）も数える |
 | L-6 | tools の list_changed を求めない listen | 受付（扱う種類なし）の後にすぐ閉じる（接続を保持しない） |
+| L-7 | 同時本数の枠の鍵 | 鍵は `sub`。表示名が同じでも sub が違えば互いを締め出さない。sub の無いトークンの listen は断る（共有の枠を作らない） |
 
 ## データ越境の受け入れ基準
 
@@ -524,7 +525,7 @@ MCP の経路の結果が文書サービスの REST の同じ利用者の結果�
 ## 実装マッピング
 
 - `ToolCatalogTests` — 公開構成の許可リストと実効一覧・重複した申告（A-11）・版が進んだときだけの合図（L-3）
-- `ToolListChangedNotificationTests` — 版が進むと listen しているクライアントへ list_changed が届く（L-1）・進まなければ届かない（L-2）・寿命（L-4）・同時本数の上限（L-5）・tools を求めない listen（L-6）。実物の SDK のクライアントで `/mcp` に繋ぐ
+- `ToolListChangedNotificationTests` — 版が進むと listen しているクライアントへ list_changed が届く（L-1）・進まなければ届かない（L-2）・寿命（L-4）・同時本数の上限（L-5）・tools を求めない listen（L-6）・枠の鍵（L-7）。実物の SDK のクライアントで `/mcp` に繋ぐ
 - `ToolInvocationServiceTests` — 単一経路の統制（登録確認 → 公開確認 → 個人資料の除外 → 越境 → 監査）
 - `ToolPublicationConfigValidatorTests` — 構成の値域と拒否条件
 - `ToolPublicationFailFastTests` — 要求受付前の同期検証（A-8〜A-10）
