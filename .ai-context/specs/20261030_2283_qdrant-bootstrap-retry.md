@@ -35,7 +35,7 @@ issue: "#2283"
 4. **(c) ダンプ**: e2e-live の失敗時ダンプへ ingestion-service・retrieval-service・llmgateway-service のログ（`--tail=150`）を足す。
 5. G13 は変えない。
 
-## 母集合（規則 9・10・11）
+## 母集合（規則 9・10。窓の点検は AST の規則 11 の作法を借りた）
 
 - **規則 9**（誤りの側の文字列で走査）: `git grep -n "QdrantBootstrapHostedService\|より後に登録\|初回 upsert 前に再試行"` で走査した（`.ai-context/specs` を除く）。
   - **追随したもの**:
@@ -49,7 +49,7 @@ issue: "#2283"
 - **規則 10**（この変更で新たに誤りになる自分の記述）: `HealthEndpointTests` について 2 点を確かめた。
   - readiness の集合の期待値（`OwnDependencies`）に `qdrant-bootstrap` を足した。
   - 試験名「readiness に載るのは Wolverine のブローカと自前の Qdrant だけ」は、保証も自前の Qdrant についての検査なので、そのまま正しい。
-- **規則 11**（窓）: 本件は時間差の是正ではない（「一度成功したか」の単調な状態）。該当しない。
+- **窓の点検**（MSP の `traceability.repo.md` に規則 11 は無い。AST の `traceability.repo.md` の規則 11 の作法を任意で借りた）: 本件は時間差の是正ではない（「一度成功したか」の単調な状態）。該当しない。
 
 ## 秘密の値の確認（受け入れ基準 4。ジョブのログは公開）
 
