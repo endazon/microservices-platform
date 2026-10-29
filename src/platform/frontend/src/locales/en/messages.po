@@ -77,6 +77,10 @@ msgstr "{displayName} (deactivated)"
 msgid "{effectiveMinCount} 件以上検索された語のみを表示します。"
 msgstr "Only terms searched at least {effectiveMinCount} times are shown."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{failedCount} 件は復元できませんでした。"
+msgstr "{failedCount} could not be restored."
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h} (max)"
@@ -113,6 +117,10 @@ msgstr "{reasonLength} / {maxLength} characters"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
 msgstr "Reissue the client secret of {reissueTargetId}. The current secret stops working immediately. Replace it with the new secret in the agent's configuration."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{restoredCount} 件を復元しました。{failedCount} 件は復元できませんでした。"
+msgstr "Restored {restoredCount}. {failedCount} could not be restored."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"

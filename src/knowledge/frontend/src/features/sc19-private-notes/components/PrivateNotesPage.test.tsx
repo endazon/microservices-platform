@@ -3,6 +3,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
+import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 
 // SC-19, UC-11, FR-19/FR-21（#451）: 個人資料管理画面。
@@ -502,6 +503,76 @@ describe('SC-19 個人資料管理: 削除済みタブ', () => {
       `/private-notes/${TRASHED_URGENT.id}/restore`,
       `/private-notes/${TRASHED_CALM.id}/restore`,
     ]);
+  });
+});
+
+// #2324: 一括復元の完了通知は、後段の結果をすべて受けてから出す。
+describe('SC-19 個人資料管理: 一括復元の完了通知', () => {
+  /** 復元の要求だけを差し替える（一覧と完全削除は既定の応答）。 */
+  function respondRestore(handler: (path: string) => Promise<unknown>) {
+    respond();
+    const base = mocks.apiRequest.getMockImplementation()!;
+    mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) =>
+      path.endsWith('/restore') ? handler(path) : base(path, init),
+    );
+  }
+
+  async function restoreBoth(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByText('古い議事録');
+    await user.click(screen.getByLabelText('古い議事録 を選択'));
+    await user.click(screen.getByLabelText('下書き を選択'));
+    await user.click(screen.getByRole('button', { name: '選択した資料を復元する' }));
+  }
+
+  it('後段の応答を待つ間は「復元しました」を出さず、全件が戻ってから出す', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    respondRestore(() => held.then(() => jsonResponse({})));
+    const user = userEvent.setup();
+    await renderPage('/my/notes?tab=trash');
+
+    await restoreBoth(user);
+    await waitFor(() => expect(writes()).toHaveLength(2));
+    expect(screen.queryByText('選択した個人資料を復元しました。')).not.toBeInTheDocument();
+
+    await act(async () => release());
+    expect(await screen.findByText('選択した個人資料を復元しました。')).toBeInTheDocument();
+  });
+
+  // 全件が失敗したら「0 件を復元しました」は出さない（戻ったものが無いのに成功のように読める）。
+  it('全件が失敗したら、戻らなかった件数だけを出し、選択は全部残す', async () => {
+    respondRestore(() =>
+      Promise.reject(new ApiError('conflict', '保存容量の上限に達しました。', 409)),
+    );
+    const user = userEvent.setup();
+    await renderPage('/my/notes?tab=trash');
+
+    await restoreBoth(user);
+
+    expect(await screen.findByText('2 件は復元できませんでした。')).toBeInTheDocument();
+    expect(screen.queryByText(/件を復元しました/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText('古い議事録 を選択')).toBeChecked();
+    expect(screen.getByLabelText('下書き を選択')).toBeChecked();
+  });
+
+  it('一部が失敗したら、戻った件数と戻らなかった件数を出し、失敗した資料は選んだまま残す', async () => {
+    // 非 2xx は `apiRequest` が `ApiError` を投げる（本ファイルは `apiRequest` を差し替えているので、投げる形で与える）。
+    respondRestore((path) =>
+      path.includes(TRASHED_CALM.id)
+        ? Promise.reject(new ApiError('conflict', '保存容量の上限に達しました。', 409))
+        : Promise.resolve(jsonResponse({})),
+    );
+    const user = userEvent.setup();
+    await renderPage('/my/notes?tab=trash');
+
+    await restoreBoth(user);
+
+    expect(
+      await screen.findByText('1 件を復元しました。1 件は復元できませんでした。'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('選択した個人資料を復元しました。')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('下書き を選択')).toBeChecked();
+    expect(screen.getByLabelText('古い議事録 を選択')).not.toBeChecked();
   });
 });
 

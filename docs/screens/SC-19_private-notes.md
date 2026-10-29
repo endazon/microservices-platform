@@ -3,15 +3,15 @@ title: 個人資料管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-28
-updated: 2026-10-26
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11]
 adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096]
 iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
-specs: [20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice]
-issues: [#451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, planning#614, planning#618, planning#628, planning#841]
+specs: [20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice]
+issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, planning#614, planning#618, planning#628, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理
@@ -193,7 +193,7 @@ issues: [#451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, planning#614, pl
 | 作成する | タイトル（＋パス）だけを送る。成功で入力を空にする | 同じ画面 |
 | 露出トグル | 3 値を揃えて送る（変えた 1 つだけが変わる） | 同じ画面 |
 | 削除する | 確認ダイアログ → 論理削除 | 同じ画面 |
-| 復元する | 単票・一括のいずれも即時に実行する（破壊的でないため確認を挟まない） | 同じ画面 |
+| 復元する | 単票・一括のいずれも即時に実行する（破壊的でないため確認を挟まない）。［2026-10-30］完了の通知は全件の結果を受けてから出す。一部が失敗したら戻った件数と戻らなかった件数を出し（全件が失敗したら戻らなかった件数だけ）、戻らなかった資料は選んだまま残す | 同じ画面 |
 | 完全に削除する | 確認ダイアログ → 単票／一括を**同じ口**へ送る | 同じ画面 |
 | タブ・絞り込みの変更 | URL を書き換える | 同じ画面 |
 | 連携設定へ | 本文を書く経路の案内から遷移する | 連携設定画面 |
@@ -229,6 +229,7 @@ flowchart LR
 | 公開範囲の 3 状態の表示 | する | 状態バッジ 3 値 ＋ 共有件数。3 状態が色ではなく文言で区別されることを単体テストが固定 |
 | 公開範囲の変更ダイアログ（指定先の一覧・追加・削除） | する | ［2026-09-12 追記］**個人とグループの両方**を扱う（一覧・検索・追加・取り消し）。**かつては個人指定だけで、グループの導線を置いていなかった** —— 認可がグループ共有を評価しない間は「設定できるのに何も起きない面」になるためである。その条件が解消したので解禁した。表示名（グループはパスも）だけを出し識別子は出さないことを単体テスト・ブラウザ E2E が陽性対照つきで固定する |
 | 新規作成の導線（リッチエディタを描かない・本文編集の導線も持たない） | する | 入力はタイトルとパスだけ。本文の欄も編集導線も無いことを単体テストが固定 |
+| 機密区分（ABAC 属性。必須・選択・個人資料の既定 `restricted`） | **しない**（［2026-10-30］） | 作成時の機密区分は要求の受け入れ基準が `restricted` と定めており、作成の時点で選ばせる欄はこれと食い違う。入力表の欄が作成時のものか作成後の変更かは計画から読み切れず、作成後に機密区分を変える口は契約に無い。送る先の無い欄は置かない（作成はつねに `restricted`） |
 | 同期状態の表示（同期対象 / 対象外 / 競合あり） | する | 状態バッジ 3 値。**削除済みは契約上つねに対象外**なので、削除済みタブには列も絞りも置かない。競合の一覧と解決は連携設定画面が持つ |
 | 検索・絞り込み（タイトル / タグ / 公開範囲 / 同期状態） | する | 4 軸とも URL が単一情報源。未知の値は「絞らない」へ倒す |
 | 空状態 | する | 利用中・削除済みで文言を分ける |

@@ -219,11 +219,26 @@ export function PrivateNotesPage() {
     });
   }
 
-  function runRestore(ids: string[]) {
+  // #2324: 完了の通知は**全件の結果を受けてから**出す（従前は送った直後に「復元しました」を出していた）。
+  // 一部が失敗したら件数で示し、失敗した資料は選んだまま残す（やり直せるように）。理由は既存のエラー欄が出す。
+  async function runRestore(ids: string[]) {
     beginOperation();
-    for (const id of ids) restore.mutate({ id });
-    clearSelection();
-    setNotice(t`選択した個人資料を復元しました。`);
+    const results = await Promise.allSettled(ids.map((id) => restore.mutateAsync({ id })));
+    const failedIds = ids.filter((_, i) => results[i].status === 'rejected');
+    if (failedIds.length === 0) {
+      clearSelection();
+      setNotice(t`選択した個人資料を復元しました。`);
+      return;
+    }
+    setSelected(() => failedIds);
+    const restoredCount = ids.length - failedIds.length;
+    const failedCount = failedIds.length;
+    // 全件が失敗したら「0 件を復元しました」とは言わない（戻ったものが無いのに成功のように読める）。
+    setNotice(
+      restoredCount === 0
+        ? t`${failedCount} 件は復元できませんでした。`
+        : t`${restoredCount} 件を復元しました。${failedCount} 件は復元できませんでした。`,
+    );
   }
 
   function confirmPurge() {
@@ -482,7 +497,7 @@ export function PrivateNotesPage() {
                   <Button
                     variant="secondary"
                     disabled={selected.length === 0 || pending}
-                    onClick={() => runRestore(selected)}
+                    onClick={() => void runRestore(selected)}
                   >
                     <Trans>選択した資料を復元する</Trans>
                   </Button>
@@ -672,7 +687,7 @@ export function PrivateNotesPage() {
                                   size="sm"
                                   variant="secondary"
                                   disabled={pending}
-                                  onClick={() => runRestore([note.id])}
+                                  onClick={() => void runRestore([note.id])}
                                 >
                                   <Trans>復元する</Trans>
                                 </Button>
