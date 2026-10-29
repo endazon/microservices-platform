@@ -217,6 +217,63 @@ public class TwoTierTraversalTests : IClassFixture<TestWebApplicationFactory>
         titles.Should().NotContain("v249", "更新日順ならこれが残るが、既定は到達順である");
     }
 
+    // 🔴 FR-17, FR-05, IADR-0653 (#2145): `degree` の間引きは**許可済みの辺だけ**で数える。
+    //
+    // 起点 → 可視の葉 250。葉のうち 10 件（hiddenHeavy）は**権限外の文書へ 5 本ずつ**辺を持つ（全辺の次数 6・可視の次数 1）。
+    // 別の 10 件（visibleHeavy）は**可視の文書へ 1 本**ずつ辺を持つ（可視の次数 2）。どちらも GUID を最大側に寄せ、
+    // 同点なら落ちる位置に置く（同点の並びは DocumentId の昇順）。
+    //   - 全辺の次数で並べると、hiddenHeavy が上位に来て残る（見えない関係の多寡が並びから読める）。
+    //   - 可視の次数で並べると、hiddenHeavy は同点の末尾で落ち、visibleHeavy は上位に残る（陽性の対照）。
+    [Fact]
+    public async Task Thinning_by_degree_counts_only_authorized_edges()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var origin = Guid.NewGuid();
+        var type = EdgeType.Create($"t-{Guid.NewGuid():N}", EdgeTypeLayer.Core, false);
+        var hiddenHeavy = Enumerable.Range(0, 10).Select(i => new Guid($"7f000000-0000-0000-0000-{i:D12}")).ToList();
+        var visibleHeavy = Enumerable.Range(0, 10).Select(i => new Guid($"7f000000-0000-0000-0001-{i:D12}")).ToList();
+        await _factory.SeedAsync(db =>
+        {
+            db.EdgeTypes.Add(type);
+            db.Documents.Add(Node(origin, "origin"));
+            for (var i = 0; i < 230; i++)
+            {
+                var leaf = new Guid($"00000000-0000-0000-0000-{i:D12}");
+                db.Documents.Add(Node(leaf, $"v{i}"));
+                db.Edges.Add(Edge.Create(origin, leaf, type.Id, false, EdgeProvenance.Auto));
+            }
+            foreach (var (leaf, i) in hiddenHeavy.Select((g, i) => (g, i)))
+            {
+                db.Documents.Add(Node(leaf, $"hidden-heavy{i}"));
+                db.Edges.Add(Edge.Create(origin, leaf, type.Id, false, EdgeProvenance.Auto));
+                for (var k = 0; k < 5; k++)
+                {
+                    var secret = Guid.NewGuid();
+                    db.Documents.Add(Node(secret, $"secret{i}-{k}", "restricted"));
+                    db.Edges.Add(Edge.Create(leaf, secret, type.Id, false, EdgeProvenance.Auto));
+                }
+            }
+            foreach (var (leaf, i) in visibleHeavy.Select((g, i) => (g, i)))
+            {
+                db.Documents.Add(Node(leaf, $"visible-heavy{i}"));
+                db.Edges.Add(Edge.Create(origin, leaf, type.Id, false, EdgeProvenance.Auto));
+                var friend = new Guid($"7f000000-0000-0000-0002-{i:D12}");
+                db.Documents.Add(Node(friend, $"friend{i}"));
+                db.Edges.Add(Edge.Create(leaf, friend, type.Id, false, EdgeProvenance.Auto));
+            }
+            return Task.CompletedTask;
+        });
+
+        var view = await GetAsync(origin, by: GraphThinning.Degree);
+
+        view.Truncated.Should().BeTrue("251 件を超える候補から 200 件を選ぶ");
+        var titles = view.Nodes.Select(n => n.Title).ToHashSet();
+        titles.Should().Contain(Enumerable.Range(0, 10).Select(i => $"visible-heavy{i}"),
+            "可視の次数 2 は上位に残る（陽性の対照）");
+        titles.Should().NotContain(Enumerable.Range(0, 10).Select(i => $"hidden-heavy{i}"),
+            "権限外の辺の本数は並びに効かない（効くと上位に来て残る）");
+    }
+
     // T-10: 未知の基準は既定へ縮退する（例外にしない）。
     [Fact]
     public async Task An_unknown_thinning_falls_back_to_the_default()
