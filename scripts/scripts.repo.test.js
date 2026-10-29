@@ -19431,4 +19431,53 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(r.stdout, '403', r.stdout + r.stderr);
     });
   }
+
+  // --- NFR / #2128 段 1: 回収実行（integration.yml）は pandoc / poppler-utils を入れてから試験を走らせる -------------
+  //
+  // ConversionService の 9 件（実 pandoc 4・実 pdftotext 5）は、ツールが無いと Assert.SkipUnless で Skipped になる。
+  // どのワークフローも入れていなかったので、9 件はどこでも実走していなかった（監査 run 39538321988 で Skipped: 9）。
+  // 導入の step が試験より前に在り、失敗を握り潰さず、両ツールの確認を走らせていることを固定する。
+  {
+    const REPO_2128 = path.join(__dirname, '..');
+    const wf2128 = fs.readFileSync(path.join(REPO_2128, '.github/workflows/integration.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const stepsOf2128 = (text) => text.split(/\n(?= {6}- )/).slice(1);
+    const toolStepIssues = (text) => {
+      const steps = stepsOf2128(text);
+      const testAt = steps.findIndex((st) => /dotnet test /.test(st));
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st) && /apt-get install[^\n]*\bpoppler-utils\b/.test(st));
+      const out = [];
+      if (testAt < 0) out.push('dotnet test の step が見つからない（走査が壊れている）');
+      if (toolAt < 0) out.push('pandoc / poppler-utils を apt-get install する step が無い');
+      if (toolAt >= 0 && testAt >= 0 && toolAt > testAt) out.push('導入の step が試験の step より後にある');
+      if (toolAt >= 0) {
+        const st = steps[toolAt];
+        if (/\|\|\s*true|continue-on-error:\s*true/.test(st)) out.push('導入の失敗を握り潰している（Skipped に戻っても緑になる）');
+        if (/^\s+if:/m.test(st)) out.push('導入の step に条件が付いている（飛ばされると Skipped に戻る）');
+        if (!/pandoc --version/.test(st)) out.push('pandoc --version で導入を確かめていない');
+        // パイプの後段（head 等）の終了コードで、pandoc の不在が隠れる（既定の shell は pipefail ではない）。
+        if (/(pandoc --version|pdftotext -v)[^\n]*\|/.test(st)) out.push('確認の出力をパイプへ流している（不在が終了コードに出ない）');
+        if (!/pdftotext -v/.test(st)) out.push('pdftotext -v で導入を確かめていない');
+      }
+      return out;
+    };
+
+    ok('NFR / #2128 段 1: integration.yml は試験の前に pandoc / poppler-utils を入れ、入らなければ赤にする', () => {
+      assert.deepStrictEqual(toolStepIssues(wf2128), []);
+    });
+
+    ok('NFR / #2128 段 1 陰性対照: 導入の step を消す・後ろへ回す・|| true を付けると検出する', () => {
+      const steps = stepsOf2128(wf2128);
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st));
+      assert.ok(toolAt >= 0, '陽性の前提（導入の step）が無い');
+      const head = wf2128.split(/\n(?= {6}- )/)[0];
+      const join = (arr) => [head, ...arr].join('\n');
+      const without = steps.filter((_, i) => i !== toolAt);
+      assert.ok(toolStepIssues(join(without)).some((e) => e.includes('step が無い')));
+      assert.ok(toolStepIssues(join([...without, steps[toolAt]])).some((e) => e.includes('より後')));
+      const swallowed = steps.map((st, i) => (i === toolAt ? st.replace('pandoc poppler-utils', 'pandoc poppler-utils || true') : st));
+      assert.ok(toolStepIssues(join(swallowed)).some((e) => e.includes('握り潰して')));
+      const piped = steps.map((st, i) => (i === toolAt ? st.replace('pandoc --version', 'pandoc --version | head -1') : st));
+      assert.ok(toolStepIssues(join(piped)).some((e) => e.includes('パイプ')));
+    });
+  }
 };
