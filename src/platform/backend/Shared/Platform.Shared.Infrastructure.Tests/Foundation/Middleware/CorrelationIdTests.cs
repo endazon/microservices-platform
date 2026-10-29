@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -134,5 +136,42 @@ public class CorrelationIdTests
 
         // 要求の外（バックグラウンド・メッセージの処理）では付けない。後段はトレース（traceparent）から同じ値を導く。
         recorder.Seen.Should().BeNull();
+    }
+
+    // IADR-0649 残余リスク（#2303 の AI レビュー）: 転送は外部の宛先（LLM の提供元・IdP 等）へも及ぶ。そこで出る値が新しい情報か
+    // どうかを実測する。実ソケット越し（既定の primary handler。.NET の DiagnosticsHandler が traceparent を書く）で、
+    // 相関 ID を決めずに来た要求の外向き呼び出しに (1) traceparent が載り、(2) X-Correlation-ID がそのトレース ID と同じであること。
+    [Fact]
+    public async Task 外向きの呼び出しには既定でtraceparentが載り相関IDはそのトレースIDと同じ()
+    {
+        var seen = new TaskCompletionSource<(string? TraceParent, string? Correlation)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = WebApplication.CreateBuilder();
+        server.WebHost.UseUrls("http://127.0.0.1:0");
+        await using var app = server.Build();
+        app.MapGet("/x", (HttpRequest r) =>
+        {
+            seen.TrySetResult((r.Headers["traceparent"].FirstOrDefault(), r.Headers[CorrelationId.Header].FirstOrDefault()));
+            return Results.Ok();
+        });
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        var url = app.Urls.First();
+
+        var services = new ServiceCollection();
+        services.AddPlatformObservability(
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Otlp:Endpoint"] = "http://127.0.0.1:9" }).Build(),
+            "correlation-test");
+        await using var sp = services.BuildServiceProvider();
+        _ = sp.GetRequiredService<OpenTelemetry.Trace.TracerProvider>();
+
+        using var request = new Activity("incoming").SetIdFormat(ActivityIdFormat.W3C).Start();
+        var (_, context) = await RunAsync(null); // 相関 ID を持たずに来た要求（既定でトレース ID になる）
+        sp.GetRequiredService<IHttpContextAccessor>().HttpContext = context;
+
+        await sp.GetRequiredService<IHttpClientFactory>().CreateClient("External").GetAsync($"{url}/x", TestContext.Current.CancellationToken);
+        var (traceParent, correlation) = await seen.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        traceParent.Should().NotBeNull("既定の伝播が外向きの要求に traceparent を書く");
+        traceParent!.Split('-')[1].Should().Be(request.TraceId.ToHexString());
+        correlation.Should().Be(request.TraceId.ToHexString(), "相関 ID は traceparent が既に運ぶトレース ID と同じで、新しい情報を足さない");
     }
 }

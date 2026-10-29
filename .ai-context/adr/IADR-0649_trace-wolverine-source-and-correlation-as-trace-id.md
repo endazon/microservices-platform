@@ -53,6 +53,9 @@ related_specs:
 
 ## 残余リスク
 
-- 外部の宛先（LLM の提供元・Keycloak・外部データソース等）への呼び出しにも、要求の中なら `X-Correlation-ID` が付く。値はトレース ID か利用者が送った安全な形の文字列で、秘密は含まない。traceparent は従前から同じく付いている。
+- 外部の宛先（LLM の提供元・Keycloak・外部データソース等）への呼び出しにも、要求の中なら `X-Correlation-ID` が付く。**受容する。** 理由:
+  - 既定の伝播（.NET の DiagnosticsHandler と HttpClient の計装）が、外向きの要求に traceparent を既に書いている。相関 ID は既定ではそのトレース ID と同じ値で、新しく出る情報は無い（2026-10-29 に実ソケット越しで実測。`CorrelationIdTests` の「外向きの呼び出しには既定で traceparent が載り相関 ID はそのトレース ID と同じ」が固定する）。
+  - 呼び出し側が持ち込んだ値は `CorrelationId.Resolve` を通る（英数字と `._:-` の 128 文字まで。決定 4）。転送するのは Resolve 後の値だけで、受けた文字列がそのまま外へ出る経路は無い。
+  - 本番コードに伝播を止める設定は無い（`DistributedContextPropagator`・`EnableActivityPropagation` の上書き 0 件）。止める設定を足すときは、本項を見直す（そのときは相関 ID だけが外へ出ることになる）。
 - 利用者が相関 ID を送ってきた場合、その値はトレース ID と一致しない。ログでは両方（スコープの `CorrelationId` と TraceId）が並ぶので突合はできる。
 - Wolverine の ActivitySource の名前が版上げで変わると、聞き手が空振りする。名前の突き合わせの試験が版上げの PR で赤になる。
