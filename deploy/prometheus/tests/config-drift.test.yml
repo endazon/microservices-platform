@@ -1,0 +1,69 @@
+# FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): 警報 ConfigDriftDetected の式を `promtool test rules` で固定する。
+#
+# 計器 `config_drift_findings` は BFF のドリフト検出が検出のたびに差し替えるゲージ（直近の不一致の件数。0 が正常）。
+# 守るもの:
+#   場面 1: 不一致が現れて続く → for 5m の後に鳴る（現れる前・0 の間は鳴らない）。直して 0 に戻れば収まる。
+#   場面 2: レプリカの片方だけが不一致を見る → job ごとの max で鳴る（もう片方の 0 で打ち消さない）。
+#   場面 3: 系列が無い（検出の前・BFF が居ない）→ 鳴らない。
+#
+# 実行: promtool test rules deploy/prometheus/tests/*.test.yml（CI の static-checks-units。版は deploy の Prometheus と同じ v2.52.0）
+rule_files:
+  - ../alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 場面 1: 0 が 10 分続き、2 件の不一致が 30 分続き、直して 0 に戻る。
+  - interval: 1m
+    input_series:
+      - series: 'config_drift_findings{job="microservices-platform.bff-service", instance="a"}'
+        values: '0x10 2x30 0x20'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: ConfigDriftDetected
+        exp_alerts: []
+      # 11 分目に現れ、for 5m を満たす前は鳴らない。
+      - eval_time: 14m
+        alertname: ConfigDriftDetected
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: ConfigDriftDetected
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.bff-service
+            exp_annotations:
+              summary: '構成ドリフトを検出した（宣言と実効構成の不一致。0 が正常）'
+              description: 'microservices-platform.bff-service の config_drift_findings（直近のドリフト検出で見つかった不一致の件数）が 2 である。宣言（pipeline.json・各サービスの自己申告）と実効構成が食い違っている。BFF のログ（ConfigDrift=true の Warning。kind・severity・target・detail）で対象を特定し、宣言か配備のどちらかを直す。直れば次の検出（既定 5 分・PostSync の即時検出）で 0 に戻り収まる。'
+      # 直して 0 に戻れば収まる（恒常発火しない）。
+      - eval_time: 45m
+        alertname: ConfigDriftDetected
+        exp_alerts: []
+
+  # 場面 2: 2 レプリカのうち片方だけが不一致を見る。
+  - interval: 1m
+    input_series:
+      - series: 'config_drift_findings{job="microservices-platform.bff-service", instance="a"}'
+        values: '0x30'
+      - series: 'config_drift_findings{job="microservices-platform.bff-service", instance="b"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: ConfigDriftDetected
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.bff-service
+            exp_annotations:
+              summary: '構成ドリフトを検出した（宣言と実効構成の不一致。0 が正常）'
+              description: 'microservices-platform.bff-service の config_drift_findings（直近のドリフト検出で見つかった不一致の件数）が 1 である。宣言（pipeline.json・各サービスの自己申告）と実効構成が食い違っている。BFF のログ（ConfigDrift=true の Warning。kind・severity・target・detail）で対象を特定し、宣言か配備のどちらかを直す。直れば次の検出（既定 5 分・PostSync の即時検出）で 0 に戻り収まる。'
+
+  # 場面 3: 系列が無い（別の計器だけがある）→ 鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'up{job="microservices-platform.bff-service", instance="a"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: ConfigDriftDetected
+        exp_alerts: []

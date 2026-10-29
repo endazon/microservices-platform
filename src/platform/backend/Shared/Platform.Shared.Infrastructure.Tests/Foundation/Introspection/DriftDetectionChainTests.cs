@@ -1,4 +1,6 @@
+using System.Diagnostics.Metrics;
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
@@ -52,7 +54,55 @@ public class DriftDetectionChainTests
         }
     }
 
+    private static ConfigDriftMetrics NewMetrics() => new(NewMeterFactory());
+
+    private static IMeterFactory NewMeterFactory() =>
+        new ServiceCollection().AddMetrics().BuildServiceProvider().GetRequiredService<IMeterFactory>();
+
+    // ゲージの現在値（観測が無ければ null）。同じ工場の Meter だけを聞く（他の試験の計器と混ぜない）。
+    private static long? ObserveFindings(IMeterFactory factory)
+    {
+        long? seen = null;
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Meter.Scope == factory && instrument.Name == ConfigDriftMetrics.FindingsGaugeName)
+                    l.EnableMeasurementEvents(instrument);
+            },
+        };
+        listener.SetMeasurementEventCallback<long>((_, value, _, _) => seen = value);
+        listener.Start();
+        listener.RecordObservableInstruments();
+        return seen;
+    }
+
     // ── DriftRunner ──────────────────────────────────────────────────────────
+
+    // FR-15, NFR-21, [[IADR-0652]] (#2143): 検出のたびにゲージ config.drift.findings を不一致の件数へ差し替える
+    // （検出の前は系列なし・不一致なら件数・直れば 0）。警報 ConfigDriftDetected の元である。
+    [Fact]
+    public async Task 検出のたびに不一致の件数をゲージへ差し替える()
+    {
+        var factory = NewMeterFactory();
+        var metrics = new ConfigDriftMetrics(factory);
+        var next = Report(true, Finding("a"), Finding("b"));
+        var runner = new DriftRunner(new StubInspection(() => next), new RecordingSink(),
+            new RecordingLogger<DriftRunner>(), metrics);
+
+        ObserveFindings(factory).Should().BeNull("検出の前は系列を出さない（0 と『まだ見ていない』を混ぜない）");
+
+        await runner.RunOnceAsync(TestContext.Current.CancellationToken);
+        ObserveFindings(factory).Should().Be(2);
+
+        next = Report(false);
+        await runner.RunOnceAsync(TestContext.Current.CancellationToken);
+        ObserveFindings(factory).Should().Be(0, "直れば 0（警報が収まる）");
+
+        next = Report(true);
+        await runner.RunOnceAsync(TestContext.Current.CancellationToken);
+        ObserveFindings(factory).Should().Be(1, "判定は HasDrift が正。findings が空でも 0 にしない");
+    }
 
     // FR-15: 不一致があれば **その report のまま** 警告先へ渡す。
     [Fact]
@@ -61,7 +111,7 @@ public class DriftDetectionChainTests
         var report = Report(true, Finding());
         var sink = new RecordingSink();
         var runner = new DriftRunner(
-            new StubInspection(() => report), sink, new RecordingLogger<DriftRunner>());
+            new StubInspection(() => report), sink, new RecordingLogger<DriftRunner>(), NewMetrics());
 
         var returned = await runner.RunOnceAsync(TestContext.Current.CancellationToken);
 
@@ -78,7 +128,7 @@ public class DriftDetectionChainTests
     {
         var sink = new RecordingSink();
         var runner = new DriftRunner(
-            new StubInspection(() => Report(false)), sink, new RecordingLogger<DriftRunner>());
+            new StubInspection(() => Report(false)), sink, new RecordingLogger<DriftRunner>(), NewMetrics());
 
         var returned = await runner.RunOnceAsync(TestContext.Current.CancellationToken);
 
@@ -92,7 +142,7 @@ public class DriftDetectionChainTests
     {
         var sink = new RecordingSink();
         var runner = new DriftRunner(
-            new StubInspection(() => Report(true)), sink, new RecordingLogger<DriftRunner>());
+            new StubInspection(() => Report(true)), sink, new RecordingLogger<DriftRunner>(), NewMetrics());
 
         await runner.RunOnceAsync(TestContext.Current.CancellationToken);
 

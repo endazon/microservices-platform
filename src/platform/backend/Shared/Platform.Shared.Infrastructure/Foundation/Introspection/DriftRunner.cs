@@ -14,11 +14,14 @@ public interface IDriftRunner
 public sealed class DriftRunner(
     IConfigInspectionService inspection,
     IDriftAlertSink alertSink,
-    ILogger<DriftRunner> logger) : IDriftRunner
+    ILogger<DriftRunner> logger,
+    ConfigDriftMetrics metrics) : IDriftRunner
 {
     public async Task<DriftReportDto> RunOnceAsync(CancellationToken ct = default)
     {
         var report = await inspection.GetDriftAsync(ct);
+        // FR-15, NFR-21, [[IADR-0652]] (#2143): 検出のたびに件数を計器へ（ドリフトが無ければ 0。警報 ConfigDriftDetected の元）。
+        metrics.Record(report);
         if (report.HasDrift)
         {
             await alertSink.AlertAsync(report, ct);

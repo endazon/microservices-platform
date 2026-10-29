@@ -86,6 +86,29 @@ describe('Table', () => {
     );
     expect(screen.getByRole('rowheader', { name: '共有フォルダ' })).toHaveAttribute('scope', 'row');
   });
+
+  // #2323（axe scrollable-region-focusable）: 横にはみ出し得る表は、受け皿をキーボードで操作できる領域にする。
+  it('scrollRegionLabel を渡すと、横スクロールの受け皿が名前つきの領域になりフォーカスできる', () => {
+    render(
+      <Table scrollRegionLabel="公開ツールの一覧">
+        <TableBody>
+          <TableRow>
+            <TableCell>retrieval.search_documents</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    const region = screen.getByRole('region', { name: '公開ツールの一覧' });
+    expect(region).toHaveAttribute('tabindex', '0');
+    expect(region).toContainElement(screen.getByRole('table'));
+  });
+
+  // 陰性対照: 渡さない表はタブ位置を増やさない（はみ出さない表に中身の無いタブ位置を作らない）。
+  it('scrollRegionLabel を渡さなければ受け皿は領域でもタブ位置でもない', () => {
+    render(<Fixture />);
+    expect(screen.queryByRole('region')).not.toBeInTheDocument();
+    expect(screen.getByRole('table').parentElement).not.toHaveAttribute('tabindex');
+  });
 });
 
 describe('Tabs（SC-09 の 4 タブ）', () => {
