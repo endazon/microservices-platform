@@ -8,6 +8,7 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { PlatformUserDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
+import { isSetValuedUserAttribute, joinUserAttribute, splitUserAttribute } from '../../../lib/abac';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import {
@@ -445,25 +446,60 @@ export function UserAccountManagementPage() {
                 </Select>
               </div>
             ))}
-            {/* 任意属性（計画の「タグ」）。**必須にしない。** */}
-            {optional.map((definition) => (
-              <div key={definition.key}>
-                <Label htmlFor={`user-attr-${definition.key}`}>{definition.label}</Label>
-                <Select
-                  id={`user-attr-${definition.key}`}
-                  selectSize="sm"
-                  value={editor.draftAttributes[definition.key] ?? ''}
-                  onChange={(e) => editor.setAttribute(definition.key, e.target.value)}
-                >
-                  <option value="">{t`指定しない`}</option>
-                  {definition.allowedValues.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ))}
+            {/* 任意属性（計画の「タグ」）。**必須にしない。**
+                #2126, 05_screens §SC-17 入力表「ABAC 属性（タグ）| 任意 | 複数選択」: 集合値のキー（タグ）は
+                許可値ごとのチェックボックスで描き、契約へはカンマで連結して送る（後段の UserAttributeEncoding と同じ規則）。
+                並びは許可値の順（選んだ順ではない）。全部外せばキーごと送らない。 */}
+            {optional
+              .filter((d) => isSetValuedUserAttribute(d.key))
+              .map((definition) => {
+                const chosen = splitUserAttribute(editor.draftAttributes[definition.key]);
+                return (
+                  <fieldset key={definition.key}>
+                    <legend className="text-sm font-medium text-fg">{definition.label}</legend>
+                    {definition.allowedValues.map((value) => (
+                      <label key={value} className="mr-4 inline-flex items-center gap-1 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={chosen.includes(value)}
+                          onChange={() => {
+                            const next = chosen.includes(value)
+                              ? chosen.filter((v) => v !== value)
+                              : [...chosen, value];
+                            editor.setAttribute(
+                              definition.key,
+                              joinUserAttribute(
+                                definition.allowedValues.filter((v) => next.includes(v)),
+                              ),
+                            );
+                          }}
+                        />
+                        {value}
+                      </label>
+                    ))}
+                  </fieldset>
+                );
+              })}
+            {optional
+              .filter((d) => !isSetValuedUserAttribute(d.key))
+              .map((definition) => (
+                <div key={definition.key}>
+                  <Label htmlFor={`user-attr-${definition.key}`}>{definition.label}</Label>
+                  <Select
+                    id={`user-attr-${definition.key}`}
+                    selectSize="sm"
+                    value={editor.draftAttributes[definition.key] ?? ''}
+                    onChange={(e) => editor.setAttribute(definition.key, e.target.value)}
+                  >
+                    <option value="">{t`指定しない`}</option>
+                    {definition.allowedValues.map((value) => (
+                      <option key={value} value={value}>
+                        {value}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
           </div>
 
           {editor.issues.length > 0 && (

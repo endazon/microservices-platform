@@ -471,14 +471,40 @@ describe('UserAccountManagementPage (SC-17)', () => {
   });
 
   // 🔴 05_screens §SC-17: **タグは任意**（過剰拒否の否定側）。タグ未設定でも保存できる。
+  // #2126, 05_screens §SC-17 入力表「ABAC 属性（タグ）| 任意 | 複数選択」: タグは複数選べ、契約へはカンマで連結して送る。
+  it('lets the tag attribute take several values and sends them joined by commas', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '田中 太郎');
+
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    await user.click(within(tags).getByRole('checkbox', { name: '経理' }));
+    await user.click(within(tags).getByRole('checkbox', { name: '経営' }));
+    await user.selectOptions(screen.getByLabelText('機密区分上限 *'), 'internal');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/admin/users/u-tanaka/attributes') &&
+            // 並びは許可値の順（経営・経理）。選んだ順ではない。
+            JSON.parse(String((init as RequestInit)?.body)).attributes.tags === '経営,経理',
+        ),
+      ).toBe(true),
+    );
+  });
+
   it('does not require the optional tag attribute', async () => {
     mockApi();
     const user = userEvent.setup();
     await renderPage();
     await openEditor(user, '田中 太郎');
 
-    // 陽性対照: 任意属性の入力欄は在り、既定は未選択である。
-    expect(screen.getByLabelText('タグ')).toHaveValue('');
+    // 陽性対照: 任意属性の入力欄は在り、既定は未選択である（#2126: タグは複数選択のチェックボックス）。
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    for (const box of within(tags).getAllByRole('checkbox')) expect(box).not.toBeChecked();
 
     await user.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() =>

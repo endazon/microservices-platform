@@ -294,7 +294,7 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 649087,
+  "initialTotalBytes": 649136,
   "$comment_initialTotalBytes_20261026_2121_sc03-version-history-states": [
     "［2026-10-26 / #2121］645,166 → 645370 B へ引き上げた。smallLazyChunks は 12 のまま。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
     "増分の帰属: SC-03 の版履歴の欄に、計画の共通シェルの状態表示の規約（0 件と失敗を描き分ける）の文言 2 つ（「版履歴はまだありません。」「版履歴を取得できませんでした。」）を足した。Lingui の ja / en カタログは入口チャンク（index-*.js）に入るので、両言語の訳の分だけ初期ロードが増える（新しい文を dist で引くと入口チャンクだけが当たる）。",
@@ -514,9 +514,10 @@
   "$comment_smallLazyChunks": [
     "［2026-08-23 / #788］4 → 5。echartsBundle.ts を分けたことで登録層が 1 本の小チャンクになった。",
     "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
-    "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
+    "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。",
+    "［2026-10-30 / #2126］12 → 13。lib/abac/userAttributeEncoding.ts（集合値の利用者属性の規則 0.39 kB）を SC-12 と SC-17 の 2 つの遅延ルートが共有するので、Rollup が共有の小チャンクに切り出した。規則は後段の UserAttributeEncoding の写しで 1 か所に置く必要があり、片方の画面へ寄せると他方が画面をまたいで import することになる。初期ロードは +49 B（649,087 → 649,136 B）。"
   ],
-  "smallLazyChunks": 12,
+  "smallLazyChunks": 13,
   "$comment_initialTotalBytes_20260912_ast-bump": [
     "［2026-09-12 / #1437 作業 1・2］705,386 → 731,293（+25.91 kB）へ引き上げた。submodule src/ai-stock-trading を",
     "develop 3d35c7a → 7780edc（AST#791: 4 画面を @platform/ui と Lingui へ載せ替え）へ進めた合成ビルドの実測。",
