@@ -19,6 +19,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using ModelContextProtocol.Server;
 
 const string ServiceName = "microservices-platform.mcp-server";
 
@@ -124,8 +125,18 @@ builder.Services.AddPlatformIntrospection("mcp-server", new PipelineOptions());
 
 // FR-16, ADR-0024: MCP サーバー本体。Streamable HTTP（11_mcp-server-integration §前提）。
 // 🔴 ツールは動的ハンドラで供給する（コア改修なしでの追従。§2）。
+// FR-16, ADR-0024 §2, [[IADR-0651]] (#2142): カタログの版が進んだら `notifications/tools/list_changed` を送ると申告する
+// （届けるのは下の `subscriptions/listen` の処理。無状態の Streamable HTTP では要求の外の通知は捨てられる）。
+builder.Services.AddOptions<McpServerOptions>().PostConfigure(options =>
+{
+    options.Capabilities ??= new();
+    options.Capabilities.Tools ??= new();
+    options.Capabilities.Tools.ListChanged = true;
+});
 builder.Services.AddMcpServer()
     .WithHttpTransport()
+    .WithSubscriptionsListenHandler((ctx, ct) =>
+        ToolListChangedSubscription.ListenAsync(ctx, ctx.Services!.GetRequiredService<ToolCatalog>(), ct))
     .WithListToolsHandler((ctx, ct) =>
         ctx.Services!.GetRequiredService<McpListToolsHandler>()
             .ListToolsAsync(ctx.User ?? new ClaimsPrincipal(), ct))

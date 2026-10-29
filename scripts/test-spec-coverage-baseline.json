@@ -292,6 +292,7 @@
       "ToolCatalogTests",
       "ToolDeclarationSourceFailFastTests",
       "ToolInvocationServiceTests",
+      "ToolListChangedNotificationTests",
       "ToolPublicationConfigValidatorTests",
       "ToolPublicationFailFastTests"
     ],
