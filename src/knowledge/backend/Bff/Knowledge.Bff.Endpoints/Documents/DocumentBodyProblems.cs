@@ -29,7 +29,7 @@ public static class DocumentBodyProblems
         return content.State switch
         {
             Pb.DocumentContentState.Available =>
-                Results.Ok(new DocumentContentDto(doc.Id, doc.Title, content.Markdown, doc.MarkdownUri)),
+                Results.Ok(new DocumentContentDto(doc.Id, doc.Title, content.Markdown)),
             Pb.DocumentContentState.NotStored => Unavailable(
                 "本文の参照がオブジェクトストレージを指していません。原本を参照してください。", "not_stored"),
             Pb.DocumentContentState.Missing => Unavailable(

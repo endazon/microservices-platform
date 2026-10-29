@@ -93,7 +93,9 @@ public static class DocumentIndexStatuses
 
 // SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト
 // ストレージ（storage://）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
-public record DocumentContentDto(Guid Id, string Title, string Markdown, string? SourceUri);
+// #2289: 本文の参照（storage://）は載せない。従前の SourceUri は中身が MarkdownUri（正規化済み Markdown の参照）で
+// 「出典元」と読める名前と食い違い、読み手も 0 になった。原本の所在は DocumentDto.OriginalUri、本文の参照は DocumentDto.MarkdownUri が持つ。
+public record DocumentContentDto(Guid Id, string Title, string Markdown);
 
 // FR-06, UC-03: 文書の版スナップショット（**メタデータのみ**）。
 //

@@ -62,7 +62,6 @@ const CONTENT = {
   id: DOC_ID,
   title: TITLE,
   markdown: '# 経費精算規程\n締め日は毎月25日。',
-  sourceUri: null,
 };
 
 beforeEach(() => {

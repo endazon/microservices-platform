@@ -701,12 +701,12 @@ export interface DocumentListPageDto {
 /**
  * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後に文書サービスから受け取り
  * （本文の実体はオブジェクトストレージ `storage://`）、閲覧を許可された呼び出し元にのみ払い出す。
+ * 本文の参照（`storage://`）は載せない（#2289）。原本の所在は `DocumentDto.originalUri`、本文の参照は `DocumentDto.markdownUri` が持つ。
  */
 export interface DocumentContentDto {
   id: string;
   title: string;
   markdown: string;
-  sourceUri?: string | null;
 }
 
 export type DocumentVersionDtoAttributes = {[key: string]: string};

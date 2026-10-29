@@ -283,7 +283,7 @@ function SourceLinks({ doc }: { doc: DocumentDto }) {
   const wiki = useWikiPageIndex();
   const hasWikiPage = wiki.documentIds?.has(doc.id) ?? false;
   // 🔴 FR-06, SC-03, SC-05, IADR-0561 (#2121): **「原本」は原本の所在（台帳の originalUri）だけを指す。**
-  // 本文の応答の `sourceUri` の中身は `markdownUri`（正規化済み Markdown の参照）であり、どちらも原本ではない。
+  // `markdownUri` は正規化済み Markdown の参照であり、原本ではない（本文の応答の旧 `sourceUri` も中身は同じで、#2289 で外した）。
   // 従前の `content.sourceUri ?? doc.markdownUri` は、どちらへ落ちても正規化済み Markdown を「原本」と表示していた。
   // 所在が無ければ「—」（推測した所在を出さない）。
   const sourceUri = doc.originalUri ?? null;

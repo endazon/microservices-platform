@@ -1091,7 +1091,7 @@ describe('DocumentManagementPage (SC-05) facets, tabs and preview', () => {
     const markdown = '# 見出し\n' + 'あ'.repeat(1200);
     mocks.apiRequest.mockImplementation(async (path: string) =>
       path.endsWith('/content')
-        ? jsonResponse({ id: NEWS_DOC.id, title: NEWS_DOC.title, markdown, sourceUri: null })
+        ? jsonResponse({ id: NEWS_DOC.id, title: NEWS_DOC.title, markdown })
         : listPage([NEWS_DOC]),
     );
     const user = userEvent.setup();
@@ -1124,7 +1124,6 @@ describe('DocumentManagementPage (SC-05) facets, tabs and preview', () => {
           id: NEWS_DOC.id,
           title: NEWS_DOC.title,
           markdown: '本文',
-          sourceUri: null,
         });
       if (init?.method === 'POST' && path.endsWith('/archive')) {
         items = [{ ...NEWS_DOC, title: '株探のニュース（改題）', status: 'archived' }, DRAFT_DOC];
