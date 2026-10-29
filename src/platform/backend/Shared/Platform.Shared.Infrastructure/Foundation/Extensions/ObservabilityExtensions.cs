@@ -5,7 +5,9 @@ using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Messaging;
+using Platform.Shared.Infrastructure.Foundation.Middleware;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -13,6 +15,10 @@ public static class ObservabilityExtensions
 {
     private const string ServiceVersion = "0.1.0";
     private const string DefaultOtlpEndpoint = "http://otel-collector:4317";
+
+    // NFR-19, [[IADR-0649]] (#2129): Wolverine の ActivitySource の名前（`Wolverine.Runtime.WolverineTracing.ActivitySource`）。
+    // 型は internal なので名前を写す。写し間違えは TraceContinuityTests が Wolverine の実物と突き合わせて捕まえる。
+    public const string WolverineActivitySourceName = "Wolverine";
 
     // ADR-0006, IADR-0216: ログ・トレース・メトリクスは同じ OTLP 先と同じリソース属性を共有する。
     // 「相関 ID で三者を突合する」（ADR-0006 §決定）はリソース属性が一致していて初めて成立するため、
@@ -46,6 +52,10 @@ public static class ObservabilityExtensions
                 .SetResourceBuilder(resourceBuilder)
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
+                // NFR-19, ADR-0006, [[IADR-0649]] (#2129): メッセージの送受信もトレースに載せる。聞き手が居ないと Wolverine は
+                // 受信側の Activity を作らず、エンベロープが運ぶ親（traceparent）が使われない ——
+                // コンシューマのスパン・ログが HTTP の要求のトレースから切れ、相関がメッセージの 1 ホップ目で途切れる。
+                .AddSource(WolverineActivitySourceName)
                 .AddOtlpExporter(o => o.Endpoint = otlpEndpoint))
             .WithMetrics(metrics => metrics
                 .SetResourceBuilder(resourceBuilder)
@@ -56,6 +66,11 @@ public static class ObservabilityExtensions
                 // #2043 / IADR-0592: 自動再試行を使い切ったデッドレター到達（`DeadLetterMetrics`）も同じ Meter に載る。
                 .AddMeter(ConsumerTimeoutMetrics.MeterName)
                 .AddOtlpExporter(o => o.Endpoint = otlpEndpoint));
+
+        // NFR-19, ADR-0006, [[IADR-0649]] (#2129): 受けた要求の相関 ID を、IHttpClientFactory のすべてのクライアントで後段へ引き継ぐ。
+        services.AddHttpContextAccessor();
+        services.TryAddTransient<CorrelationIdForwardingHandler>();
+        services.ConfigureHttpClientDefaults(http => http.AddHttpMessageHandler<CorrelationIdForwardingHandler>());
 
         return services;
     }
