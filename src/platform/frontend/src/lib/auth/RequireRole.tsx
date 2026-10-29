@@ -1,6 +1,7 @@
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import type { ReactNode } from 'react';
+import { LoadingState } from '@platform/ui';
 import { useAuth } from './useAuth';
 import { useHasAnyRole } from './roles';
 import { NotFound } from '@foundation/ui/NotFound';
@@ -13,7 +14,8 @@ export function RequireRole({ anyOf, children }: { anyOf: string[]; children: Re
   const allowed = useHasAnyRole(...anyOf);
 
   if (isLoading) {
-    return <p role="status">{i18n._(msg`読み込み中…`)}</p>;
+    // #2322: 待ちはほかの画面と同じ共通の表示（輪と文言。`role="status"` は Spinner が持つ）。
+    return <LoadingState label={i18n._(msg`読み込み中…`)} />;
   }
   return allowed ? <>{children}</> : <NotFound />;
 }
