@@ -284,8 +284,10 @@ public static class GraphBffEndpoints
         try
         {
             var resp = await client.GetAsync(path, ct);
+            // FR-17 (#2280): 近傍の深さ等の 400（`{ error, message }`）を本文ごと返す。404 は後段が本文を持たない
+            // （`GraphEndpoints.NotFound()` の 1 か所で生成）ので、存在の秘匿は変わらない。
             if (!resp.IsSuccessStatusCode)
-                return Results.StatusCode((int)resp.StatusCode);
+                return await BffFailureRelay.RelayAsync(resp, ct);
 
             var view = await resp.Content.ReadFromJsonAsync<T>(ct);
             return view is null
