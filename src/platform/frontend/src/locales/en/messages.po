@@ -3693,6 +3693,10 @@ msgstr "The body is unavailable."
 msgid "本文へ移動"
 msgstr "Skip to main content"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "本文を取り出せませんでした（ストレージの障害）。"
+msgstr "Could not retrieve the body (storage failure)."
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
 msgid "本文を取得できませんでした。"

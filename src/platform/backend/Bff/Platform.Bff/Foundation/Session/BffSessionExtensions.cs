@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using StackExchange.Redis;
 using System.Security.Claims;
@@ -234,9 +235,14 @@ public static class BffSessionExtensions
                         if (jwt.TryGetClaim("realm_access", out var realmAccess))
                             identity.AddClaim(new Claim("realm_access", realmAccess.Value));
                     }
-                    catch (ArgumentException)
+                    catch (ArgumentException ex)
                     {
                         // 解析不能なら付与しない（fail-closed: ロール無しのまま通す）。
+                        // NFR-19, #2141: 黙って通さない —— 警告を 1 行残す（トークンの中身は載せない。例外の型だけ）。
+                        ctx.HttpContext.RequestServices.GetService<ILoggerFactory>()?
+                            .CreateLogger(typeof(BffSessionExtensions).FullName!)
+                            .LogWarning("コード交換で受けたアクセストークンを解析できず、realm_access を複写しなかった（{ErrorType}）。ロール無しで通す。",
+                                ex.GetType().Name);
                     }
                     return Task.CompletedTask;
                 };

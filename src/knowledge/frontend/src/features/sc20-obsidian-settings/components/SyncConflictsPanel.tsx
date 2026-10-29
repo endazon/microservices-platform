@@ -293,7 +293,12 @@ function ConflictDetail({
                 aria-label={t`ローカル版の本文`}
                 className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-divider bg-bg p-2 text-xs"
               >
-                {data.localContent}
+                {/* NFR-19 (#2141): 取り出せなかったことを空の本文と区別して示す。 */}
+                {data.localContentUnavailable ? (
+                  <span className="text-fg-muted">{t`本文を取り出せませんでした（ストレージの障害）。`}</span>
+                ) : (
+                  data.localContent
+                )}
               </pre>
             </div>
             <div className="flex flex-col gap-1">
@@ -304,19 +309,32 @@ function ConflictDetail({
                 aria-label={t`サーバ版の本文`}
                 className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-sm border border-divider bg-bg p-2 text-xs"
               >
-                {data.serverContent}
+                {data.serverContentUnavailable ? (
+                  <span className="text-fg-muted">{t`本文を取り出せませんでした（ストレージの障害）。`}</span>
+                ) : (
+                  data.serverContent
+                )}
               </pre>
             </div>
           </div>
           {/* 🔴 3 択だけを置く。自動解決の択は無い（上の注記）。 */}
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" disabled={disabled} onClick={() => onChoose('local')}>
+            {/* NFR-19 (#2141): ローカル版を取り出せないまま local / both は選ばせない（後段も 503 で確定しない）。 */}
+            <Button
+              variant="secondary"
+              disabled={disabled || data.localContentUnavailable}
+              onClick={() => onChoose('local')}
+            >
               <Trans>ローカルを採用</Trans>
             </Button>
             <Button variant="secondary" disabled={disabled} onClick={() => onChoose('server')}>
               <Trans>サーバを採用</Trans>
             </Button>
-            <Button variant="secondary" disabled={disabled} onClick={() => onChoose('both')}>
+            <Button
+              variant="secondary"
+              disabled={disabled || data.localContentUnavailable}
+              onClick={() => onChoose('both')}
+            >
               <Trans>両方を残す（別名保存）</Trans>
             </Button>
           </div>

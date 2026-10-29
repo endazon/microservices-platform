@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AwesomeAssertions;
+using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace AuthorizationService.Tests;
@@ -65,5 +66,51 @@ public class KeycloakRolesClaimsTransformationTests
         var result = await sut.TransformAsync(principal);
 
         result.FindAll(ClaimTypes.Role).Count(c => c.Value == "platform-admin").Should().Be(1);
+    }
+
+    // ── NFR-19, #2141: 不正な realm_access は黙って捨てない（警告を 1 行。値は載せない）──────────
+    //
+    // 従前はロールを付けない（fail-closed）だけで記録が無く、管理者が全員 403 になっても理由を追えなかった。
+    // 値（トークンの中身）はログに載せない —— 外由来の文字列であり、行の偽装（NFR-28）と情報の露出の両方を避ける。
+
+    private sealed class CapturingLogger : ILogger<KeycloakRolesClaimsTransformation>
+    {
+        public List<(LogLevel Level, string Message)> Lines { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Lines.Add((logLevel, formatter(state, exception)));
+    }
+
+    [Theory]
+    [InlineData("not-json-SECRETVALUE")]
+    [InlineData("""{"roles":"SECRETVALUE"}""")]
+    [InlineData("""["SECRETVALUE"]""")]
+    public async Task Transform_MalformedRealmAccess_LogsOneWarningWithoutTheValue(string realmAccess)
+    {
+        var log = new CapturingLogger();
+        var sut = new KeycloakRolesClaimsTransformation(log);
+
+        var result = await sut.TransformAsync(PrincipalWith(
+            new Claim(ClaimTypes.Name, "bad-token"), new Claim("realm_access", realmAccess)));
+
+        result.FindAll(ClaimTypes.Role).Should().BeEmpty("fail-closed は変えない");
+        log.Lines.Should().ContainSingle(l => l.Level == LogLevel.Warning);
+        log.Lines.Single().Message.Should().Contain("realm_access").And.NotContain("SECRETVALUE");
+    }
+
+    [Fact]
+    public async Task Transform_WellFormedOrAbsentRealmAccess_LogsNothing()
+    {
+        var log = new CapturingLogger();
+        var sut = new KeycloakRolesClaimsTransformation(log);
+
+        await sut.TransformAsync(PrincipalWith(new Claim(ClaimTypes.Name, "a"),
+            new Claim("realm_access", """{"roles":["platform-admin"]}""")));
+        await sut.TransformAsync(PrincipalWith(new Claim(ClaimTypes.Name, "b")));
+        // roles を持たない形（ロールが 0 個の利用者）は不正ではない。
+        await sut.TransformAsync(PrincipalWith(new Claim(ClaimTypes.Name, "c"), new Claim("realm_access", "{}")));
+
+        log.Lines.Should().BeEmpty();
     }
 }

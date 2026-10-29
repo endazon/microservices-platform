@@ -3,15 +3,15 @@ title: SC-20 Obsidian 連携設定画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-28
-updated: 2026-10-26
+updated: 2026-10-29
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, UC-11, SC-19, SC-20]
 adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0099]
 iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0352, IADR-0437, IADR-0444, IADR-0446, IADR-0447]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261026_2114_private-note-departure-disposal-notice]
-issues: [#451, #1442, #1446, #1447, #2114, planning#614, planning#618]
+specs: [20261029_2141_sync-conflict-storage-and-realm-access, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261026_2114_private-note-departure-disposal-notice]
+issues: [#451, #1442, #1446, #1447, #2114, #2141, planning#614, planning#618]
 -->
 
 # テスト仕様書: Obsidian 連携設定画面
@@ -98,6 +98,7 @@ issues: [#451, #1442, #1446, #1447, #2114, planning#614, planning#618]
 | 30 | 3 択（ローカル採用／サーバ採用／両方を残す）だけを置き、自動解決の選択肢を置かない | 緑（3 択の存在を陽性対照に置く） |
 | 31 | 3 択のいずれも確認を経てから送られ、確認文が択ごとに何が起きるかを言い分ける | 緑（押すまで要求が飛ばないことも固定） |
 | 32 | 解決したら競合の一覧を引き直し、2 ペインを閉じる | 緑 |
+| 32-b | ［2026-10-29］本文を取り出せなかった側は「本文を取り出せませんでした」と示す（空の本文と区別する）。ローカル版が無いときは「ローカルを採用」「両方を残す」を押せない（後段も 503 で確定しない） | 緑 |
 | 33 | 実ブラウザでフォルダを外すと「削除ではない」旨が出て、全量が送られる | 緑（ブラウザ E2E） |
 | 34 | 実ブラウザで競合を 3 択から解決でき、自動解決の択が無い | 緑（ブラウザ E2E） |
 | 35 | 同期履歴が 実行日時 / 端末 / 方向 / 内訳 / 結果 / 失敗理由 の 6 列で出る | 緑 |

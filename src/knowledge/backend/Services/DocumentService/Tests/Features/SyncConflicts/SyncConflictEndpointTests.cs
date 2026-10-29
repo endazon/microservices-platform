@@ -160,6 +160,89 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
         detail.Id.Should().Be(conflicts[0].Id);
     }
 
+    // NFR-19, #2141: 本文を**取り出せなかった**ことを空文字と区別して返す。従前は例外を握って空文字にしており、
+    // 利用者には「中身が空の版」と見分けが付かなかった（空の本文を採用して上書きし得る）。記録も残らなかった。
+    [Fact]
+    public async Task ローカル版の本文を取り出せなければ取得できなかったと返しサーバ版は返す()
+    {
+        var (_, session, _, _) = await ConflictedNoteAsync("c-unavail");
+        var conflicts = await ConflictsAsync(session);
+        string localUri;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            localUri = (await db.SyncConflicts.AsNoTracking().SingleAsync(c => c.Id == conflicts[0].Id,
+                TestContext.Current.CancellationToken)).LocalContentUri;
+        }
+        localUri.Should().NotBeNullOrEmpty("前提: ローカル版は記録時に保存されている");
+
+        factory.Storage.GetTextThrows = uri => uri == localUri ? new IOException("storage unavailable") : null;
+        try
+        {
+            var detail = await session.GetFromJsonAsync<SyncConflictDetailDto>(
+                $"/private-notes/conflicts/{conflicts[0].Id}", TestContext.Current.CancellationToken);
+
+            detail!.LocalContentUnavailable.Should().BeTrue("取り出せなかったことを空の本文と区別する");
+            detail.LocalContent.Should().BeEmpty();
+            detail.ServerContentUnavailable.Should().BeFalse();
+            detail.ServerContent.Should().Be("サーバ版", "片側が読めなくても、もう片側は返す");
+        }
+        finally
+        {
+            factory.Storage.GetTextThrows = null;
+        }
+    }
+
+    [Fact]
+    public async Task 本文を取り出せたときは取得できなかった印を立てない()
+    {
+        var (_, session, _, _) = await ConflictedNoteAsync("c-avail");
+        var conflicts = await ConflictsAsync(session);
+
+        var detail = await session.GetFromJsonAsync<SyncConflictDetailDto>(
+            $"/private-notes/conflicts/{conflicts[0].Id}", TestContext.Current.CancellationToken);
+
+        detail!.LocalContentUnavailable.Should().BeFalse();
+        detail.ServerContentUnavailable.Should().BeFalse();
+    }
+
+    // 取り出せなかったときは警告を 1 行残す（どちらの本文か・例外の型。URI と本文は載せない）。
+    [Fact]
+    public async Task 本文の取り出しの失敗は警告を残し空と印を返す()
+    {
+        var log = new CapturingLogger();
+        var storage = new RecordingObjectStorageClient { GetTextThrows = _ => new IOException("storage unavailable") };
+
+        var (content, unavailable) = await DocumentService.Features.SyncConflicts.Get.GetSyncConflictEndpoint.ReadAsync(
+            storage, "s3://bucket/private/SECRET-PATH.md", log, "local", TestContext.Current.CancellationToken);
+
+        (content, unavailable).Should().Be((string.Empty, true));
+        log.Lines.Should().ContainSingle(l => l.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        log.Lines.Single().Message.Should().Contain("local").And.Contain(nameof(IOException)).And.NotContain("SECRET-PATH");
+    }
+
+    [Fact]
+    public async Task 参照が無い本文は空で印を立てず警告も出さない()
+    {
+        var log = new CapturingLogger();
+
+        var (content, unavailable) = await DocumentService.Features.SyncConflicts.Get.GetSyncConflictEndpoint.ReadAsync(
+            new RecordingObjectStorageClient(), null, log, "server", TestContext.Current.CancellationToken);
+
+        (content, unavailable).Should().Be((string.Empty, false));
+        log.Lines.Should().BeEmpty();
+    }
+
+    private sealed class CapturingLogger : Microsoft.Extensions.Logging.ILogger
+    {
+        public List<(Microsoft.Extensions.Logging.LogLevel Level, string Message)> Lines { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Lines.Add((logLevel, formatter(state, exception)));
+    }
+
     // 🔴 **他人の競合は 404**（403 にすると他人の競合 ID の実在が漏れる）。
     // 陽性対照は同じ試験の中の「本人は見える」である。
     [Fact]
@@ -202,6 +285,43 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
             $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
         pull!.Content.Should().Be("ローカル版");
         (await ConflictsAsync(session)).Should().BeEmpty("解決した競合は一覧から消える");
+    }
+
+    // 🔴 NFR-19, #2141: ローカル版の本文を取り出せないまま `local` / `both` を確定しない。従前は取り出しの失敗を空文字に畳み、
+    // **空の本文が新しい版として書かれた**。503 で何も確定せず、競合は未解決のまま残る（選び直せる）。`server` は本文を使わないので通す。
+    [Theory]
+    [InlineData(SyncConflictResolutions.Local)]
+    [InlineData(SyncConflictResolutions.Both)]
+    public async Task ローカル版を取り出せないときlocalとbothは確定せず503を返す(string resolution)
+    {
+        var (note, session, _, plugin) = await ConflictedNoteAsync("c-res-" + resolution);
+        var conflicts = await ConflictsAsync(session);
+        string localUri;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            localUri = (await db.SyncConflicts.AsNoTracking().SingleAsync(c => c.Id == conflicts[0].Id,
+                TestContext.Current.CancellationToken)).LocalContentUri;
+        }
+
+        factory.Storage.GetTextThrows = uri => uri == localUri ? new IOException("storage unavailable") : null;
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await session.PostAsJsonAsync($"/private-notes/conflicts/{conflicts[0].Id}/resolve",
+                new ResolveSyncConflictRequest(resolution), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            factory.Storage.GetTextThrows = null;
+        }
+
+        resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("local_content_unavailable");
+        (await ConflictsAsync(session)).Should().ContainSingle("確定していないので競合は残り、選び直せる");
+        var pull = await plugin.GetFromJsonAsync<PullNoteResponse>(
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
+        pull!.Content.Should().Be("サーバ版", "空の本文が書かれていない");
     }
 
     // `server`: **資料は 1 バイトも変わらない**（版も進まない）。

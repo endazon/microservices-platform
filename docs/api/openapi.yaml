@@ -3974,6 +3974,7 @@ paths:
         "403": { description: write スコープが無い }
         "404": { description: 不在・他人の競合（区別しない） }
         "409": { description: "解決済みの競合。または、`local` の確定が並行する確定に負けた（`version_conflict`。解決は巻き戻り、選び直せる。IADR-0637 決定 7）" }
+        "503": { description: "NFR-19 (#2141): `local` / `both` で、ローカル版の本文をストレージから取り出せない（`{ error: local_content_unavailable }`）。何も確定せず、競合は未解決のまま残る" }
         "507": { description: both の別名資料が保存容量の上限で作れない（ProblemDetails） }
 
   # ── SC-17, FR-05, FR-09, UC-05, ADR-0026: 利用者アカウント管理 BFF ─
@@ -6721,7 +6722,7 @@ components:
       description: |
         FR-20, SC-20 主要素 5: 競合 1 件の詳細（2 ペイン差分の材料）。`localContent` は端末が送った本文、
         `serverContent` は現在のサーバ版の本文。**本文は詳細だけが返す**（一覧を重くしない）。
-      required: [id, noteId, title, vaultPath, detectedAt, deviceId, deviceName, localBaseVersion, serverVersion, localContent, serverContent]
+      required: [id, noteId, title, vaultPath, detectedAt, deviceId, deviceName, localBaseVersion, serverVersion, localContent, serverContent, localContentUnavailable, serverContentUnavailable]
       properties:
         id: { type: string, format: uuid }
         noteId: { type: string, format: uuid }
@@ -6734,6 +6735,12 @@ components:
         serverVersion: { type: integer, format: int32 }
         localContent: { type: string }
         serverContent: { type: string }
+        localContentUnavailable:
+          type: boolean
+          description: "NFR-19 (#2141): ローカル版の本文をストレージから取り出せなかった（`localContent` は空）。空の本文とは別である。"
+        serverContentUnavailable:
+          type: boolean
+          description: "NFR-19 (#2141): サーバ版の本文をストレージから取り出せなかった（`serverContent` は空）。"
 
     ResolveSyncConflictRequest:
       type: object

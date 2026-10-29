@@ -3693,6 +3693,10 @@ msgstr "本文は利用できません。"
 msgid "本文へ移動"
 msgstr "本文へ移動"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+msgid "本文を取り出せませんでした（ストレージの障害）。"
+msgstr "本文を取り出せませんでした（ストレージの障害）。"
+
 #: knowledge/frontend/src/features/sc04-wiki/components/WikiBrowsePage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentPreviewPanel.tsx
 msgid "本文を取得できませんでした。"
