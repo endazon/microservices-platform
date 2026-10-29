@@ -114,6 +114,10 @@ msgstr "{reasonLength} / {maxLength} 文字"
 msgid "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
 msgstr "{reissueTargetId} の client secret を再発行します。いまの secret はただちに使えなくなります。エージェントの設定を新しい secret に差し替えてください。"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "{restoredCount} 件を復元しました。{failedCount} 件は復元できませんでした。"
+msgstr "{restoredCount} 件を復元しました。{failedCount} 件は復元できませんでした。"
+
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
 msgstr "{sourceTitle} → {targetTitle}（{edgeTypeName}）"
