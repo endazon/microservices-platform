@@ -377,6 +377,14 @@ msgstr "embeds: 点線・矢印"
 msgid "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 msgstr "Git に置けない秘密情報（API キー・接続秘密・通知の webhook）を 1 項目ずつ投入・更新します。値は書き込み専用で、保存後はこの画面からも読み出せません。操作は監査ログに記録されます（値は記録されません）。"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "Grafana で確認 →"
+msgstr "Grafana で確認 →"
+
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "Grafana の接続先が未設定です"
+msgstr "Grafana の接続先が未設定です"
+
 #: platform/frontend/src/lib/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Keycloak でサインイン"
@@ -384,6 +392,10 @@ msgstr "Keycloak でサインイン"
 #: knowledge/frontend/src/features/sc22-secrets/types/secretItemVocabulary.ts
 msgid "LLM ゲートウェイ"
 msgstr "LLM ゲートウェイ"
+
+#: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
+msgid "LLMコスト"
+msgstr "LLMコスト"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "LLM不調時は検索結果のみ返す縮退運転（UC-01 例外フロー）。フィルタ候補は権限内のタグ／部門／プロジェクトのみ提示。"
@@ -479,6 +491,10 @@ msgstr "SaaS"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "secret を再発行"
 msgstr "secret を再発行"
+
+#: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
+msgid "SLO・レイテンシ"
+msgstr "SLO・レイテンシ"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "supersedes: 太実線・矢印（旧→新）"
@@ -1800,6 +1816,10 @@ msgstr "作成日時が新しい順"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "使用件数"
 msgstr "使用件数"
+
+#: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
+msgid "使用量・費用は可観測性基盤が担う"
+msgstr "使用量・費用は可観測性基盤が担う"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
@@ -5009,6 +5029,10 @@ msgstr "過去の版（版履歴）は保存容量に含まれません。"
 #: knowledge/frontend/src/features/sc19-private-notes/components/QuotaPanel.tsx
 msgid "過去の版（版履歴）は容量に含まれませんが、削除済みの資料は 90 日間は容量に含まれます。"
 msgstr "過去の版（版履歴）は容量に含まれませんが、削除済みの資料は 90 日間は容量に含まれます。"
+
+#: knowledge/frontend/src/features/sc10-operations/types/opsTools.ts
+msgid "達成率・レイテンシは可観測性基盤が正"
+msgstr "達成率・レイテンシは可観測性基盤が正"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "適用 {appliedAt}"

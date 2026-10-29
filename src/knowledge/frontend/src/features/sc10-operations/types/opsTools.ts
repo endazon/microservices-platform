@@ -65,3 +65,55 @@ export function opsTools(links: OpsLinks): OpsTool[] {
     return url ? [{ id, name, description, url }] : [];
   });
 }
+
+// FR-10, SC-10 (#2125): SLO・レイテンシと LLM コストの導線カード。
+//
+// 計画 SC-10 §主要素「SLO・レイテンシと LLM コストは Grafana への導線カード」。値は出さない ——
+// BFF が再集計すると同じ指標の定義が 2 か所に生まれる（KPI カードの確定 Q25 / Q26）。
+// 送り先は Grafana の provisioning が持つダッシュボードの uid である
+// （`deploy/grafana/provisioning/dashboards/*.json` と `deploy/local/observability/grafana.yaml` の両方に同じ uid がある）。
+//   - SLO・レイテンシ → `microservices-platform-overview`（HTTP の p99・RAG の初回応答 p95 など）
+//   - LLM コスト → `llm-usage`（LLM ゲートウェイのトークン使用量）
+
+type GrafanaGuideId = 'slo' | 'llm-cost';
+
+interface GrafanaGuide {
+  id: GrafanaGuideId;
+  /** カードの指標名（hi-fi 419・421 の `.stat .l`）。 */
+  label: MessageDescriptor;
+  /** 補足（値の正がどこにあるか）。 */
+  note: MessageDescriptor;
+  /** Grafana の該当ダッシュボード。接続先が未設定なら `undefined`（カードは残し、リンクだけを持たない）。 */
+  url: string | undefined;
+}
+
+const GUIDES: readonly {
+  id: GrafanaGuideId;
+  label: MessageDescriptor;
+  note: MessageDescriptor;
+  uid: string;
+}[] = [
+  {
+    id: 'slo',
+    label: msg`SLO・レイテンシ`,
+    note: msg`達成率・レイテンシは可観測性基盤が正`,
+    uid: 'microservices-platform-overview',
+  },
+  {
+    id: 'llm-cost',
+    label: msg`LLMコスト`,
+    note: msg`使用量・費用は可観測性基盤が担う`,
+    uid: 'llm-usage',
+  },
+];
+
+/** Grafana の導線カード 2 枚を組み立てる。並びは hi-fi の左から（SLO → LLM コスト）。 */
+export function grafanaGuides(grafanaUrl: string | undefined): GrafanaGuide[] {
+  const base = grafanaUrl?.replace(/\/+$/, '');
+  return GUIDES.map(({ id, label, note, uid }) => ({
+    id,
+    label,
+    note,
+    url: base ? `${base}/d/${uid}` : undefined,
+  }));
+}

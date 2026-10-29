@@ -3,15 +3,15 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-09-11
+updated: 2026-10-29
 author: claude
 ---
 <!-- trace:
 ids: [FR-10, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0071, ADR-0083]
 iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0044, IADR-0119, IADR-0121, IADR-0129, IADR-0265, IADR-0299, IADR-0353, IADR-0357, IADR-0389, IADR-0425]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
-issues: [#443, #452, #490, #503, #504, #510, #544, #586, #1186, #1197, #1363, planning#237, planning#244, planning#494, planning#514, planning#525]
+specs: [20261029_2125_sc10-grafana-guide-cards, 20260805_issue-504_sc09-11-admin-ops-screens, 20260829_issue-443_knowledge-health-producer, 20260903_issue-1186_stale-documents-indicator, 20260903_issue-1197_search-trend-min-count]
+issues: [#443, #452, #490, #503, #504, #510, #544, #586, #1186, #1197, #1363, #2125, planning#237, planning#244, planning#494, planning#514, planning#525]
 -->
 
 # テスト仕様書: 運用ダッシュボード
@@ -43,9 +43,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 | 計画側の運用ダッシュボードの要素 | テスト |
 | --- | --- |
-| KPI カード（**SLO 達成率**） | **実装しない**（契約の不在）。`renders only the three KPI cards the contract can fill` |
+| KPI カード（**SLO 達成率**） | ［2026-10-29］**値を持たない Grafana への導線カード**。`offers Grafana guide cards for SLO/latency and LLM cost` ／ `keeps the guide cards without links when Grafana is not configured` ／ 純関数 P5〜P7。値を出さないことは `renders only the three KPI cards the contract can fill` |
 | KPI カード（利用状況〔人/日〕） | **部分**（件数を出す）。同上（KPI カードの集合を固定する） |
-| KPI カード（**LLM コスト**） | **実装しない**（契約の不在）。同上 |
+| KPI カード（**LLM コスト**） | ［2026-10-29］同上（導線カード） |
 | 外部ツールリンク（Grafana / Kiali / Jaeger・Tempo） | `renders only the observability tools that runtime config injects` ／ 純関数 P1〜P4 |
 | 構成ビューアへの導線 | `always offers the link to SC-11 for anyone who can open this screen`（構成ビューアへのリンク）／ 導線テスト A |
 | **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**。理由は 2 本ある——①関係探索・AI 提案の着手保留 ②**観測値の生産者が無い指標があり、0 件が「問題なし」と読める**（未計測を健全と表示することになる）。**［2026-09-11 / #1363］未要約クラスタ数の生産者ができ、観測値として生産される指標は 5 件になった（2026-09-03 時点の「なお 3 件」は、2026-09-05 の 2 件と本作業の 1 件で解消している）。🔴 それでも節は開かない —— 残る 2 件は別経路（可観測性スタックのカウンタ）で測れており、集計 API では 0 件で並ぶ。節を開く条件は別の判断であると計画が明記している。** `does not render the knowledge-health section` |
@@ -77,8 +77,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 9 | 未設定 | — | 「外部ツールの導線は未設定です。」 |
 | 10 | 構成ビューアへの導線 | 遷移図 `SC10 --> SC11` | `/admin/config-viewer` へのリンク。**権限で出し分けない**（管理画面 3 種の再実装・決定 4） |
 | 11 | **着手保留**（実装しない要素） | 関係探索・AI 提案の着手保留 | ナレッジ健全性の語（節見出し・4 KPI・辺の型・フォールバック・個人資料の注記）が無い。**先にサマリが在ることを確かめてから**無いことを見る |
-| 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #3・#5 | **KPI カードの見出しの集合**が 3 枚に固定される（「SLO」の語は副題にも出るため、テキスト検索ではなく**カードが在るか**で見る） |
-| 13 | ロケール `en` | —| 見出しが英語で描画される |
+| 12 | **契約の不在**（値を出さない） | 画面仕様書 §hi-fi 対応 #3・#5 | 区画の見出しの集合が変わらず、契約から出せる KPI は 3 枚。［2026-10-29］SLO・LLM コストの導線カードは**数字を含まない** |
+| 12-b | ★ **Grafana への導線カード**（［2026-10-29 反転］） | 計画の主要素「SLO・レイテンシと LLM コストは Grafana への導線カード」 | 「SLO・レイテンシ」は Grafana の `microservices-platform-overview`、「LLMコスト」は `llm-usage` へのリンク（新しいタブ・`noreferrer`）を持つ。**運用サマリが 403 でも描く**。接続先が未設定ならリンクを持たず「Grafana の接続先が未設定です」と出す。従前は不在を固定していた |
+| 13 | ロケール `en` | —| 見出しと導線カードの指標名が英語で描画される |
 | 14 | **下限の併記** | 検索語の秘匿の裁定（決定 2） | 「N 件以上検索された語のみを表示します。」が出る |
 | 15 | **併記の出所** | 同上 | 契約が 7 を返せば **7** と出る（画面に既定を焼き込んでいない。定数実装ならここで落ちる） |
 | 16 | **下限未満の語を出さない**（陰性） | 同上（決定 1）／多層防御 | 下限未満の語を**含む**スタブでも、**表にも棒グラフにも**出ない。陽性対照として下限以上の語は表と図の両方に在る。図は `echartsLoader` をモックして**渡った option そのもの**を見る（jsdom では器のテキストは常に空で、見ても何も確かめたことにならない） |
@@ -112,6 +113,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | P2 | 表示 | 表示名（固有名詞・翻訳しない）と説明（翻訳する）が計画の記述どおり。**並び順も固定** |
 | P3 | 絞り込み | URL が未注入のツールを落とす |
 | P4 | 空 | 何も設定されていなければ空配列 |
+| P5 | 導線カードの送り先（#2125） | SLO → `<grafana>/d/microservices-platform-overview`、LLM コスト → `<grafana>/d/llm-usage`。並びも固定 |
+| P6 | 末尾の `/` | 接続先が `/` で終わっても `//d/` にしない |
+| P7 | 未設定 | 2 枚とも残り、URL だけが無い |
 
 ## 導線（`opsFlow.test.tsx`）
 
@@ -162,12 +166,15 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
   | 括り | 本書の観点行 | `it` 宣言 | vitest の `Tests` |
   | --- | --- | --- | --- |
-  | 純関数（`opsTools.test.ts`） | **4**（P1〜P4） | **4** | **4** |
-  | 画面（`OperationsDashboardPage.test.tsx` の 1 つ目の `describe`） | **13** | **13** | **13** |
-  | アクセス（同 2 つ目の `describe`） | **4**（A1〜A4） | **4** | **4** |
-  | **合計** | **21** | **21** | **21**（2 ファイル） |
+  | 純関数（`opsTools.test.ts`） | **7**（P1〜P7） | **7** | **7** |
+  | 画面（`OperationsDashboardPage.test.tsx` の 1 つ目の `describe`） | 19 | **19** | **19** |
+  | アクセスほか（同 2 つ目の `describe`） | 4（A1〜A4）＋ 図・並べ替え・ナビの 3 | **7** | **7** |
+  | 図（`dashboardCharts.test.ts`） | — | **7** | **7** |
+  | **合計** | — | **40** | **40**（3 ファイル） |
 
-  本画面は 3 つの数え方が**たまたま一致する**（`it.each` を使っておらず、観点とテストが 1 対 1 である）。
+  ［2026-10-29 / #2125 で実測し直した］従前の表（合計 21・2 ファイル）は、図の試験と画面の試験の追加に追随していなかった。
+
+  `it.each` は使っておらず、`it` 宣言と vitest の件数は一致する。観点行は表ごとに粒度が違うので合計しない。
   **一致するとは限らない**ため、管理者設定画面・構成ビューアと同じ形で母集合を明記する。
 - `pnpm run test -- knowledge/frontend/src/features/opsFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
@@ -175,7 +182,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 ## 未決事項
 
-- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）は
+- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）は（［2026-10-29］SLO・LLM コストは値を出さない導線カードとして実装した）
   `projects/microservices-platform/10_feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
   **閲覧ロールの差異（提案 7）は [2026-08-09 / #544] で解決した**（計画が正。3 層を広げて一致）。
 - ナレッジ健全性節は、関係探索・AI 提案の着手保留の解除待ちである。

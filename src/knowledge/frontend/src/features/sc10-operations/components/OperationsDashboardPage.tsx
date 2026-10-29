@@ -16,7 +16,7 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/utils/apiErrors';
-import { opsTools } from '../types/opsTools';
+import { grafanaGuides, opsTools } from '../types/opsTools';
 import { DAYS_OPTIONS, useDashboardSummary } from '../api/useDashboardSummary';
 import type { DaysOption } from '../api/useDashboardSummary';
 // SC-10, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -31,8 +31,9 @@ import type {
 // 構成ビューア（SC-11）への入口を提供する参照専用画面。
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-10_operations-dashboard.md §hi-fi モックアップとの対応）:
-//   - **SLO カード（達成率・検索 p95）・LLM コストカード**: 契約（DashboardSummaryDto）に該当項目が無い。
+//   - **SLO カード・LLM コストカードの値**（達成率・検索 p95・金額）: 契約（DashboardSummaryDto）に該当項目が無い。
 //     レイテンシとコストは可観測性基盤（Grafana）側にあり BFF は集約していない。
+//     ［2026-10-29 / #2125］カード自体は**値を持たない Grafana への導線**として置く（計画 SC-10 §主要素・Q25 / Q26）。
 //   - **「人/日」（一意利用者数）**: 契約が返すのはイベント件数（UsagePointDto）であり利用者の一意性を持たない。
 //     実装は検索総数・回答総数を出す（**部分未実装**として画面仕様書に明記した）。
 //   - **「ナレッジ健全性」節**（孤立文書・未解決リンク・未要約クラスタ・陳腐化文書、辺の型ごとの
@@ -89,6 +90,7 @@ export function OperationsDashboardPage() {
     (summary.error.kind === 'forbidden' || summary.error.kind === 'notFound');
 
   const tools = opsTools(appConfig().opsLinks);
+  const guides = grafanaGuides(appConfig().opsLinks.grafanaUrl);
 
   return (
     <section>
@@ -121,6 +123,35 @@ export function OperationsDashboardPage() {
             ))}
           </Select>
         </div>
+      </div>
+
+      {/* FR-10, SC-10 (#2125): SLO・レイテンシと LLM コストは **Grafana への導線カード**（hi-fi 419・421）。
+          値は出さない（Q25 / Q26。BFF が再集計すると指標の定義が 2 か所に生まれる）。
+          運用サマリの取得とは独立に描く —— サマリが読めないときこそ Grafana へ行く道が要る。
+          接続先が未設定ならカードは残し、リンクを持たない（どこを見ればよいかは伝える）。 */}
+      <div className="mb-n3 grid grid-cols-2 gap-n3">
+        {guides.map((guide) => (
+          <Panel key={guide.id} className="mb-0">
+            <Stat
+              label={i18n._(guide.label)}
+              value={
+                guide.url ? (
+                  <a
+                    href={guide.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[15px] text-brand hover:underline"
+                  >
+                    {t`Grafana で確認 →`}
+                  </a>
+                ) : (
+                  <span className="text-[15px] text-fg-muted">{t`Grafana の接続先が未設定です`}</span>
+                )
+              }
+              meta={i18n._(guide.note)}
+            />
+          </Panel>
+        ))}
       </div>
 
       {/* 🔴 待ち・失敗・本体は `QueryState` が 1 か所で描き分ける（判定順 isError → isPending → 本体）。
