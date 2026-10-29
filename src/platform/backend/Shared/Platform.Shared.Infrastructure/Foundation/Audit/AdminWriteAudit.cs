@@ -45,7 +45,8 @@ public static class AdminWriteAudit
     public static string OutcomeOf(int status) => status switch
     {
         >= 200 and < 300 => "granted",
-        400 or 409 => "denied",
+        // 後段の 401 / 403 も「試みたが拒否された」として denied に寄せる（BFF 段の拒否とは detail の status で読み分ける）。
+        400 or 401 or 403 or 409 => "denied",
         404 => "not-found",
         _ => "failed",
     };

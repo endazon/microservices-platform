@@ -120,6 +120,21 @@ public class BffAbacAdminAuditTests : IClassFixture<BffTestFactory>
         (entry.Action, entry.Outcome, entry.Detail).Should().Be(("abac.policy.create", "denied", "target=- status=400"));
     }
 
+    // AC: 後段の 401 / 403 も「試みたが拒否された」として denied で残る（BFF 段の拒否とは status で読み分ける）。
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, 401)]
+    [InlineData(HttpStatusCode.Forbidden, 403)]
+    public async Task 後段の401と403はdeniedで残る(HttpStatusCode backend, int status)
+    {
+        _factory.AuthzManagementStatusCode = backend;
+
+        var resp = await SendAsync("PUT", $"/bff/admin/authz/attributes/{AttributeId}", AttributeBody);
+
+        ((int)resp.StatusCode).Should().Be(status);
+        var entry = _factory.RecordedAuditEntries.Should().ContainSingle().Which;
+        (entry.Action, entry.Outcome, entry.Detail).Should().Be(("abac.attribute.update", "denied", $"target={AttributeId} status={status}"));
+    }
+
     // AC: 後段に届かない（502 へ縮退）ときも failed で 1 件残る。
     [Fact]
     public async Task 後段不達はfailedで残る()

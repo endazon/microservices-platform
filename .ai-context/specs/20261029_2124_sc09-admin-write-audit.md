@@ -52,7 +52,7 @@ issue: "#2124"
 ## 方針（判断は IADR-0647）
 
 - **記録は BFF で行う**（SC-22 と同じ器・同じ層）。SC-09 の 3 群とも BFF が唯一の入口であり、後段 3 サービスは east-west の内部 API（エッジに出さない）である。
-- 1 操作 1 行。`subject` は利用者名（`preferred_username`）、`outcome` は後段の状態コードから決める（2xx → `granted`、400 / 409 → `denied`、404 → `not-found`、それ以外と不達 → `failed`）。
+- 1 操作 1 行。`subject` は利用者名（`preferred_username`）、`outcome` は後段の状態コードから決める（2xx → `granted`、400 / 401 / 403 / 409 → `denied`、404 → `not-found`、それ以外と不達 → `failed`）。
   - 拒否・不在・失敗も残す（成功だけを残すと「試みた」が追えない）。
 - `detail` は `target=<id> status=<code>` だけにする。**名前・条件・説明などの利用者入力は載せない**（NFR-28。`AuditLogger` は無害化するが、そもそも監査に要らない値を載せない）。作成で ID が応答から読めないとき（4xx など）は `target=-`。
 - 書き方は 1 か所（`Platform.Shared.Infrastructure.Foundation.Audit.AdminWriteAudit`）に置き、platform・knowledge の両 BFF 群から使う（knowledge は platform の Shared だけを参照してよい）。

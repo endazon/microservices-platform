@@ -42,7 +42,8 @@ related_specs:
 
 - action は `abac.policy.{create,update,set-active,delete}`・`abac.attribute.{create,update,delete}`・`tag.{create,rename,delete}`・`edge-type.{create,rename,delete}` の 13 種とする。
 - subject は利用者名（`preferred_username`）である。名前が無いときは `unknown` と残す（記録を落とさない）。
-- outcome は、2xx → `granted`、400 / 409 → `denied`、404 → `not-found`、それ以外と後段不達 → `failed` とする。拒否・失敗も残す。
+- outcome は、2xx → `granted`、400 / 401 / 403 / 409 → `denied`、404 → `not-found`、それ以外と後段不達 → `failed` とする。拒否・失敗も残す。
+  - 後段の 401 / 403 は「試みたが拒否された」なので `denied` に寄せる。BFF 段の拒否は端点に届かないので、ここに出る 401 / 403 は後段のものである。区別は detail の `status=` で読む。
 - **検証（`/policies/validate`）と読み取りは記録しない**（保存しないため）。BFF の AdminOnly で弾かれた要求は端点に届かないので記録しない（SC-12 と同じ）。
 
 ### 決定 3: detail は対象 ID と状態コードだけ。利用者の入力値は載せない
@@ -58,4 +59,5 @@ related_specs:
 ## 残余リスク
 
 - BFF を通らずに後段 3 サービスを直接呼ぶ要求は記録されない。後段は AdminOnly で守られ、エッジにも出ていない。後段へ直接届く呼び出しが現れたら、決定 1 を見直して後段でも記録する。
-- 利用者へのロール・属性の割当（SC-17 `UserAdminBffEndpoints`）にも記録は無い。SC-09 の操作ではないので本件の射程外とした。
+- クライアントが要求の途中で切断した（`OperationCanceledException`）ときは監査を残さない。後段の書き込みが成功していても 0 行になり得る。
+- 利用者へのロール・属性の割当（SC-17 `UserAdminBffEndpoints`）にも記録は無い。SC-09 の操作ではないので本件の射程外とした（#2298 で扱う）。
