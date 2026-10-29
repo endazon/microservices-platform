@@ -569,6 +569,15 @@ describe('UserAccountManagementPage (SC-17)', () => {
     expect(screen.getByTestId('users-help')).toHaveTextContent('この画面からは作成できません');
   });
 
+  // #2323, 05_screens §SC-17 入力表・ハイファイ「属性は SC-09 の属性体系に定義済みの値のみ割当可」: SC-09 への導線。
+  it('links to the ABAC settings (SC-09) where the assignable attribute values are defined', async () => {
+    mockApi();
+    await renderPage();
+    await usersTable();
+
+    expect(screen.getByRole('link', { name: 'ABAC 設定' })).toHaveAttribute('href', '/admin/abac');
+  });
+
   // IADR-0009 / IADR-0035: 権限外には画面の存在を示さない（RequireRole → NotFound）。
   it('hides the screen from non-admins (existence hiding)', async () => {
     mockApi();

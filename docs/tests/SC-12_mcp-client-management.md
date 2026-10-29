@@ -3,15 +3,15 @@ title: SC-12 MCP クライアント登録管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-28
-updated: 2026-10-09
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-09, FR-16, SC-09, SC-12, UC-09]
 adrs: [ADR-0021, ADR-0024, ADR-0031, ADR-0034, ADR-0054, ADR-0062, ADR-0123, ADR-0134]
 iadrs: [IADR-0527, IADR-0009, IADR-0035, IADR-0044, IADR-0089, IADR-0124, IADR-0128, IADR-0129, IADR-0135, IADR-0269, IADR-0288, IADR-0297, IADR-0366, IADR-0516]
-specs: [20261009_1859_loopback-port-optional, 20260828_issue-452_sc12-mcp-client-management, 20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset, 20261008_1786_sc12-keycloak-provisioning, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit]
-issues: [#445, #452, #1020, #1185, #1786, #1817, #1818, #1844, #1845, #1859]
+specs: [20261030_2323_sc17-sc12-display, 20261009_1859_loopback-port-optional, 20260828_issue-452_sc12-mcp-client-management, 20260823_issue-445_mcp-server-integration, 20260903_issue-1185_unattended-account-attribute-subset, 20261008_1786_sc12-keycloak-provisioning, 20261009_1844_sc12-interactive-public-client, 20261009_1845_sc12-secret-once-and-audit]
+issues: [#2323, #445, #452, #1020, #1185, #1786, #1817, #1818, #1844, #1845, #1859]
 -->
 
 # テスト仕様書: MCP クライアント登録管理
@@ -91,6 +91,7 @@ issues: [#445, #452, #1020, #1185, #1786, #1817, #1818, #1844, #1845, #1859]
 | T-29 | 後段が 400 を返し、本文が外れた値を名指ししている | 登録フォームから登録する | 登録エラー欄に**外れた値そのもの**が画面上のテキストとして出る（★陽性対照: 理由の本体も出る） | 拒否理由の可読性 | 自動 |
 | T-30 | 同上（属性差し替えの経路） | 属性変更フォームから保存する | 差し替えエラー欄に外れた値が出る。**外れていない値を画面が足さない** | 同上 | 自動 |
 | T-31 | 身元を返す口の応答（セッションが `clearance` / `department` のクレームを持つ場合を含む） | 応答と契約型を検査する | **`clearance` / `department` を含まない**（★陽性対照: `roles` は返る） | 属性を画面へ配らない | 自動 |
+| T-32 | ［2026-10-30 / #2323］実効ツールが 1 件以上ある | 画面を開く | 公開ツール一覧の各行に、説明・必要スコープ・送信可否分類が出る（値は識別子のまま。操作の列は無い） | 公開ツール一覧（実効構成の参照） | 自動 |
 
 - **T-31 が要るのは、判定の即時フィードバックが欲しくなった人が最初に手を伸ばす先が身元の口だから**である。
   規約で禁じるだけでは足りない。**契約型（反射）と実応答の 2 面で不在を固定する。**

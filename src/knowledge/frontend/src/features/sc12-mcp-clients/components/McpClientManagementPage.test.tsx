@@ -294,6 +294,22 @@ describe('McpClientManagementPage (SC-12)', () => {
     expect(screen.getByTestId('tool-drifts')).toHaveTextContent('graph.traverse');
   });
 
+  // #2323, 05_screens §SC-12「公開ツール一覧（実効構成の参照）」/ 11_mcp-server-integration §公開構成:
+  // 契約が運ぶ説明・必要スコープ・送信可否分類を一覧に出す（値は識別子のまま）。
+  it('shows the description, the required scope and the egress class of each tool', async () => {
+    mockApi();
+    await renderPage();
+
+    const table = await screen.findByTestId('published-tools');
+    expect(within(table).getByRole('columnheader', { name: '説明' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '必要スコープ' })).toBeInTheDocument();
+    expect(within(table).getByRole('columnheader', { name: '送信可否分類' })).toBeInTheDocument();
+    const row = within(table).getByRole('row', { name: /retrieval\.search_documents/ });
+    expect(row).toHaveTextContent('横断検索');
+    expect(row).toHaveTextContent('document:read');
+    expect(row).toHaveTextContent('metadata-only');
+  });
+
   // 🔴 05_screens §SC-12 アクション: 公開ツールの変更は本画面から行わない（GitOps へ誘導）。
   // **先に「操作可能な要素が在る」ことを確かめてから測る**（何も描かない実装でも緑にしない）。
   it('offers no way to edit the published tools and says where the change is made', async () => {

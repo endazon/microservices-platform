@@ -2455,6 +2455,10 @@ msgstr "This note is in the trash. Restore it from the Deleted tab, or delete th
 msgid "前へ"
 msgstr "Previous"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "割り当てられる属性の値は <0>ABAC 設定</0>（属性体系・タグ辞書）で定義します。"
+msgstr "The attribute values you can assign are defined in <0>ABAC settings</0> (attribute schema and tag dictionary)."
+
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "動的束縛: {bindingLabel}（{notation}）"
 msgstr "Dynamic binding: {bindingLabel} ({notation})"
@@ -3035,6 +3039,10 @@ msgstr "Queued"
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "復元する"
 msgstr "Restore"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "必要スコープ"
+msgstr "Required scope"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
@@ -4829,6 +4837,7 @@ msgid "認証情報を設定"
 msgstr "Set credentials"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "説明"
 msgstr "Detail"
 
@@ -4979,6 +4988,10 @@ msgstr "Path of the folder to add"
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "送信"
 msgstr "Send"
+
+#: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
+msgid "送信可否分類"
+msgstr "Egress class"
 
 #: platform/frontend/src/components/notifications/NotificationBell.tsx
 msgid "通知（未読 {unreadCount} 件）"
