@@ -283,21 +283,62 @@ describe('GraphViewPage (SC-18)', () => {
   });
 
   // 個人資料は種別ラベルでも区別する（形＋アイコンに加えたテキストの手掛かり）。
-  it('labels private notes in the side panel', async () => {
-    respond({ detail: { ...DETAIL, id: NOTE, title: '自分の下書きメモ', tags: [] } });
+  // FR-19, SC-18, 計画 ADR-0102 決定 5 (#2145): **括弧書き「（自分のみ）」は所有者にだけ付す。** 所有者は文書詳細の
+  // 属性 `owner` で判別する（試験の利用者は `tester`）。他人の個人資料と、詳細を読めないときは付けない。
+  async function openNotePanel(detail: unknown) {
+    respond({ detail });
     await renderPage();
-
     await screen.findByTestId('graph-canvas');
     await waitFor(() => expect(mocks.clickHandlers.length).toBeGreaterThan(0));
     act(() => {
       mocks.clickHandlers.forEach((h) => h({ dataType: 'node', data: { id: NOTE } }));
     });
+    return screen.findByTestId('node-side-panel');
+  }
+  const NOTE_DETAIL = { ...DETAIL, id: NOTE, title: '自分の下書きメモ', tags: [] };
 
-    const panel = await screen.findByTestId('node-side-panel');
+  it('labels a private note of another owner without the self-only suffix', async () => {
+    const panel = await openNotePanel({
+      ...NOTE_DETAIL,
+      attributes: { ...NOTE_DETAIL.attributes, owner: 'tanaka' },
+    });
+    await waitFor(() => expect(panel).toHaveTextContent('更新日'));
     expect(panel).toHaveTextContent('個人資料');
-    // FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456): **括弧書き「（自分のみ）」は付かない。**
-    // 本画面は所有者を判別できない（`GraphNodeItem` は所有者を運ばない）ため一律で外す。
     expect(panel).not.toHaveTextContent('自分のみ');
+  });
+
+  it("labels the owner's own private note with the self-only suffix", async () => {
+    const panel = await openNotePanel({
+      ...NOTE_DETAIL,
+      attributes: { ...NOTE_DETAIL.attributes, owner: 'tester' },
+    });
+    await waitFor(() => expect(panel).toHaveTextContent('個人資料（自分のみ）'));
+  });
+
+  it('does not add the self-only suffix when the detail is hidden', async () => {
+    const panel = await openNotePanel(new ApiError('notFound', '見つかりませんでした。', 404));
+    await waitFor(() => expect(panel).toHaveTextContent('文書の詳細は表示できません。'));
+    expect(panel).toHaveTextContent('個人資料');
+    expect(panel).not.toHaveTextContent('自分のみ');
+  });
+
+  // FR-17, SC-18 (#2145): 辺の型の辞書を引けないことを示す（グラフは描く）。陽性の対照は既定の応答（警告が出ない）。
+  it('shows a warning when the edge type catalog cannot be loaded', async () => {
+    respond({ edgeTypes: new ApiError('server', '失敗しました。', 500) });
+    await renderPage();
+
+    expect(await screen.findByTestId('edge-type-catalog-error')).toHaveTextContent(
+      '辺の型の一覧を取得できませんでした',
+    );
+    expect(await screen.findByTestId('graph-canvas')).toBeInTheDocument();
+  });
+
+  it('does not show the catalog warning when the catalog loads', async () => {
+    respond();
+    await renderPage();
+
+    await screen.findByTestId('edge-type-filter');
+    expect(screen.queryByTestId('edge-type-catalog-error')).not.toBeInTheDocument();
   });
 
   // 文書詳細の 404（不在と権限は区別されない。IADR-0009）はパネルを壊さない。

@@ -297,6 +297,15 @@ export function GraphViewPage() {
           })}
         </fieldset>
       )}
+      {/* FR-17, SC-18 (#2145): 辺の型の辞書を引けないと、型の絞り込みが出ず、辺の型名も ID のまま描かれる。黙らせずに示す
+          （グラフ自体は辞書なしでも描けるので、画面は止めない）。 */}
+      {edgeTypes.isError && (
+        <Note tone="warn" data-testid="edge-type-catalog-error">
+          <Trans>
+            辺の型の一覧を取得できませんでした。辺の型での絞り込みは使えず、辺の型名は表示できません。時間をおいて再読み込みしてください。
+          </Trans>
+        </Note>
+      )}
 
       {nodeQuery.trim() !== '' && (
         <div className="text-sm" data-testid="node-search-results">

@@ -1984,6 +1984,7 @@ msgid "個人資料 {count} 件を完全削除しました"
 msgstr "個人資料 {count} 件を完全削除しました"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "個人資料（自分のみ）"
 msgstr "個人資料（自分のみ）"
 
@@ -4922,6 +4923,10 @@ msgstr "辺の型"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "辺の型:"
 msgstr "辺の型:"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "辺の型の一覧を取得できませんでした。辺の型での絞り込みは使えず、辺の型名は表示できません。時間をおいて再読み込みしてください。"
+msgstr "辺の型の一覧を取得できませんでした。辺の型での絞り込みは使えず、辺の型名は表示できません。時間をおいて再読み込みしてください。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "辺の型の新しい名前: {typeName}"
