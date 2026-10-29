@@ -36,6 +36,7 @@
 # プラグインの exporter メトリクスと、ドリフト検出のカスタムメトリクス（現状は監査ログ/警告ログで表出）が
 # 必要。exporter/メトリクスを配線後に下記コメントアウト例を有効化する（follow-up）。
 # ［2026-10-23 / #2043］デッドレターはキュー名ではなくアプリの計器で見る（群 messaging-dead-letter。ADR-0053 決定 1）。
+# ［2026-10-30 / #2143］構成ドリフトはアプリの計器（ゲージ config_drift_findings）で見る（群 config-drift）。残る follow-up は RabbitMQ キュー滞留だけである。
 groups:
   - name: platform-availability
     rules:
@@ -362,6 +363,22 @@ groups:
           summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
           description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}・error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
 
+  # FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): **構成ドリフト**（**0 が正常**）。
+  # 計器 `config.drift.findings`（ConfigDriftMetrics。BFF のドリフト検出が検出のたびに差し替えるゲージ）= 直近の不一致の件数。
+  # 🔴 **ゲージなので初回の腕は要らない**（検出は起動直後に 1 回走り、ドリフトが無くても 0 を出す。計数の `increase` と違い、
+  #   最初の標本からそのまま比べられる）。**状態**なので直すまで鳴り続け、直せば次の検出で 0 に戻って収まる。
+  # 検出の前（起動直後の数秒）は系列が無い ＝ 鳴らない。BFF はレプリカごとに検出するので job ごとの max を採る。
+  # 場面は deploy/prometheus/tests/config-drift.test.yml が promtool で固定する。
+  - name: config-drift
+    rules:
+      - alert: ConfigDriftDetected
+        expr: 'max by (job) (config_drift_findings) > 0'
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "構成ドリフトを検出した（宣言と実効構成の不一致。0 が正常）"
+          description: "{{ $labels.job }} の config_drift_findings（直近のドリフト検出で見つかった不一致の件数）が {{ $value }} である。宣言（pipeline.json・各サービスの自己申告）と実効構成が食い違っている。BFF のログ（ConfigDrift=true の Warning。kind・severity・target・detail）で対象を特定し、宣言か配備のどちらかを直す。直れば次の検出（既定 5 分・PostSync の即時検出）で 0 に戻り収まる。"
+
   # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
   # 🔴 **`absent()` 系ではなく `increase(...) > 0` である**（上の knowledge-health-violations と同じ理由。平常時は
   #   失敗の系列が立たない）。片側の系列が無くても式が空にならないよう、各項を `or vector(0)` で 0 に倒してから足す。
@@ -535,8 +552,4 @@ groups:
   #     - alert: RabbitMqQueueBacklog       # 要 RabbitMQ prometheus plugin: rabbitmq_queue_messages_ready
   #       expr: rabbitmq_queue_messages_ready > 1000
   #       for: 10m
-  #       labels: { severity: warning }
-  #     - alert: ConfigDriftDetected         # 要 ドリフト検出のカスタムメトリクス（現状は監査/警告ログ）
-  #       expr: knowledge_platform_config_drift_warnings > 0
-  #       for: 5m
   #       labels: { severity: warning }

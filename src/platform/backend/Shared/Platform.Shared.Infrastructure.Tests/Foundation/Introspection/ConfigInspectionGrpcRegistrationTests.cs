@@ -1,3 +1,4 @@
+using OpenTelemetry.Metrics;
 using AwesomeAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,6 +39,41 @@ public class ConfigInspectionGrpcRegistrationTests
         sp.GetService<IServiceTokenProvider>().Should().NotBeNull();
     }
 
+    // FR-15, NFR-21, [[IADR-0652]] (#2143): ドリフトの計器が登録され、その Meter が OpenTelemetry の収集対象に入る
+    // （AddMeter が無いと計器は在っても OTLP へ出ず、警報 ConfigDriftDetected は永久に鳴らない）。
+    [Fact]
+    public void Registers_the_drift_metrics_and_collects_its_meter()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ServiceToken:ClientId"] = "bff",
+            ["ServiceToken:ClientSecret"] = "x",
+        });
+        builder.AddPlatformConfigInspection();
+        // 本番の読み手（OTLP の出口。AddPlatformObservability が足す）の代わりに、何もしない読み手を 1 つ置く
+        // （読み手が無いと MeterProvider は計器を購読しない）。
+        builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddReader(
+            new OpenTelemetry.Metrics.BaseExportingMetricReader(new NullMetricExporter())));
+        var sp = builder.Services.BuildServiceProvider();
+        // 収集側（OpenTelemetry の MeterProvider）を先に起こす。AddMeter に名前があれば、計器はこれに購読されて Enabled になる。
+        _ = sp.GetRequiredService<OpenTelemetry.Metrics.MeterProvider>();
+
+        System.Diagnostics.Metrics.Instrument? gauge = null;
+        using var probe = new System.Diagnostics.Metrics.MeterListener
+        {
+            InstrumentPublished = (instrument, _) =>
+            {
+                if (instrument.Name == ConfigDriftMetrics.FindingsGaugeName) gauge = instrument;
+            },
+        };
+        probe.Start();
+        _ = sp.GetRequiredService<ConfigDriftMetrics>();
+
+        gauge.Should().NotBeNull();
+        gauge!.Enabled.Should().BeTrue("収集の宣言（AddMeter）が無いと計器は OTLP へ出ず、警報は永久に鳴らない");
+    }
+
     // 🔴 撤去した旧キー `Introspection:GrpcServices` が残っていれば起動を止める（黙って無視しない）。
     [Theory]
     [InlineData("http://document-service:8081")]
@@ -61,5 +97,11 @@ public class ConfigInspectionGrpcRegistrationTests
         var act = () => Build(new());
 
         act.Should().NotThrow();
+    }
+
+    private sealed class NullMetricExporter : OpenTelemetry.BaseExporter<OpenTelemetry.Metrics.Metric>
+    {
+        public override OpenTelemetry.ExportResult Export(in OpenTelemetry.Batch<OpenTelemetry.Metrics.Metric> batch) =>
+            OpenTelemetry.ExportResult.Success;
     }
 }

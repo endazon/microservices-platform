@@ -225,6 +225,18 @@ data:
               summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
               description: "自動再試行を使い切ったメッセージが直近 1 時間にデッドレターへ入った（初回を含む。サービス・メッセージ型・例外の型はラベル job・messaging_message_type・error_type）。文書の取り込み・Wiki 同期・グラフ同期・削除のどれかが反映されていない。エラーログで原因を直し、文書を再発行する（デッドレターの写しは再投入しない）。"
 
+      # FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): 構成ドリフト（**0 が正常**）。注記の正本は compose 側の同名グループ
+      # （ゲージなので初回の腕は要らない。promtool の単体試験は compose 側に対して回り、式の一致は parity 検査が見る）。
+      - name: config-drift
+        rules:
+          - alert: ConfigDriftDetected
+            expr: 'max by (job) (config_drift_findings) > 0'
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "構成ドリフトを検出した（宣言と実効構成の不一致。0 が正常）"
+              description: "宣言と実効構成の不一致を直近のドリフト検出で見つけた（件数はラベル無しの値）。BFF のログ（ConfigDrift=true）で対象を特定し、宣言か配備を直す。直れば次の検出で収まる。"
+
       # FR-05, FR-09, SC-17, ADR-0115 決定 3, IADR-0473 (#1573): 部門の同期が直せていないこと（**0 が正常**）。
       # 🔴 **`absent()` 系ではなく `increase(...) > 0` である**（上の knowledge-health-violations と同じ理由。平常時は
       #   失敗の系列が立たない）。片側の系列が無くても式が空にならないよう、各項を `or vector(0)` で 0 に倒してから足す。
