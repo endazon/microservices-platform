@@ -89,14 +89,15 @@ data:
               summary: "検索の再順位付けが有効だが、有効時の検索 p95 目標（NFR-29）が未確定"
               description: "再順位付けが有効で動いている。有効時の目標は未確定で、有効化の条件を満たしていない。この間 1.5s の検索 p95 警報は外れている。"
           # NFR-02, ADR-0076 決定 5 (#1204): 初回トークンまでの時間（TTFT）。**NFR-02 の SLO 判定はこれで行う。**
+          # ［2026-10-30 / #2334］窓は 60 分の標本に合わせて [6h]・for 30m（ADR-0079 決定 3。暫定。理由は deploy/prometheus/alerts.yml）。
           - alert: RagFirstTokenP95High
             expr: |
-              histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m]))) > 5
-            for: 10m
+              histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[6h]))) > 5
+            for: 30m
             labels: { severity: warning }
             annotations:
               summary: "RAG 初回応答（初回トークン）p95 が 5s 超"
-              description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95 が NFR-02 目標(5s)を 10 分継続で超過。"
+              description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95（直近 6 時間）が NFR-02 目標(5s)を 30 分継続で超過。"
           # 応答完了 p95（一括経路）。**NFR-02 の SLI ではない** —— 傾向の観察に留める（ADR-0076）。
           - alert: RagLatencyP95High
             expr: |
