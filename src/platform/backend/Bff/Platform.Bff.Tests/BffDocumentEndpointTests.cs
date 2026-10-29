@@ -138,7 +138,7 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
     }
 
     [Fact]
-    public async Task GetContent_WhenAuthorized_ReturnsMarkdownAndSourceUri()
+    public async Task GetContent_WhenAuthorized_ReturnsMarkdown()
     {
         var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken);
 
@@ -147,7 +147,19 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         // ［2026-10-15 / #1905・[[IADR-0544]]］本文は文書サービスから gRPC で受け取る（BFF はストレージを読まない）。
         // 以前はストレージ未配備で案内文へ縮退していた（「タイトルを含む」で緑になっていた）。本文そのものを比べる。
         body!.Markdown.Should().Be(_factory.StubContentMarkdown);
-        body.SourceUri.Should().Be("storage://bucket/expense.md");
+    }
+
+    // FR-06, SC-03 (#2289): 本文の応答は正規化済み Markdown の参照（markdownUri）を「sourceUri」（出典元と読める名前）で載せない。
+    // 読み手は #2288 で 0 になった。原本の所在は詳細の originalUri が持つ。JSON の形そのもので確かめる（DTO 経由では項目の不在を見られない）。
+    [Fact]
+    public async Task GetContent_DoesNotCarrySourceUri()
+    {
+        var resp = await _factory.CreateClient().GetAsync($"{DetailPath}/content", TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(TestContext.Current.CancellationToken);
+        json.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(["id", "title", "markdown"]);
+        json.GetRawText().Should().NotContain("storage://bucket/expense.md");
     }
 
     [Fact]

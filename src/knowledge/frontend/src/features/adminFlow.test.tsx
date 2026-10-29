@@ -68,7 +68,7 @@ const DOCUMENT = {
   createdAt: '2026-07-01T00:00:00Z',
   updatedAt: '2026-08-01T00:00:00Z',
 };
-const CONTENT = { id: DOC_ID, title: TITLE, markdown: '# 経費精算規程', sourceUri: null };
+const CONTENT = { id: DOC_ID, title: TITLE, markdown: '# 経費精算規程' };
 
 /** 4 画面ぶんの応答を 1 つの mock で返す（実アプリと同じく画面が必要なものだけを呼ぶ）。 */
 function routeResponses(path: string): Promise<unknown> {

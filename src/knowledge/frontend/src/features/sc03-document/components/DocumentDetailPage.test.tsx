@@ -47,8 +47,6 @@ const CONTENT = {
   id: DOC_ID,
   title: DETAIL.title,
   markdown: '# 経費精算規程\n\n## 4. 精算スケジュール\n締め日は毎月25日とする。',
-  // BFF は本文の応答の sourceUri に markdownUri（正規化済み Markdown の参照）を入れる（#2121 で実物に合わせた）。
-  sourceUri: 'storage://normalized/keihi.md',
 };
 const VERSIONS = [
   {
@@ -383,12 +381,13 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 
-  // 🔴 FR-06, SC-03 (#2121): 原本の所在が無いとき、**正規化済み Markdown（markdownUri・本文の sourceUri）を「原本」として出さない。**
+  // 🔴 FR-06, SC-03 (#2121): 原本の所在が無いとき、**正規化済み Markdown（markdownUri）を「原本」として出さない。**
   // 修正前は `content.sourceUri ?? doc.markdownUri` で、どちらへ落ちても正規化済み Markdown を指していた。
+  // #2289 で本文の応答から sourceUri を外したので、リンクにできる形（https）の markdownUri で同じ主張を確かめる。
   it('never shows the normalized markdown as the original when the original location is unknown', async () => {
     respond({
-      detail: { ...DETAIL, originalUri: null },
-      content: { ...CONTENT, sourceUri: 'https://normalized.example/keihi.md' },
+      detail: { ...DETAIL, originalUri: null, markdownUri: 'https://normalized.example/keihi.md' },
+      content: CONTENT,
     });
     await renderPage();
 

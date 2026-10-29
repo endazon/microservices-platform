@@ -97,6 +97,13 @@
       "approvedBy": "claude (実装エージェント)",
       "issue": "#1902",
       "date": "2026-10-15"
+    },
+    {
+      "key": "memberRemoved:Knowledge.Contracts.Dtos.DocumentContentDto.SourceUri",
+      "reason": "#2289（#2121 / #2288 の残余。FR-06 / SC-03）: 本文の応答 `GET /bff/documents/{id}/content` の `sourceUri` は中身が `DocumentDto.MarkdownUri`（正規化済み Markdown の `storage://` 参照）で、「出典元」と読める名前と食い違っていた。唯一の読み手だった SC-03 の「原本」は #2288 で `originalUri` だけを読むようになり、読み手は 0。走査（作業仕様書 20261029_2289）: MSP の frontend 本番コード 0（試験の写しだけで同 PR で外した）・BFF の試験 1（同 PR で主張を「載らない」へ反転）・MCP は `DocumentContentDto` を使わない（document.get_document は文書サービスの DocumentDto）・AST（pin a003a190 と develop）は BFF の /content を呼ばない。BFF は SPA 専用の口で外部へ版を約束した契約ではない。改名は読み手 0 の項目を残すだけなので削除を選んだ（同じ値は DocumentDto.MarkdownUri が持つ）。",
+      "approvedBy": "claude (実装エージェント)",
+      "issue": "#2289",
+      "date": "2026-10-29"
     }
   ],
   "projects": {
@@ -1355,12 +1362,6 @@
             "type": "string",
             "required": true,
             "position": 2
-          },
-          "SourceUri": {
-            "source": "positional",
-            "type": "string?",
-            "required": true,
-            "position": 3
           },
           "Title": {
             "source": "positional",
