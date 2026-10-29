@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 649417,
+  "initialTotalBytes": 650379,
+  "$comment_initialTotalBytes_20261030_2120_ai-input-user-default": [
+    "［2026-10-30 / #2120］649,417 → 650,379 B へ引き上げた。smallLazyChunks は 12。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
+    "増分の帰属: SC-20 に AI 入力の利用者単位の既定の区画（トグル 1 つと既定の効き方の固定文言・更新失敗の文言）を足し、露出の案内文を改めた。Lingui の ja / en カタログは入口チャンクに入るので、両言語の訳の分だけ初期ロードが増える。"
+  ],
   "$comment_initialTotalBytes_20261026_2121_sc03-version-history-states": [
     "［2026-10-26 / #2121］645,166 → 645370 B へ引き上げた。smallLazyChunks は 12 のまま。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
     "増分の帰属: SC-03 の版履歴の欄に、計画の共通シェルの状態表示の規約（0 件と失敗を描き分ける）の文言 2 つ（「版履歴はまだありません。」「版履歴を取得できませんでした。」）を足した。Lingui の ja / en カタログは入口チャンク（index-*.js）に入るので、両言語の訳の分だけ初期ロードが増える（新しい文を dist で引くと入口チャンクだけが当たる）。",

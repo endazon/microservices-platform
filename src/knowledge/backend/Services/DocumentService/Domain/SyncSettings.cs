@@ -20,6 +20,12 @@ public class SyncSettings
     // ADR-0037 決定 4: Vault 内の相対パス（正規化済み。先頭・末尾に `/` を持たない）。
     public List<string> TargetFolders { get; private set; } = [];
 
+    // FR-19, SC-20 主要素 8, 計画 ADR-0143 決定 1・2 (#2120): AI 入力の**利用者単位の既定**。
+    // 新しく作る個人資料（SC-19 の作成・同期の新規 push）の AI 入力の**初期値**であり、作成後は資料単位の値だけが効く。
+    // 🔴 **変えても既存の資料は変わらない**（決定 2）。未設定と OFF は区別しない（既定 false）。
+    // 🔴 横断検索・ナレッジグラフの既定は置かない（決定 4）。
+    public bool AiInputDefault { get; private set; }
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     private SyncSettings() { }
@@ -35,6 +41,13 @@ public class SyncSettings
     public void Replace(List<string> targetFolders, DateTimeOffset now)
     {
         TargetFolders = targetFolders;
+        UpdatedAt = now;
+    }
+
+    // FR-19, ADR-0143 決定 1・2 (#2120): AI 入力の利用者単位の既定を変える。既存の資料には触れない（呼び出し側も触れない）。
+    public void SetAiInputDefault(bool value, DateTimeOffset now)
+    {
+        AiInputDefault = value;
         UpdatedAt = now;
     }
 

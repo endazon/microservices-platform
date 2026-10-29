@@ -3447,7 +3447,8 @@ paths:
       summary: "FR-19, UC-11, SC-19: 個人資料を作成する（タイトルのみ・本文は受け取らない）"
       description: |
         本文編集は Obsidian 経路のみである（ADR-0046 D-02。本画面はリッチエディタを描かない）。
-        既定は**非公開（共有 0 件）・機密区分 `restricted`・露出 3 トグル OFF** で作られる。
+        既定は**非公開（共有 0 件）・機密区分 `restricted`・横断検索とグラフは OFF** で作られる。
+        AI 入力は**作成時点の利用者単位の既定**（`SyncSettingsDto.aiInputDefault`。未設定は OFF）で初期化する（ADR-0143 決定 1。#2120）。
         **容量 100% では新規作成だけが 507 で拒まれる**（既存資料の更新は通る。ADR-0037 決定 17）。
       operationId: bff-private-note-create
       requestBody:
@@ -3522,7 +3523,7 @@ paths:
       tags: [PrivateNotes]
       summary: "FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / グラフ / AI 入力）を設定する"
       description: |
-        3 つは**独立に設定でき、既定はいずれも OFF** である。
+        3 つは**独立に設定でき、既定はいずれも OFF** である（AI 入力だけは、作成時点の利用者単位の既定が ON なら ON で作られる。ADR-0143。#2120）。
         🔴 現時点の後段は**保存するだけ**であり、ON にしても検索・グラフ・AI へは流れない
         （消費側を安全に絞る基盤が未了のため deny 側に倒してある）。
       operationId: bff-private-note-exposure
@@ -6478,7 +6479,7 @@ components:
       type: object
       description: >-
         FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / ナレッジグラフ / AI 入力）。
-        **既定はいずれも OFF・3 つは独立**である。
+        **既定はいずれも OFF・3 つは独立**である（AI 入力だけは作成時点の利用者単位の既定で初期化される。ADR-0143。#2120）。
       required: [includeInSearch, includeInGraph, includeInAi]
       properties:
         includeInSearch: { type: boolean }
@@ -6681,23 +6682,29 @@ components:
         FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。**同期対象は「本人が所有する個人資料」で判定し、
         公開範囲とは独立**である。`targetFolders` が空なら全資料が対象（既定）。
         対象から外れたフォルダの資料は**削除ではなく同期停止**（`syncState` が `excluded` になるだけ）。
-      required: [targetFolders]
+        FR-19, SC-20 主要素 8, ADR-0143 決定 1・2: `aiInputDefault` は AI 入力の**利用者単位の既定**（新しく作る資料
+        ＝SC-19 の作成・同期の新規 push の AI 入力の初期値。未設定は false）。変えても既存の資料は変わらない。
+        同期競合の「両方を残す」で作る別名コピーには当てない（決定 3）。
+      required: [targetFolders, aiInputDefault]
       properties:
         targetFolders:
           type: array
           items: { $ref: "#/components/schemas/SyncTargetFolderDto" }
         updatedAt: { type: string, format: date-time, nullable: true, description: "未設定なら null" }
+        aiInputDefault: { type: boolean, description: "AI 入力の利用者単位の既定（未設定は false）" }
 
     UpdateSyncSettingsRequest:
       type: object
       description: |
         FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。各要素は空でない・先頭末尾の `/` を除いて正規化・
         重複不可・最大 100 件・各 1024 文字以内。違反は 400（RFC7807 ValidationProblem）。
+        FR-19, ADR-0143: `aiInputDefault` は省略（null）なら変えない（フォルダだけを送る呼び出しを壊さない）。
       required: [targetFolders]
       properties:
         targetFolders:
           type: array
           items: { type: string }
+        aiInputDefault: { type: boolean, nullable: true, description: "AI 入力の利用者単位の既定。省略・null は変えない" }
 
     SyncConflictSummaryDto:
       type: object
