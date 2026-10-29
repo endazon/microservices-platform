@@ -47,3 +47,15 @@ export function addUserAttributeValue(
   const values = splitUserAttribute(current);
   return values.includes(value) ? joinUserAttribute(values) : joinUserAttribute([...values, value]);
 }
+
+/**
+ * 値の要素のうち、許可値に無いもの（大文字小文字を無視して照合する。後段の `UserAssignmentValidation` と同じ）。
+ * #2126: 辞書から外れた既存の値を黙って落とさず、画面に示すために使う。
+ */
+export function unknownUserAttributeValues(
+  value: string | undefined | null,
+  allowedValues: readonly string[],
+): string[] {
+  const allowed = allowedValues.map((v) => v.toLowerCase());
+  return splitUserAttribute(value).filter((v) => !allowed.includes(v.toLowerCase()));
+}

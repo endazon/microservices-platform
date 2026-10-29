@@ -8,7 +8,12 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { toMessages } from '@foundation/utils/apiErrors';
 import type { PlatformUserDto } from '@foundation/api/generated/bff.schemas';
 import { ConfirmDialog } from '../../../components/ConfirmDialog';
-import { isSetValuedUserAttribute, joinUserAttribute, splitUserAttribute } from '../../../lib/abac';
+import {
+  isSetValuedUserAttribute,
+  joinUserAttribute,
+  splitUserAttribute,
+  unknownUserAttributeValues,
+} from '../../../lib/abac';
 import { DataTable } from '../../../components/DataTable';
 import type { DataTableColumns } from '../../../components/DataTable';
 import {
@@ -62,6 +67,7 @@ function useIssueLabels(): Record<AssignmentIssue, string> {
   return {
     'roles-required': t`ロールは 1 件以上を割り当ててください（権限を外すときは無効化を使います）。`,
     'required-attribute-missing': t`機密区分上限は必須です。`,
+    'attribute-value-not-in-dictionary': t`辞書に無いタグの値があります。チェックを外してから保存してください（辞書に無い値は保存できません）。`,
   };
 }
 
@@ -454,6 +460,25 @@ export function UserAccountManagementPage() {
               .filter((d) => isSetValuedUserAttribute(d.key))
               .map((definition) => {
                 const chosen = splitUserAttribute(editor.draftAttributes[definition.key]);
+                // #2126（#2340 のレビュー）: 辞書に無い既存の値は**黙って落とさない**。後段は辞書外の値を 400 で拒むので、
+                // 「辞書に無い値」として見える形で出し（チェック済み）、利用者が外すまで保存させない（validateAssignment）。
+                const unknown = unknownUserAttributeValues(
+                  editor.draftAttributes[definition.key],
+                  definition.allowedValues,
+                );
+                // 並びは許可値の順、辞書に無い値はその後ろ（入力の並び）。
+                const toggle = (value: string) => {
+                  const next = chosen.includes(value)
+                    ? chosen.filter((v) => v !== value)
+                    : [...chosen, value];
+                  editor.setAttribute(
+                    definition.key,
+                    joinUserAttribute([
+                      ...definition.allowedValues.filter((v) => next.includes(v)),
+                      ...unknown.filter((v) => next.includes(v)),
+                    ]),
+                  );
+                };
                 return (
                   <fieldset key={definition.key}>
                     <legend className="text-sm font-medium text-fg">{definition.label}</legend>
@@ -462,19 +487,15 @@ export function UserAccountManagementPage() {
                         <input
                           type="checkbox"
                           checked={chosen.includes(value)}
-                          onChange={() => {
-                            const next = chosen.includes(value)
-                              ? chosen.filter((v) => v !== value)
-                              : [...chosen, value];
-                            editor.setAttribute(
-                              definition.key,
-                              joinUserAttribute(
-                                definition.allowedValues.filter((v) => next.includes(v)),
-                              ),
-                            );
-                          }}
+                          onChange={() => toggle(value)}
                         />
                         {value}
+                      </label>
+                    ))}
+                    {unknown.map((value) => (
+                      <label key={value} className="mr-4 inline-flex items-center gap-1 text-sm">
+                        <input type="checkbox" checked onChange={() => toggle(value)} />
+                        {t`${value}（辞書に無い値）`}
                       </label>
                     ))}
                   </fieldset>

@@ -17,4 +17,5 @@ export {
   isSetValuedUserAttribute,
   joinUserAttribute,
   splitUserAttribute,
+  unknownUserAttributeValues,
 } from './userAttributeEncoding';
