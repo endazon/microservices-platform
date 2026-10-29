@@ -90,6 +90,7 @@ const CONFLICT_DETAIL = {
   localContent: '端末で書いた本文',
   serverContent: 'サーバに保存されている本文',
   localContentUnavailable: false,
+  localContentMissing: false,
   serverContentUnavailable: false,
 };
 
@@ -637,6 +638,28 @@ describe('SC-20 Obsidian 連携設定: 競合の解決（#1442）', () => {
       '本文を取り出せませんでした',
     );
     expect(screen.getByLabelText('サーバ版の本文')).toHaveTextContent('サーバに保存されている本文');
+    const resolution = within(screen.getByRole('region', { name: '競合の解決' }));
+    expect(resolution.getByRole('button', { name: 'ローカルを採用' })).toBeDisabled();
+    expect(resolution.getByRole('button', { name: '両方を残す（別名保存）' })).toBeDisabled();
+    expect(resolution.getByRole('button', { name: 'サーバを採用' })).toBeEnabled();
+  });
+
+  // FR-20 (#2307): ローカル版の本文の参照が記録されていない競合。障害とは別の文言で示し、local と both を押せない
+  // （後段は 409 で確定しない）。server は本文を使わないので選べる。
+  it('ローカル版の参照が無ければ「記録されていません」と示し、local と both を押せない', async () => {
+    respond({
+      conflictDetail: { ...CONFLICT_DETAIL, localContent: '', localContentMissing: true },
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await screen.findByRole('cell', { name: '設計メモ' });
+    await user.click(within(conflictPanel()).getByRole('button', { name: '本文を見て解決する' }));
+
+    expect(await screen.findByLabelText('ローカル版の本文')).toHaveTextContent(
+      '端末の本文が記録されていません',
+    );
+    expect(screen.getByLabelText('ローカル版の本文')).not.toHaveTextContent('ストレージの障害');
     const resolution = within(screen.getByRole('region', { name: '競合の解決' }));
     expect(resolution.getByRole('button', { name: 'ローカルを採用' })).toBeDisabled();
     expect(resolution.getByRole('button', { name: '両方を残す（別名保存）' })).toBeDisabled();

@@ -159,7 +159,10 @@ public record SyncConflictDetailDto(
     string LocalContent,
     string ServerContent,
     bool LocalContentUnavailable = false,
-    bool ServerContentUnavailable = false);
+    bool ServerContentUnavailable = false,
+    // FR-20, SC-20 (#2307): ローカル版の本文の**参照が記録されていない**（記録時に退避できなかった・古い行）。
+    // 取り出しの失敗（`LocalContentUnavailable`。一時的）とは別で、再試行しても直らない。`local` / `both` は選べない（後段は 409）。
+    bool LocalContentMissing = false);
 
 // FR-20, SC-20 主要素 5, ADR-0037 決定 7: 競合の解決。値は `SyncConflictResolutions` の 3 つ。
 // **自動解決（後勝ち）の値は存在しない。**
