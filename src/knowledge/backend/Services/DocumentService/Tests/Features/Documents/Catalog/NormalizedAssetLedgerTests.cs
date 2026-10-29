@@ -194,7 +194,8 @@ public sealed class NormalizedAssetLedgerTests
     {
         var id = Guid.NewGuid();
         var publisher = new NoopUpdatedPublisher { Delay = TimeSpan.FromMilliseconds(500) };
-        // 窓を 1 ms にする —— 既定の窓では、Fault の同期の列挙が窓が切れるまで塞がり、偶然この窓を覆い隠す（負荷時は覆わない）。
+        // 窓を 1 ms にする —— 窓が切れるまで塞がる読み方が、偶然この窓を覆い隠さないように（［2026-10-30 / #2332］いまの待ちは
+        // 記録を待たない読み方で読むので窓に依らないが、窓の短い世界でも待ちが成り立つことをここで見る）。
         await using var provider = BuildProvider($"assets-{Guid.NewGuid():N}", inactivity: TimeSpan.FromMilliseconds(1),
             publisher: publisher);
         var harness = provider.GetRequiredService<ITestHarness>();
