@@ -107,6 +107,15 @@
     <PackageVersion Include="WolverineFx" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.Kafka" Version="6.24.4" />
+    <!-- NFR, ADR-0027, IADR-0648 (#2301): RabbitMQ.Client を CPM の推移ピン留め（CentralPackageTransitivePinningEnabled）で
+         7.1.2 → 7.2.2 へ上げる。直接参照する本番コードは無く、WolverineFx.RabbitMQ 6.24.4 の推移で全サービスへ届く版を差し替える。
+         7.1.2 は開き損ねた接続（ハンドシェイクの途中で失敗）を閉じず、自動回復が裏で繋ぎ直しを続けた（起動の再試行のたびに
+         1 本ずつ漏れ、ブローカの準備が整った時点で一斉に生き返る。AST の PoC で接続が 115〜131 本）。7.2.x は開き損ねた接続を
+         閉じて破棄する。試験は Platform.Shared.Infrastructure.Tests の RabbitMqFailedOpenConnectionLeakTests。
+         🔴 理由は**不具合の是正**であり、脆弱性（CVE）ではない（上流の修正は 7.2.0 の rabbitmq-dotnet-client#1857）。
+         AST（AST#1491 / AST の IADR-0595）と同じ版である。WolverineFx.RabbitMQ を上げて推移の版が 7.2.2 以上になったら、
+         この行は外してよい（外したら dotnet list package で解決版を確かめる）。 -->
+    <PackageVersion Include="RabbitMQ.Client" Version="7.2.2" />
     <!-- FR-06, ADR-0027 §決定「イベント発行の原子性は Wolverine の EF Core + PostgreSQL Transactional Outbox を標準とする」,
          IADR-0604 (#2042): Outbox の 2 パッケージ。参照元は共通ヘルパ（Platform.Shared.Infrastructure の
          WolverineExtensions.UsePlatformTransactionalOutbox）だけである。版は上の WolverineFx 系と必ず同値に保つ。 -->
