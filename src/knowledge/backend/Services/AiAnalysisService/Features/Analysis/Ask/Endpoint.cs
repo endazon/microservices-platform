@@ -1,5 +1,6 @@
 using AiAnalysisService.Domain;
 using AiAnalysisService.Domain.Ports;
+using FluentValidation;
 using Knowledge.Contracts.Dtos;
 
 namespace AiAnalysisService.Features.Analysis.Ask;
@@ -9,9 +10,14 @@ internal static class AskEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
     {
-        g.MapPost("/ask", async (AskRequest req, IRagOrchestrator rag,
+        g.MapPost("/ask", async (AskRequest req, IValidator<AskRequest> validator, IRagOrchestrator rag,
             HttpContext http) =>
         {
+            // SC-01, FR-04 (#2321): 質問の必須と最大長。**未認証の縮退より前**に置く（`/analyze` と同じ順。
+            // 不正な本文は認証の有無によらず 400）。認可サービスも LLM も呼ばない。
+            if (AskRequestValidator.Reject(validator, req) is { } rejected)
+                return rejected;
+
             // 🔴 FR-05, [[IADR-0335]] 決定 4 (#1318): **未認証は認可サービスを呼ばずに倒す。**
             // 判定と理由は `AnalysisEndpoints.IsAnonymous` に 1 つだけ置く。
             if (AnalysisEndpoints.IsAnonymous(http))

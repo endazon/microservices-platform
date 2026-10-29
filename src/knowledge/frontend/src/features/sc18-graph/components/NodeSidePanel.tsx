@@ -7,6 +7,7 @@ import {
 } from '@foundation/api/generated/documents/documents';
 import { okData } from '@foundation/api/orvalSelect';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
+import { useAuth } from '@foundation/auth/useAuth';
 import type {
   DocumentDto,
   EdgeTypeCatalogItem,
@@ -34,12 +35,19 @@ export interface NodeSidePanelProps {
 
 export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanelProps) {
   const { t } = useLingui();
+  const { user } = useAuth();
   const detail = useBffDocumentDetail<DocumentDto, unknown>(node.documentId, {
     query: {
       queryKey: getBffDocumentDetailQueryKey(node.documentId),
       select: okData,
     },
   });
+  // FR-19, SC-18, 計画 ADR-0102 決定 5 (#2145): 括弧書き「（自分のみ）」は**所有者にだけ**付す（SC-03 の
+  // `PrivateNoteSummary` と同じ判定）。所有者はグラフの応答ではなく、選択した 1 件の文書詳細の属性 `owner` から読む。
+  // 詳細を読めない（404・読み込み中）間は所有者を判別できないので付けない（所有者以外に付す誤りの側へ倒さない）。
+  // 🔴 **表示の分岐にだけ使う。** 認可の判定はサーバにある。
+  const owner = detail.data?.attributes?.owner ?? '';
+  const isOwner = node.isPrivateNote && owner !== '' && owner === user?.name;
 
   const typeName = new Map(edgeTypes.map((tp) => [tp.id, tp.name]));
   const connected = edges.filter(
@@ -78,11 +86,16 @@ export function NodeSidePanel({ node, edges, edgeTypes, onClose }: NodeSidePanel
           <span className="text-fg-muted">
             <Trans>種別:</Trans>
           </span>{' '}
-          {/* FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456): 🔴 **括弧書き「（自分のみ）」は付けない。**
-              本画面は他の利用者が所有する個人資料も描き得る（所有者がグラフ表示を ON にし、閲覧者が読める場合）が、
-              ノードの契約（`GraphNodeItem`）は所有者を運ばないため所有者を判別できない。決定 5 は「所有者以外に
-              付さない」ことを求めており所有者へ付けることは義務づけていないので、**一律で外す**のが適合である。 */}
-          {node.isPrivateNote ? <Trans>個人資料</Trans> : <Trans>組織文書</Trans>}
+          {/* FR-19, SC-18, 計画 ADR-0102 決定 5 (#1456 → #2145): 括弧書き「（自分のみ）」は**所有者にだけ**付す。
+              本画面は他の利用者が所有する個人資料も描き得る（所有者がグラフ表示を ON にし、閲覧者が読める場合）ので、
+              ノードの契約（`GraphNodeItem`）ではなく文書詳細の所有者で判別する（上の `isOwner`）。 */}
+          {isOwner ? (
+            <Trans>個人資料（自分のみ）</Trans>
+          ) : node.isPrivateNote ? (
+            <Trans>個人資料</Trans>
+          ) : (
+            <Trans>組織文書</Trans>
+          )}
         </p>
         {detail.data && (
           <>

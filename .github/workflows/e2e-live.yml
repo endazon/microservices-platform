@@ -253,6 +253,11 @@ jobs:
           # パスワード・OTP をログに書かない）。ジョブのログは公開なので、値を出すコンテナをここへ足さない。
           echo "::group::bff-service logs"; kubectl -n microservices-platform logs deploy/bff-service --tail=150; echo "::endgroup::"
           echo "::group::keycloak logs"; kubectl -n platform-infra logs deploy/keycloak --tail=80; echo "::endgroup::"
+          # FR-02 (#2283): 取り込み・検索・LLM ゲートウェイの直近のログ（G13「コレクションが 1 件も無い」等の原因を事後に読むため）。
+          # 3 つとも秘密の値をログへ出さないことを確かめてから足した（作業仕様書 20261030_2283 §秘密の値の確認）。
+          for d in ingestion-service retrieval-service llmgateway-service; do
+            echo "::group::${d} logs"; kubectl -n microservices-platform logs "deploy/${d}" --tail=150; echo "::endgroup::"
+          done
 
       - name: Tear down
         if: always()

@@ -31,6 +31,7 @@
       "EmbeddingBudgetDeadLetterPipelineTests",
       "EmbeddingCollectionsOptionsBindingTests",
       "EmbeddingPendingReembedderTests",
+      "HealthEndpointTests",
       "IngestToSearchInProcessTests",
       "IngestionIndexVersionQdrantTests",
       "IngestionOrderingAndAtomicityTests",
@@ -77,6 +78,8 @@
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
       "AskAttributeFilterTests",
+      "AskQuestionValidationTests",
+      "AskRequestValidatorTests",
       "CitationMapperTests",
       "RagAnswerContractTests",
       "RagOrchestratorDegradedModelTests",
@@ -292,6 +295,7 @@
       "ToolCatalogTests",
       "ToolDeclarationSourceFailFastTests",
       "ToolInvocationServiceTests",
+      "ToolListChangedNotificationTests",
       "ToolPublicationConfigValidatorTests",
       "ToolPublicationFailFastTests"
     ],

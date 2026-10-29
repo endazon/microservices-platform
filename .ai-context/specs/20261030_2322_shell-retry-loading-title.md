@@ -53,5 +53,5 @@ issue: "#2322"
 
 ## 実装後の記録
 
-- 初期ロードの合計が +0.26 kB（648.02 → 648.28 kB）増えた。ガード 2 つが `LoadingState` を引き、`Layout` が title を書くためで、意図した増加である。`check-chunk-budget.js --update` で床を上げた。
+- 初期ロードの合計が +0.26 kB（develop 取り込み後 648.37 → 648.63 kB）増えた。ガード 2 つが `LoadingState` を引き、`Layout` が title を書くためで、意図した増加である。`check-chunk-budget.js --update` で床を上げた。
 - テスト仕様書の行は足していない。共通シェルの部品の試験を受ける仕様書が無いためで、基盤・回帰の試験として扱う（`check-test-spec-coverage` は warn）。

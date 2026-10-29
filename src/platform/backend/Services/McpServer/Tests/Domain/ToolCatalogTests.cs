@@ -150,4 +150,20 @@ public class ToolCatalogTests
         catalog.Refresh(config, declarations);
         catalog.Version.Should().Be(version);
     }
+
+    // FR-16, [[IADR-0651]] (#2142): 版が進んだときだけ `Changed` を新しい版で 1 回呼ぶ（list_changed の合図）。内容の変わらない突合では呼ばない。
+    [Fact]
+    public void 版が進んだときだけChangedを呼ぶ()
+    {
+        var catalog = NewCatalog();
+        var seen = new List<int>();
+        catalog.Changed += seen.Add;
+        var config = new ToolPublicationConfig("v1", [new ToolPublicationEntry("retrieval.search", "retrieval")]);
+        var declarations = new[] { new ServiceToolDeclarations("retrieval", [Decl("retrieval.search")]) };
+
+        catalog.Refresh(config, declarations);
+        catalog.Refresh(config, declarations);
+
+        seen.Should().Equal(catalog.Version);
+    }
 }

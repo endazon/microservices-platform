@@ -218,6 +218,7 @@ internal sealed class GraphTraversal(IGraphStore store)
 
         // **距離（既定）は到達順そのもの** —— BFS の挿入順が距離の昇順である。
         // 並べ替えは**安定**でなければならない（同値の並びが実行ごとに変わると打ち切りが非決定になる）。
+        // 🔴 FR-17, ADR-0137 決定 4 (#2145): `degree` の次数は**ABAC で絞らない全辺**のまま（ハブ判定と同じ型として受容済み）。許可済みの辺へ変えるには計画の改定が要る。
         var ordered = by switch
         {
             GraphThinning.Updated => rest.OrderByDescending(n => n.UpdatedAt).ThenBy(n => n.DocumentId),
