@@ -117,3 +117,22 @@ issue: "#2283"
   - `dotnet build src/knowledge/backend/backend.slnx`: 成功、警告 0。
   - `Knowledge.IntegrationTests` の `IngestToSearchInProcessTests`: 8/8。
   - IngestionService.Tests: 293/293。
+
+## ［2026-10-30 追記 / #2311 の Integration］試験の Qdrant は gRPC が応答するまで待つ
+
+- **事象**: head `fc7b03c8` の Integration（run 40937476986 / job 123671757887）で 1 件だけ落ちた。`IngestionIndexVersionQdrantTests.版の印は最初の書き込みでコレクションごと作られ読み戻せる` が、`NewStoreAsync` → `EnsureCollectionsAsync` → `CollectionExistsAsync` で `RpcException Unavailable`（HTTP/2 の Broken pipe）になった。所要は 609 ms で、コンテナ起動後の最初の gRPC 呼び出しだった。
+- **本 PR の変更は関与しない**（実測）:
+  - この試験は自前の Testcontainers の Qdrant を試験ごとに起こし、`QdrantIngestionVectorStore` を直接組む。ホストも保証の器も起こさない。CI は外部の Qdrant を与えていない（`PLATFORM_TEST_*` は未設定とログにある）。
+  - 本 PR は `QdrantIngestionVectorStore` を変えていない（`git diff origin/develop...HEAD` に無い）。ほかの試験のコンテナや接続を共有する経路も無い。ポートはコンテナごとに無作為に割り当てられる。
+- **develop の履歴**: Integration の failed run を 10 件見た（2026-10-22〜10-29）。同じ試験の失敗も Broken pipe も 0 件だった。落ちていたのは AST の `TradeExecutionPipelineE2ETests`・platform の `TraceContinuityTests`・本 PR 前回の CS7036 で、いずれも別の原因である。
+- **原因（試験の土台の競合）**:
+  - Testcontainers.Qdrant 4.12.0 の既定の待機は、REST の `/readyz`（6333）だけを見る。
+  - Qdrant v1.18.1 は REST と gRPC を別のスレッドで起こす（上流 `src/main.rs` の `web` と `grpc` のスレッド）。`/readyz` が 200 でも、gRPC（6334）がまだ listen していないことがある。
+  - その間も Docker のポート転送は接続を受けてすぐ切る。だから最初の呼び出しが Broken pipe で落ちる。外部ポートの TCP 待機では塞げない。
+  - 同じ土台（`QdrantTestImage.CreateBuilder`）を使う試験は 5 クラスあり、どれも同じ競合を抱える。
+- **直し方**: `QdrantTestImage.CreateBuilder` に、gRPC の Health が応答するまで待つ待機（`QdrantGrpcReady`。上限 60 秒、1 回の問い合わせ 2 秒）を足した。1 か所で 5 クラスに効く。
+- **試験**（`QdrantGrpcReadyTests`。コンテナを起こさないので ci.yml で走る）:
+  - 対照: 接続を受けてすぐ切る受け口への `CollectionExistsAsync` は `Unavailable` で落ちる（CI と同じ型を再現した）。
+  - 待機の問い合わせは、その相手と待ち受けの無い口を「まだ」と読む（例外を投げない）。
+  - 組み立ての入口が gRPC の待機を持つ。**red→green**: 待機を外すと赤（実測）、戻すと緑。
+- **限界**: 手元に Docker が無いので、実コンテナでの競合そのものは再現していない。確かめられるのは次の CI の Integration だけである。
