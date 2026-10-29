@@ -16,6 +16,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <!-- NFR-19 / #2129: トレースの連続（HTTP → メッセージ → コンシューマ）を Wolverine のホストを実際に起こして確かめる。
+         ハンドラのコード生成に要る（IADR-0217。各サービスと同じく実行時コンパイル）。 -->
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <ProjectReference Include="..\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>
 </Project>
