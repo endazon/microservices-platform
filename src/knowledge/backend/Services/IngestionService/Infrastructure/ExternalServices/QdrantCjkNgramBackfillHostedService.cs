@@ -1,3 +1,4 @@
+using IngestionService.Common.Concurrency;
 using IngestionService.Domain.Ports;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -19,10 +20,14 @@ namespace IngestionService.Infrastructure.ExternalServices;
 // 索引の欠落で検索を落とさない（NFR-06）のと同じ理由で採らない。**Error で残す**（取り込み側にしか痕跡が出ない）。
 public sealed class QdrantCjkNgramBackfillHostedService(
     IServiceProvider services,
-    ILogger<QdrantCjkNgramBackfillHostedService> logger) : BackgroundService
+    ILogger<QdrantCjkNgramBackfillHostedService> logger,
+    QdrantBootstrapState? bootstrap = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // FR-02, [[IADR-0650]] (#2283): コレクションの保証が成功してから始める（保証は失敗すると再試行するので、登録順だけでは前後が決まらない）。
+        if (bootstrap is not null && !await bootstrap.WaitUntilEnsuredAsync(stoppingToken))
+            return;
         using var scope = services.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IIngestionVectorStore>();
         try

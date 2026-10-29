@@ -22,7 +22,7 @@ public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
     // ［2026-10-25 / #2134］IngestionCompleted の発行も Wolverine へ移し MassTransit を外したので、"masstransit-bus" は無い
     // （ブローカは Wolverine の 1 つだけ。DataSourceService の E1 と同じ）。
     private static readonly string[] OwnDependencies =
-        [WolverineExtensions.BrokerHealthCheckName, QdrantHealthCheck.Name];
+        [WolverineExtensions.BrokerHealthCheckName, QdrantHealthCheck.Name, QdrantBootstrapHealthCheck.Name];
 
     private sealed class FixedCheck(HealthStatus status) : IHealthCheck
     {
@@ -60,6 +60,7 @@ public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
             .Should().BeEquivalentTo(OwnDependencies,
                 "readiness は自プロセスの必須依存だけ（LLM ゲートウェイ等の下流を入れると、その停止で取り込みが NotReady になる。#2105）");
         registrations.Single(r => r.Name == QdrantHealthCheck.Name).FailureStatus.Should().Be(HealthStatus.Unhealthy);
+        registrations.Single(r => r.Name == QdrantBootstrapHealthCheck.Name).FailureStatus.Should().Be(HealthStatus.Unhealthy);
     }
 
     // 受け入れ基準 2: /health/ready は自前の依存で決まる。
@@ -74,6 +75,8 @@ public class HealthEndpointTests(IntrospectionEndpointTests.Factory factory)
     [Theory]
     [InlineData(WolverineExtensions.BrokerHealthCheckName)]
     [InlineData(QdrantHealthCheck.Name)]
+    // FR-02, [[IADR-0650]] (#2283): コレクション・索引の保証が未成功なら NotReady（書き込めないのに Ready に見せない）。
+    [InlineData(QdrantBootstrapHealthCheck.Name)]
     public async Task readyは自前の依存の1つが落ちると503(string down)
     {
         await using var host = WithDown(down);

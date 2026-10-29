@@ -237,6 +237,32 @@ public class EmbeddingPendingReembedderTests
         reembedded.Should().Equal(2);
     }
 
+    // FR-02, [[IADR-0650]] (#2283): 常駐の器は、コレクションの保証が成功するまで最初の周期を始めない
+    // （保証は裏で再試行するので、登録順だけでは前後が決まらない）。成功したら埋め直す（陽性の対照）。
+    [Fact]
+    public async Task 保証が成功するまで最初の周期を始めない()
+    {
+        var store = new PendingStore(Point(0));
+        var options = EmbeddingPendingOptions.Default with { Interval = TimeSpan.FromMilliseconds(20) };
+        var reembedder = new EmbeddingPendingReembedder(store, new FixedEmbedding(embedded: true),
+            TestMeterFactory.NewEmbeddingPendingMetrics(), options, IngestionTimeouts.Default, new CapturingLogger(), new DocumentIndexLocks());
+        var bootstrap = new QdrantBootstrapState();
+        var hosted = new EmbeddingPendingReembedHostedService(reembedder, options, TimeProvider.System,
+            new CapturingHostLogger(), bootstrap);
+
+        await hosted.StartAsync(Ct);
+        await Task.Delay(200, Ct);
+        store.Pending.Should().NotBeEmpty("保証の成功を待っている");
+
+        bootstrap.MarkEnsured();
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (store.Pending.Count > 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(20, Ct);
+        await hosted.StopAsync(Ct);
+
+        store.Pending.Should().BeEmpty("保証の成功の後に埋め直した");
+    }
+
     // T-45（#1924 の監査）: 常駐の器は、周期が例外を出しても Warning を残して次の周期へ進み、ホストを止めない。
     [Fact]
     public async Task 周期が例外を出しても器は次の周期へ進む()
