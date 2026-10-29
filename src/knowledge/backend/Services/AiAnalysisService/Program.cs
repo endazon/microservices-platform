@@ -80,6 +80,8 @@ builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 // 検証器を消しても起動時には何も起きず、端点が黙って無検証になるためである。
 // 1 行 1 検証器の明示登録なら、消したときにコンパイルか DI 解決で止まる。
 builder.Services.AddScoped<IValidator<AnalysisTaskRequest>, AnalyzeRequestValidator>();
+// SC-01, FR-04 (#2321): 質問回答（/ask・/ask/stream）の入力検証。
+builder.Services.AddScoped<IValidator<AskRequest>, AskRequestValidator>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。RAG オーケストレータは
 // 他サービスを HTTP で束ねるため合成可能ポートを選択しない。到達可能性とトポロジを与えるため存在申告する。
