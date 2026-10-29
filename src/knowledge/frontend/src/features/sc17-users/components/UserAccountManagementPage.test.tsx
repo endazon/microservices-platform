@@ -106,14 +106,16 @@ function departmentResponse(path: string) {
 }
 
 /** 経路ごとに応答を振り分ける（1 画面が複数本引くため、URL で分けないと取り違える）。 */
-function mockApi(overrides: { users?: unknown; roles?: readonly string[] } = {}) {
+function mockApi(
+  overrides: { users?: unknown; roles?: readonly string[]; attributes?: unknown } = {},
+) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (String(path).includes('/admin/users/assignable-roles')) {
       return Promise.resolve(jsonResponse(overrides.roles ?? ROLES));
     }
     if (String(path).endsWith('/department')) return Promise.resolve(departmentResponse(path));
     if (String(path).includes('/authz/attributes'))
-      return Promise.resolve(jsonResponse(ATTRIBUTES));
+      return Promise.resolve(jsonResponse(overrides.attributes ?? ATTRIBUTES));
     if (String(path).includes('/admin/users')) {
       return Promise.resolve(jsonResponse(overrides.users ?? USERS));
     }
@@ -504,6 +506,39 @@ describe('UserAccountManagementPage (SC-17)', () => {
     await waitFor(() => expect(attributeWrites()).toHaveLength(1));
     expect(JSON.parse(String((attributeWrites()[0][1] as RequestInit).body)).attributes.tags).toBe(
       '経営,経理',
+    );
+  });
+
+  // #2126（#2340 の再レビュー）: 照合は大文字小文字を区別しない（後段の UserAssignmentValidation・UserAttributeEncoding と同じ）。
+  // 保存値 `sales`・許可値 `Sales` は辞書に在る値として印が付き、別のタグに触っても落ちない（辞書の綴りで書き戻す）。
+  it('matches a stored tag to the dictionary without regard to case and keeps it when another tag changes', async () => {
+    mockApi({
+      users: [
+        { ...USERS[0], attributes: { ...USERS[0].attributes, tags: 'sales' } },
+        ...USERS.slice(1),
+      ],
+      attributes: ATTRIBUTES.map((a) =>
+        a.key === 'tags' ? { ...a, allowedValues: ['Sales', '経理'] } : a,
+      ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await openEditor(user, '田中 太郎');
+
+    const tags = screen.getByRole('group', { name: 'タグ' });
+    expect(within(tags).getByRole('checkbox', { name: 'Sales' })).toBeChecked();
+    expect(within(tags).queryByRole('checkbox', { name: /辞書に無い値/ })).not.toBeInTheDocument();
+
+    await user.click(within(tags).getByRole('checkbox', { name: '経理' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          ([path, init]) =>
+            String(path).endsWith('/admin/users/u-tanaka/attributes') &&
+            JSON.parse(String((init as RequestInit)?.body)).attributes.tags === 'Sales,経理',
+        ),
+      ).toBe(true),
     );
   });
 

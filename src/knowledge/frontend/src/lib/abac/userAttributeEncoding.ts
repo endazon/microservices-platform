@@ -56,6 +56,15 @@ export function unknownUserAttributeValues(
   value: string | undefined | null,
   allowedValues: readonly string[],
 ): string[] {
-  const allowed = allowedValues.map((v) => v.toLowerCase());
-  return splitUserAttribute(value).filter((v) => !allowed.includes(v.toLowerCase()));
+  return splitUserAttribute(value).filter(
+    (v) => !allowedValues.some((a) => sameUserAttributeValue(a, v)),
+  );
+}
+
+/**
+ * #2126（#2340 の再レビュー）: 要素の照合は**大文字小文字を区別しない**（後段の `UserAssignmentValidation` は
+ * `StringComparer.OrdinalIgnoreCase`、`UserAttributeEncoding.Split` も同じ比較子）。画面の照合はすべてこれを使う。
+ */
+export function sameUserAttributeValue(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
 }

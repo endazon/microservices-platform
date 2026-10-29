@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../../components/ConfirmDialog';
 import {
   isSetValuedUserAttribute,
   joinUserAttribute,
+  sameUserAttributeValue,
   splitUserAttribute,
   unknownUserAttributeValues,
 } from '../../../lib/abac';
@@ -466,16 +467,20 @@ export function UserAccountManagementPage() {
                   editor.draftAttributes[definition.key],
                   definition.allowedValues,
                 );
-                // 並びは許可値の順、辞書に無い値はその後ろ（入力の並び）。
+                // 🔴 照合は大文字小文字を区別しない（後段と同じ。`sameUserAttributeValue`）。区別すると、保存値 `sales`・
+                // 許可値 `Sales` が辞書外にもチェック済みにも入らず、別のタグに触ったときに黙って落ちる（#2340 の再レビュー）。
+                const has = (list: readonly string[], value: string) =>
+                  list.some((v) => sameUserAttributeValue(v, value));
+                // 並びは許可値の順（辞書の綴りで書き戻す）、辞書に無い値はその後ろ（入力の並び）。
                 const toggle = (value: string) => {
-                  const next = chosen.includes(value)
-                    ? chosen.filter((v) => v !== value)
+                  const next = has(chosen, value)
+                    ? chosen.filter((v) => !sameUserAttributeValue(v, value))
                     : [...chosen, value];
                   editor.setAttribute(
                     definition.key,
                     joinUserAttribute([
-                      ...definition.allowedValues.filter((v) => next.includes(v)),
-                      ...unknown.filter((v) => next.includes(v)),
+                      ...definition.allowedValues.filter((v) => has(next, v)),
+                      ...unknown.filter((v) => has(next, v)),
                     ]),
                   );
                 };
@@ -486,7 +491,7 @@ export function UserAccountManagementPage() {
                       <label key={value} className="mr-4 inline-flex items-center gap-1 text-sm">
                         <input
                           type="checkbox"
-                          checked={chosen.includes(value)}
+                          checked={has(chosen, value)}
                           onChange={() => toggle(value)}
                         />
                         {value}
