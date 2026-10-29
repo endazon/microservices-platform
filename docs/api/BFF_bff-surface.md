@@ -10,8 +10,8 @@ author: Claude
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-22, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
 adrs: [ADR-0091, ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101, ADR-0104, ADR-0110, ADR-0116]
 iadrs: [IADR-0644, IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0429, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0473, IADR-0537, IADR-0545, IADR-0544, IADR-0561, IADR-0565, IADR-0610, IADR-0611]
-specs: [20261030_2280_bff-relay-input-failure-body, 20261026_2109_datasource-bff-relay-error-body, 20261026_2108_wiki-deep-link-document-id, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay, 20261026_2255_figure-correction-job-changed-409]
-issues: [#2280, #1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, #2255, #2108, #2109, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841]
+specs: [20261030_2135_unrouted-backend-endpoints, 20261030_2280_bff-relay-input-failure-body, 20261026_2109_datasource-bff-relay-error-body, 20261026_2108_wiki-deep-link-document-id, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay, 20261026_2255_figure-correction-job-changed-409]
+issues: [#2135, #2330, #2280, #1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, #2255, #2108, #2109, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -101,6 +101,20 @@ issues: [#2280, #1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #5
 `ExcludeFromDescription()` が付いており、**メッシュ内部限定**（ingress へ公開しない。ClusterIP ＋
 NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。応答は 202 のみで構成情報を返さない
 （存在秘匿）。**SPA から呼ぶ面ではない**ため契約に載せない。
+
+### BFF に経路の無い後段の端点（［2026-10-30］分類）
+
+後段には、BFF が中継しない口がある。**載せ忘れではない**ことを、口ごとに分類して残す。
+どれもエッジ（ingress）から後段へ直接は届かない（エッジが後段へ通すのは同期プロトコルと MCP の入口だけ）。
+
+| 後段の口 | 分類 | 呼び出し元と理由 |
+| --- | --- | --- |
+| `PATCH /documents/{id}/metadata` | **後段専用（機械クライアント）** | 機械クライアントが自分の所有する組織文書の属性を差し替える口。人の画面（文書管理）は `PUT /documents/{id}` を使う。属性の**全置換**なので、露出のキーを送り忘れると文書が検索・RAG に出る。取引の報告書の写しは意図してこの口を使わない |
+| `PUT /documents/{id}/body` | **後段専用（機械クライアント）** | 取引ユニットの知識ベースの書き手が既存文書へ本文を入れる口 |
+| `GET /documents/page` | **後段専用（機械クライアント）** | 組織文書を属性の完全一致で絞りページで返す口。知識ベースの入れ直しのために置いたが、いまの呼び出し元は無い（取引ユニットは `GET /documents` を使う） |
+| `GET` / `PUT /private-notes/quotas/{ownerId}` | **BFF に通す（未了）** | 計画がユーザーアカウント管理画面に個人資料の使用量と上限の欄を置くと定めた（上限の変更と監査を含む）。**経路は欄と一緒に作る**（#2330）。それまではシステム管理者が運用の手順書に従って後段を直接呼ぶ |
+| `GET /feedback/` | **運用の口** | 管理者限定（自由記述と利用者 ID を返す）。低評価の回答を見直すための一覧で、画面は計画に無い。管理者が API で直接使う |
+| `GET /dashboard/trends`・`GET /dashboard/usage` | **運用の口** | 画面（運用ダッシュボード）が読むのは `GET /dashboard/summary` で、summary は同じ集計で両方を含む。2 つの口は summary の部分集合であり、集計規則（しきい値・合成トラフィックの除外）の試験の口でもある。外部の呼び出し元は無い。撤去はしていない |
 
 ## エンドポイント一覧
 
