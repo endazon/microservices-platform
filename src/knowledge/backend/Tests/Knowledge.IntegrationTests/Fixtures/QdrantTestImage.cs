@@ -1,3 +1,4 @@
+using DotNet.Testcontainers.Builders;
 using Testcontainers.Qdrant;
 
 namespace Knowledge.IntegrationTests.Fixtures;
@@ -26,7 +27,14 @@ public static class QdrantTestImage
     /// （上流 <c>src/common/telemetry_reporting.rs</c> v1.18.1。起動直後と 1 時間ごとに <c>telemetry.qdrant.io</c> へ送る）、
     /// 外すと試験のたびに CI の runner から外部へ送信が起きる（08_data-egress-policy。配備の compose・k8s と同じ設定）。
     /// <c>new QdrantBuilder(</c> をこの外に書くと <c>scripts/lib/product-egress-defaults.js</c>（check-deploy-manifests）が落とす。
+    /// <para>
+    /// #2283: 既定の待機（REST の <c>/readyz</c>）に、gRPC の Health が応答するまでの待機を足す（<see cref="QdrantGrpcReady"/>）。
+    /// REST が先に立ち上がり gRPC がまだ listen していない間の最初の呼び出しが <c>Unavailable</c> で落ちるのを塞ぐ。
+    /// </para>
     /// </remarks>
     public static QdrantBuilder CreateBuilder() =>
-        new QdrantBuilder(Reference).WithEnvironment("QDRANT__TELEMETRY_DISABLED", "true");
+        new QdrantBuilder(Reference)
+            .WithEnvironment("QDRANT__TELEMETRY_DISABLED", "true")
+            .WithWaitStrategy(Wait.ForUnixContainer()
+                .AddCustomWaitStrategy(new QdrantGrpcReady(), o => o.WithTimeout(TimeSpan.FromSeconds(60))));
 }

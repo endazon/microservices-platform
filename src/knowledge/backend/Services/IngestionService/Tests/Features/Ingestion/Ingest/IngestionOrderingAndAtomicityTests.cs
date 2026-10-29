@@ -52,7 +52,8 @@ public class IngestionOrderingAndAtomicityTests
             TestMeterFactory.NewEmbeddingPendingMetrics(),
             TestMeterFactory.NewBodyMissingMetrics(),
             NullLogger<DocumentUpdatedConsumer>.Instance,
-            new DocumentIndexLocks());
+            new DocumentIndexLocks(),
+            QdrantBootstrapStateForTests.Ensured());
 
     private static Task Handle(DocumentUpdatedConsumer consumer, DocumentUpdated ev)
         => consumer.Handle(ev, TestContext.Current.CancellationToken);

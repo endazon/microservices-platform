@@ -3973,7 +3973,7 @@ paths:
         "401": { description: 未認証 }
         "403": { description: write スコープが無い }
         "404": { description: 不在・他人の競合（区別しない） }
-        "409": { description: "解決済みの競合。または、`local` の確定が並行する確定に負けた（`version_conflict`。解決は巻き戻り、選び直せる。IADR-0637 決定 7）" }
+        "409": { description: "解決済みの競合。または、`local` の確定が並行する確定に負けた（`version_conflict`。解決は巻き戻り、選び直せる。IADR-0637 決定 7）。または、`local` / `both` でローカル版の本文の参照が記録されていない（`local_content_missing`。何も確定せず、`server` は選べる。#2307）" }
         "503": { description: "NFR-19 (#2141): `local` / `both` で、ローカル版の本文をストレージから取り出せない（`{ error: local_content_unavailable }`）。何も確定せず、競合は未解決のまま残る" }
         "507": { description: both の別名資料が保存容量の上限で作れない（ProblemDetails） }
 
@@ -6722,7 +6722,7 @@ components:
       description: |
         FR-20, SC-20 主要素 5: 競合 1 件の詳細（2 ペイン差分の材料）。`localContent` は端末が送った本文、
         `serverContent` は現在のサーバ版の本文。**本文は詳細だけが返す**（一覧を重くしない）。
-      required: [id, noteId, title, vaultPath, detectedAt, deviceId, deviceName, localBaseVersion, serverVersion, localContent, serverContent, localContentUnavailable, serverContentUnavailable]
+      required: [id, noteId, title, vaultPath, detectedAt, deviceId, deviceName, localBaseVersion, serverVersion, localContent, serverContent, localContentUnavailable, serverContentUnavailable, localContentMissing]
       properties:
         id: { type: string, format: uuid }
         noteId: { type: string, format: uuid }
@@ -6741,6 +6741,9 @@ components:
         serverContentUnavailable:
           type: boolean
           description: "NFR-19 (#2141): サーバ版の本文をストレージから取り出せなかった（`serverContent` は空）。"
+        localContentMissing:
+          type: boolean
+          description: "FR-20 (#2307): ローカル版の本文の参照が記録されていない（記録時に退避できなかった・古い行。`localContent` は空）。取り出しの失敗とは別で、再試行しても直らない。`local` / `both` は選べない（409 `local_content_missing`）。"
 
     ResolveSyncConflictRequest:
       type: object

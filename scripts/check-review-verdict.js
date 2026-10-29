@@ -344,6 +344,14 @@ const NON_GENERATED_TARGET = /テスト|Tests?\b|docs|文書|仕様|IADR|ADR|本
 const PLAN_DOC = /計画書|計画の?\s*ADR|計画リポ(?:ジトリ)?|他リポ(?:ジトリ)?/g;
 
 /**
+ * レビュー観点の見出し（出力フォーマットの「レビュー観点」の 5 つ。箇条の頭に「ADR 制約: …」の形で付く）。
+ * 計画書の除外の判定（残りに読む対象の語があるか）からは外す（#2317）。「- ADR 制約: 計画 ADR の原文は読めていない。」の
+ * 「ADR」は観点の名前であって読む対象のファイルではないのに、`NON_GENERATED_TARGET` の `ADR` に当たって除外が外れた
+ * （MSP#2311 の初回の AI レビュー）。外すのは見出しの語だけで、文の中の IADR・ファイル名・差分は従来どおり数える。
+ */
+const REVIEW_VIEWPOINT_LABEL = /トレーサビリティ|受け入れ基準|ADR\s*制約|一般的な品質|品質|AI\s*固有リスク/g;
+
+/**
  * 変更ファイル以外の対象（コマンドの出力・CI の一覧）についての文（#2276 / IADR-0643）。
  *
  * #2270 の「（`helm template` の描画は）出力が大きく、全行は読んでいない。」と、#2275 の「CI の `scripts-tests` の結論は
@@ -418,7 +426,11 @@ function findNotReadAdmissions(text, decl, changedFiles = null) {
     if (!hit) continue;
     // 計画書は読む対象のファイルではない（🔍 の「計画書は未検証」と同じ扱い）。ただし計画書とテスト等を並べた文は数える
     // （生成物と同じ規則。AST#1346 の AI レビュー 🟢）
-    if (new RegExp(PLAN_DOC.source).test(bare) && !NON_GENERATED_TARGET.test(bare.replace(PLAN_DOC, ''))) continue;
+    if (
+      new RegExp(PLAN_DOC.source).test(bare) &&
+      !NON_GENERATED_TARGET.test(bare.replace(PLAN_DOC, '').replace(REVIEW_VIEWPOINT_LABEL, ''))
+    )
+      continue;
     // #2276 / IADR-0643: コマンドの出力・CI の一覧など、変更ファイル以外の対象についての文は数えない（3 条件。上の注記）
     if (aboutNonFileObject(bare, line, changedFiles)) continue;
     const generated = GENERATED_WORD.test(sentence) || new RegExp(GENERATED_TOKENS.source).test(sentence);
@@ -702,6 +714,20 @@ function selfTest() {
         []
       ),
       []
+    );
+  });
+
+  // #2317: レビュー観点の見出し「ADR 制約:」の ADR は読む対象ではない。計画書についての文はそれでも数えない（MSP#2311 の初回の誤判定）。
+  // 陽性の対照: 同じ見出しでも、変更ファイル（IADR・差分）の未精読が並ぶ文は従来どおり数える。
+  T('下限: #2317 —— 観点の見出し「ADR 制約:」が付いた計画書の文は数えず、変更ファイルの未精読が並ぶ文は数える', () => {
+    const head = '変更 18 ファイル中 18 ファイルを読んだ（生成物の除外なし）。';
+    const confirmed = (...l) => `\n### ✅ 確認できたこと（このセッションで実走）\n${l.map((x) => `- ${x}`).join('\n')}\n`;
+    const notRun = (...l) => `\n### 🔍 実行できなかったこと\n${l.map((x) => `- ${x}`).join('\n')}\n`;
+    assert.deepStrictEqual(findFloorViolations(review(head) + confirmed('ADR 制約: 計画 ADR の原文は読めていない。'), []), []);
+    assert.deepStrictEqual(findFloorViolations(review(head) + notRun('ADR 制約: 計画 ADR の原文は読めていない。'), []), []);
+    assert.strictEqual(
+      findFloorViolations(review(head) + notRun('ADR 制約: 計画 ADR と IADR-0650 の差分は読めていない。'), []).length,
+      1
     );
   });
 

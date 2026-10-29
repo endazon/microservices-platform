@@ -33,9 +33,9 @@ public class IngestionDeleteTombstoneTests
             new ScriptedReader(Body), new MarkdownChunkingService(), new ScriptedEmbedder(), index, new NoopCompleted(),
             ConsumerTimeoutsForTests.Calls(), ConsumerTimeoutsForTests.Timeouts, TimeProvider.System,
             TestMeterFactory.NewEmbeddingPendingMetrics(), TestMeterFactory.NewBodyMissingMetrics(),
-            NullLogger<DocumentUpdatedConsumer>.Instance, locks);
+            NullLogger<DocumentUpdatedConsumer>.Instance, locks, QdrantBootstrapStateForTests.Ensured());
         var deletes = new DocumentDeletedConsumer(index, ConsumerTimeoutsForTests.Calls(), ConsumerTimeoutsForTests.Timeouts,
-            deleteLocks ?? locks, NullLogger<DocumentDeletedConsumer>.Instance);
+            deleteLocks ?? locks, NullLogger<DocumentDeletedConsumer>.Instance, QdrantBootstrapStateForTests.Ensured());
         return new Harness(index, updates, deletes);
     }
 

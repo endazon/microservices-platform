@@ -25,13 +25,16 @@ public class DocumentDeletedConsumer(
     ConsumerCallTimeouts calls,
     IngestionTimeouts timeouts,
     DocumentIndexLocks locks,
-    ILogger<DocumentDeletedConsumer> logger) : IPipelineStep<DocumentDeleted>
+    ILogger<DocumentDeletedConsumer> logger,
+    QdrantBootstrapState bootstrap) : IPipelineStep<DocumentDeleted>
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "ingestion-delete";
 
     public async Task Handle(DocumentDeleted ev, CancellationToken ct)
     {
+        // 🔴 FR-02, [[IADR-0650]] 決定 4 (#2283): コレクションの保証の成功を（上限まで）待つ（無いと全コレクションからの削除が投げる）。
+        await bootstrap.WaitForConsumerAsync(ct);
         using var _ = await locks.AcquireAsync(ev.DocumentId, ct);
 
         var indexed = await calls.RunAsync(StepName, IngestionTimeouts.VectorStoreTarget, timeouts.VectorStore,

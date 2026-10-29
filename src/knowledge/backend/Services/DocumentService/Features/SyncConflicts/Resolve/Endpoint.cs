@@ -68,6 +68,13 @@ internal static class ResolveSyncConflictEndpoint
             if (note.IsDeleted && req.Resolution != SyncConflictResolutions.Server)
                 return Results.Conflict(new { error = "deleted", purgeAt = note.PurgeAt });
 
+            // 🔴 FR-20, SC-20 (#2307): ローカル版の本文の**参照が無い**まま `local` / `both` を確定しない。`ReadAsync` は参照が無いと
+            // 空文字を「取り出せた」として返すので、従前は**空の本文が新しい版として書かれ**、`both` は空の別名資料を作った。
+            // 再試行しても直らない恒久の状態なので 409（503 の `local_content_unavailable` は一時的な取り出しの失敗）。何も確定せず、
+            // 競合は未解決のまま残る（`server` は本文を使わないので選べる）。
+            if (req.Resolution != SyncConflictResolutions.Server && string.IsNullOrEmpty(conflict.LocalContentUri))
+                return Results.Conflict(new { error = "local_content_missing" });
+
             var now = DateTimeOffset.UtcNow;
             // `server` は本文を使わないので読みに行かない（#2305 の AI レビュー。障害の経路を減らす）。
             var (localContent, localUnavailable) = req.Resolution == SyncConflictResolutions.Server

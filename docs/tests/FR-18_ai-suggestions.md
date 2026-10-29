@@ -3,15 +3,15 @@ title: FR-18 AI 提案（リンク・タグ）テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-22
-updated: 2026-10-26
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-18, SC-03, SC-05, SC-09, NFR-09, NFR-16]
 adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0117]
-iadrs: [IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412, IADR-0530]
-specs: [20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers]
-issues: [#1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887, #2119]
+iadrs: [IADR-0300, IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412, IADR-0530]
+specs: [20261030_2144_reject-fingerprints-from-replica, 20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers]
+issues: [#2144, #1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887, #2119]
 -->
 
 # テスト仕様書: AI 提案（リンク・タグ）
@@ -47,6 +47,7 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-09 | 却下済み | 指紋が変わらない | **解除されない**（T-08 の対） | 本文変更で却下解除 | 自動 |
 | T-10 | 解除後 | 却下の記録を見る | **却下日時・解除日時・解除理由が残る**（削除されていない） | 解除は無効化として記録 | 自動 |
 | T-11 | 解除後 | 同じ指紋で再判定 | 解除されない（**指紋が新しい値へ進んでいる**） | 本文変更で却下解除 | 自動 |
+| T-11-b | ［2026-10-30］両端に本文指紋がある却下前のリンク提案 | 本文を送らずに却下する（BFF と同じ形）→ 先の本文だけが変わる | 両端の指紋が自分の複製から控えられ（null ではない）、解除の理由は **target**（both に化けない） | 本文変更で却下解除 | 自動 |
 | T-12 | 端点が 1 つの提案 | もう一方の指紋を変える | **解除されない**（端点が無いので判定に使わない） | 本文変更で却下解除 | 自動 |
 | T-13 | 一覧を引く | 既定の状態で取得 | `pending` が返り、**権限外の文書に関する提案は現れない** | 権限外を出さない | 自動 |
 | T-14 | — | ルート表を走査 | **一括承認の口が存在しない**。承認の口は必ず id を取る | 一括承認を提供しない | 自動 |

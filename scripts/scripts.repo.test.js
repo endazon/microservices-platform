@@ -18288,7 +18288,9 @@ server.listen(0, '127.0.0.1', async () => {
       const block = prompt.slice(i, j < 0 ? undefined : j);
       const problems = [];
       for (const word of ['全部読む', 'scripts.test.js', "REQUIRE_REPO_TESTS:'1'", 'dotnet test', 'dotnet format', '--verify-no-changes',
-        'check-trace-blocks', 'helm lint', 'helm template', '時間配分', '差分が大きい', '/tmp/', 'ワークスペースへ書き込まない']) {
+        'check-trace-blocks', 'helm lint', 'helm template', '時間配分', '差分が大きい', '/tmp/', 'ワークスペースへ書き込まない',
+        // #2317: 検査器の実行に echo を繋いで権限拒否になった（2 回）。禁止の文言が消えたら止める。
+        '`| echo …` を繋がない']) {
         if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
       }
       for (const t of ['Bash(helm lint:*)', 'Bash(helm template:*)', 'Bash(node:*)', 'Bash(dotnet test:*)', 'Bash(dotnet format:*)', 'Bash(git fetch:*)']) {
@@ -18304,6 +18306,7 @@ server.listen(0, '127.0.0.1', async () => {
     ok('claude-code-review.yml[#1911]: 陰性対照（節を消す・helm lint の許可を外す・語を抜く・旧文言を戻す）はそれぞれ赤になる', () => {
       assert.match(floorProblems1911(wf1911.replaceAll('【検証の下限・最重要】', '【削除】')).join('\n'), /節が無い/);
       assert.match(floorProblems1911(wf1911.replace('Bash(helm lint:*),', '')).join('\n'), /helm lint:\*\) が --allowedTools に無い/);
+      assert.match(floorProblems1911(wf1911.replace('`| echo …` を繋がない', '')).join('\n'), /echo/);
       assert.match(floorProblems1911(wf1911.replace('「時間配分」', '「」')).join('\n'), /時間配分/);
       assert.match(floorProblems1911(wf1911.replace('【実行制約・最重要】', '【実行制約・最重要】時間が足りなければ')).join('\n'), /旧文言/);
     });

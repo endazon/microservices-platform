@@ -324,6 +324,82 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
         pull!.Content.Should().Be("サーバ版", "空の本文が書かれていない");
     }
 
+    // 🔴 FR-20, SC-20 (#2307): ローカル版の本文の**参照が記録されていない**競合（記録時に退避できなかった・古い行）。
+    // 従前は参照が無いと空文字を「取り出せた」として扱い、`local` は空の本文を新しい版として書き、`both` は空の別名資料を作った。
+    // 409 `local_content_missing` で何も確定せず、資料の本文・版・資料の数は変わらず、競合は未解決のまま残る。
+    [Theory]
+    [InlineData(SyncConflictResolutions.Local)]
+    [InlineData(SyncConflictResolutions.Both)]
+    public async Task ローカル版の参照が無いときlocalとbothは確定せず409を返す(string resolution)
+    {
+        var (note, session, _, plugin) = await ConflictedNoteAsync("c-missing-" + resolution);
+        var conflicts = await ConflictsAsync(session);
+        await ForgetLocalContentAsync(conflicts[0].Id);
+        var notesBefore = await NoteCountAsync();
+
+        var resp = await session.PostAsJsonAsync($"/private-notes/conflicts/{conflicts[0].Id}/resolve",
+            new ResolveSyncConflictRequest(resolution), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("local_content_missing");
+        (await ConflictsAsync(session)).Should().ContainSingle("確定していないので競合は残り、server を選べる");
+        var pull = await plugin.GetFromJsonAsync<PullNoteResponse>(
+            $"/private-notes/sync/notes/{note.NoteId}", TestContext.Current.CancellationToken);
+        pull!.Content.Should().Be("サーバ版", "空の本文が書かれていない");
+        pull.Version.Should().Be(note.Version + 1, "版は進まない");
+        (await NoteCountAsync()).Should().Be(notesBefore, "空の別名資料を作らない");
+    }
+
+    // 陽性の対照（#2307）: 参照が無くても `server` は本文を使わないので従来どおり解決できる。詳細は参照が無いことを返す。
+    [Fact]
+    public async Task ローカル版の参照が無くても詳細は印を返しserverで解決できる()
+    {
+        var (_, session, _, _) = await ConflictedNoteAsync("c-missing-server");
+        var conflicts = await ConflictsAsync(session);
+        await ForgetLocalContentAsync(conflicts[0].Id);
+
+        var detail = await session.GetFromJsonAsync<SyncConflictDetailDto>($"/private-notes/conflicts/{conflicts[0].Id}",
+            TestContext.Current.CancellationToken);
+        detail!.LocalContentMissing.Should().BeTrue();
+        detail.LocalContentUnavailable.Should().BeFalse("取り出しの失敗ではない");
+
+        var resp = await session.PostAsJsonAsync($"/private-notes/conflicts/{conflicts[0].Id}/resolve",
+            new ResolveSyncConflictRequest(SyncConflictResolutions.Server), TestContext.Current.CancellationToken);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ConflictsAsync(session)).Should().BeEmpty();
+    }
+
+    // 参照が在る通常の競合では印は立たない（上の試験の対照）。
+    [Fact]
+    public async Task ローカル版の参照が在れば詳細の印は立たない()
+    {
+        var (_, session, _, _) = await ConflictedNoteAsync("c-present");
+        var conflicts = await ConflictsAsync(session);
+
+        var detail = await session.GetFromJsonAsync<SyncConflictDetailDto>($"/private-notes/conflicts/{conflicts[0].Id}",
+            TestContext.Current.CancellationToken);
+        detail!.LocalContentMissing.Should().BeFalse();
+        detail.LocalContent.Should().Be("ローカル版");
+    }
+
+    // 競合の行からローカル版の本文の参照を外す（記録時に退避できなかった・古い行の再現）。
+    private async Task ForgetLocalContentAsync(Guid conflictId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        var row = await db.SyncConflicts.SingleAsync(c => c.Id == conflictId, TestContext.Current.CancellationToken);
+        row.RecordLocalContent(string.Empty);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    // 資料の数（`both` が別名資料を作ったかを見る。クラス内の試験は直列なので全体の数で足りる）。
+    private async Task<int> NoteCountAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+        return await db.PrivateNotes.CountAsync(TestContext.Current.CancellationToken);
+    }
+
     // #2305 の AI レビュー: `server` は本文を使わないので、ローカル版を読みに行かない（ストレージが失敗していても 200 で解決できる）。
     [Fact]
     public async Task serverの解決はローカル版を読まずストレージ失敗でも解決できる()

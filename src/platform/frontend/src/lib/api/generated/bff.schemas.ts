@@ -2055,6 +2055,8 @@ export interface SyncConflictDetailDto {
   localContentUnavailable: boolean;
   /** NFR-19 (#2141): サーバ版の本文をストレージから取り出せなかった（`serverContent` は空）。 */
   serverContentUnavailable: boolean;
+  /** FR-20 (#2307): ローカル版の本文の参照が記録されていない（記録時に退避できなかった・古い行。`localContent` は空）。取り出しの失敗とは別で、再試行しても直らない。`local` / `both` は選べない（409 `local_content_missing`）。 */
+  localContentMissing: boolean;
 }
 
 /**
