@@ -3,15 +3,15 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-09-28
+updated: 2026-10-29
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05, SC-17]
 adrs: [ADR-0031, ADR-0036, ADR-0116, ADR-0115, ADR-0121]
-iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477, IADR-0482]
-specs: [20260928_issue-1676_adr0121-audit-followups, 20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
-issues: [#1676, #503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
+iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253, IADR-0477, IADR-0482, IADR-0647]
+specs: [20261029_2124_sc09-admin-write-audit, 20260928_issue-1676_adr0121-audit-followups, 20260805_issue-504_sc09-11-admin-ops-screens, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#1676, #503, #504, #510, #535, #640, #989, #1609, #1666, #2124, planning#672]
 -->
 
 # テスト仕様書: 管理者設定（ABAC）
@@ -161,6 +161,9 @@ issues: [#1676, #503, #504, #510, #535, #640, #989, #1609, #1666, planning#672]
 | 8 | 競合透過 | ABAC 管理の検証方針 | 参照中削除 409 を透過 | `DeleteAttribute_WhenReferenced_Passes409Through` |
 | 9 | 有効切替 | —| PATCH で有効／無効切替 | `SetPolicyActive_AsAdmin_Succeeds` |
 | 10 | 後段不達 | 管理者設定の BFF 透過中継 | 後段ダウン時に 502 へ縮退（例外フロー・レビュー #170） | `ListPolicies_WhenBackendUnreachable_Returns502` |
+| 11 | ★ **書き込みの監査**（#2124） | 画面のアクセス制御「操作は監査ログに記録する」 | ポリシー 4・属性 3・タグ 3・辺の型 3 の書き込み 13 口で、監査が 1 件だけ出る（action・利用者名・`granted`・`target=<id> status=<code>`）。入力値（名前）を載せない | `BffAbacAdminAuditTests.書き込みは監査ログに1件残る` |
+| 12 | 監査（拒否・不達） | 同上 | 409 / 400 は `denied`（作成で ID を読めなければ `target=-`）、後段不達は `failed` で 1 件残る | `削除の拒否はdeniedで残る` / `保存前検証の400はdeniedで残り作成の対象は読めない` / `後段不達はfailedで残る` |
+| 13 | 監査（陰性） | 同上 | 検証（dry-run）と読み取り（GET）は記録しない | `検証と読み取りは記録しない` |
 
 ## foundation（Vitest）
 

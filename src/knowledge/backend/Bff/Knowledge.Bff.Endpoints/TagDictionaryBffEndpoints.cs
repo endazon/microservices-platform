@@ -2,6 +2,7 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -25,8 +26,15 @@ namespace Knowledge.Bff.Endpoints;
 // **platform の群が可変ユニットの資源を配る**ことになり `CLAUDE.md` の依存規則に触れる。
 // **画面が同じ SC-09 であることは口の所属を決めない**（[[IADR-0139]] の「判定の単位は
 // ドメインではなく資源」と同じ切り分け）。
+//
+// SC-09, [[IADR-0647]] (#2124): 書き込み（追加・改名・削除）は監査ログに 1 件ずつ残す（読み取りは残さない）。
 public static class TagDictionaryBffEndpoints
 {
+    // [[IADR-0647]] 決定 2: 監査の action。
+    public const string CreateAction = "tag.create";
+    public const string RenameAction = "tag.rename";
+    public const string DeleteAction = "tag.delete";
+
     public static IEndpointRouteBuilder MapTagDictionaryBffEndpoints(this IEndpointRouteBuilder app)
     {
         // FR-09, SC-05, SC-09: **読み取りは管理者・運用者**（裁定 Q18。[[IADR-0152]] 決定 5）。
@@ -63,11 +71,10 @@ public static class TagDictionaryBffEndpoints
 
         // FR-09, SC-09: 辞書へタグを追加する。**名前の重複は 409**（後段が判定する）。
         write.MapPost("/", async (CreateTagRequest req, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
+            HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            var resp = await client.PostAsJsonAsync("/tags", req, ct);
-            return await RelayAsync(resp, ct);
+            return await AuditedRelayAsync(() => client.PostAsJsonAsync("/tags", req, ct), audit, http, CreateAction, null, ct);
         }).WithName("BffTagCreate").Produces<TagDto>(StatusCodes.Status201Created);
 
         // FR-09, SC-09: 改名する（SC-09「改名は既存文書へ追随する」）。
@@ -76,11 +83,10 @@ public static class TagDictionaryBffEndpoints
         // 反映は非同期なので、**「0 件だった」と「まだ届いていない」を管理者が切り分けられる**
         // （[[IADR-0153]] 決定 3）。
         write.MapPut("/{id:guid}", async (Guid id, RenameTagRequest req, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
+            HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            var resp = await client.PutAsJsonAsync($"/tags/{id}", req, ct);
-            return await RelayAsync(resp, ct);
+            return await AuditedRelayAsync(() => client.PutAsJsonAsync($"/tags/{id}", req, ct), audit, http, RenameAction, id, ct);
         }).WithName("BffTagRename").Produces<RenameTagResponse>();
 
         // FR-09, SC-09: 削除する。**使用件数が 0 件のときだけ許す**（[[IADR-0153]] 決定 6）。
@@ -92,11 +98,10 @@ public static class TagDictionaryBffEndpoints
         // **BFF で数え直さない** —— 数え方を 2 つ持つと一覧と削除拒否で件数が割れ、
         // 管理者が辞書を信用できなくなる（後段 `LoadWithUsageAsync` と同じ母集合を保つ）。
         write.MapDelete("/{id:guid}", async (Guid id, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
+            HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            var resp = await client.DeleteAsync($"/tags/{id}", ct);
-            return await RelayAsync(resp, ct);
+            return await AuditedRelayAsync(() => client.DeleteAsync($"/tags/{id}", ct), audit, http, DeleteAction, id, ct);
         }).WithName("BffTagDelete");
 
         return app;
@@ -111,6 +116,35 @@ public static class TagDictionaryBffEndpoints
         if (!string.IsNullOrEmpty(auth))
             client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
         return client;
+    }
+
+    // [[IADR-0647]]: 書き込みを中継し、後段の状態コードで監査を 1 行残してから透過する。
+    // 後段へ届かない（例外）ときも failed を残してから投げ直す（ホストの既定で 500 になる。従前と同じ）。
+    private static async Task<IResult> AuditedRelayAsync(
+        Func<Task<HttpResponseMessage>> send, IAuditLogger audit, HttpContext http, string action, Guid? target,
+        CancellationToken ct)
+    {
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await send();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            AdminWriteAudit.Record(audit, http.User, action, target?.ToString(), StatusCodes.Status500InternalServerError);
+            throw;
+        }
+
+        using (resp)
+        {
+            var status = (int)resp.StatusCode;
+            var body = resp.StatusCode == System.Net.HttpStatusCode.NoContent ? null : await resp.Content.ReadAsStringAsync(ct);
+            AdminWriteAudit.Record(audit, http.User, action, target?.ToString() ?? AdminWriteAudit.IdFromCreated(status, body), status);
+            if (body is null)
+                return Results.NoContent();
+            var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
+            return Results.Content(body, contentType, statusCode: status);
+        }
     }
 
     // 後段の応答を**本文ごと**透過する（状態コード・Content-Type も保つ）。

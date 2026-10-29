@@ -1,4 +1,5 @@
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 
@@ -9,8 +10,21 @@ namespace Platform.Bff.Foundation.Endpoints;
 // AuthorizationService 側も同ロール（AdminOnly）を強制するため、利用者の資格情報を後段へ伝播する。
 // 応答は透過（passthrough）し、保存前検証エラー（400 ValidationProblem）・属性参照競合（409）・
 // 不在（404）をそのまま SPA へ返す（検証結果・矛盾表示を画面が再現できるようにする）。
+// SC-09, [[IADR-0647]] (#2124): 書き込み（作成・更新・切替・削除）は監査ログに 1 件ずつ残す（検証と読み取りは残さない）。
 public static class AuthzBffEndpoints
 {
+    // [[IADR-0647]] 決定 2: 監査の action（SC-09 の書き込み）。
+    public const string PolicyCreateAction = "abac.policy.create";
+    public const string PolicyUpdateAction = "abac.policy.update";
+    public const string PolicySetActiveAction = "abac.policy.set-active";
+    public const string PolicyDeleteAction = "abac.policy.delete";
+    public const string AttributeCreateAction = "abac.attribute.create";
+    public const string AttributeUpdateAction = "abac.attribute.update";
+    public const string AttributeDeleteAction = "abac.attribute.delete";
+
+    // 監査する書き込みの宛名。Target が null は作成（後段の応答の id を対象にする）。
+    private sealed record AuditOf(IAuditLogger Audit, string Action, Guid? Target);
+
     public static IEndpointRouteBuilder MapAuthzBffEndpoints(this IEndpointRouteBuilder app)
     {
         // SC-09/IADR-0040: 管理者設定（ABAC）は platform-admin のみ（Issue #135 の明示）。
@@ -28,12 +42,12 @@ public static class AuthzBffEndpoints
             .WithName("BffAuthzGetPolicy").Produces<AbacPolicyDto>();
 
         // 登録・更新は保存前に矛盾検証される。検証エラー（400）は透過する。
-        g.MapPost("/policies", (IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Post, "/authz/policies", ct))
+        g.MapPost("/policies", (IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Post, "/authz/policies", ct, new(a, PolicyCreateAction, null)))
             .WithName("BffAuthzCreatePolicy");
 
-        g.MapPut("/policies/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Put, $"/authz/policies/{id}", ct))
+        g.MapPut("/policies/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Put, $"/authz/policies/{id}", ct, new(a, PolicyUpdateAction, id)))
             .WithName("BffAuthzUpdatePolicy");
 
         // FR-05, FR-09, SC-09, #535: ポリシーの dry-run 検証（保存せず検証だけ行う）。
@@ -50,12 +64,12 @@ public static class AuthzBffEndpoints
             .WithName("BffAuthzValidatePolicy").Produces<ValidatePolicyResponse>();
 
         // 有効／無効の切替（削除せず一時停止）。
-        g.MapPatch("/policies/{id:guid}/active", (Guid id, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Patch, $"/authz/policies/{id}/active", ct))
+        g.MapPatch("/policies/{id:guid}/active", (Guid id, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Patch, $"/authz/policies/{id}/active", ct, new(a, PolicySetActiveAction, id)))
             .WithName("BffAuthzSetPolicyActive");
 
-        g.MapDelete("/policies/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Delete, $"/authz/policies/{id}", ct))
+        g.MapDelete("/policies/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Delete, $"/authz/policies/{id}", ct, new(a, PolicyDeleteAction, id)))
             .WithName("BffAuthzDeletePolicy");
 
         // ---- FR-09, UC-05: 属性辞書管理 ----
@@ -67,17 +81,17 @@ public static class AuthzBffEndpoints
             Proxy(f, h, HttpMethod.Get, $"/authz/attributes/{id}", ct))
             .WithName("BffAuthzGetAttribute").Produces<AttributeDefinitionDto>();
 
-        g.MapPost("/attributes", (IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Post, "/authz/attributes", ct))
+        g.MapPost("/attributes", (IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Post, "/authz/attributes", ct, new(a, AttributeCreateAction, null)))
             .WithName("BffAuthzCreateAttribute");
 
-        g.MapPut("/attributes/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Put, $"/authz/attributes/{id}", ct))
+        g.MapPut("/attributes/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Put, $"/authz/attributes/{id}", ct, new(a, AttributeUpdateAction, id)))
             .WithName("BffAuthzUpdateAttribute");
 
         // 参照中の属性削除は 409 で拒否される（IADR-0006）。透過する。
-        g.MapDelete("/attributes/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
-            Proxy(f, h, HttpMethod.Delete, $"/authz/attributes/{id}", ct))
+        g.MapDelete("/attributes/{id:guid}", (Guid id, IHttpClientFactory f, HttpContext h, IAuditLogger a, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Delete, $"/authz/attributes/{id}", ct, new(a, AttributeDeleteAction, id)))
             .WithName("BffAuthzDeleteAttribute");
 
         return app;
@@ -89,7 +103,8 @@ public static class AuthzBffEndpoints
     // ペイロード（件数・サイズとも小規模）を前提とするため、ストリーミング転送は導入しない（YAGNI。
     // 将来ペイロードが大きくなれば Results.Stream 等へ切替を検討する。レビュー #170 指摘対応）。
     private static async Task<IResult> Proxy(
-        IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct)
+        IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct,
+        AuditOf? audit = null)
     {
         var client = httpFactory.CreateClient("AuthorizationService");
         using var req = new HttpRequestMessage(method, path);
@@ -112,13 +127,19 @@ public static class AuthzBffEndpoints
             using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
             var respContentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
-            return Results.Content(body, respContentType, statusCode: (int)resp.StatusCode);
+            var status = (int)resp.StatusCode;
+            if (audit is not null)
+                AdminWriteAudit.Record(audit.Audit, http.User, audit.Action,
+                    audit.Target?.ToString() ?? AdminWriteAudit.IdFromCreated(status, body), status);
+            return Results.Content(body, respContentType, statusCode: status);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
             BffDownstreamFailure.Report(http, "AuthorizationService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
             // 後段不達は 502（管理 API のため存在秘匿は不要。呼び出し側で再試行できる）。
+            if (audit is not null)
+                AdminWriteAudit.Record(audit.Audit, http.User, audit.Action, audit.Target?.ToString(), StatusCodes.Status502BadGateway);
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
     }
