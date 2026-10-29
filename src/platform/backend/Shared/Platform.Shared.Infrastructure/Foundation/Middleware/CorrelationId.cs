@@ -16,7 +16,8 @@ public static partial class CorrelationId
     /// <summary>受けた（または決めた）相関 ID を要求の間だけ置く <c>HttpContext.Items</c> の鍵。</summary>
     public const string ItemKey = "Platform.CorrelationId";
 
-    [GeneratedRegex("^[A-Za-z0-9._:-]{1,128}$")]
+    // 🔴 末尾は `\z` で固定する。.NET の `$` は末尾の改行 1 つの直前にも一致し、`"abc\n"` を通してしまう（#2303 の監査）。
+    [GeneratedRegex(@"\A[A-Za-z0-9._:-]{1,128}\z")]
     private static partial Regex SafeForm();
 
     /// <summary>受けた値が安全な形ならそれを、そうでなければ現在のトレース ID（無ければ新しい GUID）を返す。</summary>

@@ -49,6 +49,7 @@ public class CorrelationIdTests
     // NFR-28: ヘッダは外から来る。ログのスコープと後段への転送に載るので、行構造を壊せる値・長すぎる値は採らない。
     [Theory]
     [InlineData("forged\nAudit: action=x")]
+    [InlineData("abc\n")] // .NET の `$` は末尾の改行 1 つの直前にも一致する（#2303 の監査）。`\z` で末尾を固定する
     [InlineData("has space")]
     [InlineData("")]
     public async Task 形の悪い相関IDは採らずトレースIDにする(string header)
