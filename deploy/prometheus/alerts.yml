@@ -121,14 +121,20 @@ groups:
       #   **今ここへ `absent` を置くと恒常発火**になり、ADR-0076 理由が却下した案 B そのものになる。
       #   配備後に入れる形も決まっている —— **周期 60 分の生産者なので `absent_over_time(...[2h])`**
       #   （下の knowledge-health-producers 群と同じ形。`absent()` の 5 分 lookback では鳴り続ける）。
+      #   ［2026-10-30 / #2334］`absent_over_time` は 60 分のプローブ（#2335）と一緒に入れる。先に入れると配備まで鳴り続ける。
+      # 🔴 ［2026-10-30 / #2334・ADR-0079 決定 3］**窓を 60 分の標本に合わせて広げた**（`[5m]`・`for: 10m` → `[6h]`・`for: 30m`）。
+      #   SLO 評価用の標本は 60 分に 1 回なので、5 分の窓では標本の無い時間帯に式が空になり、p95 が算出されない。
+      #   6 時間の窓には標本がおよそ 6 個入る。検知遅延は 範囲 6h ＋ for 30m ＋ 間隔 60m ＝ 7.5h で、決定 3 の上限 8h に収まる。
+      #   **値は暫定である**（稼働環境での実測は #2336）。試験は deploy/prometheus/tests/rag-first-token-window.test.yml。
+      #   人の利用が多い時間帯も同じ窓で見るので、一時的な悪化は 6 時間ならされる —— 決定 3 が検知の速さより標本量を採った帰結である。
       - alert: RagFirstTokenP95High
         expr: |
-          histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m]))) > 5
-        for: 10m
+          histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[6h]))) > 5
+        for: 30m
         labels: { severity: warning }
         annotations:
           summary: "RAG 初回応答（初回トークン）p95 が 5s 超"
-          description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95 が NFR-02 目標(5s)を 10 分継続で超過。"
+          description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95（直近 6 時間）が NFR-02 目標(5s)を 30 分継続で超過。"
 
       # RAG **応答完了** p95。aianalysis-service /analysis/ask（一括経路）。
       # 🔴 **これは NFR-02 の SLI ではない**（#1204 で注釈を是正した。それまで「初回応答」と称していた）。
