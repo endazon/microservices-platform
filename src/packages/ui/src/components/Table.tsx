@@ -13,10 +13,25 @@ import { cn } from '../lib/cn';
 // 意味づけ（TanStack Table によるソート・ページングなど）は入れない——それは feature の関心であり、
 // 第 4 段（IADR-0121 決定 1）の範囲である。ここが持つのは表の見た目と表構造の a11y だけである。
 
+export interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
+  /**
+   * 横スクロールの受け皿を**キーボードで操作できる領域**にするときの名前（翻訳済みの文字列）。
+   *
+   * 列が多く横にはみ出し得る表で渡す。渡すと受け皿が `role="region"`・`tabIndex=0`・`aria-label` を持ち、
+   * キーボードだけの利用者もフォーカスして矢印キーで横に送れる（axe `scrollable-region-focusable`。WCAG 2.1.1）。
+   * はみ出さない表では渡さない —— 渡すと中身の無いタブ位置が 1 つ増える。
+   */
+  scrollRegionLabel?: string;
+}
+
 /** 表本体。横スクロールの受け皿を兼ねる（狭い画面で表が画面外へはみ出さないようにする）。 */
-export function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
+export function Table({ className, scrollRegionLabel, ...props }: TableProps) {
+  const region =
+    scrollRegionLabel === undefined
+      ? {}
+      : { role: 'region', tabIndex: 0, 'aria-label': scrollRegionLabel };
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full overflow-x-auto" {...region}>
       <table className={cn('w-full border-collapse text-sm text-fg', className)} {...props} />
     </div>
   );

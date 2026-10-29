@@ -241,11 +241,12 @@ export function UserAccountManagementPage() {
           </Trans>
         </p>
         {/* #2323, 05_screens §SC-17 入力表・ハイファイ「属性は SC-09 の属性体系に定義済みの値のみ割当可」:
-            値域の定義先（SC-09）への導線。SC-09 も本画面と同じくシステム管理者だけが開ける。 */}
+            値域の定義先（SC-09）への導線。SC-09 も本画面と同じくシステム管理者だけが開ける。
+            本文中のリンクなので**下線を常に付ける**（色だけで区別しない。axe link-in-text-block）。 */}
         <p className="text-xs text-fg-muted" data-testid="users-abac-link">
           <Trans>
             割り当てられる属性の値は{' '}
-            <Link to="/admin/abac" className="text-brand hover:underline">
+            <Link to="/admin/abac" className="text-brand underline">
               ABAC 設定
             </Link>
             （属性体系・タグ辞書）で定義します。

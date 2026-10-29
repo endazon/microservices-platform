@@ -768,7 +768,12 @@ export function McpClientManagementPage() {
               <>
                 {/* 一覧は**表**にする（モックは縦並びだが、名前・サービス・説明・スコープ・分類の複数項目を持つため
                   列見出しのある表のほうが読み手に速い）。**参照専用**で操作の列は置かない。 */}
-                <Table data-testid="published-tools">
+                <Table
+                  data-testid="published-tools"
+                  // #2323: 列を足したので横にはみ出し得る。受け皿をキーボードで操作できる領域にする
+                  // （axe scrollable-region-focusable）。
+                  scrollRegionLabel={t`公開ツールの一覧`}
+                >
                   <TableCaption>{t`公開ツールの一覧`}</TableCaption>
                   <TableHead>
                     <TableRow>
