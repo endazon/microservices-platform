@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-22
+updated: 2026-10-29
 ---
 <!-- trace:
 ids: [SC-22, FR-05, NFR-18]
 adrs: [ADR-0131, ADR-0095, ADR-0104, ADR-0110]
 iadrs: [IADR-0522, IADR-0103, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0494, IADR-0588]
-specs: [20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap, 20261022_j4qv_bff-externalsecret-admission-policy]
-issues: [#1839, #1472, #1467, #1477, #1502, #1682, #1728, planning#750]
+specs: [20261029_2133_runbook-derived-values, 20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap, 20261022_j4qv_bff-externalsecret-admission-policy]
+issues: [#2133, #1839, #1472, #1467, #1477, #1502, #1682, #1728, planning#750]
 -->
 
 # 運用 Runbook: 稼働クラスタで画面から 1 プロパティを書き、同期後の Secret を長さだけで確かめる
@@ -66,8 +66,8 @@ issues: [#1839, #1472, #1467, #1477, #1502, #1682, #1728, planning#750]
 
 | 条件 | この対象での実際 |
 | --- | --- |
-| 書き換えても機能が変わらない | 読み手が無い。llmgateway-service が読むのは同じ Secret の `anthropic-api-key` だけ（チャートの `Llm__ApiKey`） |
-| 同居するキーがある | Secret `llm-provider-credentials` は `anthropic-api-key` と `openai-api-key` の 2 キー（`deploy/local/vault/eso/externalsecret-llm.yaml`） |
+| 書き換えても機能が変わらない | 読み手が無い。llmgateway-service が読むのは同じ Secret の `anthropic-api-key`（チャートの `Llm__ApiKey`）と `voyage-api-key`（`Embedding__Voyage__ApiKey`）で、`openai-api-key` は読まない（読み手はチャートの `secretKeyRef` で確かめる） |
+| 同居するキーがある | Secret `llm-provider-credentials` は `openai-api-key` のほかに読み手のあるキー（`anthropic-api-key` ほか）を持つ。キーの一覧と数は `deploy/local/vault/eso/externalsecret-llm.yaml` の `data` が正（本文に数を書かない。手順 1-2 で実物を数える） |
 | 消費側の作り直しを観測できる | llmgateway-service に Reloader の注釈 `secret.reloader.stakater.com/reload: "llm-provider-credentials"` がある（読まないキーでも Secret の中身が変われば作り直される） |
 | 即時同期の依頼が届く | 同期先の ExternalSecret `microservices-platform/llm-provider-credentials` が境界層の同期依頼の Role の対象に入っている |
 | 対になる秘密でない | 認証基盤・データストア・サービス間の資格情報に触れない（それらは画面の対象外。回し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md)） |
@@ -222,7 +222,7 @@ kubectl -n "$NS" get secret "$SECRET" -o go-template='{{range $k, $v := .data}}{
 ```
 
 - 5-1 が期待長（40）と一致する。🔴 **0 でないことだけでは足りない**（空でも同期は `Ready` になる）。
-- 5-2 のキー名と数が手順 1-2 と同じ（`anthropic-api-key` が残っている）。🔴 **減っていたら止める**（部分更新でなく全置換で書かれた疑い。手順 7 で直ちに戻す）。
+- 5-2 のキー名と数が手順 1-2 と同じ（`anthropic-api-key`・`voyage-api-key` が残っている）。🔴 **減っていたら止める**（部分更新でなく全置換で書かれた疑い。手順 7 で直ちに戻す）。
 
 ### 6. Reloader の作り直しを確かめる
 
