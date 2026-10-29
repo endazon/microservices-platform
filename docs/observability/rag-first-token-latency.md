@@ -3,15 +3,15 @@ title: RAG 回答の初回応答（初回トークンまでの時間）ログ・
 type: observability-spec
 status: in-progress
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-04, UC-01, SC-01]
-adrs: [ADR-0006, ADR-0076]
+adrs: [ADR-0006, ADR-0076, ADR-0079]
 iadrs: [IADR-0037, IADR-0110, IADR-0212, IADR-0345, IADR-0354]
-specs: []
-issues: [#1110, #1204]
+specs: [20261030_2334_rag-first-token-window]
+issues: [#1110, #1204, #2334, #2335, #2336]
 -->
 <!-- 起点 ID・関連 ADR/IADR・仕様書名・修飾付き issue 参照は本文へ書かず、上の trace ブロックへ入れる -->
 
@@ -74,9 +74,9 @@ issues: [#1110, #1204]
 ## クエリ例（PromQL）
 
 ```promql
-# 初回応答 p95（アラートが見ているのと同じ式）
+# 初回応答 p95（アラートが見ているのと同じ式。［2026-10-30］窓は 6 時間 —— 平常時の標本は 60 分に 1 回）
 histogram_quantile(0.95, sum by (le) (rate(
-  rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m])))
+  rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[6h])))
 
 # 目標（5 秒）を割った割合 —— エラーバジェットの読み方
 1 - (
@@ -101,7 +101,7 @@ histogram_quantile(0.95, sum by (le) (rate(
 
 | ルール | 見るもの | 位置づけ |
 | --- | --- | --- |
-| `RagFirstTokenP95High` | `rag_answer_first_token_duration_seconds_bucket` の p95 > 5 秒が 10 分 | 🔴 **初回応答の目標判定はこれで行う** |
+| `RagFirstTokenP95High` | `rag_answer_first_token_duration_seconds_bucket` の p95（直近 6 時間）> 5 秒が 30 分（［2026-10-30］60 分おきの標本に合わせて窓を広げた。値は暫定） | 🔴 **初回応答の目標判定はこれで行う** |
 | `RagLatencyP95High` | `/analysis/ask`（一括経路）の**応答完了** p95 > 5 秒が 10 分 | **傾向の観察に留める。判定に用いない** |
 
 `RagLatencyP95High` の**式は付け替えていない。** 応答完了 p95 は「代理値として読むが判定には用いない」と

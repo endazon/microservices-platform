@@ -227,14 +227,14 @@ groups:
       - uid: slo-rag-first-token-p95-high
         title: RagFirstTokenP95High
         condition: C
-        for: 10m
+        for: 30m
         noDataState: NoData
         execErrState: Error
         labels:
           severity: warning
         annotations:
           summary: "RAG 初回応答（初回トークン）p95 が 5s 超"
-          description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95 が NFR-02 目標(5s)を 10 分継続で超過。**NFR-02 の SLO 判定はこのルールである**（RagLatencyP95High は応答完了であり傾向の観察に留める）。"
+          description: "AiAnalysisService /analysis/ask/stream の初回トークンまでの p95（直近 6 時間）が NFR-02 目標(5s)を 30 分継続で超過。**NFR-02 の SLO 判定はこのルールである**（RagLatencyP95High は応答完了であり傾向の観察に留める）。"
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -243,7 +243,7 @@ groups:
               refId: A
               instant: true
               expr: |
-                histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[5m])))
+                histogram_quantile(0.95, sum by (le) (rate(rag_answer_first_token_duration_seconds_bucket{job="microservices-platform.aianalysis-service"}[6h])))
           - refId: C
             datasourceUid: __expr__
             model:
