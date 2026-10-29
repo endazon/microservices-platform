@@ -57,7 +57,9 @@ public sealed class NormalizedAssetLedgerTests
         public string CreatePresignedGetUrl(string uri, TimeSpan? expiry = null) => throw new NotSupportedException();
     }
 
-    private static ServiceProvider BuildProvider(string dbName) =>
+    // NFR, #2306: `inactivity` はハーネスの非活動タイムアウト。既定（null）は MassTransit の既定のまま。
+    //   短くすると「機械が混んで、配送・消費が非活動の窓を超えた」世界を決定的に作れる。
+    private static ServiceProvider BuildProvider(string dbName, TimeSpan? inactivity = null) =>
         new ServiceCollection()
             .AddLogging(b => b.SetMinimumLevel(LogLevel.Warning))
             // IngestTagMetrics は IMeterFactory を要求する（Web ホストでは既定で入る）。
@@ -67,7 +69,11 @@ public sealed class NormalizedAssetLedgerTests
             .AddCatalogTimeoutsForTests()
             .AddSingleton<IObjectStorageClient, UnresolvableStorage>()
             .AddSingleton<IDocumentUpdatedPublisher, NoopUpdatedPublisher>()
-            .AddMassTransitTestHarness(x => x.AddConsumer<DocumentNormalizedConsumer>())
+            .AddMassTransitTestHarness(x =>
+            {
+                x.AddConsumer<DocumentNormalizedConsumer>();
+                if (inactivity is { } window) x.SetTestTimeouts(testInactivityTimeout: window);
+            })
             .BuildServiceProvider(validateScopes: true);
 
     private static DocumentNormalized Event(Guid id, string title, params string[] assets) => new(
@@ -91,17 +97,9 @@ public sealed class NormalizedAssetLedgerTests
         await harness.Start();
 
         await harness.Bus.Publish(Event(id, "図のある文書", fig), TestContext.Current.CancellationToken);
-        (await harness.Consumed.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
-            .Should().BeTrue();
-        // 🔴 消費されたことと成功したことは別である（fault でも Consumed には載る）。
-        (await harness.Published.Any<Fault<DocumentNormalized>>(TestContext.Current.CancellationToken))
-            .Should().BeFalse("consumer が落ちていれば台帳の検査は無意味になる");
-
-        using var scope = provider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
-        var doc = await db.Documents.FindAsync([id], TestContext.Current.CancellationToken);
-        doc.Should().NotBeNull();
-        doc!.AssetUris.Should().Equal([fig],
+        // 🔴 消費されたことと成功したことは別である（fault でも Consumed には載る）—— 待ちの中で Fault を見る。
+        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id);
+        doc.AssetUris.Should().Equal([fig],
             "資産を台帳へ写さないと、削除は図表へ届かない（ADR-0057 受け入れ基準①）");
     }
 
@@ -140,16 +138,9 @@ public sealed class NormalizedAssetLedgerTests
         var harness = provider.GetRequiredService<ITestHarness>();
         await harness.Start();
         await harness.Bus.Publish(Event(id, "図のある文書（再変換）", second), TestContext.Current.CancellationToken);
-        (await harness.Consumed.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
-            .Should().BeTrue();
-        (await harness.Published.Any<Fault<DocumentNormalized>>(TestContext.Current.CancellationToken))
-            .Should().BeFalse("consumer が落ちていれば台帳の検査は無意味になる");
-
-        using var scope = provider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
-        var doc = await db.Documents.FindAsync([id], TestContext.Current.CancellationToken);
-        doc.Should().NotBeNull();
-        doc!.AssetUris.Should().Equal([second],
+        // 前提の行は既に在るので、「再正規化が当たった」（題名が変わった）を待つ条件にする。
+        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id, d => d.Title == "図のある文書（再変換）");
+        doc.AssetUris.Should().Equal([second],
             "再正規化は資産の集合を差し替える（追加ではない）");
     }
 
@@ -163,13 +154,22 @@ public sealed class NormalizedAssetLedgerTests
         await harness.Start();
 
         await harness.Bus.Publish(Event(id, "図の無い文書"), TestContext.Current.CancellationToken);
-        (await harness.Consumed.Any<DocumentNormalized>(TestContext.Current.CancellationToken))
-            .Should().BeTrue();
+        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id);
+        doc.AssetUris.Should().BeEmpty();
+    }
 
-        using var scope = provider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
-        var doc = await db.Documents.FindAsync([id], TestContext.Current.CancellationToken);
-        doc.Should().NotBeNull();
-        doc!.AssetUris.Should().BeEmpty();
+    // NFR, #2306: 配送・消費がハーネスの非活動の窓を超えても、待ちが打ち切られずに消費の効果を見られる。
+    // 窓を 1 ms にして「機械が混んで窓を超えた」世界を決定的に作る。従前の `harness.Consumed.Any<T>()` の待ちはここで False になる。
+    [Fact]
+    public async Task 配送が非活動の窓を超えても消費の効果を待てる()
+    {
+        var id = Guid.NewGuid();
+        await using var provider = BuildProvider($"assets-{Guid.NewGuid():N}", inactivity: TimeSpan.FromMilliseconds(1));
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+
+        await harness.Bus.Publish(Event(id, "遅れて確定する文書"), TestContext.Current.CancellationToken);
+        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id);
+        doc.AssetUris.Should().BeEmpty();
     }
 }
