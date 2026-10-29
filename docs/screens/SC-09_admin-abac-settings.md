@@ -3,15 +3,15 @@ title: 管理者設定（ABAC） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-26
+updated: 2026-10-29
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-02, SC-04, SC-05, SC-09, SC-10, SC-12, UC-05, UC-08]
 adrs: [ADR-0031, ADR-0033, ADR-0036, ADR-0037, ADR-0116, ADR-0115, ADR-0121]
-iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142, IADR-0152, IADR-0153, IADR-0253, IADR-0281, IADR-0387, IADR-0477, IADR-0482]
-specs: [20261026_2123_sc09-link-to-sc12, 20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260905_issue-1241_sc09-edge-type-dictionary, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
-issues: [#1666, #1609, #1241, #445, #446, #452, #496, #504, #506, #519, #535, #586, #599, #640, #989, #2123, planning#237, planning#244, planning#672]
+iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142, IADR-0152, IADR-0153, IADR-0253, IADR-0281, IADR-0387, IADR-0477, IADR-0482, IADR-0647]
+specs: [20261029_2124_sc09-admin-write-audit, 20261026_2123_sc09-link-to-sc12, 20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, 20260905_issue-1241_sc09-edge-type-dictionary, 20260927_issue-1609_department-clear-and-dictionary-from-realm, 20260927_issue-1666_sc09-dynamic-binding-conditions]
+issues: [#1666, #1609, #1241, #445, #446, #452, #496, #504, #506, #519, #535, #586, #599, #640, #989, #2123, #2124, planning#237, planning#244, planning#672]
 -->
 
 # 画面仕様書: 管理者設定（ABAC）
@@ -296,6 +296,7 @@ TanStack Query は「別のミューテーションが成功した」ことで�
 - **権限外では BFF を呼ばない**（要求の有無から画面の存在を推測させない）。
 - 左ナビは `requiresAnyRole: [platform-admin]`・`group: 'admin'`。
 - 認可の実効境界はサーバ側であり、UI は表示制御と存在秘匿のためだけに用いる。
+- **書き込み操作は監査ログに残す**（［2026-10-29］）。ポリシー・属性・タグ・辺の型の作成・更新・切替・削除を、BFF が 1 操作 1 行で記録する（操作・利用者名・結果・対象 ID・状態コード）。拒否・後段不達も残し、検証（dry-run）と読み取りは残さない。名前・条件などの入力値は載せない。
 
 ## 実装
 

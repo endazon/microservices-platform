@@ -2,6 +2,7 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -26,8 +27,18 @@ namespace Knowledge.Bff.Endpoints;
 //
 // 構成はタグ辞書（`TagDictionaryBffEndpoints`）と 1:1 で対応する ——
 // INDEX 決定 18 が「同じ規則をタグ辞書にも適用する」と定めており、**規則が同じなら形も同じにする**。
+//
+// SC-09, [[IADR-0647]] (#2124): 書き込み（追加・改名・削除）は監査ログに 1 件ずつ残す（読み取りは残さない）。
 public static class EdgeTypeDictionaryBffEndpoints
 {
+    // [[IADR-0647]] 決定 2: 監査の action。
+    public const string CreateAction = "edge-type.create";
+    public const string RenameAction = "edge-type.rename";
+    public const string DeleteAction = "edge-type.delete";
+
+    // 監査する書き込みの宛名。Target が null は作成（後段の応答の id を対象にする）。
+    private sealed record AuditOf(IAuditLogger Audit, string Action, Guid? Target);
+
     public static IEndpointRouteBuilder MapEdgeTypeDictionaryBffEndpoints(this IEndpointRouteBuilder app)
     {
         // FR-17, SC-09 / SC-10: **読み取りは管理者・運用者**（後段 `EdgeTypeEndpoints` の read 群と同じ）。
@@ -51,19 +62,21 @@ public static class EdgeTypeDictionaryBffEndpoints
         }).WithName("BffEdgeTypeList").Produces<List<EdgeTypeDto>>();
 
         write.MapPost("/", async (CreateEdgeTypeRequest req, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
+            HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.PostAsJsonAsync("/graph/edge-types", req, ct), http, ct);
+            return await SendAsync(() => client.PostAsJsonAsync("/graph/edge-types", req, ct), http, ct,
+                new(audit, CreateAction, null));
         }).WithName("BffEdgeTypeCreate").Produces<EdgeTypeDto>(StatusCodes.Status201Created);
 
         // ADR-0033 決定 9: **改名しても辺は 1 本も書き換わらない。** 辺は型 ID を参照しており、
         // 表示名は辞書で解決するので、追随は自動である。**BFF が追随の面倒を見る余地は無い。**
         write.MapPut("/{id:guid}", async (Guid id, RenameEdgeTypeRequest req, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
+            HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.PutAsJsonAsync($"/graph/edge-types/{id}", req, ct), http, ct);
+            return await SendAsync(() => client.PutAsJsonAsync($"/graph/edge-types/{id}", req, ct), http, ct,
+                new(audit, RenameAction, id));
         }).WithName("BffEdgeTypeRename").Produces<EdgeTypeDto>();
 
         // 🔴 **409 の本文を詰め替えない。** 後段は `{ error, message, usageCount }` を返しており、
@@ -73,10 +86,11 @@ public static class EdgeTypeDictionaryBffEndpoints
         // **BFF で数え直さない** —— 数え方を 2 つ持つと一覧と削除拒否で件数が割れ、
         // 管理者は辞書を信用できなくなる（タグ辞書がここで下したのと同じ判断）。
         write.MapDelete("/{id:guid}", async (Guid id, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
+            HttpContext http, IAuditLogger audit, CancellationToken ct) =>
         {
             var client = Forwarding(httpFactory, http);
-            return await SendAsync(() => client.DeleteAsync($"/graph/edge-types/{id}", ct), http, ct);
+            return await SendAsync(() => client.DeleteAsync($"/graph/edge-types/{id}", ct), http, ct,
+                new(audit, DeleteAction, id));
         }).WithName("BffEdgeTypeDelete");
 
         return app;
@@ -95,27 +109,34 @@ public static class EdgeTypeDictionaryBffEndpoints
 
     // 到達できないときだけ 502 へ倒し、**後段が返した応答はそのまま透過する**。
     private static async Task<IResult> SendAsync(
-        Func<Task<HttpResponseMessage>> send, HttpContext http, CancellationToken ct)
+        Func<Task<HttpResponseMessage>> send, HttpContext http, CancellationToken ct, AuditOf? audit = null)
     {
         try
         {
-            var resp = await send();
-            return await RelayAsync(resp, ct);
+            using var resp = await send();
+            return await RelayAsync(resp, http, audit, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
             // NFR-19, [[IADR-0603]] (#2104): 畳む前に WARN と計器（後段名・経路・種別）。
             BffDownstreamFailure.Report(http, "GraphService", ex, BffDownstreamFailure.Fallbacks.BadGateway);
+            if (audit is not null)
+                AdminWriteAudit.Record(audit.Audit, http.User, audit.Action, audit.Target?.ToString(), StatusCodes.Status502BadGateway);
             return Results.StatusCode(StatusCodes.Status502BadGateway);
         }
     }
 
     // **型付きで読み直して詰め替えない** —— それをすると後段の本文（409 の `usageCount` を含む）が失われる。
-    private static async Task<IResult> RelayAsync(HttpResponseMessage resp, CancellationToken ct)
+    // [[IADR-0647]]: 書き込みは後段の状態コードで監査を 1 行残してから透過する。
+    private static async Task<IResult> RelayAsync(HttpResponseMessage resp, HttpContext http, AuditOf? audit, CancellationToken ct)
     {
-        if (resp.StatusCode == System.Net.HttpStatusCode.NoContent)
+        var status = (int)resp.StatusCode;
+        var content = resp.StatusCode == System.Net.HttpStatusCode.NoContent ? null : await resp.Content.ReadAsStringAsync(ct);
+        if (audit is not null)
+            AdminWriteAudit.Record(audit.Audit, http.User, audit.Action,
+                audit.Target?.ToString() ?? AdminWriteAudit.IdFromCreated(status, content), status);
+        if (content is null)
             return Results.NoContent();
-        var content = await resp.Content.ReadAsStringAsync(ct);
         var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
         return Results.Content(content, contentType, statusCode: (int)resp.StatusCode);
     }
