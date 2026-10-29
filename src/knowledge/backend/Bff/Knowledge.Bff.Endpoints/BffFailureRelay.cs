@@ -13,10 +13,18 @@ namespace Knowledge.Bff.Endpoints;
 // 🔴 **使うのは利用者の入力を受ける口だけ**（データソースの書き込み・質問・分析・評価の送信・検索・グラフの近傍）。
 // 読み取りの口（一覧・個別・集計・辞書）は状態コードだけを返す —— 後段は理由の本文を持たず、画面は状態コードで表示を分ける
 // （作業仕様書 20261030_2280 の母集合の表）。
+//
+// 🔴 **5xx の本文は既定で透過しない**（#2313 の監査）。後段の未処理例外・外部 API（LLM ゲートウェイ等）の失敗の本文には、
+// 生のエラー文・例外の詳細・内部のホスト名が載り得る（`ASPNETCORE_ENVIRONMENT=Development` では例外ページになる）。
+// 透過するのは 4xx（入力の誤り・競合・拒否）だけで、5xx は状態コードだけを返す。**意図して理由を返す 5xx**
+// （データソースの書き込みの 502 の `message`。#2109）だけは呼び出し側が <c>includeServerErrorBody</c> で明示する。
 internal static class BffFailureRelay
 {
-    public static async Task<IResult> RelayAsync(HttpResponseMessage resp, CancellationToken ct)
+    public static async Task<IResult> RelayAsync(HttpResponseMessage resp, CancellationToken ct,
+        bool includeServerErrorBody = false)
     {
+        if ((int)resp.StatusCode >= 500 && !includeServerErrorBody)
+            return Results.StatusCode((int)resp.StatusCode);
         var content = await resp.Content.ReadAsStringAsync(ct);
         if (content.Length == 0)
             return Results.StatusCode((int)resp.StatusCode);

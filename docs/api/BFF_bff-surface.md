@@ -117,11 +117,11 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/tags` | **AdminOnly**（運用者も不可。管理者設定画面はシステム管理者ロール限定） | —| `useBffTagCreate`（**#640**。名前の重複は 409） |
 | PUT | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。タグの正本を識別子とする実装判断・決定 1。応答の `republishedDocuments` は射影の再発行件数） |
 | DELETE | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。管理者設定画面「削除前に使用件数を示す」のため**本文ごと透過する**） |
-| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る）。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける） | —| `useBffSearch`（**mutation**。検索結果一覧は操作関数 `bffSearch` を `useQuery` に据える。生成クライアント採用の決定 2） |
-| POST | `/bff/analysis/ask` | 同上。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける） | —| `useBffAnalysisAsk`（**画面は呼んでいない**） |
+| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る）。**後段の 4xx は状態コードと本文をそのまま返す**（理由を画面へ届ける。5xx は状態コードだけ） | —| `useBffSearch`（**mutation**。検索結果一覧は操作関数 `bffSearch` を `useQuery` に据える。生成クライアント採用の決定 2） |
+| POST | `/bff/analysis/ask` | 同上。**後段の 4xx は状態コードと本文をそのまま返す**（理由を画面へ届ける。5xx は状態コードだけ） | —| `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | —| **無し（SSE。`apiStream`）** |
-| POST | `/bff/analysis/analyze` | 同上。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける）（入力検証の 400 は `{ "error": "<文>" }`） | —| `useBffAnalysisAnalyze` |
-| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521）。**後段の失敗は状態コードと本文をそのまま返す**（理由を画面へ届ける） | —| `useBffSubmitFeedback` |
+| POST | `/bff/analysis/analyze` | 同上。**後段の 4xx は状態コードと本文をそのまま返す**（理由を画面へ届ける。5xx は状態コードだけ）（入力検証の 400 は `{ "error": "<文>" }`） | —| `useBffAnalysisAnalyze` |
+| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521）。**後段の 4xx は状態コードと本文をそのまま返す**（理由を画面へ届ける。5xx は状態コードだけ） | —| `useBffSubmitFeedback` |
 | GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521） | —| `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画側の運用ダッシュボード「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る）。［2026-10-14 / #1923］**ページで返す**（`offset` / `limit`。既定 50・上限 100）。`total` は ABAC で絞った後の件数だけで、権限外の文書は窓にも数にも入らない。［2026-10-15 / #1923 段 2］並べ替え（`sort`）・表題の部分一致（`q`）・状態（`status`）。絞り込みは ABAC の後に当て、`unfilteredTotal` / `statusCounts` は絞り込み前（ABAC 後）の数。［2026-10-17］タブ（`origin`）・データソース（`source`）・機密区分・タグ・プロジェクト・保存日の範囲（`createdFrom` / `createdBefore`）も同じ作法で当て、`sourceCounts` / `projectCounts` を返す（どれも省略可・省略は従前どおり）。［2026-10-20 / #1993］ページの文書の索引の状態（`indexStatuses`）を添える（ページの ID だけを取り込み側へ 1 回で問い合わせる。引けなければ全件 `unknown` で一覧は 200） | —| `useBffDocumentList` |
@@ -142,7 +142,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。計画側の裁定による）。後段の失敗は状態コードと本文をそのまま返す | —| `useBffDataSourceSync` |
 
 **［2026-10-30］失敗の本文の透過は、利用者の入力を受ける口に限る。** 透過するのは、データソースの書き込み（POST・PUT・PATCH・同期）・質問（`/bff/analysis/ask`）・分析・評価の送信・検索・グラフの近傍（`/bff/graph/{documentId}/neighbors` を含むグラフの読み取りの中継）である。
-読み取りの口（一覧・個別・集計・辞書）は状態コードだけを返す。後段が理由の本文を持たず、画面は状態コードで表示を分けるためである。グラフの 404 は後段が本文を持たないので、透過しても存在の秘匿は変わらない。
+読み取りの口（一覧・個別・集計・辞書）は状態コードだけを返す。後段が理由の本文を持たず、画面は状態コードで表示を分けるためである。**透過するのは 4xx の本文だけ**で、5xx は状態コードだけを返す（後段の例外の詳細・内部のホスト名を出さない）。例外はデータソースの書き込みの 502（意図して返す理由の `message`）である。グラフの 404 は後段が本文を持たないので、透過しても存在の秘匿は変わらない。
 
 **［2026-09-03］データソースの 3 つの書き込み口（`POST` / `PUT` / `PATCH`）は `ownerMappings`（所有者の写像表）を受ける。**
 **後段が写像先の実在を検証し、実在しない値を含む要求は 400（RFC7807。理由に値が載る）で拒否して 1 対も保存しない。**

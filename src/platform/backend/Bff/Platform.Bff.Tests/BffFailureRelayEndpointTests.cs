@@ -74,6 +74,27 @@ public class BffFailureRelayEndpointTests : IClassFixture<BffTestFactory>
         }
     }
 
+    // #2313 の監査: 5xx の本文（生のエラー文・例外の詳細・内部のホスト名が載り得る）は透過せず、状態コードだけを返す。
+    [Theory]
+    [MemberData(nameof(InputEndpoints))]
+    public async Task 後段の5xxの本文は透過しない(string service, string endpoint)
+    {
+        const string leaky = """{"detail":"System.Net.Http.HttpRequestException: llmgateway-service.microservices-platform.svc:8081 refused"}""";
+        _factory.DownstreamFailure = (service, HttpStatusCode.InternalServerError, "application/json", leaky);
+        try
+        {
+            var resp = await SendAsync(endpoint);
+
+            resp.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+            (await resp.Content.ReadAsStringAsync(Ct)).Should().NotContain("llmgateway-service",
+                "後段の内部の詳細を利用者へ出さない");
+        }
+        finally
+        {
+            _factory.DownstreamFailure = null;
+        }
+    }
+
     // 陽性の対照: 後段が成功すれば従来どおり（失敗の注入が当たっていることの裏付け）。
     [Theory]
     [MemberData(nameof(InputEndpoints))]

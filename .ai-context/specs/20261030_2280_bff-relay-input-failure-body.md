@@ -59,3 +59,43 @@ issue: "#2280"
 | (b) 透過する口は、後段の 400 の本文を状態コード・content-type とも透過する | `後段の400の本文を透過する`（5 口） | 5 件赤（実測） |
 | 失敗の注入が当たっていることの対照 | `後段が成功すれば従来どおり`（5 口） | 緑 |
 | (a) SC-06 に理由が出る | MSP#2290 の `apiClient.test.ts`（クライアント側で満たされた） | — |
+
+## ［2026-10-30 追記 / #2313 の監査］5xx の本文は透過しない・グラフの中継の射程
+
+### 1. 5xx の生成箇所（走査）
+
+走査は 2 本で行った。
+
+- `git grep -n "Status50[0-9]\|StatusCode(5\|Results.Problem" -- src/knowledge/backend/Services/{AiAnalysisService,FeedbackService,RetrievalService,GraphService}/Features`
+- `git grep -n "UseExceptionHandler\|AddProblemDetails\|UseDeveloperExceptionPage\|StatusCodePages"`。対象は共通の Shared と 4 サービスの Program.cs である。
+
+| 後段 | 5xx の生成箇所 | 本文 |
+| --- | --- | --- |
+| AiAnalysisService | `Analyze/Endpoint.cs:27`（検証以外の失敗） | なし（`Results.StatusCode(500)`） |
+| 同 | 未処理例外（RAG・LLM ゲートウェイ・認可サービスの呼び出しの失敗） | 例外ハンドラ・ProblemDetails の設定は無い。Production では空の 500 になる。🔴 **`ASPNETCORE_ENVIRONMENT=Development` では、既定の例外ページが例外の詳細・内部のホスト名を本文に載せる** |
+| FeedbackService・RetrievalService | 明示の 5xx は無い。未処理例外は上と同じ | 同上 |
+| GraphService | `AiSuggestions/Approve/Endpoint.cs:65` の 502（POST。中継の射程外）。未処理例外は上と同じ | 同上 |
+| DataSourceService | 書き込みの 502 の `message`（#2109。人が読む理由を**意図して**返す） | 理由の文 |
+
+- 判断: **透過は 4xx に限る。** 5xx は状態コードだけを返す（`BffFailureRelay` の既定）。
+- 例外はデータソースの書き込み（`includeServerErrorBody: true`）だけである。意図して返す 502 の `message` を #2109 のとおり透過する。
+- 試験 `後段の5xxの本文は透過しない`（5 口）を足した。内部のホスト名を含む 500 の本文が利用者へ出ないことを見る。
+  - **red→green**: 5xx の門を外す変異で 5 件が赤、戻すと緑になった。
+  - データソースの 502 の透過の既存の試験（`BffDataSourceEndpointTests`）は緑のままである。
+
+### 2. グラフの中継（`GraphBffEndpoints.ProxyAsync`）の射程
+
+- 呼び元は 4 つの GET である。
+  - `/bff/graph/{documentId}`（文書のグラフ）
+  - `/{documentId}/neighbors`（近傍）
+  - `/edge-types/catalog`（辺の型のカタログ）
+  - `/suggestions`（AI の提案の一覧）
+- 4xx の本文を 1 つずつ確かめた。
+
+| 状態 | 生成箇所 | 本文 | 存在の推測 |
+| --- | --- | --- | --- |
+| 400 | 近傍（`NeighborsQueryValidator`）・提案の一覧（`ListAiSuggestionsQuery` の検証） | 深さ・辺の型の書式・state の値域の説明 | **無い**。どちらも**検証を認可より前に置く**（Neighbors は `ExpandNeighborsUseCase`、List は Endpoint のコメントが順序を固定）。本文は文書に依存しない |
+| 403 | GraphService の Features に生成箇所は無い（`Forbid`・`403` は 0 件。権限外は 404 に倒す。ADR-0034 決定 2） | 認証の中間層の 403 は本文なし | 無い |
+| 404 | `GraphEndpoints.NotFound()` の 1 か所 | なし | 無い |
+
+- 存在の秘匿は崩れない。グラフの中継は、4xx の本文の透過のまま残す。5xx は上の 1. のとおり、状態コードだけになる。

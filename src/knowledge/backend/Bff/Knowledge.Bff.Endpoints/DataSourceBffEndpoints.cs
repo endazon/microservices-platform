@@ -146,8 +146,9 @@ public static class DataSourceBffEndpoints
 
     // FR-01, FR-05, SC-06, ADR-0074 決定 4, ADR-0115 決定 5 (#2109): 書き込みの口の失敗は、後段の状態コード・content-type・本文を
     // **作り替えずに**返す。［2026-10-30 / #2280］実体は他の BFF の口と共用の `BffFailureRelay` へ移した。
+    // 後段は確認先を引けないときに 502 の `message`（人が読む理由。#2109）を**意図して**返すので、5xx の本文も透過する。
     private static Task<IResult> RelayFailureAsync(HttpResponseMessage resp, CancellationToken ct) =>
-        BffFailureRelay.RelayAsync(resp, ct);
+        BffFailureRelay.RelayAsync(resp, ct, includeServerErrorBody: true);
 
     // FR-05: 利用者の資格情報を後段へ引き継ぐ named client を生成する。
     private static HttpClient CreateForwardingClient(IHttpClientFactory httpFactory, HttpContext http)
