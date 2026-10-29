@@ -728,3 +728,4 @@
 | [IADR-0648](./IADR-0648_rabbitmq-client-7.2.2-failed-open-leak.md) | RabbitMQ.Client を CPM の推移ピン留めで 7.2.2 へ上げ、開き損ねた接続が裏で自動回復を続けて起動の再試行のたびに漏れる欠陥を外す（#2301） | Accepted |
 | [IADR-0649](./IADR-0649_trace-wolverine-source-and-correlation-as-trace-id.md) | Wolverine の ActivitySource をトレースに加え、相関 ID はトレース ID に揃えて IHttpClientFactory の全クライアントで後段へ引き継ぐ。受けた値の形は限る（#2129） | Accepted |
 | [IADR-0650](./IADR-0650_qdrant-bootstrap-retry-and-readiness.md) | 取り込みの Qdrant のコレクション・索引の保証は、成功するまで上限つきのバックオフで裏で再試行し、成功するまで readiness を NotReady にする。後続の器は保証の成功を待つ（#2283） | Accepted |
+| [IADR-0651](./IADR-0651_mcp-tools-list-changed-over-subscriptions-listen.md) | MCP の tools/list_changed は、無状態の Streamable HTTP のまま subscriptions/listen の流れで送る（自前の listen の処理）。セッションの方式は変えない（#2142） | Accepted |

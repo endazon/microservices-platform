@@ -32,6 +32,10 @@ public sealed class ToolCatalog(ILogger<ToolCatalog> logger)
     // カタログの版。突合のたびに内容が変わったときだけ進む（tools/list_changed の契機に使う）。
     public int Version => _snapshot.Version;
 
+    // FR-16, ADR-0024 §2, [[IADR-0651]] (#2142): 版が進んだ（公開ツールの集合・中身が変わった）ときに、新しい版で 1 回だけ呼ぶ。
+    // 購読側（`ToolListChangedSubscription`）が MCP の `notifications/tools/list_changed` へ写す。内容が変わらない突合では呼ばない。
+    public event Action<int>? Changed;
+
     // 公開名からツールを引く。**構成に無いツールは null を返す。**
     // 呼び出し側は「権限が無い」ではなく「不明なツール」として扱う（存在秘匿。ADR-0024 §3）。
     public PublishedTool? Find(string publishedName)
@@ -106,8 +110,11 @@ public sealed class ToolCatalog(ILogger<ToolCatalog> logger)
                 drift.Kind, drift.Target, drift.Detail);
 
         if (changed)
+        {
             logger.LogInformation(
                 "MCP tool catalog refreshed: {Count} published tool(s), version {Version}",
                 tools.Count, _snapshot.Version);
+            Changed?.Invoke(_snapshot.Version);
+        }
     }
 }
