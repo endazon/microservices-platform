@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
-import { opsTools, OPS_TOOL_IDS } from './opsTools';
+import { grafanaGuides, opsTools, OPS_TOOL_IDS } from './opsTools';
 
 // SC-10, FR-10: 外部可観測性ツールの導線（純関数）。
 //
@@ -43,5 +43,32 @@ describe('opsTools (SC-10)', () => {
 
   it('returns nothing when no tool is configured', () => {
     expect(opsTools({})).toEqual([]);
+  });
+});
+
+// FR-10, SC-10 (#2125): SLO・レイテンシと LLM コストは KPI の値を出さず、Grafana の該当ダッシュボードへの導線カードにする
+// （計画 SC-10 §主要素「SLO・レイテンシと LLM コストは Grafana への導線カード」・KPI カードの確定 Q25 / Q26）。
+describe('grafanaGuides (SC-10)', () => {
+  it('points each guide card at the provisioned Grafana dashboard', () => {
+    const guides = grafanaGuides('https://grafana.example');
+    expect(guides.map((g) => [g.id, g.url])).toEqual([
+      ['slo', 'https://grafana.example/d/microservices-platform-overview'],
+      ['llm-cost', 'https://grafana.example/d/llm-usage'],
+    ]);
+  });
+
+  it('does not double the slash when the base URL ends with one', () => {
+    expect(grafanaGuides('https://grafana.example/').map((g) => g.url)).toEqual([
+      'https://grafana.example/d/microservices-platform-overview',
+      'https://grafana.example/d/llm-usage',
+    ]);
+  });
+
+  // 接続先が未設定でもカードは残す（どこを見ればよいかを伝える）。リンクだけを持たない。
+  it('keeps both cards without a link when Grafana is not configured', () => {
+    expect(grafanaGuides(undefined).map((g) => [g.id, g.url])).toEqual([
+      ['slo', undefined],
+      ['llm-cost', undefined],
+    ]);
   });
 });

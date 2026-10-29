@@ -276,12 +276,48 @@ describe('OperationsDashboardPage (SC-10)', () => {
     resetAppConfigCache();
     await renderPage();
 
-    expect(await screen.findByRole('link', { name: /Grafana/ })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Grafana ↗' })).toHaveAttribute(
       'href',
       'https://grafana.example',
     );
     expect(screen.getByRole('link', { name: /Jaeger \/ Tempo/ })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Kiali/ })).not.toBeInTheDocument();
+  });
+
+  // FR-10, SC-10 (#2125): 計画 SC-10 §主要素「SLO・レイテンシと LLM コストは Grafana への導線カード」（hi-fi 419・421）。
+  // ［2026-10-29 反転］従前は「契約に無い」として 2 枚の不在を固定していた。値は出さず（Q25 / Q26）、
+  // Grafana の該当ダッシュボード（provisioning の uid）へ送る。運用サマリの取得に失敗しても導線は残る。
+  it('offers Grafana guide cards for SLO/latency and LLM cost', async () => {
+    mocks.apiRequest.mockRejectedValue(new ApiError('forbidden', '権限がありません。', 403));
+    window.__APP_CONFIG__ = { opsLinks: { grafanaUrl: 'https://grafana.example' } };
+    resetAppConfigCache();
+    await renderPage();
+
+    const slo = within((await screen.findByText('SLO・レイテンシ')).parentElement!);
+    const sloLink = slo.getByRole('link', { name: 'Grafana で確認 →' });
+    expect(sloLink).toHaveAttribute(
+      'href',
+      'https://grafana.example/d/microservices-platform-overview',
+    );
+    expect(sloLink).toHaveAttribute('target', '_blank');
+    expect(sloLink).toHaveAttribute('rel', 'noreferrer');
+
+    const cost = within(screen.getByText('LLMコスト').parentElement!);
+    expect(cost.getByRole('link', { name: 'Grafana で確認 →' })).toHaveAttribute(
+      'href',
+      'https://grafana.example/d/llm-usage',
+    );
+  });
+
+  it('keeps the guide cards without links when Grafana is not configured', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
+    await renderPage();
+
+    for (const label of ['SLO・レイテンシ', 'LLMコスト']) {
+      const card = within((await screen.findByText(label)).parentElement!);
+      expect(card.queryByRole('link')).not.toBeInTheDocument();
+      expect(card.getByText('Grafana の接続先が未設定です')).toBeInTheDocument();
+    }
   });
 
   it('says the tool links are not configured when none is injected', async () => {
@@ -377,13 +413,16 @@ describe('OperationsDashboardPage (SC-10)', () => {
     for (const label of ['検索総数', '回答総数', '満足率']) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    for (const label of ['SLO・レイテンシ', 'LLMコスト', '達成率']) {
-      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    // ［2026-10-29 / #2125］SLO・レイテンシと LLM コストは**値を持たない導線カード**として在る（下の試験）。
+    // 値（達成率・p95・金額）は契約に無く、画面に数字を出さない。
+    for (const label of ['SLO・レイテンシ', 'LLMコスト']) {
+      const card = screen.getByText(label).parentElement!;
+      expect(card.textContent).not.toMatch(/\d/);
     }
+    expect(screen.queryByText(/\d+(\.\d+)?\s*ms/)).not.toBeInTheDocument();
 
     expect(screen.queryByRole('heading', { name: 'SLO' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'LLMコスト' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/p95/)).not.toBeInTheDocument();
     // モックの「人/日」（一意利用者数）も契約に無い。件数だけを出す。
     expect(screen.queryByText(/人\/日/)).not.toBeInTheDocument();
   });
@@ -401,6 +440,9 @@ describe('OperationsDashboardPage (SC-10)', () => {
     expect(
       await screen.findByRole('heading', { name: 'Operations dashboard' }),
     ).toBeInTheDocument();
+    // #2125: 導線カードの指標名も訳される（i18n._ で引いた MessageDescriptor が locale に追随する）。
+    expect(screen.getByText('SLO & latency')).toBeInTheDocument();
+    expect(screen.getByText('LLM cost')).toBeInTheDocument();
   });
 });
 
