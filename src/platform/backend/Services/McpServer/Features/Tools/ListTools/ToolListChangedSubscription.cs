@@ -19,9 +19,80 @@ namespace McpServer.Features.Tools.ListTools;
 // - 以後、カタログの版が進むたびに list_changed を送る。各通知の `_meta` に listen の要求 ID を付ける（分離のため）。
 // - 取り消し（切断）で抜け、空の結果を返す。
 // 一覧そのもの（利用者ごとの ABAC・公開構成）は従来どおり `tools/list` が組む。通知は「引き直してよい」の合図だけである。
+//
+// ［#2315 の監査］長命の接続を枯らさないための上限（`ToolListChangedListenLimits`）:
+// - 1 本の listen は最長 `MaxLifetime`（既定 10 分）で空の結果を返して閉じる。クライアントは開き直す（開き直すたびに
+//   `/mcp` の認証・認可を通り直すので、失効したトークン・外れたロールで通知が届き続ける時間もこの長さで頭打ちになる）。
+// - 同時に開ける本数は、主体ごと `MaxPerSubject`（既定 4）・プロセス全体 `MaxTotal`（既定 256）。超えた要求は
+//   `InvalidRequest` で断る（開いている listen は切らない）。
+// 通知は「引き直してよい」の合図だけで、ツール一覧そのものは運ばない（一覧は `tools/list` が利用者ごとに組む）。
+public sealed class ToolListChangedListenLimits
+{
+    public TimeSpan MaxLifetime { get; init; } = TimeSpan.FromMinutes(10);
+    public int MaxPerSubject { get; init; } = 4;
+    public int MaxTotal { get; init; } = 256;
+
+    private readonly object _gate = new();
+    private readonly Dictionary<string, int> _perSubject = new(StringComparer.Ordinal);
+    private int _total;
+
+    /// <summary>1 本を確保する。上限を超えるなら false。</summary>
+    public bool TryAcquire(string subject)
+    {
+        lock (_gate)
+        {
+            var mine = _perSubject.GetValueOrDefault(subject);
+            if (_total >= MaxTotal || mine >= MaxPerSubject) return false;
+            _perSubject[subject] = mine + 1;
+            _total++;
+            return true;
+        }
+    }
+
+    public void Release(string subject)
+    {
+        lock (_gate)
+        {
+            if (_perSubject.TryGetValue(subject, out var mine))
+            {
+                if (mine <= 1) _perSubject.Remove(subject);
+                else _perSubject[subject] = mine - 1;
+                _total--;
+            }
+        }
+    }
+}
+
 public static class ToolListChangedSubscription
 {
     public static async ValueTask<EmptyResult> ListenAsync(
+        RequestContext<SubscriptionsListenRequestParams> request, ToolCatalog catalog,
+        ToolListChangedListenLimits limits, CancellationToken ct)
+    {
+        // 主体は `/mcp` の認証が決めた利用者（audience を検証したトークン）。名前が無ければ 1 つの枠に寄せる（安全側）。
+        var subject = request.User?.Identity?.Name ?? "anonymous";
+        if (!limits.TryAcquire(subject))
+            throw new McpProtocolException(
+                "subscriptions/listen の同時接続の上限に達しています。開いている listen を閉じてから開き直してください。",
+                McpErrorCode.InvalidRequest);
+        try
+        {
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            lifetime.CancelAfter(limits.MaxLifetime);
+            return await ListenWithinAsync(request, catalog, lifetime.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // 最長の寿命に達した。空の結果で閉じ、クライアントに開き直させる（認証を通り直させる）。
+            return new EmptyResult();
+        }
+        finally
+        {
+            limits.Release(subject);
+        }
+    }
+
+    private static async ValueTask<EmptyResult> ListenWithinAsync(
         RequestContext<SubscriptionsListenRequestParams> request, ToolCatalog catalog, CancellationToken ct)
     {
         var wantsTools = request.Params?.Notifications?.ToolsListChanged == true;
@@ -44,11 +115,9 @@ public static class ToolListChangedSubscription
                 Params = ack,
             }, ct);
 
+            // ［#2315 のレビュー］tools を求めない listen は、受付の後にすぐ閉じる（送る通知が無いのに接続を保持しない）。
             if (!wantsTools)
-            {
-                await Task.Delay(Timeout.Infinite, ct);
                 return new EmptyResult();
-            }
 
             while (await changes.Reader.WaitToReadAsync(ct))
             {

@@ -52,3 +52,17 @@ issue: "#2142"
 | 公開ツールの集合が変わったとき、接続中（listen 中）のクライアントへ list_changed が届く | `ToolListChangedNotificationTests.公開ツールの集合が変わるとlistenしているクライアントへlist_changedが届く`（実物の SDK のクライアント・本物のトークン） | 赤（自前の listen の処理を外す変異で赤） |
 | 陰性の対照: 版が進まなければ届かない | `版が進まない突合ではlist_changedは届かない` | 緑 |
 | 版が進んだときだけ合図する | `ToolCatalogTests.版が進んだときだけChangedを呼ぶ` | 赤（コンパイル不可） |
+
+## ［2026-10-30 追記 / #2315 の監査］レプリカ間の一貫性・長命の接続の上限・認可の失効
+
+- 事実の整理と判断は IADR-0651 の「決定 5」と「事実の整理」に書いた。
+- 実装した上限:
+  - listen の寿命は最長 10 分。寿命で閉じた後の開き直しは認証を通り直す。
+  - 同時本数は主体ごと 4 本、全体 256 本。
+- 試験:
+  - `listenは最長の寿命で閉じる`
+  - `主体ごとの同時listenは上限を超えると断る`
+  - `ToolListChangedListenLimitsTests`
+- **red→green**: 上限の判定と寿命の打ち切りを外す変異で 2 件が赤、戻すと緑になった。
+- ［#2315 のレビュー］試験の listen は、開いたことを受付（`notifications/subscriptions/acknowledged`）の受信で待つ。従前は `Task.Delay(500)` で待っており、混んだ CI で取りこぼし得た。
+- ［#2315 のレビュー］tools を求めない listen は、受付の後にすぐ閉じる。試験は `toolsを求めないlistenは受付の後にすぐ閉じる` で、無期限に待つ形へ戻す変異で赤になる。
