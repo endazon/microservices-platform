@@ -30,6 +30,12 @@ public sealed class NormalizedAssetLedgerTests
 {
     private sealed class NoopUpdatedPublisher : IDocumentUpdatedPublisher
     {
+        // NFR, #2306: 発行の遅れ（台帳の確定の後、発行が終わるまでの時間）を作る。既定は遅れなし。
+        internal TimeSpan Delay { get; init; }
+
+        private int _published;
+        internal int Published => Volatile.Read(ref _published);
+
         // IADR-0608 (#2168): 確定の口。この器は関数（保存 → 発行を積む）を呼ぶだけでよい（DB は InMemory でトランザクションが無い）。
         public Task CommitAsync(Func<CancellationToken, Task> saveAndPublish, CancellationToken ct = default) =>
             saveAndPublish(ct);
@@ -40,7 +46,13 @@ public sealed class NormalizedAssetLedgerTests
             string? originalPath = null, string? dataSourceName = null,
             List<string>? sharedWith = null,
             long? sequence = null,
-            CancellationToken ct = default) => Task.CompletedTask;
+            CancellationToken ct = default) => PublishAsync();
+
+        private async Task PublishAsync()
+        {
+            if (Delay > TimeSpan.Zero) await Task.Delay(Delay);
+            Interlocked.Increment(ref _published);
+        }
     }
 
     // 本文の指紋計算はストレージ解決を要求する。ここでは資産の台帳だけを見るので縮退させる。
@@ -59,7 +71,8 @@ public sealed class NormalizedAssetLedgerTests
 
     // NFR, #2306: `inactivity` はハーネスの非活動タイムアウト。既定（null）は MassTransit の既定のまま。
     //   短くすると「機械が混んで、配送・消費が非活動の窓を超えた」世界を決定的に作れる。
-    private static ServiceProvider BuildProvider(string dbName, TimeSpan? inactivity = null) =>
+    private static ServiceProvider BuildProvider(string dbName, TimeSpan? inactivity = null,
+        NoopUpdatedPublisher? publisher = null) =>
         new ServiceCollection()
             .AddLogging(b => b.SetMinimumLevel(LogLevel.Warning))
             // IngestTagMetrics は IMeterFactory を要求する（Web ホストでは既定で入る）。
@@ -68,7 +81,7 @@ public sealed class NormalizedAssetLedgerTests
             .AddSingleton<IngestTagMetrics>()
             .AddCatalogTimeoutsForTests()
             .AddSingleton<IObjectStorageClient, UnresolvableStorage>()
-            .AddSingleton<IDocumentUpdatedPublisher, NoopUpdatedPublisher>()
+            .AddSingleton<IDocumentUpdatedPublisher>(publisher ?? new NoopUpdatedPublisher())
             .AddMassTransitTestHarness(x =>
             {
                 x.AddConsumer<DocumentNormalizedConsumer>();
@@ -98,7 +111,7 @@ public sealed class NormalizedAssetLedgerTests
 
         await harness.Bus.Publish(Event(id, "図のある文書", fig), TestContext.Current.CancellationToken);
         // 🔴 消費されたことと成功したことは別である（fault でも Consumed には載る）—— 待ちの中で Fault を見る。
-        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id);
+        var doc = await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, id);
         doc.AssetUris.Should().Equal([fig],
             "資産を台帳へ写さないと、削除は図表へ届かない（ADR-0057 受け入れ基準①）");
     }
@@ -138,8 +151,8 @@ public sealed class NormalizedAssetLedgerTests
         var harness = provider.GetRequiredService<ITestHarness>();
         await harness.Start();
         await harness.Bus.Publish(Event(id, "図のある文書（再変換）", second), TestContext.Current.CancellationToken);
-        // 前提の行は既に在るので、「再正規化が当たった」（題名が変わった）を待つ条件にする。
-        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id, d => d.Title == "図のある文書（再変換）");
+        // 前提の行は既に在るので、「再正規化が当たった」（題名が変わった）も確かめる。
+        var doc = await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, id, d => d.Title == "図のある文書（再変換）");
         doc.AssetUris.Should().Equal([second],
             "再正規化は資産の集合を差し替える（追加ではない）");
     }
@@ -154,7 +167,7 @@ public sealed class NormalizedAssetLedgerTests
         await harness.Start();
 
         await harness.Bus.Publish(Event(id, "図の無い文書"), TestContext.Current.CancellationToken);
-        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id);
+        var doc = await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, id);
         doc.AssetUris.Should().BeEmpty();
     }
 
@@ -169,7 +182,27 @@ public sealed class NormalizedAssetLedgerTests
         await harness.Start();
 
         await harness.Bus.Publish(Event(id, "遅れて確定する文書"), TestContext.Current.CancellationToken);
-        var doc = await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, id);
+        var doc = await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, id);
         doc.AssetUris.Should().BeEmpty();
+    }
+
+    // NFR, #2306: 待ちは**消費の完了**（consumer の処理が戻った）までである。consumer は台帳を保存した**後**に発行するので、
+    // 「台帳の行が見えた」で抜けると、発行の前に検査へ進み得る（発行の有無の検査が flake し、発行が無いことの検査は偽の緑になる）。
+    // 発行を遅らせて、その窓を決定的に作る。台帳の行を待つだけの待ちはここで赤になる。
+    [Fact]
+    public async Task 待ちは台帳の確定ではなく発行を含む消費の完了まで待つ()
+    {
+        var id = Guid.NewGuid();
+        var publisher = new NoopUpdatedPublisher { Delay = TimeSpan.FromMilliseconds(500) };
+        // 窓を 1 ms にする —— 既定の窓では、Fault の同期の列挙が窓が切れるまで塞がり、偶然この窓を覆い隠す（負荷時は覆わない）。
+        await using var provider = BuildProvider($"assets-{Guid.NewGuid():N}", inactivity: TimeSpan.FromMilliseconds(1),
+            publisher: publisher);
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+
+        await harness.Bus.Publish(Event(id, "発行が遅れる文書"), TestContext.Current.CancellationToken);
+        await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, id);
+
+        publisher.Published.Should().Be(1, "待ちを抜けた時点で consumer の発行は済んでいる");
     }
 }

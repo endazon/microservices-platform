@@ -99,8 +99,8 @@ public sealed class NormalizedBodyPresenceTests
         await harness.Start();
 
         await harness.Bus.Publish(ev, TestContext.Current.CancellationToken);
-        // NFR, #2306: 消費の効果か失敗を待つ（`Consumed.Any` はハーネスの非活動の窓で打ち切られる）。
-        await DocumentNormalizedHarnessWait.UntilDocumentAsync(provider, harness, ev.DocumentId);
+        // NFR, #2306: 消費の完了（発行を含む）を待ち、失敗が無いことを見る（`Consumed.Any` はハーネスの非活動の窓で打ち切られる）。
+        await DocumentNormalizedHarnessWait.UntilConsumedAsync(provider, harness, ev.DocumentId);
 
         var scope = provider.CreateScope();
         return (scope.ServiceProvider.GetRequiredService<DocumentDbContext>(), publisher, provider);
