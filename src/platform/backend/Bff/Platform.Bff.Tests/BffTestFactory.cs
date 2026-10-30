@@ -1605,9 +1605,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 return edgeWrite;
             }
             // FR-18, SC-03, #450: 承認・却下（書き込み）。**読み取りとは別の knob で応答を決める。**
+            // FR-17 (#2107): 利用者による辺の作成（`POST /graph/edges`）も同じ knob で応答を決める。
             var isWrite = owner.LastGraphPath is { } p
                 && (p.EndsWith("/approve", StringComparison.Ordinal)
-                    || p.EndsWith("/reject", StringComparison.Ordinal));
+                    || p.EndsWith("/reject", StringComparison.Ordinal)
+                    || (request.Method == HttpMethod.Post && p == "/graph/edges"));
             if (isWrite)
             {
                 if (owner.GraphWriteStubThrows) throw new HttpRequestException("graph unreachable");

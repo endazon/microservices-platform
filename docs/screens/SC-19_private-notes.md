@@ -10,8 +10,8 @@ author: claude
 ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11]
 adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096, ADR-0143]
 iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
-specs: [20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2120_ai-input-user-default]
-issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, planning#614, planning#618, planning#628, planning#841]
+specs: [20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2120_ai-input-user-default, 20261030_2107_bff-graph-edge-create]
+issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, #2107, #2343, planning#614, planning#618, planning#628, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理
@@ -244,7 +244,7 @@ flowchart LR
 | 100% で新規作成のみ拒否・固定文言 | する | 既存資料の操作は残ることも単体テストが固定 |
 | 業務関連資料としての扱いの固定文言（隠さない） | する | 折りたたみの中に入れていないこと、**削除の 1 文を含むこと**（ja / en）を単体テストが固定 |
 | ヘルプ文言（リンク先が見えない理由は区別できない） | する | 常時表示 |
-| リンク作成 UI（補完候補の絞り込み・404 原則） | **しない** | 🔴 **リンクを作る口が公開 API に無い。** ヘルプ文言だけは先に置いてある |
+| リンク作成 UI（補完候補の絞り込み・404 原則） | **しない** | ~~🔴 **リンクを作る口が公開 API に無い。**~~ ［2026-10-30 / #2107］**口は開いた**（辺の作成。権限外・不存在は 404 で区別しない）。**画面は #2343 で置く**（補完候補をどこから引くかを先に決める）。ヘルプ文言だけは先に置いてある |
 | 他人の資料の件数・存在を示唆しない | する | 示唆表現の不在を陽性対照つきで固定 |
 | 管理者による一括閲覧・一括変更を描かない | する | 同上 |
 | 本画面内での本文編集を描かない | する | 同上 |
