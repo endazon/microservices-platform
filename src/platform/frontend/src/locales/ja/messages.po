@@ -180,8 +180,8 @@ msgid "「{revokeTargetName}」のトークンを無効にします。この端�
 msgstr "「{revokeTargetName}」のトークンを無効にします。この端末からの同期はすぐに停止します。再び同期するには、トークンを再発行してプラグインへ入れ直してください。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
-msgstr "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgid "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgstr "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
