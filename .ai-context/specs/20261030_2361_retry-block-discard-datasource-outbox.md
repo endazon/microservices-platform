@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 再試行の上限で捨てられる送出を DataSourceService で例外にし、捨てたことを計器と警報にする（#2361）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-01, FR-12, UC-04, NFR-21, ADR-0027, IADR-0609, IADR-0656, IADR-0657]
 author: claude
 created: 2026-10-30
@@ -52,6 +52,7 @@ issue: "#2361"
 - 試験ごとに**専用の DB**（`CREATE DATABASE`）を作り、その DB の `wolverine.wolverine_outgoing_envelopes` に `BEFORE INSERT` で例外を投げるトリガを置く。
 - 片付け（トリガと関数の `DROP`）は `finally` で必ず行う。共有の DB・ロールの権限には触れない（他の並列の試験から隔離される）。
 - 赤の確かめ方（条件 1）: 赤の試験だけのコミットを push し、Integration を workflow_dispatch で回して赤を確かめる。PR は修正を積んで緑にしてから作る。
+  - 結果: 赤（068404145）https://github.com/endazon/microservices-platform/actions/runs/41018967808 —— 本題の 1 件だけが赤（`Fetched` が 1）。緑（0986ecfe1）https://github.com/endazon/microservices-platform/actions/runs/41021442049 —— 4 件とも緑。
 
 ## 性能の見積もり（条件 4。詳細は IADR-0657）
 
