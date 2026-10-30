@@ -5,6 +5,7 @@ import {
   getBffGraphSuggestionsQueryKey,
   useBffGraphEdgeTypes,
   useBffGraphSuggestionApprove,
+  useBffGraphSuggestionGenerate,
   useBffGraphSuggestionReject,
   useBffGraphSuggestions,
 } from '@foundation/api/generated/graph/graph';
@@ -100,4 +101,20 @@ export function useSuggestionActions(documentId: string) {
     approve: useBffGraphSuggestionApprove<unknown>(onChanged),
     reject: useBffGraphSuggestionReject<unknown>(onChanged),
   };
+}
+
+/**
+ * 提案の生成（1 文書・要求時）。FR-18, ADR-0081 決定 1・2 (#2106)。
+ *
+ * 🔴 **押せるのはその文書を読める利用者**（決定 2）—— 判定は後段（read のスコープ。見えなければ 404）が持ち、
+ * 画面は権限を判定しない（SC-03 を開けたことが資格である）。承認・却下の資格（write）とは水準が違う。
+ * 成功後は当該文書の `pending` の一覧を無効化する（作られた提案が承認欄に出る。IADR-0127 決定 5）。
+ * 🔴 **LLM を呼ぶ**（費用は用途 `graph-suggestion` で積まれる。決定 3）。
+ */
+export function useSuggestionGenerate(documentId: string) {
+  const queryClient = useQueryClient();
+  const suggestionsKey = getBffGraphSuggestionsQueryKey(pendingParams(documentId));
+  return useBffGraphSuggestionGenerate<unknown>({
+    mutation: { onSuccess: () => void queryClient.invalidateQueries({ queryKey: suggestionsKey }) },
+  });
 }

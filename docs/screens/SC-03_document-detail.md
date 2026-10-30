@@ -3,15 +3,15 @@ title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-29
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-05, SC-09, SC-18, SC-21, UC-01, UC-02, UC-07]
-adrs: [ADR-0036, ADR-0102, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0070, ADR-0073]
+adrs: [ADR-0036, ADR-0102, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0063, ADR-0070, ADR-0073, ADR-0081]
 iadrs: [IADR-0451, IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126, IADR-0272, IADR-0276, IADR-0290, IADR-0300, IADR-0323, IADR-0355, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0544, IADR-0610, IADR-0611, IADR-0612]
-specs: [20261026_2121_sc03-version-error-and-original-link, 20260913_1455_sc03-private-note-display, 20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens, 20261024_2018_sc02-sc03-e2e, 20261029_2289_document-content-drop-sourceuri]
-issues: [#1455, #1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, #1905, #2046, #2018, #2121, #2289, planning#197, planning#237, planning#244, planning#473, planning#495, planning#841]
+specs: [20261026_2121_sc03-version-error-and-original-link, 20260913_1455_sc03-private-note-display, 20260804_issue-502_sc01-03-search-flow, 20260828_issue-1011_version-body-contract, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens, 20261024_2018_sc02-sc03-e2e, 20261029_2289_document-content-drop-sourceuri, 20261030_2106_suggestion-generate-product-route]
+issues: [#1455, #1011, #1014, #1104, #1187, #12, #1200, #1240, #1254, #446, #449, #450, #452, #490, #502, #504, #519, #541, #553, #586, #917, #918, #1905, #2046, #2018, #2121, #2289, #2106, planning#197, planning#237, planning#244, planning#473, planning#495, planning#841, planning#857]
 -->
 
 # 画面仕様書: 文書詳細／プレビュー
@@ -184,6 +184,7 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 | 辺の型の表示名 | `GET /bff/graph/edge-types` | orval 生成フック `useBffGraphEdgeTypes` | 認証のみ | `EdgeTypeCatalogItem[]` |
 | 承認 | `POST /bff/graph/suggestions/{id}/approve` | orval 生成フック（mutation） | 認証のみ。**判定は後段の 4 段**（読み取り可否 → 存在 → 両端が可視 → 書き込み可）。**拒否はすべて 404** | `AiSuggestion` |
 | 却下 | `POST /bff/graph/suggestions/{id}/reject` | 同上 | 同上 | `AiSuggestion` |
+| 提案の生成（［2026-10-30 / #2106］） | `POST /bff/graph/suggestions/generate/{documentId}` | orval 生成フック（mutation） | 認証のみ。**押せるのはその文書を読める利用者**（判定は後段の閲覧の範囲。見えない・無い起点は 404。承認・却下の資格とは別）。**AI を呼ぶ** | `AiSuggestion[]`（作れた提案だけ） |
 
 - `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt, hasBody }`
   - `hasBody` は**原本が本文を持っていたか**（既定 `true`）。`false` は上の「本文なし（原本を参照）」の導出元である。
@@ -237,7 +238,7 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 | 属性 | 表示 | §属性の表示 |
 | タグ | 表示 | `Tag` の並び |
 | 版履歴 | 表 | 版・状態・変更メモ・作成日時（`Table`） |
-| AI 提案の承認欄 | 表示・操作 | §AI 提案の承認欄。**提案が 0 件のときは欄自体を出さない** |
+| AI 提案の承認欄 | 表示・操作 | §AI 提案の承認欄。**提案が 0 件のときは欄自体を出さない**（［2026-10-30 / #2106］生成のボタンだけは置く。§提案の生成） |
 
 ### 個人資料の表示
 
@@ -376,6 +377,20 @@ hi-fi モックの左レールにも「文書詳細」がある。しかし**本
 - **隠さない。** 隠すと、AI 提案一覧の全行が持つ「文書詳細で確認」の導線がタグ提案について
   行き止まりになる（同画面は「導線を持たない行」を描いてはならないと定めている）。
 - リンク提案の行は従来どおり（資格の値で描き分けない。拒否は汎用エラー）。
+
+#### 提案の生成（［2026-10-30 / #2106］）
+
+計画は「本欄に生成を起動する要素を置く場合、押せるのは**その文書を読める利用者**」と定めている（承認・却下の資格とは別の水準。
+結果が押した本人の閲覧の範囲に閉じるため）。
+
+- ボタン「AI に提案を作らせる」と説明 1 行（「AI がこの文書のリンク候補・タグ候補を作ります（あなたが閲覧できる文書の範囲で作ります。AI を呼び出します）。」）を置く。
+- **画面は権限を判定しない**（本画面を開けたことが資格である）。判定は後段が持つ。
+- 押すと 1 回だけ生成し（生成中は押せない）、成功したら承認待ちの一覧を引き直す（作られた提案が本欄に出る）。新しい提案が無ければ「新しい提案はありませんでした。」を出す。
+- 🔴 **失敗は 404 を含めて「提案を作れませんでした。時間をおいて再度お試しください。」に寄せる。**「権限」の語を出さない（存在秘匿）。
+- 🔴 **0 件のときの配置は暫定である**（計画の判断待ち）。計画は「0 件なら欄を出さない」と「起動の要素は本欄に置く」を同時に定めており、0 件では両立しない。
+  暫定として、0 件のときは見出し・枠を出さず、ボタンと説明だけを本文の下に置く。1 件以上のときは欄の中（一覧の下）に置く。
+  配置は 1 つの部品に閉じてあり、判断が異なれば置き場所だけを差し替える。
+- タイミングは要求時だけである（文書の更新時の自動起動・定期は無い）。
 
 #### 辺の型の表示名
 

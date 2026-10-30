@@ -2,9 +2,6 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -48,10 +45,6 @@ namespace Knowledge.Bff.Endpoints;
 // ⚠️ **後段が write スコープを見ない口を本群へ足すときは、この判断が反転する**（そのときは足すこと）。
 public static class GraphBffEndpoints
 {
-    // NFR-16, ADR-0117, [[IADR-0530]] 決定 1 (#1887): **計測専用**の生成の口を開ける構成の鍵（env は
-    // `Measurement__EnableSuggestionGenerate`）。🔴 **既定は無効**であり、無効のときは口が**ルート表に載らない**（404）。
-    public const string MeasurementSuggestionGenerateKey = "Measurement:EnableSuggestionGenerate";
-
     public static IEndpointRouteBuilder MapGraphBffEndpoints(this IEndpointRouteBuilder app)
     {
         // NFR-09: 認証のみ（ロール不問）。可視性は GraphService の ABAC が決める。
@@ -94,6 +87,9 @@ public static class GraphBffEndpoints
 
         // FR-18, UC-10, SC-21 (#918): **AI 提案の一覧**（読み取り）。
         //
+        // 🔴 **［2026-10-30 追記 / #2106］生成も開けた（本メソッドの末尾。[[IADR-0653]]）。** 計画 ADR-0081 決定 2 が
+        // 「起動できるのはその文書を読める利用者」と定め、SC-03 の承認欄に起動の要素を置いたため、下の「生成は引き続き
+        // 開けない」の理由（計画に導線が無い・消費者が無い・後段の read が裁定待ち）は 3 つとも失効した。
         // 🔴 **［2026-08-29 追記 / #450］承認・却下は下に開けた。生成だけが閉じたままである。**
         // 従前ここには「開けるのは読み取り口だけである」と書いてあった —— 予告どおり
         // **承認欄（SC-03）と同じ変更単位で** 2 本を開けたので、その記述は失効した（[[IADR-0300]] 決定 1）。
@@ -179,36 +175,21 @@ public static class GraphBffEndpoints
             .Produces(StatusCodes.Status409Conflict)
             .Produces(StatusCodes.Status502BadGateway);
 
-        // NFR-16, FR-18, ADR-0117, ADR-0051 決定 4, [[IADR-0530]] 決定 1・2 (#1887): **計測専用の生成の口。**
+        // FR-18, UC-10, SC-03, ADR-0081 決定 1・2, [[IADR-0653]] (#2106): **AI 提案の生成（製品の口）。**
         //
-        // 稼働 k3s で east-west の 3 経路（graph → llmgateway の L-4・graph → document の D-3 と、
-        // 承認で通る D-2 の材料になる保留中のタグ提案）を 1 回ずつ発火させるためだけに置く。
-        // 🔴 **製品の口ではない。** 上の「生成は開けない」は既定の構成でそのまま成り立つ —— 鍵が無い・偽なら
-        // **ルート表に載らない**（`BffGraphSuggestionTests` のルート表の走査がその既定を固定する）。
-        // 🔴 **システム管理者限定**（`AdminOnly`。群の認証と AND で合成され、実効は platform-admin だけ）。
-        // 運用者・一般利用者は 403。後段の ABAC（起点が見えなければ 404）はそのまま効く —— BFF は本文も
-        // 状態コードも詰め替えずに透過する（承認・却下と同じ `ForwardAsync`）。
-        // 🔴 **LLM の費用が出る。** BFF に LLM 経路の流量制限は無い（AI 分析・図の変換も同じ）。費用の歯止めは
-        // ゲートウェイの用途別の月次上限の警報と、本口が管理者限定・既定無効・計測の窓だけ有効であることである。
-        var config = app.ServiceProvider.GetService<IConfiguration>();
-        if (config?.GetValue<bool>(MeasurementSuggestionGenerateKey) == true)
-        {
-            app.ServiceProvider.GetService<ILoggerFactory>()?
-                .CreateLogger(typeof(GraphBffEndpoints).FullName!)
-                .LogWarning(
-                    "計測用の口 POST /bff/graph/suggestions/generate/{{documentId}} が有効である（{Key}=true。"
-                    + "システム管理者限定・LLM の費用が出る）。計測が終わったら構成から外すこと（#1887）",
-                    MeasurementSuggestionGenerateKey);
-
-            g.MapPost("/suggestions/generate/{documentId:guid}", (Guid documentId,
-                    IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
-                => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/generate/{documentId}", httpFactory, http, ct))
-                .WithName("BffGraphSuggestionGenerateForMeasurement")
-                .RequireAuthorization(PlatformAuthPolicies.AdminOnly)
-                .Produces<List<AiSuggestionDto>>()
-                .Produces(StatusCodes.Status403Forbidden)
-                .Produces(StatusCodes.Status404NotFound);
-        }
+        // 🔴 **押せるのはその文書を読める利用者**（決定 2）。管理者・運用者に限らない —— 管理者に限ると管理者のスコープの
+        // 提案しか生まれず、それを一般利用者へ見せる形になって存在秘匿を破る（ADR-0034 決定 2）。**ロールの門を置かない。**
+        // 資格は後段が read のスコープで判定し、見えない・無い起点は 404。BFF は本文も状態コードも詰め替えない（`ForwardAsync`）。
+        // 🔴 **構成の鍵に依らず常に載る**（[[IADR-0530]] 決定 1 の計測専用・管理者限定の口は撤去した。計測も本口で行う）。
+        // 🔴 **LLM の費用が出る**（用途 `graph-suggestion`。前月比と累計で見る。決定 3）。BFF に LLM 経路の流量制限は無い
+        // （AI 分析・図の変換と同じ）。タイミングは要求時だけである（自動起動・定期は採らない。採るなら計画へ環流する）。
+        g.MapPost("/suggestions/generate/{documentId:guid}", (Guid documentId,
+                IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+            => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/generate/{documentId}", httpFactory, http, ct))
+            .WithName("BffGraphSuggestionGenerate")
+            .Produces<List<AiSuggestionDto>>()
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status502BadGateway);
 
         return app;
     }

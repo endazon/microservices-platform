@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — AI 提案の生成に製品の経路を開け、SC-03 から「その文書を読める利用者」が起動できるようにする（#2106）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-18, UC-10, SC-03, SC-21, ADR-0081, ADR-0051, ADR-0034, ADR-0063, IADR-0530, IADR-0653]
 author: claude
 created: 2026-10-30
@@ -46,6 +46,8 @@ issue: "#2106"
    - 生成中は押せない。
    - 失敗したら中立の文言を出す（404 も「生成できませんでした」に寄せる。存在秘匿）。
    - 文言で、LLM を呼ぶことと、提案は閲覧できる文書の範囲で作られることを示す。
+   - 🔴 **0 件のときの配置は暫定**（planning#857 の裁定待ち。推奨は (a)）: 0 件のときは見出し・枠を出さず、ボタンと説明 1 行だけを置く。1 件以上のときは欄の中に置く。
+     配置は 1 つの部品 `SuggestionGenerateControl` に閉じ、裁定が異なれば配置だけを差し替える。
 4. **後段の注釈**: 「裁定待ち」を、ADR-0081 決定 2 で解決済みと改める（振る舞いは変えない）。
 5. **運用文書**: east-west の計測の手順書は `measurement.suggestionGenerate` を使っている。「製品の口を管理者として叩く」へ改める。
 6. **IADR-0653** を起こす。IADR-0530 決定 1 を置き換える。IADR-0530 の状態欄に後継を併記する（本文は書き換えない）。
@@ -79,3 +81,32 @@ issue: "#2106"
 | 後段へ到達できないときは 502 | 同 | 赤 |
 | SC-03 からボタンで起動でき、成功後に提案の一覧が引き直されて出る | `DocumentDetailPage.test.tsx` | 赤（ボタンが無い） |
 | 生成の失敗（404 を含む）は中立の文言で出し、存在の有無を示さない | 同 | 赤 |
+
+## 実装中の追記（2026-10-30）
+
+- **直列化**: #2344 のマージ（`6a340d26`）を待ち、develop を取り込んでから BFF・openapi・orval・BFF の試験を足した。
+- **規則 9 の走査結果**:
+
+  | 箇所 | 扱い |
+  | --- | --- |
+  | `GraphBffEndpoints.cs`（群の注釈・計測の口・鍵の定数） | 直した |
+  | `BffGraphSuggestionTests`（「生成の口は公開しない」） | 「1 文書の ID を取る口 1 本だけ」へ組み替えた |
+  | `BffMeasurementSuggestionGenerateTests` | 撤去し、`BffGraphSuggestionGenerateTests` に置き換えた |
+  | `BffTestFactory`（生成の POST を書き込みの knob へ） | 直した |
+  | openapi の生成の口 | 直した |
+  | helm の values と deployment | 直した |
+  | east-west の計測の手順書（§2.2・§2.4・§3.2.1・§6.1） | 直した |
+  | 機能仕様書 FR-18 の未決事項 1 | 直した |
+  | 画面仕様書 SC-21 の注記 | 直した |
+  | テスト仕様書 FR-18 の T-57・T-58 と実装マッピング | 直した |
+  | 後段 GraphService の生成の注釈 | 直した |
+  | IADR-0530（状態欄に後継を併記） | 直した |
+  | IADR-0276・IADR-0300 の「生成は開けない」 | 凍結記録なので書き換えない。IADR-0653 から引いた |
+  | `SuggestionPromptGateTests` のコメント（後段の口の配線） | 該当しない |
+- **赤 → 緑**:
+  - BFF: `BffGraphSuggestionGenerateTests` の 7 件は、口が無い状態で全件赤だった。
+  - SC-03: 試験 4 件を、承認欄の部品が develop の版のままの状態で赤にしてから、部品をつないで緑にした。
+- **床**: 初期ロード合計の床を、実測で 651,049 B から 651,762 B へ上げた。
+  - 増えた分は、新しい文言 5 つの ja / en カタログ（入口チャンク）である。
+  - 生成の呼び出しのコードは graph の遅延チャンクに入る（dist で確かめた）。
+- **0 件のときの配置**: 暫定（planning#857 の裁定待ち）。部品 `SuggestionGenerateControl` と、`AiSuggestionPanel` の呼び出し 2 か所に閉じた。

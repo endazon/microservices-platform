@@ -9,6 +9,7 @@ import {
   useEdgeTypeNames,
   useSuggestionActions,
 } from '../api/useDocumentSuggestions';
+import { SuggestionGenerateControl } from './SuggestionGenerateControl';
 
 // SC-03, UC-10, FR-18, ADR-0033 決定 7・9・10: **AI 提案の承認欄**（#450）。
 //
@@ -75,7 +76,15 @@ export function AiSuggestionPanel({ documentId }: { documentId: string }) {
   }
 
   // 05_screens §SC-03: **0 件なら欄自体を出さない。**
-  if (items.length === 0) return null;
+  // ［2026-10-30 / #2106］ただし生成の起動の要素だけは置く（見出し・枠は出さない）。**暫定**の配置であり
+  // planning#857 の裁定待ち（[[IADR-0653]] 決定 4。裁定が異なれば `SuggestionGenerateControl` の置き場所だけを差し替える）。
+  if (items.length === 0) {
+    return (
+      <div className="mb-3">
+        <SuggestionGenerateControl documentId={documentId} />
+      </div>
+    );
+  }
 
   const busy = approve.isPending || reject.isPending;
   // ADR-0063 決定 2 後段: 辞書に無い値は承認できず却下のみ。後段は 400 `unknown_tag` を本文ごと透過する。
@@ -119,6 +128,11 @@ export function AiSuggestionPanel({ documentId }: { documentId: string }) {
           </Alert>
         )
       )}
+
+      {/* FR-18, ADR-0081 決定 2 (#2106): 生成の起動。押せるのはその文書を読める利用者（判定は後段）。 */}
+      <div className="mt-3">
+        <SuggestionGenerateControl documentId={documentId} />
+      </div>
 
       {/* 05_screens §SC-03: 本欄から SC-21（棚卸しの一覧）への導線を置く。 */}
       <p className="mt-n3 text-sm">

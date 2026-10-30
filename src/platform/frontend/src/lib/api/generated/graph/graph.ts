@@ -613,41 +613,36 @@ export function useBffGraphSuggestions<TData = Awaited<ReturnType<typeof bffGrap
 
 
 
-export type bffGraphSuggestionGenerateForMeasurementResponse200 = {
+export type bffGraphSuggestionGenerateResponse200 = {
   data: AiSuggestion[]
   status: 200
 }
 
-export type bffGraphSuggestionGenerateForMeasurementResponse401 = {
+export type bffGraphSuggestionGenerateResponse401 = {
   data: void
   status: 401
 }
 
-export type bffGraphSuggestionGenerateForMeasurementResponse403 = {
-  data: void
-  status: 403
-}
-
-export type bffGraphSuggestionGenerateForMeasurementResponse404 = {
+export type bffGraphSuggestionGenerateResponse404 = {
   data: void
   status: 404
 }
 
-export type bffGraphSuggestionGenerateForMeasurementResponse502 = {
+export type bffGraphSuggestionGenerateResponse502 = {
   data: void
   status: 502
 }
 
-export type bffGraphSuggestionGenerateForMeasurementResponseSuccess = (bffGraphSuggestionGenerateForMeasurementResponse200) & {
+export type bffGraphSuggestionGenerateResponseSuccess = (bffGraphSuggestionGenerateResponse200) & {
   headers: Headers;
 };
-export type bffGraphSuggestionGenerateForMeasurementResponseError = (bffGraphSuggestionGenerateForMeasurementResponse401 | bffGraphSuggestionGenerateForMeasurementResponse403 | bffGraphSuggestionGenerateForMeasurementResponse404 | bffGraphSuggestionGenerateForMeasurementResponse502) & {
+export type bffGraphSuggestionGenerateResponseError = (bffGraphSuggestionGenerateResponse401 | bffGraphSuggestionGenerateResponse404 | bffGraphSuggestionGenerateResponse502) & {
   headers: Headers;
 };
 
-export type bffGraphSuggestionGenerateForMeasurementResponse = (bffGraphSuggestionGenerateForMeasurementResponseSuccess | bffGraphSuggestionGenerateForMeasurementResponseError)
+export type bffGraphSuggestionGenerateResponse = (bffGraphSuggestionGenerateResponseSuccess | bffGraphSuggestionGenerateResponseError)
 
-export const getBffGraphSuggestionGenerateForMeasurementUrl = (documentId: string,) => {
+export const getBffGraphSuggestionGenerateUrl = (documentId: string,) => {
 
 
 
@@ -656,21 +651,20 @@ export const getBffGraphSuggestionGenerateForMeasurementUrl = (documentId: strin
 }
 
 /**
- * NFR-16, ADR-0117, IADR-0530 決定 1・2（#1887）: **製品の口ではない。** 稼働クラスタで east-west の gRPC
- * （生成の LLM 呼び出しとタグ辞書の読み取り、および承認の材料になる保留中のタグ提案）を 1 回ずつ発火させる
- * 計測のためだけに置く。
+ * FR-18, ADR-0081 決定 1・2, IADR-0653（#2106）: **製品の口**である（構成の鍵に依らず常に在る）。
+ * **押せるのはその文書を読める利用者**（管理者・運用者に限らない）。資格は後段（GraphService の生成）が read のスコープで
+ * 判定し、起点が見えない・存在しないは **404（区別しない）**。承認・却下の資格（write または管理者の経路）とは別の水準である。
  *
- * **BFF の構成 `Measurement:EnableSuggestionGenerate=true`（helm の `measurement.suggestionGenerate`）のときだけ
- * ルート表に載る。既定（無効）では 404 である。** 有効でもシステム管理者だけが呼べる（運用者・一般利用者は 403）。
- * **LLM の費用が出る。** 画面からは呼ばない（手順は east-west gRPC の実測の手順書 §1.2）。
+ * 生成は押した利用者のスコープで行う（1 実行 = 1 利用者のスコープ。ADR-0051 決定 4）。タイミングは要求時だけである。
+ * **LLM の費用が出る**（用途 `graph-suggestion`）。類似の候補が無いときは空の配列で 200 である（LLM は呼ばれない）。
+ * SC-03 の承認欄のボタンが呼ぶ。
  *
- * 後段（GraphService の生成）の状態コードと本文を詰め替えずに返す。起点が見えない・存在しないは 404
- * （区別しない）。類似の候補が無いときは空の配列で 200 である（LLM は呼ばれない）。
- * @summary NFR-16, FR-18: 計測専用。AI 提案の生成を 1 文書に対して起動する（既定は無効・システム管理者限定）
+ * 後段の状態コードと本文を詰め替えずに返す。旧い計測専用の口（構成の鍵・システム管理者限定。IADR-0530 決定 1）は撤去した。
+ * @summary FR-18, UC-10, SC-03: AI 提案の生成を 1 文書に対して起動する（その文書を読める利用者。#2106）
  */
-export const bffGraphSuggestionGenerateForMeasurement = async (documentId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionGenerateForMeasurementResponse> => {
+export const bffGraphSuggestionGenerate = async (documentId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionGenerateResponse> => {
 
-  return bffFetch<bffGraphSuggestionGenerateForMeasurementResponse>(getBffGraphSuggestionGenerateForMeasurementUrl(documentId),
+  return bffFetch<bffGraphSuggestionGenerateResponse>(getBffGraphSuggestionGenerateUrl(documentId),
   {
     ...options,
     method: 'POST'
@@ -683,11 +677,11 @@ export const bffGraphSuggestionGenerateForMeasurement = async (documentId: strin
 
 
 
-export const getBffGraphSuggestionGenerateForMeasurementMutationOptions = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, TError,{documentId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, TError,{documentId: string}, TContext> => {
+export const getBffGraphSuggestionGenerateMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerate>>, TError,{documentId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerate>>, TError,{documentId: string}, TContext> => {
 
-const mutationKey = ['bffGraphSuggestionGenerateForMeasurement'];
+const mutationKey = ['bffGraphSuggestionGenerate'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -697,10 +691,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, {documentId: string}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffGraphSuggestionGenerate>>, {documentId: string}> = (props) => {
           const {documentId} = props ?? {};
 
-          return  bffGraphSuggestionGenerateForMeasurement(documentId,requestOptions)
+          return  bffGraphSuggestionGenerate(documentId,requestOptions)
         }
 
 
@@ -710,22 +704,22 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type BffGraphSuggestionGenerateForMeasurementMutationResult = NonNullable<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>>
+    export type BffGraphSuggestionGenerateMutationResult = NonNullable<Awaited<ReturnType<typeof bffGraphSuggestionGenerate>>>
 
-    export type BffGraphSuggestionGenerateForMeasurementMutationError = void
+    export type BffGraphSuggestionGenerateMutationError = void
 
     /**
- * @summary NFR-16, FR-18: 計測専用。AI 提案の生成を 1 文書に対して起動する（既定は無効・システム管理者限定）
+ * @summary FR-18, UC-10, SC-03: AI 提案の生成を 1 文書に対して起動する（その文書を読める利用者。#2106）
  */
-export const useBffGraphSuggestionGenerateForMeasurement = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>, TError,{documentId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+export const useBffGraphSuggestionGenerate = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphSuggestionGenerate>>, TError,{documentId: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof bffGraphSuggestionGenerateForMeasurement>>,
+        Awaited<ReturnType<typeof bffGraphSuggestionGenerate>>,
         TError,
         {documentId: string},
         TContext
       > => {
-      return useMutation(getBffGraphSuggestionGenerateForMeasurementMutationOptions(options));
+      return useMutation(getBffGraphSuggestionGenerateMutationOptions(options));
     }
     export type bffGraphSuggestionApproveResponse200 = {
   data: AiSuggestion
