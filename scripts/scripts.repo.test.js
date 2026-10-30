@@ -13469,6 +13469,42 @@ exit $RC
       }
     });
 
+    // FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178): 耐久化の操作のメモリ上の再試行の失敗の警報 MessagingRetryBlockErrors。
+    // DeadLetterReached と同じ型の守り（C# の計器名・タグ名から導いた式・初回の腕・absent 不使用・4 か所）を、別の計器に掛ける。
+    ok('#2178: 警報 MessagingRetryBlockErrors が、C# の計器名とタグ名から導いた式を 4 か所で見て、提供者が AddPlatformLogging に載る（実データ）', () => {
+      const REL = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/RetryBlockErrorMetrics.cs';
+      const cs = readD(REL);
+      const promName = `${constOfD(REL, cs, 'CounterName').replace(/\./g, '_')}_total`;
+      assert.strictEqual(promName, 'messaging_retry_block_errors_total');
+      const errorTag = constOfD(REL, cs, 'ErrorTypeTag').replace(/\./g, '_');
+      assert.strictEqual(errorTag, 'error_type');
+      // 照合はテンプレートの完全一致（JasperFx の RetryBlock のテンプレート。版上げの検知は C# の単体試験が実物のブロックで持つ）。
+      assert.strictEqual(constOfD(REL, cs, 'RetryTemplate'), 'Error while trying to retry {Item}');
+      assert.match(cs, /MeterName\s*=\s*ConsumerTimeoutMetrics\.MeterName;/, 'RetryBlockErrorMetrics の Meter が共通の Meter から外れた');
+      // 🔴 提供者を登録しなければ計器は永久に系列を持たず、警報は構文として正当なまま黙る。
+      assert.match(readD(OBS_CS_D), /logging\.AddPlatformRetryBlockErrorMetrics\(\)/, 'AddPlatformLogging が再試行の失敗の提供者を登録していない');
+
+      for (const rel of RULE_FILES_D) {
+        const rule = ruleBodyD(readD(rel), 'MessagingRetryBlockErrors');
+        assert.ok(rule, `${rel} に MessagingRetryBlockErrors のルール定義が無い`);
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の MessagingRetryBlockErrors の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        assert.ok(!exprM[1].includes('absent('), `${rel} の MessagingRetryBlockErrors が absent() になっている（平常時は系列が無い）`);
+        assert.strictEqual(exprM[1],
+          `sum by (job, ${errorTag}) ((${promName} unless ${promName} offset 1h) or increase(${promName}[1h])) > 0`,
+          `${rel} の MessagingRetryBlockErrors が「サービス・例外の型ごとに、初回の腕つきの前進が 0 を超えたら」の形でない`);
+        assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の MessagingRetryBlockErrors の for / severity が流儀（5m・warning）と違う`);
+        if (rel.includes('grafana')) {
+          assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の MessagingRetryBlockErrors の評価器が gt 0 でない`);
+          assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の MessagingRetryBlockErrors の noDataState が OK でない（平常時は系列が無い）`);
+        }
+      }
+      const test = readD('deploy/prometheus/tests/messaging-retry-block.test.yml');
+      assert.match(test, /^\s+- \.\.\/alerts\.yml$/m, '試験が compose の alerts.yml を読んでいない');
+      assert.match(test, /values: '_x\d+ 1x\d+'/, '「系列が初めて 1 で現れる」場面が無い');
+      assert.match(test, /instance="new"/, '再起動で instance が替わった新しい系列の 1 件目の場面が無い（IADR-0593）');
+    });
+
     ok('#2043: DeadLetterReached の初回の場面を promtool の単体試験が固定し、CI がそれを回す（実データ）', () => {
       const test = readD('deploy/prometheus/tests/messaging-dead-letter.test.yml');
       assert.match(test, /^\s+- \.\.\/alerts\.yml$/m, '試験が compose の alerts.yml を読んでいない');
@@ -13521,8 +13557,11 @@ exit $RC
       'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
       'deploy/local/observability/grafana.yaml',
     ];
-    const TEST_FILES_F = ['deploy/prometheus/tests/first-series-alerts.test.yml', 'deploy/prometheus/tests/messaging-dead-letter.test.yml'];
-    const EXPECTED_F = ['DeadLetterReached', 'DepartmentSyncNotCorrecting', 'IngestionBudgetExhausted', 'UnitDocumentsMissingProjectAttribute'];
+    // #2178（IADR-0656）: MessagingRetryBlockErrors とその試験を足した。
+    const TEST_FILES_F = ['deploy/prometheus/tests/first-series-alerts.test.yml', 'deploy/prometheus/tests/messaging-dead-letter.test.yml',
+      'deploy/prometheus/tests/messaging-retry-block.test.yml'];
+    const EXPECTED_F = ['DeadLetterReached', 'DepartmentSyncNotCorrecting', 'IngestionBudgetExhausted', 'MessagingRetryBlockErrors',
+      'UnitDocumentsMissingProjectAttribute'];
     const readF = (rel) => fsF.readFileSync(pathF.join(ROOT_F, rel), 'utf8');
     // ルール名ごとの expr（1 行の引用符つき）を読む。コメント行は落とす。
     const zeroNormalRules = (text) => {

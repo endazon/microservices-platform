@@ -97,6 +97,10 @@ public static class ObservabilityExtensions
             options.AddOtlpExporter(o => o.Endpoint = otlpEndpoint);
         });
 
+        // FR-12, NFR-21, IADR-0609 決定 2, [[IADR-0656]] (#2178): Wolverine（JasperFx の RetryBlock）のメモリ上の再試行の失敗を計器にする
+        // （警報 MessagingRetryBlockErrors の元）。ログは書かず、テンプレートの照合に当たった記録だけを数える。
+        logging.AddPlatformRetryBlockErrorMetrics();
+
         return logging;
     }
 }

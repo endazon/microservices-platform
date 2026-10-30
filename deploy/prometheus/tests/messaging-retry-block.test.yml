@@ -1,0 +1,88 @@
+# FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178): 警報 MessagingRetryBlockErrors の式を `promtool test rules` で固定する。
+#
+# 🔴 守る対象は**初回**である。計器 `messaging_retry_block_errors_total` は最初の再試行の失敗で初めて系列が立ち、
+#   OTel の累積値なので最初の標本が 1 になる。`increase` だけの式では最初の 1 件で鳴らない（DeadLetterReached と同じ理由）。
+#   式は系列ごとに「1 時間前に無かった系列は計器の値、在った系列は前進量」を採る（`(m unless m offset 1h) or increase(m[1h])`）。
+# 🔴 平常時は系列が無い（0 が正常の計数）。系列が無ければ鳴らない（場面 3）。前進が止まれば 1 時間で収まる（場面 1 の終わり）。
+#
+# 実行: promtool test rules deploy/prometheus/tests/*.test.yml（CI の static-checks-units。版は deploy の Prometheus と同じ v2.52.0）
+rule_files:
+  - ../alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 場面 1: 系列が**初めて 1 で現れる**（初回の再試行の失敗）。10 分目に現れ、以後 1 のまま。
+  #   → 現れてから for 5m の後（16 分目）に鳴る。現れる前は鳴らない。1 時間を過ぎると収まる（恒常発火しない）。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_retry_block_errors_total{job="microservices-platform.datasource-service", error_type="NpgsqlException", instance="a"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.datasource-service
+              error_type: NpgsqlException
+            exp_annotations:
+              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）'
+              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=NpgsqlException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行が済む前にプロセスが止まると、その送出は欠落し得る（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのエラーログ（Error while trying to retry）で時刻と例外を確かめ、窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。'
+      - eval_time: 80m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts: []
+
+  # 場面 2: 既にある系列が前進する（2 件目以降）。1 のまま 90 分続いた後に 2 になる。
+  #   → 前進してから 5 分後に鳴る。前進の前（系列は在るが動いていない）は鳴らない。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_retry_block_errors_total{job="microservices-platform.datasource-service", error_type="TimeoutException", instance="a"}'
+        values: '1x90 2x40'
+    alert_rule_test:
+      - eval_time: 85m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts: []
+      - eval_time: 97m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.datasource-service
+              error_type: TimeoutException
+            exp_annotations:
+              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）'
+              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=TimeoutException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行が済む前にプロセスが止まると、その送出は欠落し得る（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのエラーログ（Error while trying to retry）で時刻と例外を確かめ、窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。'
+
+  # 場面 3: 系列が 1 本も無い（平常時）。→ 鳴らない（`absent` を置いていないので、不在は警報にならない）。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_dead_letter_total{job="microservices-platform.datasource-service", messaging_message_type="RawDocumentFetched", error_type="X", instance="a"}'
+        values: '0x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts: []
+
+  # 場面 4: 再起動で instance が替わった新しい系列の 1 件目（DeadLetterReached の #2097 と同じ形）。
+  #   古いプロセスの系列は 0 のまま在り、新しいプロセスの系列が 40 分目に 1 で現れる → 鳴る。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_retry_block_errors_total{job="microservices-platform.datasource-service", error_type="NpgsqlException", instance="old"}'
+        values: '0x40'
+      - series: 'messaging_retry_block_errors_total{job="microservices-platform.datasource-service", error_type="NpgsqlException", instance="new"}'
+        values: '_x40 1x40'
+    alert_rule_test:
+      - eval_time: 47m
+        alertname: MessagingRetryBlockErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.datasource-service
+              error_type: NpgsqlException
+            exp_annotations:
+              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）'
+              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=NpgsqlException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行が済む前にプロセスが止まると、その送出は欠落し得る（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのエラーログ（Error while trying to retry）で時刻と例外を確かめ、窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。'
