@@ -1,11 +1,11 @@
 ---
 title: IADR-0380 AI 提案の類似度候補は GraphService 内の語の共起（IDF 重み付きコサイン）を既定の供給元にし、「供給元が空」を本番 DI の回帰対照で赤にする
 type: impl-adr
-status: Proposed
+status: Accepted
 related_ids: [FR-17, FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0050, ADR-0051, IADR-0242, IADR-0266, IADR-0281]
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-10-30
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0051_ai-suggestion-abac-boundary.md
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
@@ -13,7 +13,7 @@ plan_refs:
 
 # IADR-0380: AI 提案の類似度候補は GraphService 内の語の共起を既定の供給元にし、「供給元が空」を本番 DI の回帰対照で赤にする
 
-- 状態: Proposed
+- 状態: Accepted（［2026-10-30 追記 / #2144］Proposed から改めた。下の §計画の裁定）
 - 日付: 2026-09-05
 - 決定者: claude（#1244。親 #454 の棚卸しで摘出）
 
@@ -147,6 +147,18 @@ plan_refs:
   2. 稼働で `MinScore` と候補の質を実測し、必要なら既定を改める。**`pending` 行が実際に作られるところまでの稼働実測は、
      外部 LLM の API キーが構成された環境で行う**（本 PR 時点のクラスタは上流が認証で拒む）
   3. #1215 が閉じたら A-1 を**追加の供給元**として重ねるかを判断する（ポートは変えない）
+
+## 計画の裁定（［2026-10-30 追記 / #2144］）
+
+本 IADR は、計画 FR-18 が類似度を「埋め込み類似度」と方式まで指定していたため、計画との差異として `Proposed` のまま置いていた
+（#2144。親 #2047 の指摘 L-14）。差異は planning#837 で裁定された（利用者裁定 2026-10-23。計画の PR #840）。
+
+- FR-18 は「**内容の類似度（方式は実装が選ぶ。語の共起・埋め込み等）**」へ改まった。
+- ADR-0051 決定 1 に「本決定は類似度の算出方式に依らない」の補完が入った（越境してよいのは算出であり、提示は決定 2 で絞る）。
+- 計画の残作業は無い。方式を変えるときは、実装が IADR に記録する。
+
+したがって本 IADR の決定（語の共起を既定の供給元にする）は計画と食い違わない。状態を `Accepted` に改めた。決定・理由・結果の本文は変えていない。
+#2144 のもう 1 つの指摘（却下時の本文の指紋）は PR #2319 で是正済みである。
 
 ## 関連
 

@@ -10,7 +10,7 @@ author: claude
 ids: [FR-18, SC-03, SC-05, SC-09, NFR-09, NFR-16]
 adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0117, ADR-0081]
 iadrs: [IADR-0300, IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412, IADR-0530]
-specs: [20261030_2144_reject-fingerprints-from-replica, 20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers, 20261030_2106_suggestion-generate-product-route]
+specs: [20261030_2144_iadr-0380-accepted, 20261030_2144_reject-fingerprints-from-replica, 20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers, 20261030_2106_suggestion-generate-product-route]
 issues: [#2144, #1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887, #2119, #2106]
 -->
 
@@ -77,7 +77,7 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-38 | — | 送信するプロンプトを見る | **辞書の名前集合が「タグ」の節として入る**。辞書が空なら「提案しない」と指示する | 同上（言語モデルに選ばせる値集合） | 自動 |
 | T-39 | 文書サービスのタグ反映口 | 所有者／管理者／それ以外／辞書外／未知の文書 | 200・200・404・400・404。冪等（二度目は版もイベントも進まない）。**認可は辞書照合より前** | 反映先の最終防衛線 | 自動 |
 | T-40 | 反映の HTTP アダプタ | 呼び出しを捕捉 | **承認者の資格情報ヘッダをそのまま転送する**（外すと後段が匿名として拒む）。200／400／404／5xx／到達不能をそれぞれの結果へ写す | 承認者本人の資格で書く | 自動 |
-| T-41 | 本文を共有する 2 文書 | 類似度候補を引く（実供給元） | **候補が返り、似た文書が最上位に並ぶ**（陽性。これが赤なら「提案が構造的に 0 件」の再発） | 埋め込み類似度により候補を提案する | 自動 |
+| T-41 | 本文を共有する 2 文書 | 類似度候補を引く（実供給元） | **候補が返り、似た文書が最上位に並ぶ**（陽性。これが赤なら「提案が構造的に 0 件」の再発） | 内容の類似度により候補を提案する（［2026-10-30］計画が方式を中立にした改定に合わせた。従前は「埋め込み類似度」） | 自動 |
 | T-42 | 語彙を共有しない文書 | 同上 | **候補に入らない**（T-41 と同じ母集合） | 同上（無関係を提案しない） | 自動 |
 | T-43 | 全文書に共通する定型句だけを共有する文書 | 同上 | **しきい値を下回り候補に入らない**。全件共通の語の重み付けを外すと落ちる（変異） | 同上 | 自動 |
 | T-44 | 同じ入力 | 2 回引く | 同じ順序・同じスコア（決定的） | 同上 | 自動 |
