@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-10-23
+updated: 2026-10-30
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
 iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601]
-specs: [20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort]
-issues: [#380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, planning#783]
+specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort]
+issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, planning#783]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -147,6 +147,9 @@ sum by (llm_pricing_status, llm_model) (increase(llm_pricing_unpriced_total[$__r
 # 逐次応答が途中で終わった送信（0 でなければ下の金額は下限）
 sum by (llm_purpose, llm_incomplete_reason, llm_usage_coverage) (increase(llm_usage_incomplete_total[$__range]))
 
+# 逐次応答の取り消し（呼び出し側の停止・期限切れ。上の不完全な計上の cancelled にも数えられる）
+sum by (llm_purpose) (increase(llm_completion_total{llm_result="cancelled"}[$__range]))
+
 # 用途別の費用（選択期間の累計）
 sum by (llm_purpose) (increase(llm_cost_total[$__range]))
 
@@ -162,6 +165,8 @@ sum by (llm_model, llm_token_type) (increase(llm_tokens_total[$__range]))
 k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内容で置く。**片方だけ直すと
 経路間パリティの検査が落ちる**）。最上段に「単価を解決できなかった呼び出し」を置き、
 **0 でなければ以下の金額が過小であること**を画面上で明示する。
+その下の段に「逐次応答の途中終了（不完全な計上）」と「逐次応答の取り消し」を置き（上のクエリ例と同じ式）、
+**不完全な計上が 0 でない期間の金額は下限であること**を費用のパネルの説明にも書く。
 
 月次の読み方は [`../operations/llm-cost-monthly-review-runbook.md`](../operations/llm-cost-monthly-review-runbook.md) が定める。
 

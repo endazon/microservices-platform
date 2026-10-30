@@ -5616,7 +5616,8 @@ ${r.stderr}`);
       }
 
       // 属性名。
-      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality|token_type|pricing_status|currency)\b/g) || [])) {
+      // #2165: 不完全な計上の属性（incomplete_reason・usage_coverage）も見る。
+      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality|token_type|pricing_status|currency|incomplete_reason|usage_coverage)\b/g) || [])) {
         const otel = attr.replace(/^llm_/, 'llm.');
         assert.ok(impl.includes(`"${otel}"`), `式の属性 ${attr} が実装に無い`);
       }
@@ -5626,6 +5627,24 @@ ${r.stderr}`);
       for (const m of exprs.matchAll(/llm_(?:stop_reason|result)="([a-z_]+)"/g)) vals.add(m[1]);
       assert.ok(vals.size > 0, '属性値による絞り込みが 1 つも無い（式が空か形が変わった）');
       for (const v of vals) assert.ok(impl.includes(`"${v}"`), `式の属性値 ${v} が実装に無い`);
+    });
+
+    // FR-11, #2165: 不完全な計上と取り消しのパネルの式は、可観測性仕様書のクエリ例と一字一句同じである（式を 2 か所で別に育てない）。
+    ok('#2165: llm-usage の不完全な計上・取り消しのパネルの式が可観測性仕様書の PromQL と一致する', () => {
+      const d = JSON.parse(fsG.readFileSync(pathG.join(root, dashFile), 'utf8'));
+      const spec = fsG.readFileSync(pathG.join(root, 'docs/observability/llm-usage-and-cost-metrics.md'), 'utf8');
+      const promql = [...spec.matchAll(/```promql\n([\s\S]*?)```/g)].map((m) => m[1]).join('\n');
+      const lines = new Set(promql.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')));
+      const byExpr = (re) => d.panels.flatMap((p) => (p.targets || []).map((t) => t.expr)).filter((e) => re.test(e));
+      const incomplete = byExpr(/llm_usage_incomplete_total/);
+      const cancelled = byExpr(/llm_result="cancelled"/);
+      assert.strictEqual(incomplete.length, 1, '不完全な計上のパネルが 1 つでない');
+      assert.strictEqual(cancelled.length, 1, '取り消しのパネルが 1 つでない');
+      for (const e of [...incomplete, ...cancelled]) assert.ok(lines.has(e), `パネルの式が仕様書の PromQL に無い: ${e}`);
+      // 費用のパネルは「不完全が 0 でない期間は下限」と書く。
+      for (const p of d.panels.filter((x) => (x.targets || []).some((t) => /llm_cost_total\[\$__range\]/.test(t.expr)))) {
+        assert.ok(/下限/.test(p.description || ''), `費用のパネル「${p.title}」の説明に下限の注記が無い`);
+      }
     });
 
     // Runbook が指す先が実在すること（#592 / IADR-0163 と同じ趣旨を、この 1 対について持つ）。
