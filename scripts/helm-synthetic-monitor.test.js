@@ -39,8 +39,7 @@ const CHART = 'deploy/helm/microservices-platform';
 const CI_VALUES = `${CHART}/ci/synthetic-monitor-values.yaml`;
 // NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成プローブの「有効」。
 const CI_SLO_VALUES = `${CHART}/ci/synthetic-monitor-slo-values.yaml`;
-const SLO_EXTERNAL_SECRET = read('deploy/local/vault/eso/externalsecret-synthetic-monitor-slo-oidc.yaml');
-const REALM = JSON.parse(read('deploy/keycloak/microservices-platform-realm.json'));
+
 const VALUES_LOCAL = 'deploy/local/values-local.yaml';
 const SYNTHETIC_SOURCE = '# Source: microservices-platform/templates/synthetic-monitor.yaml';
 const MARKER = 'SyntheticMonitoring__Subjects__0';
@@ -52,6 +51,9 @@ const CHART_PROBE = fs.readFileSync(path.join(REPO_ROOT, CHART, 'files/synthetic
 const UP_SH = read('scripts/k8s-local-up.sh');
 const EXTERNAL_SECRET = read('deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml');
 const CHART_VALUES = read(`${CHART}/values.yaml`);
+// IADR-0654 (#2335): `read` の定義の後に置く（前に置くと TDZ で ReferenceError）。
+const SLO_EXTERNAL_SECRET = read('deploy/local/vault/eso/externalsecret-synthetic-monitor-slo-oidc.yaml');
+const REALM = JSON.parse(read('deploy/keycloak/microservices-platform-realm.json'));
 
 let passed = 0;
 function ok(name, fn) {

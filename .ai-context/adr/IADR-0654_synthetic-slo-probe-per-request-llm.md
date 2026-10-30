@@ -82,3 +82,6 @@ related_specs:
 - **LLM の費用が出る**（月 720 回・概算 月約 4,400 円）。チャートの既定は無効で、有効化は課金の承認の後に行う。費用は `llm_usage_synthetic_excluded_total` に積まれる。
 - 初回トークンの系列の不在の警報（`absent_over_time(…[2h])`）は、既定が無効のため入れていない（有効化した配備で入れる）。
 - 手元に helm が無いので、チャートの描画の試験（`helm-synthetic-monitor.test.js`）は CI（static-checks-units）で初めて走る。
+- 🔴 **realm の宣言に機密クライアントを足したので、dev 以外のクラスタでは有効化に関係なく事前手順が要る**（#2346 の監査の指摘）。
+  - 後追いの dev の secret の守り（[IADR-0572](./IADR-0572_dev-secret-guard-all-service-account-clients.md) の `isDevSecretGuardedClient`・`devSecretCreations`）は、稼働に無い `synthetic-monitor-slo` を宣言の dev の値で作る計画を名指し、その realm に何も書かずに非 0 で終える。
+  - だから後追いの前に、Keycloak へ dev 以外の secret で作り、同じ値を Vault へ置く（運用仕様書。試験は `keycloak-realm-reconcile.test.js` の #2335）。

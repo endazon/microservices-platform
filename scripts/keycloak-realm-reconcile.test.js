@@ -1032,6 +1032,19 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
     done1830('#1830: devSecretCreations は対象のクライアントを作る操作（client.create・realm.create）だけを名指す');
   }
   {
+    // NFR-02, IADR-0654 (#2335): SLO 評価の合成の主体 `synthetic-monitor-slo` は宣言に足しただけで守りの対象に入る。
+    // 🔴 dev 以外のクラスタで稼働の realm に無ければ、後追いは dev の secret で作る計画を名指して何も書かずに非 0 で終える
+    //   （`slo.enabled` の値に依らない）。配備の前に Keycloak へ dev 以外の secret で作っておく手順の根拠である（運用仕様書）。
+    assert.ok(DEV_SECRET_GUARDED_CLIENTS.includes('synthetic-monitor-slo'), 'synthetic-monitor-slo が守りの対象に無い');
+    const live = liveFrom(REALM);
+    live.clients = live.clients.filter((c) => c.clientId !== 'synthetic-monitor-slo');
+    assert.deepStrictEqual(devSecretCreations(plan(REALM, live)), ['synthetic-monitor-slo'],
+      '稼働に無い synthetic-monitor-slo を dev の secret で作る計画を名指さない');
+    // 陰性対照: 稼働に在れば（secret は触らない）作る操作は無い。
+    assert.deepStrictEqual(devSecretCreations(plan(REALM, liveFrom(REALM))), []);
+    done1830('#2335: 新しい機密クライアント synthetic-monitor-slo も、稼働に無ければ dev の secret で作る計画として名指す');
+  }
+  {
     const live = { 'identity-admin': devOf('identity-admin'), 'reset-gate': ['rotated', '1830'].join('-'), 'mcp-client-admin': null, bff: devOf('bff') };
     const expected = { 'identity-admin': 'dev', 'reset-gate': 'rotated', bff: 'dev' }; // 他は稼働の値を与えていない＝absent
     assert.deepStrictEqual(devSecretFindings(REALM, live),

@@ -123,3 +123,12 @@ issue: "#2335"
   - `AskStreamFirstTokenMetricsTests` の縮退の 1 件: 赤だった。
 - **helm**: 手元に helm が無く、導入もしない。チャートの描画の試験（`helm-synthetic-monitor.test.js` の SLO の 6 件）は CI の static-checks-units で初めて走る。構文検査（`node --check`）だけは確かめた。
 - **環境の注記**: `Knowledge.IntegrationTests` の `WikiSlugNonUniquePostgresTests` は、接続文字列が無いので手元で落ちる（本変更とは関係しない）。
+- **［追加コミット］#2346 の監査と CI の是正**:
+  - (1) dev 以外のクラスタでは、realm の後追いの dev の secret の守りが、稼働に無い `synthetic-monitor-slo` の作成を名指して非 0 で終える（有効化に関係なく起きる）。
+    - 運用仕様書に「後追いの前に dev 以外の secret で作り、Vault へ置く」事前手順を書いた。
+    - 先例として、`deploy/local/keycloak-setup/README.md` の守りの節と、ローテーションの手順書の対応表の `synthetic-monitor` の行を引いた。
+    - 対応表に行を足した。
+    - 試験を 1 件足した（`keycloak-realm-reconcile.test.js` の #2335）。
+  - (2) `helm-synthetic-monitor.test.js` で、足した定数が `read` の定義より前にあり TDZ で落ちていた。CI の static-checks-units で赤になった。
+    - 手元で `node scripts/helm-synthetic-monitor.test.js` を走らせて赤を再現し、定義の後へ移した。
+    - helm が無いので fail-closed で止まるが、その手前の静的な試験 3 件までは緑になることを確かめた。

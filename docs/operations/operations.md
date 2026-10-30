@@ -2393,6 +2393,14 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 #### SLO 評価用の合成プローブ（60 分・LLM を呼ぶ）の有効化（［2026-10-30 / #2335］）
 
 **チャートの既定は無効である。LLM の費用が出る**（月 720 回・概算 月約 4,400 円）ので、**有効化は課金の承認の後に行う。**
+
+🔴 **有効化に関係なく必須の事前手順（dev 以外のクラスタ）**: realm の宣言に、機密クライアント `synthetic-monitor-slo` が加わった。
+サービスアカウントを持ち、宣言が secret を持つクライアントである。
+
+- **何が起きるか**: dev 以外のクラスタで realm の後追い（reconcile）を回すとき、このクライアントが稼働の realm に無いと、後追いは「宣言の secret（公知の dev の値）で作る計画」を名指す。そして**その realm には何も書かずに非 0 で終わる**（dev の secret の守り）。これは `syntheticMonitor.slo.enabled=false` のままでも起きる。
+- **どうするか**: 次の後追いより前に、Keycloak へ `synthetic-monitor-slo` を **dev 以外の secret** で作り、同じ値を Vault `secret/msp/synthetic-monitor-slo-oidc` の `client-secret` に置く。後追いは、既に在るクライアントの secret に触れない。
+- **先例**: 守りの仕組みと対象（宣言から導出）は `deploy/local/keycloak-setup/README.md` の §dev 以外のクラスタでの守り にある。秘密の値の作り方と保管先の対応は、対になる秘密のローテーションの手順書の §1-0 対応表（`synthetic-monitor` の行と同じ形）に従う。
+- **手順 1・2 は、この事前手順と同じものである**（有効化しない配備でも、後追いの前に済ませる）。
 仕組みは次のとおり。
 
 - 60 秒のプローブとは**別の主体**（Keycloak のクライアント `synthetic-monitor-slo`）で名乗る。
@@ -2401,10 +2409,10 @@ LlmGateway）に在るため、**当該イメージが更新済みであるこ�
 
 配備の前に要ること（**順に行う**）:
 
-1. **Keycloak の realm にクライアント `synthetic-monitor-slo` を作る。**
+1. **Keycloak の realm にクライアント `synthetic-monitor-slo` を作る**（上の事前手順。有効化しない配備でも、後追いの前に要る）。
    - realm の定義には宣言済みである（ロールなし・`client_credentials`）。
-   - 稼働中の realm へは realm の後追い Job（reconcile）で入る。
-   - 本番の client secret は開発用の置き値（`…-dev-secret-change-me`）にせず、新しく発行する。
+   - 🔴 **dev 以外のクラスタでは、後追いに作らせない**（作らせると後追いが非 0 で終わる）。管理コンソールか管理 API で、dev 以外の secret をつけて先に作る。
+   - dev のクラスタ（`k3d-*` など）では、後追いが宣言の値で作る。
 2. **Vault に client secret を置く。** パスは `secret/msp/synthetic-monitor-slo-oidc`、鍵は `client-secret` で、値は 1 の secret と同じにする。シークレット管理画面の管理項目にも載っている。
 3. **ExternalSecret を当てて同期を確かめる。**
    - 当てるのは `deploy/local/vault/eso/externalsecret-synthetic-monitor-slo-oidc.yaml` で、Secret `synthetic-monitor-slo-oidc` ができる。
