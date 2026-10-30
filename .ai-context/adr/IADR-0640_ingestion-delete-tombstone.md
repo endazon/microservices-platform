@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-02, FR-06, FR-19, ADR-0027, ADR-0057, IADR-0595, IADR-0637, IADR-0639]
 author: claude
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-10-31
 related_specs:
   - ../specs/20261026_2263_ingestion-delete-tombstone.md
 ---
@@ -70,4 +70,7 @@ related_specs:
 - 残余:
   - 本決定の配備より前に削除された文書は墓石を持たず、従前どおり古い更新で取り込み直し得る（一回限りの引き直しは範囲外）。
   - 複数レプリカ・並行受信にすると、プロセス内の排他は効かない（IADR-0595 の残余と同じ条件で解消が要る）。
+    - ［2026-10-31 追記 / #2271］解消（比較交換・分散の排他）までの暫定として、`scripts/check-single-replica-workers.js` を置いた。
+      ingestion の replicas が 1 を超えると fail にする（values・Argo CD の `helm.parameters`・`--set`）。HPA の対象（`scaling.services`）に入っても fail にする。
+      実データは `scripts.repo.test.js` が CI で回す。本体の解消は #2271（`blocked:env`）で扱う。
   - 墓石は掃除しない（1 文書 1 点。版の印と同じ件数）。

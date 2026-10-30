@@ -125,7 +125,7 @@ jobs:
         # 🔴 **claude-code-review.yml と同じ SHA を指す** —— 片方だけ動かすと
         #「レビューは通るのに @claude は動かない」という切り分けの難しい状態になる。
         # この一致は `scripts/check-ai-workflow-config.js` が機械で検査する。
-        uses: anthropics/claude-code-action@e4a6faad497d33dbc7144135c75e41f82f0bf6c0 # v1（2026-09-08 実測で緑）
+        uses: anthropics/claude-code-action@d70510b174a1244958df0b03166a54912811f3e6 # v1.0.264（2026-10-31 実測で緑。この版へ上げた PR の claude-review）
         # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
