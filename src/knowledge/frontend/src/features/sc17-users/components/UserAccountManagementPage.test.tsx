@@ -214,7 +214,7 @@ describe('UserAccountManagementPage (SC-17)', () => {
     // #2348: 1 本の一括照会で全行が同時に埋まる（田中・高橋の 2 行が同じ値）。
     expect(await rows.findAllByText('1.50 KB / 1.00 GB')).toHaveLength(2);
     expect(await rows.findByText('0 B / 0 B')).toBeInTheDocument();
-    // #2348: 一覧の欄は表示中の行の利用者をまとめて 1 本で引く（行ごとの照会をしない＝N+1 を解く）。
+    // #2348: 一覧の欄は一覧の利用者をまとめて 1 本で引く（行ごとの照会をしない＝N+1 を解く）。
     // 題名・件数・中身を返す口は呼ばない。
     const lookups = mocks.apiRequest.mock.calls.filter(
       (c) => String(c[0]) === '/private-notes/quotas/lookup',
@@ -233,6 +233,29 @@ describe('UserAccountManagementPage (SC-17)', () => {
         (c) => String(c[0]).startsWith('/private-notes?') || String(c[0]) === '/private-notes',
       ),
     ).toBe(false);
+  });
+
+  // #2348（AI レビュー 🟡1）: 絞り込みを変えても容量の欄は前の値のまま（「—」へ戻らない）で、一括照会を送り直さない。
+  // 照会の元は絞り込み前の全行なので、絞り込みで照会の鍵が変わらない（IADR-0663 決定 7）。
+  it('keeps the private-note usage shown and does not look up again when the filter changes', async () => {
+    mockApi({
+      quotas: { 'takahashi.jiro': { usedBytes: 2048, limitBytes: 1024 ** 3, percent: 0 } },
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    expect(await within(await usersTable()).findByText('2.00 KB / 1.00 GB')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('部門'), 'hr');
+    await waitFor(async () =>
+      expect(within(await usersTable()).queryByText('田中 太郎')).not.toBeInTheDocument(),
+    );
+    // 絞り込みの直後（待たずに）も前の値が出ている。
+    expect(within(await usersTable()).getByText('2.00 KB / 1.00 GB')).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('部門'), '');
+    expect(within(await usersTable()).getByText('2.00 KB / 1.00 GB')).toBeInTheDocument();
+    expect(
+      mocks.apiRequest.mock.calls.filter((c) => String(c[0]) === '/private-notes/quotas/lookup'),
+    ).toHaveLength(1);
   });
 
   // SC-17: 上限を変える（0〜1 TB）。0 は送れて「新しい資料を作れません」の注記が出る。1 TB 超は押せない。

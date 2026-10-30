@@ -21,10 +21,10 @@ import type { QuotaUnit } from '../types/privateNoteQuota';
 
 const UNITS: readonly QuotaUnit[] = ['MB', 'GB', 'TB'];
 
-// #2348: 一覧の行は、表示中の行の利用者をまとめて引いた結果から描く（行ごとに照会しない＝N+1 を解く）。
+// #2348: 一覧の行は、一覧の利用者（絞り込み前の全行）をまとめて引いた結果から描く（行ごとに照会しない＝N+1 を解く）。
 const QuotaLookupContext = createContext<ReadonlyMap<string, PrivateNoteOwnerUsageDto>>(new Map());
 
-/** 表示中の行の利用者名でまとめて 1 本引き（1,000 人ずつ）、その下の行の欄へ配る。 */
+/** 一覧の利用者名でまとめて 1 本引き（1,000 人ずつ）、その下の行の欄へ配る。 */
 export function PrivateNoteQuotaLookupProvider({
   usernames,
   children,

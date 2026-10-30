@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-19, SC-20, NFR-14]
 adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0105, ADR-0110, ADR-0114]
 iadrs: [IADR-0663, IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
-specs: [20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+specs: [20261031_2348_sc17-quota-lookup-batch, 20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
 issues: [#2348, #2330, #451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
 -->
 
