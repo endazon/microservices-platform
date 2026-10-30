@@ -10,8 +10,8 @@ updated: 2026-10-30
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
 iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524, IADR-0654]
-specs: [20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe]
-issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, planning#700, AST#1078]
+specs: [20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe]
+issues: [#2148, #1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -36,8 +36,11 @@ issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1
 
 | 群 | 何か | 件数 | 本書の節 |
 | --- | --- | ---: | --- |
-| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント 8（境界層・利用者管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視）とサービス間 9、投入器の主体 1（`deferred[]`）、取引ユニットの `*-auth-client-*` の 5 組（`ai-stock-trading/app-secrets` の `notWritable`） | 18 ＋ 5 | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
-| 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | 6 | [手順 2](#手順-2-群-2データストアの資格情報) |
+| 群 1 | 認証基盤のクライアントシークレット —— OIDC クライアント（境界層・利用者管理・MCP クライアント管理・Grafana・Vault・Headlamp・Wiki.js・パスワード再設定の門・合成監視〔可用性と SLO 評価の 2 主体〕）とサービス間のトークン、投入器の主体（`deferred[]`）、取引ユニットの `*-auth-client-*` の組（`ai-stock-trading/app-secrets` の `notWritable`） | `deferred` ＋ `authClientPairs`（下の数え方） | [手順 1](#手順-1-群-1認証基盤のクライアントシークレット) |
+| 群 2 | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db`（`excluded[]`） | `excluded`（下の数え方） | [手順 2](#手順-2-群-2データストアの資格情報) |
+
+［2026-10-30 / #2148］**件数は表に書かない**（「OIDC クライアント 8」「18」と書いていた間に、MCP クライアント管理と SLO 評価の合成監視が足されて 20 になっていた）。数えるときは単一情報源から引く:
+`node -e 'const d=require("./deploy/bootstrap/sc22-secret-items.json");const n=a=>a.flatMap(x=>x.vaultPaths??[x]).length;console.log({items:d.items.length,excluded:n(d.excluded),deferred:n(d.deferred),authClientPairs:d.items.flatMap(i=>i.notWritable??[]).filter(k=>/-auth-client-secret$/.test(k)).length})'`
 
 > **同じ性質だが保管先に無いもの**: `argocd`（`argocd-secret` を起動器が直接書く）。［2026-10-22］`abac-seeder` は保管先（`msp/abac-seeder-oidc`）へ移した（下の 1-0 の表）。
 > 保管先に置き場が無いので本書の対象外だが、回すときは同じ順序（相手を変えてから消費側を作り直す）で行う。

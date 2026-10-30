@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-09
+updated: 2026-10-30
 ---
 <!-- trace:
 ids: [NFR-18, NFR-07]
 adrs: [ADR-0131, ADR-0032]
 iadrs: [IADR-0522, IADR-0251, IADR-0273, IADR-0316, IADR-0427]
-specs: [20261009_1839_session-store-valkey, 20261004_1534_bff-multi-replica-session-cookie, 20260926_issue-1550_live-script-opt-in]
-issues: [#1839, #1534, #439, #1389, #1550, planning#750]
+specs: [20261030_2148_ci-deploy-details, 20261009_1839_session-store-valkey, 20261004_1534_bff-multi-replica-session-cookie, 20260926_issue-1550_live-script-opt-in]
+issues: [#2148, #1839, #1534, #439, #1389, #1550, planning#750]
 -->
 
 # 運用 Runbook: BFF を 2 レプリカにして、セッション Cookie の相互復号を測る
@@ -114,7 +114,7 @@ node scripts/check-bff-multi-replica-session.js --plan
 
 - レプリカ数の鍵は `services.bff.replicas`（`deploy/helm/microservices-platform/values.yaml`。既定 1）。
 - 🔴 **上書きの values にリスト（`extraEnv` など）を書かない。** Helm はリストを**置換**する。
-  `services.bff.extraEnv` に 1 件だけ書いた上書きで描くと、既定の env 36 件（72 行）が消える（#1389 と同じ形。チェックアウトの `deploy/local/values-local.yaml` で描いて実測）。
+  `services.bff.extraEnv` に 1 件だけ書いた上書きで描くと、既定の env がすべて消える（［2026-10-30］件数は書かない。`helm template` で描いた bff-service の Deployment の `env:` の項目が、上書きの 1 件だけに減ることで確かめる。#1389 と同じ形。チェックアウトの `deploy/local/values-local.yaml` で描いて実測）。
   env を足すなら `extraEnvAppend` を使う（本手順では env を変えない）。
 - 上書きは**マップの 1 キーだけ**（`services: {bff: {replicas: 2}}`）なので、他の値は元の values のまま残る。
   `--set services.bff.replicas=2` と描画は同一である。
