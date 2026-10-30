@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-04
-updated: 2026-10-22
+updated: 2026-10-30
 ---
 <!-- trace:
 ids: [NFR-09, NFR-16, NFR-18, FR-15, FR-16, FR-18, FR-19, FR-22, SC-03, SC-09, SC-19, SC-21]
 adrs: [ADR-0005, ADR-0029, ADR-0075, ADR-0089, ADR-0117, ADR-0051, ADR-0037]
 iadrs: [IADR-0589, IADR-0379, IADR-0462, IADR-0426, IADR-0307, IADR-0377, IADR-0487, IADR-0488, IADR-0530, IADR-0380, IADR-0431, IADR-0533]
-specs: [20261022_j4qv_egress-default-deny, 20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows, 20261010_issue-1255-1517_east-west-rest-retirement]
-issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
+specs: [20261022_j4qv_egress-default-deny, 20261004_issue-1255_h2c-roundtrip-measurement-runbook, 20261010_1882_h2c-runbook-false-alarms, 20261010_1887_h2c-measurement-triggers, 20261010_1887_h2c-runbook-order-and-windows, 20261010_issue-1255-1517_east-west-rest-retirement, 20261030_2106_suggestion-generate-product-route]
+issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159, #2106]
 -->
 
 # 運用 Runbook: east-west gRPC（h2c）の往復を稼働 k3s で実測する
@@ -71,7 +71,7 @@ issues: [#1887, #1882, #1255, #1517, #1201, #1389, #1514, #1515, #1516, #1159]
 | helm リリース `msp` の利用者値 | 呼び出し先 13 サービスの `extraEnvAppend` へ要求ログの水準 1 行を**継ぎ足す**（任意で BFF へ認可の gRPC 宛先 1 行） | §2 | §6.1（保存した利用者値で `helm upgrade`） |
 | `PeerAuthentication microservices-platform-mtls` のモード | `set_mesh_mtls_mode` で PERMISSIVE ⇔ STRICT を切り替える（helm 経由） | §4 | §6.1 と同じ 1 本で元のモードへ戻る |
 | `deploy/mcp-service` | 再起動する（起動時のツール申告の収集を発火させる） | §3.2 | 不要 |
-| helm の計測用の値 `measurement.*`（既定はすべて無効） | 計測の窓の間だけ `measurement.json` で入れる（BFF の計測用の生成の口・個人資料の定期処理の前倒し） | §2.2・§3.2.1・§3.2.2 | §6.1（保存した利用者値へ戻すと外れる。外れたことを §6.1 で確かめる） |
+| helm の計測用の値 `measurement.*`（既定はすべて無効） | 計測の窓の間だけ `measurement.json` で入れる（個人資料の定期処理の前倒し。［2026-10-30 / #2106］BFF の計測用の生成の口は撤去した。生成は製品の口で行う） | §2.2・§3.2.1・§3.2.2 | §6.1（保存した利用者値へ戻すと外れる。外れたことを §6.1 で確かめる） |
 | `deploy/document-service` | モードごとに 1 回再起動する（定期処理の前倒しを発火させる）。**その回の発火の最初に行う**（§3.2） | §3.2.2 | 不要 |
 | 業務データ（文書・タグ辞書・AI 提案・個人資料・通知） | 利用者が画面で作る・承認する（L-4・D-3・D-2・N-1 の材料）。計測の後も残る | §3.2.1・§3.2.2 | 任意（§3.2.1・§3.2.2 の後始末） |
 | 使い捨て Pod（`curlimages/curl:8.11.1`・サイドカー無し） | `authorization-service:8081` へ平文 h2c を 1 回送る | §3.5 | `--rm` で自動削除 |
@@ -278,21 +278,22 @@ node "$(np "$W/gen-overlay.mjs")" "$(np "$W/all-values.json")" --bff-authz > "$W
 上書きファイルは JSON で書く（YAML の部分集合なので `helm -f` がそのまま読む）。B-1 を足すと **BFF の権限スコープ解決が利用者の要求ごとに gRPC を通る**
 ようになる（計測の間だけ。§6.1 で外れる）。
 
-**計測用の発火手段**（L-4・D-3・D-2・N-1。§3.2.1・§3.2.2）は、チャートの `measurement.*` を別のファイルで入れる。**既定はすべて無効**であり、
-入れない限り BFF に生成の口は無く、個人資料の定期処理の初回は起動の 24 時間後のままである。
+**計測用の発火手段**（N-1。§3.2.2）は、チャートの `measurement.*` を別のファイルで入れる。**既定はすべて無効**であり、
+入れない限り個人資料の定期処理の初回は起動の 24 時間後のままである。
+［2026-10-30 / #2106］**L-4・D-3・D-2 の発火に計測用の値は要らなくなった。** AI 提案の生成は製品の口（`POST /bff/graph/suggestions/generate/{documentId}`。
+起点の文書を読める利用者なら誰でも叩ける。文書詳細画面の承認欄のボタンも同じ口を呼ぶ）で行う（§3.2.1）。従前の `measurement.suggestionGenerate` は撤去した（入れても描画されない）。
 
 ```bash
 cat > "$W/measurement.json" <<'EOF'
-{ "measurement": { "suggestionGenerate": true, "privateNoteMaintenanceInitialRunDelaySeconds": 60 } }
+{ "measurement": { "privateNoteMaintenanceInitialRunDelaySeconds": 60 } }
 EOF
 ```
 
 | 値 | 効き目 | 描画される env |
 | --- | --- | --- |
-| `measurement.suggestionGenerate: true` | BFF に `POST /bff/graph/suggestions/generate/{documentId}` が載る（**システム管理者限定**。運用者・一般利用者は 403。LLM の費用が出る） | `bff-service` に `Measurement__EnableSuggestionGenerate=true` |
 | `measurement.privateNoteMaintenanceInitialRunDelaySeconds: 60` | `document-service` が起動の 60 秒後に個人資料の定期処理を 1 回走らせる（以後は従前どおり 24 時間ごと。中身・判定・発火記録は本番と同じ） | `document-service` に `PrivateNotes__Maintenance__InitialRunDelaySeconds=60` |
 
-有効にしたサービスは起動のたびに警告を 1 行出す（`計測用の口 … が有効である` / `計測用の前倒しが有効である`）。L-4・D-3・D-2・N-1 を測らない回は
+有効にしたサービスは起動のたびに警告を 1 行出す（`計測用の前倒しが有効である`）。N-1 を測らない回は
 `measurement.json` を作らず、下の `-f "$W/measurement.json"` を外す。
 
 ### 2.3 適用の前に描画の差分で確かめる（S3）
@@ -330,9 +331,8 @@ BFF の gRPC 宛先が introspection 13・文書・検索で、認可が無い�
 ```bash
 helm upgrade msp deploy/helm/microservices-platform -n "$NS" \
   -f "$W/current-values.yaml" -f "$W/overlay.json" -f "$W/measurement.json"   # B-1 も測るなら overlay-bff.json
-kubectl -n "$NS" rollout status deployment --timeout=10m    # 13 サービス（measurement.json か B-1 なら bff も）が作り直される（S5）
-kubectl -n "$NS" logs deploy/bff-service -c bff-service | tr -d '\r' | grep -c '計測用の口'               # 1（measurement.json を入れたとき）
-kubectl -n "$NS" logs deploy/document-service -c document-service | tr -d '\r' | grep -c '計測用の前倒し'  # 1（同上）
+kubectl -n "$NS" rollout status deployment --timeout=10m    # 13 サービス（B-1 なら bff も）が作り直される（S5）
+kubectl -n "$NS" logs deploy/document-service -c document-service | tr -d '\r' | grep -c '計測用の前倒し'  # 1（measurement.json を入れたとき）
 helm get manifest msp -n "$NS" | diff -B "$W/render-after.yaml" - | wc -l   # 0 行（overlay-bff.json なら render を作り直して比べる。-B は §0.3 (2) と同じ理由）
 ```
 
@@ -397,12 +397,13 @@ kubectl -n "$NS" rollout restart deploy/mcp-service && kubectl -n "$NS" rollout 
 ```
 
 §1.2 の経路は、表の「発火」の操作を画面（エッジ経由のログイン）で 1 回ずつ行う。課金の経路は承認した回数だけにする（S8）。
-N-1 は §3.2.2、L-4・D-3・D-2 は §3.2.1 の手順で発火させる（画面の操作だけでは発火しない。順序は上の注のとおり N-1 が先）。G-1 は測定から外す（§1.2）。
+N-1 は §3.2.2（画面の操作だけでは発火しない）、L-4・D-3・D-2 は §3.2.1 の手順で発火させる（［2026-10-30 / #2106］文書詳細画面の生成のボタンでも発火する）。順序は上の注のとおり N-1 が先。G-1 は測定から外す（§1.2）。
 発火できなかった経路は §5 に「未測定」と理由を書く（推測で合格にしない）。
 
 #### 3.2.1 L-4・D-3・D-2（AI 提案の生成と、タグ提案の承認）
 
-計測用の生成の口（§2.2 の `measurement.suggestionGenerate`）を**システム管理者でログインした画面のタブ**から 1 回呼ぶ。
+AI 提案の生成の口（製品の口。［2026-10-30 / #2106］計測用の値は要らない）を、**起点の文書が見える利用者（例: システム管理者）でログインした画面のタブ**から 1 回呼ぶ。
+文書詳細画面の承認欄の生成のボタンを押しても同じ口が呼ばれる。
 1 回の要求の中で、graph が D-3（タグ辞書の読み取り）→ L-4（LLM）の順に呼ぶ。D-2 はその要求で生まれた**タグ提案**を承認したときに通る。
 
 **前提（PERMISSIVE の回の前に 1 度だけ用意する。どれかが欠けると L-4・D-3 は呼ばれない）**
@@ -435,8 +436,7 @@ console.log(r.status, created.map((s) => [s.id, s.kind, s.tagValue ?? s.targetDo
 | --- | --- | --- |
 | `200` と 1 件以上 | L-4・D-3 が通った。`kind` が `tag` の行があれば D-2 の材料がある | 下の D-2 へ |
 | `200` と `[]` | 候補が無い（語を共有する文書が無い・全部提案済み）か、LLM が何も返さなかった。**候補が無いときは D-3 も L-4 も呼ばれていない** | ① の受け手の要求ログに `graph … LlmCompletion/Complete` が無ければ候補が無い。前提を整えて別の起点で 1 回だけやり直す（課金。オーナーの承認が要る） |
-| `404` | 口が無い（`measurement.suggestionGenerate` が入っていない）か、起点が管理者から見えない・グラフに載っていない | §2.4 の `計測用の口` の行を確かめる |
-| `403` | ログインしているのがシステム管理者ではない | 管理者でログインし直す |
+| `404` | 起点がログインした利用者から見えない・グラフに載っていない（区別しない） | `GET /bff/graph/<文書 ID>` が 200 になるかを確かめる |
 
 **D-2（課金なし）**: 上で生まれた `kind: "tag"` の提案を 1 件承認する。画面なら起点の文書の詳細画面の承認欄で承認する。コンソールなら次を実行する。
 
@@ -669,7 +669,7 @@ node scripts/check-stack-ready.js --live                                        
 ```
 
 保存した利用者値だけを渡すので、計測用の `extraEnvAppend` も `set_mesh_mtls_mode` で変えたモードも、計測用の発火手段（`measurement.*`）も、
-§0.3 の時点の宣言へ戻る。🔴 **計測用の発火手段が外れたことを、値と稼働の両方で確かめる**（残すと、管理者が LLM の費用の出る口を叩ける状態が続く）。
+§0.3 の時点の宣言へ戻る。🔴 **計測用の発火手段が外れたことを、値と稼働の両方で確かめる**（残すと、個人資料の定期処理の前倒しが再起動のたびに続く。［2026-10-30 / #2106］生成の口は製品の口として常に在るので、外す対象ではない）。
 
 ```bash
 helm get values msp -n "$NS" -o json | grep -c '"measurement"'                                   # 0（§0.3 の時点で入っていなければ）
@@ -678,11 +678,10 @@ let s = '';
 process.stdin.on('data', (d) => (s += d)).on('end', () => console.log(JSON.stringify(JSON.parse(s).measurement)));
 EOF
 helm get values msp -n "$NS" --all -o json | node "$(np "$W/measurement-values.mjs")"   # node -e は使わない（§0.4）
-#   → {"suggestionGenerate":false,"privateNoteMaintenanceInitialRunDelaySeconds":0}（チャートの既定）
+#   → {"privateNoteMaintenanceInitialRunDelaySeconds":0}（チャートの既定）
 for d in bff document; do kubectl -n "$NS" get deploy "$d-service" -o yaml | grep -cE 'Measurement__|InitialRunDelaySeconds'; done   # 0 と 0
 ```
 
-画面のタブで §3.2.1 の `fetch` をもう一度実行し、`404` が返ることも確かめる（口がルート表から消えている）。
 
 ### 6.2 経路単位の緊急切り戻し（その経路だけを REST へ戻す）
 

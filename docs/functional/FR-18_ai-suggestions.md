@@ -3,15 +3,15 @@ title: FR-18 AI 提案（リンク候補・タグ候補） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-17, FR-18, UC-10, SC-03, SC-09, SC-21]
-adrs: [ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063]
+adrs: [ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0081]
 iadrs: [IADR-0242, IADR-0266, IADR-0272, IADR-0300, IADR-0323, IADR-0364, IADR-0380]
-specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260829_issue-450_ai-suggestion-approval, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source]
-issues: [#450, #914, #915, #918, #1014, #1187, #1215, #1244]
+specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260829_issue-450_ai-suggestion-approval, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20261030_2106_suggestion-generate-product-route]
+issues: [#450, #914, #915, #918, #1014, #1187, #1215, #1244, #2106]
 -->
 
 # 機能仕様書: AI 提案（リンク候補・タグ候補）
@@ -109,7 +109,10 @@ flowchart TD
 
 ## 未決事項
 
-1. **利用者が生成を起動する導線が無い。** サービスの生成の口は要求時・利用者スコープで走る形で在るが、公開 API に出しておらず、
+1. ~~**利用者が生成を起動する導線が無い。** サービスの生成の口は要求時・利用者スコープで走る形で在るが、公開 API に出しておらず、
    文書詳細画面にボタンも無い（計画の文書詳細画面は置く要素を 2 つに限っている）。文書更新時の自動起動・定期のいずれも
-   計画が定めていないため、実装で先取りせず計画側へ裁定を依頼する。
+   計画が定めていないため、実装で先取りせず計画側へ裁定を依頼する。~~ **［2026-10-30 解消 / #2106］** 計画が、起動できるのは
+   **その文書を読める利用者**と定めた（承認・却下の資格とは別）。公開 API に生成の口を常に開け（認証のみ。資格は後段が閲覧の範囲で判定し、
+   見えない起点は 404）、文書詳細画面の承認欄に生成のボタンを置いた。タイミングは要求時のままで、自動起動・定期は採らない
+   （採るなら計画へ環流する）。計測専用だった管理者限定の口と構成の鍵は撤去した。
 2. 類似度のしきい値と候補の質は実データで測っていない（既定 0.1 は合成データで決めた値）。
