@@ -183,6 +183,10 @@ test('SC-19/UC-11 exception flow: a full quota blocks creation only, and warns t
   await page.getByRole('button', { name: '削除する' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('削除しても容量は空きません（90 日間保管されます）');
+  // FR-19, ADR-0142 (#2250): 論理削除で見えなくなる範囲の 1 文。
+  await expect(dialog).toContainText(
+    '共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。',
+  );
 
   expectBffTrafficIsComplete(traffic);
 });
