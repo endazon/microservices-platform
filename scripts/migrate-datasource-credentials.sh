@@ -7,6 +7,8 @@
 # 何をするか:
 #   1. Vault の Pod の中で、移送専用の policy（datasource-credential-migrate。専用接頭辞の 1 セグメントに create・update・read）の
 #      **短命のトークン**（既定 10 分・使用回数の上限つき）を発行する。
+#      上限は MIGRATION_TOKEN_USES（既定 500）で上書きできる。1 キーあたり Vault を最大 4 回呼ぶ（読む・版を読む・書く・読み直す）ので、
+#      `--dry-run` の「平文のキー」× 4 ＋余裕を与える（既定の 500 は 125 キーまで）。足りなければ残りは失敗として数え、流し直せば続きから進む。
 #   2. そのトークンを**標準入力で**、稼働の datasource-service の Pod の中の移送のコマンドへ渡す
 #      （`dotnet DataSourceService.dll migrate-connector-credentials --token-stdin`）。接続文字列と Vault の所在は Pod の環境から読む。
 #   3. 終わったらトークンを失効させる（成功でも失敗でも）。
@@ -31,6 +33,10 @@ done
 MSP_NS="${MSP_NS:-microservices-platform}"
 INFRA_NS="${INFRA_NS:-platform-infra}"
 TTL="${MIGRATION_TOKEN_TTL:-10m}"
+USES="${MIGRATION_TOKEN_USES:-500}"
+case "$USES" in
+  ''|*[!0-9]*|0*) echo "ERROR: MIGRATION_TOKEN_USES は 1 以上の整数（与えられた値: $USES）" >&2; exit 2 ;;
+esac
 APP="dotnet DataSourceService.dll migrate-connector-credentials"
 
 kubectl -n "$MSP_NS" get deploy/datasource-service >/dev/null
@@ -50,7 +56,7 @@ vexec 'vault policy read datasource-credential-migrate >/dev/null' || {
 # accessor だけを手元に持つ（失効に使う。トークンの値ではない）。値は変数にも置かず、パイプで渡す。
 ACCESSOR_FILE="$(mktemp)"; trap 'rm -f "$ACCESSOR_FILE"' EXIT
 set +e
-vexec "vault token create -policy=datasource-credential-migrate -ttl=$TTL -explicit-max-ttl=$TTL -use-limit=500 -format=json" \
+vexec "vault token create -policy=datasource-credential-migrate -ttl=$TTL -explicit-max-ttl=$TTL -use-limit=$USES -format=json" \
   | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const a=JSON.parse(d).auth;require("fs").writeFileSync(process.argv[1],a.accessor);process.stdout.write(a.client_token+"\n")})' "$ACCESSOR_FILE" \
   | kubectl -n "$MSP_NS" exec -i deploy/datasource-service -- $APP --token-stdin
 code=$?

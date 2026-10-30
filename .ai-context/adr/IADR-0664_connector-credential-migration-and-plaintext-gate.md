@@ -74,9 +74,11 @@ helm の `services.datasource.connectorCredentials.plaintextAllowed` が env へ
   - 接続文字列と Vault の所在は Pod の環境から読む。
 - 名乗り: 運用者が、移送専用の policy `datasource-credential-migrate` の**短命のトークン**を発行する。
   - policy は専用接頭辞の 1 セグメント `+` に create・update・read、metadata に read だけである。`*`・list・delete は無い。
-  - トークンは既定 10 分・使用回数の上限つきで、終わったら accessor で失効させる。
+  - トークンは既定 10 分・使用回数の上限つき（既定 500。`MIGRATION_TOKEN_USES` で上書き）で、終わったら accessor で失効させる。
+    - 1 キーあたり保管先を最大 4 回呼ぶ（読む・版の読み出し・書く・読み直す）。上限は「平文のキー × 4」に余裕を足して決める（runbook）。
   - `scripts/migrate-datasource-credentials.sh` が発行・受け渡し・失効をまとめる。`--live`／`LIVE=1` が無ければ何もしない。
   - 🔴 トークンは引数・環境変数・ファイルに置かない（パイプで標準入力へ渡す）。policy は role に束縛しない —— 常用の名乗りに書き込みを足さない。
+  - policy は KV のマウント `secret` を固定で書いている（移送のコマンドは `Vault:KvMount` に従う）。マウントを変えるなら policy も合わせる。据え置く（読み取りの policy `datasource-connector-read` も同じ前提で固定しており、経路 B の保管先は `secret` だけを持つ。#2376 の指摘）。
 - 1 行 1 キーずつ、次の順で行う。
   1. Vault の `datasource/<ID>` を読む。現在版が削除されていれば、metadata から版を読む。
   2. Vault にそのキーがあるときと無いときで扱いが違う。
@@ -92,6 +94,7 @@ helm の `services.datasource.connectorCredentials.plaintextAllowed` が env へ
 - 対象は状態に依らず全行（無効化した行の平文も保管の対象）。
 - ログ・出力は件数と行の通し番号だけ。ID・キー名・値・パス・トークンを出さない。
 - 終了コード: 0 = 全部移した・1 = 衝突／失敗が残った・2 = 使い方・構成の誤り。
+  - 移送の途中の DB の例外（行の読み出し・置き換え・残りの数え）も 1 に寄せる。未処理例外で落とさず、ログ・出力は例外の型名だけを出す（#2376 の指摘）。
 
 ### 決定 4: 不可逆性と戻し方
 

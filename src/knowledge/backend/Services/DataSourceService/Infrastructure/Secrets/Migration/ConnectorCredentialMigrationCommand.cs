@@ -75,6 +75,14 @@ public static class ConnectorCredentialMigrationCommand
                 await stdout.WriteLineAsync("平文の行は 0 件。旗（services.datasource.connectorCredentials.plaintextAllowed）を false にできる。");
             return dryRun || report.Succeeded ? 0 : 1;
         }
+        catch (Exception ex) when (ConnectorCredentialMigrator.IsStoreFailure(ex) && !ct.IsCancellationRequested)
+        {
+            // NFR-18, IADR-0664 決定 3 (#2376 の指摘 4): 行の読み出し・残りの数えの DB の例外も終了コード 1 に寄せる（未処理例外で落とさない）。
+            // 🔴 例外文は出さない（接続先・SQL の断片を運び得る）。型名だけ。
+            loggerFactory.CreateLogger(typeof(ConnectorCredentialMigrationCommand)).LogError("移送: DB の呼び出しが失敗した: {ExceptionType}", ex.GetType().Name);
+            await stdout.WriteLineAsync($"{Verb}: DB の呼び出しが失敗した（{ex.GetType().Name}）。平文の行が残っている。原因を直して流し直す（冪等）。");
+            return 1;
+        }
         finally
         {
             http?.Dispose();

@@ -7,9 +7,11 @@ using DataSourceService.Infrastructure.Persistence;
 using DataSourceService.Infrastructure.Secrets;
 using DataSourceService.Infrastructure.Secrets.Migration;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace DataSourceService.Tests.Infrastructure.Secrets.Migration;
 
@@ -296,5 +298,68 @@ public sealed class ConnectorCredentialMigratorTests
 
         code.Should().Be(0);
         stdout.ToString().Should().Contain("平文を持つ行 1").And.Contain("平文が残る行 1").And.NotContain(Plain);
+    }
+    // NFR-18, IADR-0664 決定 3 (#2376 の指摘 4): 移送の途中の DB の例外は、未処理例外で落とさず失敗として数える。
+    // 例外文（ここでは平文と同じ目印を入れる）はログに出さず、型名だけを出す。
+    private sealed class FailingSave : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+            => throw new DbUpdateException($"db-failure-detail {Plain}");
+    }
+
+    [Fact]
+    public async Task Db_failure_while_placing_the_reference_is_counted_as_failed_and_logs_only_the_type_name()
+    {
+        var name = $"migrate-{Guid.NewGuid()}";
+        Guid id;
+        using (var seed = new DataSourceDbContext(new DbContextOptionsBuilder<DataSourceDbContext>().UseInMemoryDatabase(name).Options))
+            id = (await AddAsync(seed, "wiki", new() { ["apiToken"] = Plain })).Id;
+        using var db = new DataSourceDbContext(new DbContextOptionsBuilder<DataSourceDbContext>()
+            .UseInMemoryDatabase(name).AddInterceptors(new FailingSave()).Options);
+        var (migrator, _, log) = Build(db);
+
+        var report = await migrator.RunAsync(dryRun: false, TestContext.Current.CancellationToken);
+
+        report.Failed.Should().Be(1);
+        report.Succeeded.Should().BeFalse("終了コード 1 になる");
+        var lines = string.Join("\n", log.Lines);
+        lines.Should().Contain(nameof(DbUpdateException)).And.NotContain("db-failure-detail").And.NotContain(Plain)
+            .And.NotContain(" EXC", "例外オブジェクトをログへ渡さない");
+        db.ChangeTracker.Clear();
+        StoredValue(db, id, "apiToken").Should().Be(Plain, "置き換えが失敗した行は平文のまま");
+    }
+
+    // 自前の分類（DataSourceService.*）と、フレームワーク（Microsoft.*。EF Core の接続の失敗のログ）を分けて記録する。
+    private sealed class RecordingProvider : ILoggerProvider
+    {
+        public RecordingLogger<object> Own { get; } = new();
+        public RecordingLogger<object> Framework { get; } = new();
+        public ILogger CreateLogger(string categoryName) => categoryName.StartsWith("Microsoft.", StringComparison.Ordinal) ? Framework : Own;
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public async Task Command_exits_1_when_the_database_is_unreachable_and_prints_only_the_type_name()
+    {
+        var provider = new RecordingProvider();
+        await using var services = new ServiceCollection()
+            .AddLogging(b => b.AddProvider(provider))
+            .AddDbContext<DataSourceDbContext>(o => o.UseNpgsql("Host=127.0.0.1;Port=9;Database=unreachable-db-marker;Username=u;Password=p;Timeout=2"))
+            .Configure<VaultConnectorSecretOptions>(o => o.Address = "http://127.0.0.1:9")
+            .BuildServiceProvider();
+
+        var stdout = new StringWriter();
+        var code = await ConnectorCredentialMigrationCommand.RunAsync(
+            services, [ConnectorCredentialMigrationCommand.Verb, "--token-stdin"], new StringReader(Token + "\n"), stdout,
+            TestContext.Current.CancellationToken);
+
+        code.Should().Be(1, "DB の例外も未処理例外で落とさず、終了コード 1 に寄せる");
+        // 自前の出力（標準出力・自前のログ）は型名だけ。例外文（接続先・DB 名）を運ばない。
+        var own = stdout + "\n" + string.Join("\n", provider.Own.Lines);
+        own.Should().Contain("DB の呼び出しが失敗した").And.NotContain(Token).And.NotContain("unreachable-db-marker")
+            .And.NotContain("127.0.0.1").And.NotContain(" EXC");
+        // EF Core 自身の接続の失敗のログは接続先・DB 名を含む（フレームワークの既定。秘密ではない）。トークンだけは、どこにも出ない。
+        string.Join("\n", provider.Framework.Lines).Should().NotContain(Token);
     }
 }

@@ -526,6 +526,22 @@ ok('本番像の既存の 1 本（Vault・API サーバ）は従前どおり net
   assert.strictEqual(byName(withVault, 'allow-bff-egress-to-vault').length, 1);
 });
 
+// NFR-18, IADR-0664 決定 2 (#458 段 S4・#2376 の指摘): datasource の `vault.port` は `vault:` の下に置く。
+// 字下げがずれて `connectorCredentials:` の下へ入ると、上書きが効かないまま既定の 8200 で黙って描かれる。その退行を止める。
+ok('datasource の Vault への egress のポートは services.datasource.vault.port に従い、connectorCredentials は知らないキーで描画を止める', () => {
+  const addr = ['--set', 'services.datasource.vault.address=http://vault.platform-infra.svc.cluster.local:8200'];
+  const ports = (text) => byName(text, 'allow-datasource-egress-to-vault').map((p) => Number(p.spec.egress[0].ports[0].port));
+  assert.deepStrictEqual(ports(mustRender(addr)), [8200]);
+  assert.deepStrictEqual(ports(mustRender([...addr, '--set', 'services.datasource.vault.port=8443'])), [8443]);
+  const stray = helmTemplate(['--set', 'services.datasource.connectorCredentials.port=8200']);
+  assert.notStrictEqual(stray.status, 0, 'connectorCredentials の知らないキー（port）で描画が通った');
+  assert.match(stray.err, /services\.datasource\.connectorCredentials\.port は受けません/);
+  // 旗の描画: 既定は "true"、明示の false は "false"（`default` を使うと false が true に化ける）。
+  const flag = (text) => (text.match(/- name: ConnectorCredentials__PlaintextAllowed\n\s+value: "(\w+)"/g) || []).map((m) => m.match(/"(\w+)"$/)[1]);
+  assert.deepStrictEqual(flag(mustRender([])), ['true']);
+  assert.deepStrictEqual(flag(mustRender(['--set', 'services.datasource.connectorCredentials.plaintextAllowed=false'])), ['false']);
+});
+
 ok('両方 false なら egress のポリシーを 1 枚も描かない（明示の退路）', () => {
   const off = mustRender(['-f', VALUES_LOCAL, '--set', 'networkPolicy.egress.enabled=false']);
   assert.deepStrictEqual(egressPolicies(off).map((p) => p.metadata.name), []);

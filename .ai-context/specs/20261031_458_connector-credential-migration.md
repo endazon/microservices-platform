@@ -69,3 +69,15 @@ issue: "#458"
 - `dotnet format --verify-no-changes`。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（コミットした状態で）。
 - 文書系の検査。
+
+## レビューの指摘への対応（#2376・2026-10-31）
+
+- `values.yaml` の datasource の `vault.port` が、`connectorCredentials:` の下へずれていた。`vault:` の下へ戻した。
+  - 再発を止める手当てを 2 つ置いた。
+    - チャート: `connectorCredentials` の知らないキーで描画を止める。
+    - `helm-egress-network-policy.test.js`: `vault.port` の上書きが egress のポートに効くこと、知らないキーで描画が止まること、旗の描画（`"true"`／`"false"`）を確かめる。
+  - 規則 10 で引き直した: values と values-local の develop との差分の全行を見直した。他にずれは無かった。
+- トークンの使用回数の上限を `MIGRATION_TOKEN_USES` で上書きできるようにした。runbook に、1 キーあたりの呼び出し回数（最大 4）と上限の決め方を書いた。
+- 移送の途中の DB の例外を、終了コード 1 に寄せた（置き換えの失敗は 1 キーの失敗として数える。行の読み出し・残りの数えの失敗はコマンドが捕まえる）。ログは型名だけを出す。試験を 2 つ足した。
+  - 試験で分かったこと: EF Core 自身の接続の失敗のログは、接続先と DB 名を含む（フレームワークの既定。秘密ではない）。
+  - そこで試験は、自前の出力が型名だけであることと、フレームワークのログを含めてトークンがどこにも出ないことを、分けて確かめる。

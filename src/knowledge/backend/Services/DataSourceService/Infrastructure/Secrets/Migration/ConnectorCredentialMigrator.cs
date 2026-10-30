@@ -1,3 +1,4 @@
+using System.Data.Common;
 using DataSourceService.Domain;
 using DataSourceService.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -67,7 +68,12 @@ public sealed class ConnectorCredentialMigrator(
         return report;
     }
 
-    internal enum Outcome { Migrated, Conflict, VaultUnavailable, VerifyMismatch, Raced }
+    internal enum Outcome { Migrated, Conflict, VaultUnavailable, VerifyMismatch, Raced, StoreFailed }
+
+    // NFR-18, IADR-0664 決定 3 (#2376 の指摘 4): 移送の途中の DB の例外。未処理例外で落とさず、失敗として数える（終了コード 1）。
+    // 🔴 例外文は出さない（接続先・SQL の断片を運び得る）。型名だけ。
+    internal static bool IsStoreFailure(Exception ex) =>
+        ex is DbException or DbUpdateException or InvalidOperationException or TimeoutException;
 
     private async Task<Outcome> MigrateOneAsync(Guid id, string key, string plaintext, CancellationToken ct)
     {
@@ -90,7 +96,8 @@ public sealed class ConnectorCredentialMigrator(
             if (!reread.Data.TryGetValue(key, out var stored) || !string.Equals(stored, plaintext, StringComparison.Ordinal))
                 return Outcome.VerifyMismatch;
         }
-        catch (Exception ex) when (ex is VaultMigrationException or HttpRequestException or System.Text.Json.JsonException or InvalidOperationException or TaskCanceledException && !ct.IsCancellationRequested)
+        catch (Exception ex) when ((ex is VaultMigrationException or HttpRequestException or System.Text.Json.JsonException or InvalidOperationException or TaskCanceledException)
+                                   && !ct.IsCancellationRequested)
         {
             // 🔴 例外文・例外オブジェクトを出さない（URL＝パスを運び得る）。型名と状態コードだけ。
             logger.LogWarning("移送: Vault の呼び出しが失敗した: {ExceptionType} {Status}",
@@ -98,9 +105,18 @@ public sealed class ConnectorCredentialMigrator(
             return Outcome.VaultUnavailable;
         }
 
-        return await CredentialMigrationStore.ReplaceAsync(db, id, key, plaintext, ct)
-            ? Outcome.Migrated
-            : Outcome.Raced;
+        try
+        {
+            return await CredentialMigrationStore.ReplaceAsync(db, id, key, plaintext, ct)
+                ? Outcome.Migrated
+                : Outcome.Raced;
+        }
+        catch (Exception ex) when (IsStoreFailure(ex) && !ct.IsCancellationRequested)
+        {
+            // 保管先には書けている。設定は平文のまま（流し直せば「同じ値」の経路で置き換えへ進む）。
+            logger.LogWarning("移送: 設定の置き換え（DB）が失敗した: {ExceptionType}", ex.GetType().Name);
+            return Outcome.StoreFailed;
+        }
     }
 }
 
