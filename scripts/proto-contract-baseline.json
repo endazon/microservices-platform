@@ -1570,6 +1570,34 @@
             "names": []
           }
         },
+        "McpTool": {
+          "fields": {
+            "egress_class": {
+              "number": 4,
+              "type": "string",
+              "label": "singular"
+            },
+            "published_name": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "required_scope": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            },
+            "service": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "PortSelection": {
           "fields": {
             "implementation": {
@@ -1598,6 +1626,11 @@
             "connectors": {
               "number": 4,
               "type": "Connector",
+              "label": "repeated"
+            },
+            "mcp_tools": {
+              "number": 5,
+              "type": "McpTool",
               "label": "repeated"
             },
             "ports": {

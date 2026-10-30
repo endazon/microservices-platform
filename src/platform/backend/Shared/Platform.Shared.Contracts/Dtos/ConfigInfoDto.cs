@@ -4,11 +4,17 @@ namespace Platform.Shared.Contracts.Dtos;
 // 自己申告（各サービス・段）と、集約された実効構成・ドリフト結果を表現する。
 
 // 各サービス・段の自己申告（イントロスペクション）。メッシュ内部限定のエンドポイントが返す。
+// FR-15, FR-16, IADR-0660 (#2285): `McpTools` は MCP サーバーの実効ツール一覧（要求のたびの寄与で載る。他のサービスは空）。
+// 既定値つきの末尾の引数にして、既存の申告（段・ポート・コネクタだけ）の書き方を変えない。
 public sealed record ServiceIntrospectionDto(
     string Service,
     IReadOnlyList<StepIntrospectionDto> Steps,
     IReadOnlyList<PortSelectionDto> Ports,
-    IReadOnlyList<ConnectorDto> Connectors);
+    IReadOnlyList<ConnectorDto> Connectors,
+    IReadOnlyList<McpToolDto>? McpTools = null)
+{
+    public IReadOnlyList<McpToolDto> McpTools { get; init; } = McpTools ?? [];
+}
 
 // パイプライン段の実効値（宣言と照合された購読/発行・有効状態）。
 public sealed record StepIntrospectionDto(
@@ -24,13 +30,23 @@ public sealed record PortSelectionDto(string Port, string Implementation, string
 // データソースコネクタと有効・無効状態（09_datasource-connectors の管理情報を集約）。
 public sealed record ConnectorDto(string Name, bool Enabled);
 
+// FR-16, ADR-0024 §2・§5, IADR-0660 (#2285): MCP の実効ツール 1 件（申告 ∩ 公開構成）。
+// 公開名・申告元サービス・実行に要る権限スコープ・越境分類。入力スキーマと説明は載せない（構成の可視化に要らない）。
+public sealed record McpToolDto(string PublishedName, string Service, string RequiredScope, string EgressClass);
+
 // FR-15: 構成情報 API の応答（実効構成）。
+// FR-16, IADR-0660 (#2285): `McpTools` は MCP の実効ツール一覧（計画 11_mcp-server-integration §5「構成情報 API へ申告し、SC-11 で可視化する」）。
 public sealed record EffectiveConfigDto(
     ConfigVersionDto Version,
     IReadOnlyList<PipelineStageDto> Pipeline,
     IReadOnlyList<EventBindingDto> EventBindings,
     IReadOnlyList<PortSelectionDto> Ports,
-    IReadOnlyList<ConnectorDto> Connectors);
+    IReadOnlyList<ConnectorDto> Connectors,
+    IReadOnlyList<McpToolDto>? McpTools = null)
+{
+    // 既定値つきの末尾の引数（契約の非破壊の追加。IADR-0122）。応答では常に配列で出る（null を出さない）。
+    public IReadOnlyList<McpToolDto> McpTools { get; init; } = McpTools ?? [];
+}
 
 // 構成バージョン（適用中の構成定義の Git コミット ID・適用日時・適用者）。
 public sealed record ConfigVersionDto(string? GitCommit, DateTimeOffset? AppliedAt, string? AppliedBy);

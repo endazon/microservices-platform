@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using AwesomeAssertions;
 using Grpc.Core;
 using Grpc.Net.Client;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
@@ -72,6 +73,61 @@ public sealed class IntrospectionGrpcTests
         dto.Ports.Single(p => p.Port == "llm").Target.Should().BeNull();
         dto.Ports.Single(p => p.Port == "wiki-sync").Target.Should().BeEmpty();
         dto.Ports.Single(p => p.Port == "vector-store").Target.Should().Be("qdrant:6334");
+    }
+
+    // 🔴 FR-15, FR-16, IADR-0660 (#2285): **自己申告は要求のたびに寄与を反映する。** 寄与が変わると次の要求の応答が変わる
+    // （起動時の 1 回だけで固めると、MCP の実効ツール一覧の収集の更新が構成情報 API に出ない）。静的な申告は残る。
+    [Fact]
+    public async Task Each_get_applies_the_current_contributions_on_top_of_the_static_report()
+    {
+        var contributor = new MutableContributor();
+        await using var host = await IntrospectionGrpcTestHost.StartAsync(ct: Ct,
+            services: s => s.AddSingleton<IIntrospectionContributor>(contributor));
+        using var channel = GrpcClientExtensions.CreatePlatformChannel(
+            host.GrpcAddress, new FixedTokenProvider(IntrospectionGrpcTestHost.ServiceToken()));
+        var client = new Pb.ServiceIntrospection.ServiceIntrospectionClient(channel);
+
+        var first = IntrospectionGrpcMapping.ToDto(
+            await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: Ct));
+        first.McpTools.Should().BeEmpty("寄与がまだ空");
+        first.Connectors.Select(c => c.Name).Should().Equal("filesystem", "saas");
+
+        contributor.Current = new IntrospectionContribution(
+            [new ConnectorDto("db", true)],
+            [new McpToolDto("retrieval.search", "retrieval", "read", "internal")]);
+        var second = IntrospectionGrpcMapping.ToDto(
+            await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: Ct));
+        second.McpTools.Should().Equal(new McpToolDto("retrieval.search", "retrieval", "read", "internal"));
+        second.Connectors.Select(c => c.Name).Should().Equal(["filesystem", "saas", "db"], "静的な申告の後に寄与が続く");
+        second.Ports.Should().HaveCount(3, "静的な申告の残りは変えない");
+    }
+
+    // 🔴 IADR-0660: 寄与の例外は握り潰さない（空の一覧を返すと「ツールが無い」と読まれる）。gRPC の失敗として返る。
+    [Fact]
+    public async Task A_failing_contribution_fails_the_call_instead_of_reporting_nothing()
+    {
+        await using var host = await IntrospectionGrpcTestHost.StartAsync(ct: Ct,
+            services: s => s.AddIntrospectionContributor<ThrowingContributor>());
+        using var channel = GrpcClientExtensions.CreatePlatformChannel(
+            host.GrpcAddress, new FixedTokenProvider(IntrospectionGrpcTestHost.ServiceToken()));
+        var client = new Pb.ServiceIntrospection.ServiceIntrospectionClient(channel);
+
+        var act = async () => await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: Ct);
+
+        (await act.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().NotBe(StatusCode.OK);
+    }
+
+    private sealed class MutableContributor : IIntrospectionContributor
+    {
+        public IntrospectionContribution Current { get; set; } = IntrospectionContribution.Empty;
+
+        public ValueTask<IntrospectionContribution> ContributeAsync(CancellationToken ct) => ValueTask.FromResult(Current);
+    }
+
+    private sealed class ThrowingContributor : IIntrospectionContributor
+    {
+        public ValueTask<IntrospectionContribution> ContributeAsync(CancellationToken ct) =>
+            throw new InvalidOperationException("寄与の取得に失敗した（試験の注入）");
     }
 
     // T-03: 陰性対照。トークンを付けなければ UNAUTHENTICATED（REST の面は認証を持たないが、gRPC 面は狭い）。

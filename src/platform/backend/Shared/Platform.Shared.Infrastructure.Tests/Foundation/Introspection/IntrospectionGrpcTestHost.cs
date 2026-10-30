@@ -59,7 +59,8 @@ internal sealed class IntrospectionGrpcTestHost : IAsyncDisposable
     // `report` を渡せば、組み立てた申告の代わりにそれを DI へ置く（空の service 名など、
     // `IntrospectionBuilder` では作れない申告を返させるため）。
     public static async Task<IntrospectionGrpcTestHost> StartAsync(
-        ServiceIntrospectionDto? report = null, CancellationToken ct = default)
+        ServiceIntrospectionDto? report = null, CancellationToken ct = default,
+        Action<IServiceCollection>? services = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
@@ -91,6 +92,8 @@ internal sealed class IntrospectionGrpcTestHost : IAsyncDisposable
             .AddConnector("saas", false));
         if (report is not null)
             builder.Services.AddSingleton(report);
+        // IADR-0660 (#2285): 要求のたびの寄与（IIntrospectionContributor）を試験から足す口。
+        services?.Invoke(builder.Services);
 
         var app = builder.Build();
         app.UsePlatformMiddleware();

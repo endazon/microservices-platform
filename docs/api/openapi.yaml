@@ -6355,8 +6355,8 @@ components:
     # ── FR-15, IADR-0029: 構成情報 API（/bff/admin/config）─────
     EffectiveConfigDto:
       type: object
-      description: "FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）"
-      required: [version, pipeline, eventBindings, ports, connectors]
+      description: "FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）。#2285: `mcpTools` は MCP の実効ツール一覧（申告 ∩ 公開構成。MCP サーバーの自己申告が要求のたびに載せる）"
+      required: [version, pipeline, eventBindings, ports, connectors, mcpTools]
       properties:
         version:
           $ref: "#/components/schemas/ConfigVersionDto"
@@ -6376,6 +6376,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConnectorDto"
+        mcpTools:
+          type: array
+          items:
+            $ref: "#/components/schemas/McpToolDto"
 
     ConfigVersionDto:
       type: object
@@ -6444,6 +6448,16 @@ components:
       properties:
         name: { type: string }
         enabled: { type: boolean }
+
+    McpToolDto:
+      type: object
+      description: "FR-16（#2285）: MCP の実効ツール 1 件（公開名・申告元サービス・実行に要る権限スコープ・越境分類）。入力スキーマと説明は載せない"
+      required: [publishedName, service, requiredScope, egressClass]
+      properties:
+        publishedName: { type: string }
+        service: { type: string }
+        requiredScope: { type: string }
+        egressClass: { type: string }
 
     DriftReportDto:
       type: object

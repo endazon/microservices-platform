@@ -4291,6 +4291,11 @@
             "required": true,
             "position": 2
           },
+          "McpTools": {
+            "source": "property",
+            "type": "IReadOnlyList<McpToolDto>",
+            "required": false
+          },
           "Pipeline": {
             "source": "positional",
             "type": "IReadOnlyList<PipelineStageDto>",
@@ -4474,6 +4479,35 @@
             "source": "const",
             "type": "string",
             "value": "RestrictedProject.DocumentKey"
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.McpToolDto": {
+        "kind": "record",
+        "members": {
+          "EgressClass": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "PublishedName": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "RequiredScope": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Service": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
           }
         }
       },
@@ -4931,6 +4965,11 @@
             "type": "IReadOnlyList<ConnectorDto>",
             "required": true,
             "position": 3
+          },
+          "McpTools": {
+            "source": "property",
+            "type": "IReadOnlyList<McpToolDto>",
+            "required": false
           },
           "Ports": {
             "source": "positional",
