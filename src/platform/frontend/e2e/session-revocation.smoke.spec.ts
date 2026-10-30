@@ -81,6 +81,12 @@ function revocableSession() {
         choices: ['engineering', 'hr', 'sales'],
       }),
       'GET /admin/authz/attributes': gate([]),
+      // FR-19, SC-17 (#2330): 一覧の行ごとに個人資料の使用量と上限を引く。失効の後は他の保護要求と同じく 401。
+      [`GET /private-notes/quotas/${self.username}`]: gate({
+        usedBytes: 0,
+        limitBytes: 1024 ** 3,
+        percent: 0,
+      }),
       'GET /notifications': gate([]),
       // 無効化＝全セッション失効。契約上の応答は更新後の利用者（200）である。
       [DISABLE_KEY]: () => {

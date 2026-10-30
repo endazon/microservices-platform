@@ -26,6 +26,8 @@ const adminHandlers = {
   'GET /admin/users': [user],
   'GET /admin/users/assignable-roles': ['platform-admin', 'platform-operator'],
   'GET /admin/authz/attributes': [],
+  // FR-19, NFR-27, SC-17 (#2330): 一覧の行ごとに個人資料の使用量と上限を引く（`/private-notes/quotas/{利用者名}`）。
+  'GET /private-notes/quotas/hando.taro': { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 },
 };
 
 test('unauthenticated visit to /admin/users redirects to /login', async ({ page }) => {
@@ -56,6 +58,8 @@ test('SC-17: a platform administrator reaches the screen and its navigation entr
   const row = page.getByRole('row').filter({ hasText: 'hando.taro' });
   await expect(row.getByRole('cell', { name: '運用者', exact: true })).toBeVisible();
   await expect(row.getByText('platform-operator')).toHaveCount(0);
+  // ★ #2330: 個人資料の容量は「使用量 / 上限」の 2 つの数だけを出す。
+  await expect(row.getByText('1.50 KB / 1.00 GB', { exact: true })).toBeVisible();
   // ロールのフィルタも表示名で選ぶ（値は識別子のまま）。
   await expect(page.getByLabel('ロール', { exact: true }).getByRole('option')).toHaveText([
     'すべて',
@@ -125,6 +129,8 @@ const editorHandlers = {
   'GET /admin/users': [user],
   'GET /admin/users/assignable-roles': ROLES,
   'GET /admin/authz/attributes': USER_DICTIONARY,
+  // FR-19, NFR-27, SC-17 (#2330): 一覧の行ごとに個人資料の使用量と上限を引く（`/private-notes/quotas/{利用者名}`）。
+  'GET /private-notes/quotas/hando.taro': { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 },
   'GET /admin/users/user-1/department': {
     departmentGroups: ['sales'],
     departmentAttribute: 'sales',
@@ -168,7 +174,7 @@ test('M-106: ロールは定義済みのものから表示名で併任でき、�
   await roleGroup.getByRole('checkbox', { name: 'システム管理者' }).check();
 
   // ★ 機密区分上限は必須: 未選択では保存の要求を出さず、理由を示す。
-  await editor.getByRole('button', { name: '保存' }).click();
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByTestId('assignment-issues')).toContainText('機密区分上限は必須です。');
   expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
 
@@ -181,7 +187,7 @@ test('M-106: ロールは定義済みのものから表示名で併任でき、�
     'confidential',
   ]);
   await clearance.selectOption('internal');
-  await editor.getByRole('button', { name: '保存' }).click();
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByTestId('assignment-issues')).toHaveCount(0);
   await expect
     .poll(() =>
