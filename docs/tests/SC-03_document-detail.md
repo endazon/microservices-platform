@@ -3,15 +3,15 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-10-26
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-06, FR-12, FR-13, FR-17, FR-18, FR-19, SC-03, SC-04, SC-05, SC-06, SC-09, SC-18, SC-19, SC-21, UC-01, UC-02, UC-07, UC-10, UC-11]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102, ADR-0106]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0036, ADR-0063, ADR-0070, ADR-0073, ADR-0098, ADR-0100, ADR-0101, ADR-0102, ADR-0106, ADR-0081]
 iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0126, IADR-0272, IADR-0276, IADR-0300, IADR-0323, IADR-0364, IADR-0365, IADR-0386, IADR-0388, IADR-0451, IADR-0461, IADR-0544, IADR-0610, IADR-0611, IADR-0612]
-specs: [20261026_2121_sc03-version-error-and-original-link, 20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens]
-issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #1905, #2046, #2121, planning#841]
+specs: [20261026_2121_sc03-version-error-and-original-link, 20260804_issue-502_sc01-03-search-flow, 20260829_issue-450_ai-suggestion-approval, 20260831_issue-1104_suggestion-document-filter, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260905_issue-1240_sc03-graph-entry-and-placement-e2e, 20260905_issue-1253-1254_bodyless-index-and-hasbody-vocabulary, 20260913_1455_sc03-private-note-display, 20260925_1499_object-storage-seaweedfs, 20261015_1905_bff-document-content, 20261024_2046_break-glass-screens, 20261030_2106_suggestion-generate-product-route]
+issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #1905, #2046, #2121, #2106, planning#841, planning#857]
 -->
 
 # テスト仕様書: 文書詳細／プレビュー
@@ -101,6 +101,10 @@ issues: [#1014, #1104, #1187, #1200, #1240, #1254, #1455, #449, #450, #1499, #19
 | 16 | 承認・却下の宛先 | **その提案 1 件の口**へ送る（`/graph/suggestions/{id}/approve` ／ `/reject`） | AI 提案の 3 状態遷移 |
 | 17 | **一括操作の不在** | 「すべて」「一括」「まとめて」のボタンも複数選択も無い | **一括承認を提供しない**（要求側の禁止） |
 | 18 | 一覧への導線 | 承認欄から AI 提案一覧へのリンクが在る | 計画側の文書詳細画面 §AI 提案の承認欄 |
+| 19-b | ［2026-10-30 / #2106］**提案の生成（0 件のとき）** | 承認欄の見出しは出ず、生成のボタンは在る。押すと**この文書の生成の口**へ送り、一覧が引き直されて作られた提案が承認欄（見出しつき）に出る | 計画: 起動できるのはその文書を読める利用者。0 件の配置は暫定（計画の判断待ち） |
+| 19-c | 提案の生成（1 件以上のとき） | 生成のボタンは承認欄の中に在る | 同上 |
+| 19-d | 生成で新しい提案が無い | 「新しい提案はありませんでした。」 | 同上 |
+| 19-e | **生成の失敗（404）** | 「提案を作れませんでした。」を出し、「権限」の語を出さない | 存在秘匿 |
 | 19 | 提案の取得失敗 | **空の欄へ縮退しない**（「取得できませんでした」を出し、本体表示は継続） | 一覧画面と同じ判断 |
 | 20 | **個人資料（所有者以外）** | 👤「個人資料」と所有者の**表示名**が出る。**公開範囲の欄は出ない**（空欄も既定値も無い）。括弧書き「（自分のみ）」も利用者名も出ない（陰性対照 4 本） | 計画側の文書詳細画面 §個人資料の表示（所有者以外への描き方の裁定） |
 | 21 | **個人資料（所有者）** | 公開範囲が状態バッジで出る。**供給は所有者だけが読める一覧の口**であり、共有の写しからは導かない。ラベルは「個人資料（自分のみ）」 | 同上（供給元の裁定） |

@@ -730,3 +730,4 @@
 | [IADR-0650](./IADR-0650_qdrant-bootstrap-retry-and-readiness.md) | 取り込みの Qdrant のコレクション・索引の保証は、成功するまで上限つきのバックオフで裏で再試行し、成功するまで readiness を NotReady にする。後続の器は保証の成功を待つ（#2283） | Accepted |
 | [IADR-0651](./IADR-0651_mcp-tools-list-changed-over-subscriptions-listen.md) | MCP の tools/list_changed は、無状態の Streamable HTTP のまま subscriptions/listen の流れで送る（自前の listen の処理）。セッションの方式は変えない（#2142） | Accepted |
 | [IADR-0652](./IADR-0652_config-drift-findings-gauge-and-alert.md) | 構成ドリフトの検出結果は計数ではなくゲージ config.drift.findings（直近の不一致の件数）にし、警報 ConfigDriftDetected は job ごとの max > 0 で鳴らす（#2143） | Accepted |
+| [IADR-0653](./IADR-0653_ai-suggestion-generate-product-route.md) | AI 提案の生成は BFF の製品の口（認証のみ・資格は後段の read）として常に開け、計測専用の口と構成の鍵は撤去する（IADR-0530 決定 1 を置き換える。#2106） | Accepted |

@@ -19,6 +19,7 @@ namespace Platform.Bff.Tests;
 // （FR-18・SC-21「描いてはいけないもの」）。両者を分けるため、主張を
 // 「**単票の承認・却下は在る（陽性対照）／一括承認のパターンに一致するルートは 1 本も無い**」へ
 // 組み替えた（[[IADR-0300]] 決定 5）。生成（`generate/...`）は引き続き公開しない。
+// ［2026-10-30 / #2106］生成は製品の口として開いた（[[IADR-0653]]）。1 文書の ID を取る口 1 本だけであることを固定する。
 public class BffGraphSuggestionTests : IClassFixture<BffTestFactory>
 {
     private readonly BffTestFactory _factory;
@@ -224,11 +225,12 @@ public class BffGraphSuggestionTests : IClassFixture<BffTestFactory>
             + "承認は 1 件ずつ（両端の文書の内容を見て判断する）であり、"
             + "タイトルだけを見て機械的に承認する運用に落とす口を作らない");
 
-        // 生成の口は引き続き公開しない（消費者となる導線が計画に無い）。
-        // ［2026-10-10 / #1887・[[IADR-0530]]］**既定の構成では**、である。計測専用の口は構成の鍵で開き、
-        // その門（鍵・管理者限定）は `BffMeasurementSuggestionGenerateTests` が固定する。
-        suggestionRoutes.Select(r => r.Pattern).Should().NotContain(
-            p => p.Contains("generate", StringComparison.OrdinalIgnoreCase));
+        // ［2026-10-30 / #2106・[[IADR-0653]]］**生成の口は製品の口として開いた**（計画 ADR-0081 決定 2。SC-03 の承認欄が呼ぶ）。
+        // 従前の「生成の口は公開しない」は失効した。生成は**1 文書の ID を取る口 1 本だけ**であることを固定する
+        // （一括の生成・全文書の生成の口は無い。資格と応答の門は `BffGraphSuggestionGenerateTests` が固定する）。
+        suggestionRoutes.Select(r => r.Pattern)
+            .Where(p => p.Contains("generate", StringComparison.OrdinalIgnoreCase))
+            .Should().Equal(["/bff/graph/suggestions/generate/{documentId:guid}"]);
     }
 
     /// <summary>承認・却下に当たるパスか（`approve` / `reject` / `bulk` / `all` の語で見る）。</summary>

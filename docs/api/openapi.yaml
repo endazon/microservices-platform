@@ -3331,21 +3331,20 @@ paths:
     parameters:
       - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
-      x-roles: [platform-admin]
+      x-roles: []
       tags: [Graph]
-      summary: "NFR-16, FR-18: 計測専用。AI 提案の生成を 1 文書に対して起動する（既定は無効・システム管理者限定）"
+      summary: "FR-18, UC-10, SC-03: AI 提案の生成を 1 文書に対して起動する（その文書を読める利用者。#2106）"
       description: |
-        NFR-16, ADR-0117, IADR-0530 決定 1・2（#1887）: **製品の口ではない。** 稼働クラスタで east-west の gRPC
-        （生成の LLM 呼び出しとタグ辞書の読み取り、および承認の材料になる保留中のタグ提案）を 1 回ずつ発火させる
-        計測のためだけに置く。
+        FR-18, ADR-0081 決定 1・2, IADR-0653（#2106）: **製品の口**である（構成の鍵に依らず常に在る）。
+        **押せるのはその文書を読める利用者**（管理者・運用者に限らない）。資格は後段（GraphService の生成）が read のスコープで
+        判定し、起点が見えない・存在しないは **404（区別しない）**。承認・却下の資格（write または管理者の経路）とは別の水準である。
 
-        **BFF の構成 `Measurement:EnableSuggestionGenerate=true`（helm の `measurement.suggestionGenerate`）のときだけ
-        ルート表に載る。既定（無効）では 404 である。** 有効でもシステム管理者だけが呼べる（運用者・一般利用者は 403）。
-        **LLM の費用が出る。** 画面からは呼ばない（手順は east-west gRPC の実測の手順書 §1.2）。
+        生成は押した利用者のスコープで行う（1 実行 = 1 利用者のスコープ。ADR-0051 決定 4）。タイミングは要求時だけである。
+        **LLM の費用が出る**（用途 `graph-suggestion`）。類似の候補が無いときは空の配列で 200 である（LLM は呼ばれない）。
+        SC-03 の承認欄のボタンが呼ぶ。
 
-        後段（GraphService の生成）の状態コードと本文を詰め替えずに返す。起点が見えない・存在しないは 404
-        （区別しない）。類似の候補が無いときは空の配列で 200 である（LLM は呼ばれない）。
-      operationId: bff-graph-suggestion-generate-for-measurement
+        後段の状態コードと本文を詰め替えずに返す。旧い計測専用の口（構成の鍵・システム管理者限定。IADR-0530 決定 1）は撤去した。
+      operationId: bff-graph-suggestion-generate
       responses:
         "200":
           description: 生成できた提案（`pending`）の配列。候補が無ければ空
@@ -3355,8 +3354,7 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/AiSuggestion" }
         "401": { description: 未認証 }
-        "403": { description: システム管理者ロール以外（運用者も拒否される） }
-        "404": { description: "構成で無効（口が無い）／起点が権限外・不存在（**区別しない**）" }
+        "404": { description: "起点が権限外・不存在（**区別しない**）" }
         "502": { description: 後段へ到達できない }
   /bff/graph/suggestions/{id}/approve:
     parameters:

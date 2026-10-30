@@ -332,6 +332,7 @@
       "AiSuggestionEndpointsTests",
       "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
+      "BffGraphSuggestionGenerateTests",
       "DocumentTagWriteAdminRoleTests",
       "DocumentTagWriteRelayDeploymentWiringTests",
       "DocumentTagWriteRelayOptionsTests",

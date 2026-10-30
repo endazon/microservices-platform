@@ -277,6 +277,10 @@ msgstr "ABAC attributes (unattended only)"
 msgid "ABAC設定"
 msgstr "ABAC settings"
 
+#: knowledge/frontend/src/features/sc03-document/components/SuggestionGenerateControl.tsx
+msgid "AI がこの文書のリンク候補・タグ候補を作ります（あなたが閲覧できる文書の範囲で作ります。AI を呼び出します）。"
+msgstr "AI drafts link and tag suggestions for this document (only from documents you can view; this calls the AI)."
+
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "AI が提案したリンク候補・タグ候補を棚卸しするための一覧です。 承認・却下はこの画面では行いません。各行の「文書詳細で確認」から文書詳細へ移動し、 両端の文書の内容を見たうえで判断してください。まとめて承認する操作は提供していません。 閲覧権限のない文書に関する提案は、件数を含め表示されません。"
 msgstr "A working list of the link and tag candidates suggested by AI. Approval and rejection are not performed on this screen. Open the document detail from each row and decide after reading both documents. There is no way to approve suggestions in bulk. Suggestions about documents you may not view are never shown, not even as a count."
@@ -296,6 +300,10 @@ msgstr "Close AI chat"
 #: platform/frontend/src/components/ai-chat/AiChatPanel.tsx
 msgid "AI チャットを開く"
 msgstr "Open AI chat"
+
+#: knowledge/frontend/src/features/sc03-document/components/SuggestionGenerateControl.tsx
+msgid "AI に提案を作らせる"
+msgstr "Have AI suggest"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "AI の入力に含める"
@@ -611,6 +619,7 @@ msgstr "Right now every one of your private notes is synchronised. To synchronis
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
+#: knowledge/frontend/src/features/sc03-document/components/SuggestionGenerateControl.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
@@ -3257,6 +3266,14 @@ msgstr "The list of suggestions could not be loaded."
 msgid "提案の一覧を読み込み中…"
 msgstr "Loading the list of suggestions…"
 
+#: knowledge/frontend/src/features/sc03-document/components/SuggestionGenerateControl.tsx
+msgid "提案を作っています…"
+msgstr "Creating suggestions…"
+
+#: knowledge/frontend/src/features/sc03-document/components/SuggestionGenerateControl.tsx
+msgid "提案を作れませんでした。時間をおいて再度お試しください。"
+msgstr "Could not create suggestions. Please try again later."
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
@@ -3433,6 +3450,10 @@ msgstr "New value"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "新しい値（確認のためもう一度）"
 msgstr "New value (enter again to confirm)"
+
+#: knowledge/frontend/src/features/sc03-document/components/SuggestionGenerateControl.tsx
+msgid "新しい提案はありませんでした。"
+msgstr "There were no new suggestions."
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
 msgid "新しく作る資料を AI の入力に含める"

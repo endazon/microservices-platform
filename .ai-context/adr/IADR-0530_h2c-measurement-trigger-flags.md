@@ -2,10 +2,10 @@
 title: IADR-0530 h2c の実測でブラウザから発火できない 4 経路を、既定無効の計測用の構成で発火させる。L-4・D-3・D-2 は BFF に管理者限定の生成の口を構成の鍵があるときだけ載せ、N-1 は個人資料の定期処理の初回を前倒しする
 type: impl-adr
 status: Accepted
-related_ids: [NFR-16, FR-18, FR-19, FR-22, ADR-0117, ADR-0051, ADR-0037, ADR-0034, IADR-0300, IADR-0380, IADR-0431]
+related_ids: [NFR-16, FR-18, FR-19, FR-22, ADR-0117, ADR-0051, ADR-0037, ADR-0034, IADR-0300, IADR-0380, IADR-0431, IADR-0653]
 author: claude
 created: 2026-10-10
-updated: 2026-10-10
+updated: 2026-10-30
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0117（east-west の gRPC。REST 退役の前提の実測）
   - planning:projects/microservices-platform/07_adr/ADR-0051（AI 提案の生成。1 実行 = 1 利用者のスコープ）
@@ -18,7 +18,7 @@ related_specs:
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
-- 状態: Accepted
+- 状態: Accepted（**決定 1 は [IADR-0653](./IADR-0653_ai-suggestion-generate-product-route.md) が置き換えた**・2026-10-30 / #2106。決定 2〜4 は有効）
 - 日付: 2026-10-10
 - 決定者: **利用者（製品の判断）**。オーナー判断 2026-10-10「計測用の発火手段を実装セッションに頼む。計測専用・既定は無効・計測の窓だけ明示の構成で有効・面は最小・安全を優先」（#1887・#1255 / #1517 のコメント）。手段の選択・鍵の名前・試験の形は claude。
 

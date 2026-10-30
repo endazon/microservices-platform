@@ -1609,7 +1609,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             var isWrite = owner.LastGraphPath is { } p
                 && (p.EndsWith("/approve", StringComparison.Ordinal)
                     || p.EndsWith("/reject", StringComparison.Ordinal)
-                    || (request.Method == HttpMethod.Post && p == "/graph/edges"));
+                    || (request.Method == HttpMethod.Post && p == "/graph/edges")
+                    // FR-18 (#2106 / IADR-0653): 提案の生成（製品の口）も書き込みの knob で応答を決める。
+                    || (request.Method == HttpMethod.Post
+                        && p.StartsWith("/graph/suggestions/generate/", StringComparison.Ordinal)));
             if (isWrite)
             {
                 if (owner.GraphWriteStubThrows) throw new HttpRequestException("graph unreachable");

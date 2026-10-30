@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-18, SC-03, SC-05, SC-09, NFR-09, NFR-16]
-adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0117]
+adrs: [ADR-0086, ADR-0088, ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0117, ADR-0081]
 iadrs: [IADR-0300, IADR-0401, IADR-0242, IADR-0266, IADR-0364, IADR-0380, IADR-0410, IADR-0412, IADR-0530]
-specs: [20261030_2144_reject-fingerprints-from-replica, 20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers]
-issues: [#2144, #1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887, #2119]
+specs: [20261030_2144_reject-fingerprints-from-replica, 20261026_2119_ai-suggestion-llm-send-audit, 20260927_issue-1636_addtag-admin-role-from-authz, 20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20260927_issue-1637_grpc-client-caller-cancellation, 20261010_1887_h2c-measurement-triggers, 20261030_2106_suggestion-generate-product-route]
+issues: [#2144, #1636, #450, #914, #911, #915, #1014, #1187, #1244, #1637, #1887, #2119, #2106]
 -->
 
 # テスト仕様書: AI 提案（リンク・タグ）
@@ -93,8 +93,8 @@ AI が提案したリンク候補・タグ候補の**永続と状態遷移**、�
 | T-54 | タグ辞書の読み取りの gRPC 版を同じ器で繋ぐ | 同上 | 前者は**取り消しとして外へ出す**（「引けなかった」に畳まない・警告を出さない）。後者は従来どおり「引けなかった」 | 辞書照合（「引けなかった」と「空」を混ぜない） | 自動 |
 | T-55 | 所有者の無い組織文書と辞書のタグ。グラフの client（`graph-service`。実トークンの形 = 利用者名なし・`azp` あり、と `service-account-` の利用者名の形）、`platform-service` を持つ他のサービスアカウント（別プロジェクトの LLM 呼び出し用・BFF・MCP・文書・検索・AI 分析）、クライアント識別の接頭辞・大小文字の変種、利用者名だけグラフで `azp` が別のトークン、`azp=graph-service` を持つ人のトークン（`DocumentTagWriteTrustedRelayTests`・`DocumentTagWriteRelayOptionsTests`・`DocumentTagWriteRelayDeploymentWiringTests`） | 反映の gRPC 面を利用者文脈と管理者ロールつき・利用者文脈無しで呼ぶ。信頼する中継者の集合を未構成・置き換え・空白だけ・1 つの値で束縛する。compose・helm のグラフの s2s の client と realm を読む | グラフだけが利用者として反映でき、管理者の承認が通る（陽性対照・版が進む）。他はすべて拒否され（`PERMISSION_DENIED`）、**管理者ロールを名乗っても文書は変わらない**（版が 1 のまま）。空のタグ名でも拒否。利用者文脈の無い要求は呼び出し元を問わず要求の誤り。集合は未構成ならグラフだけ・構成は既定を置き換える・空白だけは誰も信じない・1 つの値は起動時に止まる。配備のグラフの client は既定の集合に入り、realm に `platform-service` 付きで在り、反映を gRPC で配線している。確認を落とす・接頭辞一致・大小文字を畳む・機械の確認を落とす・1 つの値の検査を外す変異は赤 | 利用者文脈を運べる呼び出し元 | 自動 |
 | T-56 | 所有者の無い組織文書・所有者つき文書・他人の個人資料と辞書のタグ。グラフの client の実トークンの形。承認者が管理者かを答える名簿の代役（管理者・管理者でない・引けない）。名簿の実物側は偽の身元プロバイダの既定の利用者（管理者・運用者・無効化された利用者）（`DocumentTagWriteAdminRoleTests`・`GrpcApproverRoleDirectoryTests`・`GrpcUserDirectoryTests`・`KeycloakIdentityAdminClientTests`） | 反映の gRPC 面を、要求の `user_roles` に管理者あり・なしで呼ぶ。名簿の「この 1 人はこのロールを持つか」を呼ぶ。Keycloak の実効ロールの読み口を呼ぶ | **要求が管理者を名乗っても名簿が管理者でないと答えれば反映されない**（版が 1 のまま）。要求にロールが無くても名簿が管理者と答えれば反映される（陽性対照）。名簿を引けなければ所有者でない承認者の要求は要求の失敗（書けないへ畳まない）。所有者の要求・個人資料では名簿を引かない。名簿は実効ロールで答え、無効化された利用者は持たない・ロール名は序数一致・居ないは応答・引けないは status・管理者の利用者トークンは門で拒否。Keycloak は合成ロールを展開した口を読む。要求のロールを再び信じる・引けないを「管理者でない」へ畳む・無効化の確認を落とす・直接の割当を読む・所有者でも名簿を引く変異は赤 | 管理者の上書きの判定の入力 | 自動 |
-| T-57 | BFF の構成に計測専用の鍵が無い・偽 | `POST /bff/graph/suggestions/generate/{id}` | **404**（ルート表に載らない）。後段の生成は呼ばれない | 生成は製品の口ではない（既定で閉じる） | 自動 |
-| T-58 | 計測専用の鍵が真 | システム管理者／運用者／一般利用者／未認証で同じ要求 | 管理者は後段の生成の口へ**資格情報つきで** POST し本文が素通りする（陽性対照）。運用者・一般利用者は 403、未認証は 401 で、後段へ行かない。後段の 404 はそのまま返す | 計測の口は管理者限定・存在秘匿を破らない | 自動 |
+| T-57 | ~~BFF の構成に計測専用の鍵が無い・偽~~ ［2026-10-30 / #2106 改訂］既定の構成（構成の鍵なし） | `POST /bff/graph/suggestions/generate/{id}` | ~~**404**（ルート表に載らない）。後段の生成は呼ばれない~~ **製品の口はルート表に常に載る**（1 文書の ID を取る口 1 本だけ。管理者限定の口は無い） | 計画: 起動できるのはその文書を読める利用者（構成に依らず開いている） | 自動 |
+| T-58 | ~~計測専用の鍵が真~~ ［2026-10-30 / #2106 改訂］一般利用者／運用者／システム管理者／未認証で同じ要求 | 同上 | **一般利用者・運用者・管理者とも**後段の生成の口へ**資格情報つきで** POST し本文が素通りする（陽性対照）。未認証は 401 で後段へ行かない。後段の 404（文書を読めない）はそのまま返す（403 にしない）。後段不達は 502 | 押せるのはその文書を読める利用者（ロールを問わない）・存在秘匿を破らない | 自動 |
 | T-59 | 起点・スコープ内の候補 2 件・スコープ外の候補 1 件（類似度はスコープを跨いで 3 件とも返す）。LLM の正常・縮退の両方 | 提案を生成する（LLM を 1 回呼ぶ）。起点が見えない・スコープ未付与・候補がスコープ外だけ（LLM を呼ばない）も試す | **LLM を呼ぶ生成 1 回につき監査ログが 1 行**（操作 `graph.ai_suggestion.llm_send`・主体は要求者・結果 `sent`）。詳細は起点と**封に入った文書 ID の集合**で、**実際の送信本文に現れる候補の ID の集合と一致する**。スコープ外の ID・本文・題名を含まない。LLM が縮退しても行は残る（送る前に書く）。**LLM を呼ばない経路では行を出さない**（陰性対照） | スコープ外本文が LLM へ送信されないことを監査ログで確認できる | 自動 |
 
 ## 変異試験（類似度候補の供給元）
@@ -130,6 +130,7 @@ T-36 が、「照合しない」実装は T-35 が捕まえる —— 陽性・�
 - `TermProfileSyncTests`（T-51・T-52。購読ハンドラ経由の作成契機と掃除）
 - `GrpcDocumentTagWriterTests`（T-53 ほか。タグ反映の gRPC 版。REST と同じ結果への写像・利用者文脈の運び方）
 - `GrpcTagDictionaryReaderTests`（T-54 ほか。タグ辞書の読み取りの gRPC 版。宛先ごと 1 本のチャネル）
+- `BffGraphSuggestionGenerateTests`（T-57・T-58。［2026-10-30 / #2106］生成の製品の口。公開 API 層。旧 `BffMeasurementSuggestionGenerateTests` は計測専用の口の撤去とともに外した）
 
 ### T-16〜T-25 について — 受け入れ基準「権限スコープ外の文書本文を LLM へ送信しない」の写像
 

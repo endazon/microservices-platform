@@ -124,6 +124,9 @@ function respond({
   suggestions = [] as unknown,
   edgeTypes = EDGE_TYPES as unknown,
   approve = undefined as unknown,
+  // FR-18, ADR-0081 決定 2 (#2106): 生成の口の応答（既定は 0 件の配列）と、生成の後に一覧が返す提案。
+  generate = [] as unknown,
+  afterGenerate = undefined as unknown,
   wikiPages = [] as unknown,
   // FR-19, SC-03 §個人資料の表示, 計画 ADR-0102 / #1455: 公開範囲は**所有者だけが読める口**から、
   // 所有者の表示名は `POST /bff/users/resolve` から来る。既定は「自分の資料は無い」「解決できない」。
@@ -137,6 +140,8 @@ function respond({
   edgeTypes?: unknown;
   /** 承認の口の応答を差し替える（既定は成功。`Error` を渡すと拒否を再現する）。 */
   approve?: unknown;
+  generate?: unknown;
+  afterGenerate?: unknown;
   wikiPages?: unknown;
   privateNotes?: unknown;
   resolvedUsers?: unknown;
@@ -146,8 +151,14 @@ function respond({
     if (value === NO_BODY) return Promise.resolve(noContent());
     return Promise.resolve(jsonResponse(value));
   };
+  let generated = false;
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path === '/wiki/pages') return reply(wikiPages);
+    // #2106: 生成の口は一覧の判定（`/graph/suggestions` を含む）より前に見る。
+    if (path.includes('/graph/suggestions/generate/')) {
+      generated = true;
+      return reply(generate);
+    }
     if (path === '/private-notes') return reply(privateNotes);
     if (path === '/users/resolve') return reply(resolvedUsers);
     // 🔴 提案の口を**最初に**見る。承認・却下は `/graph/suggestions/{id}/approve` であり、
@@ -161,7 +172,7 @@ function respond({
           state: path.endsWith('/approve') ? 'approved' : 'rejected',
         });
       }
-      return reply(suggestions);
+      return reply(generated && afterGenerate !== undefined ? afterGenerate : suggestions);
     }
     if (path.includes('/graph/edge-types')) return reply(edgeTypes);
     if (path.endsWith('/content')) return reply(content);
@@ -603,6 +614,67 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.queryByRole('heading', { name: 'AI 提案' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '承認' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '却下' })).not.toBeInTheDocument();
+  });
+
+  // FR-18, ADR-0081 決定 2, IADR-0653 決定 4 (#2106): **提案の生成の起動。** 押せるのはその文書を読める利用者で、
+  // 画面は権限を判定しない（SC-03 を開けたことが資格）。🔴 0 件のときの配置は**暫定**（planning#857 の裁定待ち。案 (a)）:
+  // 承認欄の見出し・枠は出さず、生成のボタンだけを置く。
+  it('offers suggestion generation without the panel heading when nothing is pending, and shows what was created', async () => {
+    respond({ suggestions: [], generate: [LINK_SUGGESTION], afterGenerate: [LINK_SUGGESTION] });
+    const user = userEvent.setup();
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    // 0 件: 見出しは出ない（定めの趣旨を保つ）が、起動の要素は在る。
+    expect(screen.queryByRole('heading', { name: 'AI 提案' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'AI に提案を作らせる' }));
+
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          (call) => String(call[0]) === `/graph/suggestions/generate/${DOC_ID}`,
+        ),
+      ).toBe(true),
+    );
+    // 生成の後に一覧が引き直され、作られた提案が承認欄に出る（見出しも現れる）。
+    expect(await screen.findByRole('heading', { name: 'AI 提案' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '承認' })).toBeInTheDocument();
+  });
+
+  it('keeps the generate control inside the panel when suggestions are pending', async () => {
+    respond({ suggestions: [LINK_SUGGESTION] });
+    await renderPage();
+
+    await screen.findByRole('heading', { name: 'AI 提案' });
+    expect(screen.getByRole('button', { name: 'AI に提案を作らせる' })).toBeInTheDocument();
+  });
+
+  it('says so neutrally when nothing new was suggested', async () => {
+    respond({ suggestions: [], generate: [] });
+    const user = userEvent.setup();
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    await user.click(screen.getByRole('button', { name: 'AI に提案を作らせる' }));
+
+    expect(await screen.findByText('新しい提案はありませんでした。')).toBeInTheDocument();
+  });
+
+  // 🔴 **生成の 404（起点が見えない・無い）は中立の文言に寄せる。** 「権限」の語を出さない（存在秘匿）。
+  it('reports a failed generation without revealing why (no permission wording)', async () => {
+    respond({ suggestions: [], generate: ApiError.fromStatus(404) });
+    const user = userEvent.setup();
+    const { queryClient } = await renderPage();
+    await screen.findByRole('heading', { name: '経費精算規程 v3.2' });
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+    await user.click(screen.getByRole('button', { name: 'AI に提案を作らせる' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('提案を作れませんでした。');
+    expect(alert).not.toHaveTextContent(/権限/);
   });
 
   // SC-03, FR-18: 種類・相手の文書・**辺の型**・提案の根拠を示す（05_screens §SC-03 の逐語）。

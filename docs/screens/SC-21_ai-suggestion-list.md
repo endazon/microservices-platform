@@ -3,15 +3,15 @@ title: AI 提案一覧 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-05
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-17, FR-18, SC-03, SC-05, SC-09, SC-18, SC-21, UC-10]
-adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0043, ADR-0050, ADR-0051, ADR-0063]
+adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0043, ADR-0050, ADR-0051, ADR-0063, ADR-0081]
 iadrs: [IADR-0121, IADR-0122, IADR-0124, IADR-0125, IADR-0131, IADR-0134, IADR-0135, IADR-0266, IADR-0271, IADR-0272, IADR-0276, IADR-0300, IADR-0364, IADR-0380]
-specs: [20260823_issue-918_sc21-ai-suggestions, 20260829_issue-450_ai-suggestion-approval, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source]
-issues: [#450, #452, #911, #914, #915, #918, #1014, #1187, #1244, planning#495]
+specs: [20260823_issue-918_sc21-ai-suggestions, 20260829_issue-450_ai-suggestion-approval, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20261030_2106_suggestion-generate-product-route]
+issues: [#450, #452, #911, #914, #915, #918, #1014, #1187, #1244, #2106, planning#495]
 -->
 
 # 画面仕様書: AI 提案一覧
@@ -30,6 +30,7 @@ issues: [#450, #452, #911, #914, #915, #918, #1014, #1187, #1244, planning#495]
 > 「常に空」で、**本画面は実運用で永久に空だった**（一覧・承認欄・状態遷移はすべて緑のテストを
 > 持ちながら、守る対象が 1 件も生まれていなかった）。生成の口はサービスに在るが、**利用者が生成を
 > 起動する導線は本画面にも文書詳細にも無い**（§未決事項 4。計画側の裁定待ち）。
+> **［2026-10-30 / #2106］文書詳細の承認欄に生成のボタンを置いた**（押せるのはその文書を読める利用者）。本画面には置かない（棚卸しの一覧であり、生成の起点となる文書を持たない）。
 
 ## 画面概要・目的
 
