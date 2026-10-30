@@ -9145,7 +9145,12 @@ ${r.stderr}`);
         //    新設したため 64 → 66。🔴 **「同型の事故が 2 回」ではなく基準書 §6・§11 と親 #2013 の分割案 E-32 の名指し**（前者）と、
         //    IADR-0624 の実測（`fill` の値がレポートに出た）に基づく新設である（後者）。どちらも git を一切呼ばず、引数なしでは使い方を出して
         //    exit 2 するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 66, `検査器の母集合が 66 本から変わった（${scripts.length} 件）`);
+        // ★ #2271（部分）/ IADR-0640 で `check-single-replica-workers.js`（1 レプリカの前提でしか正しくない ingestion-service が、
+        //    values・Argo CD の helm.parameters・--set で 2 レプリカ以上や HPA の対象にならないことを見る暫定の門）を新設したため 66 → 67。
+        //    🔴 **「同型の事故が 2 回」ではなく、IADR-0595・IADR-0640 の残余（「複数レプリカにする前に解消する」）と #2271 の棚卸し（2026-10-30・
+        //    2026-10-31 の承認）の名指しに基づく新設である。** 窓は今は閉じているが、閉じていることを機械が見ていなかった。
+        //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-image-digests.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 67, `検査器の母集合が 67 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
