@@ -1,5 +1,6 @@
 using GraphService.Features.Graph.CreateEdge;
 using GraphService.Features.Graph.GetNode;
+using GraphService.Features.Graph.LinkCandidates;
 using GraphService.Features.Graph.Neighbors;
 
 namespace GraphService.Features.Graph;
@@ -22,6 +23,8 @@ public static class GraphEndpoints
         GetGraphNodeEndpoint.Map(g);
         GraphNeighborsEndpoint.Map(g);
         CreateGraphEdgeEndpoint.Map(g);
+        // FR-17, SC-19 (#2343): リンク作成の補完候補（[[IADR-0655]]）。
+        GraphLinkCandidatesEndpoint.Map(g);
 
         return app;
     }

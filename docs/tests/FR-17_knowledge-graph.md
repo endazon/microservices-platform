@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, UC-10, SC-09, SC-10, FR-04, NFR-09, FR-10, FR-18]
 adrs: [ADR-0086, ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036, ADR-0050, ADR-0027, ADR-0120, ADR-0035, ADR-0083, ADR-0076, ADR-0059]
-iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478, IADR-0425, IADR-0430, IADR-0479, IADR-0496, IADR-0389, IADR-0503, IADR-0521, IADR-0533]
-specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_issue-1611_mcp-tool-execution-ports, 20261004_1733_cluster-detection-catch-up, 20261009_1396_graph-edges-links-tags, 20261010_issue-1255-1517_east-west-rest-retirement, 20261030_2107_bff-graph-edge-create]
+iadrs: [IADR-0410, IADR-0027, IADR-0119, IADR-0152, IADR-0153, IADR-0231, IADR-0232, IADR-0242, IADR-0260, IADR-0280, IADR-0282, IADR-0281, IADR-0289, IADR-0478, IADR-0425, IADR-0430, IADR-0479, IADR-0496, IADR-0389, IADR-0503, IADR-0521, IADR-0533, IADR-0655]
+specs: [20260927_issue-1636_grpc-trusted-user-context-relays, 20260822_issue-908_graphservice-foundation, 20260823_issue-941_edge-type-db-guards, 20260828_issue-912_obsidian-link-extraction, 20260828_issue-941_edge-type-db-guard-verification, 20260927_issue-1640_consumer-outbound-call-timeouts, 20260927_issue-1663_singleton-cluster-summary-exclusion, 20260927_issue-1611_mcp-tool-execution-ports, 20261004_1733_cluster-detection-catch-up, 20261009_1396_graph-edges-links-tags, 20261010_issue-1255-1517_east-west-rest-retirement, 20261030_2107_bff-graph-edge-create, 20261030_2343_sc19-link-create-ui]
 issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #1663, #1611, #1733, #1396, #1255, #1517, #2107, #2343]
 -->
 
@@ -146,6 +146,9 @@ issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #16
 | T-90 | 旧タグ 2 つ・新タグ 3 つ（大小文字・空白違いを含む）の文書の受信／同じ文書の削除／タグの排他を待つ間に同じタグの別文書が確定する | 受信・削除 | 排他は「文書 → 新旧のタグの和（正規化済み）を序数順」で要求し、削除も同じ排他を取る。所属は排他の後に読み、待つ間に確定した相手との組の辺を張る（陽性対照: 排他の要求が記録される） | 同時の受信で辺を欠かさない・上限を超えない | 自動 |
 | T-91 | スキームを省いた URL（外部・Wiki の文書ページ）／クエリ・断片つきの相対リンク／名前の中のエンコードされた `#`・`?` | 抽出 | スキームを省いた外部 URL は捨て、Wiki の文書ページの形だけを文書 ID で解決する。クエリ・断片は名前から落とし、エンコードされた記号は名前に残す | 関係の保持（外部リンクを文書へ化けさせない） | 自動 |
 | T-92 | ［2026-10-30 / #2107］BFF 経由の辺の作成（両端と型）／後段の 400 `unknown_edge_type`・404・409 `edge_exists`／未認証／後段不達 | 公開 API（`POST /bff/graph/edges`） | 201 と本文が透過し、資格情報と要求の本文が後段へ届く（陽性対照）。400・409 は本文ごと、404 は 404 のまま（403 にしない。存在秘匿）。未認証は入口で 401。不達は 502（成功へ縮退しない） | 関係の保持（利用者付与）・権限外を出さない | 自動 |
+| T-93 | ［2026-10-30 / #2343］表題が一致する文書（読める組織文書・読めない組織文書・自分の個人資料・読めるが他人の個人資料・大小だけ違う所有者の個人資料）。人の主体／機械の主体／許可なし | リンク作成の補完候補（`GET /graph/link-candidates`） | 読める組織文書と自分の個人資料だけが出る（陽性対照）。読めない文書・他人の個人資料（読めても）・大小だけ違う所有者の資料は出ない。機械の主体には個人資料を出さない。許可なしは空。応答は配列だけで件数を持たない。`q` は 2〜200 文字・`limit` は 1〜50（範囲外 400）。未認証 401 | 作成側から存在を漏らさない（補完候補は作成者の閲覧範囲の内） | 自動 |
+| T-94 | ［2026-10-30 / #2343］BFF 経由の補完候補／後段の 400／未認証／後段不達 | 公開 API（`GET /bff/graph/link-candidates`） | 一般利用者でも引け、資格情報と検索語が後段へ届く（陽性対照）。`limit` は指定したときだけ送る。400 は本文ごと透過。未認証は入口で 401 で後段へ行かない。不達は 502（空へ縮退しない） | 同上 | 自動 |
+| T-95 | ［2026-10-30 / #2343］両端が見える 2 文書 | 辺を作成し、起点の近傍を引く | 作成の前は辺が無く（前提）、作成した辺が近傍に現れる（型も一致） | 画面から作った辺がグラフに出る | 自動 |
 
 ## 実装マッピング
 
@@ -155,7 +158,8 @@ issues: [#1636, #450, #516, #908, #909, #910, #911, #912, #913, #941, #1640, #16
 - `EdgeTypeDictionaryTests`（T-20〜T-28）
 - `EdgeTypeEndpointsTests`（T-31〜T-38。**アプリ層のガードのみ**）
 - `UserAuthoredEdgeTests`（T-41〜T-46。**ここで効いているのはアプリ層の事前検査だけ**。同じ重複を DB 層で拒む `ux_edges` は次の `EdgeTypeDbGuardTests` が受け持つ）
-- `BffGraphEdgeCreateTests`（T-92。公開 API 層。**認可の境界を跨ぐので BFF で改めて測る**。画面は #2343）
+- `BffGraphEdgeCreateTests`（T-92。公開 API 層。**認可の境界を跨ぐので BFF で改めて測る**。画面は #2343 で置いた）
+- `LinkCandidateTests`（T-93）・`BffGraphLinkCandidateTests`（T-94）・`UserAuthoredEdgeTests` の `作成した辺は起点の近傍の照会に現れる`（T-95）
 - `EdgeTypeDbGuardTests`（T-39 / T-40 / T-47 / T-48。**実 PostgreSQL と実メッセージブローカを起動する結合テスト**）
   - **単体テストでは原理的に測れない層である。** 単体側は EF の InMemory プロバイダを使っており、
     **InMemory は一意索引も外部キーも強制しない**。変異試験 G-1 の実測（アプリ層のカウントを外すと

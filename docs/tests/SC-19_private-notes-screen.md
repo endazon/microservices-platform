@@ -7,11 +7,11 @@ updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
-ids: [FR-19, FR-21, UC-11, SC-19, SC-20]
-adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0057, ADR-0098, ADR-0096]
-iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2324_sc19-bulk-restore-notice]
-issues: [#451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#618, planning#841]
+ids: [FR-19, FR-21, UC-11, SC-19, SC-20, FR-17, SC-18]
+adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0057, ADR-0098, ADR-0096, ADR-0034]
+iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431, IADR-0655]
+specs: [20261030_2343_sc19-link-create-ui, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2324_sc19-bulk-restore-notice]
+issues: [#2343, #451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#618, planning#841]
 -->
 
 # テスト仕様書: 個人資料管理画面
@@ -29,6 +29,7 @@ issues: [#451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#
 > **依然として無いのは、緊急アクセス・リンク作成**であり、いずれも呼ぶ口が無い。
 > ［2026-10-24 追記］**緊急アクセスは加わった**（口と中継が入ったため。前行の「緊急アクセス」は本追記が置き換える）。
 > 依然として無いのはリンク作成だけである。
+> ［2026-10-30 追記］**リンク作成も加わった**（候補の口とダイアログが入ったため。前行は本追記が置き換える）。
 > 本書はそれぞれを**陽性対照つきの陰性のケース**として持つ。
 > 「テストが緑＝計画の全要素が満たされた」ではない —— 差分は画面仕様書の対応表が持つ。
 
@@ -45,6 +46,10 @@ issues: [#451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#
 | 純関数 | `sc19-private-notes/types/quota.test.ts` | 段階警告の境界（両側）・内訳の合算・残り日数の切り上げ |
 | 画面 | `sc19-private-notes/components/BreakGlassPanel.test.tsx` | ［2026-10-24］緊急アクセス: 開くまで引かない・対象は利用中だけ・確認ダイアログの固定文言・理由必須と上限・指名先の候補（自分を除く・識別子を出さない）・送る本文・拒否の表示・残り時間・早期終了・失効での引き直し・監査ログ（表示名・操作種別・管理者の導線の出し分け） |
 | 純関数 | `sc19-private-notes/types/breakGlass.test.ts` | ［2026-10-24］理由の境界（空白だけ・500/501 文字）・残り秒数・操作種別・利用者名の比較・導線の出し分けの条件 |
+| 画面 | `sc19-private-notes/components/LinkCreateDialog.test.tsx` | ［2026-10-30］リンク作成: 送る本文（起点・終点・型）・404 は「見つかりません。」だけで「権限」の語を出さない・409 / 400 の言い分け・候補から起点を除き自分の個人資料に印・グラフに表示しない資料では押せない |
+| 純関数 | `sc19-private-notes/types/linkCreate.test.ts` | ［2026-10-30］失敗の分類（404 は理由を問わず 1 種類・本文の印が無ければ言い分けない） |
+| フック | `sc19-private-notes/api/useLinkCreate.test.tsx` | ［2026-10-30］作成に成功すると両端の近傍（ナレッジグラフ画面の照会）を古いものにし、無関係の近傍は触らない |
+| BFF・後段 | `BffGraphLinkCandidateTests` / `LinkCandidateTests` | ［2026-10-30］候補の口: 認証のみ・資格情報の伝播・400 の透過・502。後段は read スコープの内だけ・他人の個人資料と機械の主体への個人資料を出さない・件数を返さない |
 | 純関数 | `sc19-private-notes/types/noteBadges.test.ts` | 公開範囲・同期状態の値 → 表示状態と色の対応、**未知の値を既知へ丸めないこと**、タグ選択肢の重複排除 |
 | 共有部品 | `components/ConfirmDialog.test.tsx` | 押すまで実行されないこと・初期フォーカス・Escape |
 | ブラウザ E2E | `platform/frontend/e2e/sc19-private-notes.smoke.spec.ts` | 実ブラウザ・実ビルド成果物での描画（遅延チャンクの読み込みを含む）と、ユースケースの基本フロー 1・4 と例外フロー |
@@ -136,6 +141,10 @@ issues: [#451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#
 | 66 | 残り 0 の後、サーバが有効を返す間は間隔を置いて引き直し（上限あり）、失効が返れば止まる。上限で止め、再確認の導線を出す。送信中は確認ダイアログを閉じない | 緑（端末の時計が進んでいる場合を再現。引き直しが止まることと、送信中の Esc で閉じず失敗が残ることを固定） |
 | 67 | 業務関連資料の固定文言が「30 日が過ぎると、この資料は復元できない形で削除されます」を含み、未配備の間の暫定文言を出さない | 緑（ja / en の両方） |
 | 68 | ［2026-10-30 / #2324］復元（単票・一括）の完了通知は全件の結果を受けてから出し、一部が失敗したら戻った件数と戻らなかった件数を出す（戻らなかった資料は選んだまま残す）。全件が失敗したら戻らなかった件数だけを出す | 緑（後段の応答を止めている間は通知が出ないこと・1 件だけ失敗・全件失敗を固定） |
+| 69 | ［2026-10-30 / #2343］リンク作成の補完候補に権限外の文書と他人の個人資料が出ない（権限内と自分の個人資料は出る）。件数を出さない | 緑（後段 `LinkCandidateTests`。陽性対照つき） |
+| 70 | ［2026-10-30 / #2343］リンク作成の 404 は「見つかりません。」とだけ示し、「権限」の語を出さない。409 `edge_exists` と 400 `unknown_edge_type` は文言で言い分ける | 緑（成功の文言と送る本文を陽性対照に置く） |
+| 71 | ［2026-10-30 / #2343］画面から作った辺がナレッジグラフ画面のグラフ（近傍）に出る | 緑（後段 `UserAuthoredEdgeTests` の作成 → 近傍 ＋ 画面の近傍の引き直し） |
+| 72 | ［2026-10-30 / #2343］グラフに表示しない資料ではリンクを張れず、理由を示す | 緑（表示する資料で押せることを対で固定） |
 
 ## ブラウザ E2E で見ていること・見ていないこと
 

@@ -3167,6 +3167,44 @@ paths:
         "404": { description: "権限外・不存在・起点への書き込み権限なし（**区別しない**）" }
         "409": { description: "`edge_exists`。同じ両端・型の辺が既にある。本文ごと透過する" }
         "502": { description: 後段へ到達できない（成功へ縮退しない） }
+  /bff/graph/link-candidates:
+    get:
+      # NFR-09: 認証のみ・ロール不問（SC-19 は一般利用者の画面）。**候補はロールではなく ABAC が決める**。
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-17, SC-19: リンク作成の補完候補を表題で引く（#2343）"
+      description: |
+        FR-17, SC-19, ADR-0034 決定 2・8: 個人資料からリンクを張るときの、リンク先の補完候補。
+        **候補は作成者の read スコープ内に限る**（後段 GraphService が、辺の作成と同じスコープ・同じ述語で絞る）。
+        グラフに同期済みのノードだけが候補になる（＝終点として受け付けられる文書と一致する）。
+        **個人資料は呼び出し主体が所有者のものだけ**を返す（共有されて読める他人の個人資料も返さない。機械の主体には返さない）。
+
+        表題の部分一致（大小を区別しない）。並びは更新の新しい順。
+        🔴 **件数・総数・打ち切りの印は返さない**（応答は候補の配列だけ。ADR-0034 決定 2）。許可が無い主体には空の配列を返す。
+        BFF は透過中継であり、後段の状態と本文を詰め替えない。
+      operationId: bff-graph-link-candidates
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: 表題の部分一致の検索語（前後の空白を除いて 2〜200 文字）
+          schema: { type: string, minLength: 2, maxLength: 200 }
+        - name: limit
+          in: query
+          required: false
+          description: 返す候補の上限（既定 20）
+          schema: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: 候補（件数は返さない）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/GraphLinkCandidateDto" }
+        "400": { description: "`q` / `limit` の範囲外（ValidationProblem）。本文ごと透過する" }
+        "401": { description: 未認証（BFF の入口で弾く。後段へ送らない） }
+        "502": { description: 後段へ到達できない（空の候補へ縮退しない） }
   /bff/graph/{documentId}:
     parameters:
       - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -4732,6 +4770,15 @@ components:
         targetDocumentId: { type: string, format: uuid }
         edgeTypeId: { type: string, format: uuid }
         provenance: { type: string, description: "出所。この経路では常に `user`" }
+
+    GraphLinkCandidateDto:
+      type: object
+      description: "FR-17, SC-19: リンク作成の補完候補の 1 件。文書 ID・表題・個人資料かどうかだけを運ぶ（件数を運ぶ器は持たない）。"
+      required: [documentId, title, isPrivateNote]
+      properties:
+        documentId: { type: string, format: uuid }
+        title: { type: string }
+        isPrivateNote: { type: boolean, description: "自分の個人資料なら true（他人の個人資料は候補に出ない）" }
 
     EdgeTypeCatalogItem:
       type: object

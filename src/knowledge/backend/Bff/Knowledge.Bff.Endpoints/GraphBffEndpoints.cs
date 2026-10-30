@@ -164,6 +164,7 @@ public static class GraphBffEndpoints
         //   (1) #2107 の受け入れ基準（案 1・2）が、この口の公開そのもの（BFF 経由の作成・400/404 の透過・存在秘匿の 404）を求めている。
         //   (2) write ポリシーが 1 件も無い間、後段はこの経路を全件 404 にする —— 先に開けても辺は作れず、実害が出ない。
         //   (3) 消費者（SC-19 のリンク作成 UI）は #2343 で足す（キューに載っている）。
+        //   ［2026-10-30 / #2343］消費者（SC-19 のリンク作成 UI）を足した。補完候補は下の `/link-candidates`（[[IADR-0655]]）。
         g.MapPost("/edges", (CreateGraphEdgeRequest req, IHttpClientFactory httpFactory,
                 HttpContext http, CancellationToken ct)
             => ForwardAsync(HttpMethod.Post, "/graph/edges", httpFactory, http, ct, body: req))
@@ -173,6 +174,20 @@ public static class GraphBffEndpoints
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status502BadGateway);
+
+        // FR-17, SC-19, ADR-0034 決定 2・8, [[IADR-0655]] (#2343): **リンク作成の補完候補。**
+        //
+        // 🔴 **ロールの門を置かない**（SC-19 は一般利用者の画面）。候補は後段が利用者の read スコープ・辺の作成と同じ述語で絞り、
+        //    個人資料は所有者本人のものだけにする。BFF は**資格情報を伝播し、状態と本文を詰め替えない**（`q` の 400 を本文ごと返す）。
+        // 🔴 **件数を足さない** —— 後段の応答は候補の配列だけである（ADR-0034 決定 2）。
+        // `limit` は指定されたときだけ送る（既定は後段が唯一の情報源）。
+        g.MapGet("/link-candidates", (string? q, int? limit, IHttpClientFactory httpFactory,
+                HttpContext http, CancellationToken ct)
+            => ForwardAsync(HttpMethod.Get, "/graph/link-candidates" + BuildLinkCandidateQuery(q, limit), httpFactory, http, ct))
+            .WithName("BffGraphLinkCandidates")
+            .Produces<List<GraphLinkCandidateDto>>()
+            .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status502BadGateway);
 
         // FR-18, UC-10, SC-03, ADR-0081 決定 1・2, [[IADR-0653]] (#2106): **AI 提案の生成（製品の口）。**
@@ -234,6 +249,13 @@ public static class GraphBffEndpoints
     // 🔴 資格情報の伝播は読み取りと同じ方式 A である（冒頭の注釈）。落とすと後段は利用者を
     // anonymous として解決し、**承認が静かに全件 404 になる**（陽性対照つきのテストで固定する）。
     // FR-17 (#2107): `body` は辺の作成だけが渡す（契約の型のまま送る）。承認・却下は本文を送らない（従前どおり）。
+    // FR-17, SC-19 (#2343): 補完候補の問い合わせ文字列。検索語は 1 つの値として符号化する。
+    private static string BuildLinkCandidateQuery(string? q, int? limit)
+    {
+        var query = "?q=" + Uri.EscapeDataString(q ?? string.Empty);
+        return limit is { } l ? query + "&limit=" + l.ToString(System.Globalization.CultureInfo.InvariantCulture) : query;
+    }
+
     private static async Task<IResult> ForwardAsync(
         HttpMethod method, string path,
         IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct,
