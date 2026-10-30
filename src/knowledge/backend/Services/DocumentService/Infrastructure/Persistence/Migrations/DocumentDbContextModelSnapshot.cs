@@ -541,6 +541,11 @@ namespace DocumentService.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<bool>("AiInputDefault")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("TargetFolders")
                         .IsRequired()
                         .HasColumnType("jsonb");

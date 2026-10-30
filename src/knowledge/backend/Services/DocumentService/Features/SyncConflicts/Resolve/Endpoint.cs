@@ -194,13 +194,15 @@ internal static class ResolveSyncConflictEndpoint
         var uri = await storage.PutTextAsync(DocumentBodyIntake.StorageKey(id), localContent,
             DocumentBodyIntake.ContentType, ct);
         // 既定（doc_scope=private-note / owner / restricted / 露出 3 トグル OFF）は作成経路と同じ。
+        // ［2026-10-30 / #2120］ただし作成経路の AI 入力は利用者単位の既定で始まるのに対し、別名の資料は常に OFF（ADR-0143 決定 3）。
         // 🔴 **元の資料の露出を継がない**（新規作成の既定。FR-21 受け入れ基準 ⑩・ADR-0105 決定 1）。
         // #1474: 呼び出し側で門を通す（push の新規作成と同じ形）。露出は OFF で作られるため、
         // 現行の既定では門に弾かれ、索引の生産側へは何も流れない（ADR-0061 決定 2）。
         // ADR-0105 決定 3 (#1498): タグだけは元の資料から写す（別のリストにする —— 元の資料と同じ実体を共有しない）。
         var doc = Document.CreateWithBody(id, ConflictAlias.TitleOf(sourceDoc.Title, now), uri,
             originalUri: null, contentType: DocumentBodyIntake.ContentType,
-            attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: [.. sourceDoc.Tags],
+            // 🔴 FR-19, 計画 ADR-0143 決定 3 (#2120): 別名コピーには AI 入力の利用者単位の既定を**当てない**（明示の false）。
+            attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner, includeInAi: false), tags: [.. sourceDoc.Tags],
             contentFingerprint: DocumentBodyIntake.Fingerprint(localContent));
         db.Documents.Add(doc);
         db.PrivateNotes.Add(PrivateNote.Create(id, owner, vaultPath, bytes,

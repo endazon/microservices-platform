@@ -30,7 +30,8 @@ public class PrivateNote
     // FR-20: 最新版本文の SHA-256（hex）。プラグインの差分判定用（本文そのものは持たない）。
     public string? ContentHash { get; private set; }
 
-    // FR-19: 露出 3 トグル（横断検索／ナレッジグラフ／AI 入力）。**既定はいずれも OFF**。
+    // FR-19: 露出 3 トグル（横断検索／ナレッジグラフ／AI 入力）。**既定はいずれも OFF**（AI 入力だけは利用者単位の既定で
+    // 初期化され得る。［2026-10-30 / #2120・計画 ADR-0143 決定 1］）。
     // ON の消費側配線は IADR-0253 段 3 の完了待ちであり、本段では保存のみ（[[IADR-0270]] 決定 5）。
     public bool IncludeInSearch { get; private set; }
     public bool IncludeInGraph { get; private set; }
@@ -48,10 +49,13 @@ public class PrivateNote
 
     private PrivateNote() { }
 
+    // ［2026-10-30 / #2120・計画 ADR-0143 決定 1・3］`includeInAi` は AI 入力の初期値（新しく作る資料では利用者単位の既定、
+    // 別名コピーでは false）。横断検索・グラフは常に OFF で始まる（決定 4）。資料の属性（`PrivateNoteDefaults`）と同じ値を渡す。
     public static PrivateNote Create(Guid documentId, string ownerId, string vaultPath,
-        long latestBytes, string? contentHash, DateTimeOffset now) => new()
+        long latestBytes, string? contentHash, DateTimeOffset now, bool includeInAi = false) => new()
         {
             DocumentId = documentId,
+            IncludeInAi = includeInAi,
             OwnerId = ownerId,
             VaultPath = vaultPath,
             LatestBytes = latestBytes,

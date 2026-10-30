@@ -50,8 +50,13 @@ public static class SyncSettingsEndpoints
                 return new SyncTargetFolderDto(f, under.Count,
                     under.Count == 0 ? null : under.Max(n => n.UpdatedAt));
             })],
-            settings?.UpdatedAt);
+            settings?.UpdatedAt,
+            settings?.AiInputDefault ?? false);
     }
+
+    // FR-19, ADR-0143 決定 1 (#2120): 新しく作る資料の AI 入力の初期値（作成時点の利用者単位の既定。設定が無ければ false）。
+    internal static async Task<bool> AiInputDefaultAsync(DocumentDbContext db, string owner, CancellationToken ct)
+        => (await db.SyncSettings.AsNoTracking().FirstOrDefaultAsync(s => s.OwnerId == owner, ct))?.AiInputDefault ?? false;
 
     // SC-20 主要素 3: 配下の資料数の母集合は**削除済みを除く本人の資料**である
     // （削除済みは同期対象にならない＝`syncState` が常に `excluded`。数え方を 2 つ持たない）。

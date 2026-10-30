@@ -35,6 +35,8 @@ internal static class UpdateSyncSettingsEndpoint
                 db.SyncSettings.Add(settings);
             }
             settings.Replace(folders, now);
+            // FR-19, ADR-0143 決定 1・2 (#2120): 省略（null）なら変えない。変えても既存の資料には触れない。
+            if (req.AiInputDefault is { } aiDefault) settings.SetAiInputDefault(aiDefault, now);
             await db.SaveChangesAsync(ct);
 
             var notes = await SyncSettingsEndpoints.ActiveNotesAsync(db, owner, ct);

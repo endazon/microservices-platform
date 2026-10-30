@@ -30,6 +30,7 @@ import type { DeviceState } from '../types/deviceState';
 import { SyncTargetFoldersPanel } from './SyncTargetFoldersPanel';
 import { SyncConflictsPanel } from './SyncConflictsPanel';
 import { SyncHistoryPanel } from './SyncHistoryPanel';
+import { AiInputDefaultPanel } from './AiInputDefaultPanel';
 
 // SC-20, UC-11, FR-20: Obsidian 連携設定（05_screens: ルート /my/obsidian）。
 //
@@ -353,11 +354,18 @@ export function ObsidianSettingsPage() {
       */}
       <SyncHistoryPanel hasPriorSync={hasPriorSync} />
 
+      {/*
+        主要素 8（#2120・ADR-0143）: AI 入力の利用者単位の既定（新しく作る資料の初期値）。
+        横断検索・グラフの既定は置かない。資料ごとの露出は個人資料管理画面が持つ（下の案内）。
+      */}
+      <AiInputDefaultPanel />
+
       {/* 露出設定は資料単位で個人資料管理画面が持つ（作業仕様書 §計画との差異 を参照）。 */}
       <Note>
         <Trans>
           横断検索・ナレッジグラフ・AI
-          の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。
+          の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。横断検索とナレッジグラフの既定はオフです。AI
+          の入力は、資料を作った時点の上の既定で始まります。
         </Trans>{' '}
         <Link to="/my/notes" search={{ tab: 'active', q: '' }} className="underline">
           <Trans>個人資料の一覧へ</Trans>

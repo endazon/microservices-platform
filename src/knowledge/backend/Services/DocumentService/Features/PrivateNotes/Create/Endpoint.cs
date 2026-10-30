@@ -35,13 +35,16 @@ internal static class CreatePrivateNoteEndpoint
             if (await PrivateNoteEndpoints.ActivePathExistsAsync(db, owner, vaultPath, ct))
                 return PrivateNoteEndpoints.PathConflictProblem(vaultPath);
 
-            // FR-19 受け入れ基準: 公開範囲＝非公開（共有 0 件）・機密区分 restricted・3 トグル OFF で作成。
+            // FR-19 受け入れ基準: 公開範囲＝非公開（共有 0 件）・機密区分 restricted・横断検索とグラフは OFF で作成。
+            // ［2026-10-30 / #2120・計画 ADR-0143 決定 1］AI 入力は**作成時点の利用者単位の既定**で初期化する（既定 OFF）。
+            // 本文の無い作成（0 バイト）なので発行はしない（従前どおり）。本文が入ったとき（push・本文の差し替え）に門を通る。
+            var aiDefault = await SyncSettings.SyncSettingsEndpoints.AiInputDefaultAsync(db, owner, ct);
             var doc = Document.Create(req.Title.Trim(), originalUri: null,
                 contentType: DocumentBodyIntake.ContentType,
-                attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: []);
+                attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner, includeInAi: aiDefault), tags: []);
             db.Documents.Add(doc);
             var note = PrivateNote.Create(doc.Id, owner, vaultPath, latestBytes: 0,
-                contentHash: null, now);
+                contentHash: null, now, includeInAi: aiDefault);
             db.PrivateNotes.Add(note);
             // 本文なし（0 バイト）の作成は使用量を変えないため、警告の再評価は不要である。
             await db.SaveChangesAsync(ct);
