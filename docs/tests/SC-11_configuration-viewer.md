@@ -3,15 +3,15 @@ title: SC-11 構成ビューア テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-10-24
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-15, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11]
 adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0046, IADR-0129, IADR-0620]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20261024_2022_sc08-sc10-sc11-e2e]
-issues: [#137, #138, #139, #140, #503, #504, #506, #510, #2022]
+iadrs: [IADR-0660, IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0046, IADR-0129, IADR-0620]
+specs: [20261030_2285_introspection-contributors-mcp-tools, 20260805_issue-504_sc09-11-admin-ops-screens, 20261024_2022_sc08-sc10-sc11-e2e]
+issues: [#2285, #137, #138, #139, #140, #503, #504, #506, #510, #2022]
 -->
 
 # テスト仕様書: 構成ビューア
@@ -85,6 +85,7 @@ E2E は `src/platform/frontend/e2e/sc11-config.smoke.spec.ts`
 | 14 | **参照専用** | 計画 §入力 | 画面上のボタンは**再取得の 1 つだけ**。**先に再取得ボタンと注記が在ることを確かめてから**構成変更の操作が無いことを見る |
 | 15 | 再取得 | — | 3 本を取り直す（`invalidateQueries` のみ。手書きの再取得を持たない） |
 | 16 | ロケール `en` | —| 見出しが英語で描画される |
+| 17 | MCP の実効ツール（［2026-10-30 追加］） | 計画（MCP サーバー連携 §5）| 実効構成の節に表（公開名・申告元サービス・必要な権限スコープ・越境分類）。0 件は「公開している MCP のツールはありません。」（表を消さない） |
 
 ## アクセス制御・存在秘匿（`access.test.tsx`。**#140 の観点を引き継ぐ**）
 

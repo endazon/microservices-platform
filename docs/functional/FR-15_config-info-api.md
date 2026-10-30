@@ -3,15 +3,15 @@ title: 構成情報 API（実効構成の可視化・ドリフト検出） 機�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-10-26
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15, SC-11, NFR-16]
 adrs: [ADR-0018, ADR-0029, ADR-0075]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462, IADR-0533, IADR-0646]
-specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
-issues: [#444, #1514, #1255, #1517, #2118]
+iadrs: [IADR-0660, IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462, IADR-0533, IADR-0646]
+specs: [20261030_2285_introspection-contributors-mcp-tools, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
+issues: [#2285, #444, #1514, #1255, #1517, #2118]
 -->
 
 # 機能仕様書: 構成情報 API（実効構成の可視化・ドリフト検出）
@@ -115,3 +115,6 @@ issues: [#444, #1514, #1255, #1517, #2118]
   その有効・無効の集約を指すかもしれない（狭い読みでは「有効・無効」は常に有効で自明である）。どちらの読みかは計画へ問い合わせ中で、
   広い読みは申告を要求ごとに組み立てる仕組みが要るので、答えが出るまで作らない。
 - ［2026-10-26］**MCP サーバーは収集先に入ったが、実効ツール一覧はまだ実効構成に入らない**（自己申告の契約に器が無い。別に追う）。
+  ［2026-10-30 解消］自己申告に要求のたびの寄与を足し、MCP サーバーが実効ツール一覧（公開名・申告元サービス・必要な権限スコープ・越境分類）を載せるようになった。
+  実効構成の `mcpTools` に出て、構成ビューアの実効構成の節に表で出る。収集の更新は次の要求に反映される。
+  コネクタ一覧の広い読みは、同じ寄与の仕組みに後から載せる（計画の答えを待つ）。
