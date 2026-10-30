@@ -214,10 +214,10 @@ export function OperationsDashboardPage() {
         </Note>
       </Panel>
 
-      {/* IADR-0129 決定 4: 導線を権限で出し分けない。本画面へ到達できるのは platform-admin だけであり、
-          platform-admin は ConfigViewer（admin または operator）の部分集合であるため、
-          ロール判定は**この画面では常に真**になる（到達しない分岐を作らない）。
-          SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分けを書く。 */}
+      {/* IADR-0129 決定 4: 導線を権限で出し分けない。本画面へ到達できるのは platform-admin と platform-operator であり
+          （ルートの `RequireRole`。#544。［2026-10-30 訂正 / #2147］従前は「platform-admin だけ」と書いていた）、
+          どちらも ConfigViewer（admin または operator）に含まれるため、ロール判定は**この画面では常に真**になる
+          （到達しない分岐を作らない）。SC-10 の閲覧ロールがこの 2 つの外へ広がる時点で、そのとき必要な出し分けを書く。 */}
       <p className="mt-n3 text-sm">
         <Link to="/admin/config-viewer" className="text-brand hover:underline">
           <Trans>構成ビューア →</Trans>
