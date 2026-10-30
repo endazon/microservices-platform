@@ -37,6 +37,7 @@ import {
 } from '../types/userAccountVocabulary';
 import type { AssignmentIssue, DepartmentState } from '../types/userAccountVocabulary';
 import { useUserPermissionEditor } from '../hooks/useUserPermissionEditor';
+import { PrivateNoteQuotaCell, PrivateNoteQuotaEditor } from './PrivateNoteQuota';
 
 // SC-17, UC-05, FR-05, FR-09, ADR-0026: ユーザーアカウント管理（05_screens: ルート /admin/users）。
 //
@@ -191,6 +192,13 @@ export function UserAccountManagementPage() {
             // 05_screens §SC-17 の表示文言そのまま。「無効」だけでは既存セッションの扱いが読めない。
             <StatusBadge tone="danger">{t`無効（全セッション失効）`}</StatusBadge>
           ),
+      },
+      {
+        // FR-19, NFR-27 (#2330): 個人資料の使用量と上限の 2 つの数だけ（題名・件数・中身は出さない）。
+        id: 'privateNoteQuota',
+        header: t`個人資料の容量`,
+        enableSorting: false,
+        cell: ({ row }) => <PrivateNoteQuotaCell username={row.original.username} />,
       },
       {
         id: 'operation',
@@ -562,6 +570,9 @@ export function UserAccountManagementPage() {
                 .join(' / ')}
             </Alert>
           )}
+
+          {/* FR-19, NFR-27 (#2330): 個人資料の保存容量の上限。権限の保存とは別の操作（別の反映先）なので、ボタンも分ける。 */}
+          <PrivateNoteQuotaEditor username={editing.username} />
 
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="primary" onClick={save}>

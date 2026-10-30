@@ -3492,8 +3492,8 @@ paths:
   # **後段の本文は詰め替えず透過する** —— 507（容量上限）の本文が SC-19 の固定文言の根拠であり、
   # 409（`vault_path_conflict` / `not_deleted`）も同様である。
   #
-  # 載せていない後段の口: `/private-notes/quotas/{ownerId}`（管理者の上限変更。**載せる画面が計画に無い**）と
-  # `/private-notes/sync/*`（Obsidian プラグイン向け。**資格情報が別系統の同期トークン**であり SPA は呼ばない）。
+  # 載せていない後段の口: `/private-notes/sync/*`（Obsidian プラグイン向け。**資格情報が別系統の同期トークン**であり SPA は呼ばない）。
+  # ［2026-10-30 / #2330］`/private-notes/quotas/{ownerId}`（管理者の上限変更）は SC-17 の欄と一緒に載せた（`/bff/private-notes/quotas/{ownerId}`）。
   /bff/private-notes:
     get:
       x-roles: []
@@ -3919,6 +3919,58 @@ paths:
   # 後段 DocumentService の `/private-notes/sync-settings`・`/private-notes/conflicts*` へ透過中継する。
   # 書き込み（PUT / resolve）は個人資料の他の書き込みと同じく ABAC の write スコープで前段を絞る。
   # 同期履歴（主要素 6）は `/bff/private-notes/sync-history`（ADR-0099。planning#618 の裁定で N・保持期間が確定）。
+  /bff/private-notes/quotas/{ownerId}:
+    parameters:
+      - name: ownerId
+        in: path
+        required: true
+        description: 利用者名（個人資料の所有者。後段の経路の 1 区切りとして符号化して運ぶ）
+        schema: { type: string }
+    get:
+      x-roles: [platform-admin]
+      tags: [PrivateNotes]
+      summary: "FR-19, NFR-27, SC-17: 利用者の個人資料の使用量と上限を照会する（システム管理者。#2330）"
+      description: |
+        FR-19, NFR-27, SC-17: 利用者ごとの個人資料の**使用量と上限の 2 つの数（と割合）だけ**を返す。
+        題名・件数・中身・同期設定は返さない（SC-19 の「管理者が他の利用者の個人資料を閲覧する画面を描かない」を守る）。
+        使用量は最新版と論理削除済みの合計（版履歴は算入しない）。上限を設定していない利用者は既定の 1 GB。
+        システム管理者だけ（BFF と後段の両方で `AdminOnly`）。後段の状態コードと本文を詰め替えずに返す。
+      operationId: bff-private-note-quota-get
+      responses:
+        "200":
+          description: 使用量・上限・割合
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteUsageDto" }
+        "401": { description: 未認証 }
+        "403": { description: システム管理者ロール以外（後段へ送らない） }
+        "502": { description: 後段へ到達できない }
+    put:
+      x-roles: [platform-admin]
+      tags: [PrivateNotes]
+      summary: "FR-19, NFR-27, SC-17: 利用者の個人資料の保存容量の上限を変更する（システム管理者。0〜1 TB。#2330）"
+      description: |
+        FR-19, NFR-27, SC-17: 上限は **0〜1 TB**（既定 1 GB）。**0 を許す**（計画 2026-10-24 の裁定）。
+        0 は「新しい資料を作れない状態」で、容量 100% 到達と同じ扱い（ADR-0037 決定 17）—— 新規作成（SC-19 の作成・
+        同期の新規 push・同期競合の別名の資料）を拒み、既存の資料の閲覧と更新は許す。
+        変更は後段が監査ログ（`private-note.quota.set`）に記録する。範囲外は 400（`limitBytes`）。
+        システム管理者だけ（BFF と後段の両方で `AdminOnly`）。後段の状態コードと本文を詰め替えずに返す。
+      operationId: bff-private-note-quota-set
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetPrivateNoteQuotaRequest" }
+      responses:
+        "200":
+          description: 変更後の使用量・上限・割合
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteUsageDto" }
+        "400": { description: "範囲外（0 未満・1 TB 超）。本文ごと透過する（`limitBytes`）" }
+        "401": { description: 未認証 }
+        "403": { description: システム管理者ロール以外（後段へ送らない） }
+        "502": { description: 後段へ到達できない }
   /bff/private-notes/sync-settings:
     get:
       x-roles: []
@@ -6506,6 +6558,13 @@ components:
           items: { type: string }
           description: "タグ辞書の表示名（SC-09 の辞書。ADR-0063 は個人資料も対象）。辞書に無い ID は落とす"
 
+    SetPrivateNoteQuotaRequest:
+      type: object
+      description: "FR-19, NFR-27, SC-17: 個人資料の保存容量の上限の変更（0〜1 TB。0 は新しい資料を作れない状態）"
+      required: [limitBytes]
+      properties:
+        limitBytes: { type: integer, format: int64, minimum: 0, maximum: 1099511627776, description: "上限（バイト）" }
+
     PrivateNoteUsageDto:
       type: object
       description: |
@@ -6515,7 +6574,7 @@ components:
       required: [usedBytes, limitBytes, percent]
       properties:
         usedBytes: { type: integer, format: int64 }
-        limitBytes: { type: integer, format: int64, description: "既定 1 GB。管理者が最大 1 TB まで引き上げ可" }
+        limitBytes: { type: integer, format: int64, description: "既定 1 GB。システム管理者が 0〜1 TB で変更できる（0 は新しい資料を作れない状態。#2330）" }
         percent: { type: integer, format: int32 }
 
     PrivateNoteListResponse:

@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 651762,
+  "initialTotalBytes": 652466,
+  "$comment_initialTotalBytes_20261030_2330_sc17-quota": [
+    "［2026-10-30 / #2330］651,762 → 652,466 B へ引き上げた。実測値である（pnpm run build → 超過を報告し、--update で床を更新した）。",
+    "増分の帰属: SC-17 に個人資料の容量の列と上限の編集（部品・照会と変更のフック・文言 7 つ）を足した。Lingui の ja / en カタログは入口チャンク（index-*.js）に入るので、両言語の訳の分だけ初期ロードが増える。"
+  ],
   "$comment_initialTotalBytes_20261030_2106_suggestion-generate": [
     "［2026-10-30 / #2106］651,049 → 651,762 B へ引き上げた。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
     "増分の帰属: SC-03 の承認欄に AI 提案の生成のボタン（部品・生成のフックの呼び出し・文言 5 つ）を足した。生成の呼び出しは graph の遅延チャンクに入るが、Lingui の ja / en カタログは入口チャンク（index-*.js）に入るので、両言語の訳の分だけ初期ロードが増える（新しい文を dist で引くと入口チャンクだけが当たる）。"

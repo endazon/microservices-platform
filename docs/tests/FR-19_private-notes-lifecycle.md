@@ -10,8 +10,8 @@ author: Claude
 ids: [FR-19, FR-21, FR-22, UC-11, SC-17, SC-19, SC-20, NFR-16]
 adrs: [ADR-0036, ADR-0037, ADR-0054, ADR-0057, ADR-0058, ADR-0096, ADR-0117, ADR-0143]
 iadrs: [IADR-0270, IADR-0283, IADR-0296, IADR-0428, IADR-0431, IADR-0474, IADR-0530, IADR-0598, IADR-0599, IADR-0610, IADR-0611]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20261010_1887_h2c-measurement-triggers, 20261015_1890_measurement-wiring-tests-and-rerank-race, 20261023_2112_sc05-doc-scope-default, 20261023_2100_cross-replica-exclusion, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261030_2120_ai-input-user-default]
-issues: [#451, #447, #1409, #1532, #1583, #1598, #1604, #1608, #1622, #1887, #1890, #2112, #2100, #2046, #2120]
+specs: [20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-447_fr21-criteria-9-10, 20260911_issue-1409_private-note-disposal-after-window, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete, 20260926_issue-1598_maintenance-loop-foreign-cancellation, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1608_purger-timeout-isolation, 20260927_issue-1622_deterministic-tick-tests, 20261010_1887_h2c-measurement-triggers, 20261015_1890_measurement-wiring-tests-and-rerank-race, 20261023_2112_sc05-doc-scope-default, 20261023_2100_cross-replica-exclusion, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261030_2120_ai-input-user-default]
+issues: [#2330, #451, #447, #1409, #1532, #1583, #1598, #1604, #1608, #1622, #1887, #1890, #2112, #2100, #2046, #2120]
 -->
 
 # テスト仕様書: 個人資料のライフサイクル・容量・版保持
@@ -46,7 +46,8 @@ issues: [#451, #447, #1409, #1532, #1583, #1598, #1604, #1608, #1622, #1887, #18
 | 3 | 80% / 95% の跨ぎで各 1 回警告・下回ると再武装・宛先は本人のみ | `容量警告は80と95の跨ぎで各1回発火し下回ると再武装する` |
 | 4 | 100% で新規作成のみ拒否・更新は成功・完全削除で自力復帰 | `満杯時は新規作成のみ拒否され更新は通り完全削除で復帰する` |
 | 5 | 上限を跨ぐ新規作成の拒否（跨がない新規作成は通る） | `上限を跨ぐ新規作成は拒否され跨がない新規作成は通る` |
-| 6 | 上限は管理者のみ変更可・1 TB 上限・既定 1 GB | `上限は管理者が変更でき1TBを超える値は拒否される` / `既定の上限は1GBである` |
+| 6 | 上限は管理者のみ変更可・1 TB 上限・既定 1 GB・［2026-10-30］0 を許す | `上限は管理者が変更でき1TBを超える値は拒否される` / `既定の上限は1GBである` |
+| 6b | ［2026-10-30 / #2330］上限 0 では使用量 0 でも新規作成（個人資料の画面からの作成・同期の新規 push）を拒み、既存の資料の更新は許す | `上限0では使用量0でも新規作成を拒み既存の資料の更新は許す` |
 | 7 | 新規作成の既定値（スコープ属性・所有者・最も厳しい機密区分・トグル OFF） | `SC19からの作成は本文なしで既定値つきで作られる` |
 | 8 | 論理削除は 90 日間復元でき、90 日経過で自動物理削除・事後通知（件数のみ） | `論理削除から90日経過で自動物理削除され事後通知が発火する` |
 | 9 | 完全削除 7 日前の別建て通知が 1 回だけ | `完全削除の7日前通知は1回だけ検知される` |

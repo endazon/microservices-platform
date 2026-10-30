@@ -147,12 +147,15 @@ public class PrivateNoteQuota
         UpdatedAt = now,
     };
 
-    // FR-19: 管理者による上限変更（SC-19 運用）。1 バイト以上・最大 1 TB。
+    // FR-19: 管理者による上限変更（SC-17）。0 以上・最大 1 TB。
+    // ［2026-10-30 / #2330］**0 を許す**（計画 SC-17 の 2026-10-24 の裁定。従前は 1 バイト以上を求めていた）。
+    // 0 は「新しい資料を作れない状態」であり、容量 100% 到達と同じ扱い（ADR-0037 決定 17）になる ——
+    // `RejectsNewNote` は使用量 0 でも `used >= limit` で新規作成（空の資料を含む）を拒み、更新はこの判定を通らない。
     public void SetLimit(long limitBytes, DateTimeOffset now)
     {
-        if (limitBytes <= 0 || limitBytes > MaxLimitBytes)
+        if (limitBytes < 0 || limitBytes > MaxLimitBytes)
             throw new ArgumentOutOfRangeException(nameof(limitBytes),
-                $"保存容量の上限は 1 バイト以上 {MaxLimitBytes} バイト（1 TB）以下です。");
+                $"保存容量の上限は 0 バイト以上 {MaxLimitBytes} バイト（1 TB）以下です。");
         LimitBytes = limitBytes;
         UpdatedAt = now;
     }

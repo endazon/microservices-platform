@@ -2748,6 +2748,17 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.SetPrivateNoteQuotaRequest": {
+        "kind": "record",
+        "members": {
+          "LimitBytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.ShareSubjectTypes": {
         "kind": "class",
         "members": {
