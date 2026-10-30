@@ -85,4 +85,6 @@ issue は「このログを検知するアラートを、既存の監視（Loki 
   - ［2026-10-30 追記 / #2361］捨てたことを計器 `messaging.retry_block.discarded` と警報 `MessagingRetryBlockDiscarded` にした。あわせて、データソース同期の発行は送出表へ書けなければ例外になり、
     表への書き込みの失敗では欠落しなくなった（[IADR-0657](./IADR-0657_datasource-per-item-outbox-and-discard-alert.md)。IADR-0609 決定 2 を置き換え）。
 - 提供者は全サービスのロガーに 1 つ足される。照合は `{OriginalFormat}` の 1 回の比較で、`IsEnabled` は Error 以上だけを受ける。費用はエラーログの数に比例する。
+  - ［2026-10-30 追記 / #2361］上の 1 行は古くなった。捨てたこと（Information）も数えるようにしたので、`IsEnabled` は **Information 以上**を受け、
+    費用は **Information 以上のログの件数**に比例する（[IADR-0657](./IADR-0657_datasource-per-item-outbox-and-discard-alert.md)）。1 件あたりは状態（キーと値の並び）の走査と文字列の比較 1 回である。#2363 の AI レビューの指摘で追記した（#2148）。
 - 計器は、ロガーの最小の段（`Logging:LogLevel`）が Error を落とす構成では進まない。既定の構成は Error を出す。

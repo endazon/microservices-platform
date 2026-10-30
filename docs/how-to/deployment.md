@@ -3,15 +3,15 @@ title: how-to — デプロイ手順（環境ごと）と GitOps 運用
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-23
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-15, NFR-02, NFR-20, NFR-21]
 adrs: [ADR-0007, ADR-0076, ADR-0079, ADR-0135]
 iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069, IADR-0378, IADR-0469, IADR-0519, IADR-0547, IADR-0605]
-specs: [20260926_issue-1287_helm-synthetic-monitor-optin, 20261009_1843_pin-argocd-k3s-inspection-population, 20261015_1858_pin-inner-image-digests, 20261023_2132_pin-image-tags]
-issues: [#192, #1287, #1843, #1858, #2132]
+specs: [20261030_2148_ci-deploy-details, 20260926_issue-1287_helm-synthetic-monitor-optin, 20261009_1843_pin-argocd-k3s-inspection-population, 20261015_1858_pin-inner-image-digests, 20261023_2132_pin-image-tags]
+issues: [#2148, #192, #1287, #1843, #1858, #2132]
 -->
 
 # how-to: デプロイ手順（環境ごと）と GitOps 運用
@@ -62,6 +62,9 @@ Git 状態へ自動復元される）。
 3. **ArgoCD 登録**（[`deploy/argocd/README.md`](../../deploy/argocd/README.md)）
    ArgoCD 自体の導入と、`AppProject`（`deploy/argocd/appproject.yaml`）・`Application`
    （`deploy/argocd/application.yaml`）の適用は一度だけ kubectl で行う。以降は Git 更新のみで同期される。
+   🔴 **同期するのは `main` である**（`application.yaml` の `targetRevision: main`）。既定ブランチは `develop` で、**`develop` へのマージは `main` に届かない**
+   （2026-10-30 時点で `main` は `develop` より 1314 コミット遅れている）。下の「デプロイ」で値を改める PR を `develop` へマージしても、
+   `main` へ昇格させるまで Argo CD は同期しない。昇格の手順を置くか `targetRevision` を `develop` へ向けるかは配備方針の判断で、まだ決まっていない。
 
 ```bash
 kubectl create namespace argocd

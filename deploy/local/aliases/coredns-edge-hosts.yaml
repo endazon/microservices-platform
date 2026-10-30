@@ -8,7 +8,7 @@
 #   （DNS-1035 label 制約）。`deploy/local/aliases/*-externalnames.yaml`（IADR-0103）の方式は
 #   素の `keycloak` にしか使えない。
 #
-# ★ なぜ hostAliases ではないか: OIDC クライアント 7 つ＋今後増える pod すべてに書く必要があり、
+# ★ なぜ hostAliases ではないか: OIDC クライアントの全部＋今後増える pod すべてに書く必要があり、
 #   書き忘れた pod だけが静かに誤解決する（母集合の規則 7 が破れる形）。
 #
 # ★ なぜ coredns ConfigMap の直接編集ではないか: `kube-system/coredns` は **k3s の管理物**で、

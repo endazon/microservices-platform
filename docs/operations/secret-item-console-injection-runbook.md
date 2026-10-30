@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-11
-updated: 2026-10-09
+updated: 2026-10-30
 ---
 <!-- trace:
 ids: [SC-22, SC-06, SC-15, FR-05, NFR-11, NFR-18]
 adrs: [ADR-0132, ADR-0007, ADR-0032, ADR-0040, ADR-0042, ADR-0095, ADR-0110, ADR-0124]
 iadrs: [IADR-0525, IADR-0094, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0332, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0486]
-specs: [20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1683_vault-audit-to-observability]
-issues: [#1840, #458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #1682, #1683, planning#599, planning#635, planning#652, planning#700]
+specs: [20261030_2148_ci-deploy-details, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260911_issue-1411_sc22-console-fallback-and-bff-vault-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260926_issue-1558_runbook-nits, 20260928_issue-1682_paired-secrets-outside-sc22, 20260928_issue-1683_vault-audit-to-observability]
+issues: [#2148, #1840, #458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #1682, #1683, planning#599, planning#635, planning#652, planning#700]
 -->
 
 # 運用 Runbook: 画面が使えないときに秘密情報を 1 項目だけコンソールから投入する
@@ -52,7 +52,7 @@ issues: [#1840, #458, #310, #438, #1102, #1411, #1467, #1477, #1523, #1558, #168
 
 ## 🔴 一括再投入（`bootstrap.sh`）を既定の手順にしない
 
-`deploy/local/vault/eso/bootstrap.sh` は **28 項目すべてを再投入する**。
+`deploy/local/vault/eso/bootstrap.sh` は **保管先のすべての項目を再投入する**（件数は書かない。対象は同スクリプトが書くパスの全部である）。
 env で値を渡さなかった項目は**既定値（多くは開発用の固定文字列か空文字）で上書きされる**。
 
 - **稼働中の認証基盤・データベース・ブローカの資格情報がその既定値に置き換わる。**
@@ -67,8 +67,8 @@ env で値を渡さなかった項目は**既定値（多くは開発用の固�
 既に在る KV は、env が空でないプロパティだけが差し替わる（画面で入れた値は再実行で消えない）。
 🔴 **それ以外の項目（認証基盤・データベース・ブローカの資格情報）は従来どおり再投入される。** 1 項目を直すために `bootstrap.sh` を実行しない、は変わらない。
 
-［2026-09-28 追記］**対になる秘密（認証基盤・データベース・ブローカ・オブジェクトストレージの資格情報の 24 KV）も、無いときだけ作るようになった。**
-在る KV は env を渡しても触らない。したがって上の「28 項目すべてを再投入する」「稼働中の資格情報が既定値に置き換わる」は、**保管先については成り立たなくなった。**
+［2026-09-28 追記］**対になる秘密（認証基盤・データベース・ブローカ・オブジェクトストレージの資格情報。件数は `grep -cE '^vkv_create_if_absent ' deploy/local/vault/eso/bootstrap.sh` で数える＝`deferred[]` と `excluded[]` の `vaultPaths` の合計）も、無いときだけ作るようになった。**
+在る KV は env を渡しても触らない。したがって上の「すべての項目を再投入する」「稼働中の資格情報が既定値に置き換わる」は、**保管先については成り立たなくなった。**
 🔴 **それでも 1 項目を直すために `bootstrap.sh` を実行しない。** `keycloak-smtp` の構成値（`host` / `port` / `starttls`）は毎回 env と Git の値へ揃え直され、
 起動器（`scripts/k8s-local-up.sh`）の手動の Secret 作成は `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` の Secret を env か既定値で書き直す
 （保管先の値は戻らず、次の同期で Secret も戻る）。

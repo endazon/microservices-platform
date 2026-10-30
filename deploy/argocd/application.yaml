@@ -26,6 +26,9 @@ spec:
   source:
     repoURL: https://github.com/endazon/microservices-platform.git
     # GitOps の配備対象リビジョン（安定版）。運用ポリシーに応じて変更する。
+    # 🔴 NFR-20, ADR-0007 (#2148): **同期するのは main である。既定ブランチの develop へマージしても main には届かない**
+    #   （main の最終更新は 2026-06-26 で、2026-10-30 時点で develop より 1314 コミット遅れている）。develop の変更を配備するには、
+    #   develop を main へ昇格させるか、ここを develop へ向ける必要がある。どちらにするかは配備方針の判断で、#2148 に要裁定として残した。
     targetRevision: main
     path: deploy/helm/microservices-platform
     helm:

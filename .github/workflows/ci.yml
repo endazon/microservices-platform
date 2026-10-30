@@ -1333,7 +1333,9 @@ jobs:
     # 🔴 NFR, #1910: static-checks がここで律速にならないことは前提ではなく、実測で保っている（10/9〜10/10 は
     # k8s-local-up.test.js の積み増しで 117〜149 秒に伸び、PR の約半数で律速になった。同試験を並列実行にして戻した）。
     # 所要の現況は docs/ai-workflow.md の必須 check 表の static-checks 行が正本。遅くなれば check-ci-latency.js の監視に現れる。
-    needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build, static-checks]
+    # NFR, #2148: 雛形のビルド（template-backend-build。全 PR で起動・所要 30 秒弱）も拾う。従前は needs にも必須 check にも無く、
+    # 赤でもマージを止めなかった。backend-build より先に終わるので律速にならない。必須 check 名は変えない（build-and-test のまま）。
+    needs: [discover-units, backend-build, backend-verify-build, submodule-changes, submodule-backend-build, static-checks, template-backend-build]
     if: always()
     steps:
       - name: Report build/test result
@@ -1394,10 +1396,13 @@ jobs:
       # 外した以上、この床を PR へ当てると**必ず割れる**。かといって PR 用に低い床を別に置くと、床が 2 つ並んで
       # **どちらが本物か分からなくなる**。
       #
+      # ［2026-10-30 / #2148］🔴 **「必ず割れる」は現状では成り立たない。** PR の実測は line 95.07% / branch 85.19%（run 41017702568）で、
+      # 床（line 90 / branch 75）を上回る。--report-only を保つ理由は「割れるから」ではなく、門を 1 つ（integration.yml）に置く方針
+      # （IADR-0232 改定 3）である。PR で強制するかは IADR-0232 を改める判断で、#2148 の対象外として記録した。
       # したがって PR は**数値を報告するだけ**にし、**門は回収先（integration.yml）に 1 つだけ置く**。
       # 集計値はログに出るので、退行の傾向は PR でも読める。
       #
-      # 🔴 --report-only を外すな。外すと PR が床割れで恒久的に赤くなる。
+      # 🔴 --report-only を外すな（外すのは IADR-0232 を改めてから）。
       #
       # 🔴 **PR をマージ前に止める床の経路は 0 本である**（#1345）。統制としての床は post-merge
       # （integration.yml）でのみ働く。政策（integration を必須 check にする等）は利用者の裁定事項で、
@@ -1417,6 +1422,18 @@ jobs:
             exit 1
           fi
           echo "✓ static-checks の全検査が成立した。"
+      # NFR, #2148: 雛形（templates/*/backend）を配置後の位置でビルド・テストした結果を判定する。success 以外は落とす。
+      - name: Report template-backend-build result
+        if: ${{ !cancelled() }}
+        env:
+          TEMPLATE_BUILD_RESULT: ${{ needs.template-backend-build.result }}
+        run: |
+          echo "template-backend-build=$TEMPLATE_BUILD_RESULT"
+          if [ "$TEMPLATE_BUILD_RESULT" != "success" ]; then
+            echo "::error::ユニットの雛形（templates/*/backend）を配置後の位置で建てると失敗する（template-backend-build のログを見ること）。"
+            exit 1
+          fi
+          echo "✓ 雛形のビルドと単体テストが成立した。"
 
   # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
   # 自動発見して検査する。ユニット追加時に CI の編集は不要（discover-units が導出する）。

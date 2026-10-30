@@ -10963,6 +10963,16 @@ ${r.stderr}`);
       );
     });
 
+    // NFR, #2148: 雛形のビルドは必須 check（build-and-test）が拾う。needs に無ければ赤でもマージを止めない（監査 L-19）。
+    ok('#2148: build-and-test が template-backend-build を needs に持ち、success 以外で落とす', () => {
+      const job = /^ {2}build-and-test:\n([\s\S]*?)(?=^ {2}[a-z][a-z0-9-]*:$)/m.exec(bare830);
+      assert.ok(job, 'build-and-test のジョブ定義を読めない（走査が壊れている）');
+      const needs = /^ {4}needs:\s*\[([^\]]*)\]/m.exec(job[1]);
+      assert.ok(needs && needs[1].split(',').map((x) => x.trim()).includes('template-backend-build'),
+        'build-and-test の needs に template-backend-build が無い（雛形のビルドが赤でもマージを止めない）');
+      assert.match(job[1], /needs\.template-backend-build\.result/, 'build-and-test が template-backend-build の結果を判定していない');
+    });
+
     ok('#830: 雛形を src/ 配下へ複製してから build / test している', () => {
       // 配置後の位置を模した複製先。templates/ 位置のままでは platform Shared への相対参照が
       // 解決できず restore が MSB4181 で落ちる（IADR-0060 決定 3）。

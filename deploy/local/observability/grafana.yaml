@@ -29,6 +29,14 @@ data:
         # 値は env（Secret `observability-gate` の `reader`。下の Deployment）。Grafana が provisioning の読み込み時に展開する。
         jsonData:
           httpHeaderName1: Authorization
+          # NFR-21, ADR-0006 (#2148): ログ行からトレースへ飛ぶ。collector の `loki` exporter は JSON の行に `"traceid":"<16 進>"` を載せる。
+          # 🔴 実ログの書式は配備時に確かめる（運用仕様書「ログからトレースへ」。Explore でリンクが Tempo のトレースを開くこと）。
+          # `$$` は provisioning の環境変数展開を避ける書き方（Grafana が `${__value.raw}` を受け取る）。
+          derivedFields:
+            - name: TraceID
+              matcherRegex: '"traceid":"(\w+)"'
+              url: '$${__value.raw}'
+              datasourceUid: tempo
         secureJsonData:
           httpHeaderValue1: Bearer $OBS_GATE_READER_TOKEN
       - name: Tempo
