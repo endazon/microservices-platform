@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ingestion-service を 1 レプリカに保つ暫定の検査（#2271 の部分）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, FR-02, IADR-0595, IADR-0640]
 author: claude
 created: 2026-10-31
@@ -28,14 +28,14 @@ issue: "#2271"
 
 ## 受け入れ基準
 
-- [ ] 実データ（develop）で検査が緑になり、見た値の出どころを出力に名指す。
-- [ ] 自己試験の陰性対照が、それぞれ赤になる。
+- [x] 実データ（develop）で検査が緑になり、見た値の出どころを出力に名指す。
+- [x] 自己試験の陰性対照が、それぞれ赤になる。
   - replicas を 2 にする。
   - `scaling.services` に ingestion を足す。
   - Argo CD の `helm.parameters` で replicas を上書きする。
   - スクリプトの `--set` で replicas を上書きする。
-- [ ] 0 件走査（values.yaml に `services.ingestion` が無い）で緑にしない。
-- [ ] CI の `scripts-tests` が実データで回す（`scripts.repo.test.js`）。ワークフローは変えない。
+- [x] 0 件走査（values.yaml に `services.ingestion` が無い）で緑にしない。
+- [x] CI の `scripts-tests` が実データで回す（`scripts.repo.test.js`）。ワークフローは変えない。
 
 ## 母集合（規則 9・10）
 
