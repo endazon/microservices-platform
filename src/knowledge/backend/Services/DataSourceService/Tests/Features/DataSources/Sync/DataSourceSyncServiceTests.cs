@@ -373,7 +373,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var storage = scope.ServiceProvider.GetRequiredService<IObjectStorageClient>();
         var bus = scope.ServiceProvider.GetRequiredService<RecordingMessageBus>();
         var registry = new ConnectorRegistry([connector]);
-        return new DataSourceSyncService(registry, storage, bus, new PlaintextPassthroughConnectorSecretResolver(),
+        return new DataSourceSyncService(registry, storage, new RecordingRawDocumentFetchedPublisher(bus), new PlaintextPassthroughConnectorSecretResolver(),
             NullLogger<DataSourceSyncService>.Instance);
     }
 

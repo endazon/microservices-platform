@@ -65,6 +65,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<RecordingMessageBus>();
             services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
 
+            // FR-01, UC-04, IADR-0657 (#2361): 本番の発行口は送出表（実 PostgreSQL）へコミットするので、器の InMemory では動かない。
+            // 発行を同じ `RecordingMessageBus` へ記録するダブルへ差し替える。
+            services.RemoveAll<IRawDocumentFetchedPublisher>();
+            services.AddSingleton<IRawDocumentFetchedPublisher>(sp =>
+                new RecordingRawDocumentFetchedPublisher(sp.GetRequiredService<RecordingMessageBus>()));
+
             // FR-01, ADR-0027 §決定, IADR-0609 (#2169): Program.cs は Wolverine の永続化（耐久送出）を PostgreSQL へ向ける。
             // 器の DB は InMemory で接続先も到達不能なので、永続化の起動（表の作成・耐久エージェント）を切る。
             services.DisableAllWolverineMessagePersistence();

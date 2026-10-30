@@ -81,10 +81,10 @@ builder.Host.UseWolverine(opts =>
     // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
     opts.UsePlatformMessagingDefaults();
 
-    // FR-01, UC-04, ADR-0027 §決定, IADR-0604 決定 1, IADR-0609 (#2169): 発行の**耐久化**（Outbox の表への永続化）。
-    // `RawDocumentFetched` は DB の確定と対にしない（同期の発行は watermark の保存より**前**に出し、逆向きの食い違い〔発行済み・
-    // 未保存〕は決定的な DocumentId による冪等な再発行で収束する）。要るのは「watermark を進めた時点で、それまでの発行が
-    // 失われない」ことだけで、耐久送出が発行のたびに送出前の表への書き込みで満たす（IADR-0609 決定 2）。
+    // FR-01, UC-04, ADR-0027 §決定, IADR-0604 決定 1, IADR-0609 (#2169), IADR-0657 (#2361): 発行の**耐久化**（Outbox の表への永続化）。
+    // 同期は `RawDocumentFetched` を 1 件ごとの短いトランザクションで送出表へコミットしてから次へ進む
+    // （`WolverineRawDocumentFetchedPublisher`。表へ書けなければその 1 件は失敗になり、watermark は進まない）。
+    // watermark の保存とは同じトランザクションに載せない（逆向きの食い違い〔発行済み・未保存〕は決定的な DocumentId による冪等な再発行で収束する）。
     // 🔴 **接続文字列は DbContext と同じもの**（サービスごとの DB に `wolverine` スキーマを置く）。表は起動時に Wolverine が作る。
     opts.UsePlatformTransactionalOutbox(connStr);
 });
@@ -153,6 +153,8 @@ builder.Services.AddConnectorSecretResolver();
 // ワーカーが起動時に位相を記録し、/datasources が読む。時計は BCL の TimeProvider（テストで固定できる）。
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SyncSchedule>();
+// FR-01, UC-04, IADR-0657 (#2361): 原本のイベントは 1 件ごとに送出表へコミットする発行口だけで出す（`IDbContextOutbox` はスコープ単位）。
+builder.Services.AddScoped<IRawDocumentFetchedPublisher, DataSourceService.Infrastructure.Messaging.WolverineRawDocumentFetchedPublisher>();
 builder.Services.AddScoped<DataSourceSyncService>();
 
 // NFR, 計画 ADR-0030 §決定（検証 = FluentValidation）/ IADR-0371 決定 2 / IADR-0395:
