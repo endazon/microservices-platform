@@ -390,6 +390,18 @@ spec:
           {{- if and $synthetic.enabled (has $name (include "msp.syntheticMonitor.exclusionServices" $ | splitList ",")) }}
             - name: SyntheticMonitoring__Subjects__0
               value: {{ $synthetic.clientId | quote }}
+          {{- /* NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成の主体。
+                 3 サービスへ合成の主体として（除外の標識）、BFF へだけ LLM の許可の主体として描く（要求ごとの許可）。
+                 slo.enabled（既定 false）のときだけ描く。 */}}
+          {{- $slo := $synthetic.slo | default dict }}
+          {{- if $slo.enabled }}
+            - name: SyntheticMonitoring__Subjects__1
+              value: {{ $slo.clientId | quote }}
+          {{- if eq $name "bff" }}
+            - name: SyntheticMonitoring__LlmSubjects__0
+              value: {{ $slo.clientId | quote }}
+          {{- end }}
+          {{- end }}
           {{- end }}
           {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
             # FR-02, FR-03, ADR-0017（Superseded by ADR-0127・注記は #1746）, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。

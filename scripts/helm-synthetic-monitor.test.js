@@ -37,6 +37,9 @@ const { RENDER_IMAGE_TAG_ARGS } = require('./lib/helm-render-tag'); // NFR-20, I
 const REPO_ROOT = path.resolve(__dirname, '..');
 const CHART = 'deploy/helm/microservices-platform';
 const CI_VALUES = `${CHART}/ci/synthetic-monitor-values.yaml`;
+// NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成プローブの「有効」。
+const CI_SLO_VALUES = `${CHART}/ci/synthetic-monitor-slo-values.yaml`;
+
 const VALUES_LOCAL = 'deploy/local/values-local.yaml';
 const SYNTHETIC_SOURCE = '# Source: microservices-platform/templates/synthetic-monitor.yaml';
 const MARKER = 'SyntheticMonitoring__Subjects__0';
@@ -48,6 +51,9 @@ const CHART_PROBE = fs.readFileSync(path.join(REPO_ROOT, CHART, 'files/synthetic
 const UP_SH = read('scripts/k8s-local-up.sh');
 const EXTERNAL_SECRET = read('deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml');
 const CHART_VALUES = read(`${CHART}/values.yaml`);
+// IADR-0654 (#2335): `read` の定義の後に置く（前に置くと TDZ で ReferenceError）。
+const SLO_EXTERNAL_SECRET = read('deploy/local/vault/eso/externalsecret-synthetic-monitor-slo-oidc.yaml');
+const REALM = JSON.parse(read('deploy/keycloak/microservices-platform-realm.json'));
 
 let passed = 0;
 function ok(name, fn) {
@@ -93,6 +99,7 @@ function docs(text) {
 }
 
 const unquote = (s) => String(s).trim().replace(/^["']|["']$/g, '');
+const kindsOf = (text) => docs(text).map((d) => d.kind);
 
 /** env の項目を名前 → 値（value）または `secret:<name>/<key>`（valueFrom.secretKeyRef）へ。注記行は読み飛ばす。 */
 function envMap(yaml) {
@@ -455,6 +462,96 @@ ok('🔴 変異: 描画から 1 サービスの標識だけを消すと判定が
     assert.notStrictEqual(mutated, ON, `${s} の標識を消せなかった`);
     assert.ok(enabledProblems(mutated, GATE.services, GATE.subject).length > 0, `${s} の標識が無いのに緑`);
   }
+});
+
+// ---------------------------------------------------------------- SLO 評価用（60 分・LLM を呼ぶ）。IADR-0654 (#2335)
+
+const ON_SLO = mustRender(['-f', CI_SLO_VALUES]);
+const sloDoc = (text) => docs(text).find((d) => d.kind === 'Deployment' && d.name === 'synthetic-monitor-slo');
+const deploymentEnv = (text, name) => {
+  const d = docs(text).find((x) => x.kind === 'Deployment' && x.name === name);
+  assert.ok(d, `Deployment ${name} が無い`);
+  return envMap(d.text);
+};
+const SLO_SUBJECT = 'synthetic-monitor-slo';
+
+ok('SLO: 既定と 60 秒だけの有効では、SLO の資源も LLM の許可の主体も 1 バイトも出ない', () => {
+  for (const [label, text] of [['既定', OFF], ['60 秒だけ', ON], ['values-local', ON_LOCAL]]) {
+    assert.ok(!text.includes('synthetic-monitor-slo'), `${label} の描画に SLO のプローブが漏れている`);
+    assert.ok(!/SyntheticMonitoring__LlmSubjects/.test(text), `${label} の描画に LLM の許可の主体が出た`);
+    assert.ok(!/SyntheticMonitoring__Subjects__1/.test(text), `${label} の描画に 2 つ目の合成の主体が出た`);
+  }
+});
+
+ok('SLO: 有効なら Deployment・標識 2 つ・LLM の許可の主体（BFF だけ）・egress が同じ描画に揃う', () => {
+  assert.ok(sloDoc(ON_SLO), 'SLO のプローブの Deployment（synthetic-monitor-slo）が無い');
+  // 60 秒側の判定（主体・3 サービス・AllowLlmEgress 無し）は SLO を足しても崩れない。
+  assert.deepStrictEqual(enabledProblems(ON_SLO, GATE.services, GATE.subject), []);
+  for (const s of GATE.services) {
+    const env = deploymentEnv(ON_SLO, `${s}-service`);
+    assert.strictEqual(env.get('SyntheticMonitoring__Subjects__1'), SLO_SUBJECT, `${s} に SLO の主体が合成の主体として無い（除外が欠ける）`);
+    assert.strictEqual(env.has('SyntheticMonitoring__LlmSubjects__0'), s === 'bff',
+      `${s} の LLM の許可の主体の有無が違う（外周の BFF だけが判定する）`);
+  }
+  assert.strictEqual(deploymentEnv(ON_SLO, 'bff-service').get('SyntheticMonitoring__LlmSubjects__0'), SLO_SUBJECT);
+  const np = docs(ON_SLO).filter((d) => d.kind === 'NetworkPolicy' && d.name === 'allow-synthetic-monitor-slo-egress-to-keycloak');
+  assert.strictEqual(np.length, 1, 'SLO のプローブ → Keycloak の egress が 1 本でない');
+  assert.match(np[0].text, /podSelector:\s*\n\s*matchLabels:\s*\n\s*app: synthetic-monitor-slo/);
+});
+
+ok('🔴 SLO: 60 秒のプローブには LLM の許可が無い（主体は常時側・経路は 2 本のまま・AllowLlmEgress 無し）', () => {
+  const always = deploymentEnv(ON_SLO, 'synthetic-monitor');
+  assert.strictEqual(always.get('SYNTHETIC_CLIENT_ID'), GATE.subject);
+  assert.strictEqual(always.get('PROBE_INTERVAL_SECONDS'), '60');
+  assert.ok(!/SyntheticMonitoring__AllowLlmEgress/.test(ON_SLO), 'AllowLlmEgress が描画に現れた（サービス全体で 60 秒側まで LLM を呼ぶ）');
+  // 60 秒の主体は LLM の許可の主体に入らない（入れると 60 秒側が LLM を呼ぶ）。
+  const llmSubjects = [...deploymentEnv(ON_SLO, 'bff-service').entries()]
+    .filter(([k]) => /^SyntheticMonitoring__LlmSubjects__/.test(k)).map(([, v]) => v);
+  assert.deepStrictEqual(llmSubjects, [SLO_SUBJECT]);
+});
+
+ok('SLO: プローブは 60 分・SSE 1 経路・自分の主体と Secret で、器（イメージ・probe.js）は 60 秒側と同じ', () => {
+  const env = envMap(envSection(sloDoc(ON_SLO).text));
+  assert.strictEqual(env.get('SYNTHETIC_CLIENT_ID'), SLO_SUBJECT);
+  assert.strictEqual(env.get('PROBE_INTERVAL_SECONDS'), '3600', '60 分でない（ADR-0079 決定 1・2 の確定値）');
+  assert.strictEqual(env.get('PROBE_PATHS'), '/bff/analysis/ask/stream');
+  const esTarget = /target:\s*\n\s*name:\s*(\S+)/.exec(SLO_EXTERNAL_SECRET)[1];
+  const esKey = /secretKey:\s*(\S+)/.exec(SLO_EXTERNAL_SECRET)[1];
+  assert.strictEqual(env.get('SYNTHETIC_CLIENT_SECRET'), `secret:${esTarget}/${esKey}`, 'Secret の参照が ExternalSecret の target と違う');
+  const image = (t) => unquote(/^\s*image:\s*(.+)$/m.exec(t)[1]);
+  const always = docs(ON_SLO).find((d) => d.kind === 'Deployment' && d.name === 'synthetic-monitor');
+  assert.strictEqual(image(sloDoc(ON_SLO).text), image(always.text));
+  assert.match(sloDoc(ON_SLO).text, /name: synthetic-monitor-probe/, 'probe.js の ConfigMap を共用していない');
+  assert.ok(!kindsOf(ON_SLO).includes('ExternalSecret') && !kindsOf(ON_SLO).includes('Secret'), 'Secret をチャートが描いている');
+});
+
+ok('SLO: realm に専用の client（client_credentials・ロール無し）が在り、主体名が values と一致する', () => {
+  const client = REALM.clients.find((c) => c.clientId === SLO_SUBJECT);
+  assert.ok(client, 'realm に client synthetic-monitor-slo が無い');
+  assert.strictEqual(client.serviceAccountsEnabled, true);
+  assert.strictEqual(client.standardFlowEnabled, false);
+  assert.strictEqual(client.directAccessGrantsEnabled, false);
+  assert.strictEqual(client.publicClient, false);
+  const svcUser = (REALM.users || []).find((u) => u.username === `service-account-${SLO_SUBJECT}`);
+  assert.ok(!svcUser || !(svcUser.realmRoles || []).length, 'SLO の主体にロールを与えている');
+  const block = CHART_VALUES.slice(CHART_VALUES.indexOf('\n  slo:'));
+  assert.strictEqual(/^\s{4}clientId:\s*(\S+)/m.exec(block)[1], SLO_SUBJECT);
+});
+
+ok('🔴 SLO の描画時の fail-closed: 除外の標識が無い・主体が同じ・間隔 3600 未満・経路が SSE 以外なら止める', () => {
+  const cases = [
+    [['--set', 'syntheticMonitor.slo.enabled=true'], /syntheticMonitor\.enabled が偽/],
+    [['-f', CI_SLO_VALUES, '--set', 'syntheticMonitor.slo.clientId=synthetic-monitor'], /同じ/],
+    [['-f', CI_SLO_VALUES, '--set', 'syntheticMonitor.slo.intervalSeconds=60'], /3600/],
+    [['-f', CI_SLO_VALUES, '--set-string', 'syntheticMonitor.slo.paths=/bff/analysis/ask\\,/bff/analysis/ask/stream'], /ask\/stream だけ/],
+  ];
+  for (const [args, why] of cases) {
+    const r = helmTemplate(args);
+    assert.notStrictEqual(r.status, 0, `${args.join(' ')} を通した`);
+    assert.match(r.err, why, `失敗理由が違う: ${r.err}`);
+  }
+  // 陰性対照: 既定の SLO の値（3600・SSE 1 本・別の主体）は通る（上で描けている）。
+  assert.ok(ON_SLO.length > 0);
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

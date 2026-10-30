@@ -3,15 +3,15 @@ title: 合成監視トラフィックの標識と、費用・利用状況から�
 type: observability-spec
 status: in-progress
 created: 2026-09-05
-updated: 2026-10-16
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-10, SC-10]
 adrs: [ADR-0006, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0079]
-iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533]
-specs: [20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue]
-issues: [#1203, #1202, #1204, #1111, #1902, planning#524, planning#538]
+iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533, IADR-0654]
+specs: [20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue, 20261030_2335_llm-slo-synthetic-probe]
+issues: [#1203, #1202, #1204, #1111, #1902, #2335, planning#524, planning#538]
 -->
 <!-- 起点 ID・関連 ADR/IADR・仕様書名・修飾付き issue 参照は本文へ書かず、上の trace ブロックへ入れる -->
 
@@ -93,7 +93,7 @@ sum by (llm_purpose) (increase(llm_usage_synthetic_excluded_total[$__range]))
 | 用途 | 間隔 | LLM | 配備 |
 | --- | --- | --- | --- |
 | 常時トラフィックの生成 | **60 秒** | **呼ばない**（検索までは走る） | ✅ 済（opt-in オーバーレイ） |
-| SLO 評価用 | **60 分** | **呼ぶ** | 🔴 **未着手** |
+| SLO 評価用 | **60 分** | **呼ぶ** | 🔴 ~~**未着手**~~ ［2026-10-30 / #2335］チャートに置いた（**既定は無効**。有効化は課金の承認の後） |
 
 **費用の上限は絶対額では置かない。間隔が実質的に上限を固定する**（60 分＝月 720 回・概算 月約 4,400 円）。
 
@@ -101,6 +101,16 @@ sum by (llm_purpose) (increase(llm_usage_synthetic_excluded_total[$__range]))
 最初のトークンが 1 件も出なければ記録しない設計だからである。
 **初回応答の SLO について評価対象を常時存在させるには、合成が実際に LLM を呼ぶ必要がある。**
 **60 分側が未着手である以上、初回応答の SLO の評価対象はまだ生まれない。** これは裁定待ちではなく実装の残作業である。
+
+**［2026-10-30 / #2335］60 分側を置いた。要求ごとに区別する。**
+
+- SLO 評価用の合成は**別の主体**（Keycloak のクライアント `synthetic-monitor-slo`）で名乗る。
+- BFF はその主体の要求にだけ、内周の標識の値 `slo` を付ける。常時の合成は従前どおり `1` である。
+- AiAnalysisService は値 `slo` の要求だけ LLM を呼ぶ。60 秒の合成は呼ばない。
+- サービス全体に効く許可（`AllowLlmEgress`）は使わない。SLO 評価用の要求も合成なので、費用計上と利用状況の集計からは外れる。
+- 🔴 **縮退の文は初回トークンの計器に積まない**ようにした。従前は、閲覧できる文書が無いときの中立文言と、合成の抑止の文がトークンとして流れ、計器を進めていた。60 秒の合成が「速い初回トークン」を 60 秒ごとに積み、60 分の標本が p95 の中で埋もれる形だった。
+- チャートの既定は無効である。有効化は課金の承認の後に行う。
+- 有効化には、**SLO 評価用の主体が読める文書が 1 つ以上要る**。無いと「閲覧できる文書が無い」で縮退し、LLM まで届かない。
 
 ## `absent` の併設との関係
 
@@ -110,4 +120,4 @@ sum by (llm_purpose) (increase(llm_usage_synthetic_excluded_total[$__range]))
 
 🔴 **初回トークンの系列には入れていない。** LLM を呼ばない限り系列が立たず、
 いま `absent` を置くと**恒常発火**になる —— それは計画が却下した案そのものである。
-**60 分側が配備されてから、周期 60 分の 2 周期ぶんの窓（`absent_over_time(…[2h])`）で入れる。**
+**60 分側が配備されてから、周期 60 分の 2 周期ぶんの窓（`absent_over_time(…[2h])`）で入れる。**（［2026-10-30］チャートの既定が無効のため、まだ入れていない）

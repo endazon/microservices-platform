@@ -34,7 +34,11 @@ public abstract record AskEvent;
 public sealed record AskCitationsEvent(IReadOnlyList<CitationDto> Citations) : AskEvent;
 
 // 本文の増分トークン。
-public sealed record AskTokenEvent(string Text) : AskEvent;
+// NFR-02, ADR-0079 決定 1, [[IADR-0654]] 決定 4 (#2335): `FromModel` は **LLM が出したトークンか**。
+// 縮退の文（閲覧できる文書が無い・合成の抑止・ゲートウェイの拒否や不調の理由・拒否の注記・空本文の注記）は false である。
+// 端点は `FromModel` のトークンでだけ初回トークンの計器（[[IADR-0354]]）を進める —— 縮退の文を積むと、
+// LLM を呼ばない 60 秒の合成と権限の無い要求が「速い初回トークン」として p95 を下振れさせる。既定は true（LLM の増分）。
+public sealed record AskTokenEvent(string Text, bool FromModel = true) : AskEvent;
 
 // 完了（回答 ID・モデル・トークン数）。回答 ID は 👍/👎 の紐付け先（FR-08）。
 public sealed record AskDoneEvent(Guid AnswerId, string Model, int InputTokens, int OutputTokens) : AskEvent;

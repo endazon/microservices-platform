@@ -32,7 +32,8 @@ public static class NoAccessAnswer
     public static IEnumerable<AskEvent> StreamEvents()
     {
         yield return new AskCitationsEvent([]);
-        yield return new AskTokenEvent(Message);
+        // [[IADR-0654]] (#2335): LLM のトークンではない（初回トークンの計器へ積まない）。
+        yield return new AskTokenEvent(Message, FromModel: false);
         yield return new AskDoneEvent(Guid.NewGuid(), NoModel, 0, 0);
     }
 }

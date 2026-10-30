@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-10-22
+updated: 2026-10-30
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524]
-specs: [20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade]
-issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, planning#700, AST#1078]
+iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524, IADR-0654]
+specs: [20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe]
+issues: [#1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -198,6 +198,7 @@ unset NEW_VALUE; rm -rf -- /tmp/rot.*; trap - EXIT
 | `mcp-client-admin` | `msp/mcp-client-admin-oidc` の `client-secret` | `microservices-platform/mcp-client-admin-oidc` | 0-e で引く（`mcp-service`）。🔴 **漏えいを疑うときは [管理用の資格情報が漏れたとき](#管理用の資格情報が漏れたときmcp-client-admin) を先に読む** |
 | `retrieval-service` / `ingestion-service` / `aianalysis-service` / `graph-service` / `conversion-service` / `wiki-service` / `datasource-service` / `mcp-server` / `document-service` | `msp/<client>-token` の `client-secret` | `microservices-platform/<client>-token` | 0-e で引く |
 | `synthetic-monitor` | `msp/synthetic-monitor-oidc` の `client-secret` | `microservices-platform/synthetic-monitor-oidc` | 0-e で引く（`SYNTHETIC=1` のときだけ在る） |
+| `synthetic-monitor-slo` | `msp/synthetic-monitor-slo-oidc` の `client-secret` | `microservices-platform/synthetic-monitor-slo-oidc` | 0-e で引く（［2026-10-30 / #2335］helm の `syntheticMonitor.slo.enabled` のときだけプローブが在る。クライアントは有効化に関係なく宣言に在る） |
 | `reset-gate` | `msp/reset-gate-oidc` の `client-secret` | `platform-infra/reset-gate-oidc` | 0-e で引く |
 | `abac-seeder` | `msp/abac-seeder-oidc` の `client-secret` | `platform-infra/abac-seeder-oidc` | 作り直す Pod は無い。投入器・運用スクリプト（`seed-*.js`・`republish-document-updated.js`・アーカイブの駆動器）が**実行のたびに**この Secret を読む。同期が `Ready` になれば次の実行から新しい値で名乗る。クライアントは**既定で無効**（スクリプトが実行の間だけ有効にして戻す）なので、回す間に有効へ変えない |
 | `grafana` / `headlamp` | `msp/<client>-oidc` の `client-secret` | `platform-infra/<client>-oidc` | 0-e で引く（`OBSERVABILITY=1` / `HEADLAMP=1` のときだけ在る） |

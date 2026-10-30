@@ -74,7 +74,7 @@ spec:
             - name: PROBE_INTERVAL_SECONDS
               value: "60"
             # 費用の出ない 2 経路のみ。**LLM を実際に呼ぶのは ADR-0079 決定 1 の「SLO 評価用＝60 分」側であり、
-            # それは別の配備単位である**（同 §フォローアップ 2。本オーバーレイには足さない）。
+            # それは別の配備単位である**（同 §フォローアップ 2。本オーバーレイには足さない。helm の syntheticMonitor.slo。#2335）。
             - name: PROBE_PATHS
               value: /bff/analysis/ask,/bff/analysis/ask/stream
           volumeMounts:
