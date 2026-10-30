@@ -644,6 +644,7 @@ public class SyncConflictEndpointTests(TestWebApplicationFactory factory)
             "3 つとも OFF の資料はイベントそのものを出さない（ADR-0061 決定 2）");
     }
 
+    // ［2026-10-30 / #2120］AI 入力の利用者単位の既定は別名資料に当てない（ADR-0143 決定 3。`AiInputUserDefaultTests`）。
     // `both` の別名資料は**新規作成**であり、作成経路と同じ既定（露出 3 トグル OFF）で作られる ——
     // **元の資料の露出を継がない**。門は作成経路（push）と同じ形で通すが、別名資料は索引可でないので
     // 発行されない。元の資料は 1 バイトも変わらないので再発行もしない。

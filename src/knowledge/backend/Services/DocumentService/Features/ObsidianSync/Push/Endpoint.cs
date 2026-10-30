@@ -20,9 +20,12 @@ namespace DocumentService.Features.ObsidianSync.Push;
 //
 // **［#1184］本文の書き込みは「露出 3 トグルのうち 1 つでも ON」のときだけ `DocumentUpdated` を
 // 発行する**（ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4。門は
-// `DocumentEndpoints.PublishUpdatedIfIndexableAsync` 1 か所。確定込みの入口 `SaveChangesAndPublishUpdatedIfIndexableAsync` から呼ぶ）。**新規作成は必ず 3 つとも OFF
-// である**（`PrivateNoteDefaults`）ため、初回 push は何も発行しない —— 索引に存在しない状態を
-// 既定として構造的に守る（[[IADR-0270]] 決定 5 が守っていた性質は、門の形で残る）。
+// `DocumentEndpoints.PublishUpdatedIfIndexableAsync` 1 か所。確定込みの入口 `SaveChangesAndPublishUpdatedIfIndexableAsync` から呼ぶ）。
+// 新規作成は横断検索・グラフが OFF で、AI 入力は利用者単位の既定である（［2026-10-30 / #2120・計画 ADR-0143 決定 1］。
+// 従前は「必ず 3 つとも OFF」と書いていた）。**既定を変えていない利用者**の初回 push は何も発行しない —— 索引に存在しない
+// 状態を既定として守る（[[IADR-0270]] 決定 5 が守っていた性質は、門の形で残る）。既定 ON の利用者の初回 push は
+// AI 入力だけ ON で作られ、門を通って索引へ載る（ADR-0143 決定 4・ADR-0061 決定 1）。
+// 🔴 別名コピー（`sourceNoteId` 付き）には既定を当てない（ADR-0143 決定 3）。
 internal static class PushNoteEndpoint
 {
     internal static void Map(RouteGroupBuilder g)
@@ -96,18 +99,21 @@ internal static class PushNoteEndpoint
                 // ADR-0037 フォローアップ 8: プラグイン流入は画面バリデーションを経由しないため、
                 // フェイルセーフ既定（restricted / doc_scope=private-note / owner）をサーバ側で適用する。
                 // ADR-0105 決定 1・2・4: 写しでも露出は明示の OFF・共有台帳へ行を足さない（新規作成の既定のまま）。
+                // FR-19, ADR-0143 決定 1・3 (#2120): 写しでない新規 push だけ、AI 入力を作成時点の利用者単位の既定で初期化する。
+                var aiDefault = req.SourceNoteId is null
+                    && await SyncSettings.SyncSettingsEndpoints.AiInputDefaultAsync(db, owner, ct);
                 var firstUri = await storage.PutTextAsync(DocumentBodyIntake.StorageKey(id),
                     req.Edits[0].Content!, DocumentBodyIntake.ContentType, ct);
                 var doc = Document.CreateWithBody(id, req.Title.Trim(), firstUri,
                     originalUri: null, contentType: DocumentBodyIntake.ContentType,
-                    attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner), tags: tags,
+                    attributes: PrivateNoteEndpoints.PrivateNoteDefaults(owner, includeInAi: aiDefault), tags: tags,
                     // ADR-0050 (#911): 本文指紋（ContentHash と同じ計算）。
                     contentFingerprint: DocumentBodyIntake.Fingerprint(req.Edits[0].Content!));
                 db.Documents.Add(doc);
                 await ApplyEditsAsync(doc, req, storage, skipFirst: true, ct);
 
                 var note = PrivateNote.Create(id, owner, req.VaultPath.Trim(), lastBytes,
-                    lastHash, now);
+                    lastHash, now, includeInAi: aiDefault);
                 db.PrivateNotes.Add(note);
                 device.TouchSync(now);
                 // ADR-0037 決定 9 / ADR-0099 決定 1・5 (#1446): 監査は「誰が・いつ・何件」。

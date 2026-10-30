@@ -192,6 +192,8 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .HasConversion(StringListConverter())
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(StringListComparer());
+            // FR-19, ADR-0143 (#2120): 既存の行は false（未設定と OFF を区別しない。決定 1）。
+            e.Property(s => s.AiInputDefault).HasDefaultValue(false);
         });
 
         // FR-20, SC-20 主要素 5, ADR-0037 決定 7, #1442: 同期競合。
