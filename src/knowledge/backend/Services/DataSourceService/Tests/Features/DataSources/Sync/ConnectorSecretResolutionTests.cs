@@ -223,6 +223,44 @@ public sealed class ConnectorSecretResolutionTests(TestWebApplicationFactory fac
             log ?? NullLogger<DataSourceSyncService>.Instance);
     }
 
+    // NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): 作業仕様書 20261003_458 §窓 1 の表の 3 列を、
+    // 実コネクタと配備と同じ合成（旗の飾り ＋ 内側の解決器）で測る。形は「両端」—— 参照があれば参照、無ければ旗が真のときだけ平文。
+    //   P+（参照の行）: 旗に依らず参照で同期する。
+    //   P−（平文の行・期間中）: 旗が真なら平文で同期する（既存のデータソースを一斉に止めない）。
+    //   P−（平文の行・期間後）: 旗が偽なら外部へ 1 件も要求を出さず `plaintext-rejected` で止まる（平文を送らない）。
+    [Theory]
+    [InlineData("P+ 参照の行・旗が真", Reference, true, true)]
+    [InlineData("P+ 参照の行・旗が偽", Reference, false, true)]
+    [InlineData("P- 平文の行・期間中（旗が真）", "plain-config-token", true, true)]
+    [InlineData("P- 平文の行・期間後（旗が偽）", "plain-config-token", false, false)]
+    public async Task Sync_PlaintextWindow_MatchesTheBothEndsTable(string @case, string configured, bool plaintextAllowed, bool expectSynced)
+    {
+        var inner = new FakeConnectorSecretResolver { References = { [Reference] = "resolved-http-value" } };
+        var gate = new PlaintextGateConnectorSecretResolver(
+            inner, Microsoft.Extensions.Options.Options.Create(new ConnectorCredentialOptions { PlaintextAllowed = plaintextAllowed }));
+        var handler = new CountingHandler("wiki");
+        var (connector, source) = HttpConnectorAndSource("wiki", handler, configured);
+        var svc = BuildService(connector, gate);
+
+        var result = await svc.SyncAsync(source, TestContext.Current.CancellationToken);
+
+        if (expectSynced)
+        {
+            result.CredentialsResolved.Should().BeTrue(@case);
+            handler.Requests.Should().HaveCount(3, @case);
+            var expected = configured == Reference ? "resolved-http-value" : configured;
+            handler.Requests.Should().AllSatisfy(r => r.Headers.Authorization!.Parameter.Should().Be(expected, @case));
+        }
+        else
+        {
+            handler.Requests.Should().BeEmpty($"{@case}: 期間後は平文を外部へ送らない");
+            inner.Calls.Should().BeEmpty($"{@case}: 平文は内側の解決器（素通し）へ届かない");
+            result.CredentialsResolved.Should().BeFalse(@case);
+            result.Message.Should().Be("credentials not resolved for credential #1 (plaintext-rejected)");
+            source.LastSyncError.Should().NotContain("plain-config-token", "失敗の記録に平文を出さない");
+        }
+    }
+
     private static (IDataSourceConnector Connector, DataSource Source) HttpConnectorAndSource(
         string sourceType, CountingHandler handler, string? configured)
     {

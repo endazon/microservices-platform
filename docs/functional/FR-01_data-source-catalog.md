@@ -3,14 +3,14 @@ title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-10-09
+updated: 2026-10-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, FR-12, SC-06, UC-04, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0012, ADR-0014, ADR-0027, ADR-0070]
-iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0356, IADR-0314]
-specs: [20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1192_pdf-text-layer-extraction, 20261009_1771_ingestion-completed-no-wiring]
+iadrs: [IADR-0663, IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0295, IADR-0304, IADR-0320, IADR-0356, IADR-0314]
+specs: [20261031_458_connector-credential-migration, 20260627_FR-01_data-source-catalog-pipeline, 20260831_issue-1097_pandoc-runtime-image-and-fail-closed, 20260903_issue-1192_pdf-text-layer-extraction, 20261009_1771_ingestion-completed-no-wiring]
 issues: [#195, #217, #218, #219, #458, #537, #546, #580, #1097, #1192, #1771, planning#200, planning#741]
 -->
 
@@ -94,7 +94,10 @@ flowchart TB
   実 API/コンテナ統合テストは follow-up。
 - 実 filesystem 同期の対象ファイル共有（SMB/NFS）マウント手順（PVC）と、増分 watermark のスキャン開始時刻厳密化。
 - 接続失敗状態・最終エラーの DB 永続化（データソース管理画面での可視化）。
-- Vault 連携（接続情報の集中管理）。現状は `Config` / `ConnectionUri` からの取得（DB 平文保存・**露出経路はマスク**）に留める。
+- ~~Vault 連携（接続情報の集中管理）。現状は `Config` / `ConnectionUri` からの取得（DB 平文保存・**露出経路はマスク**）に留める。~~
+  ［2026-10-31］資格情報は保管先（Vault）の参照で持てる（同期の開始時に解決する。投入は秘密情報・接続設定の管理画面）。既存の平文は一回きりの移送で
+  保管先へ移し、移送の後は移送期間の旗を false にして平文の保存・同期を止める（[セキュリティ仕様書](../security/security.md)
+  「データソースのコネクタ資格情報」）。旗が true（既定）の間は、従前どおり平文も受け入れる。
   Vault / External Secrets 移行の一元追跡は **#458** である（従前ここは #310 と書いていたが、**#310 は 2026-08-02 に `duplicate` で close** され、#447 が取り込み、横断は #458 が持つ）。
 - Markdown 本文取得（`StorageDocumentContentReader`）は、実ストレージ未接続時にプレースホルダへデグレードする。
 

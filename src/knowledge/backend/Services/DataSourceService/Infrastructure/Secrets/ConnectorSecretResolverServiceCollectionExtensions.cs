@@ -36,10 +36,15 @@ public static class ConnectorSecretResolverServiceCollectionExtensions
         services.TryAddSingleton<IServiceAccountTokenReader, FileServiceAccountTokenReader>();
         services.TryAddSingleton<PlaintextPassthroughConnectorSecretResolver>();
         services.TryAddSingleton<VaultConnectorSecretResolver>();
+        // NFR-18, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間の旗（`ConnectorCredentials:PlaintextAllowed`。既定 true）。
+        // 旗が偽なら平文の解決を止める飾りを外側に巻く（参照の解決は内側の解決器のまま）。
+        services.AddOptions<ConnectorCredentialOptions>().BindConfiguration(ConnectorCredentialOptions.SectionName);
         services.TryAddSingleton<IConnectorSecretResolver>(sp =>
-            sp.GetRequiredService<IOptions<VaultConnectorSecretOptions>>().Value.IsConfigured
-                ? sp.GetRequiredService<VaultConnectorSecretResolver>()
-                : sp.GetRequiredService<PlaintextPassthroughConnectorSecretResolver>());
+            new PlaintextGateConnectorSecretResolver(
+                sp.GetRequiredService<IOptions<VaultConnectorSecretOptions>>().Value.IsConfigured
+                    ? sp.GetRequiredService<VaultConnectorSecretResolver>()
+                    : sp.GetRequiredService<PlaintextPassthroughConnectorSecretResolver>(),
+                sp.GetRequiredService<IOptions<ConnectorCredentialOptions>>()));
         return services;
     }
 }

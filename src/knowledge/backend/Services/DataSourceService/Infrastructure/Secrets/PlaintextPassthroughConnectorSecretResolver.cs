@@ -15,6 +15,9 @@ namespace DataSourceService.Infrastructure.Secrets;
 //
 // 段 S1（[[IADR-0495]] 決定 3）: 本実装は、Vault が未構成（`Vault:Address` が空）の構成の解決器であり、
 // かつ `VaultConnectorSecretResolver` の平文側（移送期間の素通し）でもある。段 S4 の着地で撤去される（[[IADR-0493]] 決定 2）。
+//
+// ［2026-10-31 / #458 段 S4・[[IADR-0663]] 決定 2］**撤去しない。** 段 S4 は平文の拒否を、外側の飾り（`PlaintextGateConnectorSecretResolver`。
+// 移送期間の旗 `ConnectorCredentials:PlaintextAllowed`）に置いた。旗が真の間は本実装が平文を素通しし、旗が偽なら平文は本実装へ届かない。
 public sealed class PlaintextPassthroughConnectorSecretResolver : IConnectorSecretResolver
 {
     public Task<ConnectorSecretResolution> ResolveAsync(string configuredValue, CancellationToken ct)

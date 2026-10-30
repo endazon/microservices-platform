@@ -48,6 +48,10 @@ public enum ConnectorSecretFailure
 
     // 解決器そのものが失敗した（不達・権限・予期しない例外）。
     Unreachable,
+
+    // NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間が終わった（平文の受け入れを止めた）のに、
+    // 設定が平文を持っていた。🔴 **平文を外部へ送らない**（fail-closed）。移送（`migrate-connector-credentials`）か、SC-22 から書き直す。
+    PlaintextRejected,
 }
 
 // [[IADR-0493]] 決定 3: 解決の結果。

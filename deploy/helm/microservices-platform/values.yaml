@@ -470,6 +470,11 @@ services:
       role: datasource-connector-reader
       authMount: kubernetes
       namespace: platform-infra
+    # NFR-18, 計画 ADR-0126 フォローアップ 2, IADR-0663 決定 2 (#458 段 S4): **移送期間の旗**（`ConnectorCredentials__PlaintextAllowed`）。
+    # true（既定）= 設定の平文の資格情報を従前どおり受け入れる。false = 平文の同期を plaintext-rejected で止め、SC-06 の API の平文を 400 で拒み、
+    # 平文の行が 1 件でも残っていれば起動しない。**false にするのは、移送（scripts/migrate-datasource-credentials.sh）で平文の行が 0 件になった後。**
+    connectorCredentials:
+      plaintextAllowed: true
       port: 8200
     # FR-05, UC-04, SC-06, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証の後段は下の gRPC 宛先だけである
     # （［2026-10-16 / #1902・IADR-0533］REST の宛先 `Services__AuthorizationService` は読み手が無いので外した）。

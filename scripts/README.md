@@ -143,6 +143,7 @@ NFR・#1550。ワークフローの `node scripts/...` の行をまとめて実�
 | `k8s-local-images.sh` | — |
 | `istio-edge-up.sh` | — |
 | `istio-edge-down.sh` | — |
+| `migrate-datasource-credentials.sh` | —（`--dry-run` も稼働の datasource-service の Pod の中で数えるので指定が要る。IADR-0663） |
 
 `backup-restore-drill.sh` は**自前の `--live`** で既に閉じている（稼働クラスタへは `--live` のときだけ読み取り専用で触れる。`--live-counts` と `--self-test` は触れない）。
 
