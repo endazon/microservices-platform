@@ -1621,7 +1621,17 @@ export interface ConnectorDto {
 }
 
 /**
- * FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）
+ * FR-16（#2285）: MCP の実効ツール 1 件（公開名・申告元サービス・実行に要る権限スコープ・越境分類）。入力スキーマと説明は載せない
+ */
+export interface McpToolDto {
+  publishedName: string;
+  service: string;
+  requiredScope: string;
+  egressClass: string;
+}
+
+/**
+ * FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）。#2285: `mcpTools` は MCP の実効ツール一覧（申告 ∩ 公開構成。MCP サーバーの自己申告が要求のたびに載せる）
  */
 export interface EffectiveConfigDto {
   version: ConfigVersionDto;
@@ -1629,6 +1639,7 @@ export interface EffectiveConfigDto {
   eventBindings: EventBindingDto[];
   ports: PortSelectionDto[];
   connectors: ConnectorDto[];
+  mcpTools: McpToolDto[];
 }
 
 /**

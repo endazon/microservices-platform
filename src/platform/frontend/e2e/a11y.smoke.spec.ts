@@ -756,6 +756,7 @@ test('SC-11: 構成ビューアに WCAG 2.2 A/AA ＋ best-practice の違反が�
     eventBindings: [],
     ports: [],
     connectors: [],
+    mcpTools: [],
   };
   const drift: DriftReportDto = {
     hasDrift: false,
