@@ -596,6 +596,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } 
     'ARGOCD',
     'LOCALEDGE',
     'ESO',
+    'VAULT_BFF_WRITER', // #2230 / IADR-0658: BFF の書き込みの役の opt-in。漏れていると既定の VAULT=1 のバイト等価が崩れる
     'ESO_FORCE_SYNC_TIMEOUT', // IADR-0616 (#2195): 依頼の後の同期を待つ期限。漏れていると停滞の試験が別の長さで走る
     'ABACSEED',
     'SEARCHSEED',
@@ -2076,6 +2077,71 @@ ok('VAULT=1: apply の直後に deploy/vault の rollout status を待つ（unse
   assert.ok(waitAt > applyAt, 'apply の後に rollout status deploy/vault が無い');
   assert.ok(bootstrapAt >= 0, 'bootstrap.sh の kubectl exec が記録に無い（検出の空振り）');
   assert.ok(waitAt < bootstrapAt, 'rollout status が bootstrap.sh より後にある');
+});
+
+// --- SC-22, NFR-18, IADR-0658 (#2230): VAULT_BFF_WRITER=1 は BFF の書き込みの役だけを入れる（ESO は入れない）。既存の VAULT=1 は変えない ---
+const BFF_WRITER_SH = 'deploy/local/vault/bff-writer/bootstrap.sh';
+const ESO_BOOTSTRAP_SH = 'deploy/local/vault/eso/bootstrap.sh';
+ok('VAULT_BFF_WRITER (#2230): 既定（VAULT=1 だけ）の手順は、VAULT_BFF_WRITER=0 と同じで、役の bootstrap も rbac も出さない', () => {
+  const base = runUp({ VAULT: '1' });
+  const off = runUp({ VAULT: '1', VAULT_BFF_WRITER: '0' });
+  assert.strictEqual(base.status, 0, `VAULT=1 が非0終了: ${base.stderr}`);
+  // 一時ファイルの名前（mktemp）は実行ごとに変わるので伏せる。並行して走る段の記録は行の順が入れ替わり得るので、
+  // 順序ではなく行の多重集合で比べる（出すコマンドの集合が同じ＝手順が変わっていない）。
+  const norm = (lines) => lines.map((l) => l.replace(/\/tmp\/tmp\.[A-Za-z0-9]+/g, '/tmp/tmp.X')).sort();
+  assert.deepStrictEqual(norm(off.lines), norm(base.lines), 'VAULT_BFF_WRITER=0 で起動器の出すコマンドが既定と変わった');
+  assert.ok(!anyLineHas(base.lines, 'bff-writer'), '既定の VAULT=1 で BFF の書き込みの役の bootstrap が出た');
+  // vault-auth-rbac そのものは既定の VAULT=1 でもバックアップの bootstrap（永続化のとき）が当てるので、ここでは見ない（上の多重集合の一致が手順の不変を見る）。
+  assert.ok(!base.lines.some((l) => /^kubectl apply -f deploy\/local\/vault\/eso\/vault-auth-rbac\.yaml$/.test(l)), '既定の VAULT=1 で起動器が rbac を当てた');
+  assert.ok(!anyLineHas(base.lines, 'auth/kubernetes/role/bff-secret-writer'), '既定の VAULT=1 で role を書いた');
+});
+
+ok('VAULT_BFF_WRITER=1 (#2230): Vault の rollout の後に rbac を当て、role（audience=vault）と policy を書く。ESO・ExternalSecret は入れない', () => {
+  const res = runUp({ VAULT: '1', VAULT_BFF_WRITER: '1' });
+  assert.strictEqual(res.status, 0, `VAULT_BFF_WRITER=1 が非0終了: ${res.stderr}`);
+  const waitAt = res.lines.findIndex((l) => /rollout status deploy\/vault\b/.test(l));
+  const rbacAt = res.lines.findIndex((l) => /apply -f deploy\/local\/vault\/eso\/vault-auth-rbac\.yaml/.test(l));
+  const roleAt = res.lines.findIndex((l) => /auth\/kubernetes\/role\/bff-secret-writer\b/.test(l));
+  assert.ok(waitAt >= 0 && rbacAt > waitAt, 'vault-auth-rbac が Vault の rollout の後に無い');
+  assert.ok(roleAt > rbacAt, 'role の書き込みが rbac の後に無い（bootstrap が実走していない）');
+  assert.ok(/audience=vault\b/.test(res.lines[roleAt]), `role に audience=vault が無い: ${res.lines[roleAt]}`);
+  assert.ok(anyLineHas(res.lines, 'vault policy write bff-secret-write'), 'policy bff-secret-write を書いていない');
+  assert.ok(anyLineHas(res.lines, 'vault policy write bff-secret-group-write'), 'policy bff-secret-group-write を書いていない');
+  assert.ok(!res.lines.some((l) => /helm upgrade --install external-secrets\b/.test(l)), 'ESO を入れた（案 B は ESO を入れない）');
+  assert.ok(!res.lines.some((l) => /helm upgrade --install reloader\b/.test(l)), 'Reloader を入れた（案 B は入れない）');
+  assert.ok(!res.lines.some((l) => /apply -f deploy\/local\/vault\/eso\/externalsecret-/.test(l)), 'ExternalSecret を当てた');
+  assert.ok(!anyLineHas(res.lines, 'auth/kubernetes/role/eso'), 'ESO の role を書いた');
+});
+
+ok('VAULT_BFF_WRITER=1 (#2230): VAULT=1 が無ければクラスタを作る前に止まる・値域外も止まる', () => {
+  const res = runUp({ VAULT_BFF_WRITER: '1' });
+  assert.notStrictEqual(res.status, 0, 'VAULT=1 なしの VAULT_BFF_WRITER=1 で先へ進んだ');
+  assert.ok(/VAULT_BFF_WRITER=1 は VAULT=1 と併用/.test(res.stderr), `止まる理由を言わない: ${res.stderr}`);
+  assert.ok(!res.lines.some((l) => /^k3d cluster create/.test(l)), '止まる前にクラスタを作った');
+  const bad = runUp({ VAULT: '1', VAULT_BFF_WRITER: 'true' });
+  assert.notStrictEqual(bad.status, 0, '値域外の VAULT_BFF_WRITER で先へ進んだ');
+  assert.ok(/VAULT_BFF_WRITER は 1/.test(bad.stderr), `値域外の理由を言わない: ${bad.stderr}`);
+});
+
+ok('VAULT_BFF_WRITER=1 + ESO=1 (#2230): 役の bootstrap を二重に当てない（ESO の bootstrap が入れる）', () => {
+  const res = runUp({ VAULT: '1', ESO: '1', VAULT_BFF_WRITER: '1' });
+  assert.strictEqual(res.status, 0, `非0終了: ${res.stderr}`);
+  assert.ok(/ESO=1 と一緒なので省く/.test(res.stdout), 'ESO=1 と一緒に省いたことを言わない');
+  const roles = res.lines.filter((l) => /auth\/kubernetes\/role\/bff-secret-writer\b/.test(l));
+  assert.strictEqual(roles.length, 1, `role を ${roles.length} 回書いた（ESO の bootstrap の 1 回だけのはず）`);
+});
+
+ok('VAULT_BFF_WRITER (#2230): 役の bootstrap の role と policy の字面は ESO の bootstrap と同じ（片方だけ直して食い違わない）', () => {
+  const pick = (text) => ({
+    role: (text.match(/vault write auth\/kubernetes\/role\/bff-secret-writer [^']*/) || [null])[0],
+    policies: [...text.matchAll(/vexec 'vault policy write (bff-secret-[a-z-]+) -' < "\$ROOT\/([^"]+)"/g)].map((m) => `${m[1]}=${m[2]}`),
+  });
+  const bff = pick(fs.readFileSync(path.join(REPO_ROOT, BFF_WRITER_SH), 'utf8'));
+  const eso = pick(fs.readFileSync(path.join(REPO_ROOT, ESO_BOOTSTRAP_SH), 'utf8'));
+  assert.ok(bff.role && eso.role, `role の字面を読めない（bff=${bff.role} eso=${eso.role}）`);
+  assert.strictEqual(bff.role, eso.role, 'role の字面が ESO の bootstrap と違う');
+  assert.ok(bff.policies.length === 2, `policy が 2 本でない: ${bff.policies}`);
+  assert.deepStrictEqual(bff.policies, eso.policies, 'policy の名前か HCL のファイルが ESO の bootstrap と違う');
 });
 
 // --- NFR-18, ADR-0132, IADR-0525 (#1840): 秘匿管理は OpenBao。旧 Vault の永続データを黙って上書きしない（移行の門） ---

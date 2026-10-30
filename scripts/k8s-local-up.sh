@@ -70,6 +70,18 @@ case "${DEPT_SYNC_MODE:-}" in
   ''|Off|Report|Fix) ;;
   *) echo "ERROR: DEPT_SYNC_MODE は Off・Report・Fix・未指定（現行を引き継ぐ。初回は何も足さない）のいずれかです: '${DEPT_SYNC_MODE}'" >&2; exit 1 ;;
 esac
+# SC-22, NFR-18, IADR-0658 (#2230): VAULT_BFF_WRITER は「BFF の書き込みの役だけを Vault へ入れる」明示の opt-in（1 / 0・未指定）。
+#   VAULT=1 が前提（Vault が居なければ役を書く先が無い）。0 / 1 以外と、VAULT=1 の無い 1 は最初に落とす（15 分かけて立ててから止まらない）。
+case "${VAULT_BFF_WRITER:-}" in
+  ''|0) ;;
+  1)
+    if [ "${VAULT:-}" != "1" ]; then
+      echo "ERROR: VAULT_BFF_WRITER=1 は VAULT=1 と併用してください（Vault が居ないと役を書けない）。例: VAULT=1 VAULT_BFF_WRITER=1 bash scripts/k8s-local-up.sh --live" >&2
+      exit 1
+    fi
+    ;;
+  *) echo "ERROR: VAULT_BFF_WRITER は 1（BFF の書き込みの役を入れる）か 0・未指定（入れない）のどちらかです: '${VAULT_BFF_WRITER}'" >&2; exit 1 ;;
+esac
 # NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): ADMIN_EDGE は管理ツールの集約入口（admin(50000)）に経路を置くかの明示の opt-in。
 #   1＝置く / 0・未指定＝置かない（既定。以前の実行で置いた経路も消す）。読むのは LOCALEDGE=1 の段と istio-edge-up.sh。
 #   0 / 1 以外は RESET_FLOOR と同じく最初に落とす。
@@ -1260,6 +1272,23 @@ if [ "${VAULT:-}" = "1" ]; then
   kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
   if [ "$VAULT_PERSIST_APPLIED" = "1" ]; then
     platform_backup_vault_bootstrap
+  fi
+fi
+
+# SC-22, NFR-18, ADR-0095, IADR-0658 (#2230): **BFF の書き込みの役だけ**を入れる opt-in（既定オフ。VAULT=1 が前提で、上の検査が止める）。
+#   使い捨てのスタック（e2e-live.yml）で SC-22 の一覧（GET /bff/secrets）を 200 にするための口。ESO・Reloader・KV の種・ExternalSecret は
+#   入れず、Secret の供給は手動の作成のまま変わらない（🔴 本番相当の ESO 経路はこれでは試されない。IADR-0658 の残余リスク）。
+#   ESO=1 と一緒なら何もしない —— ESO の bootstrap が同じ policy・role を入れる（二重に書かない）。
+#   🔴 chart（[6/7]。名乗る側の projected token）を当てた後に role の audience を書く（IADR-0585。vault-k8s-auth-audience.test.js の検査 5）。
+#   既定（変数なし）では本ブロックは何も出さず、従来の VAULT=1 の手順とバイト等価である。
+if [ "${VAULT_BFF_WRITER:-}" = "1" ]; then
+  if [ "${ESO:-}" = "1" ]; then
+    echo "    [VAULT_BFF_WRITER=1] ESO=1 と一緒なので省く（ESO の bootstrap が同じ policy・role を入れる）"
+  else
+    echo "==> [opt-in] BFF の書き込みの役（VAULT_BFF_WRITER=1。SC-22 の一覧を 200 にする。ESO は入れない）"
+    # k8s auth の TokenReview に要る（Vault の SA に system:auth-delegator）。ESO ブロックと同じファイル。
+    kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml
+    bash deploy/local/vault/bff-writer/bootstrap.sh
   fi
 fi
 

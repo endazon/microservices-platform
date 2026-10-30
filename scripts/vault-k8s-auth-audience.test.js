@@ -271,9 +271,12 @@ function checkOrder(up) {
   const eso = at(/^\s*bash deploy\/local\/vault\/eso\/bootstrap\.sh\s*$/);
   const backup = at(/^\s*platform_backup_vault_bootstrap\s*$/);
   const store = at(/^\s*kubectl apply -f deploy\/local\/vault\/eso\/clustersecretstore-k8s\.yaml\s*$/);
-  if (helm < 0 || eso < 0 || backup < 0 || store < 0) errors.push(`起動器の段が見つからない（helm=${helm} eso=${eso} backup=${backup} store=${store}）`);
+  // #2230 / IADR-0658: BFF の書き込みの役だけの bootstrap（VAULT_BFF_WRITER=1）も role の audience を書く。
+  const bffWriter = at(/^\s*bash deploy\/local\/vault\/bff-writer\/bootstrap\.sh\s*$/);
+  if (helm < 0 || eso < 0 || backup < 0 || store < 0 || bffWriter < 0) errors.push(`起動器の段が見つからない（helm=${helm} eso=${eso} backup=${backup} store=${store} bffWriter=${bffWriter}）`);
   else {
     if (!(helm < eso)) errors.push('chart（[6/7]）より先に ESO の bootstrap（role の audience）を当てている');
+    if (!(helm < bffWriter)) errors.push('chart（[6/7]）より先に BFF の書き込みの役の bootstrap（role の audience）を当てている');
     if (!(helm < backup)) errors.push('chart（[6/7]）より先にバックアップの bootstrap を当てている');
   }
   return errors;
@@ -286,6 +289,10 @@ ok('5. 起動器の順序: chart（名乗る側）を当ててから role に au
   const moved = up.replace(/^(\s*)bash deploy\/local\/vault\/eso\/bootstrap\.sh\s*$/m, '$1:')
     .replace(/^helm upgrade --install msp /m, 'bash deploy/local/vault/eso/bootstrap.sh\nhelm upgrade --install msp ');
   assert.ok(checkOrder(moved).length > 0, '順序の逆転を見逃した');
+  // 変異（#2230）: BFF の書き込みの役の bootstrap を chart より前へ動かしても落ちる。
+  const movedBff = up.replace(/^(\s*)bash deploy\/local\/vault\/bff-writer\/bootstrap\.sh\s*$/m, '$1:')
+    .replace(/^helm upgrade --install msp /m, 'bash deploy/local/vault/bff-writer/bootstrap.sh\nhelm upgrade --install msp ');
+  assert.ok(checkOrder(movedBff).length > 0, 'BFF の書き込みの役の順序の逆転を見逃した');
 });
 
 /** 2 段の口（VAULT_ROLE_AUDIENCE_DEFER）: lib を source して関数を通した結果を返す。 */
