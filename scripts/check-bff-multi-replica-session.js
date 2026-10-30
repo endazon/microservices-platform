@@ -30,7 +30,7 @@
  *
  * 手で scale すると helm の持つ値と稼働が食い違い、次の `helm upgrade` が黙って 1 へ戻す。
  * 増やすのは `services.bff.replicas` だけで、🔴 **上書きに `extraEnv` を書かない**（Helm はリストを置換する。
- * 既定の env 36 件が消える。#1389）。`--plan` が描画の差分で「1 行だけ」を確かめる。
+ * 既定の env がすべて消える。#1389。件数は描画で数える値なのでここに書かない。#2148）。`--plan` が描画の差分で「1 行だけ」を確かめる。
  * 🔴 `scaling.enabled` かつ `scaling.services` に `bff` があると Deployment は `replicas` を持たない（HPA が所有）。
  * その配備では helm を触らず、既に 2 つ以上居るかだけを見る。
  *

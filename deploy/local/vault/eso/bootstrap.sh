@@ -558,7 +558,7 @@ eso_force_sync_changed
 
 echo ""
 echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h。この実行で書いた KV を読むものは上で force-sync した（#1728）。画面 /admin/secrets からの書き込みは BFF が force-sync で即時同期を依頼する）:"
-echo "  #1682: 対になる秘密（OIDC / s2s / データストアの資格情報の 25 KV）は無いときだけ作った（在るものは env を渡しても触らない。回すのは docs/operations/paired-secret-rotation-runbook.md）"
+echo "  #1682: 対になる秘密（OIDC / s2s / データストアの資格情報。#2148: 件数は書かない＝本スクリプトの vkv_create_if_absent の行の数）は無いときだけ作った（在るものは env を渡しても触らない。回すのは docs/operations/paired-secret-rotation-runbook.md）"
 echo "  #1477: SC-22 の KV（llm-provider-credentials / wikijs-sync / keycloak-smtp / ai-stock-trading/app-secrets）は無いときだけ作った（在るものは env が空でないキーだけ差し替えた）"
 echo "  PR-1: llm-provider-credentials / PR-2: object-storage-credentials, wikijs-db, wikijs-sync"
 echo "  PR-3: grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"

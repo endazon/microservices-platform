@@ -98,6 +98,8 @@ public sealed class RetryBlockErrorLoggerProvider(RetryBlockErrorMetrics metrics
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
         // #2361: 捨てたログは Information なので、Information 以上を受ける（照合はテンプレートの比較 1 回）。
+        // 費用は全サービスの Information 以上のログの件数に比例する（従前の Error 以上だけより多い）。1 件あたりは状態（キーと値の並び）の走査と
+        // 文字列の比較 1 回である（IADR-0656 の経過追記）。
         public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,

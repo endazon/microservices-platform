@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-10-22
+updated: 2026-10-30
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
 adrs: [ADR-0132, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126, ADR-0131]
 iadrs: [IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
-specs: [20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
-issues: [#1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, planning#700, planning#716, AST#1078]
+specs: [20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
+issues: [#2148, #1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, planning#700, planning#716, AST#1078]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -31,9 +31,13 @@ issues: [#1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, pl
 
 | 分類 | 何か | 回せるか | 手順 |
 | --- | --- | --- | --- |
-| `items[]`（6 項目） | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
-| `excluded[]`（6 項目） | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測）。順序と途中で止まったときの戻し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) |
-| `deferred[]`（18 項目）と `items[]` の `notWritable` の `*-auth-client-*`（5 組） | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント 9・サービス間 9・取引ユニットの 5 | 🟡 **認証基盤と対でなら回せる** | [手順 C](#手順-c-deferred認証基盤と対で回す)（コンソール。未実測） |
+| `items[]` | Git に置けず画面から入れる値 —— 外部の発行元がある値（外部 LLM の API キー・メール送信のアプリパスワード・Wiki.js の API キー・取引ユニットの外部 API キー / Discord / 証券会社ログイン）と、**画面が生成する** OpenD の RSA 鍵 | ✅ **回せる** | [手順 A](#手順-a-items画面から回す)（製品の画面から） |
+| `excluded[]` | データストアの資格情報 —— `postgres` / `postgres-app` / `rabbitmq` / `keycloak-admin` / `object-storage-credentials` / `wikijs-db` | 🟡 **ストア側と同時なら回せる** | [手順 B](#手順-b-excludedストア側と同時に回す)（コンソール。未実測）。順序と途中で止まったときの戻し方は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) |
+| `deferred[]` と `items[]` の `notWritable` の `*-auth-client-*` | 認証基盤（Keycloak）のクライアントシークレット —— OIDC クライアント・サービス間のトークン・投入器の主体・取引ユニットの組 | 🟡 **認証基盤と対でなら回せる** | [手順 C](#手順-c-deferred認証基盤と対で回す)（コンソール。未実測） |
+
+［2026-10-30 / #2148］**件数は表に書かない**（項目が増えるたびに腐る。18 項目と書いていた間に 20 へ増えていた）。数えるときは単一情報源から引く:
+`node -e 'const d=require("./deploy/bootstrap/sc22-secret-items.json");const n=a=>a.flatMap(x=>x.vaultPaths??[x]).length;console.log({items:d.items.length,excluded:n(d.excluded),deferred:n(d.deferred),authClientPairs:d.items.flatMap(i=>i.notWritable??[]).filter(k=>/-auth-client-secret$/.test(k)).length})'`
+（`deferred`・`excluded` は `vaultPaths` の数、`authClientPairs` は取引ユニットの `*-auth-client-secret` の数）。
 
 `excluded[]`・`deferred[]`・`*-auth-client-*` はいずれも**対になる秘密**（相手と同時に変えないと成立しない秘密）であり、画面の対象外である。
 回し方の正は [`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md) にある。
