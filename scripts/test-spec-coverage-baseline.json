@@ -304,6 +304,7 @@
       "AbacUnenforcedAxisTests",
       "AiSuggestionEndpointsTests",
       "BatchLoopForeignCancellationTests",
+      "BffGraphEdgeCreateTests",
       "ClusterDetectionCatchUpTests",
       "ClusterDetectionMetricsTests",
       "ClusterDetectionScheduleTests",

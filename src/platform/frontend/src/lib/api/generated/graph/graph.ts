@@ -26,7 +26,9 @@ import type {
   AiSuggestion,
   BffGraphNeighborsParams,
   BffGraphSuggestionsParams,
+  CreateGraphEdgeRequest,
   EdgeTypeCatalogItem,
+  GraphEdgeCreatedDto,
   GraphView
 } from '../bff.schemas';
 
@@ -155,7 +157,126 @@ export function useBffGraphEdgeTypes<TData = Awaited<ReturnType<typeof bffGraphE
 
 
 
-export type bffGraphNodeResponse200 = {
+export type bffGraphEdgeCreateResponse201 = {
+  data: GraphEdgeCreatedDto
+  status: 201
+}
+
+export type bffGraphEdgeCreateResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffGraphEdgeCreateResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffGraphEdgeCreateResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffGraphEdgeCreateResponse409 = {
+  data: void
+  status: 409
+}
+
+export type bffGraphEdgeCreateResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffGraphEdgeCreateResponseSuccess = (bffGraphEdgeCreateResponse201) & {
+  headers: Headers;
+};
+export type bffGraphEdgeCreateResponseError = (bffGraphEdgeCreateResponse400 | bffGraphEdgeCreateResponse401 | bffGraphEdgeCreateResponse404 | bffGraphEdgeCreateResponse409 | bffGraphEdgeCreateResponse502) & {
+  headers: Headers;
+};
+
+export type bffGraphEdgeCreateResponse = (bffGraphEdgeCreateResponseSuccess | bffGraphEdgeCreateResponseError)
+
+export const getBffGraphEdgeCreateUrl = () => {
+
+
+
+
+  return `/bff/graph/edges`
+}
+
+/**
+ * FR-17, ADR-0034 決定 8: 利用者による明示的な付与である。出所は必ず「利用者付与」（`user`）で、要求では選べない。
+ * アンカーは受け取らない（文書単位）。
+ *
+ * **作成時に到達可能性を検証する**（後段 GraphService が判定する）。両端とも利用者の read スコープで見えること、
+ * 起点に write スコープ（所有者）があること。**権限外・不存在・起点への write 権限なしは、すべて 404**（区別しない。
+ * 403 にしない —— 存在秘匿。ADR-0034 決定 2）。終点には閲覧権限だけを要求する（個人資料から会社文書へ張れる）。
+ *
+ * BFF は**透過中継**であり、状態コードも本文も詰め替えない（承認・却下と同じ）。後段の `Location` は返さない。
+ * ⚠️ write ポリシーが 1 件も無い間、後段はこの経路を全件 404 にする（deny-by-default）。
+ * 同じ関係が共有タグの辺として既にあるときは、その辺を利用者付与として引き取る（409 にしない。ADR-0033 決定 6）。
+ * @summary FR-17, UC-10: 利用者が文書間に辺を明示的に付与する（#2107）
+ */
+export const bffGraphEdgeCreate = async (createGraphEdgeRequest: CreateGraphEdgeRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphEdgeCreateResponse> => {
+
+  return bffFetch<bffGraphEdgeCreateResponse>(getBffGraphEdgeCreateUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createGraphEdgeRequest)
+  }
+);}
+
+
+
+
+
+export const getBffGraphEdgeCreateMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphEdgeCreate>>, TError,{data: CreateGraphEdgeRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffGraphEdgeCreate>>, TError,{data: CreateGraphEdgeRequest}, TContext> => {
+
+const mutationKey = ['bffGraphEdgeCreate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffGraphEdgeCreate>>, {data: CreateGraphEdgeRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bffGraphEdgeCreate(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffGraphEdgeCreateMutationResult = NonNullable<Awaited<ReturnType<typeof bffGraphEdgeCreate>>>
+    export type BffGraphEdgeCreateMutationBody = CreateGraphEdgeRequest
+    export type BffGraphEdgeCreateMutationError = void
+
+    /**
+ * @summary FR-17, UC-10: 利用者が文書間に辺を明示的に付与する（#2107）
+ */
+export const useBffGraphEdgeCreate = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffGraphEdgeCreate>>, TError,{data: CreateGraphEdgeRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffGraphEdgeCreate>>,
+        TError,
+        {data: CreateGraphEdgeRequest},
+        TContext
+      > => {
+      return useMutation(getBffGraphEdgeCreateMutationOptions(options));
+    }
+    export type bffGraphNodeResponse200 = {
   data: GraphView
   status: 200
 }

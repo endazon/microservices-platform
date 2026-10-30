@@ -3132,6 +3132,41 @@ paths:
                 items: { $ref: "#/components/schemas/EdgeTypeCatalogItem" }
         "403": { description: 後段が拒否した（そのまま透過する） }
 
+  /bff/graph/edges:
+    post:
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-17, UC-10: 利用者が文書間に辺を明示的に付与する（#2107）"
+      description: |
+        FR-17, ADR-0034 決定 8: 利用者による明示的な付与である。出所は必ず「利用者付与」（`user`）で、要求では選べない。
+        アンカーは受け取らない（文書単位）。
+
+        **作成時に到達可能性を検証する**（後段 GraphService が判定する）。両端とも利用者の read スコープで見えること、
+        起点に write スコープ（所有者）があること。**権限外・不存在・起点への write 権限なしは、すべて 404**（区別しない。
+        403 にしない —— 存在秘匿。ADR-0034 決定 2）。終点には閲覧権限だけを要求する（個人資料から会社文書へ張れる）。
+
+        BFF は**透過中継**であり、状態コードも本文も詰め替えない（承認・却下と同じ）。後段の `Location` は返さない。
+        ⚠️ write ポリシーが 1 件も無い間、後段はこの経路を全件 404 にする（deny-by-default）。
+        同じ関係が共有タグの辺として既にあるときは、その辺を利用者付与として引き取る（409 にしない。ADR-0033 決定 6）。
+      operationId: bff-graph-edge-create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGraphEdgeRequest" }
+      responses:
+        "201":
+          description: 作成した辺（または共有タグの辺を引き取ったもの）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphEdgeCreatedDto" }
+        "400":
+          description: >-
+            入力違反（`{ error }`。両端が同じ・空の ID など）／`unknown_edge_type`（型が辞書に無い）。**本文ごと透過する**
+        "401": { description: 未認証（BFF の入口で弾く。後段へ送らない） }
+        "404": { description: "権限外・不存在・起点への書き込み権限なし（**区別しない**）" }
+        "409": { description: "`edge_exists`。同じ両端・型の辺が既にある。本文ごと透過する" }
+        "502": { description: 後段へ到達できない（成功へ縮退しない） }
   /bff/graph/{documentId}:
     parameters:
       - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -4678,6 +4713,27 @@ components:
         targetDocumentId: { type: string, format: uuid }
         edgeTypeId: { type: string, format: uuid }
         provenance: { type: string, enum: [auto, user, ai-approved] }
+
+    CreateGraphEdgeRequest:
+      type: object
+      description: >-
+        FR-17, ADR-0034 決定 8: 辺の作成要求。出所とアンカーは含めない（出所は常に利用者付与。アンカーは文書単位）。
+      required: [sourceDocumentId, targetDocumentId, edgeTypeId]
+      properties:
+        sourceDocumentId: { type: string, format: uuid, description: "起点（write スコープを要する）" }
+        targetDocumentId: { type: string, format: uuid, description: "終点（read スコープを要する）" }
+        edgeTypeId: { type: string, format: uuid, description: "辺の型（SC-09 の型辞書）" }
+
+    GraphEdgeCreatedDto:
+      type: object
+      description: "FR-17: 作成された辺。"
+      required: [id, sourceDocumentId, targetDocumentId, edgeTypeId, provenance]
+      properties:
+        id: { type: string, format: uuid }
+        sourceDocumentId: { type: string, format: uuid, description: "対称型は正規化後の並びである" }
+        targetDocumentId: { type: string, format: uuid }
+        edgeTypeId: { type: string, format: uuid }
+        provenance: { type: string, description: "出所。この経路では常に `user`" }
 
     EdgeTypeCatalogItem:
       type: object
