@@ -103,23 +103,27 @@ public static class PrivateNoteBffEndpoints
         // 削除済みも同じ一覧に載る（SC-19 の「削除済み」タブは同じ応答を絞って描く）。
         // **容量の内訳「うち削除済み」は画面が削除済み行の bytes を合算して出す** ——
         // 後段が持つのは台帳の行だけで、内訳という項目は存在しない（数え方を 2 つ持たない）。
+        notes.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardAsync(HttpMethod.Get, "/private-notes/", null, httpFactory, http, ct))
+            .WithName("BffPrivateNoteList").Produces<PrivateNoteListResponse>();
+
         // ── SC-17: 個人資料の保存容量（#2330）──────────────────────────
         // 利用者名は後段の経路の 1 区切りとして運ぶ（`/` などで別の経路へ化けないよう符号化する）。
         quotas.MapGet("/{ownerId}", (string ownerId, IHttpClientFactory httpFactory, HttpContext http,
                 CancellationToken ct)
             => ForwardAsync(HttpMethod.Get, $"/private-notes/quotas/{Uri.EscapeDataString(ownerId)}", null, httpFactory, http, ct))
             .WithName("BffPrivateNoteQuotaGet")
-            .Produces<PrivateNoteUsageDto>();
+            .Produces<PrivateNoteUsageDto>()
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status502BadGateway);
         quotas.MapPut("/{ownerId}", (string ownerId, SetPrivateNoteQuotaRequest req, IHttpClientFactory httpFactory,
                 HttpContext http, CancellationToken ct)
             => ForwardAsync(HttpMethod.Put, $"/private-notes/quotas/{Uri.EscapeDataString(ownerId)}", req, httpFactory, http, ct))
             .WithName("BffPrivateNoteQuotaSet")
             .Produces<PrivateNoteUsageDto>()
-            .Produces(StatusCodes.Status400BadRequest);
-
-        notes.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
-            ForwardAsync(HttpMethod.Get, "/private-notes/", null, httpFactory, http, ct))
-            .WithName("BffPrivateNoteList").Produces<PrivateNoteListResponse>();
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status502BadGateway);
 
         // ── SC-19: 新規作成（本文なし。本文編集は Obsidian 経路のみ。ADR-0046 D-02）──────
         // 容量 100% では**新規作成だけ**が 507 で拒まれる（ADR-0037 決定 17）。

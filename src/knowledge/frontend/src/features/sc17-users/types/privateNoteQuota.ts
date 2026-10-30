@@ -16,12 +16,18 @@ export type QuotaUnit = 'MB' | 'GB' | 'TB';
 
 const UNIT_BYTES: Record<QuotaUnit, number> = { MB, GB, TB };
 
-/** 単位つきの入力をバイトへ直す。数でない・負・1 TB 超は null。 */
+/**
+ * 入力として受ける形: 10 進の数字（小数可）だけ。
+ * #2347 のレビュー: `Number()` は指数表記（`1e3`）・16 進（`0x10`）・前後の空白を数として読むので、先に形で絞る。
+ * 符号も受けない（負は範囲外、`+` は要らない）。
+ */
+const DECIMAL = /^\d+(\.\d+)?$/;
+
+/** 単位つきの入力をバイトへ直す。10 進の数字でない・1 TB 超は null。 */
 export function quotaInputToBytes(value: string, unit: QuotaUnit): number | null {
-  const trimmed = value.trim();
-  if (trimmed === '') return null;
-  const n = Number(trimmed);
-  if (!Number.isFinite(n) || n < 0) return null;
+  if (!DECIMAL.test(value)) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
   const bytes = Math.round(n * UNIT_BYTES[unit]);
   return bytes <= MAX_QUOTA_BYTES ? bytes : null;
 }

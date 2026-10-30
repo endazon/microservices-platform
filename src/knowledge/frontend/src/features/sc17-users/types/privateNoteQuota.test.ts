@@ -22,6 +22,23 @@ describe('privateNoteQuota', () => {
     expect(quotaInputToBytes('abc', 'MB')).toBeNull();
   });
 
+  // #2347 のレビュー: `Number()` は指数表記・16 進・前後の空白を数として読む。10 進の数字（小数可）だけを受ける。
+  it('指数表記・16 進・空白・符号は受けない（10 進の数字だけ）', () => {
+    expect(quotaInputToBytes('1e3', 'MB')).toBeNull();
+    expect(quotaInputToBytes('1E-1', 'GB')).toBeNull();
+    expect(quotaInputToBytes('0x10', 'MB')).toBeNull();
+    expect(quotaInputToBytes(' 1', 'GB')).toBeNull();
+    expect(quotaInputToBytes('1 ', 'GB')).toBeNull();
+    expect(quotaInputToBytes('1 0', 'GB')).toBeNull();
+    expect(quotaInputToBytes('-0', 'GB')).toBeNull();
+    expect(quotaInputToBytes('+1', 'GB')).toBeNull();
+    expect(quotaInputToBytes('.5', 'GB')).toBeNull();
+    expect(quotaInputToBytes('1.', 'GB')).toBeNull();
+    // 陽性対照: 小数と 0 は受ける。
+    expect(quotaInputToBytes('0.5', 'GB')).toBe(Math.round(0.5 * 1024 ** 3));
+    expect(quotaInputToBytes('0', 'TB')).toBe(0);
+  });
+
   it('表示は単位を自動で選ぶ（B / KB / MB / GB / TB）', () => {
     expect(formatQuotaBytes(0)).toBe('0 B');
     expect(formatQuotaBytes(1536)).toBe('1.50 KB');
