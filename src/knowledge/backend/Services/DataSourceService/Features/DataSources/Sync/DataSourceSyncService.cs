@@ -278,6 +278,7 @@ public sealed class DataSourceSyncService(
         ConnectorSecretFailure.ResolverUnavailable => "resolver-unavailable",
         ConnectorSecretFailure.NotFound => "not-found",
         ConnectorSecretFailure.Empty => "empty",
+        ConnectorSecretFailure.PlaintextRejected => "plaintext-rejected",
         _ => "unreachable",
     };
 

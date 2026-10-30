@@ -123,6 +123,12 @@ services:
     dataSourceSync:
       enabled: true
       intervalSeconds: 60
+    # NFR-18, 計画 ADR-0126 フォローアップ 2, IADR-0664 決定 5 (#458 段 S4): 経路 B（PoC）では datasource-service が Vault の参照を読む。
+    # 移送（scripts/migrate-datasource-credentials.sh）で置いた `vault:datasource/<ID>#<キー>` を同期の開始時に解決する。
+    # role・policy は deploy/local/vault/eso/bootstrap.sh（ESO=1）が入れる（datasource-connector-reader。read だけ）。
+    # Vault の居ない構成（VAULT=0）では、参照の行だけが unreachable で fail-closed になり、平文の行は移送期間の旗のとおり動く。
+    vault:
+      address: "http://vault.platform-infra.svc.cluster.local:8200"
 
   # Issue #407, IADR-0107: AST の 3 画面系サービス（configuration / risk-management / market-monitor）は
   # **AST chart（ai-stock-trading namespace）が単一の所有者**であり、MSP 側には実体を置かない。

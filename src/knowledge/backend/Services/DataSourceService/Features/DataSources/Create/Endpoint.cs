@@ -2,6 +2,8 @@ using System.Security.Claims;
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
+using DataSourceService.Infrastructure.Secrets;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DataSourceService.Features.DataSources.Create;
@@ -16,11 +18,15 @@ internal static class CreateDataSourceEndpoint
     {
         g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule,
             IPlatformUserDirectory userDirectory, IDepartmentDomainDirectory departmentDomain, HttpContext http,
-            ILoggerFactory loggers, CancellationToken ct) =>
+            ILoggerFactory loggers, IOptions<ConnectorCredentialOptions> credentialOptions, CancellationToken ct) =>
         {
             // IADR-0295 決定 3: 資格情報つきの connectionUri は受け付けない（登録時が第 1 の関門）。
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, existing: null) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
+
+            // NFR-18, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む。
+            if (PlaintextCredentialWritePolicy.Reject(req.Config, credentialOptions) is { } plaintextError)
+                return plaintextError;
 
             // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
             // **通らない対は保存しない** —— 誤った写像は偽の所有者を作り、ADR-0036 の

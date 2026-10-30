@@ -741,3 +741,4 @@
 | [IADR-0661](./IADR-0661_visual-regression-three-faces-in-official-docker.md) | 視覚回帰は 3 面（NotFound・SC-19 削除確認・SC-01 出典ラベル）だけを公式 Docker イメージの中で手動で流し、project visual は PW_VISUAL=1 のときだけ持つ（#2039 / E-80） | Accepted |
 | [IADR-0662](./IADR-0662_totp-enroll-disposable-only.md) | 初回の TOTP 登録（M-005）は使い捨てのスタックだけで、一時アカウントを Keycloak の管理 API で作って消して流す（E2E_DISPOSABLE。リカバリーコードは realm 未対応のため見ない。#2040 / E-81） | Accepted |
 | [IADR-0663](./IADR-0663_sc17-quota-lookup-post-read.md) | SC-17 の個人資料の容量は一覧の利用者名（絞り込み前の全行）でまとめて 1 本引く（N+1 の解消。絞り込みで送り直さない）。一括照会は読み取りの POST（1〜1,000 件・AdminOnly・利用者名と 2 つの数だけ）で、orval の operationId の上書きで query のフックとして生成する。1 件の口は変えない（#2348） | Accepted |
+| [IADR-0664](./IADR-0664_connector-credential-migration-and-plaintext-gate.md) | データソースの平文の資格情報は、稼働の Pod の中の一回きりの移送（移送専用の短命のトークン）で保管先へ移し、移送期間の旗を下ろした後は平文を同期・保存・起動のいずれでも拒む。移送は稼働の DB の上では不可逆で、戻しは移送前のバックアップから（#458 段 S4・S5） | Accepted |

@@ -1,6 +1,8 @@
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
+using DataSourceService.Infrastructure.Secrets;
+using Microsoft.Extensions.Options;
 using FluentValidation;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Kernel;
@@ -22,7 +24,8 @@ internal static class UpdateDataSourceEndpoint
         g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req,
             IValidator<UpdateDataSourceRequest> validator, DataSourceDbContext db,
             SyncSchedule schedule, IPlatformUserDirectory userDirectory,
-            IDepartmentDomainDirectory departmentDomain, CancellationToken ct) =>
+            IDepartmentDomainDirectory departmentDomain, IOptions<ConnectorCredentialOptions> credentialOptions,
+            CancellationToken ct) =>
         {
             // FR-01, UC-04 / IADR-0371 決定 2・4 / IADR-0395: 入力検証（FluentValidation）の失敗を
             // Kernel の `Result` で表し、**HTTP への写像は 1 度だけ行う**
@@ -40,6 +43,10 @@ internal static class UpdateDataSourceEndpoint
             // 受理し（`Update` が実値を保つ）、編集して送り返した形は弾く。
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
+
+            // NFR-18, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む（マスクの書き戻しは通す）。
+            if (PlaintextCredentialWritePolicy.Reject(req.Config, credentialOptions) is { } plaintextError)
+                return plaintextError;
 
             // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
             if (await OwnerMappingValidation.ValidateAsync(req.OwnerMappings, userDirectory, ct) is { } mapError)

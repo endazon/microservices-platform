@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
 adrs: [ADR-0132, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126, ADR-0131]
-iadrs: [IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
-specs: [20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
+iadrs: [IADR-0664, IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
+specs: [20261031_458_connector-credential-migration, 20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
 issues: [#2148, #1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, planning#700, planning#716, AST#1078]
 -->
 
@@ -214,11 +214,55 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 | --- | --- |
 | 保管先（Vault）自身の root トークン・unseal 鍵 | 経路B の開発専用の既知値であり、本番の Vault 運用（unseal・監査・HA）は未配備 |
 | 取引ユニットの DB 利用者 `ai` | 保管先に無い（DB の初期化スクリプトに直書き）。取引ユニットの管轄 |
-| データソースの接続資格情報 | **管理者が**秘密情報・接続設定の管理画面の「データソースの資格情報」で 1 件ずつ更新する（保管先 `datasource/<データソース ID>`。書いた値は次の同期から使われ、再起動は要らない。削除→再登録は ID と履歴を切るので行わない）。🔴 データソースの設定に平文が残っている行（画面の供給元が「画面以外」）は、画面で書いても使われない —— 平文の移送は別段であり、それまではデータソースの登録・更新の API（管理者だけ）で差し替える。直前の版へ戻すときは保管先の版で戻す |
+| データソースの接続資格情報 | **管理者が**秘密情報・接続設定の管理画面の「データソースの資格情報」で 1 件ずつ更新する（保管先 `datasource/<データソース ID>`。書いた値は次の同期から使われ、再起動は要らない。削除→再登録は ID と履歴を切るので行わない）。🔴 データソースの設定に平文が残っている行（画面の供給元が「画面以外」）は、画面で書いても使われない —— ~~平文の移送は別段であり、それまではデータソースの登録・更新の API（管理者だけ）で差し替える。~~ ［2026-10-31］下の「データソースの資格情報の移送（平文 → 保管先）」で移してから画面で回す。直前の版へ戻すときは保管先の版で戻す（`vault kv rollback -version=<直前の版> secret/datasource/<データソース ID>`。版の一覧は `vault kv metadata get`。値は端末に出さない） |
 | キャッシュ・セッションストア（Valkey）のパスワード（Secret `session-store-credentials`） | 保管先に無い（起動器が `platform-infra` と `microservices-platform` の 2 か所へ置く bootstrap）。Valkey → BFF の順に作り直す必要がある。手順と切り戻しは [`operations.md`](operations.md) の「キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し」 |
 | Wiki.js の管理者パスワード | 保管先に無い（起動時に乱数で生成）。Wiki.js の管理画面で変える |
 | メッシュのサービス間証明書・エッジの TLS 証明書 | 自動で更新される（istiod / cert-manager） |
 | 利用者のパスワード・OTP | 利用者本人の操作であり、運用のローテーションではない |
+
+## データソースの資格情報の移送（平文 → 保管先）
+
+既存のデータソースの設定に残る平文の資格情報を、保管先 `datasource/<データソース ID>` へ移し、設定を参照へ置き換える**一回きりの作業**である。
+経路 B（PoC）の手順で、本番で保管先を読む配備は別の作業である。
+
+**前提**: 保管先（`VAULT=1 ESO=1`）が居て、`deploy/local/vault/eso/bootstrap.sh` を本書の版で流してある（移送専用の policy
+`datasource-credential-migrate` が要る）。datasource-service が保管先の所在を持っている（`deploy/local/values-local.yaml` の
+`services.datasource.vault.address`）。
+
+1. **バックアップを取る（必須）。** 移送は設定の平文を参照へ置き換える。**稼働の DB の上では元へ戻らない**（値は保管先に残る）。
+   datasource の DB（`datasource_svc`）の論理バックアップを取り、取れたことを確かめてから進む
+   （例: `kubectl -n platform-infra exec deploy/postgres -- pg_dump -U <管理者> -d datasource_svc -Fc > datasource_svc-<日付>.dump`。
+   🔴 このファイルには平文が入る。置き場所と破棄の期限を [`記録`](#記録) に書く）。
+2. **数える**: `bash scripts/migrate-datasource-credentials.sh --live --dry-run`。平文を持つ行とキーの件数だけが出る（何も書かない）。
+3. **移す**: `bash scripts/migrate-datasource-credentials.sh --live`。移送専用の policy の短命のトークン（既定 10 分）を発行し、
+   標準入力で移送のコマンドへ渡し、終わったら失効させる。出力は件数（移した・衝突・失敗・平文が残る行）と行の番号だけである。
+   - **トークンの使用回数の上限**（`MIGRATION_TOKEN_USES`。既定 500）: 移送は 1 キーあたり保管先を**最大 4 回**呼ぶ。
+     - 内訳: 読む（1）・パスに現在版が無いときの版の読み出し（1）・書く（1）・読み直す（1）。
+     - 同じ値が既にあるキーは 2 回、衝突するキーは 1〜2 回で済む。
+     - 上限は「手順 2 の『平文のキー』× 4」に余裕を足して決める。既定の 500 は 125 キーまで足りる。
+       例: 平文のキーが 200 なら `MIGRATION_TOKEN_USES=1000 bash scripts/migrate-datasource-credentials.sh --live`。
+     - 上限に達すると、残りのキーは保管先に届かず「失敗」として数えられる（設定は平文のまま）。上限を上げて流し直せば、続きから進む（冪等）。
+     - 期限（`MIGRATION_TOKEN_TTL`。既定 10m）も同じ考え方で延ばせる。
+   - DB の呼び出しが途中で失敗しても、移送は落ちずに終了コード 1 で終わる（出力は例外の型名だけ）。DB を直して流し直す。
+   - **終了コード 1（衝突・失敗が残った）**: その行は平文のまま（設定を触っていない）。衝突は「保管先に別の値がある」で、画面から書いた値と
+     設定の平文のどちらが正しいかを人が決める（画面から書き直すか、保管先の値を消してから流し直す）。失敗は保管先に届かなかったもので、流し直してよい（冪等）。
+4. **確かめる**: もう一度 `--dry-run` で平文を持つ行が 0 件。秘密情報・接続設定の管理画面の「データソースの資格情報」で、移した行の供給元が「画面」。
+   次の同期が成功する（データソース管理画面の直近エラーが空のまま）。
+5. **旗を下ろす**: `services.datasource.connectorCredentials.plaintextAllowed=false` で配備する。平文の行が残っていれば datasource-service は起動しない
+   （その場合は旗を true に戻し、3 からやり直す）。旗が false の間、平文の資格情報の同期は `plaintext-rejected` で止まり、データソースの登録・更新の
+   API は秘密のキーへの平文を 400 で拒む。
+
+**戻し方**:
+
+- 移送の後に同期が失敗する（保管先が読めない・参照が解決できない）とき: まず旗を true のままにして原因（保管先の不達・datasource-service の
+  保管先の所在・role）を直す。参照の行は平文へは倒れない。
+- 設定を移送の前へ戻す必要があるとき: 手順 1 のバックアップから `DataSources` の当該行の `Config` を戻す（他の列・他の行は戻さない）。
+  旗は true に戻す。保管先に書いた値は残るので、戻した後に画面から書けば再び参照へ置ける。
+- 保管先の値を直前の版へ戻すとき: `vault kv rollback -version=<直前の版> secret/datasource/<データソース ID>`（版の一覧は `vault kv metadata get`）。
+
+**無効化したデータソースの値**: 保管先に残す（BFF にも datasource-service にも削除の権限を与えない）。消すのは運用者の棚卸しで、
+保管先の管理の権限で `vault kv metadata delete secret/datasource/<データソース ID>` を行う（データソース管理画面で無効になっていることを確かめてから。
+無効化を取り消すと、その行の参照は解決できなくなる）。
 
 ## 確認（この手順が成功したと言える条件）
 

@@ -301,6 +301,18 @@ spec:
             - name: DataSourceSync__IntervalSeconds
               value: {{ $svc.dataSourceSync.intervalSeconds | default 300 | quote }}
           {{- end }}
+          {{- with $svc.connectorCredentials }}
+            # NFR-18, 計画 ADR-0126 フォローアップ 2, IADR-0664 決定 2 (#458 段 S4): 移送期間の旗。🔴 `default` を使わない
+            # （`false | default true` は true になる）。キーが無ければ既定（true）を書く。
+            # 知らないキーは描画で止める（別のブロックのキー〔例 vault.port〕が字下げのずれでここへ入ったのを黙って捨てない）。
+          {{- range $k, $_ := . }}
+          {{- if ne $k "plaintextAllowed" }}
+          {{- fail (printf "services.%s.connectorCredentials.%s は受けません（plaintextAllowed だけ。IADR-0664 決定 2）。字下げがずれて別のブロックのキーが入っていないか確かめてください。" $name $k) }}
+          {{- end }}
+          {{- end }}
+            - name: ConnectorCredentials__PlaintextAllowed
+              value: {{ ternary (toString .plaintextAllowed) "true" (hasKey . "plaintextAllowed") | quote }}
+          {{- end }}
           {{- if $svc.database }}
             # NFR, ADR-0002, #1012: DB 接続。**資格情報をイメージへ焼かない** —— appsettings.json は
             # 接続文字列を持たず（#1012 で撤去）、ここで注入しなければサービスは起動時に落ちる
