@@ -19654,4 +19654,35 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(visualImageIssues(floating, lock2039).some((e) => e.includes('固定した')));
     });
   }
+
+  // --- NFR / #2271 の部分 / IADR-0640: 1 レプリカの前提のサービス（ingestion）を増やさない暫定の検査 ------------------------------
+  {
+    const { spawnSync: spawn2271 } = require('child_process');
+    const script2271 = path.join(__dirname, 'check-single-replica-workers.js');
+    const m2271 = require('./check-single-replica-workers.js');
+    const { parseDocuments: parse2271 } = require('./lib/yaml-subset');
+
+    ok('#2271: check-single-replica-workers --self-test が通る', () => {
+      const r = spawn2271(process.execPath, [script2271, '--self-test'], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('#2271: 実データ（values・Argo CD・--set）で ingestion は 1 レプリカのまま', () => {
+      const r = spawn2271(process.execPath, [script2271], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /services\.ingestion\.replicas = 1/);
+    });
+
+    ok('#2271 陰性対照: 本番像の values.yaml の ingestion を 2 にするか HPA の対象に足すと検出する', () => {
+      const text = fs.readFileSync(path.join(__dirname, '..', 'deploy/helm/microservices-platform/values.yaml'), 'utf8');
+      const values = parse2271(text)[0];
+      assert.deepStrictEqual(m2271.valuesProblems(values, 'values.yaml'), []);
+      const bumped = JSON.parse(JSON.stringify(values));
+      bumped.services.ingestion.replicas = '2';
+      assert.strictEqual(m2271.valuesProblems(bumped, 'values.yaml').length, 1);
+      const scaled = JSON.parse(JSON.stringify(values));
+      scaled.scaling.services.push('ingestion');
+      assert.strictEqual(m2271.valuesProblems(scaled, 'values.yaml').length, 1);
+    });
+  }
 };
