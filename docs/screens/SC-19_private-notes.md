@@ -11,7 +11,7 @@ ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11]
 adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096, ADR-0143]
 iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
 specs: [20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2120_ai-input-user-default]
-issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, planning#614, planning#618, planning#628, planning#841, #2120]
+issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, planning#614, planning#618, planning#628, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理

@@ -63,6 +63,17 @@ describe('useMcpClientAttributeEditor (SC-12)', () => {
     expect(result.current.entries).toEqual([]);
   });
 
+  // #2126, 05_screens §SC-12「タグの集合」: 集合値のキーは現在の値へ足す（後勝ちで 1 つ目を消さない）。
+  it('adds to the current values of a set-valued key', () => {
+    const { result } = renderHook(() => useMcpClientAttributeEditor());
+    act(() => result.current.start('agent-1', { clearance: 'internal', tags: '経営' }));
+    act(() => result.current.selectKey('tags'));
+    act(() => result.current.setValue('経理'));
+    act(() => result.current.addEntry());
+
+    expect(result.current.attributes()).toEqual({ clearance: 'internal', tags: '経営,経理' });
+  });
+
   it('refuses to save an empty attribute set', () => {
     const { result } = renderHook(() => useMcpClientAttributeEditor());
     act(() => result.current.start('agent-1', { clearance: 'internal' }));

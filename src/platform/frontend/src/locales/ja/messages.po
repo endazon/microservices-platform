@@ -146,6 +146,10 @@ msgstr "{title} を選択"
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} 件（権限内のみ表示）"
 
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "{value}（辞書に無い値）"
+msgstr "{value}（辞書に無い値）"
+
 #: platform/frontend/src/components/theme/ThemeToggle.tsx
 msgid "{visibleLabel}（表示テーマの切替。押すと {upcomingName} になります）"
 msgstr "{visibleLabel}（表示テーマの切替。押すと {upcomingName} になります）"
@@ -4948,6 +4952,10 @@ msgstr "起点を解除する"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "辞書に候補がありません"
 msgstr "辞書に候補がありません"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "辞書に無いタグの値があります。チェックを外してから保存してください（辞書に無い値は保存できません）。"
+msgstr "辞書に無いタグの値があります。チェックを外してから保存してください（辞書に無い値は保存できません）。"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 msgid "辞書に無い型は自動抽出のときに related へ丸められ、警告として記録されます。改名しても既存の辺はそのまま追随します。"

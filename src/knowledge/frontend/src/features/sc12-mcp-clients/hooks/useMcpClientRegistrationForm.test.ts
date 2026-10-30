@@ -37,6 +37,15 @@ const DICTIONARY: AttributeDefinitionDto[] = [
     required: false,
     scope: 'user',
   }),
+  // #2126: 集合値の属性（タグ）。
+  attr({
+    id: 'a5',
+    key: 'tags',
+    label: 'タグ',
+    allowedValues: ['経営', '経理'],
+    required: false,
+    scope: 'user',
+  }),
   // 🔴 陰性対照: 文書スコープの属性は割当の選択肢に出ない（主体へ割り当てると意味が反転する）。
   attr({
     id: 'a3',
@@ -57,7 +66,11 @@ function setup() {
 describe('useMcpClientRegistrationForm (SC-12)', () => {
   it('offers only user-scoped attributes that have allowed values', () => {
     const { result } = setup();
-    expect(result.current.definitions.map((d) => d.key)).toEqual(['clearance', 'department']);
+    expect(result.current.definitions.map((d) => d.key)).toEqual([
+      'clearance',
+      'department',
+      'tags',
+    ]);
   });
 
   it('clears the chosen value when the attribute key changes', () => {
@@ -90,9 +103,23 @@ describe('useMcpClientRegistrationForm (SC-12)', () => {
     act(() => result.current.setAttributeValue('internal'));
     act(() => result.current.addEntry());
 
-    // 契約は 1 キー 1 値であり、集合を持てない。
+    // 単一値のキーは後勝ち（#2126 の集合値のキーとの対照）。
     expect(result.current.entries).toEqual([{ key: 'clearance', value: 'internal' }]);
     expect(result.current.attributeValue).toBe('');
+  });
+
+  // #2126, 05_screens §SC-12「タグの集合」: 集合値のキーは積むたびに和を取り、1 行に集まる（契約はカンマで連結）。
+  it('collects the values of a set-valued key into one entry', () => {
+    const { result } = setup();
+    act(() => result.current.selectAttributeKey('tags'));
+    act(() => result.current.setAttributeValue('経営'));
+    act(() => result.current.addEntry());
+    act(() => result.current.setAttributeValue('経理'));
+    act(() => result.current.addEntry());
+    act(() => result.current.setAttributeValue('経営'));
+    act(() => result.current.addEntry());
+
+    expect(result.current.entries).toEqual([{ key: 'tags', value: '経営,経理' }]);
   });
 
   it('reports the input issues and refuses to submit until they are gone', () => {

@@ -1,0 +1,53 @@
+---
+title: 作業仕様書 — SC-17 / SC-12 の ABAC 属性「タグ」を複数選べるようにする（契約は既存の集合値の符号化のまま）（#2126）
+type: spec
+status: done
+related_ids: [FR-09, FR-16, SC-17, SC-12, UC-05, UC-09, ADR-0062]
+author: claude
+created: 2026-10-30
+updated: 2026-10-30
+issue: "#2126"
+---
+
+# 作業仕様書 — タグの複数選択（#2126）
+
+> 本仕様書は実装着手前に作成した（着手 2026-10-30。develop `9f70bace` 以降）。親 #2047（指摘 M-24）。
+
+## 現状（develop で確認）
+
+- 計画: SC-17 の入力表は「ABAC 属性（タグ）| 任意 | **複数選択** | SC-09 のタグ辞書に定義済みの値のみ」。SC-12 は無人アカウントに割り当てる「タグの**集合**」（ADR-0062 決定 2）。
+- **後段と契約は既に集合を扱える**。契約は 1 キー 1 値（`Dictionary<string,string>`）だが、集合値のキー（`tags`・`projects`）はカンマ区切りで載せる規則が契約プロジェクトに 1 か所ある（`UserAttributeEncoding`。IADR-0385）。Keycloak への書き込み（配列へ分割）・SC-17 の辞書照合（要素ごと）・ABAC の評価（要素の重なり）・MCP の部分集合の判定は、どれもこの規則で集合として読む。
+- **画面だけが 1 値である**。
+  - SC-17: 任意属性（タグ）を単一の選択欄で描く。2 つ目を選べない。既存の値 `経営,経理` は選択肢に一致せず、未選択に見える。
+  - SC-12: 属性の追加（登録フォーム・登録後の差し替え）は「同じキーは後勝ち」で、タグを 2 つ積むと 1 つ目が消える。
+- したがって issue の「契約の変更を伴う」は当たらない。計画の判断も要らない（計画は複数選択を定めている）。
+
+## 方針
+
+1. 画面側に、契約の集合値の規則の写しを 1 か所置く（`lib/abac/userAttributeEncoding.ts`。キー `tags`・`projects`、区切り `,`、分割はカンマ・空白・タブ。C# の `UserAttributeEncoding` と同じ規則）。
+2. SC-17: 集合値のキーは、許可値ごとのチェックボックスで描く（見出しは属性名）。既存の値は分割して印を付ける。保存はカンマで連結する（許可値の並び順）。全部外せば送らない（キーごと落とす。従前の「指定しない」と同じ）。単一値のキー（機密区分上限）は従前どおり選択欄。
+3. SC-12: 登録フォームと登録後の差し替えの「属性を追加」は、集合値のキーなら既存の値へ**足す**（重複は足さない）。単一値のキーは従前どおり後勝ち。積んだ行は `tags: 経営,経理` と出る。
+4. 後段・契約・BFF は変えない。
+
+## 母集合（規則 9・10）
+
+- **規則 9**: 属性の値を 1 値として扱う画面の箇所を、`grep -rn "allowedValues" knowledge/frontend/src/features --include=*.tsx`（試験を除く）と、属性の積み上げ（`addEntry`）で走査した。
+  - SC-17 の任意属性の選択欄（`UserAccountManagementPage.tsx`）—— 直す。
+  - SC-12 の `useMcpClientRegistrationForm.addEntry`・`useMcpClientAttributeEditor.addEntry` —— 直す。
+  - SC-09（属性辞書の編集）の許可値の入力（`abacVocabulary.ts` の `split(',')`）は辞書そのものの編集で、利用者への割当ではない —— 対象外。
+  - 画面のクライアント側の検証（`validateAssignment`・`validateRegistration`）は値を辞書と照合していない（照合は後段）—— 変えない。
+- **規則 10**: SC-17 の既存の試験「does not require the optional tag attribute」は選択欄を前提にしていた。チェックボックスの前提へ直す。SC-12 の hook の注記「同じキーは後勝ち」は集合値のキーで変わるので直す。
+
+## 受け入れ基準 → 試験
+
+| 基準 | 試験 | 修正前 |
+| --- | --- | --- |
+| SC-17 でタグを複数選んで保存すると `tags` がカンマで連結されて（許可値の順で）送られる。既定は未選択 | `UserAccountManagementPage.test.tsx` | 赤（選択欄で 1 つしか選べない） |
+| SC-12 でタグを 2 つ積むと 1 つの行に集まる。単一値のキーは後勝ちのまま（対照） | `useMcpClientAttributeEditor.test.ts`・`useMcpClientRegistrationForm.test.ts` | 赤（後勝ちで 1 つ目が消える） |
+| 集合値の規則が後段と同じ | `userAttributeEncoding.test.ts` | 新規 |
+
+## ［2026-10-30 追記］#2340 のレビューの是正
+
+- **辞書に無い既存のタグ**: 後段は辞書外の値を拒む（`UserAssignmentValidation` は集合値の要素ごとに辞書と照合し、外れた要素を 400 にする。実測はコードで確かめた）。したがって画面は**黙って落とさず**、「<値>（辞書に無い値）」としてチェック済みで示し、利用者がチェックを外すまで保存させない（`validateAssignment` の `attribute-value-not-in-dictionary`）。ほかのタグを触っても、辞書に無い値は下書きに残る。試験は SC-17 の画面（辞書外の値を持つ利用者の編集）と語彙の純関数。
+- **テスト仕様書 SC-12 の番号**: 本 PR で足した行を T-33 としていたが、既存の T-33 と重なっていた。次の空き番号 T-39 へ改番した（既存の T-33 は動かさない）。あわせて #2323 で足した行（T-32。既存の T-32 と重なっていた）を T-40 へ改番した（規則 10。#2323 の作業仕様書は凍結記録なので直さない）。
+- **大文字小文字**: 後段の照合は大文字小文字を区別しない（`UserAssignmentValidation` の辞書照合と `UserAttributeEncoding.Split` の重複除去は `StringComparer.OrdinalIgnoreCase`。コードで実測）。画面の 2 か所（辞書外の判定 `unknownUserAttributeValues` と、SC-17 のチェックボックスの照合）を同じ規則に揃えた（`sameUserAttributeValue`）。保存の値は辞書の綴りで書き戻す（例: 既存の `sales` は許可値 `Sales` として扱い、`Sales,経理` で送る）。試験は SC-17 の画面（大文字小文字の違う既存のタグを持つ利用者の編集）。

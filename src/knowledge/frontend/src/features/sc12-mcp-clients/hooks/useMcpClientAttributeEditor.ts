@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { addUserAttributeValue } from '../../../lib/abac';
 import { buildAttributes } from '../types/mcpClientVocabulary';
 import type { AttributeEntry } from '../types/mcpClientVocabulary';
 
@@ -28,7 +29,10 @@ export interface McpClientAttributeEditor {
    * 描画のたびに別関数になると列定義が毎回作り直される。
    */
   start: (clientId: string, current: Record<string, string>) => void;
-  /** 選んでいる属性と値を積む。**キーか値が空なら何もしない／同じキーは後勝ち。** */
+  /**
+   * 選んでいる属性と値を積む。**キーか値が空なら何もしない。**
+   * 単一値のキーは後勝ち、集合値のキー（タグ。#2126）は既存の値へ足す。
+   */
   addEntry: () => void;
   removeEntry: (key: string) => void;
   /**
@@ -70,7 +74,11 @@ export function useMcpClientAttributeEditor(): McpClientAttributeEditor {
     start,
     addEntry: () => {
       if (!key || !value) return;
-      setEntries((prev) => [...prev.filter((e) => e.key !== key), { key, value }]);
+      // #2126: 集合値のキー（タグ）は現在の値へ足す。単一値のキーは後勝ち。
+      setEntries((prev) => [
+        ...prev.filter((e) => e.key !== key),
+        { key, value: addUserAttributeValue(key, prev.find((e) => e.key === key)?.value, value) },
+      ]);
       setValue('');
     },
     removeEntry: (target: string) => setEntries((prev) => prev.filter((e) => e.key !== target)),
