@@ -301,6 +301,14 @@ msgstr "AI チャットを開く"
 msgid "AI の入力に含める"
 msgstr "AI の入力に含める"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
+msgid "AI 入力の既定"
+msgstr "AI 入力の既定"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
+msgid "AI 入力の既定を更新できませんでした。時間をおいて再度お試しください。"
+msgstr "AI 入力の既定を更新できませんでした。時間をおいて再度お試しください。"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "AI 回答"
 msgstr "AI 回答"
@@ -616,6 +624,7 @@ msgstr "いまは、あなたの個人資料がすべて同期の対象です。
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
@@ -940,6 +949,10 @@ msgstr "コミット"
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コミット {commit}"
 msgstr "コミット {commit}"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
+msgid "これから作る資料と、同期対象フォルダに新しく入れたメモが AI の入力に含まれます。既存の資料は変わりません。"
+msgstr "これから作る資料と、同期対象フォルダに新しく入れたメモが AI の入力に含まれます。既存の資料は変わりません。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "これは削除ではありません。フォルダ配下の資料はサーバに残り、Obsidian との同期が止まるだけです。資料を消したい場合は、個人資料の一覧から削除してください。"
@@ -3421,6 +3434,10 @@ msgstr "新しい値"
 msgid "新しい値（確認のためもう一度）"
 msgstr "新しい値（確認のためもう一度）"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
+msgid "新しく作る資料を AI の入力に含める"
+msgstr "新しく作る資料を AI の入力に含める"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "新規登録"
 msgstr "新規登録"
@@ -3435,6 +3452,10 @@ msgstr "方向"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "既定のライフサイクル状態"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
+msgid "既定の効き方"
+msgstr "既定の効き方"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceAttributesView.tsx
@@ -3951,8 +3972,8 @@ msgid "権限編集 — {editingName}"
 msgstr "権限編集 — {editingName}"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
-msgid "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。"
-msgstr "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。既定はいずれもオフです。"
+msgid "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。横断検索とナレッジグラフの既定はオフです。AI の入力は、資料を作った時点の上の既定で始まります。"
+msgstr "横断検索・ナレッジグラフ・AI の入力に含めるかどうかは、資料ごとに個人資料の一覧から設定します。横断検索とナレッジグラフの既定はオフです。AI の入力は、資料を作った時点の上の既定で始まります。"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"

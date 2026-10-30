@@ -41,7 +41,11 @@ function device(overrides: Partial<SyncDeviceDto> = {}): SyncDeviceDto {
 
 // #1442: 同期対象範囲（主要素 3）と競合（主要素 5）。**どちらも画面を開いた時点で引く**ので、
 // セッション付きの面はすべて応答を用意する（用意し忘れは `expectBffTrafficIsComplete` が落とす）。
-const EMPTY_SETTINGS: SyncSettingsDto = { targetFolders: [], updatedAt: null };
+const EMPTY_SETTINGS: SyncSettingsDto = {
+  targetFolders: [],
+  updatedAt: null,
+  aiInputDefault: false,
+};
 
 function conflict(overrides: Partial<SyncConflictSummaryDto> = {}): SyncConflictSummaryDto {
   return {
@@ -179,6 +183,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
       { path: '日誌', noteCount: 3, lastSyncAt: null },
     ],
     updatedAt: new Date(Date.now() - DAY).toISOString(),
+    aiInputDefault: false,
   };
   const traffic = await installBffSession(page, {
     user: sessionUser([]),
@@ -196,6 +201,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
             lastSyncAt: null,
           })),
           updatedAt: new Date().toISOString(),
+          aiInputDefault: settings.aiInputDefault,
         };
         return settings;
       },

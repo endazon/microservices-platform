@@ -103,12 +103,14 @@ function respond({
   conflicts = [CONFLICT_SUMMARY] as unknown[],
   history = [] as unknown[],
   conflictDetail = CONFLICT_DETAIL as unknown,
+  aiInputDefault = false,
 }: {
   devices?: unknown[];
   folders?: unknown[];
   conflicts?: unknown[];
   history?: unknown[];
   conflictDetail?: unknown;
+  aiInputDefault?: boolean;
 } = {}) {
   // apiRequest が受けるパスは /bff 接頭辞を**除いた**形である（bffFetch が付け直す）。
   mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
@@ -121,7 +123,7 @@ function respond({
     }
     if (path === '/private-notes/sync-settings') {
       return Promise.resolve(
-        jsonResponse({ targetFolders: folders, updatedAt: '2026-08-27T00:00:00Z' }),
+        jsonResponse({ targetFolders: folders, updatedAt: '2026-08-27T00:00:00Z', aiInputDefault }),
       );
     }
     if (path === '/private-notes/conflicts') return Promise.resolve(jsonResponse(conflicts));
@@ -580,6 +582,79 @@ describe('SC-20 Obsidian 連携設定: 同期対象範囲（#1442）', () => {
     expect(panel.getByText(/同期した資料は業務関連資料として扱われます/)).toBeInTheDocument();
     // 陰性の対: 画面上部（区画の外）には残していない（2 箇所に置くと片方が古くなる）。
     expect(screen.getAllByText(/同期した資料は業務関連資料として扱われます/)).toHaveLength(1);
+  });
+});
+
+// FR-19, SC-20 主要素 8, ADR-0143 決定 1・2・4 (#2120): AI 入力の利用者単位の既定。
+// 既定は**新しく作る資料の初期値**であり、変えても既存の資料は変わらない。既定を ON にする操作の近くで、
+// 同期対象フォルダへ新しく入れたメモも AI の入力に含まれることを伝える（決定 4）。
+describe('SC-20 Obsidian 連携設定: AI 入力の既定（#2120）', () => {
+  const aiPanel = () => screen.getByRole('region', { name: 'AI 入力の既定' });
+  const toggle = () =>
+    within(aiPanel()).getByRole('checkbox', { name: '新しく作る資料を AI の入力に含める' });
+
+  it('既定は保存済みの値で示し、ON にするといまのフォルダと併せて既定だけを送る', async () => {
+    respond();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await screen.findByRole('cell', { name: '仕事/メモ' });
+    await waitFor(() => expect(toggle()).toBeEnabled());
+    expect(toggle()).not.toBeChecked();
+
+    await user.click(toggle());
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]).toMatchObject({ path: '/private-notes/sync-settings', method: 'PUT' });
+    // 置き換えは全量なので、フォルダはいまの値のまま送る（既定を変えてもフォルダを消さない）。
+    expect(writes()[0].body).toEqual({
+      targetFolders: ['仕事/メモ', '日誌'],
+      aiInputDefault: true,
+    });
+  });
+
+  it('保存済みの既定が ON なら ON で示し、OFF へ戻せる', async () => {
+    respond({ aiInputDefault: true });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await waitFor(() => expect(toggle()).toBeChecked());
+    await user.click(toggle());
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0].body).toEqual({
+      targetFolders: ['仕事/メモ', '日誌'],
+      aiInputDefault: false,
+    });
+  });
+
+  it('🔴 既定の操作の近くに「これから作る資料と同期フォルダの新しいメモが含まれる・既存は変わらない」がある', async () => {
+    respond();
+    await renderPage();
+
+    await waitFor(() => expect(toggle()).toBeEnabled());
+    const panel = within(aiPanel());
+    expect(
+      panel.getByText(
+        /これから作る資料と、同期対象フォルダに新しく入れたメモが AI の入力に含まれます。既存の資料は変わりません/,
+      ),
+    ).toBeInTheDocument();
+    // 横断検索・グラフには既定を置かない（決定 4）。陽性対照: AI 入力の既定のトグルは在る。
+    expect(panel.queryByRole('checkbox', { name: /横断検索/ })).not.toBeInTheDocument();
+    expect(panel.queryByRole('checkbox', { name: /ナレッジグラフ/ })).not.toBeInTheDocument();
+  });
+
+  it('フォルダの追加・削除は既定を送らない（省略は変えない）', async () => {
+    respond({ aiInputDefault: true });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await screen.findByRole('cell', { name: '仕事/メモ' });
+    await user.type(within(folderPanel()).getByLabelText('追加するフォルダのパス'), '読書メモ');
+    await user.click(within(folderPanel()).getByRole('button', { name: 'フォルダを追加する' }));
+
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0].body).toEqual({ targetFolders: ['仕事/メモ', '日誌', '読書メモ'] });
   });
 });
 

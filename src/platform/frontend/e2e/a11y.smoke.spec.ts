@@ -531,6 +531,7 @@ const syncSettings: SyncSettingsDto = {
     { path: '仕事/メモ', noteCount: 12, lastSyncAt: new Date(Date.now() - DAY).toISOString() },
   ],
   updatedAt: new Date(Date.now() - DAY).toISOString(),
+  aiInputDefault: false,
 };
 
 const syncConflict: SyncConflictSummaryDto = {

@@ -361,6 +361,7 @@
       "DocumentSyncConsumerTests"
     ],
     "docs/tests/FR-19_private-notes-lifecycle.md": [
+      "AiInputUserDefaultTests",
       "BffBreakGlassEndpointTests",
       "BffPrivateNoteEndpointTests",
       "BreakGlassEndpointTests",

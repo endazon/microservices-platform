@@ -128,10 +128,12 @@ public record RevokeAllSyncDevicesResponse(int RevokedCount);
 public record SyncTargetFolderDto(string Path, int NoteCount, DateTimeOffset? LastSyncAt);
 
 // FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。`TargetFolders` が空なら全資料が対象。
-public record SyncSettingsDto(List<SyncTargetFolderDto> TargetFolders, DateTimeOffset? UpdatedAt);
+// FR-19, SC-20 主要素 8, ADR-0143 決定 1 (#2120): `AiInputDefault` は AI 入力の利用者単位の既定（新しく作る資料の初期値。未設定は false）。
+public record SyncSettingsDto(List<SyncTargetFolderDto> TargetFolders, DateTimeOffset? UpdatedAt, bool AiInputDefault = false);
 
 // FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。
-public record UpdateSyncSettingsRequest(List<string> TargetFolders);
+// FR-19, ADR-0143 (#2120): `AiInputDefault` は省略（null）なら変えない —— フォルダだけを送る既存の呼び出しを壊さない。
+public record UpdateSyncSettingsRequest(List<string> TargetFolders, bool? AiInputDefault = null);
 
 // FR-20, SC-20 主要素 5, ADR-0037 決定 7: 未解決の同期競合 1 件（一覧用。本文は含まない）。
 public record SyncConflictSummaryDto(

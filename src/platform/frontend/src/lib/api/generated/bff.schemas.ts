@@ -1785,7 +1785,7 @@ export interface PrivateNoteDeletedResponse {
 }
 
 /**
- * FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / ナレッジグラフ / AI 入力）。 **既定はいずれも OFF・3 つは独立**である。
+ * FR-19, FR-20, SC-20: 露出 3 トグル（横断検索 / ナレッジグラフ / AI 入力）。 **既定はいずれも OFF・3 つは独立**である（AI 入力だけは作成時点の利用者単位の既定で初期化される。ADR-0143。#2120）。
  */
 export interface UpdateExposureRequest {
   includeInSearch: boolean;
@@ -2028,19 +2028,27 @@ export interface SyncTargetFolderDto {
  * FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。**同期対象は「本人が所有する個人資料」で判定し、
  * 公開範囲とは独立**である。`targetFolders` が空なら全資料が対象（既定）。
  * 対象から外れたフォルダの資料は**削除ではなく同期停止**（`syncState` が `excluded` になるだけ）。
+ * FR-19, SC-20 主要素 8, ADR-0143 決定 1・2: `aiInputDefault` は AI 入力の**利用者単位の既定**（新しく作る資料
+ * ＝SC-19 の作成・同期の新規 push の AI 入力の初期値。未設定は false）。変えても既存の資料は変わらない。
+ * 同期競合の「両方を残す」で作る別名コピーには当てない（決定 3）。
  */
 export interface SyncSettingsDto {
   targetFolders: SyncTargetFolderDto[];
   /** 未設定なら null */
   updatedAt?: string | null;
+  /** AI 入力の利用者単位の既定（未設定は false） */
+  aiInputDefault: boolean;
 }
 
 /**
  * FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。各要素は空でない・先頭末尾の `/` を除いて正規化・
  * 重複不可・最大 100 件・各 1024 文字以内。違反は 400（RFC7807 ValidationProblem）。
+ * FR-19, ADR-0143: `aiInputDefault` は省略（null）なら変えない（フォルダだけを送る呼び出しを壊さない）。
  */
 export interface UpdateSyncSettingsRequest {
   targetFolders: string[];
+  /** AI 入力の利用者単位の既定。省略・null は変えない */
+  aiInputDefault?: boolean | null;
 }
 
 /**

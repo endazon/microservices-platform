@@ -3,15 +3,15 @@ title: FR-19 個人資料（private-note） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-10-24
+updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-13, FR-16, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
-adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
+adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114, ADR-0143]
 iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610, IADR-0611, IADR-0612]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens]
-issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, planning#472, planning#475, planning#492, planning#652, planning#784, planning#841]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261030_2120_ai-input-user-default]
+issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, #2120, planning#472, planning#475, planning#492, planning#652, planning#784, planning#841]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -48,7 +48,7 @@ issues: [#451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752
 
 | 項目 | 内容 |
 | --- | --- |
-| 作成 | `POST /private-notes`（タイトルのみ）または同期経路の push。既定値: `doc_scope=private-note`・`owner=本人`・機密区分 `restricted`・露出 3 トグル OFF・共有 0 件 |
+| 作成 | `POST /private-notes`（タイトルのみ）または同期経路の push。既定値: `doc_scope=private-note`・`owner=本人`・機密区分 `restricted`・横断検索とナレッジグラフは OFF・AI 入力は作成時点の利用者単位の既定（未設定は OFF。［2026-10-30 / #2120］同期競合の別名の資料には当てず OFF）・共有 0 件 |
 | 一覧 | `GET /private-notes`（削除済みを含む）＋容量表示（使用量・上限・百分率） |
 | 論理削除 | `DELETE /private-notes/{id}`。90 日間は復元でき、**容量は減らない**（応答の `capacityFreed=false` が根拠） |
 | 復元 | `POST /private-notes/{id}/restore`（90 日以内。物理削除後は行が無く 404） |

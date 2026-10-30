@@ -34,8 +34,10 @@ namespace DocumentService.Features.PrivateNotes;
 //
 // **［#1184］本経路は「露出 3 トグルのうち 1 つでも ON」のときだけ DocumentUpdated を発行する**
 // （ADR-0061 決定 1・2 / [[IADR-0396]] 決定 4。[[IADR-0270]] 決定 5「発行しない」の後継）。
-// **作成は必ず 3 つとも OFF である**（下の `PrivateNoteDefaults`）ため作成では発行せず、
-// 露出 OFF の資料は索引に存在しないまま保たれる —— 既定を構造で守る性質は門の形で残る。
+// 作成（SC-19。本文 0 バイト）では発行しない。**既定を変えていない利用者**の作成は 3 つとも OFF であり
+// （下の `PrivateNoteDefaults`）、露出 OFF の資料は索引に存在しないまま保たれる —— 既定を構造で守る性質は門の形で残る。
+// ［2026-10-30 / #2120・計画 ADR-0143 決定 1・4］AI 入力の利用者単位の既定が ON の利用者の作成は AI 入力だけ ON で作られ、
+// 本文が入ったときに門を通って索引へ載る（従前は「作成は必ず 3 つとも OFF」と書いていた）。
 // 完全削除は従来どおり DocumentDeleted を発行する（下流掃除の向き）。
 public static class PrivateNoteEndpoints
 {
@@ -75,7 +77,11 @@ public static class PrivateNoteEndpoints
     // 従前は「索引に載せない」ことで構造的に守られていたため置いていなかったが、
     // ADR-0061 決定 1 が ON の資料を索引へ載せると裁定した以上、**索引の側から
     // 3 軸すべてを読めなければならない**（決定 5・6：`confidentiality` だけで判定しない）。
-    internal static Dictionary<string, string> PrivateNoteDefaults(string owner)
+    //
+    // ［2026-10-30 / #2120・計画 ADR-0143 決定 1・3・4］`includeInAi` は AI 入力の初期値である。新しく作る資料
+    // （SC-19 の作成・同期の新規 push）では利用者単位の既定を渡し、別名コピー（同期競合の「両方を残す」・
+    // `sourceNoteId` 付きの push）では false のまま（決定 3）。横断検索・グラフは常に OFF（決定 4）。
+    internal static Dictionary<string, string> PrivateNoteDefaults(string owner, bool includeInAi = false)
     {
         var attributes = new Dictionary<string, string>
         {
@@ -84,7 +90,7 @@ public static class PrivateNoteEndpoints
             [DocumentAttributes.ConfidentialityKey] = "restricted",
         };
 
-        foreach (var (key, value) in DocumentExposure.Project(false, false, false))
+        foreach (var (key, value) in DocumentExposure.Project(false, false, includeInAi))
             attributes[key] = value;
 
         return attributes;

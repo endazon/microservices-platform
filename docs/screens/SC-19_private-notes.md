@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11]
-adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096]
+adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096, ADR-0143]
 iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431]
-specs: [20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2107_bff-graph-edge-create]
-issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2107, #2343, planning#614, planning#618, planning#628, planning#841]
+specs: [20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2120_ai-input-user-default, 20261030_2107_bff-graph-edge-create]
+issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, #2107, #2343, planning#614, planning#618, planning#628, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理
@@ -69,7 +69,7 @@ issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2107, #2
 | 10 | 削除済みの行 | 削除日時 ＋ **完全削除までの残り日数**（残り 7 日以内は警告色＋文言） |
 | 11 | 一括選択と一括操作 | 復元・完全削除の**両方**。選択が 0 件のときは実行できない |
 | 12 | 確認ダイアログ | 論理削除用と完全削除用の 2 種（下記） |
-| 13 | 露出 3 トグル | 横断検索 / ナレッジグラフ / AI 入力。**独立**・既定はいずれもオフ |
+| 13 | 露出 3 トグル | 横断検索 / ナレッジグラフ / AI 入力。**独立**・既定はいずれもオフ（［2026-10-30 / #2120］AI 入力だけは、作成時点の利用者単位の既定がオンならオンで作られる。既定は Obsidian 連携設定画面で切り替える） |
 | 14 | 空状態 | 「個人資料がまだありません」＋ 作成導線。削除済みタブでは別の文言 |
 | 15 | 取得失敗 | 空状態へ縮退させず、取得できなかったことを示す |
 | 16 | ヘルプ文言 | 「リンク先が表示されない理由は区別できない」旨（存在秘匿の帰結） |
@@ -273,3 +273,5 @@ flowchart LR
 5. 計画が未確定としている論点（文書管理画面との責務分界、AI 入力の資料単位設定の設置場所、
    「非公開」の表示語）はそのまま残っている。**資料単位の露出は本画面に置いた** ——
    利用者単位の既定を置く口が無く、資料単位の口だけが在るためである。
+   ［2026-10-30 追記 / #2120］AI 入力の利用者単位の既定は Obsidian 連携設定画面に置いた。既定は新しく作る資料の初期値であり、
+   作成後は本画面の資料単位の値だけが効く（資料単位の露出の置き場所は変わらない）。
