@@ -19579,4 +19579,36 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(toolStepIssues(join(piped)).some((e) => e.includes('パイプ')));
     });
   }
+
+  // --- NFR / #2039 / IADR-0661: 視覚回帰の Docker イメージの版 ------------------------------------------------------
+  {
+    const REPO_2039 = path.join(__dirname, '..');
+    const pkg2039 = JSON.parse(fs.readFileSync(path.join(REPO_2039, 'src/platform/frontend/package.json'), 'utf8'));
+    const lock2039 = fs.readFileSync(path.join(REPO_2039, 'src/pnpm-lock.yaml'), 'utf8');
+    /** `test:e2e:visual` が起こす公式イメージの版と、ロックファイルの @playwright/test の版の食い違いを返す。 */
+    const visualImageIssues = (script, lock) => {
+      const image = /mcr\.microsoft\.com\/playwright:v(\d+\.\d+\.\d+)-\w+/.exec(script || '');
+      // packages: と snapshots: の両節に同じ版が 1 行ずつ出るので、版の集合で数える。
+      const locked = [...new Set([...lock.matchAll(/^ {2}'@playwright\/test@(\d+\.\d+\.\d+)':$/gm)].map((m) => m[1]))];
+      const out = [];
+      if (!image) out.push('test:e2e:visual が版を固定した mcr.microsoft.com/playwright:v<版>-<OS> を起こしていない');
+      if (locked.length !== 1) out.push(`ロックファイルの @playwright/test が 1 版に定まらない（${locked.join(', ')}）`);
+      if (image && locked.length === 1 && image[1] !== locked[0]) {
+        out.push(`イメージ v${image[1]} とロックファイルの @playwright/test ${locked[0]} が違う（基準画像を撮った環境が変わる）`);
+      }
+      return out;
+    };
+
+    ok('NFR / #2039: test:e2e:visual のイメージの版がロックファイルの @playwright/test と一致する', () => {
+      assert.deepStrictEqual(visualImageIssues(pkg2039.scripts['test:e2e:visual'], lock2039), []);
+    });
+
+    ok('NFR / #2039 陰性対照: イメージの版がずれる・版を固定しないと検出する', () => {
+      const script = pkg2039.scripts['test:e2e:visual'];
+      const bumped = script.replace(/playwright:v\d+\.\d+\.\d+/, 'playwright:v0.0.1');
+      assert.ok(visualImageIssues(bumped, lock2039).some((e) => e.includes('が違う')));
+      const floating = script.replace(/playwright:v\d+\.\d+\.\d+-\w+/, 'playwright:latest');
+      assert.ok(visualImageIssues(floating, lock2039).some((e) => e.includes('固定した')));
+    });
+  }
 };
