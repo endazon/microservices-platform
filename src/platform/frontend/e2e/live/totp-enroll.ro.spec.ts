@@ -12,8 +12,10 @@
 //   作った・読んだ直後に発行値として記録する（成果物の走査が探す）。ログ・attach・例外の文言へ出さない。
 // - 🔴 **リカバリーコードの 1 回表示（網羅表 M-005 の後半・計画 SC-14）はここで見ない**（IADR-0662 決定 4）。realm の宣言では
 //   `CONFIGURE_TOTP` の設定 `add-recovery-codes` が既定の false で、browser フローにリカバリーコードの段も無いので、登録の後に
-//   リカバリーコードの画面は出ない（Keycloak 26.7.4 の UpdateTotp）。出るようになったら、登録の後の待ちが必須アクションの画面で止まり、
-//   この spec が赤で知らせる（そのとき後半を足す）。
+//   リカバリーコードの画面は出ない（Keycloak 26.7.4 の UpdateTotp）。直す作業は #2372。出るようになったときの検知は 2 重にしてある
+//   （IADR-0662 決定 4）: (a) 登録の後に元の画面（エッジ）へ戻ること（どの path の画面で止まっても、戻らなければ赤）、
+//   (b) 管理 API の資格情報の種類が `otp`・`password` に**完全一致**すること（リカバリーコードが作られれば `recovery-authn-codes` が増えて赤）。
+//   赤になったら後半を足す。
 import { randomBytes } from 'node:crypto';
 import { expect, test, type Page } from '@playwright/test';
 import { e2eName } from './support/cleanup';

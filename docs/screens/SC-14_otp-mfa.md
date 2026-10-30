@@ -11,7 +11,7 @@ ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026, ADR-0031]
 iadrs: [IADR-0197, IADR-0261, IADR-0532, IADR-0662]
 specs: [20261030_2040_totp-enroll-disposable, 20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
-issues: [#438, #2040]
+issues: [#438, #2040, #2372]
 -->
 
 # 画面仕様書: ワンタイムコード（OTP／多要素認証）

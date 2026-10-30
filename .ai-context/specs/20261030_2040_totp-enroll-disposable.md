@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — M-005 初回 TOTP セットアップを使い捨て k3d でだけ流す（#2040 / E-81）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, NFR-10, SC-14, ADR-0026, IADR-0630, IADR-0662]
 author: claude
 created: 2026-10-30
@@ -26,7 +26,11 @@ issue: "#2040"
 
 - [x] 常設 PoC では 0 件。
   - `E2E_DISPOSABLE` が無い `--list` に `totp-enroll` が出ない。`=1` なら live-ro に 2 件載る（L1 の試験で固定）。
-- [ ] 使い捨てのスタック（e2e-live）で M-005 の 2 件が通る（PR の e2e-live の実行で確かめる）。
+- [x] 使い捨てのスタック（e2e-live）で M-005 の 2 件が通る。
+  - PR #2371 の e2e-live（run 41070360009、job 124112508111、head 4c44b70d）は `58 passed (2.9m)`、`check-e2e-skips` は「58 件（skip 0 件）」だった。
+  - 直前の develop の e2e-live（run 41042099515）は 56 件・発行値 9 個だった。本 PR は 58 件（+2 ＝ M-005 の 2 件）・発行値 12 個である。
+    +3 は、この spec が記録する 3 つ（パスワード・TOTP の生の秘密・その base32）である。
+  - 環境は `E2E_DISPOSABLE: 1` と `E2E_STACK: e2e-live`。成果物の走査は「資格情報 12 個・発行値 12 個の値は載っていない」だった。
 
 ## リカバリーコード（M-005 の後半）
 
@@ -36,6 +40,9 @@ issue: "#2040"
 - realm の宣言は `config: {}`・`browserFlow` 未宣言で、どちらも満たさない。→ 現状は表示されない。
 - 画面仕様書の「する」（「Keycloak 本体の既定挙動に依存」）は誤り。訂正する。
 - 直す（realm の変更）かは判断を仰ぐ（IADR-0662 決定 4）。
+- ［2026-10-30 追記 / #2040］コーディネーターの判断で、別 issue へ切り出した（**#2372**。P2。実装の未達であり、計画の誤りではない）。
+  - 起票前に MSP の issue（1035 件）を「リカバリ」「recovery」「CONFIGURE_TOTP」で全件走査した。同件は無かった。
+  - #438（認証認可の再実装）は本文・コメントにリカバリーコードの記述を持たない。IADR-0197 の残作業 4 が #438 を指すだけである。
 
 ## 母集合（規則 9・10）
 
@@ -57,4 +64,8 @@ issue: "#2040"
 - prettier・eslint・typecheck（`platform/frontend`）。
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（コミットした状態で）。
 - 文書系の検査。
-- e2e-live（PR）で M-005 の 2 件。
+- e2e-live（PR）で M-005 の 2 件（上の受け入れ基準のとおり緑）。
+- ［2026-10-30 追記 / #2371 の AI レビュー 🟡］リカバリーコードが出たときの検知を 2 重と明記した（IADR-0662 決定 4）。
+  - (a) は元の画面への戻り。
+  - (b) は資格情報の種類の完全一致（並べ替えた配列の `toEqual(['otp', 'password'])`）。
+  - (b) は既にこの形だったことをコードで確かめた（`totp-enroll.ro.spec.ts` の「登録の結果」の段）。
