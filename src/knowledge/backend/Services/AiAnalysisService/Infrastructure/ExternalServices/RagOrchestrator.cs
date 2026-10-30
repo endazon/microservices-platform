@@ -112,7 +112,9 @@ public class RagOrchestrator(
             : request.Range!.Query!;
         var topK = request.Range?.TopK is > 0 ? request.Range.TopK : DefaultAskTopK;
 
-        // FR-11, UC-02: 用途は analysis。機密区分の高いデータは LlmGateway が外部送信を抑止する。
+        // FR-11, UC-02: 用途は analysis。行き先は LlmGateway が越境マトリクスで絞る —— 機密区分の高いデータは
+        // ティア A かティア B（ZDR を要する）へだけ送り、ティア C へは出さない（［2026-10-30 / #2115・planning#832 の裁定］。
+        // 従前は「外部送信を抑止する」と書いていたが、ティア B〔外部〕へは出る）。
         return await GenerateAsync(query, scope, topK,
             new SearchPrincipal(userId, userAttributes, request.Range?.AttributeFilters),
             context => AnalysisPromptBuilder.Build(request, context), AnalysisPurpose, ct);
