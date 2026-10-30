@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
 using Platform.Shared.Infrastructure.Foundation.Observability;
@@ -54,10 +55,11 @@ namespace Knowledge.Bff.Endpoints;
 //    （波 3 監査の指摘で実装 ADR へ揃えた。本注釈は要約）。
 //
 // ── 載せなかった後段の口（理由は作業仕様書 §母集合 軸 1）
-//   - `/private-notes/quotas/{ownerId}`（管理者の上限変更）… まだ載せていない。
+//   - ~~`/private-notes/quotas/{ownerId}`（管理者の上限変更）… まだ載せていない。~~
 //     ［2026-10-30 / #2135］従前ここは「載せる画面が計画に無い」と書いていたが、計画が 2026-10-23 に
 //     SC-17 の欄（使用量と上限・変更・監査。NFR-27）として確定した。**経路は SC-17 の欄と一緒に作る**（#2330）。
 //     SC-19 が管理者に他利用者の個人資料を扱わせない禁止は変わらない（SC-17 の欄は 2 つの数だけを見せる）。
+//     ［2026-10-30 / #2330］**載せた**（下の `quotas` 群。システム管理者だけ）。
 //   - ★［2026-09-12 / #1445・#1446］**共有台帳（`/documents/{id}/shares*`）と同期履歴
 //     （`/private-notes/sync-history`）は載せた。** planning#618 の裁定（ADR-0098 / ADR-0099）で
 //     SC-19 主要素 3（公開範囲の指定先）と SC-20 主要素 6（同期履歴）の前提が揃ったためである
@@ -88,10 +90,33 @@ public static class PrivateNoteBffEndpoints
         var conflicts = app.MapGroup("/bff/private-notes/conflicts").WithTags("PrivateNotes BFF")
             .RequireAuthorization();
 
+        // FR-19, NFR-27, SC-17 (#2330): **個人資料の保存容量（使用量・上限）の照会と変更。システム管理者だけ。**
+        // 🔴 群を分けるのは認可の強さが違うからである（上の群は認証のみ・ロール不要）。後段も `AdminOnly` で二重の守りになる。
+        // 🔴 **2 つの数（と割合）だけを透過する**（後段の `PrivateNoteUsageDto`）。題名・件数・中身・同期設定は応答に無い
+        //    （SC-19 の「管理者が他の利用者の個人資料を閲覧する画面を描かない」を守る）。
+        // ABAC の write の前段は置かない —— 文書ではなく利用者の容量の設定であり、ロールで絞る（[[IADR-0039]] と同じ切り分け）。
+        // 変更の監査は後段（`private-note.quota.set`）が記録する。上限 0 は許す（計画 2026-10-24 の裁定）。
+        var quotas = app.MapGroup("/bff/private-notes/quotas").WithTags("PrivateNotes BFF")
+            .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+
         // ── SC-19: 一覧＋容量表示 ───────────────────────────────────
         // 削除済みも同じ一覧に載る（SC-19 の「削除済み」タブは同じ応答を絞って描く）。
         // **容量の内訳「うち削除済み」は画面が削除済み行の bytes を合算して出す** ——
         // 後段が持つのは台帳の行だけで、内訳という項目は存在しない（数え方を 2 つ持たない）。
+        // ── SC-17: 個人資料の保存容量（#2330）──────────────────────────
+        // 利用者名は後段の経路の 1 区切りとして運ぶ（`/` などで別の経路へ化けないよう符号化する）。
+        quotas.MapGet("/{ownerId}", (string ownerId, IHttpClientFactory httpFactory, HttpContext http,
+                CancellationToken ct)
+            => ForwardAsync(HttpMethod.Get, $"/private-notes/quotas/{Uri.EscapeDataString(ownerId)}", null, httpFactory, http, ct))
+            .WithName("BffPrivateNoteQuotaGet")
+            .Produces<PrivateNoteUsageDto>();
+        quotas.MapPut("/{ownerId}", (string ownerId, SetPrivateNoteQuotaRequest req, IHttpClientFactory httpFactory,
+                HttpContext http, CancellationToken ct)
+            => ForwardAsync(HttpMethod.Put, $"/private-notes/quotas/{Uri.EscapeDataString(ownerId)}", req, httpFactory, http, ct))
+            .WithName("BffPrivateNoteQuotaSet")
+            .Produces<PrivateNoteUsageDto>()
+            .Produces(StatusCodes.Status400BadRequest);
+
         notes.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
             ForwardAsync(HttpMethod.Get, "/private-notes/", null, httpFactory, http, ct))
             .WithName("BffPrivateNoteList").Produces<PrivateNoteListResponse>();

@@ -243,6 +243,10 @@ msgstr "👍 {up} / 👎 {down}"
 msgid "👤 個人資料（自分のみ）"
 msgstr "👤 Private note (only you)"
 
+#: knowledge/frontend/src/features/sc17-users/components/PrivateNoteQuota.tsx
+msgid "0〜1 TB の範囲で指定してください。"
+msgstr "Enter a value between 0 and 1 TB."
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "2 文字以上入力すると候補が出ます。"
@@ -1712,6 +1716,18 @@ msgstr "Showing the top {shownCount} items (of {totalCount} in total). Not every
 msgid "上位 {shownCount} 件を表示（全 {totalCount} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {shownCount} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
 msgstr "Showing the top {shownCount} items (of {totalCount} or more in total). The counting exploration also hit its limit, so \"recently updated\" and \"highest degree\" are not the exact top {shownCount}. Reduce the exploration depth or narrow the edge types."
 
+#: knowledge/frontend/src/features/sc17-users/components/PrivateNoteQuota.tsx
+msgid "上限が 0 のあいだは、新しい資料を作れません（既存の資料の閲覧と更新はできます）。"
+msgstr "While the limit is 0, no new notes can be created (existing notes can still be viewed and updated)."
+
+#: knowledge/frontend/src/features/sc17-users/components/PrivateNoteQuota.tsx
+msgid "上限を保存"
+msgstr "Save limit"
+
+#: knowledge/frontend/src/features/sc17-users/components/PrivateNoteQuota.tsx
+msgid "上限を保存できませんでした"
+msgstr "The limit could not be saved"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "下の「クライアント登録」から、接続する外部 AI エージェントを登録してください。"
 msgstr "Use “Register a client” below to register the external AI agent that will connect."
@@ -2041,6 +2057,14 @@ msgstr "The list of private notes could not be loaded."
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料の一覧を読み込み中…"
 msgstr "Loading the list of private notes…"
+
+#: knowledge/frontend/src/features/sc17-users/components/PrivateNoteQuota.tsx
+msgid "個人資料の保存容量の上限"
+msgstr "Private note storage limit"
+
+#: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
+msgid "個人資料の容量"
+msgstr "Private note storage"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "個人資料の新規作成"
@@ -2497,6 +2521,10 @@ msgstr "The attribute values you can assign are defined in <0>ABAC settings</0> 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 msgid "動的束縛: {bindingLabel}（{notation}）"
 msgstr "Dynamic binding: {bindingLabel} ({notation})"
+
+#: knowledge/frontend/src/features/sc17-users/components/PrivateNoteQuota.tsx
+msgid "単位"
+msgstr "Unit"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "即時同期を依頼しました。アプリケーションへの反映まで少し時間がかかることがあります。"

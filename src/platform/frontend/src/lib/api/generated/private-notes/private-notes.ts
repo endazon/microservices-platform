@@ -35,12 +35,14 @@ import type {
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
   PrivateNoteListResponse,
+  PrivateNoteUsageDto,
   ProblemDetails,
   PurgePrivateNotesRequest,
   PurgePrivateNotesResponse,
   ResolveSyncConflictRequest,
   ResolveSyncConflictResponse,
   RevokeAllSyncDevicesResponse,
+  SetPrivateNoteQuotaRequest,
   SyncConflictDetailDto,
   SyncConflictSummaryDto,
   SyncDeviceDto,
@@ -1957,6 +1959,225 @@ export const useBffSyncDeviceRevokeAll = <TError = void,
         TContext
       > => {
       return useMutation(getBffSyncDeviceRevokeAllMutationOptions(options));
+    }
+    export type bffPrivateNoteQuotaGetResponse200 = {
+  data: PrivateNoteUsageDto
+  status: 200
+}
+
+export type bffPrivateNoteQuotaGetResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffPrivateNoteQuotaGetResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffPrivateNoteQuotaGetResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffPrivateNoteQuotaGetResponseSuccess = (bffPrivateNoteQuotaGetResponse200) & {
+  headers: Headers;
+};
+export type bffPrivateNoteQuotaGetResponseError = (bffPrivateNoteQuotaGetResponse401 | bffPrivateNoteQuotaGetResponse403 | bffPrivateNoteQuotaGetResponse502) & {
+  headers: Headers;
+};
+
+export type bffPrivateNoteQuotaGetResponse = (bffPrivateNoteQuotaGetResponseSuccess | bffPrivateNoteQuotaGetResponseError)
+
+export const getBffPrivateNoteQuotaGetUrl = (ownerId: string,) => {
+
+
+
+
+  return `/bff/private-notes/quotas/${ownerId}`
+}
+
+/**
+ * FR-19, NFR-27, SC-17: 利用者ごとの個人資料の**使用量と上限の 2 つの数（と割合）だけ**を返す。
+ * 題名・件数・中身・同期設定は返さない（SC-19 の「管理者が他の利用者の個人資料を閲覧する画面を描かない」を守る）。
+ * 使用量は最新版と論理削除済みの合計（版履歴は算入しない）。上限を設定していない利用者は既定の 1 GB。
+ * システム管理者だけ（BFF と後段の両方で `AdminOnly`）。後段の状態コードと本文を詰め替えずに返す。
+ * @summary FR-19, NFR-27, SC-17: 利用者の個人資料の使用量と上限を照会する（システム管理者。#2330）
+ */
+export const bffPrivateNoteQuotaGet = async (ownerId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffPrivateNoteQuotaGetResponse> => {
+
+  return bffFetch<bffPrivateNoteQuotaGetResponse>(getBffPrivateNoteQuotaGetUrl(ownerId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffPrivateNoteQuotaGetQueryKey = (ownerId: string,) => {
+    return [
+    `/bff/private-notes/quotas/${ownerId}`
+    ] as const;
+    }
+
+
+export const getBffPrivateNoteQuotaGetQueryOptions = <TData = Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>, TError = void>(ownerId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffPrivateNoteQuotaGetQueryKey(ownerId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>> = ({ signal }) => bffPrivateNoteQuotaGet(ownerId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: ownerId !== null && ownerId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffPrivateNoteQuotaGetQueryResult = NonNullable<Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>>
+export type BffPrivateNoteQuotaGetQueryError = void
+
+
+/**
+ * @summary FR-19, NFR-27, SC-17: 利用者の個人資料の使用量と上限を照会する（システム管理者。#2330）
+ */
+
+export function useBffPrivateNoteQuotaGet<TData = Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>, TError = void>(
+ ownerId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaGet>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffPrivateNoteQuotaGetQueryOptions(ownerId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffPrivateNoteQuotaSetResponse200 = {
+  data: PrivateNoteUsageDto
+  status: 200
+}
+
+export type bffPrivateNoteQuotaSetResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffPrivateNoteQuotaSetResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffPrivateNoteQuotaSetResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffPrivateNoteQuotaSetResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffPrivateNoteQuotaSetResponseSuccess = (bffPrivateNoteQuotaSetResponse200) & {
+  headers: Headers;
+};
+export type bffPrivateNoteQuotaSetResponseError = (bffPrivateNoteQuotaSetResponse400 | bffPrivateNoteQuotaSetResponse401 | bffPrivateNoteQuotaSetResponse403 | bffPrivateNoteQuotaSetResponse502) & {
+  headers: Headers;
+};
+
+export type bffPrivateNoteQuotaSetResponse = (bffPrivateNoteQuotaSetResponseSuccess | bffPrivateNoteQuotaSetResponseError)
+
+export const getBffPrivateNoteQuotaSetUrl = (ownerId: string,) => {
+
+
+
+
+  return `/bff/private-notes/quotas/${ownerId}`
+}
+
+/**
+ * FR-19, NFR-27, SC-17: 上限は **0〜1 TB**（既定 1 GB）。**0 を許す**（計画 2026-10-24 の裁定）。
+ * 0 は「新しい資料を作れない状態」で、容量 100% 到達と同じ扱い（ADR-0037 決定 17）—— 新規作成（SC-19 の作成・
+ * 同期の新規 push・同期競合の別名の資料）を拒み、既存の資料の閲覧と更新は許す。
+ * 変更は後段が監査ログ（`private-note.quota.set`）に記録する。範囲外は 400（`limitBytes`）。
+ * システム管理者だけ（BFF と後段の両方で `AdminOnly`）。後段の状態コードと本文を詰め替えずに返す。
+ * @summary FR-19, NFR-27, SC-17: 利用者の個人資料の保存容量の上限を変更する（システム管理者。0〜1 TB。#2330）
+ */
+export const bffPrivateNoteQuotaSet = async (ownerId: string,
+    setPrivateNoteQuotaRequest: SetPrivateNoteQuotaRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffPrivateNoteQuotaSetResponse> => {
+
+  return bffFetch<bffPrivateNoteQuotaSetResponse>(getBffPrivateNoteQuotaSetUrl(ownerId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(setPrivateNoteQuotaRequest)
+  }
+);}
+
+
+
+
+
+export const getBffPrivateNoteQuotaSetMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaSet>>, TError,{ownerId: string;data: SetPrivateNoteQuotaRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaSet>>, TError,{ownerId: string;data: SetPrivateNoteQuotaRequest}, TContext> => {
+
+const mutationKey = ['bffPrivateNoteQuotaSet'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffPrivateNoteQuotaSet>>, {ownerId: string;data: SetPrivateNoteQuotaRequest}> = (props) => {
+          const {ownerId,data} = props ?? {};
+
+          return  bffPrivateNoteQuotaSet(ownerId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffPrivateNoteQuotaSetMutationResult = NonNullable<Awaited<ReturnType<typeof bffPrivateNoteQuotaSet>>>
+    export type BffPrivateNoteQuotaSetMutationBody = SetPrivateNoteQuotaRequest
+    export type BffPrivateNoteQuotaSetMutationError = void
+
+    /**
+ * @summary FR-19, NFR-27, SC-17: 利用者の個人資料の保存容量の上限を変更する（システム管理者。0〜1 TB。#2330）
+ */
+export const useBffPrivateNoteQuotaSet = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaSet>>, TError,{ownerId: string;data: SetPrivateNoteQuotaRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffPrivateNoteQuotaSet>>,
+        TError,
+        {ownerId: string;data: SetPrivateNoteQuotaRequest},
+        TContext
+      > => {
+      return useMutation(getBffPrivateNoteQuotaSetMutationOptions(options));
     }
     export type bffSyncSettingsGetResponse200 = {
   data: SyncSettingsDto

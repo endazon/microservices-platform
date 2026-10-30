@@ -106,10 +106,30 @@ function departmentResponse(path: string) {
 }
 
 /** 経路ごとに応答を振り分ける（1 画面が複数本引くため、URL で分けないと取り違える）。 */
+// FR-19, NFR-27, SC-17 (#2330): 個人資料の保存容量（利用者名 → 使用量・上限・割合）。既定は 1.5 KB / 1 GB。
+const DEFAULT_QUOTA = { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 };
+
 function mockApi(
-  overrides: { users?: unknown; roles?: readonly string[]; attributes?: unknown } = {},
+  overrides: {
+    users?: unknown;
+    roles?: readonly string[];
+    attributes?: unknown;
+    quotas?: Record<string, unknown>;
+  } = {},
 ) {
-  mocks.apiRequest.mockImplementation((path: string) => {
+  mocks.apiRequest.mockImplementation((path: string, init?: { method?: string; body?: string }) => {
+    // #2330: 容量の照会・変更（`/private-notes/quotas/{username}`）。変更は送った上限をそのまま返す。
+    const quota = /\/private-notes\/quotas\/([^/?]+)/.exec(String(path));
+    if (quota) {
+      const username = decodeURIComponent(quota[1]);
+      if ((init?.method ?? 'GET') === 'PUT') {
+        const { limitBytes } = JSON.parse(init?.body ?? '{}') as { limitBytes: number };
+        return Promise.resolve(
+          jsonResponse({ usedBytes: 1536, limitBytes, percent: limitBytes === 0 ? 100 : 0 }),
+        );
+      }
+      return Promise.resolve(jsonResponse(overrides.quotas?.[username] ?? DEFAULT_QUOTA));
+    }
     if (String(path).includes('/admin/users/assignable-roles')) {
       return Promise.resolve(jsonResponse(overrides.roles ?? ROLES));
     }
@@ -171,6 +191,62 @@ describe('UserAccountManagementPage (SC-17)', () => {
     // INDEX 決定 21: 状態は色 ＋ アイコン ＋ テキスト。無効の文言は計画そのまま。
     expect(rows.getAllByText('有効')).toHaveLength(2);
     expect(rows.getByText('無効（全セッション失効）')).toBeInTheDocument();
+  });
+
+  // FR-19, NFR-27, SC-17 (#2330): 利用者の行ごとに個人資料の**使用量と上限**を示す。題名・件数は出さない。
+  it("shows each user's private-note usage and limit, and nothing else about their notes", async () => {
+    mockApi({ quotas: { 'sato.hanako': { usedBytes: 0, limitBytes: 0, percent: 100 } } });
+    await renderPage();
+
+    const rows = within(await usersTable());
+    expect(await rows.findByText('1.50 KB / 1.00 GB')).toBeInTheDocument();
+    expect(await rows.findByText('0 B / 0 B')).toBeInTheDocument();
+    // 照会は利用者名ごとの口へ行く（題名・件数・中身を返す口は呼ばない）。
+    await waitFor(() =>
+      expect(
+        mocks.apiRequest.mock.calls.some(
+          (c) => String(c[0]) === '/private-notes/quotas/tanaka.taro',
+        ),
+      ).toBe(true),
+    );
+    expect(
+      mocks.apiRequest.mock.calls.some(
+        (c) => String(c[0]).startsWith('/private-notes?') || String(c[0]) === '/private-notes',
+      ),
+    ).toBe(false);
+  });
+
+  // SC-17: 上限を変える（0〜1 TB）。0 は送れて「新しい資料を作れません」の注記が出る。1 TB 超は押せない。
+  it('changes the private-note limit within 0 to 1 TB and explains what 0 means', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    const editor = within(await openEditor(user, '田中 太郎'));
+
+    const amount = await editor.findByLabelText('個人資料の保存容量の上限');
+    const unit = editor.getByLabelText('単位');
+    const saveLimit = editor.getByRole('button', { name: '上限を保存' });
+
+    await user.clear(amount);
+    await user.type(amount, '2');
+    await user.selectOptions(unit, 'TB');
+    expect(saveLimit).toBeDisabled();
+    expect(editor.getByText('0〜1 TB の範囲で指定してください。')).toBeInTheDocument();
+
+    await user.clear(amount);
+    await user.type(amount, '0');
+    expect(editor.getByText(/新しい資料を作れません/)).toBeInTheDocument();
+    await user.click(saveLimit);
+
+    await waitFor(() => {
+      const put = mocks.apiRequest.mock.calls.find(
+        (c) =>
+          String(c[0]) === '/private-notes/quotas/tanaka.taro' &&
+          (c[1] as { method?: string })?.method === 'PUT',
+      );
+      expect(put).toBeDefined();
+      expect(JSON.parse((put![1] as { body: string }).body)).toEqual({ limitBytes: 0 });
+    });
   });
 
   // 05_screens §SC-17 主要素 1:「部門／ロールのフィルタ」。

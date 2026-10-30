@@ -67,6 +67,11 @@ public static class PrivateNoteSyncStates
 // `Percent` は 80 / 95 / 100 の段階警告の判定に画面が使う値である。
 public record PrivateNoteUsageDto(long UsedBytes, long LimitBytes, int Percent);
 
+// FR-19, NFR-27, SC-17 (#2330): システム管理者による個人資料の保存容量の上限の変更（0〜1 TB。既定 1 GB）。
+// 従前は後段のフォルダに置いていた（BFF に口が無く、共有する相手が居なかった）。SC-17 の欄と BFF の経路ができたので契約へ移した。
+// 🔴 **0 を許す**（計画 2026-10-24 の裁定。0 は「新しい資料を作れない状態」で、容量 100% 到達と同じ扱い）。
+public record SetPrivateNoteQuotaRequest(long LimitBytes);
+
 // FR-19, SC-19: 一覧（削除済みを含む）と容量表示を 1 応答で返す。
 // **画面が 2 回呼ばずに済むのが BFF の役目**であり、後段も 1 応答で返している。
 public record PrivateNoteListResponse(PrivateNoteUsageDto Usage, List<PrivateNoteDto> Notes);

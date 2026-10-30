@@ -1729,13 +1729,25 @@ export interface PrivateNoteDto {
 }
 
 /**
+ * FR-19, NFR-27, SC-17: 個人資料の保存容量の上限の変更（0〜1 TB。0 は新しい資料を作れない状態）
+ */
+export interface SetPrivateNoteQuotaRequest {
+  /**
+     * 上限（バイト）
+     * @minimum 0
+     * @maximum 1099511627776
+     */
+  limitBytes: number;
+}
+
+/**
  * FR-19, SC-19, ADR-0037 決定 16・17: 保存容量の使用状況。
  * **算入するのは最新版と論理削除済み（90 日保管中）**であり、版履歴は算入しない。
  * `percent` は 80 / 95 / 100 の段階警告の判定に画面が使う。
  */
 export interface PrivateNoteUsageDto {
   usedBytes: number;
-  /** 既定 1 GB。管理者が最大 1 TB まで引き上げ可 */
+  /** 既定 1 GB。システム管理者が 0〜1 TB で変更できる（0 は新しい資料を作れない状態。#2330） */
   limitBytes: number;
   percent: number;
 }

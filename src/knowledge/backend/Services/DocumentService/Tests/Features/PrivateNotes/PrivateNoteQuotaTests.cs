@@ -157,6 +157,31 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
             "管理者へ依頼せず利用者が自力で復帰できる");
     }
 
+    // FR-19, NFR-27, SC-17（計画 2026-10-24 の裁定）, ADR-0037 決定 17 (#2330): **上限 0 は 100% 到達と同じ扱い。**
+    // 新規作成（同期の新規 push・SC-19 の空の作成）は使用量 0 でも拒み、既存の資料の更新は許す。
+    [Fact]
+    public async Task 上限0では使用量0でも新規作成を拒み既存の資料の更新は許す()
+    {
+        var (user, session, plugin) = await OwnerAsync(limitBytes: 1_000);
+        var existing = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
+            Push("既存", "kept.md", "abc"), TestContext.Current.CancellationToken);
+        existing.StatusCode.Should().Be(HttpStatusCode.Created, "前提: 上限 0 にする前の資料");
+        var note = await existing.Content.ReadFromJsonAsync<PushNoteResponse>(TestContext.Current.CancellationToken);
+        (await SessionAs("admin").PutAsJsonAsync($"/private-notes/quotas/{user}",
+            new { limitBytes = 0 }, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await plugin.PostAsJsonAsync("/private-notes/sync/notes",
+            Push("新規", "new.md", "x"), TestContext.Current.CancellationToken))
+            .StatusCode.Should().Be(HttpStatusCode.InsufficientStorage, "同期の新規 push は拒む");
+        (await session.PostAsJsonAsync("/private-notes/", new { title = "空メモ" }, TestContext.Current.CancellationToken))
+            .StatusCode.Should().Be(HttpStatusCode.InsufficientStorage, "空の資料（0 バイト）の作成も拒む");
+
+        var update = await plugin.PostAsJsonAsync("/private-notes/sync/notes",
+            Update(note!.NoteId, "kept.md", note.Version, "abcdef"), TestContext.Current.CancellationToken);
+        update.StatusCode.Should().Be(HttpStatusCode.OK, "既存の資料の更新は許す（陽性対照）");
+        (await UsageOf(session)).LimitBytes.Should().Be(0);
+    }
+
     // [[IADR-0270]] 決定 4: 上限を跨ぐ新規作成も拒否する（超過は更新の増分に限る）。
     [Fact]
     public async Task 上限を跨ぐ新規作成は拒否され跨がない新規作成は通る()
@@ -254,9 +279,16 @@ public class PrivateNoteQuotaTests(TestWebApplicationFactory factory)
             new { limitBytes = 1024L * 1024 * 1024 * 1024 + 1 }, TestContext.Current.CancellationToken);
         tooBig.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
+        // ［2026-10-30 / #2330］計画の裁定（2026-10-24。SC-17）で 0 を許す。0 は「新しい資料を作れない状態」である。
         var zero = await admin.PutAsJsonAsync($"/private-notes/quotas/{user}",
             new { limitBytes = 0 }, TestContext.Current.CancellationToken);
-        zero.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        zero.StatusCode.Should().Be(HttpStatusCode.OK, "上限 0 は許される（新しい資料を作れない状態）");
+        (await zero.Content.ReadFromJsonAsync<PrivateNoteUsageDto>(TestContext.Current.CancellationToken))!
+            .LimitBytes.Should().Be(0);
+
+        var negative = await admin.PutAsJsonAsync($"/private-notes/quotas/{user}",
+            new { limitBytes = -1 }, TestContext.Current.CancellationToken);
+        negative.StatusCode.Should().Be(HttpStatusCode.BadRequest, "負の上限は拒否される");
 
         // 非管理者は変更できない（統制の向き）
         var viewer = factory.CreateClient();

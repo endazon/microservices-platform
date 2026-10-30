@@ -112,7 +112,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | `PATCH /documents/{id}/metadata` | **後段専用（機械クライアント）** | 機械クライアントが自分の所有する組織文書の属性を差し替える口。人の画面（文書管理）は `PUT /documents/{id}` を使う。属性の**全置換**なので、露出のキーを送り忘れると文書が検索・RAG に出る。取引の報告書の写しは意図してこの口を使わない |
 | `PUT /documents/{id}/body` | **後段専用（機械クライアント）** | 取引ユニットの知識ベースの書き手が既存文書へ本文を入れる口 |
 | `GET /documents/page` | **後段専用（機械クライアント）** | 組織文書を属性の完全一致で絞りページで返す口。知識ベースの入れ直しのために置いたが、いまの呼び出し元は無い（取引ユニットは `GET /documents` を使う） |
-| `GET` / `PUT /private-notes/quotas/{ownerId}` | **BFF に通す（未了）** | 計画がユーザーアカウント管理画面に個人資料の使用量と上限の欄を置くと定めた（上限の変更と監査を含む）。**経路は欄と一緒に作る**（#2330）。それまではシステム管理者が運用の手順書に従って後段を直接呼ぶ |
+| `GET` / `PUT /private-notes/quotas/{ownerId}` | **BFF に通した**（［2026-10-30 / #2330］） | 計画がユーザーアカウント管理画面に個人資料の使用量と上限の欄を置くと定めた（上限の変更と監査を含む）。経路は欄と一緒に作った（`/bff/private-notes/quotas/{ownerId}`。システム管理者だけ。下の表） |
 | `GET /feedback/` | **運用の口** | 管理者限定（自由記述と利用者 ID を返す）。低評価の回答を見直すための一覧で、画面は計画に無い。管理者が API で直接使う |
 | `GET /dashboard/trends`・`GET /dashboard/usage` | **運用の口** | 画面（運用ダッシュボード）が読むのは `GET /dashboard/summary` で、summary は同じ集計で両方を含む。2 つの口は summary の部分集合であり、集計規則（しきい値・合成トラフィックの除外）の試験の口でもある。外部の呼び出し元は無い。撤去はしていない |
 
@@ -200,6 +200,8 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | PUT | `/bff/admin/users/{userId}/roles` | **admin のみ** | —| `useBffUserAdminReplaceUserRoles`（差し替え。空集合は 400 —— 権限剥奪は無効化で行う） |
 | POST | `/bff/admin/users/{userId}/disable` | **admin のみ** | —| `useBffUserAdminDisableUser`（**無効化と全セッション失効は 1 つの操作である**。後段の 404 を**そのまま**返す） |
 | POST | `/bff/admin/users/{userId}/enable` | **admin のみ** | —| `useBffUserAdminEnableUser`（セッションは復活しない） |
+| GET | `/bff/private-notes/quotas/{ownerId}` | **admin のみ**（後段も admin のみの二重の守り） | —| `useBffPrivateNoteQuotaGet`（［2026-10-30 / #2330］利用者の個人資料の使用量・上限・割合の**数だけ**。題名・件数・中身は載らない。鍵は利用者名） |
+| PUT | `/bff/private-notes/quotas/{ownerId}` | **admin のみ**（同上） | —| `useBffPrivateNoteQuotaSet`（［2026-10-30 / #2330］上限を 0〜1 TB で変える。0 は新しい資料を作れない状態。範囲外は後段の 400 を本文ごと透過、不達は 502。変更の監査は後段が残す） |
 | GET | `/bff/secrets` | **admin / operator**（未認証 401・権限外 403。拒否も監査する） | —| `useBffSecretItemsList`（秘密情報の項目の一覧。🔴 **値の列は無い**。状態は「版がある／無い／取れない」の 3 値で、**「版がある」はプロパティに空でない値が入っていることを保証しない**。プロパティごとの入力の形（`propertyDetails`: 値そのまま／パスワードを MD5 で保存／鍵を生成、と秘密かどうか）を返す。項目ごとの**供給元**（`supplySource`: 同期先の ExternalSecret が在る＝画面／無い＝画面以外（値は `git` のまま）／判定できない＝確認できない。**判定できないときを他の 2 値に倒さない**。本文も Secret も読まない）を返す。保管先が未構成・不達なら **503**（空の一覧で返さない）） |
 | PUT | `/bff/secrets/{item}` | **admin / operator**（同上） | —| `useBffSecretItemsUpdate`（**1 回に 1 プロパティだけ**を部分更新で書く。一覧に無い項目・書けないプロパティは **400**（404 にしない）。項目の現在の版が保管先で削除されていれば **409**（書かない。コンソールで版を戻してから書き直す）。本文は 64 KiB までで、超過 413・JSON でない 415・解釈できない 400（いずれもロール判定の後に読み、拒否を監査する）。保管先が拒否 502・未構成／不達 503。パスワードの種別は平文を受けて MD5 で書き、鍵の種別は値を受けずに生成して書く（値を送ると 400）。書き込みが成立したら同期先の ExternalSecret へ即時同期を依頼し、結果を `syncRequested` で返す（**依頼できなくても 200**）。🔴 **値を読み出す口は無い**。値・変換した値・生成した鍵は監査・ログ・応答に残らない） |
 | GET | `/bff/wiki/pages` | **認証必須・ロールは問わない**（`x-roles: []`）。可視性を決めるのは役割ではなく属性ベースの権限であり、許可が無ければ **200 ＋ 空**（deny-by-default） | —| `useBffWikiPageList` |
