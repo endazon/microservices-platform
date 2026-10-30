@@ -226,6 +226,18 @@ data:
               summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
               description: "自動再試行を使い切ったメッセージが直近 1 時間にデッドレターへ入った（初回を含む。サービス・メッセージ型・例外の型はラベル job・messaging_message_type・error_type）。文書の取り込み・Wiki 同期・グラフ同期・削除のどれかが反映されていない。エラーログで原因を直し、文書を再発行する（デッドレターの写しは再投入しない）。"
 
+      # FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178): 耐久化の操作のメモリ上の再試行の失敗（**0 が正常**）。注記の正本は compose 側の同名グループ
+      # （初回の腕つき。promtool の単体試験は compose 側に対して回り、式の一致は parity 検査が見る）。
+      - name: messaging-retry-block
+        rules:
+          - alert: MessagingRetryBlockErrors
+            expr: 'sum by (job, error_type) ((messaging_retry_block_errors_total unless messaging_retry_block_errors_total offset 1h) or increase(messaging_retry_block_errors_total[1h])) > 0'
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）"
+              description: "Wolverine の耐久化の操作のメモリ上の再試行が直近 1 時間に失敗した（初回を含む。サービスと例外の型はラベル job・error_type）。再試行は上限（既定 4 回・約 0.5 秒）で捨てられ得て、その送出は欠落する（途中の停止でも同じ）。ログで時刻を確かめ、既定では窓の間の取得範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
+
       # FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): 構成ドリフト（**0 が正常**）。注記の正本は compose 側の同名グループ
       # （ゲージなので初回の腕は要らない。promtool の単体試験は compose 側に対して回り、式の一致は parity 検査が見る）。
       - name: config-drift

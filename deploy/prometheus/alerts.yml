@@ -373,6 +373,24 @@ groups:
           summary: "メッセージが自動再試行を使い切ってデッドレターへ入った（0 が正常）"
           description: "{{ $labels.job }} の messaging_dead_letter_total（messaging_message_type={{ $labels.messaging_message_type }}・error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。受け口が 4 回（初回＋再試行 3 回・2/10/30 秒）試して失敗したメッセージが、全サービスで共有のデッドレター（wolverine-dead-letter-queue）へ入っている。DocumentUpdated / DocumentDeleted なら、その文書は取り込み・Wiki 同期・グラフ同期・検索からの削除のどれかが反映されていない。通知のラベル error_type（例外の型）と当該サービスのエラーログで原因を特定し、直してから文書を再発行する（デッドレターの写しは古い状態なので再投入しない。運用仕様書 §DLQ の扱い）。取り込みの総枠の使い切り（再試行せずに入る分）はここに数えず IngestionBudgetExhausted が鳴らす。"
 
+  # FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178): **耐久化の操作のメモリ上の再試行の失敗**（**0 が正常**）。
+  # 計器 `messaging.retry_block.errors`（RetryBlockErrorMetrics）は、JasperFx の RetryBlock が再試行の失敗で出すログ
+  # （テンプレート `Error while trying to retry {Item}` ＋ 例外つき ＋ Error）を共通のロガーの提供者が数えて上げる（全サービス共通）。
+  # 送出表への書き込み（StoreOutgoingAsync）の一時失敗の間に呼び出し側の確定が先に進み、再試行が上限（既定 4 回・約 0.5 秒）で捨てられるか、
+  # 途中でプロセスが止まると送出が欠落する（IADR-0609 の残余。上限の実測は IADR-0656）。
+  # 🔴 **`absent()` は置かない**（0 が正常の計数で、平常時は系列が立たない。不在は平常である）。
+  # 🔴 **初回の腕（`(m unless m offset 1h) or increase(m[1h])`）を外さない**（DeadLetterReached と同じ理由。最初の標本が 1 で現れる）。
+  #   場面は deploy/prometheus/tests/messaging-retry-block.test.yml が promtool で固定する。集計は job・error_type ごと。
+  - name: messaging-retry-block
+    rules:
+      - alert: MessagingRetryBlockErrors
+        expr: 'sum by (job, error_type) ((messaging_retry_block_errors_total unless messaging_retry_block_errors_total offset 1h) or increase(messaging_retry_block_errors_total[1h])) > 0'
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）"
+          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
+
   # FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): **構成ドリフト**（**0 が正常**）。
   # 計器 `config.drift.findings`（ConfigDriftMetrics。BFF のドリフト検出が検出のたびに差し替えるゲージ）= 直近の不一致の件数。
   # 🔴 **ゲージなので初回の腕は要らない**（検出は起動直後に 1 回走り、ドリフトが無くても 0 を出す。計数の `increase` と違い、

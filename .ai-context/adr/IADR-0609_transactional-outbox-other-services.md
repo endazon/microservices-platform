@@ -89,6 +89,7 @@ DataSourceService は `Program.cs` で `UsePlatformTransactionalOutbox(connStr)`
     Wolverine のエラーログ（`Error while trying to retry`）である。
   - 到着は少なくとも 1 回（at-least-once）。再変換の再送で同じ `RawDocumentFetched` が 2 度届き得る（受け手の冪等性は #2101 / #2102 が扱う）。
 - フォローアップ: 決定 2 の残余リスク（表への書き込みの一時失敗）の運用でのアラート化は #2178 で扱う（AI レビューの指摘）。
+  ［2026-10-30 追記 / #2178］アラート化した。ログのテンプレートの照合で計器 `messaging.retry_block.errors` にし、警報 `MessagingRetryBlockErrors` で鳴らす（[IADR-0656](./IADR-0656_retry-block-error-metric-instead-of-loki-rule.md)。Loki の ruler は未配備のため新設せず、計器化を選んだ）。
   #2042 の Wolverine の発行はこれで全件である。MassTransit の残りの辺は Wolverine 移行の射程。
 - 注意（AI レビューの指摘で追記）: 発行口の `CommitAsync` はトランザクションを `BeginTransactionAsync` で直接開く。いま `ConversionJobDbContext`
   （と DocumentService の同形）は実行戦略（`EnableRetryOnFailure` 等）を有効にしていない（`git grep -nE "EnableRetryOnFailure|ExecutionStrategy" -- src` が 0 件）。
