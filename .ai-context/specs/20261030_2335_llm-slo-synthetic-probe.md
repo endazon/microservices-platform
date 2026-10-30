@@ -132,3 +132,4 @@ issue: "#2335"
   - (2) `helm-synthetic-monitor.test.js` で、足した定数が `read` の定義より前にあり TDZ で落ちていた。CI の static-checks-units で赤になった。
     - 手元で `node scripts/helm-synthetic-monitor.test.js` を走らせて赤を再現し、定義の後へ移した。
     - helm が無いので fail-closed で止まるが、その手前の静的な試験 3 件までは緑になることを確かめた。
+- ［2026-10-30 追記 / #2346］上の「手元に helm が無い」の後の経過: orchestrator と AI レビューが helm 描画の試験 25 件（`helm-synthetic-monitor.test.js`）の緑を確認した。CI（static-checks-units）でも緑を確認した。
