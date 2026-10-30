@@ -3,15 +3,15 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-23
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, UC-01, UC-02, FR-03, FR-10, FR-17, FR-18, SC-02, NFR-17, NFR-19, NFR-28]
 adrs: [ADR-0138, ADR-0140, ADR-0010, ADR-0022, ADR-0025, ADR-0035, ADR-0038, ADR-0044, ADR-0081, ADR-0127, ADR-0128]
 iadrs: [IADR-0552, IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225, IADR-0340, IADR-0374, IADR-0498, IADR-0499, IADR-0511, IADR-0531, IADR-0535, IADR-0533, IADR-0528, IADR-0562, IADR-0564, IADR-0566, IADR-0601]
-specs: [20261017_1749_anthropic-official-sdk, 20261017_1903_drop-pre-5-5-claude-models, 20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261020_2000_extra-text-block-drop-count, 20261020_1997_stream-idle-timeout, 20261023_2116_llm-stream-usage-on-abort]
-issues: [#2116, #1749, #1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, #2000, #1997, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795]
+specs: [20261017_1749_anthropic-official-sdk, 20261017_1903_drop-pre-5-5-claude-models, 20261016_1960_adr-0140-tier-b-residency-zdr, 20260902_571_trade-decision-screening-purpose, 20260905_issue-1091_llm-upstream-status-axis, 20261006_1746_claude-rerank, 20261006_1747_adr-0128-review-conditions, 20261008_1785_graph-purpose-models, 20261008_1819_gateway-sentfalse-observability, 20261010_1875_claude-5-5-models, 20261013_1917_thinking-strip-log-level, 20261015_1902_east-west-rest-residue, 20261020_2000_extra-text-block-drop-count, 20261020_1997_stream-idle-timeout, 20261023_2116_llm-stream-usage-on-abort, 20261030_2115_uc02-high-confidentiality-egress]
+issues: [#2116, #1749, #1903, #1960, #201, #379, #380, #394, #395, #403, #440, #850, #863, #1091, #1746, #1747, #1785, #1819, #1875, #1917, #1902, #2000, #1997, #2115, AST#290, AST#571, AST#1267, planning#50, planning#426, planning#720, planning#783, planning#795, planning#832]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -30,10 +30,18 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 （データ保護ティア）・モデルを選択する。あるいは越境ポリシー上送信不可と判定した場合は
 **送信せず縮退（`Sent=false`）** を返す。
 
-機密区分の高いデータは外部マネージド API へ送信せず、**セルフホスト LLM（ティアA）でのみ処理する**
-ことを越境マトリクス（`EgressMatrix`）で担保する。既定は安全側（deny-by-default）で、
+~~機密区分の高いデータは外部マネージド API へ送信せず、**セルフホスト LLM（ティアA）でのみ処理する**
+ことを越境マトリクス（`EgressMatrix`）で担保する。~~ ［2026-10-30 / #2115 是正］機密区分の高いデータ（`confidential`・`restricted`）は、
+**ティア A（セルフホスト）かティア B（保護契約済み外部 API。ZDR を要する）へだけ送り、ティア C（標準外部 API）へは送らない**
+ことを越境マトリクス（`EgressMatrix`）で担保する（計画の裁定で越境マトリクスを正とした。旧い文は AI 分析の旧い代替フローの写しだった）。既定は安全側（deny-by-default）で、
 未指定・未知の機密区分は最も強い制約（`Restricted`）へ倒す。呼び出し先は enum 直書きでなく
 **設定駆動のエンドポイント定義（`Llm:Routing`）＋固定表の越境マトリクス**で決定する。
+
+> **［2026-10-30 / #2115］充足の書き分け。** **切り替えの仕組み（用途 × 機密区分・fail-closed）は充足している。**
+> **ティア A の LLM（`selfhosted-oss`）は opt-in であり、どの配備定義でも無効である**（`appsettings.json` の `Enabled: false` を上書きする配備は無い）。
+> したがって高機密の分析・回答生成は、いまはティア B（Claude）だけへ出る。これは計画の裁定（越境マトリクスを正とし、ティア A の LLM は opt-in のまま）どおりであり、
+> 未充足ではない。ただし Claude の組織の ZDR は未締結である（期限付きで受け入れたリスク）。**締結するか標準の保持を恒久的に受け入れるかと、ティア A の LLM の配備状態は、
+> 本番運用への移行の判定項目に載せた**（運用仕様書 §LLM ゲートウェイの送信先ティア（Claude）の認定状況 の「本番運用への移行の判定項目」）。
 
 ## 機能詳細
 

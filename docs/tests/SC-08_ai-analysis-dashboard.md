@@ -3,15 +3,15 @@ title: SC-08 AI分析ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-30
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-07, FR-11, SC-01, SC-03, SC-08, UC-02, UC-05]
-adrs: [ADR-0031, ADR-0066]
+adrs: [ADR-0031, ADR-0066, ADR-0127, ADR-0140]
 iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0127, IADR-0131, IADR-0135, IADR-0308]
-specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation]
-issues: [#503, #519, #539, #1065]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260830_issue-1065_feature-import-isolation, 20261030_2115_uc02-high-confidentiality-egress]
+issues: [#503, #519, #539, #1065, #2115, planning#832]
 -->
 
 # テスト仕様書: AI分析ダッシュボード
@@ -36,7 +36,7 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 | **基本 1. 利用者が分析対象（タグ／フォルダ／検索条件）と分析内容を指定する** | **検索条件（`range.query`）と分析内容のみ**。タグ／フォルダのチップは契約が無く実装しない | `sends the task type and the search condition as the data range` ／ `does not render tag or folder chips (no contract for permitted candidates)` |
 | **基本 3. AI 分析サービスが LLM ゲートウェイ経由で分析を実行する** | `POST /bff/analysis/analyze` | `runs an analysis and links the citations to SC-03` |
 | **基本 4. 結果と出典を返す** | 結果パネル ＋ 出典（`/docs/$id` へのリンク） | 同上 |
-| **代替. 機密区分の高いデータは外部 API へ送信せず、セルフホスト LLM で処理する** | **利用面のみ**——`model` が空なら「未使用（AI へ送信なし）」（縮退応答のモデル名の実装判断）＋ 静的な注記 | `says the AI was not used when the model is empty` ／ `states the egress policy and the existence-hiding rule` |
+| **代替. ~~機密区分の高いデータは外部 API へ送信せず、セルフホスト LLM で処理する~~ ［2026-10-30 / #2115 是正］機密区分の高いデータは、ティア A（セルフホスト）かティア B（保護契約済みの外部 API。ゼロ保持を要する）へだけ送り、ティア C（標準の外部 API）へは送らない** | **利用面のみ**——`model` が空なら「未使用（AI へ送信なし）」（縮退応答のモデル名の実装判断）＋ 静的な注記（新しい注記が出て、旧い注記が出ないことを陽性対照つきで固定） | `says the AI was not used when the model is empty` ／ `states the egress policy and the existence-hiding rule` |
 | **例外. 対象が権限外の場合は対象から除外する。権限の有無は開示しない** | 空回答・403・404 を**同一の中立文言**へ寄せる | `shows the same neutral message for %s`（3 件） |
 | 基本 2. 認可で対象範囲を権限内に限定する | **写像しない**（サーバ側が narrowing-only で行う。データ範囲と ABAC の交差の実装判断）。画面側は「クライアントがスコープを送らない」ことを純関数で固定する | `never sends an access scope or attribute filters from the client` |
 
