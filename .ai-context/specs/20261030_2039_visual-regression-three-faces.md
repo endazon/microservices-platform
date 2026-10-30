@@ -52,10 +52,21 @@ issue: "#2039"
   - §12 の「本書の目標: 既定で採らない（候補 1 件）」は、3 面だけ採った今も目標として正しい。
   - 導出値（217 件・27 ファイル）は、本変更後に `--list` で計算し直した。
 
+- **［2026-10-30 追記 / #2039］CI の scripts-tests が赤になったので、母集合を足した**（`BINARY_EXTENSIONS`・「空である」・「既定空」で走査した）。
+  - 原因: 基準画像 3 枚が `check-nul-bytes` に「生の NUL を含む」と検出された（リポ初の追跡下のバイナリ）。
+  - ローカルで捕まらなかった理由: `scripts.test.js` を `git add` の前に流した。`check-nul-bytes` は `git ls-files`（追跡下だけ）を走査するので、未追跡の画像は母集合に入っていなかった。
+  - 是正:
+    - `scripts/check-nul-bytes.js` の `BINARY_EXTENSIONS` に `.png` を足した。自己試験に、`.png` の陽性の例と、同じバイト列を別の名で置く陰性対照を足した。集合を `['.png']` ちょうどに固定した。
+    - `scripts/scripts.repo.test.js` の「空である」を「`.png` だけ」に改めた。
+    - `scripts/README.md` の「既定空」を改めた。
+    - IADR-0661 の残余リスクに 1 項を足した。
+    - `.ai-context/adr/IADR-0247_nul-byte-check.md`（「空で始める」）と仕様書 20260822 は凍結記録で、当時の記述として正しい。書き換えない。
+  - 検証は、画像をコミットした状態で `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` を流して行う。
+
 ## 検証
 
 - `pnpm run test:e2e:visual --update-snapshots`（初回）。続けて許容差 0 で 5 回。
 - 通常の許容差での陰性対照。
-- `node scripts/scripts.test.js`（repo 試験を含む）。
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（画像をコミットした状態で。上の追記のとおり、初回は `git add` 前に流して捕まえ損ねた）。
 - prettier・eslint・typecheck（`platform/frontend`）。
 - 文書系の検査: trace-blocks・knowledge-graph・adr-numbering・cross-repo・plan-id・doc-updated。

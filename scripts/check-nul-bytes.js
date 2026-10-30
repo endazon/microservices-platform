@@ -58,13 +58,17 @@ if (worktreeStateModule) {
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 /**
- * 正当に NUL を含み得るバイナリの拡張子。**現時点では空である**（実測: 追跡下 0 件）。
+ * 正当に NUL を含み得るバイナリの拡張子。
  *
- * 🔴 **空であること自体が正解の状態である**（未整備ではない）。バイナリを追跡下へ足して
- * 本検査が落ちたら、**そのときに人が判断してここへ足す**。黙って除外を広げないための形であり、
- * 「あとで足せる逃げ道」ではない —— 足した拡張子は**そのぶん検査されなくなる**。
+ * 🔴 **バイナリを追跡下へ足して本検査が落ちたら、そのときに人が判断してここへ足す**（未整備の逃げ道ではない）。
+ * 黙って除外を広げないための形であり、足した拡張子は**そのぶん検査されなくなる**。
+ *
+ * ［2026-10-30 / #2039 / IADR-0661］従前は空だった（追跡下にバイナリが 0 件）。**`.png` を足した。**
+ * 視覚回帰の基準画像（`src/platform/frontend/e2e/visual.spec.ts-snapshots/*.png`）がリポ初の追跡下の
+ * バイナリであり、PNG は形式上 NUL を必ず含む（IHDR の長さ欄など）。代償: `.png` という名のテキストに
+ * 混入した NUL は捕まらない。自己試験が集合を `['.png']` ちょうどに固定する（黙って広げない）。
  */
-const BINARY_EXTENSIONS = new Set([]);
+const BINARY_EXTENSIONS = new Set(['.png']);
 
 /** 追跡下のファイル一覧（submodule は git ls-files に出ないので自然に対象外）。 */
 function trackedFiles(root = REPO_ROOT) {
@@ -183,7 +187,7 @@ function selfTest() {
   }
 
   {
-    // BINARY_EXTENSIONS に載っている拡張子は検査しない（現時点では空なので、動作だけを確かめる）。
+    // BINARY_EXTENSIONS に載っている拡張子は検査しない（任意の拡張子で動作を確かめる）。
     const saved = [...BINARY_EXTENSIONS];
     BINARY_EXTENSIONS.add('.bin');
     const b = write('x.bin', Buffer.from([0x00, 0x01]));
@@ -192,8 +196,24 @@ function selfTest() {
       r.violations.length === 0 && r.skipped === 1 && r.scanned === 0, r);
     BINARY_EXTENSIONS.clear();
     for (const e of saved) BINARY_EXTENSIONS.add(e);
-    t('★ BINARY_EXTENSIONS は空である（空であること自体が正解の状態）',
-      BINARY_EXTENSIONS.size === 0, [...BINARY_EXTENSIONS]);
+    // ［2026-10-30 / #2039］従前は「空である」を固定していた。`.png` を足したので、集合をちょうどに固定する。
+    t('★ BINARY_EXTENSIONS は .png だけである（足すときは人が判断し、ここも直す）',
+      BINARY_EXTENSIONS.size === 1 && BINARY_EXTENSIONS.has('.png'), [...BINARY_EXTENSIONS]);
+  }
+
+  {
+    // #2039: 視覚回帰の基準画像（PNG）は NUL を含んでも違反にしない。拡張子の大文字小文字は問わない。
+    const pngHead = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
+    const png = write('shot-visual-linux.png', pngHead);
+    const pngUpper = write('SHOT.PNG', pngHead);
+    const r = scan(dir, [png, pngUpper]);
+    t('★ .png（.PNG も）は NUL を含んでも走査せず skipped に数える',
+      r.violations.length === 0 && r.skipped === 2 && r.scanned === 0, r);
+    // 陰性対照: 同じバイト列でも .png 以外の拡張子なら従来どおり捕まえる（除外が拡張子だけに効いている）。
+    const notPng = write('shot.png.txt', pngHead);
+    const r2 = scan(dir, [notPng]);
+    t('★ 陰性対照: 同じバイト列を .png 以外の名で置くと違反として捕まえる',
+      r2.violations.length === 1 && r2.skipped === 0, r2);
   }
 
   t('MIN_SCANNED は 0 件走査を緑にしない下限を持つ', MIN_SCANNED > 0);

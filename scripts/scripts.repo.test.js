@@ -4569,10 +4569,11 @@ ${r.stderr}`);
       assert.strictEqual(nul.isScanTooSmall(nul.MIN_SCANNED), false);
     });
 
-    // 🔴 除外リストは**空であることが正解の状態**（未整備ではない）。広げたら気付けるようにする。
-    ok('check-nul-bytes: BINARY_EXTENSIONS は空である', () => {
+    // 🔴 除外リストは**人が判断して足したものだけ**である。広げたら気付けるようにする。
+    // ［2026-10-30 / #2039 / IADR-0661］従前は「空である」を固定していた。視覚回帰の基準画像のため `.png` を足した。
+    ok('check-nul-bytes: BINARY_EXTENSIONS は .png だけである', () => {
       const nul = require('./check-nul-bytes.js');
-      assert.deepStrictEqual([...nul.BINARY_EXTENSIONS], [],
+      assert.deepStrictEqual([...nul.BINARY_EXTENSIONS], ['.png'],
         '除外を足したなら、そのぶん検査されなくなることを IADR へ記録すること');
     });
   }
