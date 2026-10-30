@@ -26,6 +26,12 @@ import { normalizeRows } from './live/support/dictionaries';
 import { liveProjects } from './live/support/projects';
 import { submitOtp, submitPassword } from './live/support/login';
 import { stateFile } from './live/support/env';
+import {
+  createLlmBudget,
+  isLlmCall,
+  LLM_CALLS_PER_RUN,
+  LLM_CALLS_PER_TEST,
+} from './live/support/llmBudget';
 
 // NFR / IADR-0569 決定 4 / IADR-0624（#2025）: live 層の config（`playwright.live.config.ts`）の **opt-in と門**を L1 で固定する。
 // 稼働の環境には 1 度も触れない（到達先は誰も listen していない 127.0.0.1:9）。ブラウザも開かない。
@@ -913,4 +919,43 @@ test('port-forward の出力からローカルポートを読み、読めなけ�
   expect(parsePortForwardPort('Forwarding from 127.0.0.1:43123 -> 8080\n')).toBe(43123);
   expect(parsePortForwardPort('Forwarding from [::1]:43123 -> 8080\n')).toBeNull();
   expect(parsePortForwardPort('error: unable to forward')).toBeNull();
+});
+
+// SC-01, SC-08, NFR / IADR-0665（#2035 / E-70）: llm 層の**上限の門**。1 実行の LLM 呼び出しは 1 試験 1 回 × 試験 2 件 × retries 0 = 2 以下
+// （基準書 §6.2）。稼働の環境には触れない（`--list` だけ）。試験を 1 件足す・上限を変える・retries を足す変更はここで赤になる。
+test('llm 層の上限は 1 試験 1 回・1 実行 2 回で、数えるのは POST /bff/search と POST /bff/analysis/* だけ（IADR-0665）', () => {
+  expect(LLM_CALLS_PER_TEST).toBe(1);
+  expect(LLM_CALLS_PER_RUN).toBe(2);
+  expect(isLlmCall('POST', '/bff/search')).toBe(true);
+  expect(isLlmCall('POST', '/bff/analysis/ask/stream')).toBe(true);
+  expect(isLlmCall('POST', '/bff/analysis/analyze')).toBe(true);
+  expect(isLlmCall('POST', '/bff/analysis/ask')).toBe(true);
+  // 数えない口（陰性）: 読み取りの GET・候補（索引から引く）・名前が前方一致するだけの別の口。
+  expect(isLlmCall('GET', '/bff/search')).toBe(false);
+  expect(isLlmCall('POST', '/bff/attribute-values')).toBe(false);
+  expect(isLlmCall('POST', '/bff/search-trends')).toBe(false);
+  expect(isLlmCall('POST', '/bff/analysisx')).toBe(false);
+  // 上限の内は通し、超えた要求は通さずに記録する（後段へ届けない）。
+  const budget = createLlmBudget(LLM_CALLS_PER_TEST);
+  expect(budget.admit('POST /bff/analysis/ask/stream')).toBe(true);
+  expect(budget.admit('POST /bff/search')).toBe(false);
+  expect(budget.admit('POST /bff/analysis/analyze')).toBe(false);
+  expect(budget.admitted()).toEqual(['POST /bff/analysis/ask/stream']);
+  expect(budget.refused()).toEqual(['POST /bff/search', 'POST /bff/analysis/analyze']);
+  expect(() => createLlmBudget(0)).toThrow(/上限/);
+});
+
+test('E2E_LAYER=llm の --list は project llm にちょうど 2 件（M-031・M-052）で、retries は 0。既定の層には llm の試験が載らない（IADR-0665）', () => {
+  const llm = runLive({ E2E_LIVE: '1', E2E_LAYER: 'llm' }, ['--list']);
+  expect(llm.status, llm.out).toBe(0);
+  const listed = llm.out.match(/\[llm\] › [^\n]+/g) ?? [];
+  expect(listed, llm.out).toHaveLength(LLM_CALLS_PER_RUN / LLM_CALLS_PER_TEST);
+  expect(listed.filter((l) => /rag\.llm\.spec\.ts:.*M-031/.test(l))).toHaveLength(1);
+  expect(listed.filter((l) => /rag\.llm\.spec\.ts:.*M-052/.test(l))).toHaveLength(1);
+  const project = liveProjects({ live: true, layers: ['llm'] }).find((p) => p.name === 'llm')!;
+  expect(project.retries).toBe(0);
+  expect(project.workers).toBe(1);
+  const ro = runLive({ E2E_LIVE: '1' }, ['--list']);
+  expect(ro.status, ro.out).toBe(0);
+  expect(ro.out).not.toMatch(/\[llm\]|\.llm\.spec\.ts/);
 });

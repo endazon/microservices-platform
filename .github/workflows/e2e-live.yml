@@ -26,7 +26,10 @@ on:
   workflow_dispatch:
     inputs:
       layer:
-        description: "E2E_LAYER（ro / rw / trading / llm のカンマ区切り。IADR-0569 決定 4）"
+        # SC-01, SC-08, NFR / IADR-0665（#2035）: llm は**週 1 回まで・1 実行 2 呼び出しまで**（基準書 §6.2）。dispatch でだけ選べる（週次の cron は置かない）。
+        #   上限は rag.llm.spec.ts が page.route で数えて止め、試験の件数と retries 0 は L1（live-opt-in.smoke.spec.ts）が固定する。
+        #   このスタックは LLM_KEYLESS=1（鍵なし）なので、llm の試験は後段の縮退の形（出典つき・外部へ送らない）で通る。実の回答は PoC で流す。
+        description: "E2E_LAYER（ro / rw / trading / llm のカンマ区切り。IADR-0569 決定 4）。llm は週 1 回・1 実行 2 呼び出しまで（IADR-0665）"
         type: string
         default: "ro,rw"
   # live の土台を変える PR と、**試験される側**（e2e-live が建てるイメージと配備物）を変える PR で走らせる（秘密を使わないので fork でも安全。必須にはしない）。
