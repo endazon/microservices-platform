@@ -3,15 +3,15 @@ title: FR-20 個人資料・Obsidian 同期 API 通信仕様書
 type: api-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-19, SC-20, NFR-14]
 adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0105, ADR-0110, ADR-0114]
 iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
+specs: [20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#2330, #451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -22,6 +22,7 @@ issues: [#451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
 **［2026-08-28 追記］BFF 端点（`/bff/private-notes*`）は実装済みである**（従前の「未実装の残件」は
 本追記で置き換わる）。画面が呼ぶのは BFF であり、本書の口を直接は呼ばない。**同期プロトコル群と
 上限管理は BFF に載せていない**（前者は資格情報が別系統でプラグインが呼ぶ、後者は載せる画面が無い）。
+**［2026-10-30 追記 / #2330］上限管理は BFF に載せた**（ユーザーアカウント管理画面に使用量と上限の欄を置いたため。システム管理者だけ）。BFF に無いのは同期プロトコル群だけである。
 契約の正は API 定義（`docs/api/openapi.yaml` の `/bff/private-notes*`）である。
 
 | 群 | パス | 認証 | 利用者 | BFF |
@@ -29,7 +30,7 @@ issues: [#451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
 | ライフサイクル | `/private-notes*` | JWT（認証必須・ロール不要） | 画面（個人資料管理） | あり |
 | 端末・トークン | `/private-notes/devices*` | JWT（認証必須・ロール不要） | 画面（連携設定） | あり |
 | 同期プロトコル | `/private-notes/sync*` | **Bearer 同期トークン**（JWT 不要） | Obsidian プラグイン | **なし** |
-| 上限管理 | `/private-notes/quotas/{ownerId}` | JWT ＋ 管理者ロール | 管理画面 | **なし** |
+| 上限管理 | `/private-notes/quotas/{ownerId}` | JWT ＋ 管理者ロール | 管理画面（ユーザーアカウント管理） | あり（［2026-10-30］） |
 
 ## エンドポイント一覧
 

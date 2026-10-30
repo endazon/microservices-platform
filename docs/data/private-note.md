@@ -3,15 +3,15 @@ title: 個人資料（台帳・容量・同期端末） データ仕様書
 type: data-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-03
+updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11]
 adrs: [ADR-0037, ADR-0054, ADR-0057]
 iadrs: [IADR-0253, IADR-0270, IADR-0296, IADR-0360]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260903_issue-1176_obsidian-sync-rename-contract]
-issues: [#451, #1176]
+specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260903_issue-1176_obsidian-sync-rename-contract, 20261030_2330_sc17-private-note-quota]
+issues: [#451, #1176, #2330]
 -->
 
 # データ仕様書: 個人資料（台帳・容量・同期端末）
@@ -40,7 +40,7 @@ issues: [#451, #1176]
 | 属性 | 型 | 必須 | 制約 | 説明 |
 | --- | --- | --- | --- | --- |
 | OwnerId | varchar(200) | ○ | PK | 利用者 |
-| LimitBytes | bigint | ○ | 既定 1 GB・上限 1 TB（アプリ層で強制） | 管理者が変更する |
+| LimitBytes | bigint | ○ | 既定 1 GB・0〜1 TB（アプリ層で強制。［2026-10-30］0 を許す） | 管理者が変更する。0 は新しい資料を作れない状態 |
 | Warned80 / Warned95 | boolean | ○ | | 容量警告の発火記録。**跨ぎで 1 回・閾値を下回ると解除**（再武装） |
 | WeeklyDigestSentAt | timestamptz | | | 週次削除通知の送出記録（7 日間隔の下限） |
 | UpdatedAt | timestamptz | ○ | | |

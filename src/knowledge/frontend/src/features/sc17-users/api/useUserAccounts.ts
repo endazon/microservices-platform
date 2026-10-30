@@ -16,10 +16,16 @@ import {
   getBffAuthzListAttributesQueryKey,
   useBffAuthzListAttributes,
 } from '@foundation/api/generated/authorization/authorization';
+import {
+  getBffPrivateNoteQuotaGetQueryKey,
+  useBffPrivateNoteQuotaGet,
+  useBffPrivateNoteQuotaSet,
+} from '@foundation/api/generated/private-notes/private-notes';
 import { okArray, okData } from '@foundation/api/orvalSelect';
 import type {
   AttributeDefinitionDto,
   PlatformUserDto,
+  PrivateNoteUsageDto,
   UserDepartmentDto,
 } from '@foundation/api/generated/bff.schemas';
 
@@ -116,4 +122,29 @@ export function useUserAccountActions() {
   const enable = useBffUserAdminEnableUser<unknown>(onSuccess);
 
   return { replaceRoles, replaceAttributes, replaceDepartment, disable, enable };
+}
+
+/**
+ * 個人資料の保存容量（FR-19, NFR-27, SC-17。#2330）: 使用量・上限・割合の**数だけ**。
+ *
+ * 🔴 **題名・件数・中身は引かない**（応答にも無い）。SC-19 の「管理者が他の利用者の個人資料を閲覧する画面を描かない」。
+ * 鍵は利用者名（`preferred_username`。後段の個人資料の所有者と同じ値）。行ごとに 1 本引き、キャッシュを共有する。
+ */
+export function usePrivateNoteQuota(username: string) {
+  return useBffPrivateNoteQuotaGet<PrivateNoteUsageDto, unknown>(username, {
+    query: { queryKey: getBffPrivateNoteQuotaGetQueryKey(username), select: okData },
+  });
+}
+
+/** 上限の変更（0〜1 TB。範囲外は後段が 400）。成功後はその人の容量を引き直す。 */
+export function useSetPrivateNoteQuota(username: string) {
+  const queryClient = useQueryClient();
+  return useBffPrivateNoteQuotaSet<unknown>({
+    mutation: {
+      onSuccess: () =>
+        void queryClient.invalidateQueries({
+          queryKey: getBffPrivateNoteQuotaGetQueryKey(username),
+        }),
+    },
+  });
 }

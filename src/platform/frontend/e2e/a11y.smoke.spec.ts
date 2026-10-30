@@ -987,6 +987,8 @@ const usersHandlers = {
   'GET /admin/users': [platformUser],
   'GET /admin/users/assignable-roles': ['platform-user', 'platform-admin'],
   'GET /admin/authz/attributes': [],
+  // FR-19, SC-17 (#2330): 一覧の容量の列と、編集パネルの上限の欄が引く。
+  'GET /private-notes/quotas/hando.taro': { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 },
   // #1610: 編集パネルは部門の割当を別に引く。
   'GET /admin/users/user-1/department': {
     departmentGroups: ['営業部'],
@@ -1011,6 +1013,9 @@ test('SC-17: ユーザー管理（一覧と編集パネル）に WCAG 2.2 A/AA �
   // 編集パネルは押して初めて描かれる（ロール・属性・部門の割当欄）。
   await page.getByRole('button', { name: '編集' }).click();
   await expect(page.getByRole('button', { name: '無効化（全セッション失効）' })).toBeVisible();
+  // #2330: 容量の列と上限の欄（引けてから描く）も検査の対象に入れる。
+  await expect(page.getByText('1.50 KB / 1.00 GB', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('個人資料の保存容量の上限')).toBeVisible();
 
   await expectAxeClean('SC-17');
 

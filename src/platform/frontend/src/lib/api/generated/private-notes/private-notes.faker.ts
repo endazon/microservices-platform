@@ -20,6 +20,7 @@ import type {
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
   PrivateNoteListResponse,
+  PrivateNoteUsageDto,
   PurgePrivateNotesResponse,
   ResolveSyncConflictResponse,
   RevokeAllSyncDevicesResponse,
@@ -65,6 +66,10 @@ export const getBffSyncDeviceIssueResponseMock = (overrideResponse: Partial<Extr
 export const getBffSyncDeviceReissueResponseMock = (overrideResponse: Partial<Extract<SyncTokenIssuedResponse, object>> = {}): SyncTokenIssuedResponse => ({deviceId: faker.string.uuid(), deviceName: faker.string.alpha({length: {min: 10, max: 20}}), token: faker.string.alpha({length: {min: 10, max: 20}}), expiresAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
 
 export const getBffSyncDeviceRevokeAllResponseMock = (overrideResponse: Partial<Extract<RevokeAllSyncDevicesResponse, object>> = {}): RevokeAllSyncDevicesResponse => ({revokedCount: faker.number.int(), ...overrideResponse})
+
+export const getBffPrivateNoteQuotaGetResponseMock = (overrideResponse: Partial<Extract<PrivateNoteUsageDto, object>> = {}): PrivateNoteUsageDto => ({usedBytes: faker.number.int(), limitBytes: faker.number.int(), percent: faker.number.int(), ...overrideResponse})
+
+export const getBffPrivateNoteQuotaSetResponseMock = (overrideResponse: Partial<Extract<PrivateNoteUsageDto, object>> = {}): PrivateNoteUsageDto => ({usedBytes: faker.number.int(), limitBytes: faker.number.int(), percent: faker.number.int(), ...overrideResponse})
 
 export const getBffSyncSettingsGetResponseMock = (overrideResponse: Partial<Extract<SyncSettingsDto, object>> = {}): SyncSettingsDto => ({targetFolders: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({path: faker.string.alpha({length: {min: 10, max: 20}}), noteCount: faker.number.int(), lastSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null])})), updatedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), aiInputDefault: faker.datatype.boolean(), ...overrideResponse})
 
