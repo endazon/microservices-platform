@@ -8,7 +8,7 @@ related_ids:
   - IADR-0123
 author: claude
 created: 2026-08-21
-updated: 2026-10-20
+updated: 2026-10-30
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md (決定 6・kit との乖離は受容する)
@@ -128,6 +128,10 @@ CodeQL 11分24秒 / CI 8分03秒 / Claude Code Review 3分38秒 が並ぶ。
 - **`integration.yml`**（全量）: フラグ無しで**床 88 / 68 を強制**（`#899` で `39 → 38`、`#900` で `38 → 88` / `27 → 68`）。失敗は自動起票。
 
 **門は 1 つだけ置く。** 🔴 **PR 側の `--report-only` を外すと、床割れで PR が恒久的に赤くなる。**
+
+［2026-10-30 追記 / #2148］**「必ず割れる」は現状では成り立たない。** PR の `build-and-test` の実測（単体試験だけ）は line 95.07% / branch 85.19% で、
+床（line 90 / branch 75。正本は `src/coverage-floor.json`）を上回る。`--report-only` を保つ理由は「門を回収先の 1 か所に置く」ことだけになった。
+PR で床を強制するかは本改定 3 を改める判断であり、#2148 では扱わず記録に留めた。
 
 #### 実測で 1 度踏んだ事故（改定 2 の実装）
 
