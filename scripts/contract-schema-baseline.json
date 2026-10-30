@@ -2282,6 +2282,57 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.PrivateNoteOwnerUsageDto": {
+        "kind": "record",
+        "members": {
+          "LimitBytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 2
+          },
+          "OwnerId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Percent": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 3
+          },
+          "UsedBytes": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteQuotaLookupRequest": {
+        "kind": "record",
+        "members": {
+          "OwnerIds": {
+            "source": "positional",
+            "type": "IReadOnlyList<string>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.PrivateNoteQuotaLookupResponse": {
+        "kind": "record",
+        "members": {
+          "Items": {
+            "source": "positional",
+            "type": "IReadOnlyList<PrivateNoteOwnerUsageDto>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.PrivateNoteSyncStates": {
         "kind": "class",
         "members": {
