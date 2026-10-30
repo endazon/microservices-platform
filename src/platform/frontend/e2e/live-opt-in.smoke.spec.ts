@@ -377,6 +377,20 @@ test('E2E_SEARCH_HITS は 1 か未設定・空だけを受け、E2E_LIVE=1 無�
   expect(() => parseLiveEnv({ E2E_SEARCH_HITS: '1' }, '/tmp/x')).toThrow(/E2E_LIVE=1 が無い/);
 });
 
+test('E2E_SECRETS_LISTED は 1 か未設定・空だけを受け、E2E_LIVE=1 無しでは読み込みで失敗する（#2230）', () => {
+  expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').secretsListed).toBe(false);
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_SECRETS_LISTED: '' }, '/tmp/x').secretsListed).toBe(
+    false,
+  );
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_SECRETS_LISTED: '1' }, '/tmp/x').secretsListed).toBe(
+    true,
+  );
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_SECRETS_LISTED: 'true' }, '/tmp/x')).toThrow(
+    /E2E_SECRETS_LISTED の値域外/,
+  );
+  expect(() => parseLiveEnv({ E2E_SECRETS_LISTED: '1' }, '/tmp/x')).toThrow(/E2E_LIVE=1 が無い/);
+});
+
 test('live の spec の文言は ja のカタログから引き、msgid が無ければ例外、件数の文言は数字を受ける正規表現になる（IADR-0627）', () => {
   // 製品のカタログに在る msgid（SC-18 のグラフの図の名前）。
   expect(ja('起点: {originTitle}', { originTitle: '文書 A' })).toBe('起点: 文書 A');
