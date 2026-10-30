@@ -64,6 +64,14 @@ const CONFIG = {
     { name: 'filesystem', enabled: true },
     { name: 'wiki', enabled: false },
   ],
+  mcpTools: [
+    {
+      publishedName: 'retrieval.search',
+      service: 'retrieval',
+      requiredScope: 'read',
+      egressClass: 'internal',
+    },
+  ],
 };
 
 const DRIFT = {
@@ -152,6 +160,25 @@ describe('ConfigViewerPage (SC-11)', () => {
     expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config', expect.anything());
     expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config/drift', expect.anything());
     expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config/history', expect.anything());
+  });
+
+  // FR-16, 計画 11_mcp-server-integration §5, IADR-0660 (#2285): MCP の実効ツール一覧を実効構成の節に出す。
+  it('lists the MCP effective tools with their source service, scope and egress class', async () => {
+    mockApi();
+    await renderPage();
+
+    const table = await screen.findByRole('table', { name: 'MCP の実効ツールの一覧' });
+    const row = within(table).getByRole('row', { name: /retrieval\.search/ });
+    expect(within(row).getByText('retrieval')).toBeInTheDocument();
+    expect(within(row).getByText('read')).toBeInTheDocument();
+    expect(within(row).getByText('internal')).toBeInTheDocument();
+  });
+
+  it('says no MCP tool is published rather than hiding the table', async () => {
+    mockApi({ config: { ...CONFIG, mcpTools: [] } });
+    await renderPage();
+
+    expect(await screen.findByText('公開している MCP のツールはありません。')).toBeInTheDocument();
   });
 
   // 段の終端は「（終端）」で示す（outputs が空）。INDEX 決定 21: 無効段は淡色だけで示さない。

@@ -455,6 +455,14 @@ msgstr "MCP client registration"
 msgid "MCP サーバーへ接続できるクライアント（外部 AI エージェント）を登録・無効化し、 無人アカウントへ ABAC 属性を割り当てます。公開ツールの構成はこの画面からは変更できません。"
 msgstr "Register and disable the clients (external AI agents) that may connect to the MCP server, and assign ABAC attributes to unattended accounts. The published tool configuration cannot be changed from this screen."
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "MCP の実効ツール"
+msgstr "MCP effective tools"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "MCP の実効ツールの一覧"
+msgstr "List of MCP effective tools"
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/routes/sc12McpClientsRoute.tsx
 msgid "MCPクライアント"
 msgstr "MCP clients"
@@ -2235,6 +2243,14 @@ msgstr "Public"
 msgid "公開されているツールはありません。"
 msgstr "No tools are published."
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "公開している MCP のツールはありません。"
+msgstr "No MCP tool is published."
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "公開するツールは Git（GitOps）の公開構成で宣言します。宣言したツールの申告が見つからなければ公開しません。"
+msgstr "Tools to publish are declared in the publication configuration in Git (GitOps). A declared tool is not published unless a service declares it."
+
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "公開ツールの一覧"
 msgstr "List of published tools"
@@ -2254,6 +2270,10 @@ msgstr "Could not load the published tools."
 #: knowledge/frontend/src/features/sc05-documents/types/documentStatus.ts
 msgid "公開中"
 msgstr "Published"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "公開名"
+msgstr "Published name"
 
 #: knowledge/frontend/src/features/sc03-document/components/PrivateNoteSummary.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
@@ -3168,6 +3188,10 @@ msgstr "Restore"
 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 msgid "必要スコープ"
+msgstr "Required scope"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "必要な権限スコープ"
 msgstr "Required scope"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
@@ -4311,6 +4335,10 @@ msgstr "Purpose"
 msgid "用途の説明が登録されていません。"
 msgstr "No description of the purpose is registered."
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "申告元サービス"
+msgstr "Declaring service"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "画像を読み込み中…"
 msgstr "Loading image…"
@@ -5076,6 +5104,10 @@ msgstr "No root specified"
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "起点を解除する"
 msgstr "Clear the starting point"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "越境分類"
+msgstr "Egress class"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "辞書に候補がありません"

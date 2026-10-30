@@ -39,6 +39,7 @@ import type {
   ConnectorDto,
   DriftReportDto,
   EventBindingDto,
+  McpToolDto,
   PipelineStageDto,
   PortSelectionDto,
 } from '@foundation/api/generated/bff.schemas';
@@ -139,6 +140,7 @@ export function ConfigViewerPage() {
               <EventBindingsTable bindings={effective.eventBindings} />
               <PortsTable ports={effective.ports} />
               <ConnectorsTable connectors={effective.connectors} />
+              <McpToolsTable tools={effective.mcpTools} />
             </Fold>
 
             <Fold summary={t`(2) 宣言（Git）との差分 — ドリフト`} defaultOpen id={DRIFT_SECTION_ID}>
@@ -414,6 +416,54 @@ function ConnectorsTable({ connectors }: { connectors: ConnectorDto[] }) {
                     {c.enabled ? t`有効` : t`無効`}
                   </StatusBadge>
                 </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * FR-16, 計画 11_mcp-server-integration §5, IADR-0660 (#2285): MCP の実効ツール一覧（申告 ∩ 公開構成）。
+ * MCP サーバーが自己申告で載せる。公開名・申告元サービス・実行に要る権限スコープ・越境分類を出す（入力スキーマと説明は出さない）。
+ */
+function McpToolsTable({ tools }: { tools: McpToolDto[] }) {
+  const { t } = useLingui();
+  return (
+    <Panel heading={t`MCP の実効ツール`} className="mb-0">
+      {tools.length === 0 ? (
+        <EmptyState
+          title={t`公開している MCP のツールはありません。`}
+          description={t`公開するツールは Git（GitOps）の公開構成で宣言します。宣言したツールの申告が見つからなければ公開しません。`}
+        />
+      ) : (
+        <Table>
+          <TableCaption>{t`MCP の実効ツールの一覧`}</TableCaption>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>
+                <Trans>公開名</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>申告元サービス</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>必要な権限スコープ</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>越境分類</Trans>
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {tools.map((tool) => (
+              <TableRow key={tool.publishedName}>
+                <TableCell>{tool.publishedName}</TableCell>
+                <TableCell>{tool.service}</TableCell>
+                <TableCell>{tool.requiredScope}</TableCell>
+                <TableCell>{tool.egressClass}</TableCell>
               </TableRow>
             ))}
           </TableBody>

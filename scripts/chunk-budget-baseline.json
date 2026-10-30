@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 654869,
+  "initialTotalBytes": 655695,
+  "$comment_initialTotalBytes_20261030_2285_mcp-effective-tools": [
+    "［2026-10-30 / #2285］654,869 → 655,695 B へ引き上げた。実測値である（pnpm run build → 超過を報告し、--update で床を更新した）。",
+    "増分の帰属: SC-11 の実効構成に MCP の実効ツールの表を足した（見出し・列名・空の状態の固定文言 8 つの ja / en の訳）。Lingui のカタログは入口チャンク（index-*.js）に入る。"
+  ],
   "$comment_initialTotalBytes_20261030_2250_soft-delete-notice": [
     "［2026-10-30 / #2250］654,620 → 654,869 B へ引き上げた。実測値である（pnpm run build → 超過を報告し、--update で床を更新した）。",
     "増分の帰属: SC-19 の論理削除の確認ダイアログの固定文言に 1 文を足した（ja / en の訳）。Lingui のカタログは入口チャンク（index-*.js）に入る。"

@@ -111,7 +111,16 @@ public sealed class ConfigInspectionService(
             .Select(g => g.First())
             .ToList();
 
-        return new EffectiveConfigDto(version, stages, bindings, ports, connectors);
+        // FR-16, IADR-0660 (#2285): MCP の実効ツール一覧（申告するのは MCP サーバーだけ）。公開名で一意化し、公開名の順に並べる。
+        // ドリフト検出には使わない（申告と公開構成の突合は MCP サーバーの責務。ADR-0024 §5）。
+        var mcpTools = effective.Services
+            .SelectMany(s => s.McpTools)
+            .GroupBy(t => t.PublishedName, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(t => t.PublishedName, StringComparer.Ordinal)
+            .ToList();
+
+        return new EffectiveConfigDto(version, stages, bindings, ports, connectors, mcpTools);
     }
 
     // イベント接続（イベント型ごとの発行者・購読者）を宣言 sources ＋実効段の入出力から組み立てる。

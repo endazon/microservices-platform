@@ -31,6 +31,7 @@ const CONFIG = {
   eventBindings: [],
   ports: [],
   connectors: [],
+  mcpTools: [],
 };
 
 beforeEach(() => {

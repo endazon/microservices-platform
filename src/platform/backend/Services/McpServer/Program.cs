@@ -122,6 +122,8 @@ builder.Services.AddScoped<McpCallToolHandler>();
 // FR-15, ADR-0018: 自己申告（イントロスペクション）。段は持たないが、実効ツール一覧の供給元として
 // 到達可能性を申告する（ADR-0024 §5「実効ツール一覧は構成情報 API へ申告する」）。
 builder.Services.AddPlatformIntrospection("mcp-server", new PipelineOptions());
+// FR-15, FR-16, IADR-0660 (#2285): 実効ツール一覧は要求のたびに寄与で載せる（カタログの更新が次の要求に反映される）。
+builder.Services.AddIntrospectionContributor<McpServer.Features.McpClients.ListEffectiveTools.EffectiveToolsIntrospectionContributor>();
 
 // FR-16, ADR-0024: MCP サーバー本体。Streamable HTTP（11_mcp-server-integration §前提）。
 // 🔴 ツールは動的ハンドラで供給する（コア改修なしでの追従。§2）。

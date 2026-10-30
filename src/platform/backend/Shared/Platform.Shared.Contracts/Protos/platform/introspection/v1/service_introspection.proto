@@ -45,6 +45,9 @@ message ServiceIntrospectionReport {
   repeated StepIntrospection steps = 2;
   repeated PortSelection ports = 3;
   repeated Connector connectors = 4;
+  // FR-15, FR-16, ADR-0024 §5, IADR-0660 (#2285): MCP サーバーの実効ツール一覧（申告 ∩ 公開構成）。要求のたびに組み立てる寄与で載る。
+  // MCP サーバー以外は空である。非破壊の追加（番号 5）。
+  repeated McpTool mcp_tools = 5;
 }
 
 // `StepIntrospectionDto` と 1 対 1。
@@ -65,6 +68,14 @@ message PortSelection {
 }
 
 // `ConnectorDto` と 1 対 1。
+// FR-16, ADR-0024 §2・§5, IADR-0660 (#2285): 実効ツール 1 件（公開名・申告元サービス・実行に要る権限スコープ・越境分類）。
+message McpTool {
+  string published_name = 1;
+  string service = 2;
+  string required_scope = 3;
+  string egress_class = 4;
+}
+
 message Connector {
   string name = 1;
   bool enabled = 2;

@@ -39,6 +39,22 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         config.Ports.Should().Contain(p => p.Implementation == "WikiJsGraphQlClient");
     }
 
+    // FR-15, FR-16, IADR-0660 (#2285): 実効構成の応答に MCP の実効ツール一覧が JSON の `mcpTools` で載る（SC-11 が読む契約）。
+    [Fact]
+    public async Task GetConfig_IncludesMcpEffectiveTools()
+    {
+        var mcp = new ServiceIntrospectionDto("mcp-server", [], [], [],
+            [new McpToolDto("retrieval.search", "retrieval", "read", "internal")]);
+        var wiki = SampleEffective().Services[0];
+        factory.StubEffective = new EffectiveCollection(
+            [wiki, mcp], new HashSet<string> { "wiki-service", "mcp-server" }, new HashSet<string>());
+
+        var resp = await factory.CreateClient().GetAsync("/bff/admin/config", TestContext.Current.CancellationToken);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        json.Should().Contain("\"mcpTools\":[{\"publishedName\":\"retrieval.search\",\"service\":\"retrieval\",\"requiredScope\":\"read\",\"egressClass\":\"internal\"}]");
+    }
+
     // 運用者ロールでも閲覧できる（管理者・運用者に限定）。
     [Fact]
     public async Task GetConfig_AsOperator_ReturnsOk()

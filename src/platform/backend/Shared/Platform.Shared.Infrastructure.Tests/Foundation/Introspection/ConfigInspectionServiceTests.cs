@@ -96,6 +96,40 @@ public class ConfigInspectionServiceTests
 
     // ── GetEffectiveConfigAsync ──────────────────────────────────────────────
 
+    // FR-15, FR-16, IADR-0660 (#2285): MCP の実効ツール一覧はサービス横断で結合し、公開名で一意化して公開名の順に並べる。
+    // 申告しないサービス（McpTools が空）は何も足さない。
+    [Fact]
+    public async Task 実効構成には_MCP_の実効ツール一覧が公開名の順に載る()
+    {
+        var mcp = new ServiceIntrospectionDto("mcp-server", [], [], [],
+        [
+            new McpToolDto("retrieval.search", "retrieval", "read", "internal"),
+            new McpToolDto("graph.traverse", "graph", "graph:read", "restricted"),
+        ]);
+        var other = new ServiceIntrospectionDto("retrieval-service", [], [], []);
+        var effective = new EffectiveCollection(
+            [other, mcp, mcp with { Service = "mcp-server-2" }],
+            new HashSet<string>(["retrieval-service", "mcp-server", "mcp-server-2"], StringComparer.Ordinal),
+            new HashSet<string>(StringComparer.Ordinal));
+
+        var config = await Build(new PipelineOptions(), effective: effective)
+            .GetEffectiveConfigAsync(TestContext.Current.CancellationToken);
+
+        config.McpTools.Should().Equal(
+            new McpToolDto("graph.traverse", "graph", "graph:read", "restricted"),
+            new McpToolDto("retrieval.search", "retrieval", "read", "internal"));
+    }
+
+    [Fact]
+    public async Task 誰も申告しなければ_MCP_の実効ツール一覧は空である()
+    {
+        var config = await Build(new PipelineOptions())
+            .GetEffectiveConfigAsync(TestContext.Current.CancellationToken);
+
+        config.McpTools.Should().BeEmpty();
+    }
+
+
     [Fact]
     public async Task 実効構成には構成バージョンが載る()
     {

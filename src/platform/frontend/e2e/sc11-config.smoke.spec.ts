@@ -20,6 +20,7 @@ const effective: EffectiveConfigDto = {
   eventBindings: [],
   ports: [],
   connectors: [],
+  mcpTools: [],
 };
 
 const drift: DriftReportDto = { hasDrift: false, checkedAt: '2026-08-02T00:00:00Z', findings: [] };

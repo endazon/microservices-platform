@@ -15,13 +15,20 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 //
 // 🔴 **ServiceCaller を要求する。** 利用者のトークンは（管理者であっても）通らない（IADR-0379 決定 4）。
 // （撤去した REST の受け口は認証を持たなかった。この面はそれより**狭い**。）
+//
+// FR-15, FR-16, IADR-0660 (#2285): **要求のたびに寄与（`IIntrospectionContributor`）を足して返す。** 静的な申告（起動時の 1 つ）に、
+// 実行時に変わる中身（MCP の実効ツール一覧。将来は登録済みのデータソース〔#2285 の (b)(ii)〕）を重ねる。
+// 🔴 寄与の例外は握り潰さない（gRPC の失敗になり、収集の側はこのサービスを「到達不能」として扱う）。
+//    握り潰して空を返すと「ツールが無い」と読まれ、障害と区別できない。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class IntrospectionGrpcService(Dto.ServiceIntrospectionDto report)
+public sealed class IntrospectionGrpcService(
+    Dto.ServiceIntrospectionDto report, IEnumerable<IIntrospectionContributor> contributors)
     : Pb.ServiceIntrospection.ServiceIntrospectionBase
 {
-    public override Task<Pb.ServiceIntrospectionReport> Get(
+    public override async Task<Pb.ServiceIntrospectionReport> Get(
         Pb.GetServiceIntrospectionRequest request, ServerCallContext context)
-        => Task.FromResult(IntrospectionGrpcMapping.ToProto(report));
+        => IntrospectionGrpcMapping.ToProto(
+            await IntrospectionContributions.ApplyAsync(report, contributors, context.CancellationToken));
 }
 
 // 自己申告の DTO と proto の写し（受け口と呼び出し側で同じ 1 つを使う）。
@@ -55,6 +62,14 @@ public static class IntrospectionGrpcMapping
         }
         foreach (var connector in dto.Connectors)
             report.Connectors.Add(new Pb.Connector { Name = connector.Name, Enabled = connector.Enabled });
+        foreach (var tool in dto.McpTools)
+            report.McpTools.Add(new Pb.McpTool
+            {
+                PublishedName = tool.PublishedName,
+                Service = tool.Service,
+                RequiredScope = tool.RequiredScope,
+                EgressClass = tool.EgressClass,
+            });
         return report;
     }
 
@@ -69,5 +84,8 @@ public static class IntrospectionGrpcMapping
                 .ToList(),
             report.Connectors
                 .Select(c => new Dto.ConnectorDto(c.Name, c.Enabled))
+                .ToList(),
+            report.McpTools
+                .Select(t => new Dto.McpToolDto(t.PublishedName, t.Service, t.RequiredScope, t.EgressClass))
                 .ToList());
 }
