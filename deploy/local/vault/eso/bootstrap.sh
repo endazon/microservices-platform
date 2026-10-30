@@ -136,6 +136,12 @@ vexec 'vault policy write datasource-connector-read -' < "$ROOT/deploy/local/vau
 echo "==> role: datasource-connector-reader（datasource-service 専用 SA microservices-platform/datasource-service に束縛）"
 vexec "$(vault_role_write_cmd 'vault write auth/kubernetes/role/datasource-connector-reader bound_service_account_names=datasource-service bound_service_account_namespaces=microservices-platform policies=datasource-connector-read audience=vault ttl=1h')"
 
+# NFR-18, 計画 ADR-0126 フォローアップ 2, IADR-0664 決定 3 (#458 段 S4): 平文の資格情報の**一回きりの移送**の権限（policy だけ）。
+# 🔴 role には束縛しない（常用の名乗りに書き込みを足さない）。scripts/migrate-datasource-credentials.sh が、この policy の短命のトークンを
+#    発行して移送のコマンドへ標準入力で渡し、終わったら失効させる。専用接頭辞の 1 セグメントに create・update・read（list・delete なし）。
+echo "==> policy: datasource-credential-migrate（移送だけ。専用接頭辞の 1 セグメントに create・update・read）"
+vexec 'vault policy write datasource-credential-migrate -' < "$ROOT/deploy/local/vault/eso/policy-datasource-credential-migrate.hcl"
+
 # SC-22, ADR-0095 決定 4, IADR-0456 決定 6 (#1477): **画面（/admin/secrets）が書く KV は無いときだけ作る。**
 # 従前は毎回 `vault kv put`（全置換）していたため、`k8s-local-up.sh` を再実行するたびに**画面で入れた値が env の既定（空）で消えた**。
 # 対象は deploy/bootstrap/sc22-secret-items.json の items[] のうち seed するもの。

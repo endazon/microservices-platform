@@ -37,7 +37,11 @@ import {
 } from '../types/userAccountVocabulary';
 import type { AssignmentIssue, DepartmentState } from '../types/userAccountVocabulary';
 import { useUserPermissionEditor } from '../hooks/useUserPermissionEditor';
-import { PrivateNoteQuotaCell, PrivateNoteQuotaEditor } from './PrivateNoteQuota';
+import {
+  PrivateNoteQuotaCell,
+  PrivateNoteQuotaEditor,
+  PrivateNoteQuotaLookupProvider,
+} from './PrivateNoteQuota';
 
 // SC-17, UC-05, FR-05, FR-09, ADR-0026: ユーザーアカウント管理（05_screens: ルート /admin/users）。
 //
@@ -129,6 +133,7 @@ export function UserAccountManagementPage() {
     [rows, departmentFilter, roleFilter],
   );
   const departments = useMemo(() => departmentsInUse(rows), [rows]);
+  const allUsernames = useMemo(() => rows.map((u) => u.username), [rows]);
   // Lingui のマクロは `${変数}` しか受け取らない（`${obj.prop}` は抽出時に壊れる）ので先に畳む。
   const editingName = editing?.displayName ?? '';
   const editorHeading = t`権限編集 — ${editingName}`;
@@ -359,12 +364,16 @@ export function UserAccountManagementPage() {
           errorDescription={toMessages(users.error, '').join(' / ') || undefined}
         >
           {() => (
-            <DataTable
-              caption={t`利用者アカウントの一覧`}
-              sortHint={t`並べ替え`}
-              columns={columns}
-              data={visible}
-            />
+            // FR-19, SC-17 (#2348): 容量の欄は一覧の利用者をまとめて 1 本で引く（N+1 を解く）。照会の元は**絞り込み前の全行**で、
+            // 行の側は結果を引くだけ —— 絞り込みで照会の鍵が変わらないので、送り直しも「—」への戻りも起きない（IADR-0663 決定 7）。
+            <PrivateNoteQuotaLookupProvider usernames={allUsernames}>
+              <DataTable
+                caption={t`利用者アカウントの一覧`}
+                sortHint={t`並べ替え`}
+                columns={columns}
+                data={visible}
+              />
+            </PrivateNoteQuotaLookupProvider>
           )}
         </QueryState>
       </Panel>

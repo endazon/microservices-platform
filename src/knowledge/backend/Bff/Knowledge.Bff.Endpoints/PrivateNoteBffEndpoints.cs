@@ -116,6 +116,17 @@ public static class PrivateNoteBffEndpoints
             .Produces<PrivateNoteUsageDto>()
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status502BadGateway);
+        // ── SC-17: 容量の一括照会（#2348。一覧の N+1 を解く）────────────────
+        // 表示中の行の利用者名をまとめて 1 本で後段へ運ぶ。件数・名前の検証は後段（400 を本文ごと透過）。
+        // 🔴 応答は利用者名と 2 つの数（と割合）だけ（後段の `PrivateNoteQuotaLookupResponse`）。
+        quotas.MapPost("/lookup", (PrivateNoteQuotaLookupRequest req, IHttpClientFactory httpFactory, HttpContext http,
+                CancellationToken ct)
+            => ForwardAsync(HttpMethod.Post, "/private-notes/quotas/lookup", req, httpFactory, http, ct))
+            .WithName("BffPrivateNoteQuotaLookup")
+            .Produces<PrivateNoteQuotaLookupResponse>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status502BadGateway);
         quotas.MapPut("/{ownerId}", (string ownerId, SetPrivateNoteQuotaRequest req, IHttpClientFactory httpFactory,
                 HttpContext http, CancellationToken ct)
             => ForwardAsync(HttpMethod.Put, $"/private-notes/quotas/{Uri.EscapeDataString(ownerId)}", req, httpFactory, http, ct))

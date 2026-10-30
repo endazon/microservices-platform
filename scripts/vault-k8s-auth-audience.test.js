@@ -13,6 +13,8 @@
  *   3. 名乗る側（アプリ）: helm の描画（既定＋Vault の所在を与えたもの・values-local）で、Vault__Address が空でない Deployment は
  *      全て、audience: vault・期限 1 時間以内の projected token を読み取り専用でマウントし、Vault__ServiceAccountTokenPath がその
  *      ファイルを指す。所在が空の Deployment にはそのトークンを置かない。コードの既定（BFF・datasource）も同じパス。
+ *   3c. 突き合わせ（#458 段 S4・IADR-0664）: Vault で名乗る Deployment の role（Vault__Role）は bootstrap が書いており、その SA・名前空間に
+ *      束縛され audience=vault を要求する（values-local の bff-service・datasource-service を名指しで見る）。
  *   4. 名乗る側（バックアップの CronJob）: projected token の audience が vault（platform-backup.test.js も同じ点を見る）。
  *   5. 起動器（scripts/k8s-local-up.sh）は chart（名乗る側）を当ててから、role に audience を付ける bootstrap を呼ぶ
  *      （role に audience が無い間も新しいトークンでログインできるので、この順なら途中で失敗しない。IADR-0585 決定 4）。
@@ -147,8 +149,56 @@ function deployments(rendered) {
           const field = (k) => ((m[2].match(new RegExp(`${k}:\\s*(\\S+)`)) || [])[1] || null);
           return { volume: m[1], path: field('path'), audience: field('audience'), expirationSeconds: field('expirationSeconds') };
         });
-      return { name, vaultAddress: envValue('Vault__Address'), tokenPath: envValue('Vault__ServiceAccountTokenPath'), mounts, tokens };
+      const serviceAccount = (text.match(/^\s+serviceAccountName:\s*(\S+)/m) || [])[1] || null;
+      return { name, vaultAddress: envValue('Vault__Address'), role: envValue('Vault__Role'), serviceAccount, tokenPath: envValue('Vault__ServiceAccountTokenPath'), mounts, tokens };
     });
+}
+
+/** 描画物の ServiceAccount を { name, namespace } にする。 */
+function serviceAccounts(rendered) {
+  return rendered.split(/^---\s*$/m)
+    .filter((t) => /^kind:\s*ServiceAccount\s*$/m.test(t))
+    .map((t) => ({
+      name: (t.match(/^metadata:\n {2}name:\s*(\S+)/m) || [])[1] || '',
+      namespace: (t.match(/^ {2}namespace:\s*(\S+)/m) || [])[1] || '',
+    }));
+}
+
+/** bootstrap が書く role の引数（key=value）。同じ role を複数の bootstrap が書くときは全部を返す。 */
+function roleArgs(files, role) {
+  return roleWrites(files).filter((w) => w.role === role).map((w) => ({
+    file: w.file,
+    args: Object.fromEntries(w.line.split(/\s+/)
+      .map((a) => a.replace(/['")]+$/, ''))
+      .filter((a) => /^[a-z_]+=\S/.test(a))
+      .map((a) => [a.slice(0, a.indexOf('=')), a.slice(a.indexOf('=') + 1)])),
+  }));
+}
+
+/**
+ * 名乗る側と受ける側の突き合わせ: Vault で名乗る Deployment ごとに、名乗る role（Vault__Role）を bootstrap が書いており、
+ * その role が当の SA（serviceAccountName・SA の namespace）に束縛され、audience=vault を要求すること。
+ * audience が揃っていても、role の束縛が別の SA を指していれば k8s auth のログインは拒まれる（403）ので、ここまで見る。
+ */
+function checkBindings(rendered, files) {
+  const errors = [];
+  const pairs = [];
+  const sas = serviceAccounts(rendered);
+  for (const d of deployments(rendered).filter((x) => x.vaultAddress)) {
+    if (!d.role) { errors.push(`${d.name}: Vault__Role が無い`); continue; }
+    if (!d.serviceAccount) { errors.push(`${d.name}: 専用の serviceAccountName が無い（default で名乗る）`); continue; }
+    const sa = sas.find((s) => s.name === d.serviceAccount);
+    if (!sa || !sa.namespace) { errors.push(`${d.name}: ServiceAccount ${d.serviceAccount} が描画に無い`); continue; }
+    const writes = roleArgs(files, d.role);
+    if (writes.length === 0) { errors.push(`${d.name}: role ${d.role} を書く bootstrap が無い`); continue; }
+    for (const { file, args } of writes) {
+      if (!(args.bound_service_account_names || '').split(',').includes(sa.name)) errors.push(`${file}: role ${d.role} が SA ${sa.name} に束縛されていない（${args.bound_service_account_names}）`);
+      if (!(args.bound_service_account_namespaces || '').split(',').includes(sa.namespace)) errors.push(`${file}: role ${d.role} が名前空間 ${sa.namespace} に束縛されていない（${args.bound_service_account_namespaces}）`);
+      if (args.audience !== AUDIENCE) errors.push(`${file}: role ${d.role} の audience が ${AUDIENCE} でない（${args.audience}）`);
+    }
+    pairs.push(`${d.name}:${d.serviceAccount}:${d.role}:${d.tokens.map((t) => t.audience).join(',')}`);
+  }
+  return { errors, pairs };
 }
 
 function checkDeployments(deps) {
@@ -228,8 +278,9 @@ ok('3. 名乗る側（アプリ）: Vault の所在を持つ Deployment は audi
     assert.deepStrictEqual(errors, [], `${label}: ${errors.join(' / ')}`);
     counts[label] = withVault;
   }
-  // 母集合の確かめ: 既定（所在が空）は 0、所在を与えると BFF と datasource の 2 つ、values-local は BFF の 1 つ。
-  assert.deepStrictEqual(counts, { default: 0, vault: 2, local: 1 });
+  // 母集合の確かめ: 既定（所在が空）は 0、所在を与えると BFF と datasource の 2 つ。
+  // values-local も 2 つ（#458 段 S4・IADR-0664 決定 5 で datasource が移送後の参照を読むため所在を持った。名乗りの突き合わせは 3c）。
+  assert.deepStrictEqual(counts, { default: 0, vault: 2, local: 2 });
   // 変異: 描画物から audience を外す・別の値にする・env のパスをずらす・マウントを書き込み可にすると落ちる。
   const v = RENDERS.vault;
   const mutants = {
@@ -253,6 +304,31 @@ ok('3b. コードの既定のトークンの置き場（BFF・datasource）は�
     assert.strictEqual(m[1], chartPath, `${rel} の既定（${m[1]}）がチャートのパス（${chartPath}）と違う`);
     assert.ok(/ServiceAccountTokenPath \{ get; set; \} = DefaultServiceAccountTokenPath;/.test(read(rel)), `${rel} の既定が定数を使っていない`);
   }
+});
+
+// #458 段 S4・IADR-0664 決定 5: values-local の datasource-service が Vault で名乗るようになった。数が 1 → 2 になっただけで
+// 済ませず、datasource が audience=vault のトークンを持ち、名乗る role（datasource-connector-reader）がその SA に束縛されていることを名指しで見る。
+ok('3c. 名乗る側と受ける側の突き合わせ: values-local の datasource-service は audience=vault で、SA に束縛された datasource-connector-reader で名乗る', () => {
+  for (const [label, rendered] of Object.entries(RENDERS)) {
+    assert.deepStrictEqual(checkBindings(rendered, shFiles).errors, [], `${label}: ${checkBindings(rendered, shFiles).errors.join(' / ')}`);
+  }
+  const { pairs } = checkBindings(RENDERS.local, shFiles);
+  assert.deepStrictEqual(pairs.sort(), [
+    'bff-service:bff:bff-secret-writer:vault',
+    'datasource-service:datasource-service:datasource-connector-reader:vault',
+  ]);
+  // 変異: role の束縛を別の SA にする・datasource が BFF の role で名乗る・role の audience を外すと落ちる。
+  const eso = shFiles.find((f) => f.file === 'deploy/local/vault/eso/bootstrap.sh');
+  const rebound = shFiles.map((f) => (f === eso ? { ...f, text: f.text.replace(/(role\/datasource-connector-reader bound_service_account_names=)datasource-service/, '$1other') } : f));
+  assert.notDeepStrictEqual(rebound, shFiles);
+  assert.ok(checkBindings(RENDERS.local, rebound).errors.some((e) => e.includes('datasource-connector-reader') && e.includes('SA datasource-service')), '束縛の SA のずれを見逃した');
+  const noAud = shFiles.map((f) => (f === eso ? { ...f, text: f.text.replace(/(role\/datasource-connector-reader [^\n]*?) audience=vault/, '$1') } : f));
+  assert.ok(checkBindings(RENDERS.local, noAud).errors.some((e) => e.includes('datasource-connector-reader') && e.includes('audience')), 'role の audience の欠落を見逃した');
+  const ds = RENDERS.local.split(/^---\s*$/m).find((t) => /^kind:\s*Deployment\s*$/m.test(t) && /^metadata:\n {2}name:\s*datasource-service\s*$/m.test(t));
+  assert.ok(ds, 'values-local の描画に datasource-service の Deployment が無い');
+  const wrongRole = RENDERS.local.replace(ds, ds.replace(/(- name: Vault__Role\n\s+value: )"datasource-connector-reader"/, '$1"bff-secret-writer"'));
+  assert.notStrictEqual(wrongRole, RENDERS.local, '変異（BFF の role で名乗る）が描画物に当たっていない');
+  assert.ok(checkBindings(wrongRole, shFiles).errors.some((e) => e.includes('bff-secret-writer') && e.includes('SA datasource-service')), '別の role で名乗るのを見逃した');
 });
 
 ok('4. 名乗る側（バックアップの CronJob）: projected token の audience が vault', () => {

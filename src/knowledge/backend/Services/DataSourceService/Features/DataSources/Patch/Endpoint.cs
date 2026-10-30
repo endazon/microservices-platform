@@ -1,6 +1,8 @@
 using DataSourceService.Domain;
 using DataSourceService.Domain.Ports;
 using DataSourceService.Infrastructure.Persistence;
+using DataSourceService.Infrastructure.Secrets;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace DataSourceService.Features.DataSources.Patch;
@@ -14,7 +16,8 @@ internal static class PatchDataSourceEndpoint
     {
         g.MapPatch("/{id:guid}", async (Guid id, PatchDataSourceRequest req, DataSourceDbContext db,
             SyncSchedule schedule, IPlatformUserDirectory userDirectory,
-            IDepartmentDomainDirectory departmentDomain, CancellationToken ct) =>
+            IDepartmentDomainDirectory departmentDomain, IOptions<ConnectorCredentialOptions> credentialOptions,
+            CancellationToken ct) =>
         {
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
@@ -23,6 +26,10 @@ internal static class PatchDataSourceEndpoint
             // null（＝現状維持）は検証を素通しする（`Validate` が空を受理する）。
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
+
+            // NFR-18, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む（null の Config は現状維持で通る）。
+            if (PlaintextCredentialWritePolicy.Reject(req.Config, credentialOptions) is { } plaintextError)
+                return plaintextError;
 
             // FR-05, SC-06, ADR-0074 決定 4 (#1194): 写像先の実在をサーバ側で検証する。
             // **写像表を送らない PATCH は名簿を引かない**（無関係な操作を認可サービスの障害へ道連れにしない）。

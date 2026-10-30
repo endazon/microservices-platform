@@ -3971,6 +3971,34 @@ paths:
         "401": { description: 未認証 }
         "403": { description: システム管理者ロール以外（後段へ送らない） }
         "502": { description: 後段へ到達できない }
+  /bff/private-notes/quotas/lookup:
+    post:
+      x-roles: [platform-admin]
+      tags: [PrivateNotes]
+      summary: "FR-19, NFR-27, SC-17: 複数の利用者の個人資料の使用量と上限をまとめて照会する（システム管理者。#2348）"
+      description: |
+        FR-19, NFR-27, SC-17: SC-17 の一覧の容量の欄が、一覧の利用者名（絞り込み前の全行）でまとめて 1 本引く（行ごとの照会〔N+1〕を解く。#2348）。
+        依頼は 1〜1,000 件の、空白でない 256 文字以下の利用者名。応答は依頼の順に重複を除いて並べる。値の定義は 1 件の口と同じ
+        （使用量は最新版と論理削除済みの合計・上限を設定していない利用者は既定の 1 GB）。
+        **返すのは利用者ごとの 2 つの数（と割合）だけ**で、題名・件数・中身は返さない（SC-19 の禁止）。
+        読み取りだが POST にする（利用者名の列を URL に載せると要求行の上限に当たり得る）。
+        システム管理者だけ（BFF と後段の両方で `AdminOnly`）。後段の状態コードと本文を詰め替えずに返す。
+      operationId: bff-private-note-quota-lookup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrivateNoteQuotaLookupRequest" }
+      responses:
+        "200":
+          description: 利用者ごとの使用量・上限・割合
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivateNoteQuotaLookupResponse" }
+        "400": { description: "件数（0 件・1,000 件超）・利用者名（空白・256 文字超）の誤り。本文ごと透過する（`ownerIds`）" }
+        "401": { description: 未認証 }
+        "403": { description: システム管理者ロール以外（後段へ送らない） }
+        "502": { description: 後段へ到達できない }
   /bff/private-notes/sync-settings:
     get:
       x-roles: []
@@ -6590,6 +6618,36 @@ components:
         usedBytes: { type: integer, format: int64 }
         limitBytes: { type: integer, format: int64, description: "既定 1 GB。システム管理者が 0〜1 TB で変更できる（0 は新しい資料を作れない状態。#2330）" }
         percent: { type: integer, format: int32 }
+
+    PrivateNoteQuotaLookupRequest:
+      type: object
+      description: "FR-19, NFR-27, SC-17 (#2348): 容量をまとめて照会する利用者名（1〜1,000 件・空白でない 256 文字以下）。"
+      required: [ownerIds]
+      properties:
+        ownerIds:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string, minLength: 1, maxLength: 256 }
+
+    PrivateNoteOwnerUsageDto:
+      type: object
+      description: "FR-19, NFR-27, SC-17 (#2348): 利用者 1 人の使用量・上限・割合（`PrivateNoteUsageDto` と同じ値に利用者名を添えたもの）。"
+      required: [ownerId, usedBytes, limitBytes, percent]
+      properties:
+        ownerId: { type: string }
+        usedBytes: { type: integer, format: int64 }
+        limitBytes: { type: integer, format: int64 }
+        percent: { type: integer, format: int32 }
+
+    PrivateNoteQuotaLookupResponse:
+      type: object
+      description: "FR-19, NFR-27, SC-17 (#2348): 依頼の順に重複を除いた利用者ごとの容量。題名・件数・中身は無い。"
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PrivateNoteOwnerUsageDto" }
 
     PrivateNoteListResponse:
       type: object

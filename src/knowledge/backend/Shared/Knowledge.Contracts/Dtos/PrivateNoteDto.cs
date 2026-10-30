@@ -72,6 +72,15 @@ public record PrivateNoteUsageDto(long UsedBytes, long LimitBytes, int Percent);
 // 🔴 **0 を許す**（計画 2026-10-24 の裁定。0 は「新しい資料を作れない状態」で、容量 100% 到達と同じ扱い）。
 public record SetPrivateNoteQuotaRequest(long LimitBytes);
 
+// FR-19, NFR-27, SC-17 (#2348): システム管理者が複数の利用者の容量をまとめて照会する（SC-17 の一覧の N+1 を解く）。
+// 依頼は 1〜1,000 件・空白でない 256 文字以下の利用者名。応答は依頼の順に重複を除いて並べる。
+// 🔴 **返すのは利用者ごとの 2 つの数（と割合）だけ**（題名・件数・中身は無い。SC-19 の禁止）。
+public record PrivateNoteQuotaLookupRequest(IReadOnlyList<string> OwnerIds);
+
+public record PrivateNoteOwnerUsageDto(string OwnerId, long UsedBytes, long LimitBytes, int Percent);
+
+public record PrivateNoteQuotaLookupResponse(IReadOnlyList<PrivateNoteOwnerUsageDto> Items);
+
 // FR-19, SC-19: 一覧（削除済みを含む）と容量表示を 1 応答で返す。
 // **画面が 2 回呼ばずに済むのが BFF の役目**であり、後段も 1 応答で返している。
 public record PrivateNoteListResponse(PrivateNoteUsageDto Usage, List<PrivateNoteDto> Notes);

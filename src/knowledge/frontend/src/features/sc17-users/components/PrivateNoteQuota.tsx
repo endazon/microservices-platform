@@ -1,8 +1,14 @@
-import { useState } from 'react';
+import { createContext, useContext, useState } from 'react';
+import type { ReactNode } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Alert, Button, Input, Label, Note, Select } from '@platform/ui';
 import { toMessages } from '@foundation/utils/apiErrors';
-import { usePrivateNoteQuota, useSetPrivateNoteQuota } from '../api/useUserAccounts';
+import {
+  usePrivateNoteQuota,
+  usePrivateNoteQuotaLookup,
+  useSetPrivateNoteQuota,
+} from '../api/useUserAccounts';
+import type { PrivateNoteOwnerUsageDto } from '@foundation/api/generated/bff.schemas';
 import { formatQuotaBytes, quotaInputToBytes } from '../types/privateNoteQuota';
 import type { QuotaUnit } from '../types/privateNoteQuota';
 
@@ -15,13 +21,28 @@ import type { QuotaUnit } from '../types/privateNoteQuota';
 
 const UNITS: readonly QuotaUnit[] = ['MB', 'GB', 'TB'];
 
-/** 一覧の行: 「使用量 / 上限」。読めない間は「—」（推測の値を出さない）。 */
+// #2348: 一覧の行は、一覧の利用者（絞り込み前の全行）をまとめて引いた結果から描く（行ごとに照会しない＝N+1 を解く）。
+const QuotaLookupContext = createContext<ReadonlyMap<string, PrivateNoteOwnerUsageDto>>(new Map());
+
+/** 一覧の利用者名でまとめて 1 本引き（1,000 人ずつ）、その下の行の欄へ配る。 */
+export function PrivateNoteQuotaLookupProvider({
+  usernames,
+  children,
+}: {
+  usernames: readonly string[];
+  children: ReactNode;
+}) {
+  const byOwner = usePrivateNoteQuotaLookup(usernames);
+  return <QuotaLookupContext.Provider value={byOwner}>{children}</QuotaLookupContext.Provider>;
+}
+
+/** 一覧の行: 「使用量 / 上限」。読めない間・読めない行は「—」（推測の値を出さない）。 */
 export function PrivateNoteQuotaCell({ username }: { username: string }) {
-  const quota = usePrivateNoteQuota(username);
-  if (!quota.data) return <span className="text-fg-muted">—</span>;
+  const quota = useContext(QuotaLookupContext).get(username);
+  if (!quota) return <span className="text-fg-muted">—</span>;
   return (
     <span className="text-xs">
-      {`${formatQuotaBytes(quota.data.usedBytes)} / ${formatQuotaBytes(quota.data.limitBytes)}`}
+      {`${formatQuotaBytes(quota.usedBytes)} / ${formatQuotaBytes(quota.limitBytes)}`}
     </span>
   );
 }
