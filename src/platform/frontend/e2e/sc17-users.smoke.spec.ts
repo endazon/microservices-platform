@@ -2,6 +2,9 @@ import { test, expect } from './support/cspGuard';
 import type { PlatformUserDto } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
+// FR-19, SC-17 (#2348): 容量の一括照会は**読み取りの POST**（利用者名の列を URL に載せない）。書き込みの有無の表明からは外す。
+const QUOTA_LOOKUP = 'POST /private-notes/quotas/lookup';
+
 // SC-17, UC-05, FR-05, FR-09, ADR-0026 (#1099): ユーザーアカウント管理（`/admin/users`）のスモーク。
 //
 // 🔴 **本画面は platform-admin 限定である**（05_screens §共通シェル / §SC-17。運用者も不可）。
@@ -28,6 +31,10 @@ const adminHandlers = {
   'GET /admin/authz/attributes': [],
   // FR-19, NFR-27, SC-17 (#2330): 一覧の行ごとに個人資料の使用量と上限を引く（`/private-notes/quotas/{利用者名}`）。
   'GET /private-notes/quotas/hando.taro': { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 },
+  // #2348: 一覧の欄は表示中の行の利用者をまとめて 1 本で引く（一括照会）。行ごとの照会は編集パネルだけ。
+  'POST /private-notes/quotas/lookup': {
+    items: [{ ownerId: 'hando.taro', usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 }],
+  },
 };
 
 test('unauthenticated visit to /admin/users redirects to /login', async ({ page }) => {
@@ -131,6 +138,10 @@ const editorHandlers = {
   'GET /admin/authz/attributes': USER_DICTIONARY,
   // FR-19, NFR-27, SC-17 (#2330): 一覧の行ごとに個人資料の使用量と上限を引く（`/private-notes/quotas/{利用者名}`）。
   'GET /private-notes/quotas/hando.taro': { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 },
+  // #2348: 一覧の欄は表示中の行の利用者をまとめて 1 本で引く（一括照会）。行ごとの照会は編集パネルだけ。
+  'POST /private-notes/quotas/lookup': {
+    items: [{ ownerId: 'hando.taro', usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 }],
+  },
   'GET /admin/users/user-1/department': {
     departmentGroups: ['sales'],
     departmentAttribute: 'sales',
@@ -176,7 +187,7 @@ test('M-106: ロールは定義済みのものから表示名で併任でき、�
   // ★ 機密区分上限は必須: 未選択では保存の要求を出さず、理由を示す。
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor.getByTestId('assignment-issues')).toContainText('機密区分上限は必須です。');
-  expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+  expect(traffic.calls.filter((c) => c.method !== 'GET' && c.key !== QUOTA_LOOKUP)).toEqual([]);
 
   // 揃えて保存する。選択肢は定義済みの値だけ。
   const clearance = editor.getByLabel('機密区分上限 *');
@@ -272,7 +283,7 @@ test('M-107: 本画面にはアカウントを新規作成する操作が無く�
   );
   expect(names).toEqual(['ユーザー', '状態', '編集']);
   await expect(page.getByTestId('users-help')).toContainText('この画面からは作成できません');
-  expect(traffic.calls.filter((c) => c.method !== 'GET')).toEqual([]);
+  expect(traffic.calls.filter((c) => c.method !== 'GET' && c.key !== QUOTA_LOOKUP)).toEqual([]);
 
   expectBffTrafficIsComplete(traffic);
 });

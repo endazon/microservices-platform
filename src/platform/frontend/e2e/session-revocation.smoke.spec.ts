@@ -87,6 +87,10 @@ function revocableSession() {
         limitBytes: 1024 ** 3,
         percent: 0,
       }),
+      // #2348: 一覧の欄は一括照会。失効の後は他の保護要求と同じく 401。
+      'POST /private-notes/quotas/lookup': gate({
+        items: [{ ownerId: self.username, usedBytes: 0, limitBytes: 1024 ** 3, percent: 0 }],
+      }),
       'GET /notifications': gate([]),
       // 無効化＝全セッション失効。契約上の応答は更新後の利用者（200）である。
       [DISABLE_KEY]: () => {

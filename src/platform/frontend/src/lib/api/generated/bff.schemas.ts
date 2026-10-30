@@ -1774,6 +1774,36 @@ export interface PrivateNoteUsageDto {
 }
 
 /**
+ * FR-19, NFR-27, SC-17 (#2348): 容量をまとめて照会する利用者名（1〜1,000 件・空白でない 256 文字以下）。
+ */
+export interface PrivateNoteQuotaLookupRequest {
+  /**
+     * @minItems 1
+     * @maxItems 1000
+     * @items.minLength 1
+     * @items.maxLength 256
+     */
+  ownerIds: string[];
+}
+
+/**
+ * FR-19, NFR-27, SC-17 (#2348): 利用者 1 人の使用量・上限・割合（`PrivateNoteUsageDto` と同じ値に利用者名を添えたもの）。
+ */
+export interface PrivateNoteOwnerUsageDto {
+  ownerId: string;
+  usedBytes: number;
+  limitBytes: number;
+  percent: number;
+}
+
+/**
+ * FR-19, NFR-27, SC-17 (#2348): 依頼の順に重複を除いた利用者ごとの容量。題名・件数・中身は無い。
+ */
+export interface PrivateNoteQuotaLookupResponse {
+  items: PrivateNoteOwnerUsageDto[];
+}
+
+/**
  * FR-19, SC-19: 一覧（削除済みを含む）と容量表示を 1 応答で返す。 「うち削除済み」の内訳は画面が削除済み行の bytes を合算して出す（数え方を 2 つ持たない）。
  */
 export interface PrivateNoteListResponse {

@@ -33,6 +33,9 @@ import type {
 } from '../src/lib/api/generated/bff.schemas';
 import { installBffSession, sessionUser, expectBffTrafficIsComplete } from './support/bffSession';
 
+// FR-19, SC-17 (#2348): 容量の一括照会は**読み取りの POST**（利用者名の列を URL に載せない）。書き込みの有無の表明からは外す。
+const QUOTA_LOOKUP = 'POST /private-notes/quotas/lookup';
+
 // NFR-30（WCAG 2.2 レベル AA）/ ADR-0031, ADR-0032 (#2015): **実ブラウザ・実ビルド成果物に対する
 // アクセシビリティの機械検査**（axe-core。タグは計画 NFR-30 の `wcag2a`・`wcag2aa`・`wcag21a`・
 // `wcag21aa`・`wcag22aa` ＋ `best-practice`。束ねる土台は `support/axe.ts`）。
@@ -990,6 +993,10 @@ const usersHandlers = {
   'GET /admin/authz/attributes': [],
   // FR-19, SC-17 (#2330): 一覧の容量の列と、編集パネルの上限の欄が引く。
   'GET /private-notes/quotas/hando.taro': { usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 },
+  // #2348: 一覧の欄は表示中の行の利用者をまとめて 1 本で引く（一括照会）。行ごとの照会は編集パネルだけ。
+  'POST /private-notes/quotas/lookup': {
+    items: [{ ownerId: 'hando.taro', usedBytes: 1536, limitBytes: 1024 ** 3, percent: 0 }],
+  },
   // #1610: 編集パネルは部門の割当を別に引く。
   'GET /admin/users/user-1/department': {
     departmentGroups: ['営業部'],
@@ -1042,7 +1049,9 @@ test('SC-17: 無効化の確認ダイアログを開いた状態に WCAG 2.2 A/A
   await expectAxeClean('SC-17 無効化の確認ダイアログ');
 
   // ★ 陰性対照: 測っただけで降りる。無効化の要求は 1 件も出ない。
-  expect(traffic.calls.map((c) => c.method)).not.toContain('POST');
+  expect(traffic.calls.filter((c) => c.key !== QUOTA_LOOKUP).map((c) => c.method)).not.toContain(
+    'POST',
+  );
 
   expectBffTrafficIsComplete(traffic);
 });

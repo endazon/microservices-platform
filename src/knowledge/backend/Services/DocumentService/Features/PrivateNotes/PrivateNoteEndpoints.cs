@@ -4,6 +4,7 @@ using DocumentService.Features.Documents;
 using DocumentService.Features.PrivateNotes.Create;
 using DocumentService.Features.PrivateNotes.GetQuota;
 using DocumentService.Features.PrivateNotes.List;
+using DocumentService.Features.PrivateNotes.LookupQuotas;
 using DocumentService.Features.PrivateNotes.Purge;
 using DocumentService.Features.PrivateNotes.Restore;
 using DocumentService.Features.PrivateNotes.SetExposure;
@@ -59,6 +60,7 @@ public static class PrivateNoteEndpoints
 
         GetPrivateNoteQuotaEndpoint.Map(admin);
         SetPrivateNoteQuotaEndpoint.Map(admin);
+        LookupPrivateNoteQuotasEndpoint.Map(admin); // #2348: SC-17 の一覧の一括照会
 
         return app;
     }
