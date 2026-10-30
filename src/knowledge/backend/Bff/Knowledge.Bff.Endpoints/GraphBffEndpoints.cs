@@ -156,6 +156,29 @@ public static class GraphBffEndpoints
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict);
 
+        // FR-17, UC-10, ADR-0034 決定 2・8 (#2107 の分割 A): **利用者による辺の明示的な付与。**
+        //
+        // 後段（`CreateGraphEdgeEndpoint`）が両端の read・起点の write を自分で解決し、権限外・不存在・
+        // write 権限なしをすべて 404 に倒す（存在秘匿）。🔴 **BFF は状態コードも本文も詰め替えない**
+        // （201・400 `unknown_edge_type`・404・409 `edge_exists`。承認・却下と同じ `ForwardAsync`）。
+        // 前段の write ゲートを置かない理由は冒頭の注釈と同じ（後段が write スコープを見る口である）。
+        // 後段の 201 の `Location`（`/graph/edges/{id}`）は内部のパスなので公開面へ出さない（`RelayAsync` は本文と型と状態だけを返す）。
+        // ⚠️ **write ポリシーが 1 件も無い間、後段はこの経路を全件 404 にする**（deny-by-default。既知）。
+        // ⚠️ **下の「消費者の無い書き込み口を先に公開面へ出さない」の例外である**（#2107 の分割。2026-10-30 承認）。根拠は 3 つ:
+        //   (1) #2107 の受け入れ基準（案 1・2）が、この口の公開そのもの（BFF 経由の作成・400/404 の透過・存在秘匿の 404）を求めている。
+        //   (2) write ポリシーが 1 件も無い間、後段はこの経路を全件 404 にする —— 先に開けても辺は作れず、実害が出ない。
+        //   (3) 消費者（SC-19 のリンク作成 UI）は #2343 で足す（キューに載っている）。
+        g.MapPost("/edges", (CreateGraphEdgeRequest req, IHttpClientFactory httpFactory,
+                HttpContext http, CancellationToken ct)
+            => ForwardAsync(HttpMethod.Post, "/graph/edges", httpFactory, http, ct, body: req))
+            .WithName("BffGraphEdgeCreate")
+            .Accepts<CreateGraphEdgeRequest>("application/json")
+            .Produces<GraphEdgeCreatedDto>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status502BadGateway);
+
         // NFR-16, FR-18, ADR-0117, ADR-0051 決定 4, [[IADR-0530]] 決定 1・2 (#1887): **計測専用の生成の口。**
         //
         // 稼働 k3s で east-west の 3 経路（graph → llmgateway の L-4・graph → document の D-3 と、
@@ -229,9 +252,11 @@ public static class GraphBffEndpoints
     //
     // 🔴 資格情報の伝播は読み取りと同じ方式 A である（冒頭の注釈）。落とすと後段は利用者を
     // anonymous として解決し、**承認が静かに全件 404 になる**（陽性対照つきのテストで固定する）。
+    // FR-17 (#2107): `body` は辺の作成だけが渡す（契約の型のまま送る）。承認・却下は本文を送らない（従前どおり）。
     private static async Task<IResult> ForwardAsync(
         HttpMethod method, string path,
-        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct,
+        object? body = null)
     {
         var client = httpFactory.CreateClient("GraphService");
         var auth = http.Request.Headers.Authorization.ToString();
@@ -239,6 +264,8 @@ public static class GraphBffEndpoints
             client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
 
         using var req = new HttpRequestMessage(method, path);
+        if (body is not null)
+            req.Content = JsonContent.Create(body, body.GetType());
         try
         {
             var resp = await client.SendAsync(req, ct);

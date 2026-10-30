@@ -101,6 +101,31 @@ export interface GraphEdgeItem {
 }
 
 /**
+ * FR-17, ADR-0034 決定 8: 辺の作成要求。出所とアンカーは含めない（出所は常に利用者付与。アンカーは文書単位）。
+ */
+export interface CreateGraphEdgeRequest {
+  /** 起点（write スコープを要する） */
+  sourceDocumentId: string;
+  /** 終点（read スコープを要する） */
+  targetDocumentId: string;
+  /** 辺の型（SC-09 の型辞書） */
+  edgeTypeId: string;
+}
+
+/**
+ * FR-17: 作成された辺。
+ */
+export interface GraphEdgeCreatedDto {
+  id: string;
+  /** 対称型は正規化後の並びである */
+  sourceDocumentId: string;
+  targetDocumentId: string;
+  edgeTypeId: string;
+  /** 出所。この経路では常に `user` */
+  provenance: string;
+}
+
+/**
  * FR-17, SC-18: 辺の型（描画用）。**使用件数を持たない** —— 意図した除外である
  * （件数は ABAC で絞られておらず、一般利用者へ返すと総量が漏れる）。
  */
