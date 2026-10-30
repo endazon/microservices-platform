@@ -35,6 +35,12 @@ const SEARCH_SEED = JSON.parse(
 const SEEDS_REASON =
   'E2E_SEARCH_HITS=1 が無い（seed 文書が在る使い捨てのスタックでだけ、行の操作の不在を判定する。IADR-0627）';
 
+/**
+ * M-113 で通す GET /bff/secrets の状態（#2230 / IADR-0658）。`E2E_SECRETS_LISTED=1` なら 200 だけ（Vault が落ちた退行を 503 の許容で
+ * 見逃さない）。未設定なら 200 と、保管先に届かない構成の 503 の両方。
+ */
+const SECRETS_ALLOWED = cfg.secretsListed ? [200] : [200, 503];
+
 /** JSON の中に、名前が `key` の鍵が（どの深さにも）在るか。 */
 function hasKey(value: unknown, key: string): boolean {
   if (Array.isArray(value)) return value.some((v) => hasKey(v, key));
@@ -184,8 +190,9 @@ test.describe('e2e-operator の管理・運用の画面', () => {
   );
 
   // SC-22, NFR-18, IADR-0453 決定 5: M-113。値は一覧にも応答にも載らない（書き込み専用）。保管先（Vault）に届かない構成では、
-  // 一覧の取得は設計どおり 503（problem の type は `VAULT_PROBLEM_TYPES`）で、画面はその旨を出す。使い捨てのスタック（e2e-live.yml）は
-  // VAULT を立てないのでこちら（接続先はあるが届かない＝vault-unavailable）になる。どちらの形でも値は出ない。どちらでもない応答は落とす。
+  // 一覧の取得は設計どおり 503（problem の type は `VAULT_PROBLEM_TYPES`）で、画面はその旨を出す。どちらの形でも値は出ない。どちらでもない応答は落とす。
+  // #2230 / IADR-0658: 使い捨てのスタック（e2e-live.yml）は Vault と BFF の書き込みの役を立て（VAULT=1 VAULT_BFF_WRITER=1）、
+  // `E2E_SECRETS_LISTED=1` で **200 の形だけ**を通す（503 を許したままだと、Vault が落ちた退行を見逃す）。未設定の環境は従前どおり両方を許す。
   test(
     'M-113: 秘密情報の管理に到達し、一覧は 200（値の鍵も値の列も無い）か、保管先が無い構成の 503（その旨を表示）のどちらかになる',
     { tag: ['@p1', '@live-ro'] },
@@ -199,7 +206,7 @@ test.describe('e2e-operator の管理・運用の画面', () => {
       );
       const outcome = await secretsOutcome(page, bodies.get('/bff/secrets')!);
       testInfo.annotations.push({ type: 'SC-22 の一覧', description: outcome });
-      expect([200, 503], `GET /bff/secrets（${outcome}）`).toContain(statuses['/bff/secrets']);
+      expect(SECRETS_ALLOWED, `GET /bff/secrets（${outcome}）`).toContain(statuses['/bff/secrets']);
       await expect(page.getByRole('columnheader', { name: ja('値'), exact: true })).toHaveCount(0);
     },
   );

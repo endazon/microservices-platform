@@ -214,6 +214,7 @@ ARGOCD=1        bash scripts/k8s-local-up.sh --live   # ArgoCD install + Applica
 PERSIST=0       bash scripts/k8s-local-up.sh --live   # 【opt-out】永続化を外す（使い捨てスタック専用）。永続化は既定オン（下記「永続化」節・IADR-0369）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh --live   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（経路は ADMIN_EDGE=1 のときだけ。下記 edge 節）
 ESO=1           bash scripts/k8s-local-up.sh --live   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
+VAULT=1 VAULT_BFF_WRITER=1 bash scripts/k8s-local-up.sh --live   # BFF の書き込みの役だけを Vault へ入れる（SC-22 の一覧を 200 にする。ESO・KV の種・ExternalSecret は入れない。使い捨ての CI 用・IADR-0658・#2230）
 SYNTHETIC=1     bash scripts/k8s-local-up.sh --live   # 合成監視の常駐プローブ（60 秒・LLM を呼ばない。ADR-0079 決定 1・#1287。下記「合成監視」節）
 ```
 

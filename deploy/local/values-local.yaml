@@ -199,8 +199,9 @@ services:
           key: caller-secret
           optional: true
     # SC-22, IADR-0433, IADR-0453 決定 5 (#1411): 秘密情報の投入先はローカルの dev Vault（VAULT=1）。
-    # **VAULT=1 ESO=1 でなければ Vault も policy も無く、/admin/secrets は 503（接続できない）を出す** —— 静かに成功しない。
-    # policy と role は deploy/local/vault/eso/bootstrap.sh が入れる（ESO=1 のとき）。
+    # **VAULT=1 ESO=1（または VAULT=1 VAULT_BFF_WRITER=1）でなければ Vault も policy も無く、/admin/secrets は 503（接続できない）を出す** —— 静かに成功しない。
+    # policy と role は deploy/local/vault/eso/bootstrap.sh が入れる（ESO=1 のとき）。BFF の役だけなら deploy/local/vault/bff-writer/bootstrap.sh
+    # （VAULT_BFF_WRITER=1。使い捨ての CI 用。#2230 / IADR-0658）。
     vault:
       address: "http://vault.platform-infra.svc.cluster.local:8200"
     # SC-22, IADR-0456 決定 4 (#1477): 書き込み後に ExternalSecret へ即時同期を依頼する（ESO の 1 時間の同期間隔を待たない）。

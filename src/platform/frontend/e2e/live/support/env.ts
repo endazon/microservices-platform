@@ -37,6 +37,7 @@ export const OPTION_NAMES = [
   'E2E_INSECURE_TLS',
   'E2E_AUTH_DIR',
   'E2E_SEARCH_HITS',
+  'E2E_SECRETS_LISTED',
   'E2E_KEEP_SESSIONS',
   'E2E_SWEEP',
   'E2E_STACK',
@@ -58,6 +59,12 @@ export interface LiveEnv {
    * `verify-oidc-edge-flow.sh` の `SEARCH_HITS=1` と同じ意味（索引が空であり得る環境で、空を故障と取り違えない）。
    */
   searchHits: boolean;
+  /**
+   * `E2E_SECRETS_LISTED=1`: 秘匿管理（Vault）と BFF の書き込みの役が居る環境で、SC-22 の一覧（M-113）を **200 の形だけ**通す
+   * （#2230 / IADR-0658）。未設定なら 200 と、保管先に届かない構成の 503 のどちらも通す（Vault の無いスタック・常設の PoC）。
+   * 値域・`E2E_LIVE=1` の要求は `E2E_SEARCH_HITS` と同じ。
+   */
+  secretsListed: boolean;
   /**
    * `E2E_KEEP_SESSIONS=trading-owner`: teardown がこの役割のセッションを失効させずに残す（state は 0600）。後始末は AST の live の
    * teardown が引き受ける（#2231 / IADR-0628。AST/IADR-0588）。**値域は `trading-owner` だけ**。既定（未設定）は全部失効。
@@ -186,6 +193,17 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       'E2E_SEARCH_HITS が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
     );
   }
+  const rawListed = read('E2E_SECRETS_LISTED') ?? '';
+  if (rawListed !== '' && rawListed !== '1') {
+    throw new Error(
+      `E2E_SECRETS_LISTED の値域外: ${rawListed}（SC-22 の一覧を 200 だけで通すなら 1、しないなら未設定か空）`,
+    );
+  }
+  if (rawListed === '1' && !live) {
+    throw new Error(
+      'E2E_SECRETS_LISTED が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
+    );
+  }
   const rawKeep = read('E2E_KEEP_SESSIONS') ?? '';
   if (rawKeep !== '' && !(KEEPABLE_ROLES as readonly string[]).includes(rawKeep)) {
     throw new Error(
@@ -238,6 +256,7 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     insecureTls: read('E2E_INSECURE_TLS') === '1',
     authDir: read('E2E_AUTH_DIR') ?? defaultAuthDir,
     searchHits: rawHits === '1',
+    secretsListed: rawListed === '1',
     keepSessions: rawKeep === '' ? [] : [rawKeep as Role],
     sweep: rawSweep === '' ? 'off' : (rawSweep as 'dry-run' | 'delete'),
     stack,

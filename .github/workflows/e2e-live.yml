@@ -137,12 +137,26 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="${K3D_VERSION}" bash
           k3d version
 
-      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1)
+      # NFR, #2230: ランナーのディスク・メモリを起動の段の前後で測る（GitHub-hosted の上限に対する余裕の実測。ログにだけ出す）。
+      - name: Runner resources (before bring-up)
+        run: |
+          df -h /
+          free -m
+
+      # SC-22, NFR-18, #2230 / IADR-0658: VAULT=1 VAULT_BFF_WRITER=1 で Vault（-dev）と BFF の書き込みの役だけを足し、M-113 の 200 の形を流す。
+      #   🔴 ESO は入れない（Secret の供給は手動の作成のまま・試験アカウントの扱い〔IADR-0625〕も変えない）。本番相当の ESO 経路は CI で試されない。
+      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1, SEARCHSEED=1, LOCALEMBED=1, VAULT=1, VAULT_BFF_WRITER=1)
         timeout-minutes: 30
         run: |
           set -euo pipefail
-          ALLOW_DEV_INFRA_CREDENTIALS=1 LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 LLM_KEYLESS=1 K8S_LOCAL_RUNTIME=k3d \
+          ALLOW_DEV_INFRA_CREDENTIALS=1 LOCALEDGE=1 ABACSEED=1 SEARCHSEED=1 LOCALEMBED=1 LLM_KEYLESS=1 VAULT=1 VAULT_BFF_WRITER=1 K8S_LOCAL_RUNTIME=k3d \
             bash scripts/k8s-local-up.sh --live "${CLUSTER}"
+
+      - name: Runner resources (after bring-up)
+        if: ${{ !cancelled() }}
+        run: |
+          df -h /
+          free -m
 
       - name: 🔴 Gate — the stack is actually up
         run: node scripts/check-stack-ready.js --live
@@ -195,6 +209,8 @@ jobs:
           E2E_LIVE: "1"
           # IADR-0627: このスタックは LOCALEMBED=1・SEARCHSEED=1 で索引が在るので、検索のヒットと ABAC の対照を判定する（skip しない）。
           E2E_SEARCH_HITS: "1"
+          # #2230 / IADR-0658: このスタックは Vault と BFF の書き込みの役が居るので、M-113 は 200（値の鍵が無い一覧）の形だけを通す。
+          E2E_SECRETS_LISTED: "1"
           # #2030 / IADR-0629: teardown が失効の前に残骸掃き（接頭辞 e2e- の一致）を dry-run で流す（列挙だけ・残骸があれば警告）。
           # 向け先はこのジョブの使い捨てのスタックだけ（sweep が kubectl の current-context = k3d-<stack> を確かめる）。消さない
           # —— スタックはジョブの終わりに丸ごと消える。ここでは一覧の口が全種類読めることと、afterEach の消し損ねが無いことを見る。
