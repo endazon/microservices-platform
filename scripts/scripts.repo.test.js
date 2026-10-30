@@ -4569,12 +4569,21 @@ ${r.stderr}`);
       assert.strictEqual(nul.isScanTooSmall(nul.MIN_SCANNED), false);
     });
 
-    // 🔴 除外リストは**人が判断して足したものだけ**である。広げたら気付けるようにする。
-    // ［2026-10-30 / #2039 / IADR-0661］従前は「空である」を固定していた。視覚回帰の基準画像のため `.png` を足した。
-    ok('check-nul-bytes: BINARY_EXTENSIONS は .png だけである', () => {
+    // 🔴 除外リストは**空であることが正解の状態**（未整備ではない）。広げたら気付けるようにする。
+    ok('check-nul-bytes: BINARY_EXTENSIONS は空である', () => {
       const nul = require('./check-nul-bytes.js');
-      assert.deepStrictEqual([...nul.BINARY_EXTENSIONS], ['.png'],
+      assert.deepStrictEqual([...nul.BINARY_EXTENSIONS], [],
         '除外を足したなら、そのぶん検査されなくなることを IADR へ記録すること');
+    });
+
+    // #2039 / IADR-0661: 視覚回帰の基準画像だけをパスの規則で外す。規則の数と、実データの何が外れるかを固定する。
+    ok('check-nul-bytes: パスの除外は -snapshots/ 直下の .png の 1 規則だけで、追跡下で外れるのは基準画像だけ', () => {
+      const nul = require('./check-nul-bytes.js');
+      assert.strictEqual(nul.BINARY_PATH_RULES.length, 1, '除外の規則を足したなら IADR へ記録し、ここも直すこと');
+      const excluded = nul.trackedFiles().filter((f) => nul.isExcludedBinary(f));
+      assert.ok(excluded.length > 0, '除外に当たる追跡下のファイルが 0 件（規則か走査が壊れている）');
+      for (const f of excluded) assert.match(f, /^src\/[^/]+\/frontend\/e2e\/[^/]+\.spec\.ts-snapshots\/[^/]+\.png$/, f);
+      assert.strictEqual(nul.isExcludedBinary('docs/images/logo.png'), false, '-snapshots/ の外の .png を外している');
     });
   }
 
@@ -19593,7 +19602,7 @@ server.listen(0, '127.0.0.1', async () => {
       const locked = [...new Set([...lock.matchAll(/^ {2}'@playwright\/test@(\d+\.\d+\.\d+)':$/gm)].map((m) => m[1]))];
       const out = [];
       if (!image) out.push('test:e2e:visual が版を固定した mcr.microsoft.com/playwright:v<版>-<OS> を起こしていない');
-      if (locked.length !== 1) out.push(`ロックファイルの @playwright/test が 1 版に定まらない（${locked.join(', ')}）`);
+      if (locked.length !== 1) out.push(`ロックファイルの @playwright/test が 1 版に定まらない（${locked.join(', ')}。pnpm のロック形式が変わった可能性）`);
       if (image && locked.length === 1 && image[1] !== locked[0]) {
         out.push(`イメージ v${image[1]} とロックファイルの @playwright/test ${locked[0]} が違う（基準画像を撮った環境が変わる）`);
       }

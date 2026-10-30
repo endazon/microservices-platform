@@ -79,7 +79,7 @@ issues: [#2013, #2039, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #
 | 同上 | `live-rw`（L3） | `e2e/live/**/*.rw.spec.ts` | 同上 | **1** | 1 | `retain-on-failure` |
 | 同上 | `trading`（L3-T） | `e2e/live/**/*.trading.spec.ts` | 取引オーナー役 | **1** | 0 | `on` |
 | 同上 | `llm`（L3-L） | `e2e/live/**/*.llm.spec.ts` | `e2e-user` | 1 | 0 | `retain-on-failure` |
-| `playwright.config.ts`（`PW_VISUAL=1` のときだけ） | `visual`（視覚回帰。§8） | `e2e/visual.spec.ts` | 無し（L1 と同じスタブ） | 既定 | 0 | `on-first-retry` |
+| `playwright.config.ts`（`PW_VISUAL=1` のときだけ） | `visual`（視覚回帰。§8） | `e2e/visual.spec.ts` | 無し（L1 と同じスタブ） | 既定 | CI で 1（`smoke` と同じ設定を継ぐ。手動の実行は CI が立たないので 0） | `on-first-retry`（同上） |
 
 - **opt-in**: live 用 config は `E2E_LIVE` が未設定・空なら全 project を 0 件にする。`1` だけが live で、それ以外の値は読み込みで失敗させる。`E2E_LAYER` は
   `ro` / `rw` / `trading` / `llm` のカンマ区切りで、未設定なら `ro` とみなす。`live-setup` は
@@ -231,7 +231,7 @@ issues: [#2013, #2039, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #
 - **［2026-10-30］上の条件で 3 面だけを採った**（`e2e/visual.spec.ts`）。存在秘匿の 404（NotFound）・個人資料の削除の確認ダイアログ・
   検索と AI 質問の出典の種別ラベルと機密区分の表示である。写す範囲は各面の要素（region・dialog・出典の一覧）に絞り、
   日時・利用者名・件数のような揮発する値を写さない（`mask` が要る値を範囲に入れない）。撮る直前にポインタを画面の角へ外す。
-  - **流し方**: `pnpm --filter @platform/frontend run test:e2e:visual`。ホストでビルドし、`package.json` が版を固定した公式イメージ
+  - **流し方**: `pnpm --filter @platform/frontend run test:e2e:visual`（POSIX シェル前提。Linux / macOS / WSL）。ホストでビルドし、`package.json` が版を固定した公式イメージ
     （`mcr.microsoft.com/playwright:v<@playwright/test の版>-noble`）の中で `PW_VISUAL=1` を立てて project `visual` を流す。
     コンテナは `--network none` で起こす（BFF は L1 と同じくスタブであり、外への通信は要らない）。イメージの版とロックファイルの
     `@playwright/test` の版の一致はリポジトリの試験が見る（依存の更新でイメージだけが古いまま残らない）。

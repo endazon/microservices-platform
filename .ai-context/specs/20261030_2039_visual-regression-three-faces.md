@@ -55,11 +55,15 @@ issue: "#2039"
 - **［2026-10-30 追記 / #2039］CI の scripts-tests が赤になったので、母集合を足した**（`BINARY_EXTENSIONS`・「空である」・「既定空」で走査した）。
   - 原因: 基準画像 3 枚が `check-nul-bytes` に「生の NUL を含む」と検出された（リポ初の追跡下のバイナリ）。
   - ローカルで捕まらなかった理由: `scripts.test.js` を `git add` の前に流した。`check-nul-bytes` は `git ls-files`（追跡下だけ）を走査するので、未追跡の画像は母集合に入っていなかった。
-  - 是正:
-    - `scripts/check-nul-bytes.js` の `BINARY_EXTENSIONS` に `.png` を足した。自己試験に、`.png` の陽性の例と、同じバイト列を別の名で置く陰性対照を足した。集合を `['.png']` ちょうどに固定した。
-    - `scripts/scripts.repo.test.js` の「空である」を「`.png` だけ」に改めた。
-    - `scripts/README.md` の「既定空」を改めた。
+  - 是正（AI レビューの 🔴 を受け、拡張子の一括除外ではなくパスの規則で狭く外す形にした）:
+    - `scripts/check-nul-bytes.js` に `BINARY_PATH_RULES`（`<spec>-snapshots/` 直下の `.png`）を足した。`BINARY_EXTENSIONS` は空のまま。
+    - 自己試験に、陽性の例と陰性対照を足した。陰性対照は `-snapshots/` の外の `.png`・中の `.png` 以外・入れ子の下の `.png` である。
+    - 検査器冒頭の「追跡下が全部テキスト」の前提を改めた。
+    - `scripts/scripts.repo.test.js` に、規則が 1 つで、追跡下で外れるのが基準画像だけであることの試験を足した。
+    - `scripts/README.md` を改めた。
+    - `.gitattributes` に `**/*-snapshots/*.png binary` を足した（`**/` が無いと最上位にしか当たらない）。
     - IADR-0661 の残余リスクに 1 項を足した。
+  - 同じ push で AI レビューの 🟡 も直した。§2.1 の visual 行の retries / trace を実際の値に揃え、流し方に POSIX シェル前提を書いた。
     - `.ai-context/adr/IADR-0247_nul-byte-check.md`（「空で始める」）と仕様書 20260822 は凍結記録で、当時の記述として正しい。書き換えない。
   - 検証は、画像をコミットした状態で `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` を流して行う。
 

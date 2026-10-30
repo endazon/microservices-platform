@@ -84,8 +84,11 @@ related_specs:
 
 - **CI で流れないので、3 面の見え方を変える PR が基準画像を更新せずにマージされ得る。** 次に手で流した人が赤を見て、原因の PR を辿ることになる。
   - 常時の検知が要るなら、`frontend.yml` とは別のワークフローを `workflow_dispatch` ＋週次で足す。足すときは本 IADR に追記する。
-- **`scripts/check-nul-bytes.js` の `BINARY_EXTENSIONS` に `.png` を足した**（［2026-10-30 追記 / #2039］）。
+- **NUL の検査（`scripts/check-nul-bytes.js`）から基準画像をパスの規則で外した**（［2026-10-30 追記 / #2039］）。
   - 基準画像はリポ初の追跡下のバイナリで、PNG は形式上 NUL を含む。CI の scripts-tests が 3 枚を「生の NUL を含む」と検出した。
-  - IADR-0247 の作法どおり、人が判断して足した。代償として、`.png` の名のファイルは NUL の検査から外れる。
-  - 集合が `.png` ちょうどであることは、自己試験と repo 試験が固定する。
+  - 外すのは `<spec>-snapshots/` 直下の `.png` だけである（`BINARY_PATH_RULES`）。拡張子の一括除外（`BINARY_EXTENSIONS`）は空のまま。
+  - `-snapshots/` の外の `.png`、`-snapshots/` の中の `.png` 以外、入れ子の下の `.png` は従来どおり検査する。自己試験が陰性対照で固定する。
+  - repo 試験は、規則が 1 つであることと、追跡下で外れるのが基準画像だけであることを固定する。
+  - `.gitattributes` に同じ範囲（`**/*-snapshots/*.png binary`）を明示した。
+  - 代償: 基準画像の名を持つファイルに混入した NUL は捕まらない。PNG なので、もともと NUL を含む。
 - 基準画像は `linux` の接尾辞を持つ。イメージの OS（noble）を変えると、描画が変わり得る。版を上げる PR では `--update-snapshots` で撮り直して差分を見る。

@@ -32,3 +32,7 @@
 *.ico       binary
 *.pdf       binary
 *.zip       binary
+
+# 視覚回帰の基準画像（Playwright の `<spec>-snapshots/`）。上の *.png と重なるが、scripts/check-nul-bytes.js の
+# BINARY_PATH_RULES と同じ範囲を明示する（#2039 / IADR-0661）。`**/` が無いと最上位の階層にしか当たらない。
+**/*-snapshots/*.png binary
