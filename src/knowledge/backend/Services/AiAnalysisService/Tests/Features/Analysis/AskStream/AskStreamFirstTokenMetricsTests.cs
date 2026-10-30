@@ -159,6 +159,36 @@ public class AskStreamFirstTokenMetricsTests(TestWebApplicationFactory factory)
         probe.Measurements[0].Value.Should().BeLessThan(tail.TotalSeconds / 2);
     }
 
+    // NFR-02, ADR-0079 決定 1, [[IADR-0654]] (#2335): **LLM が出していないトークンでは記録しない。**
+    // 閲覧できる文書が無いときの縮退（`NoAccessAnswer`）は中立文言を 1 トークンで流す。これを積むと、60 秒の合成
+    // （ABAC ポリシーを持たない主体）と権限の無い実利用が「速い初回トークン」を積み、60 分の SLO 評価の標本が
+    // p95 の中で埋もれる。陽性対照は上の T-a（LLM のトークンなら 1 件積む）。
+    [Fact]
+    public async Task PostAskStream_WhenOnlyFallbackTokens_RecordsNothing()
+    {
+        var app = With(new FallbackOnlyRagOrchestrator());
+        using var probe = new FirstTokenProbe(app.Services);
+
+        var resp = await AskAsync(app.CreateClient());
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        body.Should().Contain("event: token", "陽性対照: 縮退の文はトークンとして画面へ届いている");
+        probe.Measurements.Should().BeEmpty("縮退の文は LLM の初回トークンではない");
+    }
+
+    // 閲覧できる文書が無いときの縮退（本番の定義をそのまま流す）。
+    private sealed class FallbackOnlyRagOrchestrator : StubOrchestratorBase
+    {
+        public override async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
+            Dictionary<string, string> userAttributes,
+            Dictionary<string, List<string>>? attributeFilters = null,
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            await Task.Yield();
+            foreach (var ev in AiAnalysisService.Domain.NoAccessAnswer.StreamEvents()) yield return ev;
+        }
+    }
+
     // citations → token*（最後の 1 件の直前に遅延）→ done を流すスタブ。
     private sealed class ScriptedRagOrchestrator(int tokenCount, TimeSpan delayBeforeLastToken)
         : StubOrchestratorBase

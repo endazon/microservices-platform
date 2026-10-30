@@ -11,6 +11,8 @@ NFR-02, NFR-21, ADR-0044, ADR-0076 決定 3・4, ADR-0079 決定 1・2, IADR-037
      2. aianalysis に SyntheticMonitoring__AllowLlmEgress が false 以外で立っている → fail
         （60 秒のプローブが LLM を呼ぶ ＝ 月 43,200 回・概算 月約 264,000 円。ADR-0079 実測 2。
          LLM を呼ぶのは 60 分側であり、**別の配備単位で、課金の承認が先**である。決定 2・フォローアップ 2）
+        ［2026-10-30 / #2335・IADR-0654］60 分側は本ファイルの末尾の `slo`（既定は無効）。許可は要求ごと（主体で分ける）なので、
+        サービス全体の AllowLlmEgress は引き続き止める。
    🔴 **チャートはイメージの中身を確かめられない。** 「除外規則が入ったイメージであること」（ADR-0079 §フォローアップ 1）は
    有効化する人が確かめる前提である（README の手順）。
 
@@ -22,6 +24,11 @@ NFR-02, NFR-21, ADR-0044, ADR-0076 決定 3・4, ADR-0079 決定 1・2, IADR-037
    pod 起動の揺らぎが乗ると 5 分境界の近くで不安定になる／メッシュ内の Job はサイドカーのせいで完了しない）。
 */ -}}
 {{- $sm := .Values.syntheticMonitor | default dict }}
+{{- $slo := $sm.slo | default dict }}
+{{- /* NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成は、除外の標識と同じ描画でしか置けない。 */}}
+{{- if and $slo.enabled (not $sm.enabled) }}
+{{- fail "syntheticMonitor.slo.enabled=true だが syntheticMonitor.enabled が偽である。SLO 評価の合成も合成であり、除外の標識（3 サービスの SyntheticMonitoring__Subjects）が無い構成では配備しない（ADR-0076 決定 4）。" }}
+{{- end }}
 {{- if $sm.enabled }}
 {{- $services := include "msp.syntheticMonitor.exclusionServices" . | splitList "," }}
 {{- range $services }}
@@ -117,7 +124,7 @@ spec:
             # ADR-0079 決定 1 の確定値。probe.js は既定値を持たない（未設定なら起動しない）。
             - name: PROBE_INTERVAL_SECONDS
               value: {{ $sm.intervalSeconds | quote }}
-            # 費用の出ない 2 経路のみ。LLM を呼ぶのは 60 分側（別の配備単位）である。
+            # 費用の出ない 2 経路のみ。LLM を呼ぶのは 60 分側（別の配備単位。下の synthetic-monitor-slo）である。
             - name: PROBE_PATHS
               value: {{ $sm.paths | quote }}
           volumeMounts:
@@ -130,6 +137,114 @@ spec:
         - name: probe
           configMap:
             name: synthetic-monitor-probe
+{{- if $slo.enabled }}
+{{- /* NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): 区別と費用の上限が崩れる構成を描画の段階で止める。
+       1. 主体が常時側と同じ → 要求ごとに区別できない（60 秒のプローブまで LLM を呼ぶ）
+       2. 間隔が 3600 秒より短い → 費用の上限（月 720 回）が崩れる（決定 2 は間隔で上限を固定する）
+       3. 経路が /bff/analysis/ask/stream 以外を含む → 初回トークンの標本を作らない経路で LLM の費用だけが出る */}}
+{{- if eq (lower (trim (toString $slo.clientId))) (lower (trim (toString $sm.clientId))) }}
+{{- fail "syntheticMonitor.slo.clientId が syntheticMonitor.clientId と同じである。SLO 評価の合成は別の主体でなければ要求ごとに区別できない（60 秒のプローブまで LLM を呼ぶ。ADR-0079 決定 1）。" }}
+{{- end }}
+{{- if lt (int $slo.intervalSeconds) 3600 }}
+{{- fail "syntheticMonitor.slo.intervalSeconds が 3600 より短い。LLM を呼ぶ合成の費用の上限は 60 分の間隔で固定する（ADR-0079 決定 2）。" }}
+{{- end }}
+{{- if ne (trim (toString $slo.paths)) "/bff/analysis/ask/stream" }}
+{{- fail "syntheticMonitor.slo.paths は /bff/analysis/ask/stream だけにする。初回トークンの標本を作るのはこの経路だけであり、他の経路では LLM の費用だけが出る（ADR-0079 決定 1）。" }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: synthetic-monitor-slo
+  labels:
+    app: synthetic-monitor-slo
+    app.kubernetes.io/part-of: microservices-platform
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: synthetic-monitor-slo
+  template:
+    metadata:
+      labels:
+        app: synthetic-monitor-slo
+      annotations:
+        checksum/probe: {{ .Files.Get "files/synthetic-monitor/probe.js" | sha256sum | quote }}
+    spec:
+      # 60 秒のプローブと同じ器（probe.js・イメージ・非 root）。違うのは主体・間隔・経路だけである。
+      automountServiceAccountToken: false
+      {{- include "msp.podSecurityContext.restricted" $sm.runAsUser | nindent 6 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: probe
+          image: {{ $sm.image | quote }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
+          command: ["node", "/probe/probe.js"]
+          env:
+            - name: KC_URL
+              value: {{ $sm.keycloak.url | quote }}
+            - name: KC_REALM
+              value: {{ $sm.keycloak.realm | quote }}
+            # 🔴 この clientId が「SLO 評価の合成」の標識である。BFF の SyntheticMonitoring__LlmSubjects__0 と同じ値から描く。
+            - name: SYNTHETIC_CLIENT_ID
+              value: {{ $slo.clientId | quote }}
+            - name: SYNTHETIC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $slo.existingSecret }}
+                  key: {{ $slo.clientSecretKey }}
+            - name: BFF_BASE_URL
+              value: {{ $sm.bffBaseUrl | quote }}
+            # ADR-0079 決定 1・2 の確定値（60 分）。3600 秒より短いと描画が止まる（上）。
+            - name: PROBE_INTERVAL_SECONDS
+              value: {{ $slo.intervalSeconds | quote }}
+            # LLM を呼ぶ経路は 1 本だけ（初回トークンの標本を作る SSE）。
+            - name: PROBE_PATHS
+              value: {{ $slo.paths | quote }}
+          volumeMounts:
+            - name: probe
+              mountPath: /probe
+              readOnly: true
+          resources:
+            {{- toYaml $sm.resources | nindent 12 }}
+      volumes:
+        - name: probe
+          configMap:
+            name: synthetic-monitor-probe
+{{- if .Values.networkPolicy.enabled }}
+---
+# SLO 評価のプローブの Pod から Keycloak（token 端点）へ 1 本だけ開ける（60 秒側と同じ型）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-synthetic-monitor-slo-egress-to-keycloak
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: synthetic-monitor-slo
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $sm.keycloak.namespace }}
+          podSelector:
+            matchLabels:
+              app: keycloak
+      ports:
+        - protocol: TCP
+          port: {{ $sm.keycloak.port }}
+{{- end }}
+{{- end }}
 {{- if .Values.networkPolicy.enabled }}
 ---
 # egress の既定拒否（networkpolicy-egress.yaml）は egress を「同 Namespace ＋ DNS」に絞るため、

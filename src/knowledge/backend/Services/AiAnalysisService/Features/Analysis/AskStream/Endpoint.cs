@@ -73,7 +73,10 @@ internal static class AskStreamEndpoint
                 //    ここで止めると「生成が始まる前の時刻」を初回応答として記録することになる。
                 // 🔴 **token が 1 件も出なければ記録しない**（error のみ・途中終端・取り消し）。
                 //    0 を積むと「初回トークンが無かった」が「速かった」として p95 を下振れさせる。
-                if (!firstTokenRecorded && ev is AskTokenEvent)
+                // 🔴 NFR-02, ADR-0079 決定 1, [[IADR-0654]] 決定 4 (#2335): **LLM が出したトークンでだけ**記録する。
+                //    縮退の文（閲覧できる文書が無い・合成の抑止など）を積むと、60 秒の合成と権限の無い要求が
+                //    「速い初回トークン」として p95 を下振れさせ、60 分の SLO 評価の標本が埋もれる。
+                if (!firstTokenRecorded && ev is AskTokenEvent { FromModel: true })
                 {
                     firstTokenRecorded = true;
                     metrics.RecordFirstToken(

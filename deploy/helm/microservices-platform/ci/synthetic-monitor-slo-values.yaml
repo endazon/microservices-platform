@@ -1,0 +1,11 @@
+# NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335):
+# CI 専用の values。**配備には使わない**（helm / chart-testing の `ci/` 慣習）。
+#
+# SLO 評価用（60 分・LLM を呼ぶ）の合成プローブは既定オフなので、既定の描画だけを検査すると有効時のテンプレートは
+# 1 度も描画・スキーマ突合されない。scripts/check-deploy-manifests.js は `ci/*.yaml` を走査で見つけ、
+# それぞれの values でも helm lint / helm template / kubeconform を回す。
+# scripts/helm-synthetic-monitor.test.js も「SLO の有効」をこのファイルで描く。
+syntheticMonitor:
+  enabled: true
+  slo:
+    enabled: true

@@ -33,7 +33,7 @@ vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
 # client_secret_kv_of <client> → 「<KV のパス> <キー>」。Vault に種を置かないクライアントは空。知らないクライアントは 1。
 client_secret_kv_of() {
   case "$1" in
-    bff | identity-admin | mcp-client-admin | reset-gate | synthetic-monitor) printf 'msp/%s-oidc client-secret' "$1" ;;
+    bff | identity-admin | mcp-client-admin | reset-gate | synthetic-monitor | synthetic-monitor-slo) printf 'msp/%s-oidc client-secret' "$1" ;;
     retrieval-service | ingestion-service | aianalysis-service | graph-service | conversion-service | wiki-service | \
       datasource-service | mcp-server | document-service) printf 'msp/%s-token client-secret' "$1" ;;
     ai-stock-trading-svc) printf 'ai-stock-trading/app-secrets service-auth-client-secret' ;;
@@ -318,6 +318,8 @@ vkv_create_if_absent msp/reset-gate-oidc client-secret "${RESET_GATE_CLIENT_SECR
 # `RagLatencySeriesAbsent` を鳴らす（原因が「評価対象が本当に無い」と区別できない。wikijs-oidc と同じ罠）。
 # 種は無条件に入れる。ExternalSecret を apply するのは SYNTHETIC=1 のときだけである（k8s-local-up.sh）。
 vkv_create_if_absent msp/synthetic-monitor-oidc client-secret "${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}"
+# NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成プローブの client secret（realm の synthetic-monitor-slo と揃える）。
+vkv_create_if_absent msp/synthetic-monitor-slo-oidc client-secret "${SYNTHETIC_MONITOR_SLO_CLIENT_SECRET:-synthetic-monitor-slo-dev-secret-change-me}"
 # NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
 # 投入器（seed-*.js）と運用スクリプト（republish・archive）は、実行時に ESO の同期先 Secret platform-infra/abac-seeder-oidc から読む
 # （realm の宣言の値へは落ちない）。**既定は realm の宣言の値**（dev のクラスタの初回。dev ではない context で env を与えなければ、

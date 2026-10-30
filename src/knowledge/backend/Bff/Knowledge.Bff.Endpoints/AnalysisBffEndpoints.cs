@@ -33,7 +33,9 @@ public static class AnalysisBffEndpoints
             CancellationToken ct) =>
         {
             var client = httpFactory.CreateClient("AiAnalysisService");
-            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
+            // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): 合成の 2 段（常時／SLO 評価）を主体で分ける。
+            var syntheticKind = SyntheticTraffic.Classify(http.User, synthetic.Value);
+            var isSynthetic = syntheticKind != SyntheticTrafficKind.None;
 
             // FR-05: 権限の無い文書を結果に出さないため、利用者の資格情報を後段へ引き継ぐ
             var auth = http.Request.Headers.Authorization.ToString();
@@ -41,7 +43,7 @@ public static class AnalysisBffEndpoints
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
             // ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 内周へ標識を運ぶ（§標識の設計）。
             // **外周で JWT から決めた結果だけを運ぶ** —— 受信ヘッダは転送しない。
-            PropagateSynthetic(client, isSynthetic);
+            PropagateSynthetic(client, syntheticKind);
 
             var resp = await client.PostAsJsonAsync("/analysis/ask", req, ct);
             // FR-04, NFR-06 (#2280): 失敗は本文ごと返す（後段の理由を画面へ届ける。`BffFailureRelay`）。
@@ -70,13 +72,15 @@ public static class AnalysisBffEndpoints
             CancellationToken ct) =>
         {
             var client = httpFactory.CreateClient("AiAnalysisService");
-            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
+            // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): 合成の 2 段（常時／SLO 評価）を主体で分ける。
+            var syntheticKind = SyntheticTraffic.Classify(http.User, synthetic.Value);
+            var isSynthetic = syntheticKind != SyntheticTrafficKind.None;
 
             // FR-05: 権限の無い文書を結果に出さないため、利用者の資格情報を後段へ引き継ぐ
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
-            PropagateSynthetic(client, isSynthetic);
+            PropagateSynthetic(client, syntheticKind);
 
             var resp = await client.PostAsJsonAsync("/analysis/analyze", req, ct);
             // FR-07, SC-08 (#2280): 入力検証の 400（`{ "error": "<文>" }`）を本文ごと返す。SC-08 は理由を `ErrorState` に出す。
@@ -116,9 +120,11 @@ public static class AnalysisBffEndpoints
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
                 upReq.Headers.TryAddWithoutValidation("Authorization", auth);
-            var isSynthetic = SyntheticTraffic.IsSyntheticPrincipal(http.User, synthetic.Value);
+            // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): SLO 評価の主体は `slo`、常時の主体は `1` を運ぶ。
+            var syntheticKind = SyntheticTraffic.Classify(http.User, synthetic.Value);
+            var isSynthetic = syntheticKind != SyntheticTrafficKind.None;
             // ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 内周へ標識を運ぶ。
-            SyntheticTraffic.PropagateTo(upReq, isSynthetic);
+            SyntheticTraffic.PropagateTo(upReq, syntheticKind);
 
             HttpResponseMessage? upResp = null;
             try
@@ -180,11 +186,11 @@ public static class AnalysisBffEndpoints
     // ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 内周（AiAnalysisService → LlmGateway）へ
     // 標識を運ぶ。`CreateClient` は呼び出しごとに新しい `HttpClient` を返すため、
     // `DefaultRequestHeaders` への追加は**この 1 リクエストにしか効かない**（Authorization と同じ扱い）。
-    private static void PropagateSynthetic(HttpClient client, bool isSynthetic)
+    // [[IADR-0654]] (#2335): 値は分類で決まる（SLO 評価は `slo`・常時は `1`）。値の定義は `SyntheticTraffic` だけが持つ。
+    private static void PropagateSynthetic(HttpClient client, SyntheticTrafficKind kind)
     {
-        if (isSynthetic)
-            client.DefaultRequestHeaders.TryAddWithoutValidation(
-                SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
+        if (SyntheticTraffic.HeaderValueFor(kind) is { } value)
+            client.DefaultRequestHeaders.TryAddWithoutValidation(SyntheticTraffic.HeaderName, value);
     }
 }
 
