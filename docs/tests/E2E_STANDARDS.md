@@ -3,14 +3,14 @@ title: E2E テスト基準（Playwright。実行層・命名・ロケータ・�
 type: test-spec
 status: in-progress
 created: 2026-10-21
-updated: 2026-10-25
+updated: 2026-10-30
 author: Claude
 ---
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0635, IADR-0634, IADR-0632, IADR-0631, IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261025_2244_e2e-live-paths-system-under-test, 20261025_2034_live-rw-account, 20261025_2033_live-rw-revocation, 20261025_2032_live-rw-admin-resources, 20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+iadrs: [IADR-0659, IADR-0635, IADR-0634, IADR-0632, IADR-0631, IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261030_2240_live-rw-secret-item-write, 20261025_2244_e2e-live-paths-system-under-test, 20261025_2034_live-rw-account, 20261025_2033_live-rw-revocation, 20261025_2032_live-rw-admin-resources, 20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
 issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
 
@@ -186,6 +186,8 @@ issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #
   kubectl で読むだけ（context は `k3d-<E2E_STACK>` に固定）。リセットリンクと鍵は読んだ直後に発行値として記録し、成果物の走査の対象にする。
   アカウントコンソールの試験は読み取り中心で、書き込みは自分で作ったセッションの個別サインアウトだけ（終わりに作ったセッションを閉じる）。
   秘密情報の管理画面の試験キーは、使い捨てのスタックに秘密情報の保管先が入るまで別の作業に分けた。
+  ［2026-10-30］保管先が入った（Vault の -dev と BFF の書き込みの役だけ。ESO なし）。試験キーは**既存の項目の 1 つ**へ書き（e2e 専用の項目は本番の一覧へ載せないので足さない）、
+  値は書く前に発行値として記録し、`fill` ではなくページの中で入れる（`fill` は値を step の題に載せる）。**空に戻さない**（空の値は受けない。スタックごと消える）。
 - **［2026-10-25］L2 の ABAC の対照**: 検索用 seed は public の 1 件と internal の 1 件を持つ。`e2e-user`（clearance=internal）には 2 件とも見え、
   `e2e-noaccess`（clearance=public）には public だけが見える。public の 1 件を見えない側の陽性対照にし、見えない側の判定の前に見える側で
   2 件とも索引に入ったことを確かめる（取り込み前の空で緑にしない）。検索のヒット・候補・文書 ID を要る test は **`E2E_SEARCH_HITS=1`** のときだけ

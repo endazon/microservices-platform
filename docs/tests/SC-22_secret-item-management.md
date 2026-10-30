@@ -3,15 +3,15 @@ title: SC-22 秘密情報・接続設定の管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-09-14
-updated: 2026-10-06
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-05, NFR-18, SC-06, SC-22]
 adrs: [ADR-0032, ADR-0042, ADR-0095, ADR-0104, ADR-0110, ADR-0124, ADR-0126]
-iadrs: [IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501, IADR-0504]
-specs: [20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference, 20261006_1764_voyage-key-wiring]
-issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, #1764, planning#716]
+iadrs: [IADR-0659, IADR-0009, IADR-0035, IADR-0096, IADR-0135, IADR-0433, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0485, IADR-0495, IADR-0501, IADR-0504]
+specs: [20261030_2240_live-rw-secret-item-write, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261004_issue-1472_sc22-t40-live-procedure, 20261003_458_connector-secret-vault-reference, 20261006_1764_voyage-key-wiring]
+issues: [#2240, #458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, #1764, planning#716]
 -->
 
 # テスト仕様書: 秘密情報・接続設定の管理
@@ -147,6 +147,7 @@ issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, #1764, planning#
 | T-105 | 後段・実 PostgreSQL・読んだ時点では値なしのキー | 読んだ後にデータソース管理画面の更新が平文を入れ、その後に参照を置く（陽性対照: 空白だけの値） | 🔴 平文を上書きせず、応答は実際の状態 `other`（`reference` と報告しない）。陽性対照は参照が置かれ `reference` | 既存の値を決して上書きしない | 自動（統合） |
 | T-106 | 画面・群の成員の供給元が `unknown` | 画面を開く | 「確認できない」のバッジを出し、「画面」「画面以外」「実行時に取得・次の同期から効く」を出さない。注記が「確認できない」の意味と次の手を伝える | 不明を 2 値へ寄せない（表示） | 自動 |
 | T-107 | 画面・群と静的な項目の書き込み（変更キャッシュは既定の設定） | 1 プロパティを書いてフォームを閉じる | 変更の `gcTime` は 0 で、観測者が外れると送った値（変数）が変更キャッシュから消える | 送った値をメモリに残さない | 自動 |
+| T-108 | 使い捨てのスタック（実 Vault の -dev・BFF の書き込みの役だけ・ESO なし）・運用者 | 既存の項目（株式自動売買の外部 API キーの 1 プロパティ）へ試験用の値を書き、再読込する | 書き込みは 200 で応答に値の鍵が無い。値は画面・一覧の応答・BFF のログのどこにも出ない。行は「設定済み」で、最終更新者は監査の主体と同じ。監査（`secret.item.update` の granted、項目・プロパティ・版）が 1 行残る。値は発行値として成果物の走査が探す。後始末で空に戻さない（空の値は受けない。スタックごと消える）（［2026-10-30 追加］） | 値を画面・応答に出さない・書き込みを監査に残す（実 Vault） | 自動 |
 | T-40 | 稼働クラスタ（保管先・同期あり） | 画面から 1 プロパティを更新し、同期後の Secret を長さだけで確かめる（手順・試験対象・止める条件・記録は[稼働クラスタの確認の Runbook](../operations/secret-item-live-sync-check-runbook.md)） | 更新したプロパティの長さが一致し、同居するキーが減っていない | 稼働での成立 | 手動（未実施） |
 
 ## 自動試験の所在
@@ -163,6 +164,7 @@ issues: [#458, #1411, #1467, #1477, #1502, #1523, #1682, #1472, #1764, planning#
 | 起動器 | `scripts/k8s-local-up.test.js` | T-63 |
 | Kubernetes API の偽物 | `src/platform/backend/Bff/Platform.Bff.Tests/FakeKubernetesApi.cs` | T-57〜T-60・T-68〜T-70 が使う（既定では同期先がすべて在る。無いものは名前で指定する） |
 | ブラウザ | `src/platform/frontend/e2e/sc22-secrets.smoke.spec.ts` | T-36〜T-38・T-99（運用者） |
+| ブラウザ（live-rw・実 Vault） | `src/platform/frontend/e2e/live/secrets.rw.spec.ts` | T-108（使い捨てのスタックの e2e-live。`E2E_SECRETS_LISTED=1` のときだけ流す） |
 | 群（境界層の端点） | `src/platform/backend/Bff/Platform.Bff.Tests/BffSecretItemGroupEndpointTests.cs` | T-79〜T-89・T-100〜T-103 |
 | 群（権限の字面） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemGroupVaultPolicyTests.cs`・`src/knowledge/backend/Services/DataSourceService/Tests/Infrastructure/Secrets/ConnectorSecretVaultPolicyTests.cs` | T-90 |
 | 群（宣言） | `src/platform/backend/Bff/Platform.Bff.Tests/SecretItemCatalogTests.cs` | T-91・T-103 |
