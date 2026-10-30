@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, FR-22, SC-19, SC-20, UC-11, FR-17, SC-18]
-adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096, ADR-0143, ADR-0059, ADR-0061]
+adrs: [ADR-0031, ADR-0034, ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0057, ADR-0098, ADR-0102, ADR-0096, ADR-0143, ADR-0059, ADR-0061, ADR-0142]
 iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0131, IADR-0134, IADR-0135, IADR-0262, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431, IADR-0655]
-specs: [20261030_2343_sc19-link-create-ui, 20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2120_ai-input-user-default, 20261030_2107_bff-graph-edge-create]
-issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, #2107, #2343, planning#614, planning#618, planning#628, planning#841]
+specs: [20261030_2250_soft-delete-exposure-notice, 20261030_2343_sc19-link-create-ui, 20261030_2324_sc19-bulk-restore-notice, 20260828_issue-451c_sc19-sc20-screens, 20260828_issue-451a_private-notes-bff, 20260828_issue-451_deletion-propagation-to-object-storage, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2120_ai-input-user-default, 20261030_2107_bff-graph-edge-create]
+issues: [#2250, #2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, #2107, #2343, planning#614, planning#618, planning#628, planning#836, planning#841]
 -->
 
 # 画面仕様書: 個人資料管理
@@ -113,7 +113,7 @@ issues: [#2324, #451, #1441, #1442, #1445, #1447, #1456, #2046, #2114, #2120, #2
 
 | 操作 | 出す内容 |
 | --- | --- |
-| 削除（論理削除） | 「削除しても容量は空きません（90 日間保管されます）」を**事前に**示す。容量を空ける手段（削除済みからの完全削除）も添える |
+| 削除（論理削除） | 「削除しても容量は空きません（90 日間保管されます）」を**事前に**示す。容量を空ける手段（削除済みからの完全削除）も添える。［2026-10-30］2 文目の後に「共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。」を足した（資料の露出・共有に依らず常に出す。論理削除で検索・グラフ・AI 入力・共有先から外れるようになったため）。配備までの暫定の 1 文は出さない |
 | 完全に削除（即時） | ①復元できない旨 ②90 日待てば自動的に完全削除される旨 ③解放される容量（選択の合計） |
 
 🔴 **①には但し書きを添えている。文言は据え置き、根拠だけが変わった。**

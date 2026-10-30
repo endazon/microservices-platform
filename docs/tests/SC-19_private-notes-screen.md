@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-21, UC-11, SC-19, SC-20, FR-17, SC-18]
-adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0057, ADR-0098, ADR-0096, ADR-0034]
+adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0046, ADR-0057, ADR-0098, ADR-0096, ADR-0034, ADR-0142]
 iadrs: [IADR-0131, IADR-0135, IADR-0270, IADR-0296, IADR-0437, IADR-0444, IADR-0445, IADR-0447, IADR-0449, IADR-0610, IADR-0611, IADR-0612, IADR-0431, IADR-0655]
-specs: [20261030_2343_sc19-link-create-ui, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2324_sc19-bulk-restore-notice]
-issues: [#2343, #451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#618, planning#841]
+specs: [20261030_2250_soft-delete-exposure-notice, 20261030_2343_sc19-link-create-ui, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20261024_2046_break-glass-screens, 20261026_2114_private-note-departure-disposal-notice, 20261030_2324_sc19-bulk-restore-notice]
+issues: [#2250, #2343, #451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, planning#618, planning#841]
 -->
 
 # テスト仕様書: 個人資料管理画面
@@ -73,7 +73,7 @@ issues: [#2343, #451, #1441, #1445, #1447, #2046, #2114, #2324, planning#614, pl
 
 | # | 受け入れ基準 | 実測 |
 | --- | --- | --- |
-| 1 | 論理削除の確認時に「削除しても容量は空かない（90 日保管）」が表示される | 緑（対象名の提示・押すまで要求が飛ばないことも同時に固定） |
+| 1 | 論理削除の確認時に「削除しても容量は空かない（90 日保管）」が表示される。［2026-10-30 / #2250］その後に「共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。」が続く | 緑（対象名の提示・押すまで要求が飛ばないこと・1 文の位置〔2 文目の後・3 文目の前〕・暫定の 1 文が出ないことも同時に固定。ブラウザ E2E でも 1 文を見る） |
 | 2 | 完全削除の確認時に ①復元不可 ②90 日待てば自動 ③解放される容量 が表示される | 緑（①には但し書きを含む。**根拠は索引・グラフへの伝播が非同期であること**であり、実体削除の未配備ではない） |
 | 3 | 削除済み一覧から単票・複数選択の一括完全削除の双方が実行できる | 緑（一括は単票と同じ口へ送ることも固定） |
 | 4 | ラベルは「個人資料」で統一し、アイコン＋ラベル併用（色だけで意味を持たせない） | 緑（「マイスペース」「個人メモ」の不在を陽性対照と対で固定） |

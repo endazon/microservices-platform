@@ -20,7 +20,8 @@
 //
 // ■ s2s（IADR-0379 決定 4）: `authorization` メタデータは**呼び出し側サービス自身**の JWT である。
 //   この面は `ServiceCaller`（realm ロール `platform-service`）を要求する。
-//   REST の受け口は認可を持たない（#1318 欠陥 B）ので、**権限が狭まる向き**である。
+//   REST の受け口より**権限が狭まる向き**である。［2026-10-30 訂正 / #2147］従前は「REST の受け口は認可を持たない
+//   （#1318 欠陥 B）」と書いていたが、属性値の REST の受け口は #1902 で撤去され、`/search` も認証必須になった。
 //   ［2026-09-27 追記 / #1636］🔴 本文の `user` を信じるのは、受け口の許可集合
 //   （`AttributeValues:TrustedUserContextClients`。既定 `bff` だけ）の機械クライアントが運んだときだけである。
 //   それ以外が `user` を付けると PERMISSION_DENIED（NFR-09, IADR-0417 追記 1）。
