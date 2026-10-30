@@ -24,7 +24,10 @@
  *   **無音の見逃しより、目に見える誤検出を選ぶ**（IADR-0138 が構造的な根拠を選んだのと同じ判断）。
  *
  *   着手前の実測: 追跡下 1995 件 / NUL を含むもの **0 件** / バイナリ拡張子 **0 件**
- *   （png/jpg/pdf/zip/dll/exe/woff/ttf ほかいずれも 0）。**このリポジトリは追跡下が全部テキストである。**
+ *   （png/jpg/pdf/zip/dll/exe/woff/ttf ほかいずれも 0）。~~**このリポジトリは追跡下が全部テキストである。**~~
+ *   ［2026-10-30 / #2039 / IADR-0661］**この前提は崩れた。** 視覚回帰の基準画像（Playwright の
+ *   `<spec>-snapshots/*.png`）が追跡下の初のバイナリである。除外は**拡張子ではなくパスの規則**
+ *   （`BINARY_PATH_RULES`）で狭く掛ける —— `-snapshots/` の外の `.png` は従来どおり検査する。
  *
  * 🔴 検査器はバイトで読む。復号しない（#956 決定 2）:
  *   **自分が検出したいもので自分が壊れないようにする。** NUL を含むファイルを 'utf8' で読むと
@@ -58,13 +61,28 @@ if (worktreeStateModule) {
 const REPO_ROOT = path.resolve(__dirname, '..');
 
 /**
- * 正当に NUL を含み得るバイナリの拡張子。**現時点では空である**（実測: 追跡下 0 件）。
+ * 正当に NUL を含み得るバイナリの拡張子。**現時点では空である**（拡張子での一括除外は無い）。
  *
  * 🔴 **空であること自体が正解の状態である**（未整備ではない）。バイナリを追跡下へ足して
- * 本検査が落ちたら、**そのときに人が判断してここへ足す**。黙って除外を広げないための形であり、
- * 「あとで足せる逃げ道」ではない —— 足した拡張子は**そのぶん検査されなくなる**。
+ * 本検査が落ちたら、**そのときに人が判断して**、まず下の `BINARY_PATH_RULES`（パスで狭く外す）を検討する。
+ * 拡張子で外すと、その拡張子の名を持つ**すべての**ファイルがそのぶん検査されなくなる。
  */
 const BINARY_EXTENSIONS = new Set([]);
+
+/**
+ * 正当なバイナリを**パスの規則で狭く**外す（#2039 / IADR-0661）。
+ *
+ * - Playwright の基準画像（`<spec ファイル名>-snapshots/<名前>.png`。ディレクトリ直下だけ）。
+ *   PNG は形式上 NUL を必ず含む（IHDR の長さ欄など）。`.gitattributes` も同じ範囲を binary と宣言する。
+ * 🔴 **`-snapshots/` の外の `.png`、`-snapshots/` の中の `.png` 以外は従来どおり検査する**（自己試験の陰性対照）。
+ */
+const BINARY_PATH_RULES = [/(^|\/)[^/]+-snapshots\/[^/]+\.png$/i];
+
+/** 検査から外すバイナリか（拡張子かパスの規則に当たる）。 */
+function isExcludedBinary(rel) {
+  const posix = rel.split(path.sep).join('/');
+  return BINARY_EXTENSIONS.has(path.extname(posix).toLowerCase()) || BINARY_PATH_RULES.some((re) => re.test(posix));
+}
 
 /** 追跡下のファイル一覧（submodule は git ls-files に出ないので自然に対象外）。 */
 function trackedFiles(root = REPO_ROOT) {
@@ -90,8 +108,7 @@ function lineOfOffset(buf, offset) {
 
 /** 1 ファイルを検査する。NUL があれば {rel, offset, line}、無ければ null。 */
 function inspectFile(root, rel) {
-  const ext = path.extname(rel).toLowerCase();
-  if (BINARY_EXTENSIONS.has(ext)) return null;
+  if (isExcludedBinary(rel)) return null;
   let buf;
   try {
     buf = fs.readFileSync(path.join(root, rel));
@@ -110,7 +127,7 @@ function scan(root = REPO_ROOT, files = null) {
   let scanned = 0;
   let skipped = 0;
   for (const rel of list) {
-    if (BINARY_EXTENSIONS.has(path.extname(rel).toLowerCase())) { skipped += 1; continue; }
+    if (isExcludedBinary(rel)) { skipped += 1; continue; }
     scanned += 1;
     const v = inspectFile(root, rel);
     if (v) violations.push(v);
@@ -183,7 +200,7 @@ function selfTest() {
   }
 
   {
-    // BINARY_EXTENSIONS に載っている拡張子は検査しない（現時点では空なので、動作だけを確かめる）。
+    // BINARY_EXTENSIONS に載っている拡張子は検査しない（任意の拡張子で動作を確かめる）。
     const saved = [...BINARY_EXTENSIONS];
     BINARY_EXTENSIONS.add('.bin');
     const b = write('x.bin', Buffer.from([0x00, 0x01]));
@@ -194,6 +211,24 @@ function selfTest() {
     for (const e of saved) BINARY_EXTENSIONS.add(e);
     t('★ BINARY_EXTENSIONS は空である（空であること自体が正解の状態）',
       BINARY_EXTENSIONS.size === 0, [...BINARY_EXTENSIONS]);
+  }
+
+  {
+    // #2039 / IADR-0661: Playwright の基準画像（`<spec>-snapshots/*.png`）だけをパスの規則で外す。
+    const pngHead = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);
+    fs.mkdirSync(path.join(dir, 'e2e', 'visual.spec.ts-snapshots', 'sub'), { recursive: true });
+    const snap = write(path.join('e2e', 'visual.spec.ts-snapshots', 'shot-visual-linux.png'), pngHead);
+    const snapUpper = write(path.join('e2e', 'visual.spec.ts-snapshots', 'SHOT.PNG'), pngHead);
+    const r = scan(dir, [snap, snapUpper]);
+    t('★ -snapshots/ 直下の .png（.PNG も）は NUL を含んでも走査せず skipped に数える',
+      r.violations.length === 0 && r.skipped === 2 && r.scanned === 0, r);
+    // 陰性対照: 除外はパスの規則だけに効く。-snapshots/ の外の .png・中の .png 以外・入れ子の下は捕まえる。
+    const outside = write(path.join('e2e', 'logo.png'), pngHead);
+    const notPng = write(path.join('e2e', 'visual.spec.ts-snapshots', 'notes.md'), pngHead);
+    const nested = write(path.join('e2e', 'visual.spec.ts-snapshots', 'sub', 'x.png'), pngHead);
+    const r2 = scan(dir, [outside, notPng, nested]);
+    t('★ 陰性対照: -snapshots/ の外の .png・中の .png 以外・入れ子の下の .png は違反として捕まえる',
+      r2.violations.length === 3 && r2.skipped === 0, r2);
   }
 
   t('MIN_SCANNED は 0 件走査を緑にしない下限を持つ', MIN_SCANNED > 0);
@@ -232,7 +267,7 @@ function main() {
   const { violations, scanned, skipped } = result;
 
   console.log(`[check-nul-bytes] 追跡下 ${scanned} 件を走査`
-    + (skipped ? ` / バイナリ拡張子として ${skipped} 件を除外（${[...BINARY_EXTENSIONS].join(', ')}）` : ''));
+    + (skipped ? ` / バイナリとして ${skipped} 件を除外（拡張子: ${[...BINARY_EXTENSIONS].join(', ') || 'なし'}・パス: ${BINARY_PATH_RULES.map(String).join(', ')}）` : ''));
 
   // 0 件走査で静かに緑にしない（決定 3）。
   if (isScanTooSmall(scanned)) {
@@ -254,8 +289,8 @@ function main() {
   console.error('生の NUL が入ると git と grep がファイルをバイナリ扱いします —— git diff が中身を出さず、');
   console.error('grep が行番号を出さないため、**レビューも走査もできなくなります**（#956。実際に 3 回起きた）。');
   console.error('エスケープ表記（バックスラッシュ + u0000）で書くつもりが実バイトになっていないか確認してください。');
-  console.error('正当なバイナリを追加した場合は、scripts/check-nul-bytes.js の BINARY_EXTENSIONS へ');
-  console.error('その拡張子を足してください（足したぶんは検査されなくなります）。');
+  console.error('正当なバイナリを追加した場合は、scripts/check-nul-bytes.js の BINARY_PATH_RULES（パスで狭く外す）へ');
+  console.error('規則を足してください（足したぶんは検査されなくなります。拡張子で一括に外す BINARY_EXTENSIONS は最後の手段）。');
   process.exit(1);
 }
 
@@ -263,6 +298,8 @@ if (require.main === module) main();
 
 module.exports = {
   BINARY_EXTENSIONS,
+  BINARY_PATH_RULES,
+  isExcludedBinary,
   MIN_SCANNED,
   trackedFiles,
   isScanTooSmall,

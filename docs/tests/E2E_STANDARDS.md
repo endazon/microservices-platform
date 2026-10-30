@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [NFR, NFR-30]
 adrs: [ADR-0031, ADR-0032, ADR-0090]
-iadrs: [IADR-0659, IADR-0635, IADR-0634, IADR-0632, IADR-0631, IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
-specs: [20261030_2240_live-rw-secret-item-write, 20261025_2244_e2e-live-paths-system-under-test, 20261025_2034_live-rw-account, 20261025_2033_live-rw-revocation, 20261025_2032_live-rw-admin-resources, 20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
-issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
+iadrs: [IADR-0661, IADR-0659, IADR-0635, IADR-0634, IADR-0632, IADR-0631, IADR-0630, IADR-0629, IADR-0628, IADR-0627, IADR-0626, IADR-0625, IADR-0624, IADR-0623, IADR-0622, IADR-0621, IADR-0619, IADR-0614, IADR-0569, IADR-0330, IADR-0337, IADR-0440, IADR-0442, IADR-0248, IADR-0125, IADR-0294, IADR-0255]
+specs: [20261030_2039_visual-regression-three-faces, 20261030_2240_live-rw-secret-item-write, 20261025_2244_e2e-live-paths-system-under-test, 20261025_2034_live-rw-account, 20261025_2033_live-rw-revocation, 20261025_2032_live-rw-admin-resources, 20261025_2031_live-rw-private-notes, 20261025_2030_e2e-live-cleanup-sweep, 20261025_2231_live-keep-owner-session, 20261025_2029_live-ro-admin-personal-screens, 20261025_2028_live-ro-knowledge-abac-contrast, 20261025_2027_live-ro-shell-and-auth-errors, 20261024_2026_e2e-live-workflow, 20261024_2025_live-playwright-config, 20261024_2037_e2e-flaky-tally, 20261024_2038_eslint-plugin-playwright, 20261024_2036_e2e-shards-and-artifacts, 20261021_2014_e2e-standards-and-layers, 20261024_2015_axe-all-screens, 20261024_2191_keycloak-theme-axe, 20261024_2023_i18n-en-us-e2e]
+issues: [#2013, #2039, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #2028, #2027, #2014, #2015, #2191, #2023, #2036, #2038, #2037, #2025, #2026]
 -->
 
 # E2E テスト基準
@@ -79,6 +79,7 @@ issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #
 | 同上 | `live-rw`（L3） | `e2e/live/**/*.rw.spec.ts` | 同上 | **1** | 1 | `retain-on-failure` |
 | 同上 | `trading`（L3-T） | `e2e/live/**/*.trading.spec.ts` | 取引オーナー役 | **1** | 0 | `on` |
 | 同上 | `llm`（L3-L） | `e2e/live/**/*.llm.spec.ts` | `e2e-user` | 1 | 0 | `retain-on-failure` |
+| `playwright.config.ts`（`PW_VISUAL=1` のときだけ） | `visual`（視覚回帰。§8） | `e2e/visual.spec.ts` | 無し（L1 と同じスタブ） | 既定 | CI で 1（`smoke` と同じ設定を継ぐ。手動の実行は CI が立たないので 0） | `on-first-retry`（同上） |
 
 - **opt-in**: live 用 config は `E2E_LIVE` が未設定・空なら全 project を 0 件にする。`1` だけが live で、それ以外の値は読み込みで失敗させる。`E2E_LAYER` は
   `ro` / `rw` / `trading` / `llm` のカンマ区切りで、未設定なら `ro` とみなす。`live-setup` は
@@ -227,6 +228,19 @@ issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #
 - 採る場合の条件: 公式 Docker イメージ（`mcr.microsoft.com/playwright:<pinned>`）で固定し、`@visual` タグの別 project
   `visual` で流す。`maxDiffPixelRatio ≤ 0.01`、`animations: 'disabled'`、揮発要素は `mask` する。
   対象は「見え方そのものが規約」の少数（NotFound・確認ダイアログ・出典ラベルなど）に限り、PR の必須チェックに入れない。
+- **［2026-10-30］上の条件で 3 面だけを採った**（`e2e/visual.spec.ts`）。存在秘匿の 404（NotFound）・個人資料の削除の確認ダイアログ・
+  検索と AI 質問の出典の種別ラベルと機密区分の表示である。写す範囲は各面の要素（region・dialog・出典の一覧）に絞り、
+  日時・利用者名・件数のような揮発する値を写さない（`mask` が要る値を範囲に入れない）。撮る直前にポインタを画面の角へ外す。
+  - **流し方**: `pnpm --filter @platform/frontend run test:e2e:visual`（POSIX シェル前提。Linux / macOS / WSL）。ホストでビルドし、`package.json` が版を固定した公式イメージ
+    （`mcr.microsoft.com/playwright:v<@playwright/test の版>-noble`）の中で `PW_VISUAL=1` を立てて project `visual` を流す。
+    コンテナは `--network none` で起こす（BFF は L1 と同じくスタブであり、外への通信は要らない）。イメージの版とロックファイルの
+    `@playwright/test` の版の一致はリポジトリの試験が見る（依存の更新でイメージだけが古いまま残らない）。
+  - **基準画像の更新**: 同じコマンドに `--update-snapshots` を付ける。基準画像（`e2e/visual.spec.ts-snapshots/`）はコミットし、PR の差分で画像を見てレビューする。
+    **イメージの外（ホストのブラウザ）で撮った画像をコミットしない**（フォントと描画が違う）。
+  - **project の有無**: `PW_VISUAL=1` が無い実行（ローカルの素の `playwright test`・`frontend.yml` の `e2e`）には project `visual` が無く、
+    `smoke` も本 spec を `testIgnore` する。CI のワークフローには載せていない（§11）。
+  - **実測（2026-10-30）**: 許容差を 0（`maxDiffPixels: 0`・`threshold: 0`）にして連続 5 回流し、3 面とも基準画像と画素単位で一致した。
+    陰性対照として出典 1 行の機密区分を変えると、差は画素の 2%（953 画素）で、`maxDiffPixelRatio: 0.01` で落ちる。
 
 ## 9. 失敗時の成果物
 
@@ -280,6 +294,7 @@ issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #
 | L1 | `frontend.yml` の `e2e-shard` ジョブ（2 シャード）と、まとめる `e2e` ジョブ（check 名は `e2e`） | PR・push（フロントの `paths:` に当たるとき） | いいえ（`paths:` を持つため。§2.1） | blob/html report・trace（常時・14 日） |
 | （Keycloak のテーマの axe） | `keycloak-theme-a11y.yml` の `keycloak-theme-a11y` ジョブ（現状あり。使い捨ての Keycloak をジョブの中で起こす） | テーマ・realm・compose・axe の土台を変える PR・push、dispatch | いいえ | 失敗時のみ html report・test-results（7 日） |
 | L2 | `e2e-live.yml` の `e2e-live` ジョブ（**［2026-10-24］配備**。統合スタックの k3d 上。稼働中の PoC に対する self-hosted runner は未配備） | nightly・dispatch・live の土台を変える PR・**試験される側**（スタックが建てるイメージの中身＝バックエンド・フロントエンド、起動器と配備物）を変える PR［2026-10-25］。試験だけ・文書だけ・e2e-live の旗では当たらない配備物の変更では起動しない | いいえ | html report・test-results（`!cancelled()`・14 日。**上げる前に資格情報の値を走査**し、載っていれば赤にして上げない）＋ skip 一覧（step summary） |
+| （視覚回帰。§8） | なし（`pnpm --filter @platform/frontend run test:e2e:visual` を手で流す。公式 Docker イメージの中） | 手動 | いいえ（PR に掛けない） | ローカルの html report・test-results（差分の画像） |
 | L3 / L3-T / L3-L | 同 `e2e-live.yml` の `workflow_dispatch` 入力 `layer`（`rw` / `trading` / `llm`）を `E2E_LAYER` へ渡す。`trading` は閉場判定を job の先頭に置く | dispatch のみ | いいえ | 同上 ＋ 復元ログ |
 
 - live 層の job の先頭で、対象イメージの作成時刻と develop の HEAD の日付を比べ、7 日より古ければ `::warning::` を出して
@@ -306,6 +321,6 @@ issues: [#2013, #2244, #2034, #2240, #2033, #2032, #2031, #2030, #2231, #2029, #
 | axe の走査面 | SPA の全画面 ＋ 操作後の UI ＋ Keycloak のテーマの画面（達成済み。Keycloak のテーマの画面は使い捨ての Keycloak で走査する） | 同左 |
 | live のブラウザ E2E | ~~なし~~ 統合スタック（k3d）上の L2 の土台（`e2e-live.yml`。2026-10-24。spec は後続）。curl の `scripts/verify-oidc-edge-flow.sh` も残る | L2〜L3 を新設。curl の検証は残す（API 層の門として役割が違う） |
 | 試験アカウント | seed の `developer` 等を人と共用 | `e2e-*` を役割ごとに分離 |
-| 視覚回帰 | なし | 既定で採らない（候補 1 件） |
+| 視覚回帰 | ~~なし~~ 3 面を公式 Docker イメージの中で手動（2026-10-30。§8） | 既定で採らない（候補 1 件） |
 | flaky の集計 | ~~なし~~ L1 は件数の集計・警告・3 回連続の自動起票（2026-10-24） | 件数の収集と自動起票（隔離はしない） |
 | ESLint（Playwright 用ルール） | ~~なし~~ `eslint-plugin-playwright` の recommended ＋ 下の 3 つを error（2026-10-24。対象は `**/e2e/**`） | `no-wait-for-timeout`・`no-nth-methods`・skip 理由必須 |

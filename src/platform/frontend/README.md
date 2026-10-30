@@ -123,6 +123,7 @@ pnpm run test       # Vitest 単体（全ユニット横断）
 pnpm run test:coverage  # カバレッジ（しきい値=回帰防止ラチェット）
 pnpm run build      # 型チェック + 本番ビルド（platform/frontend/dist）
 pnpm run test:e2e   # Playwright スモーク（ブラウザ未取得なら `pnpm exec playwright install chromium`）
+pnpm --filter @platform/frontend run test:e2e:visual  # 視覚回帰 3 面（Docker が要る。POSIX シェル前提＝Linux / macOS / WSL。基準書 §8）
 ```
 
 Keycloak ログインには dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）が必要。

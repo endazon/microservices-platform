@@ -14,6 +14,12 @@ import { defineConfig, devices } from '@playwright/test';
 const PREVIEW_PORT = 4173;
 const PREVIEW_URL = `http://localhost:${PREVIEW_PORT}`;
 
+// NFR / IADR-0661（#2039 / E-80）: 視覚回帰（`e2e/visual.spec.ts`）は **公式 Docker イメージの中でだけ**流す
+// （基準書 §8）。`pnpm run test:e2e:visual` がイメージの中で `PW_VISUAL=1` を立てたときだけ project
+// `visual` を持つ。立たない実行（ローカルの素の `playwright test`・`frontend.yml` の `e2e`）には
+// project 自体が無く、基準画像を作った環境と違う描画で比べて落ちる経路を作らない（PR の必須チェックに入れない）。
+const VISUAL = process.env.PW_VISUAL === '1';
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -40,7 +46,10 @@ export default defineConfig({
     locale: 'ja-JP',
   },
   webServer: {
-    command: `pnpm run preview -- --port ${PREVIEW_PORT} --strictPort`,
+    // IADR-0661: イメージには pnpm が無い（入れるには通信が要る）。中では依存に入っている vite を直接起こす。
+    command: VISUAL
+      ? `node node_modules/vite/bin/vite.js preview --port ${PREVIEW_PORT} --strictPort`
+      : `pnpm run preview -- --port ${PREVIEW_PORT} --strictPort`,
     url: PREVIEW_URL,
     // Issue #554: **ローカルでも常に自前で起動する**（既定の `!process.env.CI` を採らない）。
     // 理由: `--strictPort` は「このポートを占有できなければ失敗する」という宣言であり、
@@ -62,12 +71,31 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       // IADR-0569 決定 3 / IADR-0624: live 層（`e2e/live/`。`playwright.live.config.ts` が流す）は L1 で走らせない。
       // 既定の testMatch は `*.ro.spec.ts` なども拾うため、ディレクトリで外す。
-      testIgnore: [/i18n\.smoke\.spec\.ts$/, /[\\/]e2e[\\/]live[\\/]/],
+      // IADR-0661: 視覚回帰（`visual.spec.ts`）も L1 では走らせない（下の `visual` だけが拾う）。
+      testIgnore: [
+        /i18n\.smoke\.spec\.ts$/,
+        /[\\/]e2e[\\/]live[\\/]/,
+        /[\\/]e2e[\\/]visual\.spec\.ts$/,
+      ],
     },
     {
       name: 'smoke-en-us',
       use: { ...devices['Desktop Chrome'], locale: 'en-US' },
       testMatch: /i18n\.smoke\.spec\.ts$/,
     },
+    // NFR / IADR-0661 / 基準書 §8: 許す差は画素の 1% まで。アニメーションは止める（`toHaveScreenshot` の既定も
+    // 止めるが、条件を設定に明記する）。基準画像は `e2e/visual.spec.ts-snapshots/<名前>-visual-linux.png`。
+    ...(VISUAL
+      ? [
+          {
+            name: 'visual',
+            use: { ...devices['Desktop Chrome'] },
+            testMatch: /[\\/]e2e[\\/]visual\.spec\.ts$/,
+            expect: {
+              toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: 'disabled' as const },
+            },
+          },
+        ]
+      : []),
   ],
 });

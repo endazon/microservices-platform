@@ -4575,6 +4575,16 @@ ${r.stderr}`);
       assert.deepStrictEqual([...nul.BINARY_EXTENSIONS], [],
         '除外を足したなら、そのぶん検査されなくなることを IADR へ記録すること');
     });
+
+    // #2039 / IADR-0661: 視覚回帰の基準画像だけをパスの規則で外す。規則の数と、実データの何が外れるかを固定する。
+    ok('check-nul-bytes: パスの除外は -snapshots/ 直下の .png の 1 規則だけで、追跡下で外れるのは基準画像だけ', () => {
+      const nul = require('./check-nul-bytes.js');
+      assert.strictEqual(nul.BINARY_PATH_RULES.length, 1, '除外の規則を足したなら IADR へ記録し、ここも直すこと');
+      const excluded = nul.trackedFiles().filter((f) => nul.isExcludedBinary(f));
+      assert.ok(excluded.length > 0, '除外に当たる追跡下のファイルが 0 件（規則か走査が壊れている）');
+      for (const f of excluded) assert.match(f, /^src\/[^/]+\/frontend\/e2e\/[^/]+\.spec\.ts-snapshots\/[^/]+\.png$/, f);
+      assert.strictEqual(nul.isExcludedBinary('docs/images/logo.png'), false, '-snapshots/ の外の .png を外している');
+    });
   }
 
   // --- check-test-name-references: 注記が指す試験名の実在（#1312） ----------------
@@ -18425,7 +18435,7 @@ server.listen(0, '127.0.0.1', async () => {
       if (i < 0) return ['prompt に【検証の下限・最重要】節が無い'];
       const j = text.indexOf('\n\n', i);
       const block = text.slice(i, j < 0 ? undefined : j);
-      for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと']) {
+      for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと', 'バイナリ（PNG などの画像）', '「画像」「PNG」「バイナリ」']) {
         if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
       }
       for (const gen of ['pnpm-lock.yaml', 'messages.po', 'CHANGELOG.md', '*.Designer.cs', '*ModelSnapshot.cs', 'src/<unit>/frontend/src/lib/api/generated/']) {
@@ -18568,6 +18578,39 @@ server.listen(0, '127.0.0.1', async () => {
       for (const [b, c] of [[swap2270, changed2270], [swap2275, changed2275]]) {
         const v = floorRvf(b, c, { scriptsTestsConclusion: 'success' });
         assert.strictEqual(v.length, 1);
+        assert.match(v[0], /精読していないと書いている/);
+      }
+    });
+
+    // #2039 / IADR-0661: 追跡下の初のバイナリ（PNG）を「行単位で読めないため未検証」と書いた実本文で赤になった（#2370 の 2 回目、head 393d6798）。
+    // 変更ファイルは当時の head の差分（`git diff --name-only` 相当。15 件）。N/N を申告し、テキストの変更ファイルは読んでいた。
+    const review2370 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2370-review2.txt'), 'utf8');
+    const changed2370 = [
+      '.ai-context/adr/IADR-0661_visual-regression-three-faces-in-official-docker.md',
+      '.ai-context/adr/README.md',
+      '.ai-context/specs/20261030_2039_visual-regression-three-faces.md',
+      '.gitattributes',
+      'docs/tests/E2E_STANDARDS.md',
+      'scripts/README.md',
+      'scripts/check-nul-bytes.js',
+      'scripts/scripts.repo.test.js',
+      'src/platform/frontend/README.md',
+      'src/platform/frontend/e2e/visual.spec.ts',
+      'src/platform/frontend/e2e/visual.spec.ts-snapshots/notfound-visual-linux.png',
+      'src/platform/frontend/e2e/visual.spec.ts-snapshots/sc01-citation-labels-visual-linux.png',
+      'src/platform/frontend/e2e/visual.spec.ts-snapshots/sc19-delete-confirm-visual-linux.png',
+      'src/platform/frontend/package.json',
+      'src/platform/frontend/playwright.config.ts',
+    ];
+    ok('check-review-verdict[#2039]: #2370 の実本文は、画像を行単位で読めないと書いた 🔍 の文で赤にならない', () => {
+      assert.deepStrictEqual(floorRvf(review2370, changed2370, { scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[#2039]: ★陽性対照 —— 同じ実本文でも、画像の語を外すか、テキストの変更ファイルを名指すと赤', () => {
+      const from = 'PNG 3 枚の画像の中身（見え方が意図どおりか）は行単位で読めないため未検証。';
+      assert.ok(review2370.includes(from), '実本文の該当の文が無い（fixture が変わった）');
+      for (const to of ['3 枚の中身（見え方が意図どおりか）は行単位で読めないため未検証。', 'PNG 3 枚と `visual.spec.ts` は行単位で読めないため未検証。']) {
+        const v = floorRvf(review2370.replace(from, to), changed2370, { scriptsTestsConclusion: 'success' });
+        assert.strictEqual(v.length, 1, to);
         assert.match(v[0], /精読していないと書いている/);
       }
     });
@@ -19577,6 +19620,38 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(toolStepIssues(join(swallowed)).some((e) => e.includes('握り潰して')));
       const piped = steps.map((st, i) => (i === toolAt ? st.replace('pandoc --version', 'pandoc --version | head -1') : st));
       assert.ok(toolStepIssues(join(piped)).some((e) => e.includes('パイプ')));
+    });
+  }
+
+  // --- NFR / #2039 / IADR-0661: 視覚回帰の Docker イメージの版 ------------------------------------------------------
+  {
+    const REPO_2039 = path.join(__dirname, '..');
+    const pkg2039 = JSON.parse(fs.readFileSync(path.join(REPO_2039, 'src/platform/frontend/package.json'), 'utf8'));
+    const lock2039 = fs.readFileSync(path.join(REPO_2039, 'src/pnpm-lock.yaml'), 'utf8');
+    /** `test:e2e:visual` が起こす公式イメージの版と、ロックファイルの @playwright/test の版の食い違いを返す。 */
+    const visualImageIssues = (script, lock) => {
+      const image = /mcr\.microsoft\.com\/playwright:v(\d+\.\d+\.\d+)-\w+/.exec(script || '');
+      // packages: と snapshots: の両節に同じ版が 1 行ずつ出るので、版の集合で数える。
+      const locked = [...new Set([...lock.matchAll(/^ {2}'@playwright\/test@(\d+\.\d+\.\d+)':$/gm)].map((m) => m[1]))];
+      const out = [];
+      if (!image) out.push('test:e2e:visual が版を固定した mcr.microsoft.com/playwright:v<版>-<OS> を起こしていない');
+      if (locked.length !== 1) out.push(`ロックファイルの @playwright/test が 1 版に定まらない（${locked.join(', ')}。pnpm のロック形式が変わった可能性）`);
+      if (image && locked.length === 1 && image[1] !== locked[0]) {
+        out.push(`イメージ v${image[1]} とロックファイルの @playwright/test ${locked[0]} が違う（基準画像を撮った環境が変わる）`);
+      }
+      return out;
+    };
+
+    ok('NFR / #2039: test:e2e:visual のイメージの版がロックファイルの @playwright/test と一致する', () => {
+      assert.deepStrictEqual(visualImageIssues(pkg2039.scripts['test:e2e:visual'], lock2039), []);
+    });
+
+    ok('NFR / #2039 陰性対照: イメージの版がずれる・版を固定しないと検出する', () => {
+      const script = pkg2039.scripts['test:e2e:visual'];
+      const bumped = script.replace(/playwright:v\d+\.\d+\.\d+/, 'playwright:v0.0.1');
+      assert.ok(visualImageIssues(bumped, lock2039).some((e) => e.includes('が違う')));
+      const floating = script.replace(/playwright:v\d+\.\d+\.\d+-\w+/, 'playwright:latest');
+      assert.ok(visualImageIssues(floating, lock2039).some((e) => e.includes('固定した')));
     });
   }
 };

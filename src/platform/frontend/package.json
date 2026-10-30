@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test:e2e": "playwright test",
-    "test:e2e:live": "playwright test --config playwright.live.config.ts --pass-with-no-tests"
+    "test:e2e:live": "playwright test --config playwright.live.config.ts --pass-with-no-tests",
+    "test:e2e:visual": "pnpm run build && docker run --rm --ipc=host --network none -u \"$(id -u):$(id -g)\" -e HOME=/tmp -e PW_VISUAL=1 -v \"$(cd ../.. && pwd)\":/work -w /work/platform/frontend mcr.microsoft.com/playwright:v1.62.1-noble node node_modules/@playwright/test/cli.js test --project visual"
   },
   "dependencies": {
     "@lingui/core": "^6.6.0",

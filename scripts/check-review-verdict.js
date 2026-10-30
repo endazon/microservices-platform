@@ -47,7 +47,8 @@
  *   (b) 同じ行に「下限」と「満たして(い)ない / 満たさない」がある（自己申告の違反）。
  *       あわせて、(a) の申告を満たしながら、冒頭か「確認できたこと」の節で「全行は読んでいない」「行単位では読んでいない」
  *       「名前と範囲の確認にとどまる」「本文を精読せず」「要点だけ確認」等と書いている（読んだと申告したファイルを精読して
- *       いない自認。生成物 K>0 の除外を申告した生成物だけの文と、計画書・他リポジトリについての文は数えない）。
+ *       いない自認。生成物 K>0 の除外を申告した生成物だけの文と、計画書・他リポジトリについての文は数えない。
+ *       行単位の差分が無いバイナリ〔画像〕だけを読めないと書いた文も数えない。#2039 / IADR-0661）。
  *       **本リポは「🔍 実行できなかったこと」の節も見る**（AST との差。本リポのレビューは精読していない自認を
  *       この節に書く。#1921 の 2 回目は 6/6 を申告しつつこの節に「全文を読めていない」と書いた）。ただしこの節では
  *       「読む」ことの自認の型（全行・行単位・精読・未読・読めていない 等）だけを数え、「…までしか確認できない」
@@ -367,6 +368,33 @@ const NON_FILE_OBJECT = /出力|描画|ログ|一覧|結論|ジョブ|check-run|
 const FILE_TARGET =
   /差分|diff|変更ファイル|ファイル|全文|本文|コード|テスト|試験|文書|仕様|IADR|ADR|README|\.(?:cs|csproj|props|slnx|tsx?|jsx?|ya?ml|md|json|sh|po)\b/i;
 
+/**
+ * バイナリ（画像）についての文（#2039 / IADR-0661）。プロンプトの【検証の下限】の「バイナリ」の行と対にして直す。
+ *
+ * PNG などのバイナリには**行単位の差分が無い**。「PNG 3 枚の画像の中身は行単位で読めないため未検証」は、読めないものを
+ * 読めないと書いただけで、精読の放棄ではない（#2370 の 2 回目の AI レビューが下限違反で落ちた。追跡下の初のバイナリ）。
+ *
+ * 🔴 **下限を緩めないため、狭く外す**。次を**すべて**満たす文だけを外す。
+ *   1. 文（引用も含む）が BINARY_IMAGE_WORD（`.png`・画像・PNG・バイナリ）を含む。
+ *   2. 画像の名前と語を除いた残り（引用も含む）が、読む対象の語（NON_GENERATED_TARGET。テスト・文書・`.ts` 等）を含まない。
+ *   3. その行（引用の中も含む）が、バイナリ以外の変更ファイルのパスも名前（拡張子を外した名前も）も含まない。
+ * 画像・PNG・バイナリの語が無い「精読していない」は従来どおり数える。
+ */
+const BINARY_IMAGE_WORD = /\.png\b|画像|PNG|バイナリ/i;
+const BINARY_IMAGE_TOKENS = /[\w.*/-]*\.png\b/gi;
+const BINARY_EXTENSION = /\.(?:png|jpe?g|gif|ico|pdf|zip)$/i;
+
+/** 未精読の型に当たった文が、バイナリ（画像）だけについての文か（上の 3 条件）。 */
+function aboutBinaryOnly(sentence, rawLine, changedFiles) {
+  if (!BINARY_IMAGE_WORD.test(sentence)) return false;
+  const rest = sentence.replace(BINARY_IMAGE_TOKENS, '').replace(/画像|PNG|バイナリ/gi, '');
+  if (NON_GENERATED_TARGET.test(rest)) return false;
+  const textFiles = (changedFiles || []).filter((f) => !BINARY_EXTENSION.test(f));
+  // 条件 3 は拡張子を外した名前（`E2E_STANDARDS`）でも見る（バイナリの除外は新しいので、名前の書き方の揺れを広く拾う側に倒す）。
+  const stems = textFiles.map((f) => f.split('/').pop().replace(/\.[^.]+$/, '')).filter((x) => x.length >= 4);
+  return !mentionsChangedFile(rawLine, textFiles) && !stems.some((x) => rawLine.includes(x));
+}
+
 /** 行（引用の中も含む）が変更ファイルのパスか名前（basename）を含むか。 */
 function mentionsChangedFile(line, changedFiles) {
   return (changedFiles || []).some((f) => {
@@ -433,6 +461,8 @@ function findNotReadAdmissions(text, decl, changedFiles = null) {
       continue;
     // #2276 / IADR-0643: コマンドの出力・CI の一覧など、変更ファイル以外の対象についての文は数えない（3 条件。上の注記）
     if (aboutNonFileObject(bare, line, changedFiles)) continue;
+    // #2039 / IADR-0661: 行単位の差分が無いバイナリ（画像）を読めないと書いた文は数えない（3 条件。上の注記）
+    if (aboutBinaryOnly(sentence, line, changedFiles)) continue;
     const generated = GENERATED_WORD.test(sentence) || new RegExp(GENERATED_TOKENS.source).test(sentence);
     if (generated && k > 0) {
       const rest = sentence.replace(GENERATED_TOKENS, '').replace(/生成物|自動生成/g, '');
@@ -770,6 +800,43 @@ function selfTest() {
     }
     // 冒頭の申告の後の文（出力の語も無い #1924 の 2 回目の型）も赤のまま
     assert.strictEqual(findFloorViolations(review(`${head2276}本文は精読していない。`), changed2276).filter((x) => /精読していないと書いている/.test(x)).length, 1);
+  });
+
+  // #2039 / IADR-0661: 行単位の差分が無いバイナリ（画像）を読めないと書いた文は数えない。狭く外す（陰性対照つき）。
+  const changed2039 = [
+    'src/platform/frontend/e2e/visual.spec.ts',
+    'src/platform/frontend/e2e/visual.spec.ts-snapshots/notfound-visual-linux.png',
+    'docs/tests/E2E_STANDARDS.md',
+  ];
+  T('下限: #2039 —— 画像（PNG・バイナリ）を行単位で読めないと書いた 🔍 の文は数えない（#2370 の 2 回目の AI レビューの実文）', () => {
+    const body =
+      review('変更 15 ファイル中 15 ファイルを読んだ（生成物の除外なし。PNG 3 枚はバイナリで行単位の差分が無い。存在・パス・名前の規則だけ確かめた）。') +
+      notRun2276('PNG 3 枚の画像の中身（見え方が意図どおりか）は行単位で読めないため未検証。');
+    assert.deepStrictEqual(findFloorViolations(body, changed2039, { scriptsTestsConclusion: 'success' }), []);
+    // 同じ型の表記揺れ（語は .png・画像・バイナリのどれか 1 つでよい）
+    for (const line of [
+      '`notfound-visual-linux.png` は行単位で読めない。',
+      '基準画像は全行を読めていない。',
+      'バイナリのため差分を読めていない。',
+    ]) {
+      assert.deepStrictEqual(findFloorViolations(review(head2276) + notRun2276(line), changed2039, { scriptsTestsConclusion: 'success' }), [], line);
+    }
+  });
+
+  T('下限: #2039 ★陰性対照 —— 画像の語が無い文・画像と読む対象を並べた文・バイナリ以外の変更ファイルを名指す文は赤のまま', () => {
+    for (const line of [
+      '本文は精読していない。', // 画像の語が無い（条件 1）
+      'PNG とテストは行単位で読めない。', // 読む対象の語が並ぶ（条件 2）
+      '画像と `visual.spec.ts` は全行は読んでいない。', // 拡張子 .ts（条件 2）
+      '画像を撮る `visual.spec.ts` は精読していない。', // 変更ファイルの名前（条件 2 の拡張子と条件 3）
+      'E2E_STANDARDS の画像の節は精読していない。', // バイナリ以外の変更ファイルの名前（条件 3）
+    ]) {
+      for (const where of [confirmed2276, notRun2276]) {
+        const v = findFloorViolations(review(head2276) + where(line), changed2039, { scriptsTestsConclusion: 'success' })
+          .filter((x) => /精読していないと書いている/.test(x));
+        assert.strictEqual(v.length, 1, `${line}（${where === confirmed2276 ? '確認できたこと' : '🔍'}）`);
+      }
+    }
   });
 
   T('下限: 生成物だけを精読しない文は K>0 の申告があれば緑、K の申告が無ければ赤', () => {
