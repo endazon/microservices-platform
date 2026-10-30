@@ -352,6 +352,18 @@ describe('SC-19 個人資料管理: 作成と論理削除', () => {
       within(dialog).getByText(/削除しても容量は空きません（90\s*日間保管されます）/),
     ).toBeInTheDocument();
     expect(within(dialog).getByText(/「設計メモ」を削除します/)).toBeInTheDocument();
+    // FR-19, SC-19, ADR-0142 (#2250): 論理削除で見えなくなる範囲を告げる 1 文。**固定文言の 2 文目の後・3 文目の前**に出る。
+    const notice =
+      '共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。';
+    const text = (dialog.textContent ?? '').replace(/\s+/g, '');
+    const second = text.indexOf('削除しても容量は空きません（90日間保管されます）。');
+    const added = text.indexOf(notice.replace(/\s+/g, ''));
+    const third = text.indexOf('すぐに容量を空けたい場合は');
+    expect(second).toBeGreaterThanOrEqual(0);
+    expect(added).toBeGreaterThan(second);
+    expect(third).toBeGreaterThan(added);
+    // 配備までの暫定の 1 文は出さない（事実の側が配備されたため。陽性対照は上の 1 文）。
+    expect(within(dialog).queryByText(/今すぐ見えなくするには/)).not.toBeInTheDocument();
     // 押すまで要求は飛ばない（確認が確認として機能している）。
     expect(writes()).toHaveLength(0);
 

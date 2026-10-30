@@ -180,8 +180,8 @@ msgid "「{revokeTargetName}」のトークンを無効にします。この端�
 msgstr "This revokes the token for \"{revokeTargetName}\". Syncing from this device stops immediately. To sync again, reissue a token and paste it into the plugin settings."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
-msgid "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
-msgstr "This deletes \"{softDeleteTitle}\". Deleting does not free up storage (the note is kept for 90 days). To free up storage right away, run \"Delete permanently\" from the deleted list."
+msgid "「{softDeleteTitle}」を削除します。削除しても容量は空きません（90 日間保管されます）。共有した相手や、検索・AI の回答からも見えなくなります（復元すると元に戻ります）。すぐに容量を空けたい場合は、削除済み一覧から「完全に削除」を実行してください。"
+msgstr "This deletes \"{softDeleteTitle}\". Deleting does not free up storage (the note is kept for 90 days). It will also no longer be visible to the people you shared it with, or in search and AI answers (restoring it brings this back). To free up storage right away, run \"Delete permanently\" from the deleted list."
 
 #: knowledge/frontend/src/features/sc03-document/components/AiSuggestionPanel.tsx
 msgid "「{tagValue}」を付与"
