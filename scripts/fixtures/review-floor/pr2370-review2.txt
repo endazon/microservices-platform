@@ -1,0 +1,49 @@
+**Claude finished @endazon's task in 3m 38s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/41061092108)
+
+---
+## AI コードレビュー結果
+
+変更 15 ファイル中 15 ファイルを読んだ（生成物の除外なし。PNG 3 枚はバイナリで行単位の差分が無い。存在・パス・名前の規則だけ確かめた）。
+
+前回レビューの 🔴（`check-nul-bytes` が基準画像を検出する件）は解消している。🟡 3 件と 🟢 1 件も反映済みで、今回の指摘は軽微 1 件だけである。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- （指摘なし）
+
+### 🟢 軽微
+- `scripts/check-nul-bytes.js` の `BINARY_PATH_RULES` は `(^|\/)[^/]+-snapshots\/[^/]+\.png$` である。
+  - これは `src/*/frontend/e2e/` に限らず、リポジトリ内のどこの `*-snapshots/*.png` も検査から外す。
+  - 追跡下で外れるのが `src/<unit>/frontend/e2e/<spec>.spec.ts-snapshots/*.png` だけであることは `scripts.repo.test.js` が固定している。将来の混入は repo 試験で止まるので、実害は小さい。
+  - IADR-0661 の「代償」の記述と整合している。対応は不要。
+- CI に載せない（決定 5）ことで、3 面の見え方を変える PR が基準画像を更新しないままマージされ得る。IADR-0661 の残余リストに記録済みで、人の判断を仰ぐ点として PR 本文にも書かれている。週次の `workflow_dispatch` を足す別 issue を起票するかは、マージ時にご判断いただきたい。
+
+### ✅ 確認できたこと（このセッションで実走）
+- `git diff --name-only origin/develop...HEAD`: 15 ファイル。
+- 差分を行単位で読んだ:
+  - `.gitattributes`、`scripts/README.md`、`scripts/check-nul-bytes.js`、`scripts/scripts.repo.test.js`
+  - `src/platform/frontend/{package.json, playwright.config.ts, README.md}`
+  - `docs/tests/E2E_STANDARDS.md`、`.ai-context/adr/README.md`
+  - `visual.spec.ts`、IADR-0661、作業仕様書は全文を読んだ。
+- `REQUIRE_REPO_TESTS=1` の子プロセス形で `scripts/scripts.test.js` を全件実行（前景）: **`✓ 1221 tests passed`**。`check-nul-bytes` の自己試験と repo 試験、および `NFR / #2039` の版の一致の試験と陰性対照を含む。
+- `node scripts/check-trace-blocks.js`: OK（197 件）。
+- `node scripts/gen-knowledge-graph.js --check`: OK（in-repo エッジ先の実在に違反なし。「参考」の 78 件は既存の凍結記録で、fail にならない）。
+- `node scripts/check-doc-links.js`: OK（2034 件）。
+- `node scripts/check-doc-updated.js --base origin/develop`: OK。
+- `node scripts/check-commit-messages.js`: 3 件すべて適合。
+- `node scripts/check-plan-id-qualification.js`: OK（4120 件）。
+- 設定の整合: `smoke` は `visual.spec.ts` を `testIgnore` する。`visual` は `PW_VISUAL=1` のときだけ現れ、`testMatch` が重複しない。
+  - E2E 基準書 §2.1 の visual 行は retries と trace を実際の設定に揃えてある。
+  - `docs/tests/E2E_STANDARDS.md` の trace ブロックに IADR-0661・仕様書・#2039 が追記されている。
+- `.gitattributes` の `**/*-snapshots/*.png binary` と `BINARY_PATH_RULES` の範囲は一致している。
+
+### 🔍 実行できなかったこと
+- Docker による `test:e2e:visual`（連続 5 回の一致・陰性対照の 953 画素・2%）は、`docker` が許可リストに無いため未検証。PR 本文と IADR の実測値は追試していない。
+- PNG 3 枚の画像の中身（見え方が意図どおりか）は行単位で読めないため未検証。
+- 同じ head の CI（`scripts-tests`、`e2e`）の結論は読んでいない。
+- 計画書原文（NFR・SC-01・SC-19）は CI の外にあるため直接読んでいない。「計画書原文で要確認」の指摘は無い。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*

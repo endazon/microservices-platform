@@ -18435,7 +18435,7 @@ server.listen(0, '127.0.0.1', async () => {
       if (i < 0) return ['prompt に【検証の下限・最重要】節が無い'];
       const j = text.indexOf('\n\n', i);
       const block = text.slice(i, j < 0 ? undefined : j);
-      for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと']) {
+      for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと', 'バイナリ（PNG などの画像）', '「画像」「PNG」「バイナリ」']) {
         if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
       }
       for (const gen of ['pnpm-lock.yaml', 'messages.po', 'CHANGELOG.md', '*.Designer.cs', '*ModelSnapshot.cs', 'src/<unit>/frontend/src/lib/api/generated/']) {
@@ -18578,6 +18578,39 @@ server.listen(0, '127.0.0.1', async () => {
       for (const [b, c] of [[swap2270, changed2270], [swap2275, changed2275]]) {
         const v = floorRvf(b, c, { scriptsTestsConclusion: 'success' });
         assert.strictEqual(v.length, 1);
+        assert.match(v[0], /精読していないと書いている/);
+      }
+    });
+
+    // #2039 / IADR-0661: 追跡下の初のバイナリ（PNG）を「行単位で読めないため未検証」と書いた実本文で赤になった（#2370 の 2 回目、head 393d6798）。
+    // 変更ファイルは当時の head の差分（`git diff --name-only` 相当。15 件）。N/N を申告し、テキストの変更ファイルは読んでいた。
+    const review2370 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2370-review2.txt'), 'utf8');
+    const changed2370 = [
+      '.ai-context/adr/IADR-0661_visual-regression-three-faces-in-official-docker.md',
+      '.ai-context/adr/README.md',
+      '.ai-context/specs/20261030_2039_visual-regression-three-faces.md',
+      '.gitattributes',
+      'docs/tests/E2E_STANDARDS.md',
+      'scripts/README.md',
+      'scripts/check-nul-bytes.js',
+      'scripts/scripts.repo.test.js',
+      'src/platform/frontend/README.md',
+      'src/platform/frontend/e2e/visual.spec.ts',
+      'src/platform/frontend/e2e/visual.spec.ts-snapshots/notfound-visual-linux.png',
+      'src/platform/frontend/e2e/visual.spec.ts-snapshots/sc01-citation-labels-visual-linux.png',
+      'src/platform/frontend/e2e/visual.spec.ts-snapshots/sc19-delete-confirm-visual-linux.png',
+      'src/platform/frontend/package.json',
+      'src/platform/frontend/playwright.config.ts',
+    ];
+    ok('check-review-verdict[#2039]: #2370 の実本文は、画像を行単位で読めないと書いた 🔍 の文で赤にならない', () => {
+      assert.deepStrictEqual(floorRvf(review2370, changed2370, { scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[#2039]: ★陽性対照 —— 同じ実本文でも、画像の語を外すか、テキストの変更ファイルを名指すと赤', () => {
+      const from = 'PNG 3 枚の画像の中身（見え方が意図どおりか）は行単位で読めないため未検証。';
+      assert.ok(review2370.includes(from), '実本文の該当の文が無い（fixture が変わった）');
+      for (const to of ['3 枚の中身（見え方が意図どおりか）は行単位で読めないため未検証。', 'PNG 3 枚と `visual.spec.ts` は行単位で読めないため未検証。']) {
+        const v = floorRvf(review2370.replace(from, to), changed2370, { scriptsTestsConclusion: 'success' });
+        assert.strictEqual(v.length, 1, to);
         assert.match(v[0], /精読していないと書いている/);
       }
     });

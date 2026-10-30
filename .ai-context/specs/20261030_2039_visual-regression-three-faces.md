@@ -67,6 +67,16 @@ issue: "#2039"
     - `.ai-context/adr/IADR-0247_nul-byte-check.md`（「空で始める」）と仕様書 20260822 は凍結記録で、当時の記述として正しい。書き換えない。
   - 検証は、画像をコミットした状態で `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` を流して行う。
 
+- **［2026-10-30 追記 / #2039］head 393d6798 で CI の claude-review が赤になったので、母集合を足した**（「精読」「行単位」「生成物」「検証の下限」で走査した）。
+  - 原因: `check-review-verdict.js` が、🔍 の「PNG 3 枚の画像の中身…は行単位で読めないため未検証」を、読んだと申告したファイルを精読していない自認と読んだ。
+  - 是正:
+    - 検査器に、バイナリ（画像）だけについての文を数えない 3 条件の除外（`aboutBinaryOnly`）を足した。
+    - 自己試験に陽性の例と陰性対照を足した（31 件）。
+    - 実本文を fixture（`scripts/fixtures/review-floor/pr2370-review2.txt`）にして、repo 試験で緑と陽性対照を固定した。
+    - プロンプト（`.github/workflows/claude-code-review.yml` の【検証の下限】）に 2 行を足した。対は repo 試験の語の一覧に足した。
+    - 検査器の冒頭、`scripts/README.md`（自己試験の件数 22 → 31 も）、IADR-0661 に追記した。
+  - 起動条件（`on:`）と必須チェックは変えていない（prompt の文言だけ）。
+
 ## 検証
 
 - `pnpm run test:e2e:visual --update-snapshots`（初回）。続けて許容差 0 で 5 回。
