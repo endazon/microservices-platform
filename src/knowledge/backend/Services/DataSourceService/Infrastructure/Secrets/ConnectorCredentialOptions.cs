@@ -1,6 +1,6 @@
 namespace DataSourceService.Infrastructure.Secrets;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): **移送期間の旗**（`ConnectorCredentials:*`）。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 2 (#458 段 S4): **移送期間の旗**（`ConnectorCredentials:*`）。
 //
 // helm の `services.datasource.connectorCredentials.plaintextAllowed` が `ConnectorCredentials__PlaintextAllowed` へ描画する。
 // - `true`（既定。移送期間）: 設定の平文を従前どおり受け入れる（同期は平文で動き、SC-06 の API も平文を保存できる）。

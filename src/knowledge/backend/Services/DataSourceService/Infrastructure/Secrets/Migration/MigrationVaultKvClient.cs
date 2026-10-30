@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 
 namespace DataSourceService.Infrastructure.Secrets.Migration;
 
-// NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 3 (#458 段 S4): 移送が使う **KV v2 の読み書き**（運用者が渡した短命のトークンで名乗る）。
+// NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 3 (#458 段 S4): 移送が使う **KV v2 の読み書き**（運用者が渡した短命のトークンで名乗る）。
 //
 // - 名乗りは datasource-service の Pod の役（`datasource-connector-reader`。read だけ）ではない。運用者が
 //   `datasource-credential-migrate` の policy（専用接頭辞の 1 セグメントに create・update・read）で発行したトークンを、

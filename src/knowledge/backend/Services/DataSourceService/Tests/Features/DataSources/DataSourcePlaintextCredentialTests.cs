@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace DataSourceService.Tests.Features.DataSources;
 
-// NFR-18, FR-01, SC-06, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間の旗（`ConnectorCredentials:PlaintextAllowed`）。
+// NFR-18, FR-01, SC-06, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の旗（`ConnectorCredentials:PlaintextAllowed`）。
 //   - 旗が真（既定）: 従前どおり平文を保存できる（移送期間）。
 //   - 旗が偽: SC-06 の登録・更新・部分更新で、秘密のキーへの平文を 400 で拒む（参照・空・マスクの書き戻しは通す）。
 //   - 旗が偽なのに平文の行が残っていれば、起動しない（旗を偽にできるのは平文の行が 0 件のときだけ）。

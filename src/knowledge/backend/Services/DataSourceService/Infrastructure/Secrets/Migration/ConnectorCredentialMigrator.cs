@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DataSourceService.Infrastructure.Secrets.Migration;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 3 (#458 段 S4): **設定の平文の資格情報を Vault へ移し、正規の参照へ置き換える**一回きりの移送。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 3 (#458 段 S4): **設定の平文の資格情報を Vault へ移し、正規の参照へ置き換える**一回きりの移送。
 //
 // 行（状態に依らず全行。無効化した行の平文も保管の対象である）× 平文のキー（`PlaintextCredential`）ごとに、次の順で行う。
 //   1. Vault の `datasource/<ID>` を読む（現在版と既存のキー）。
@@ -104,7 +104,7 @@ public sealed class ConnectorCredentialMigrator(
     }
 }
 
-// NFR-18, [[IADR-0663]] 決定 3: 設定の 1 キーを、**読んだ平文と今の値が同じときだけ**正規の参照へ置き換える。
+// NFR-18, [[IADR-0664]] 決定 3: 設定の 1 キーを、**読んだ平文と今の値が同じときだけ**正規の参照へ置き換える。
 // 実 DB は 1 文の条件つき更新（`CredentialReferencePlacement` と同じ作法。`Config` 全体を作り直して書かない）。
 public static class CredentialMigrationStore
 {

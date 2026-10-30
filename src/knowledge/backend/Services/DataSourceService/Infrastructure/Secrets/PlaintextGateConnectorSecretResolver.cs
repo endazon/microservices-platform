@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace DataSourceService.Infrastructure.Secrets;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間の旗で**平文の解決を止める**飾り。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の旗で**平文の解決を止める**飾り。
 //
 // 作業仕様書 20261003_458 §窓 1 の「両端」の形である。
 //   - 参照の行（P+）: 内側の解決器へ委ねる（旗に依らない）。

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, IADR-0663 決定 3・4 (#458 段 S4): データソースの設定の**平文の資格情報**を Vault へ移す（経路 B）。
+# NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, IADR-0664 決定 3・4 (#458 段 S4): データソースの設定の**平文の資格情報**を Vault へ移す（経路 B）。
 #
 #   bash scripts/migrate-datasource-credentials.sh --live --dry-run   # 平文を持つ行とキーを数えるだけ（何も書かない）
 #   bash scripts/migrate-datasource-credentials.sh --live             # 移送する（--live か LIVE=1 が無ければ何もしない。#1550）

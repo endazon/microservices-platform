@@ -44,7 +44,7 @@ internal static class UpdateDataSourceEndpoint
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, ds.ConnectionUri) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
 
-            // NFR-18, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む（マスクの書き戻しは通す）。
+            // NFR-18, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む（マスクの書き戻しは通す）。
             if (PlaintextCredentialWritePolicy.Reject(req.Config, credentialOptions) is { } plaintextError)
                 return plaintextError;
 

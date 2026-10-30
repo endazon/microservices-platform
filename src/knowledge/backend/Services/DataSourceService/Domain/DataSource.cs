@@ -435,7 +435,7 @@ public class DataSource
         return DataSourceCredentialSupply.Reference;
     }
 
-    // NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 3 (#458 段 S4): **移送**。Vault へ写した平文を、正規の参照へ置き換える。
+    // NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 3 (#458 段 S4): **移送**。Vault へ写した平文を、正規の参照へ置き換える。
     // 🔴 **読んだ値と今の値が同じときだけ**置き換える（移送が読んでから書くまでの間に SC-06 の更新が入った行は触らない）。
     // 戻り値は置き換えたか。実 DB の経路は `CredentialMigrationStore` の 1 文の条件つき更新で、本メソッドは単体テストのプロバイダ用。
     public bool ReplacePlaintextWithReference(string key, string expectedPlaintext)

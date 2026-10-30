@@ -176,7 +176,7 @@ builder.Services.AddSingleton<ISyncLeaseCoordinator>(sp =>
     return new PostgresAdvisoryLockLeaseCoordinator(
         connStr, sp.GetRequiredService<ILogger<PostgresAdvisoryLockLeaseCoordinator>>());
 });
-// NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間の旗が偽なら、平文の行が 0 件でなければ起動しない。
+// NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の旗が偽なら、平文の行が 0 件でなければ起動しない。
 // 同期のワーカーより先に登録する（ホストは登録順に開始する。平文の行のまま同期を始めない）。
 builder.Services.AddHostedService<DataSourceService.Infrastructure.Secrets.PlaintextCredentialStartupGate>();
 builder.Services.AddHostedService<DataSourceSyncHostedService>();
@@ -191,7 +191,7 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
 }
 
-// NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 3・4 (#458 段 S4): 移送の入口（`migrate-connector-credentials`）。
+// NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 3・4 (#458 段 S4): 移送の入口（`migrate-connector-credentials`）。
 // 稼働の Pod の中で `kubectl exec -i` で流し、終わったら終了する（ホストは開始しない＝同期のワーカー・HTTP は動かない）。
 if (DataSourceService.Infrastructure.Secrets.Migration.ConnectorCredentialMigrationCommand.IsInvoked(args))
 {

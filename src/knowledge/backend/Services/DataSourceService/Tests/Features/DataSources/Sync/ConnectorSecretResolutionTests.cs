@@ -223,7 +223,7 @@ public sealed class ConnectorSecretResolutionTests(TestWebApplicationFactory fac
             log ?? NullLogger<DataSourceSyncService>.Instance);
     }
 
-    // NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): 作業仕様書 20261003_458 §窓 1 の表の 3 列を、
+    // NFR-18, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 2 (#458 段 S4): 作業仕様書 20261003_458 §窓 1 の表の 3 列を、
     // 実コネクタと配備と同じ合成（旗の飾り ＋ 内側の解決器）で測る。形は「両端」—— 参照があれば参照、無ければ旗が真のときだけ平文。
     //   P+（参照の行）: 旗に依らず参照で同期する。
     //   P−（平文の行・期間中）: 旗が真なら平文で同期する（既存のデータソースを一斉に止めない）。

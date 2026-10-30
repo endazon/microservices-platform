@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace DataSourceService.Infrastructure.Secrets;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 2 (#458 段 S4): **移送期間の旗を偽にできるのは、平文の行が 0 件のときだけ**。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 2 (#458 段 S4): **移送期間の旗を偽にできるのは、平文の行が 0 件のときだけ**。
 //
 // 旗（`ConnectorCredentials:PlaintextAllowed`）が偽なのに、設定に平文の資格情報を持つデータソースが 1 件でも残っていれば、
 // **起動を拒む**（ホストの開始の前に例外）。平文を持つ行を黙って同期の失敗へ倒すと、移送の漏れが「同期が止まった」に化ける。

@@ -24,7 +24,7 @@ internal static class CreateDataSourceEndpoint
             if (ConnectionUriPolicy.Validate(req.ConnectionUri, existing: null) is { } uriError)
                 return Results.BadRequest(new { error = uriError });
 
-            // NFR-18, [[IADR-0663]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む。
+            // NFR-18, [[IADR-0664]] 決定 2 (#458 段 S4): 移送期間の後は、秘密のキーへの平文を拒む。
             if (PlaintextCredentialWritePolicy.Reject(req.Config, credentialOptions) is { } plaintextError)
                 return plaintextError;
 

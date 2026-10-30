@@ -11,7 +11,7 @@ using global::DataSourceService.Infrastructure.Secrets.Migration;
 
 namespace Knowledge.IntegrationTests.DataSourceService;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, IADR-0663 決定 3 (#458 段 S4): 移送の**設定の置き換え**（1 文の条件つき更新）を実 PostgreSQL で固定する。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, IADR-0664 決定 3 (#458 段 S4): 移送の**設定の置き換え**（1 文の条件つき更新）を実 PostgreSQL で固定する。
 // 単体テスト（EF InMemory）は SQL を実行しないので、ここでしか踏めない。
 //   - 読んだ平文と今の値が同じときだけ、そのキー 1 つを正規の参照へ置き換える（同じ行の別のキーを消さない）。
 //   - 読んでから書くまでの間に SC-06 の更新が入って値が変わった行は、置き換えない（新しい値を古い平文の移送で消さない）。

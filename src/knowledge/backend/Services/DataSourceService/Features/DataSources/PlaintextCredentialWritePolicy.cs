@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace DataSourceService.Features.DataSources;
 
 // NFR-18, FR-01, SC-06, 計画 ADR-0126 フォローアップ 2（「移送の後は、設定への平文の書き込みを拒む」）,
-// [[IADR-0663]] 決定 2 (#458 段 S4): SC-06 の登録・更新・部分更新の API で、**移送期間の後は秘密のキーへの平文を 400 で拒む**。
+// [[IADR-0664]] 決定 2 (#458 段 S4): SC-06 の登録・更新・部分更新の API で、**移送期間の後は秘密のキーへの平文を 400 で拒む**。
 //
 // - 旗（`ConnectorCredentials:PlaintextAllowed`）が真の間は何もしない（移送期間。従前どおり受け入れる）。
 // - 拒むのは平文だけ（`PlaintextCredential.IsPlaintext`）。参照（`vault:`）・空白（値なし）・マスク（`***`。既存値を保つ書き戻し）は通す。

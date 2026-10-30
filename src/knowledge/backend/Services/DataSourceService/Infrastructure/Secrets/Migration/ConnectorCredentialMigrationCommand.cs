@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace DataSourceService.Infrastructure.Secrets.Migration;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 3・4 (#458 段 S4): 移送の**入口**（`dotnet DataSourceService.dll migrate-connector-credentials`）。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 3・4 (#458 段 S4): 移送の**入口**（`dotnet DataSourceService.dll migrate-connector-credentials`）。
 //
 // 稼働の Pod の中で `kubectl exec -i` で流す（接続文字列・Vault の所在は Pod の環境から読む。手順は scripts/migrate-datasource-credentials.sh）。
 //   migrate-connector-credentials --dry-run        平文を持つ行とキーを数えるだけ（Vault にも DB にも書かない。トークン不要）

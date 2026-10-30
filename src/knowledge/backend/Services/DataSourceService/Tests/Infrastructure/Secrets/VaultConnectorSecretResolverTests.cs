@@ -372,7 +372,7 @@ public sealed class VaultConnectorSecretResolverTests
         services.AddConnectorSecretResolver();
         using var provider = services.BuildServiceProvider();
 
-        // ［2026-10-31 / #458 段 S4・IADR-0663 決定 2］外側には移送期間の旗の飾りが巻かれる。選ばれる解決器はその内側。
+        // ［2026-10-31 / #458 段 S4・IADR-0664 決定 2］外側には移送期間の旗の飾りが巻かれる。選ばれる解決器はその内側。
         provider.GetRequiredService<IConnectorSecretResolver>().Should().BeOfType<PlaintextGateConnectorSecretResolver>()
             .Which.Inner.Should().BeOfType(expected);
     }

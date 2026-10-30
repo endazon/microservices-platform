@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DataSourceService.Tests.Infrastructure.Secrets.Migration;
 
-// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0663]] 決定 3・4 (#458 段 S4): 平文の資格情報の**移送**。
+// NFR-18, FR-01, 計画 ADR-0126 フォローアップ 2, [[IADR-0664]] 決定 3・4 (#458 段 S4): 平文の資格情報の**移送**。
 // Vault は偽のハンドラ（KV v2 の data の GET / POST・metadata の GET）、DB は InMemory（条件つき更新の実 SQL は
 // Knowledge.IntegrationTests の CredentialMigrationStoreTests が実 PostgreSQL で測る）。
 [Trait("TestKind", "Unit")]

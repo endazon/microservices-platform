@@ -302,7 +302,7 @@ spec:
               value: {{ $svc.dataSourceSync.intervalSeconds | default 300 | quote }}
           {{- end }}
           {{- with $svc.connectorCredentials }}
-            # NFR-18, 計画 ADR-0126 フォローアップ 2, IADR-0663 決定 2 (#458 段 S4): 移送期間の旗。🔴 `default` を使わない
+            # NFR-18, 計画 ADR-0126 フォローアップ 2, IADR-0664 決定 2 (#458 段 S4): 移送期間の旗。🔴 `default` を使わない
             # （`false | default true` は true になる）。キーが無ければ既定（true）を書く。
             - name: ConnectorCredentials__PlaintextAllowed
               value: {{ ternary (toString .plaintextAllowed) "true" (hasKey . "plaintextAllowed") | quote }}
