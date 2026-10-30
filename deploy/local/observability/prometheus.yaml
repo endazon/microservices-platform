@@ -235,8 +235,16 @@ data:
             for: 5m
             labels: { severity: warning }
             annotations:
-              summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）"
-              description: "Wolverine の耐久化の操作のメモリ上の再試行が直近 1 時間に失敗した（初回を含む。サービスと例外の型はラベル job・error_type）。再試行は上限（既定 4 回・約 0.5 秒）で捨てられ得て、その送出は欠落する（途中の停止でも同じ）。ログで時刻を確かめ、既定では窓の間の取得範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
+              summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（0 が正常）"
+              description: "Wolverine の耐久化の操作のメモリ上の再試行が直近 1 時間に失敗した（初回を含む。サービスと例外の型はラベル job・error_type）。発行は送出表へのコミットを確かめてから成功を返すので欠落はしない。上限（既定 4 回・約 0.5 秒）で捨てられると重複や遅れが起き得る（MessagingRetryBlockDiscarded も鳴る）。ログの例外で DB の一時失敗の原因を調べる（運用仕様書 §送出の再試行中の欠落の窓）。"
+          # FR-12, NFR-21, IADR-0657 (#2361): 再試行の上限で捨てた（**0 が正常**）。注記の正本は compose 側の同名ルール。
+          - alert: MessagingRetryBlockDiscarded
+            expr: 'sum by (job) ((messaging_retry_block_discarded_total unless messaging_retry_block_discarded_total offset 1h) or increase(messaging_retry_block_discarded_total[1h])) > 0'
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "Wolverine の耐久化の操作が再試行の上限で捨てられた（0 が正常）"
+              description: "Wolverine の耐久化の操作が直近 1 時間に再試行の上限（既定 4 回・約 0.5 秒）で捨てられた（初回を含む。サービスはラベル job）。発行は送出表へのコミットを確かめてから成功を返すので欠落はしないが、重複や遅れが起き得る。ログ（Discarding message）と MessagingRetryBlockErrors の例外で原因を調べ、送出表に残った行を確かめる（運用仕様書 §送出の再試行中の欠落の窓）。"
 
       # FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): 構成ドリフト（**0 が正常**）。注記の正本は compose 側の同名グループ
       # （ゲージなので初回の腕は要らない。promtool の単体試験は compose 側に対して回り、式の一致は parity 検査が見る）。

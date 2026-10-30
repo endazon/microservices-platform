@@ -604,6 +604,7 @@
       "NormalizedAssetLedgerTests",
       "PipelineDeclarationLoadedTests",
       "QueueOverrideFanOutTests",
+      "RawDocumentFetchedStoreFailureTests",
       "SaaSConnectorTests",
       "SyncErrorRedactorTests",
       "SyncLeaseCoordinatorTests",
