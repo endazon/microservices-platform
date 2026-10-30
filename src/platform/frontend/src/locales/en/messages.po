@@ -3977,8 +3977,8 @@ msgid "機密区分で絞り込み"
 msgstr "Filter by confidentiality"
 
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
-msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
-msgstr "Highly confidential data is processed by the self-hosted LLM and is never sent to an external API (UC-02 alternative flow, data egress policy). Data you may not access is silently excluded (existence is hidden)."
+msgid "機密区分の高いデータは、ティア A（セルフホスト）かティア B（保護契約済みの外部 API。ゼロ保持を要する）へだけ送り、ティア C（標準の外部 API）へは送りません（AI 分析の代替フロー・データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
+msgstr "Highly confidential data is sent only to tier A (self-hosted) or tier B (a contractually protected external API that must offer zero data retention), never to tier C (a standard external API) (AI analysis alternative flow, data egress policy). Data you may not access is silently excluded (existence is hidden)."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "機密区分上限は必須です。"

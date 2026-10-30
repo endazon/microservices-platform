@@ -219,12 +219,21 @@ describe('AnalysisDashboardPage (SC-08)', () => {
   });
 
   // 05_screens §SC-08 の注記（データ越境ポリシーと存在秘匿）。
+  // ［2026-10-30 / #2115・planning#832 の裁定］高機密の行き先は越境マトリクスを正とする ——
+  // ティア A かティア B（ゼロ保持を要する）へだけ送り、ティア C へは送らない。
+  // 旧い注記「外部 API へ送信せずセルフホスト LLM で処理」は、ティア B へ出る実際の行き先と食い違っていた。
   it('states the egress policy and the existence-hiding rule', async () => {
     await renderPage();
 
     expect(
-      screen.getByText(/機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します/),
+      screen.getByText(
+        /機密区分の高いデータは、ティア A（セルフホスト）かティア B（保護契約済みの外部 API。ゼロ保持を要する）へだけ送り、ティア C（標準の外部 API）へは送りません/,
+      ),
     ).toBeInTheDocument();
+    // 陰性（陽性対照は上の新しい注記）: 旧い注記は出ない。
+    expect(
+      screen.queryByText(/外部 API へ送信せずセルフホスト LLM で処理/),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText(/権限外のデータは黙って対象外になります（存在秘匿）。/),
     ).toBeInTheDocument();
