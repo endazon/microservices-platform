@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — e2e-live に Vault と BFF の書き込みの役だけを足し、M-113 の 200 の形を CI で流す（#2230。案 B）
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-22, NFR-18, NFR-10, ADR-0095, ADR-0124, IADR-0453, IADR-0625, IADR-0585, IADR-0096, IADR-0658]
 author: claude
 created: 2026-10-30
@@ -52,10 +52,17 @@ issue: "#2230"
 
 ## 受け入れ基準
 
-- [ ] e2e-live（PR の実行）で M-113 の annotation が `listed`、`E2E_SECRETS_LISTED=1` で 200 だけが通る
-- [ ] 起動の段の前後の `df` / `free` の実測値を PR 本文に載せ、上限の扱いを条件 3 で決めた
-- [ ] `k8s-local-up.test.js`・`vault-k8s-auth-audience.test.js`・`live-opt-in.smoke.spec.ts` が緑
-- [ ] IADR-0658 の残余リスクに「CI は本番相当の ESO 経路を通らない」を書き、issue にも記録した
+- [x] e2e-live（PR の実行）で M-113 の annotation が `listed`、`E2E_SECRETS_LISTED=1` で 200 だけが通る
+- [x] 起動の段の前後の `df` / `free` の実測値を PR 本文に載せ、上限の扱いを条件 3 で決めた
+- [x] `k8s-local-up.test.js`・`vault-k8s-auth-audience.test.js`・`live-opt-in.smoke.spec.ts` が緑
+- [x] IADR-0658 の残余リスクに「CI は本番相当の ESO 経路を通らない」を書き、issue にも記録した
+
+## 結果（PR #2366 の e2e-live。run 41035294127）
+
+- M-113: passed、annotation「SC-22 の一覧」= `listed`（`E2E_SECRETS_LISTED=1` で 200 だけを通した）。
+- 起動の段: 15 分 26 秒（09:42:08 → 09:57:34）。上限 30 分に対して残り 14 分 34 秒 ≥ 10 分なので、上限は上げない（条件 3）。
+  - Vault の段（`[opt-in] Vault dev` → BFF の役の bootstrap の完了）は約 24 秒。直近 5 回の起動の段は 12.6〜16.8 分で、その範囲に収まる。
+- ランナー（前 → 後）: ディスク `/` 145G 中 使用 60G・空き 85G → 使用 91G・空き 54G。メモリ 15,983 MiB 中 used 1,396・available 14,587 → used 5,241・available 10,742。swap は未使用。
 
 ## 母集合（規則 9）
 
