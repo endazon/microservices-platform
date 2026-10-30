@@ -10,7 +10,7 @@ import { expect, type Locator, type Page, type TestInfo } from '@playwright/test
  * 🔴 秘密の値を入力欄へ入れる。`locator.fill(value)` は**値を step の題に載せ、html レポートに残す**（実測: 6 名分の
  * パスワードがレポートに出た）。`evaluate` の引数は題に載らないので、値をページの中で入れて input / change を起こす。
  */
-async function fillSecret(locator: Locator, value: string): Promise<void> {
+export async function fillSecret(locator: Locator, value: string): Promise<void> {
   await expect(locator).toBeEditable();
   await locator.evaluate((el, v) => {
     const input = el as unknown as { value: string; dispatchEvent: (e: unknown) => boolean };

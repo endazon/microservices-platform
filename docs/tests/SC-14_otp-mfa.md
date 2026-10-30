@@ -3,15 +3,15 @@ title: ワンタイムコード（OTP／多要素認証） テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-15
-updated: 2026-09-27
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [SC-13, SC-14, SC-16, UC-05]
 adrs: [ADR-0026]
-iadrs: [IADR-0197, IADR-0294]
-specs: [20260927_issue-1605_checker-residual-precision]
-issues: [#438, #1605]
+iadrs: [IADR-0197, IADR-0294, IADR-0662]
+specs: [20261030_2040_totp-enroll-disposable, 20260927_issue-1605_checker-residual-precision]
+issues: [#438, #1605, #2040]
 -->
 
 # テスト仕様書: ワンタイムコード（OTP／多要素認証）
@@ -51,10 +51,10 @@ issues: [#438, #1605]
 | T-13 | 同上 | 同上（検査 5） | `requiredActions` の `delete_credential` が `enabled: false` | 登録済み OTP を利用者自身が消せると、強制登録を通った後に MFA 無しの状態へ戻れる（再発行は管理者側の画面が担う） | 自動 |
 | T-14 | 同上 | 同上（検査 5） | `eventsEnabled` / `adminEventsEnabled` / `adminEventsDetailsEnabled` が `true`、`eventsListeners` に `jboss-logging`、`enabledEventTypes` に最小集合（`LOGIN` / `LOGIN_ERROR` / `LOGOUT` / `UPDATE_PASSWORD` / `UPDATE_TOTP` / `REMOVE_TOTP` / `RESET_PASSWORD` / `REMOVE_CREDENTIAL`） | 計画 ADR「操作を監査ログに記録する」／メール停止時の代替手順が「申請者・承認者・実行者を残す」ことを前提にしている。Keycloak の既定は「記録しない」であり、**書かなければ 1 件も残らない** | 自動 |
 | T-15 | — | `node scripts/check-realm-constraints.js --self-test` | 検査 5 の不変条件を **1 つずつ壊した変異 9 件がそれぞれ検出され**、陽性対照（サービスアカウント）は検出されない | 🔴 **正例だけでは検出力を測れない。** 「実データで緑」は検査が効いていることの証拠にならない | 自動 |
-| T-06 | Keycloak 稼働・TOTP 未登録の利用者 | ログイン画面からログインする | `CONFIGURE_TOTP` の初回セットアップへ誘導される | 計画 ADR「未登録者は…誘導する」 | **手動（実環境）** |
+| T-06 | Keycloak 稼働・TOTP 未登録の利用者 | ログイン画面からログインする | `CONFIGURE_TOTP` の初回セットアップへ誘導される。QR コード・手動入力キー（登録に使う秘密の base32）・デバイス名・確認コードで登録を終えると元の画面へ戻り、次のログインは初回セットアップを出さずに 6 桁だけを求める | 計画 ADR「未登録者は…誘導する」 | ~~**手動（実環境）**~~ **自動（live。使い捨てのスタックだけ。2026-10-30）**: `e2e/live/totp-enroll.ro.spec.ts`（`E2E_DISPOSABLE=1`。一時アカウントを作って消す） |
 | T-07 | Keycloak 稼働・TOTP 登録済 | 1 ステップ前／後のコードを入力する | いずれも受理される | 計画 ADR「前後1ステップまで許容」 | **手動（実環境）** |
 | T-08 | 同上 | 2 ステップ前のコードを入力する | 拒否される | 同上（**境界の外**） | **手動（実環境）** |
-| T-09 | 初回登録を完了する | 登録完了画面を確認する | リカバリーコードが **1 回のみ**表示される | 計画側の画面設計 §ワンタイムコード（OTP） | **手動（実環境）** |
+| T-09 | 初回登録を完了する | 登録完了画面を確認する | リカバリーコードが **1 回のみ**表示される | 計画側の画面設計 §ワンタイムコード（OTP） | **手動（実環境）**。**［2026-10-30］現状は表示されない（未達）** —— 下の未決事項 |
 
 ## テストデータ
 
@@ -76,3 +76,7 @@ issues: [#438, #1605]
   実 Keycloak で 1 度通してから自動ケースへ格上げする。実行の場は `integration-stack.yml`（**PR では起動しない**）。
 - **T-09（リカバリーコードの 1 回表示）は手動のままである。** 表示は Keycloak のテンプレートが行い、
   realm の宣言では測れない。
+- **［2026-10-30］T-09 は現状では満たされない。** Keycloak 26.7.4 は、OTP の登録の後にリカバリーコードの登録へ進めるのを
+  `CONFIGURE_TOTP` の設定 `add-recovery-codes`（既定 false）が真で、かつ認証フローにリカバリーコードの段があるときに限る。
+  realm はどちらも宣言していない。T-06 の自動化（初回の TOTP 登録のブラウザ E2E）は、登録の後に必須アクションの画面へ止まらず
+  元の画面へ戻ることを見ており、表示されるようになればそこで赤になる（そのとき T-09 を同じ試験へ足す）。

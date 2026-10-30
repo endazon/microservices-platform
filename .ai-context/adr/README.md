@@ -739,3 +739,4 @@
 | [IADR-0659](./IADR-0659_live-rw-secret-item-write-existing-item.md) | live-rw の SC-22 の試験キーは既存の項目へ書き、空に戻さず、監査は BFF のログで確かめる（M-114。#2240） | Accepted |
 | [IADR-0660](./IADR-0660_introspection-contributors-and-mcp-effective-tools.md) | 自己申告に要求のたびの寄与（IIntrospectionContributor）を足し、MCP の実効ツール一覧を構成情報 API と SC-11 に載せる（#2285 の (d-2)。(b)(ii) は同じ仕組みに後から載せる） | Accepted |
 | [IADR-0661](./IADR-0661_visual-regression-three-faces-in-official-docker.md) | 視覚回帰は 3 面（NotFound・SC-19 削除確認・SC-01 出典ラベル）だけを公式 Docker イメージの中で手動で流し、project visual は PW_VISUAL=1 のときだけ持つ（#2039 / E-80） | Accepted |
+| [IADR-0662](./IADR-0662_totp-enroll-disposable-only.md) | 初回の TOTP 登録（M-005）は使い捨てのスタックだけで、一時アカウントを Keycloak の管理 API で作って消して流す（E2E_DISPOSABLE。リカバリーコードは realm 未対応のため見ない。#2040 / E-81） | Accepted |

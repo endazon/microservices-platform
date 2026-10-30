@@ -20,6 +20,14 @@ export function remainingSeconds(nowMs: number): number {
   return STEP_SECONDS - (Math.floor(nowMs / 1000) % STEP_SECONDS);
 }
 
+/**
+ * 生の秘密の base32（認証アプリへ手で入れる「手動入力キー」と同じ値。Keycloak の表示は 4 文字ごとに空白を入れる）。
+ * #2040 / IADR-0662: 初回登録の画面の手動キーが、登録に使われる秘密（hidden の `totpSecret`）と同じものを指すことを見る。
+ */
+export function base32Of(rawSecret: string): string {
+  return lib.base32Encode(rawSecret);
+}
+
 /** 生の秘密から 6 桁を出す（純関数）。 */
 export function otpFor(rawSecret: string, nowMs: number): string {
   return lib.totp(lib.base32Encode(rawSecret), { t: Math.floor(nowMs / 1000) });

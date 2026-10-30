@@ -3,15 +3,15 @@ title: ワンタイムコード（OTP／多要素認証） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-08-15
-updated: 2026-10-10
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026, ADR-0031]
-iadrs: [IADR-0197, IADR-0261, IADR-0532]
-specs: [20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
-issues: [#438]
+iadrs: [IADR-0197, IADR-0261, IADR-0532, IADR-0662]
+specs: [20261030_2040_totp-enroll-disposable, 20260823_issue-438_keycloak-theme-and-smtp, 20260828_issue-438_keycloak-theme-k8s-local, 20260828_issue-439_sc16-account-settings, 20261010_sc13-keycloak-theme-nocturne]
+issues: [#438, #2040]
 -->
 
 # 画面仕様書: ワンタイムコード（OTP／多要素認証）
@@ -125,7 +125,7 @@ flowchart LR
 | 6 桁・前後 1 ステップ許容 | **する** | — | 同上 |
 | 6 桁コード入力・デバイス選択・戻る導線 | **する** | Keycloak 既定テーマが 3 要素とも提供し、`platform` テーマでブランド適用済み | 同上 |
 | 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **する** | `CONFIGURE_TOTP` を `defaultAction` にしたため既定テーマで誘導が働き、テーマでブランド適用済み | 同上 |
-| リカバリーコードを登録完了時に 1 回のみ表示 | **する** | 必須アクション `CONFIGURE_RECOVERY_AUTHN_CODES` は realm へ登録済み（レルム改名と認証ポリシー投入の実装 ADR）。**表示回数の制御は Keycloak 本体の既定挙動**（登録フロー完了時に 1 回のみ表示する）に依存し、テーマは表示の作り込みを追加しない | 同上 |
+| リカバリーコードを登録完了時に 1 回のみ表示 | ~~**する**~~ **しない（未達。2026-10-30 に訂正）** | 必須アクション `CONFIGURE_RECOVERY_AUTHN_CODES` は realm へ登録済み（レルム改名と認証ポリシー投入の実装 ADR）。~~**表示回数の制御は Keycloak 本体の既定挙動**（登録フロー完了時に 1 回のみ表示する）に依存し、テーマは表示の作り込みを追加しない~~ **［2026-10-30］この前提は誤りだった。** Keycloak 26.7.4 は、OTP の登録の後にリカバリーコードの登録へ進めるのを `CONFIGURE_TOTP` の設定 `add-recovery-codes`（既定 false）が真で、かつ認証フローにリカバリーコードの段があるときに限る。realm はどちらも宣言していないので、登録の後にリカバリーコードは表示されない（初回の TOTP 登録のブラウザ E2E で、登録の後に必須アクションの画面へ止まらず元の画面へ戻ることを見ている） | 同上 |
 | リカバリーコードをアカウント設定から再発行 | **する** | provider 登録済み・アカウントコンソールへ `accountTheme=platform` を適用済み。再発行の導線は Keycloak 既定のアカウントコンソールが提供する | 計画側の画面設計 §アカウント設定 |
 
 ## 関連仕様
