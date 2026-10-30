@@ -13505,6 +13505,34 @@ exit $RC
       assert.match(test, /instance="new"/, '再起動で instance が替わった新しい系列の 1 件目の場面が無い（IADR-0593）');
     });
 
+    // FR-12, NFR-21, IADR-0657 (#2361): 再試行の上限で捨てたことの警報 MessagingRetryBlockDiscarded。上と同じ型の守りを、ラベルなしの計器に掛ける。
+    ok('#2361: 警報 MessagingRetryBlockDiscarded が、C# の計器名から導いた式を 4 か所で見て、捨てたログのテンプレートを照合する（実データ）', () => {
+      const REL = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Messaging/RetryBlockErrorMetrics.cs';
+      const cs = readD(REL);
+      const promName = `${constOfD(REL, cs, 'DiscardedCounterName').replace(/\./g, '_')}_total`;
+      assert.strictEqual(promName, 'messaging_retry_block_discarded_total');
+      // 照合はテンプレートの完全一致（JasperFx の RetryBlock が上限で捨てるときのテンプレート。版上げの検知は C# の単体試験が実物のブロックで持つ）。
+      assert.strictEqual(constOfD(REL, cs, 'DiscardTemplate'), 'Discarding message {Message} after {Attempts} attempts');
+
+      for (const rel of RULE_FILES_D) {
+        const rule = ruleBodyD(readD(rel), 'MessagingRetryBlockDiscarded');
+        assert.ok(rule, `${rel} に MessagingRetryBlockDiscarded のルール定義が無い`);
+        const exprM = /expr:\s*'([^']+)'/.exec(rule);
+        assert.ok(exprM, `${rel} の MessagingRetryBlockDiscarded の expr を 1 行の引用符つきで読めない（走査が壊れている）`);
+        assert.strictEqual(exprM[1],
+          `sum by (job) ((${promName} unless ${promName} offset 1h) or increase(${promName}[1h])) > 0`,
+          `${rel} の MessagingRetryBlockDiscarded が「サービスごとに、初回の腕つきの前進が 0 を超えたら」の形でない`);
+        assert.ok(/for:\s*5m/.test(rule) && /severity:\s*warning/.test(rule), `${rel} の MessagingRetryBlockDiscarded の for / severity が流儀（5m・warning）と違う`);
+        if (rel.includes('grafana')) {
+          assert.ok(/type:\s*gt,\s*params:\s*\[0\]/.test(rule), `${rel} の MessagingRetryBlockDiscarded の評価器が gt 0 でない`);
+          assert.ok(/noDataState:\s*OK/.test(rule), `${rel} の MessagingRetryBlockDiscarded の noDataState が OK でない（平常時は系列が無い）`);
+        }
+      }
+      const test = readD('deploy/prometheus/tests/messaging-retry-block.test.yml');
+      assert.match(test, /alertname: MessagingRetryBlockDiscarded/, '試験に MessagingRetryBlockDiscarded の場面が無い');
+      assert.match(test, /messaging_retry_block_discarded_total\{[^}]*instance="new"/, '再起動で instance が替わった新しい系列の 1 件目の場面が無い（IADR-0593）');
+    });
+
     ok('#2043: DeadLetterReached の初回の場面を promtool の単体試験が固定し、CI がそれを回す（実データ）', () => {
       const test = readD('deploy/prometheus/tests/messaging-dead-letter.test.yml');
       assert.match(test, /^\s+- \.\.\/alerts\.yml$/m, '試験が compose の alerts.yml を読んでいない');
@@ -13557,10 +13585,10 @@ exit $RC
       'deploy/grafana/provisioning/alerting/slo-alerts.yaml',
       'deploy/local/observability/grafana.yaml',
     ];
-    // #2178（IADR-0656）: MessagingRetryBlockErrors とその試験を足した。
+    // #2178（IADR-0656）: MessagingRetryBlockErrors とその試験を足した。#2361（IADR-0657）: MessagingRetryBlockDiscarded を同じ試験ファイルへ足した。
     const TEST_FILES_F = ['deploy/prometheus/tests/first-series-alerts.test.yml', 'deploy/prometheus/tests/messaging-dead-letter.test.yml',
       'deploy/prometheus/tests/messaging-retry-block.test.yml'];
-    const EXPECTED_F = ['DeadLetterReached', 'DepartmentSyncNotCorrecting', 'IngestionBudgetExhausted', 'MessagingRetryBlockErrors',
+    const EXPECTED_F = ['DeadLetterReached', 'DepartmentSyncNotCorrecting', 'IngestionBudgetExhausted', 'MessagingRetryBlockDiscarded', 'MessagingRetryBlockErrors',
       'UnitDocumentsMissingProjectAttribute'];
     const readF = (rel) => fsF.readFileSync(pathF.join(ROOT_F, rel), 'utf8');
     // ルール名ごとの expr（1 行の引用符つき）を読む。コメント行は落とす。

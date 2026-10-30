@@ -3,14 +3,14 @@ title: UC-04 データソースを登録・同期する テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-31
-updated: 2026-09-27
+updated: 2026-10-30
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, UC-04, SC-06, NFR]
 adrs: [ADR-0009, ADR-0013, ADR-0027, ADR-0028]
-specs: [20260831_issue-1106_uc-test-specs, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1630_caller-cancel-controls-tce]
-issues: [#472, #1106, #1604, #1622, #1630]
+specs: [20260831_issue-1106_uc-test-specs, 20261030_2361_retry-block-discard-datasource-outbox, 20260926_issue-1604_refresher-and-sync-loop-timeouts, 20260927_issue-1622_deterministic-tick-tests, 20260927_issue-1630_caller-cancel-controls-tce]
+issues: [#472, #1106, #1604, #1622, #1630, #2361]
 -->
 
 # テスト仕様書: データソースを登録・同期する
@@ -85,6 +85,7 @@ issues: [#472, #1106, #1604, #1622, #1630]
 | T-39 | 定期同期の周期で停止要求ではない取り消し（接続の時間切れ等）が起きる | 定期同期を回す | **ループは終わらず**、失敗を記録し、**次の拍まで待って**から再び回す。停止要求では静かに終わる。拍は偽の時計で試験が手で進め、各回の取得が別の拍で起きることを測る（壁時計の間隔では測らない。［2026-09-27 追加］） | 基本 2・例外 | 自動 |
 | T-40 | 探索・1 件の取得が時間切れになる | 同期する | 取り消しではなく**そのソース（その 1 件）の失敗**として数え、基準時刻を進めない。呼び出し側の取り消しは失敗へ畳まず外へ出す（対照。探索と取得の両方で、接続子の HTTP クライアントが表す形＝呼び出し側の取り消しを持つ、時間切れと同じ型の例外で起こす。［2026-09-27 追加］外へ出たのが接続子の投げた取り消しそのものであることまで測る —— 型だけでは、後段が同じ型の取り消しを投げ直す変異を見逃す。［2026-09-27 追加］） | 例外 | 自動 |
 | T-41 | Wiki・SaaS の接続子の HTTP クライアント | 本番の組み立てから引く | **明示の期限**（30 秒）を持つ（既定の 100 秒のままにしない） | 例外 | 自動 |
+| T-42 | 原本イベントの送出表（Outbox）への書き込みが失敗する | 同期する | **その 1 件の失敗**として数え、基準時刻を進めない（次の同期で取り直す）。失敗が無ければ発行され、送出表は空に戻り、基準時刻が進む（対照）。失敗は試験ごとの専用の DB の送出表で起こす（［2026-10-30 追加］） | 例外 | 自動 |
 
 ### T-08 を置く理由
 
@@ -118,6 +119,7 @@ issues: [#472, #1106, #1604, #1622, #1630]
 - `DataSourceSyncEndpointTests` — 原本イベントへの属性伝播・未対応種別の縮退（T-19・T-20）
 - `DataSourceSyncServiceTests` — 基準時刻の前進条件・連続失敗の閾値・成功での解除（T-21〜T-23）・時間切れの扱い（T-40）
 - `DataSourceSyncHostedServiceTests` — 周期処理とリースの取得・解放（T-24）・周期のループの取り消しの扱いと拍の待ち（T-39）・接続子の期限（T-41）
+- `RawDocumentFetchedStoreFailureTests` — 送出表への書き込みの失敗をその 1 件の失敗に数え、基準時刻を進めない（T-42。統合）
 - `SyncLeaseCoordinatorTests` / `DataSourceSyncSingleWriterTests` — 排他リースの単一書き手性
   （T-24・T-25。後者は統合）
 - `SyncScheduleTests` — 次回実行時刻の算出と下限の床止め（T-26）

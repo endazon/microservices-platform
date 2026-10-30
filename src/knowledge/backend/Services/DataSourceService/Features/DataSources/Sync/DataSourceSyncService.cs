@@ -3,7 +3,6 @@ using DataSourceService.Domain.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
-using Wolverine;
 
 namespace DataSourceService.Features.DataSources.Sync;
 
@@ -13,7 +12,7 @@ namespace DataSourceService.Features.DataSources.Sync;
 public sealed class DataSourceSyncService(
     ConnectorRegistry registry,
     IObjectStorageClient storage,
-    IMessageBus bus,
+    IRawDocumentFetchedPublisher publisher,
     IConnectorSecretResolver secretResolver,
     ILogger<DataSourceSyncService> logger)
 {
@@ -177,17 +176,21 @@ public sealed class DataSourceSyncService(
                 // データソース名だけが検索の手掛かりであり、名前は下流（索引テキスト）で
                 // 人が打つ語である。正本は `source.Id` のままで、これは射影用の複写である。
                 //
-                // FR-01, UC-04, ADR-0027 §決定, IADR-0609 決定 2 (#2169): **この発行は watermark の保存と同じトランザクションに載せない。**
-                // 送出先は耐久（`Program.cs` の `UsePlatformTransactionalOutbox`）なので、`PublishAsync` は送出の前に
-                // Outbox の表へ書いてから返る —— watermark を進める保存（呼び出し側）より前に、発行は表に残る形になっている。
-                // 逆向き（発行済み・保存前に停止）は watermark が進まず次回に再発行され、決定的な DocumentId で下流が冪等に upsert する。
-                // ⚠️ 表への書き込みが一時的に失敗したときだけ、Wolverine は例外を出さずメモリ上で書き込みを再試行する（IADR-0609 残余リスク）。
-                await bus.PublishAsync(new RawDocumentFetched(
+                // FR-01, UC-04, ADR-0027 §決定, IADR-0657（IADR-0609 決定 2 を置き換え。#2361）: **1 件ごとに送出表へコミットしてから次へ進む。**
+                // 発行口（`IRawDocumentFetchedPublisher`）は返った時点で送出表にコミット済みで、書けなければ例外を投げる ——
+                // その 1 件は下の catch で失敗に数えられ、watermark は進まない（次の同期で取り直す）。
+                // 🔴 素の `IMessageBus.PublishAsync` へ戻さない。耐久の送出先でも表への書き込みの失敗を例外にせず
+                // メモリ上で再試行し、上限（最初の 1 回 ＋ 再試行 3 回・約 0.5 秒）で黙って捨てる。従前はそれで watermark だけが進み、
+                // 原本が恒久に欠落し得た（#2361 の実測）。
+                // watermark の保存（呼び出し側）とは同じトランザクションに載せない。逆向き（発行済み・保存前に停止）は watermark が
+                // 進まず次回に再発行され、決定的な DocumentId で下流が冪等に upsert する。
+                var fetchedEvent = new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,
                     item.Path, storageUri, raw.ContentType,
                     attributes, [],
                     DateTimeOffset.UtcNow,
-                    source.Name));
+                    source.Name);
+                await publisher.PublishAsync(fetchedEvent, ct);
                 fetched++;
             }
             // #1604: 1 件の取得の時間切れはその 1 件の失敗である（上の探索と同じ。呼び出し側の ct による取り消しだけを外へ出す）。

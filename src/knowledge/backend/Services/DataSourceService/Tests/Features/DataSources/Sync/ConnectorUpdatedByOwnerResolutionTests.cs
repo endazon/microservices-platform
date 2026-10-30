@@ -102,7 +102,7 @@ public sealed class ConnectorUpdatedByOwnerResolutionTests(TestWebApplicationFac
         var storage = scope.ServiceProvider.GetRequiredService<IObjectStorageClient>();
         var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = new DataSourceSyncService(
-            new ConnectorRegistry([connector]), storage, bus,
+            new ConnectorRegistry([connector]), storage, new RecordingRawDocumentFetchedPublisher(bus),
             new PlaintextPassthroughConnectorSecretResolver(),
             NullLogger<DataSourceSyncService>.Instance);
         var source = DataSource.Create("wiki", "wiki", Base, ownerMappings: ownerMappings);

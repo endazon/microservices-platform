@@ -399,7 +399,7 @@ public class DataSourceCredentialExposureTests(TestWebApplicationFactory factory
         return new DataSourceSyncService(
             new ConnectorRegistry([connector]),
             scope.ServiceProvider.GetRequiredService<IObjectStorageClient>(),
-            scope.ServiceProvider.GetRequiredService<RecordingMessageBus>(),
+            new RecordingRawDocumentFetchedPublisher(scope.ServiceProvider.GetRequiredService<RecordingMessageBus>()),
             new PlaintextPassthroughConnectorSecretResolver(),
             log);
     }

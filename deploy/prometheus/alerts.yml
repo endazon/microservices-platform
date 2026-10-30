@@ -376,8 +376,8 @@ groups:
   # FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178): **耐久化の操作のメモリ上の再試行の失敗**（**0 が正常**）。
   # 計器 `messaging.retry_block.errors`（RetryBlockErrorMetrics）は、JasperFx の RetryBlock が再試行の失敗で出すログ
   # （テンプレート `Error while trying to retry {Item}` ＋ 例外つき ＋ Error）を共通のロガーの提供者が数えて上げる（全サービス共通）。
-  # 送出表への書き込み（StoreOutgoingAsync）の一時失敗の間に呼び出し側の確定が先に進み、再試行が上限（既定 4 回・約 0.5 秒）で捨てられるか、
-  # 途中でプロセスが止まると送出が欠落する（IADR-0609 の残余。上限の実測は IADR-0656）。
+  # 再試行には上限（既定 4 回・約 0.5 秒）があり、上限で捨てる（上限の実測は IADR-0656）。［2026-10-30 / #2361・IADR-0657］発行はどれも送出表への
+  # コミットを確かめてから成功を返すようにしたので、表への書き込みの失敗では欠落しない（捨てられても重複・遅れだけ）。捨てたことは MessagingRetryBlockDiscarded が鳴らす。
   # 🔴 **`absent()` は置かない**（0 が正常の計数で、平常時は系列が立たない。不在は平常である）。
   # 🔴 **初回の腕（`(m unless m offset 1h) or increase(m[1h])`）を外さない**（DeadLetterReached と同じ理由。最初の標本が 1 で現れる）。
   #   場面は deploy/prometheus/tests/messaging-retry-block.test.yml が promtool で固定する。集計は job・error_type ごと。
@@ -388,8 +388,18 @@ groups:
         for: 5m
         labels: { severity: warning }
         annotations:
-          summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）"
-          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
+          summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（0 が正常）"
+          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・後片付けなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。上限で捨てられると重複や遅れが起き得て、MessagingRetryBlockDiscarded も鳴る。当該サービスのログ（Error while trying to retry）の例外で、DB の一時失敗（接続・ロック）の原因を調べる（運用仕様書 §送出の再試行中の欠落の窓）。"
+      # FR-12, NFR-21, IADR-0657 (#2361): **再試行の上限で捨てた**（**0 が正常**）。計器 `messaging.retry_block.discarded`
+      # （RetryBlockErrorMetrics。テンプレート `Discarding message {Message} after {Attempts} attempts` ＋ Information 以上。ラベルなし）。
+      # 🔴 `absent()` は置かない・初回の腕を外さない（上と同じ理由）。集計は job ごと。場面は同じ試験ファイルが固定する。
+      - alert: MessagingRetryBlockDiscarded
+        expr: 'sum by (job) ((messaging_retry_block_discarded_total unless messaging_retry_block_discarded_total offset 1h) or increase(messaging_retry_block_discarded_total[1h])) > 0'
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Wolverine の耐久化の操作が再試行の上限で捨てられた（0 が正常）"
+          description: "{{ $labels.job }} の messaging_retry_block_discarded_total が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が耐久化の操作を再試行の上限（既定で 4 回・約 0.5 秒）まで失敗し、例外を出さずに捨てた。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。捨てられたのが確定の後の送出・後片付けなら、重複や遅れが起き得る。同じ時刻の MessagingRetryBlockErrors の例外の型とログ（Discarding message）で原因を調べ、送出表（wolverine.wolverine_outgoing_envelopes）に残った行が送られたかを確かめる（運用仕様書 §送出の再試行中の欠落の窓）。"
 
   # FR-15, ADR-0018, NFR-21, IADR-0652 (#2143): **構成ドリフト**（**0 が正常**）。
   # 計器 `config.drift.findings`（ConfigDriftMetrics。BFF のドリフト検出が検出のたびに差し替えるゲージ）= 直近の不一致の件数。

@@ -2,7 +2,7 @@
 title: IADR-0656 Wolverine の耐久化の操作のメモリ上の再試行の失敗は、ログのテンプレートの照合で計器にし、Prometheus の警報で鳴らす（Loki の ruler は新設しない）
 type: impl-adr
 status: Accepted
-related_ids: [FR-12, NFR-21, ADR-0006, ADR-0053, IADR-0609, IADR-0592, IADR-0593]
+related_ids: [FR-12, NFR-21, ADR-0006, ADR-0053, IADR-0609, IADR-0592, IADR-0593, IADR-0657]
 author: claude
 created: 2026-10-30
 updated: 2026-10-30
@@ -82,5 +82,7 @@ issue は「このログを検知するアラートを、既存の監視（Loki 
 - 警報は「再試行が失敗した」ことを告げるだけで、欠落が起きたかどうかは告げない。欠落は、上限で捨てたとき（`Discarding message`。Information）と、再試行の途中でプロセスが止まったときに起きる（上の実測）。
   - 運用仕様書 §送出の再試行中の欠落の窓 は、**既定で埋め直す**形にした（下流は冪等）。
   - 捨てたこと自体（`Discarding message`）は計器にしていない。数えるなら、同じ提供者にテンプレートを 1 つ足す形になる（Information・例外なし）。今は「再試行の失敗」の警報から手順で確かめる。
+  - ［2026-10-30 追記 / #2361］捨てたことを計器 `messaging.retry_block.discarded` と警報 `MessagingRetryBlockDiscarded` にした。あわせて、データソース同期の発行は送出表へ書けなければ例外になり、
+    表への書き込みの失敗では欠落しなくなった（[IADR-0657](./IADR-0657_datasource-per-item-outbox-and-discard-alert.md)。IADR-0609 決定 2 を置き換え）。
 - 提供者は全サービスのロガーに 1 つ足される。照合は `{OriginalFormat}` の 1 回の比較で、`IsEnabled` は Error 以上だけを受ける。費用はエラーログの数に比例する。
 - 計器は、ロガーの最小の段（`Logging:LogLevel`）が Error を落とす構成では進まない。既定の構成は Error を出す。

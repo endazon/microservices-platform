@@ -25,15 +25,15 @@
 #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、
 #      式の絞り込みの後に残る値で評価器が真になり得る（#1577）、
 #      ルールの `uid` が 40 文字以下・英数字と `-` `_` だけ・一意で、写しの両方で同じ集合（#1881）、まで。
-#      **配備時に `/api/v1/provisioning/alert-rules` が 29 件返すことを確かめること。**
+#      **配備時に `/api/v1/provisioning/alert-rules` が 30 件返すことを確かめること。**
 #      🔴 **件数は導出値である。ここの数字を信用せず、着手のたびに数え直すこと**（IADR-0383）——
 #      本行は #1246 が 2 件足した後も「9 件」のままであり、**2 世代ぶん腐っていた**（#1203 で是正）。
 #      現在の内訳: platform-availability 2 ／ platform-slo 5 ／ platform-slo-evaluation-target 6
 #      ／ knowledge-health-producers 2 ／ knowledge-health-violations 1 ／ mail-relay-queue 2
-#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ ingestion-budget 1 ／ messaging-dead-letter 1 ／ messaging-retry-block 1 ／ config-drift 1 ／ department-sync 1 ／ owner-read-policy 2
-#      ／ mcp-client-idp-reconciliation 2 ＝ **29**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した。［2026-10-17 / #1746］platform-slo に SearchRerankLatencyTargetUndefined を足して 4 → 5。［2026-10-20 / #1991］ingestion-budget 1 を足して 25 → 26。［2026-10-23 / #2043］messaging-dead-letter 1 を足して 26 → 27。［2026-10-30 / #2143］config-drift 1 を足して 27 → 28。［2026-10-30 / #2178］messaging-retry-block 1 を足して 28 → 29）
+#      ／ reset-floor-availability 1 ／ llm-cost-budget 1 ／ ingestion-budget 1 ／ messaging-dead-letter 1 ／ messaging-retry-block 2 ／ config-drift 1 ／ department-sync 1 ／ owner-read-policy 2
+#      ／ mcp-client-idp-reconciliation 2 ＝ **30**（［2026-10-10 / #1881］#1818 の 2 件を取りこぼして 22 のままだったので足した。［2026-10-17 / #1746］platform-slo に SearchRerankLatencyTargetUndefined を足して 4 → 5。［2026-10-20 / #1991］ingestion-budget 1 を足して 25 → 26。［2026-10-23 / #2043］messaging-dead-letter 1 を足して 26 → 27。［2026-10-30 / #2143］config-drift 1 を足して 27 → 28。［2026-10-30 / #2178］messaging-retry-block 1 を足して 28 → 29。［2026-10-30 / #2361］messaging-retry-block に MessagingRetryBlockDiscarded を足して 1 → 2・29 → 30）
 #      （［2026-09-26 / #1577］内訳が #1573 の department-sync 1 を取りこぼして 19 のままだったので足した）
-#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24、#1746 で 24 → 25、#1991 で 25 → 26、#2043 で 26 → 27、#2143 で 27 → 28、#2178 で 28 → 29 へ数え直した）。
+#      （#1233 で 12 → 13、#1245 PR-B で 13 → 16、#1111 で 16 → 17、#1544 で 17 → 19、#1573 で 19 → 20、#1665 で 20 → 22、#1818 で 22 → 24、#1746 で 24 → 25、#1991 で 25 → 26、#2043 で 26 → 27、#2143 で 27 → 28、#2178 で 28 → 29、#2361 で 29 → 30 へ数え直した）。
 #
 # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
 #
@@ -671,8 +671,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）"
-          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
+          summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（0 が正常）"
+          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・後片付けなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。上限で捨てられると重複や遅れが起き得て、MessagingRetryBlockDiscarded も鳴る。当該サービスのログ（Error while trying to retry）の例外で、DB の一時失敗（接続・ロック）の原因を調べる（運用仕様書 §送出の再試行中の欠落の窓）。"
         data:
           - refId: A
             relativeTimeRange: { from: 3600, to: 0 }
@@ -681,6 +681,33 @@ groups:
               refId: A
               instant: true
               expr: 'sum by (job, error_type) ((messaging_retry_block_errors_total unless messaging_retry_block_errors_total offset 1h) or increase(messaging_retry_block_errors_total[1h])) > 0'
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+      - uid: messaging-retry-block-discarded
+        title: MessagingRetryBlockDiscarded
+        condition: C
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: "Wolverine の耐久化の操作が再試行の上限で捨てられた（0 が正常）"
+          description: "{{ $labels.job }} の messaging_retry_block_discarded_total が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が耐久化の操作を再試行の上限（既定で 4 回・約 0.5 秒）まで失敗し、例外を出さずに捨てた。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。捨てられたのが確定の後の送出・後片付けなら、重複や遅れが起き得る。同じ時刻の MessagingRetryBlockErrors の例外の型とログ（Discarding message）で原因を調べ、送出表（wolverine.wolverine_outgoing_envelopes）に残った行が送られたかを確かめる（運用仕様書 §送出の再試行中の欠落の窓）。"
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              expr: 'sum by (job) ((messaging_retry_block_discarded_total unless messaging_retry_block_discarded_total offset 1h) or increase(messaging_retry_block_discarded_total[1h])) > 0'
           - refId: C
             datasourceUid: __expr__
             model:

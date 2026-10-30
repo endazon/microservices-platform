@@ -218,7 +218,7 @@ public sealed class ConnectorSecretResolutionTests(TestWebApplicationFactory fac
         return new DataSourceSyncService(
             new ConnectorRegistry([connector]),
             scope.ServiceProvider.GetRequiredService<IObjectStorageClient>(),
-            scope.ServiceProvider.GetRequiredService<RecordingMessageBus>(),
+            new RecordingRawDocumentFetchedPublisher(scope.ServiceProvider.GetRequiredService<RecordingMessageBus>()),
             resolver,
             log ?? NullLogger<DataSourceSyncService>.Instance);
     }

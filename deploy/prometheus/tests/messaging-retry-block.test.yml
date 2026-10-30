@@ -1,4 +1,4 @@
-# FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178): 警報 MessagingRetryBlockErrors の式を `promtool test rules` で固定する。
+# FR-12, NFR-21, IADR-0609 決定 2, IADR-0656 (#2178), IADR-0657 (#2361): 警報 MessagingRetryBlockErrors・MessagingRetryBlockDiscarded の式を `promtool test rules` で固定する。
 #
 # 🔴 守る対象は**初回**である。計器 `messaging_retry_block_errors_total` は最初の再試行の失敗で初めて系列が立ち、
 #   OTel の累積値なので最初の標本が 1 になる。`increase` だけの式では最初の 1 件で鳴らない（DeadLetterReached と同じ理由）。
@@ -30,8 +30,8 @@ tests:
               job: microservices-platform.datasource-service
               error_type: NpgsqlException
             exp_annotations:
-              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）'
-              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=NpgsqlException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。'
+              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（0 が正常）'
+              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=NpgsqlException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・後片付けなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。上限で捨てられると重複や遅れが起き得て、MessagingRetryBlockDiscarded も鳴る。当該サービスのログ（Error while trying to retry）の例外で、DB の一時失敗（接続・ロック）の原因を調べる（運用仕様書 §送出の再試行中の欠落の窓）。'
       - eval_time: 80m
         alertname: MessagingRetryBlockErrors
         exp_alerts: []
@@ -54,8 +54,8 @@ tests:
               job: microservices-platform.datasource-service
               error_type: TimeoutException
             exp_annotations:
-              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）'
-              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=TimeoutException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。'
+              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（0 が正常）'
+              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=TimeoutException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・後片付けなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。上限で捨てられると重複や遅れが起き得て、MessagingRetryBlockDiscarded も鳴る。当該サービスのログ（Error while trying to retry）の例外で、DB の一時失敗（接続・ロック）の原因を調べる（運用仕様書 §送出の再試行中の欠落の窓）。'
 
   # 場面 3: 系列が 1 本も無い（平常時）。→ 鳴らない（`absent` を置いていないので、不在は警報にならない）。
   - interval: 1m
@@ -84,5 +84,51 @@ tests:
               job: microservices-platform.datasource-service
               error_type: NpgsqlException
             exp_annotations:
-              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）'
-              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=NpgsqlException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。'
+              summary: 'Wolverine の耐久化の操作のメモリ上の再試行が失敗した（0 が正常）'
+              description: 'microservices-platform.datasource-service の messaging_retry_block_errors_total（error_type=NpgsqlException）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・後片付けなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。上限で捨てられると重複や遅れが起き得て、MessagingRetryBlockDiscarded も鳴る。当該サービスのログ（Error while trying to retry）の例外で、DB の一時失敗（接続・ロック）の原因を調べる（運用仕様書 §送出の再試行中の欠落の窓）。'
+
+  # ---- MessagingRetryBlockDiscarded（#2361・IADR-0657。再試行の上限で捨てた。ラベルは job だけ）----
+  # 場面 5: 系列が**初めて 1 で現れる**（初回の破棄）→ for 5m の後に鳴る。現れる前は鳴らない。1 時間を過ぎると収まる。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_retry_block_discarded_total{job="microservices-platform.document-service", instance="a"}'
+        values: '_x10 1x80'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MessagingRetryBlockDiscarded
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MessagingRetryBlockDiscarded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.document-service
+            exp_annotations:
+              summary: 'Wolverine の耐久化の操作が再試行の上限で捨てられた（0 が正常）'
+              description: 'microservices-platform.document-service の messaging_retry_block_discarded_total が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が耐久化の操作を再試行の上限（既定で 4 回・約 0.5 秒）まで失敗し、例外を出さずに捨てた。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。捨てられたのが確定の後の送出・後片付けなら、重複や遅れが起き得る。同じ時刻の MessagingRetryBlockErrors の例外の型とログ（Discarding message）で原因を調べ、送出表（wolverine.wolverine_outgoing_envelopes）に残った行が送られたかを確かめる（運用仕様書 §送出の再試行中の欠落の窓）。'
+      - eval_time: 80m
+        alertname: MessagingRetryBlockDiscarded
+        exp_alerts: []
+
+  # 場面 6: 再起動で instance が替わった新しい系列の 1 件目 → 鳴る（IADR-0593）。系列が無ければ鳴らない（場面 3 と同じ。ここでは再試行の失敗の系列だけを置く）。
+  - interval: 1m
+    input_series:
+      - series: 'messaging_retry_block_discarded_total{job="microservices-platform.document-service", instance="old"}'
+        values: '0x40'
+      - series: 'messaging_retry_block_discarded_total{job="microservices-platform.document-service", instance="new"}'
+        values: '_x40 1x40'
+      - series: 'messaging_retry_block_errors_total{job="microservices-platform.document-service", error_type="NpgsqlException", instance="x"}'
+        values: '0x80'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: MessagingRetryBlockDiscarded
+        exp_alerts: []
+      - eval_time: 47m
+        alertname: MessagingRetryBlockDiscarded
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: microservices-platform.document-service
+            exp_annotations:
+              summary: 'Wolverine の耐久化の操作が再試行の上限で捨てられた（0 が正常）'
+              description: 'microservices-platform.document-service の messaging_retry_block_discarded_total が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が耐久化の操作を再試行の上限（既定で 4 回・約 0.5 秒）まで失敗し、例外を出さずに捨てた。発行はどれも送出表へのコミットを確かめてから成功を返す（DocumentService・ConversionService は確定と同じトランザクション、DataSourceService は 1 件ごとの短いトランザクション）ので、表への書き込みの失敗は発行側の例外になり、欠落しない。捨てられたのが確定の後の送出・後片付けなら、重複や遅れが起き得る。同じ時刻の MessagingRetryBlockErrors の例外の型とログ（Discarding message）で原因を調べ、送出表（wolverine.wolverine_outgoing_envelopes）に残った行が送られたかを確かめる（運用仕様書 §送出の再試行中の欠落の窓）。'

@@ -734,3 +734,4 @@
 | [IADR-0654](./IADR-0654_synthetic-slo-probe-per-request-llm.md) | SLO 評価用（60 分・LLM を呼ぶ）の合成は別の主体で名乗り、外周が標識の値 slo で運んで内周が要求ごとに LLM を許す。初回トークンの計器は LLM のトークンでだけ進める（#2335） | Accepted |
 | [IADR-0655](./IADR-0655_link-candidates-from-authorized-graph-nodes.md) | リンク作成の補完候補は、辺の作成と同じ read スコープ・同じ述語で絞ったグラフのノードから引く。個人資料は自分のものだけ・件数は返さない（#2343） | Accepted |
 | [IADR-0656](./IADR-0656_retry-block-error-metric-instead-of-loki-rule.md) | Wolverine の耐久化の操作のメモリ上の再試行の失敗は、ログのテンプレートの照合で計器にし、Prometheus の警報 MessagingRetryBlockErrors で鳴らす（Loki の ruler は新設しない。#2178） | Accepted |
+| [IADR-0657](./IADR-0657_datasource-per-item-outbox-and-discard-alert.md) | データソース同期の RawDocumentFetched は 1 件ごとの短い Transactional Outbox で発行し、送出表へ書けなければその 1 件を失敗にする。再試行の上限で捨てたことは計器と警報 MessagingRetryBlockDiscarded にする（IADR-0609 決定 2 を置き換え。#2361） | Accepted |

@@ -2,10 +2,10 @@
 title: IADR-0609 他サービスの Wolverine 発行 —— 再変換（ConversionService）の RawDocumentFetched は queued への遷移と同じトランザクションで Outbox 経由に発行し、データソース同期（DataSourceService）の RawDocumentFetched は確定に載せず耐久送出だけにする（段 3）
 type: impl-adr
 status: Accepted
-related_ids: [FR-12, FR-01, UC-04, UC-06, ADR-0027, IADR-0604, IADR-0608, IADR-0245, IADR-0314, IADR-0051]
+related_ids: [FR-12, FR-01, UC-04, UC-06, ADR-0027, IADR-0604, IADR-0608, IADR-0245, IADR-0314, IADR-0051, IADR-0657]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-30
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md（§決定「イベント発行の原子性は Wolverine の EF Core + PostgreSQL Transactional Outbox を標準とする」）
 related_specs:
@@ -58,6 +58,11 @@ ConversionService にポート `IConversionRetryPublisher`（`PublishRetryAsync`
 
 ### 決定 2: データソース同期は確定に載せず、耐久送出だけにする
 
+［2026-10-30 追記 / #2361］**本決定は [IADR-0657](./IADR-0657_datasource-per-item-outbox-and-discard-alert.md) が置き換えた**（Superseded by IADR-0657）。
+下の「保存より前に発行は表に残る」は、表への書き込みが一時的に失敗すると成り立たない —— `PublishAsync` は最初の失敗の後に例外なしで返り、
+JasperFx の `RetryBlock` が上限（最初の 1 回 ＋ 再試行 3 回・約 0.5 秒）で黙って捨てる（#2361 の実測）。同期の発行は 1 件ごとの短い Transactional Outbox になり、
+表へ書けなければその 1 件が失敗になる。「watermark の保存と同じトランザクションに載せない」ことは維持した。以下は当時の記録である。
+
 DataSourceService は `Program.cs` で `UsePlatformTransactionalOutbox(connStr)` を呼び、発行箇所は `IMessageBus.PublishAsync` のままとする。
 
 - 同期の発行と watermark の保存は**対にしない**。要る不変条件は「watermark を進めた時点で、それまでの発行が失われていない」の一方向だけである。
@@ -89,6 +94,8 @@ DataSourceService は `Program.cs` で `UsePlatformTransactionalOutbox(connStr)`
     Wolverine のエラーログ（`Error while trying to retry`）である。
   - 到着は少なくとも 1 回（at-least-once）。再変換の再送で同じ `RawDocumentFetched` が 2 度届き得る（受け手の冪等性は #2101 / #2102 が扱う）。
 - フォローアップ: 決定 2 の残余リスク（表への書き込みの一時失敗）の運用でのアラート化は #2178 で扱う（AI レビューの指摘）。
+  ［2026-10-30 追記 / #2361］残余リスクは「プロセスが止まったとき」だけでなく、一時失敗が約 0.5 秒より長く続けば起きると分かった（再試行の上限で捨てる）。
+  決定 2 を [IADR-0657](./IADR-0657_datasource-per-item-outbox-and-discard-alert.md) で置き換え、データソース同期の発行は送出表へ書けなければ例外になった（この残余リスクは閉じた）。
   ［2026-10-30 追記 / #2178］アラート化した。ログのテンプレートの照合で計器 `messaging.retry_block.errors` にし、警報 `MessagingRetryBlockErrors` で鳴らす（[IADR-0656](./IADR-0656_retry-block-error-metric-instead-of-loki-rule.md)。Loki の ruler は未配備のため新設せず、計器化を選んだ）。
   #2042 の Wolverine の発行はこれで全件である。MassTransit の残りの辺は Wolverine 移行の射程。
 - 注意（AI レビューの指摘で追記）: 発行口の `CommitAsync` はトランザクションを `BeginTransactionAsync` で直接開く。いま `ConversionJobDbContext`

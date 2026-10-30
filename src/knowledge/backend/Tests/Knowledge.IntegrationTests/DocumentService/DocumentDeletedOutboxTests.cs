@@ -205,6 +205,42 @@ public sealed class DocumentDeletedOutboxTests(PostgresFixture postgres, RabbitM
         probe.CountFor(failed).Should().Be(0, "確定しなかった削除のイベントは送られない（後の確定にも混ざらない）");
     }
 
+    // 🔴 IADR-0657 (#2361): **送出表への書き込みが失敗すれば、確定全体が例外で巻き戻る**（削除の事実も残らない。欠落しない）。
+    // 素の `IMessageBus.PublishAsync` と違い、`IDbContextOutbox` は envelope をアプリのトランザクションの中で書くので、
+    // JasperFx の `RetryBlock`（失敗を例外にせず裏で再試行し、上限で黙って捨てる）を通らない。その固定である。
+    // 失敗は専用の DB の送出表に置いたトリガで起こす（`OutboxStoreFailure`。片付けは finally）。
+    [Fact]
+    public async Task 送出表への書き込みが失敗すれば確定全体が例外で巻き戻る()
+    {
+        var cs = await CreateDatabaseAsync();
+        using var publisher = await StartPublisherAsync(cs);
+        var id = Guid.NewGuid();
+        var at = DateTimeOffset.UtcNow;
+
+        await OutboxStoreFailure.InstallAsync(cs, Ct);
+        try
+        {
+            await using var scope = publisher.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<DocumentDbContext>();
+            var deleted = scope.ServiceProvider.GetRequiredService<IDocumentDeletedPublisher>();
+            var act = async () =>
+            {
+                db.DocumentDeletionMarks.Add(DocumentDeletionMark.For(id, at));
+                await deleted.PublishDeletedAsync(id, at, ct: Ct);
+                await deleted.SaveChangesAndFlushAsync(Ct);
+            };
+            (await act.Should().ThrowAsync<Exception>("送出表への書き込みの失敗は確定の失敗である"))
+                .Which.ToString().Should().Contain(OutboxStoreFailure.Message);
+        }
+        finally
+        {
+            await OutboxStoreFailure.RemoveAsync(cs);
+        }
+
+        (await MarkExistsAsync(cs, id)).Should().BeFalse("削除の事実も同じ確定で巻き戻る（削除をやり直せる）");
+        (await OutboxRowsAsync(cs)).Should().Be(0);
+    }
+
     // A3: コミットの後・送出の前に止まっても Outbox の表に残り、再起動したホストが送る。
     //
     // 「コミットの後・送出の前のプロセス終了」を、発行口が内部で行う 2 段（DB のコミット → 送出）の 1 段目だけを
