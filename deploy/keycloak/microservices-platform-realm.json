@@ -775,6 +775,24 @@
       ]
     },
     {
+      "clientId": "synthetic-monitor-slo",
+      "name": "Synthetic monitoring SLO probe (client_credentials)",
+      "description": "ADR-0079 決定 1・2 / IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成監視の専用主体。BFF は azp で合成と判定して費用計測・SC-10 から外し、要求ごとに LLM を許す（LlmSubjects）。ロールを与えない。読める文書の ABAC は配備の手順で与える。本番シークレットは config から供給する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "synthetic-monitor-slo-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "roles",
+        "platform-api-audience"
+      ]
+    },
+    {
       "clientId": "retrieval-service",
       "name": "RetrievalService east-west gRPC caller (client_credentials)",
       "description": "NFR-09 / ADR-0029 / ADR-0075, IADR-0379 決定 4, IADR-0397 (#1255): east-west gRPC で LlmGateway のクエリ埋め込みを呼ぶ主体。service-account に realm ロール platform-service のみを与え、ABAC ポリシー・属性は与えない（文書を読む主体ではない）。secret は dev 専用で本番は config から供給する。",

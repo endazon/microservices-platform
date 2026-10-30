@@ -1495,6 +1495,8 @@ frontend:
 #
 # 🔴 **LLM を呼ぶ 60 分側（ADR-0079 決定 2・フォローアップ 2）はここに無い。別の配備単位であり、課金の承認が先である。**
 #   本ブロックには AllowLlmEgress の knob を置かない。
+#   ［2026-10-30 / #2335・IADR-0654］60 分側は下の `slo`（既定は無効）として置いた。**別の Deployment・別の主体**であり、
+#   LLM の許可は要求ごと（BFF の SyntheticMonitoring__LlmSubjects）である —— サービス全体の AllowLlmEgress は引き続き置かない。
 # ⚠️ ローカルの `SYNTHETIC=1`（deploy/local/synthetic-monitor の overlay）と**併用しない**（同名の資源になる）。
 syntheticMonitor:
   enabled: false
@@ -1526,3 +1528,18 @@ syntheticMonitor:
   resources:
     requests: { cpu: 10m, memory: 32Mi }
     limits: { cpu: 200m, memory: 128Mi }
+  # NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): **SLO 評価用（60 分・LLM を呼ぶ）の合成プローブ（既定は無効）。**
+  #   NFR-02 の初回トークン p95 に標本を供給する。60 秒側（上）は LLM を呼ばないまま変わらない（要求ごとの区別）。
+  #   🔴 **LLM の費用が出る**（月 720 回・概算 月約 4,400 円。ADR-0079 決定 2）。有効化は課金の承認の後に行う。
+  #   🔴 syntheticMonitor.enabled（除外の標識）が偽のまま立てると描画が止まる。主体が上と同じ・間隔 3600 秒未満・経路が
+  #     /bff/analysis/ask/stream 以外でも止まる（templates/synthetic-monitor.yaml）。
+  #   🔴 **この主体が読める文書が 1 つ以上要る**（ABAC。無いと「閲覧できる文書が無い」で LLM まで届かず標本が出ない）。
+  slo:
+    enabled: false
+    # realm（deploy/keycloak/microservices-platform-realm.json）の client `synthetic-monitor-slo` と一致させること。
+    clientId: synthetic-monitor-slo
+    intervalSeconds: 3600
+    paths: /bff/analysis/ask/stream
+    # Vault `secret/msp/synthetic-monitor-slo-oidc` → ExternalSecret（deploy/local/vault/eso/externalsecret-synthetic-monitor-slo-oidc.yaml）→ Secret。
+    existingSecret: synthetic-monitor-slo-oidc
+    clientSecretKey: client-secret

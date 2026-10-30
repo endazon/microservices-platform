@@ -100,4 +100,71 @@ public class SyntheticTrafficTests
     [Fact]
     public void LLM送信の既定は許可しない()
         => new SyntheticMonitoringOptions().AllowLlmEgress.Should().BeFalse();
+
+    // ── NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): 合成の 2 段（常時 60 秒／SLO 評価 60 分）を要求ごとに区別する ──
+
+    private const string SloSubject = "synthetic-monitor-slo";
+
+    private static SyntheticMonitoringOptions TwoTier()
+        => new() { Subjects = [Subject, SloSubject], LlmSubjects = [SloSubject] };
+
+    // ★ 外周の分類: SLO の主体は SloProbe、常時の主体は Synthetic、別の主体は None。
+    [Fact]
+    public void 外周はLlmSubjectsの主体をSLOとそれ以外の合成を常時と分類する()
+    {
+        SyntheticTraffic.Classify(Authenticated(new Claim("azp", SloSubject)), TwoTier())
+            .Should().Be(SyntheticTrafficKind.SloProbe);
+        SyntheticTraffic.Classify(Authenticated(new Claim("azp", Subject)), TwoTier())
+            .Should().Be(SyntheticTrafficKind.Synthetic);
+        SyntheticTraffic.Classify(Authenticated(new Claim("azp", "platform-spa")), TwoTier())
+            .Should().Be(SyntheticTrafficKind.None);
+    }
+
+    // 🔴 ★ fail-closed: LlmSubjects が空なら SLO は 1 件も存在しない（常時の合成のまま）。
+    [Fact]
+    public void LlmSubjectsが空ならSLOと分類しない()
+        => SyntheticTraffic.Classify(Authenticated(new Claim("azp", SloSubject)),
+                new SyntheticMonitoringOptions { Subjects = [Subject, SloSubject] })
+            .Should().Be(SyntheticTrafficKind.Synthetic);
+
+    // 🔴 ★ SLO であることは合成であることを含む（Subjects に無くても LlmSubjects に在れば除外の対象）。
+    // 逆に倒すと、LLM を呼ぶ要求が費用計上と SC-10 の集計へ実利用として混ざる（ADR-0076 決定 4）。
+    [Fact]
+    public void LlmSubjectsの主体は合成としても判定する()
+        => SyntheticTraffic.IsSyntheticPrincipal(Authenticated(new Claim("azp", SloSubject)),
+                new SyntheticMonitoringOptions { LlmSubjects = [SloSubject] })
+            .Should().BeTrue();
+
+    // ★ 伝播の値: SLO は `slo`、常時は従前の `1`、合成でなければ付けない。
+    [Fact]
+    public void 伝播の値は分類ごとに違い合成でなければ付けない()
+    {
+        using var slo = new HttpRequestMessage();
+        SyntheticTraffic.PropagateTo(slo, SyntheticTrafficKind.SloProbe);
+        slo.Headers.GetValues(SyntheticTraffic.HeaderName).Should().Equal([SyntheticTraffic.SloHeaderValue]);
+
+        using var always = new HttpRequestMessage();
+        SyntheticTraffic.PropagateTo(always, SyntheticTrafficKind.Synthetic);
+        always.Headers.GetValues(SyntheticTraffic.HeaderName).Should().Equal([SyntheticTraffic.HeaderValue]);
+
+        using var none = new HttpRequestMessage();
+        SyntheticTraffic.PropagateTo(none, SyntheticTrafficKind.None);
+        none.Headers.Contains(SyntheticTraffic.HeaderName).Should().BeFalse();
+    }
+
+    // ★ 内周の SLO の判定は値 `slo` だけ（大文字小文字は問わない）。`1`・ヘッダなしは SLO ではない。
+    // 合成の判定（値が空でないこと）は従前のまま —— SLO の要求も合成として費用計上から外れる。
+    [Fact]
+    public void 内周のSLOの判定はヘッダの値がsloのときだけ真になる()
+    {
+        var request = new DefaultHttpContext().Request;
+        SyntheticTraffic.IsSloProbeInternalRequest(request).Should().BeFalse();
+
+        request.Headers[SyntheticTraffic.HeaderName] = SyntheticTraffic.HeaderValue;
+        SyntheticTraffic.IsSloProbeInternalRequest(request).Should().BeFalse("常時の合成は LLM を呼ばない");
+
+        request.Headers[SyntheticTraffic.HeaderName] = "SLO";
+        SyntheticTraffic.IsSloProbeInternalRequest(request).Should().BeTrue();
+        SyntheticTraffic.IsSyntheticInternalRequest(request).Should().BeTrue("SLO の要求も合成である");
+    }
 }

@@ -55,6 +55,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // 実配備の Keycloak クライアント名と同じ綴りにしておく（両側の一致は本テストで固定する）。
     public const string SyntheticSubject = "synthetic-monitor";
 
+    // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成の主体。
+    // `Subjects` と `LlmSubjects` の両方に置く（helm の描画と同じ形）。
+    public const string SloSyntheticSubject = "synthetic-monitor-slo";
+
     // 後段 AiAnalysisService へ**内周の標識が伝播したか**。null＝付いていない。
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
     public string? LastForwardedSyntheticHeader { get; set; }
@@ -587,6 +591,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視の主体（許可集合）。
                 // **空だと何も合成と見なさない**（fail-closed）ため、テストでは明示的に 1 件入れる。
                 ["SyntheticMonitoring:Subjects:0"] = SyntheticSubject,
+                // [[IADR-0654]] (#2335): SLO 評価の合成の主体（LLM の許可は要求ごと）。
+                ["SyntheticMonitoring:Subjects:1"] = SloSyntheticSubject,
+                ["SyntheticMonitoring:LlmSubjects:0"] = SloSyntheticSubject,
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:RetrievalService"] = "http://localhost:5003",

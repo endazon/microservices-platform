@@ -35,6 +35,11 @@ public static class SyntheticTraffic
     // 付けるときの値。判定は「ヘッダが在り、値が空でないこと」で行う（値の表記ゆれで静かに外れないため）。
     public const string HeaderValue = "1";
 
+    // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): **SLO 評価用（60 分・LLM を呼ぶ）の合成**の値。
+    // 合成の判定（値が空でないこと）はこの値でも真であり、費用計上・SC-10 の除外は従前どおり効く。
+    // 内周で LLM を許すのは**この値のときだけ**である（`IsSloProbeInternalRequest`）。
+    public const string SloHeaderValue = "slo";
+
     // 主体の照合に使う請求。**Keycloak のサービスアカウントは azp = clientId、
     // preferred_username = service-account-<clientId> を持つ**ため、どちらでも書けるようにする。
     // `sub` も許す（クライアント名が変わっても固定 ID で指せる）。
@@ -46,20 +51,27 @@ public static class SyntheticTraffic
 
     // 外周の判定。**検証済みの主体だけを見る。**
     public static bool IsSyntheticPrincipal(ClaimsPrincipal? user, SyntheticMonitoringOptions options)
-    {
-        if (user?.Identity?.IsAuthenticated != true) return false;
-        // fail-closed: 許可集合が空なら合成は 1 件も存在しない。
-        if (options.Subjects is not { Length: > 0 }) return false;
+        => Classify(user, options) != SyntheticTrafficKind.None;
 
+    // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): 外周の分類（なし／常時の合成／SLO 評価の合成）。
+    // **検証済みの主体だけを見る**（受信ヘッダは見ない）。`LlmSubjects` に在る主体は SLO（合成を含む）、
+    // `Subjects` だけに在る主体は常時の合成。どちらの集合も空なら何も合成ではない（fail-closed）。
+    public static SyntheticTrafficKind Classify(ClaimsPrincipal? user, SyntheticMonitoringOptions options)
+    {
+        if (user?.Identity?.IsAuthenticated != true) return SyntheticTrafficKind.None;
+
+        var synthetic = false;
         foreach (var claimType in SubjectClaimTypes)
         {
             foreach (var claim in user.FindAll(claimType))
             {
-                if (options.Matches(claim.Value)) return true;
+                // fail-closed: LlmSubjects が空なら SLO は 1 件も存在しない（MatchesLlm が偽を返す）。
+                if (options.MatchesLlm(claim.Value)) return SyntheticTrafficKind.SloProbe;
+                if (options.Matches(claim.Value)) synthetic = true;
             }
         }
 
-        return false;
+        return synthetic ? SyntheticTrafficKind.Synthetic : SyntheticTrafficKind.None;
     }
 
     // 内周の判定。**外周が付けたヘッダを引き継ぐだけ**であり、ここに認証の意味は無い。
@@ -67,6 +79,29 @@ public static class SyntheticTraffic
         => request is not null
            && request.Headers.TryGetValue(HeaderName, out var values)
            && !string.IsNullOrWhiteSpace(values.ToString());
+
+    // NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): 内周で「SLO 評価の合成（LLM を呼んでよい）」か。
+    // **値が `slo` のときだけ**（大文字小文字は問わない）。`1`・空・ヘッダなしは偽 —— 60 秒の合成は LLM を呼ばない。
+    // 内周がヘッダを信頼する境界は `IsSyntheticInternalRequest` と同じである（[[IADR-0378]]）。
+    public static bool IsSloProbeInternalRequest(HttpRequest? request)
+        => request is not null
+           && request.Headers.TryGetValue(HeaderName, out var values)
+           && string.Equals(values.ToString().Trim(), SloHeaderValue, StringComparison.OrdinalIgnoreCase);
+
+    // [[IADR-0654]] (#2335): 分類ごとの伝播（HTTP）。合成でなければ付けない。
+    public static void PropagateTo(HttpRequestMessage request, SyntheticTrafficKind kind)
+    {
+        if (kind != SyntheticTrafficKind.None)
+            request.Headers.TryAddWithoutValidation(HeaderName, HeaderValueFor(kind));
+    }
+
+    // 分類 → ヘッダの値（合成でなければ null）。
+    public static string? HeaderValueFor(SyntheticTrafficKind kind) => kind switch
+    {
+        SyntheticTrafficKind.SloProbe => SloHeaderValue,
+        SyntheticTrafficKind.Synthetic => HeaderValue,
+        _ => null,
+    };
 
     // 内周への伝播。**合成のときだけ付ける**（付けないことが既定であり、既存経路の形を変えない）。
     public static void PropagateTo(HttpRequestMessage request, bool isSynthetic)
@@ -126,12 +161,25 @@ public sealed class SyntheticMonitoringOptions
     /// </summary>
     public bool AllowLlmEgress { get; set; }
 
+    /// <summary>
+    /// NFR-02, ADR-0079 決定 1・2, [[IADR-0654]] (#2335): **SLO 評価用（60 分・LLM を呼ぶ）の合成の主体**の集合。
+    /// 外周（BFF）がここに在る主体の要求へ `X-Synthetic-Traffic: slo` を付け、内周（AiAnalysisService）は
+    /// その要求だけ LLM を呼ぶ（**要求ごとの許可**。サービス全体に効く <see cref="AllowLlmEgress"/> とは別）。
+    /// **空なら SLO の合成は 1 件も存在しない**（fail-closed）。ここに在る主体は合成でもある（費用計上・SC-10 から外す）。
+    /// </summary>
+    public string[] LlmSubjects { get; set; } = [];
+
     // 照合は序数・大文字小文字無視。**前後空白は落とす**（環境変数・ConfigMap 由来の値が
     // 空白を連れてくることがあり、静かに一致しなくなる）。
-    public bool Matches(string? candidate)
+    public bool Matches(string? candidate) => MatchesAny(Subjects, candidate);
+
+    // [[IADR-0654]] (#2335): SLO 評価の合成の主体か（照合の規則は Matches と同じ）。
+    public bool MatchesLlm(string? candidate) => MatchesAny(LlmSubjects, candidate);
+
+    private static bool MatchesAny(string[]? subjects, string? candidate)
     {
-        if (string.IsNullOrWhiteSpace(candidate)) return false;
-        foreach (var subject in Subjects)
+        if (string.IsNullOrWhiteSpace(candidate) || subjects is null) return false;
+        foreach (var subject in subjects)
         {
             if (string.IsNullOrWhiteSpace(subject)) continue;
             if (string.Equals(subject.Trim(), candidate.Trim(), StringComparison.OrdinalIgnoreCase))
@@ -140,4 +188,17 @@ public sealed class SyntheticMonitoringOptions
 
         return false;
     }
+}
+
+// NFR-02, ADR-0079 決定 1, [[IADR-0654]] (#2335): 外周の分類。
+public enum SyntheticTrafficKind
+{
+    /// <summary>合成ではない（実利用）。</summary>
+    None = 0,
+
+    /// <summary>常時トラフィックの合成（60 秒・LLM を呼ばない）。</summary>
+    Synthetic = 1,
+
+    /// <summary>SLO 評価の合成（60 分・LLM を呼ぶ）。合成でもある。</summary>
+    SloProbe = 2,
 }

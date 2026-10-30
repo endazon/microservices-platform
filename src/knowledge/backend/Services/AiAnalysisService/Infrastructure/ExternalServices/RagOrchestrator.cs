@@ -183,7 +183,7 @@ public class RagOrchestrator(
             {
                 // FR-11 縮退: ゲートウェイが送信拒否・不調なら理由本文を出典付きで表示（外部送信していない）。
                 if (!ev.Sent && !string.IsNullOrWhiteSpace(ev.Text))
-                    yield return new AskTokenEvent(ev.Text!);
+                    yield return new AskTokenEvent(ev.Text!, FromModel: false); // [[IADR-0654]]: 縮退の理由の文
 
                 // FR-11, IADR-0104 (#379): 送信は成立したがモデルが拒否した場合（stopReason="refusal"）。
                 // 拒否は末尾の done で確定するため既出デルタは撤回できない。拒否である旨を末尾へ追記して、
@@ -194,7 +194,7 @@ public class RagOrchestrator(
                 {
                     var separator = emittedAny ? "\n\n" : string.Empty;
                     emittedAny = true;
-                    yield return new AskTokenEvent($"{separator}（AI が回答の生成を拒否しました。）");
+                    yield return new AskTokenEvent($"{separator}（AI が回答の生成を拒否しました。）", FromModel: false);
                 }
 
                 // IADR-0111 (#403): ゲートウェイの報告値をそのまま透過する（呼び出し側で捏造しない）。
@@ -207,7 +207,7 @@ public class RagOrchestrator(
 
         // 本文が全く出なかった場合の中立フォールバック（出典があればその旨）。
         if (!emittedAny && citations.Count > 0)
-            yield return new AskTokenEvent("関連文書が見つかりました。");
+            yield return new AskTokenEvent("関連文書が見つかりました。", FromModel: false); // [[IADR-0654]]: 中立の注記
 
         yield return new AskDoneEvent(Guid.NewGuid(), model, inputTokens, outputTokens);
     }
@@ -279,9 +279,11 @@ public class RagOrchestrator(
         string prompt, string confidentiality, string purpose, [EnumeratorCancellation] CancellationToken ct)
     {
         // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視は既定で LLM を呼ばない。
-        // 🔴 **`done(Sent=false)` で終える。** ここで `token` イベントを 1 件も出さないことは意図であり、
-        // その帰結として `rag.answer.first_token.duration`（[[IADR-0354]]）は記録されない ——
-        // **`RagFirstTokenP95High` の評価対象は本 PR では生まれない。裁定待ちである**（作業仕様書 §0）。
+        // 🔴 **`done(Sent=false)` で終える。** ここで LLM の `token` を 1 件も出さないことは意図であり、
+        // 縮退の文は LLM の出したトークンではないので `rag.answer.first_token.duration`（[[IADR-0354]]）に積まない。
+        // ［2026-10-30 / #2335・[[IADR-0654]]］従前ここには「`RagFirstTokenP95High` の評価対象は生まれない。裁定待ち」と
+        // 書いてあった。計画 ADR-0079 決定 1・2 が「SLO 評価用（60 分）の合成は LLM を呼ぶ」と定めたので、
+        // **SLO 評価の合成（ヘッダ `slo`）だけは抑止しない**（要求ごとの許可）。60 秒の合成（`1`）は従前どおり抑止する。
         //
         // 🔴 **判定は輸送の外に置く。** 輸送へ移すと 2 実装が同じ抑止を持つことになり、片方だけが
         // 直る事故の口になる（費用が出るのは合成が LLM を呼んだときである）。
@@ -431,8 +433,14 @@ public class RagOrchestrator(
     // 費用が発生する。**除外規則は指標を守るものであり、費用そのものを減らさない**」と残している。
     // したがって**上限が未定のまま恒常的に費用を出す構成を既定にしない**（実装で数字を決めない。#78 の向き）。
     // 許可は構成 `SyntheticMonitoring:AllowLlmEgress` で明示的に立てる。
+    // ［2026-10-30 / #2335・[[IADR-0654]]］**加えて、要求ごとの許可を持つ。** 外周（BFF）が SLO 評価の主体
+    // （`SyntheticMonitoring:LlmSubjects`）と判定した要求はヘッダ `slo` を運び、その要求だけ LLM を呼ぶ
+    // （ADR-0079 決定 1・2。費用の上限は 60 分の間隔で固定される）。サービス全体の `AllowLlmEgress` は互換のために残す
+    // （helm は立つと描画を止める —— 60 秒の合成まで LLM を呼ぶことになるため）。
     private bool SuppressLlmForSynthetic()
-        => IsSyntheticRequest() && syntheticOptions?.Value.AllowLlmEgress != true;
+        => IsSyntheticRequest()
+           && !SyntheticTraffic.IsSloProbeInternalRequest(httpContextAccessor?.HttpContext?.Request)
+           && syntheticOptions?.Value.AllowLlmEgress != true;
 
     // ADR-0076 決定 4 (#1203): 合成トラフィックへ返す縮退回答。**出典は通常どおり添える**
     // （検索までは実際に行っており、経路の健全性はそこまで測れている）。

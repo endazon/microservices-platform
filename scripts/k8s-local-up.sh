@@ -1415,6 +1415,9 @@ if [ "${ESO:-}" = "1" ]; then
   # 種は bootstrap.sh が**無条件に**入れてある（他の secret と同じ。立て直しの順序に依存させない）。
   if [ "${SYNTHETIC:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-oidc.yaml
+    # NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）のプローブの client secret。
+    # 同じゲートで供給だけを揃える（プローブ本体は helm の syntheticMonitor.slo.enabled。ローカルの門は 60 秒側だけを配備する）。
+    kubectl apply -f deploy/local/vault/eso/externalsecret-synthetic-monitor-slo-oidc.yaml
   fi
   # NFR-10, NFR-18, IADR-0570 (#2024): 試験アカウント e2e-* の資格情報。読み手は realm の後追い Job（envFrom・optional）と
   #   [3/7] の取り込み元。**Vault の種は入れない**（KV `secret/msp/e2e-accounts` は運用者が deploy/local/README.md の手順で入れる）。
@@ -1424,7 +1427,7 @@ if [ "${ESO:-}" = "1" ]; then
   # 誤解させない）。MSP ns は常時 18 本（#1022 で rabbitmq-app（IADR-0577 で msp-rabbitmq-users へ置き換え・本数は不変）、#1107 で bff-oidc、#1101 で identity-admin-oidc、#1290 で retrieval-service-token / ingestion-service-token、#1255 の第 2 スライスで aianalysis / graph / conversion の 3 本、第 3 スライスで wiki / datasource / mcp-server の 3 本、通知の面（IADR-0419）で document-service-token の 1 本を追加し 6 → 7 → 8 → 9 → 11 → 14 → 17 → 18 へ、IADR-0461（#1499）で minio-oidc を撤去し 17 へ、#1817 で mcp-client-admin-oidc を追加し 18 へ数え直した。**値は上の msp_es を数え直して出す** —— 継ぎ足すと必ずずれる）＋有効ゲートの wikijs-oidc（#1127）と synthetic-monitor-oidc（#1287）。infra ns は基盤 3 本＋vault-oidc/keycloak-smtp 常時（#1102 で keycloak-smtp を追加し 4 → 5、#1245 で reset-gate-oidc を追加し 5 → 6、#2024 で e2e-accounts を追加し 6 → 7、IADR-0573 で rabbitmq-users を追加し 7 → 8、IADR-0576 で abac-seeder-oidc を追加し 8 → 9 へ数え直した）＋有効ゲートの grafana/headlamp-oidc。
   msp_es="llm-provider-credentials object-storage-credentials postgres-app msp-rabbitmq-users wikijs-db wikijs-sync bff-oidc identity-admin-oidc mcp-client-admin-oidc retrieval-service-token ingestion-service-token aianalysis-service-token graph-service-token conversion-service-token wiki-service-token datasource-service-token mcp-server-token document-service-token"
   [ "${WIKIJS_OIDC:-}" = "1" ] && msp_es="$msp_es wikijs-oidc"
-  [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc"
+  [ "${SYNTHETIC:-}" = "1" ] && msp_es="$msp_es synthetic-monitor-oidc synthetic-monitor-slo-oidc"
   infra_es="postgres rabbitmq rabbitmq-users keycloak-admin vault-oidc keycloak-smtp reset-gate-oidc e2e-accounts abac-seeder-oidc"
   [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc alertmanager-mail"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
