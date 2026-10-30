@@ -43,6 +43,7 @@ export const OPTION_NAMES = [
   'E2E_STACK',
   'E2E_RUN_ID',
   'E2E_ISSUED_SECRETS_FILE',
+  'E2E_DISPOSABLE',
 ] as const;
 
 export interface LiveEnv {
@@ -90,6 +91,12 @@ export interface LiveEnv {
    * 成果物の走査が探す（IADR-0630 決定 6）。未設定なら記録しない（手元の実行）。
    */
   issuedSecretsFile: string | null;
+  /**
+   * `E2E_DISPOSABLE=1`: 向け先が**使い捨てのスタック**であり、そこでしか流せない試験（M-005 の初回の TOTP 登録。一時アカウントを
+   * Keycloak の管理 API で作って消す）を有効にする（#2040 / IADR-0662）。`E2E_LIVE=1` と `E2E_STACK` を要り、globalSetup が
+   * live-rw と同じ門（`scripts/lib/disposable-stack.js`）で向け先を確かめる。未設定（常設の PoC）ではその spec を project から外す（0 件）。
+   */
+  disposable: boolean;
 }
 
 /** runId の形（名前の接頭辞 `e2e-<runId>-` に入る）。 */
@@ -226,7 +233,25 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       'E2E_SWEEP が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
     );
   }
+  const rawDisposable = read('E2E_DISPOSABLE') ?? '';
+  if (rawDisposable !== '' && rawDisposable !== '1') {
+    throw new Error(
+      `E2E_DISPOSABLE の値域外: ${rawDisposable}（使い捨てのスタックに向けるなら 1、そうでなければ未設定か空）`,
+    );
+  }
+  if (rawDisposable === '1' && !live) {
+    throw new Error(
+      'E2E_DISPOSABLE が設定されているのに E2E_LIVE=1 が無い（live 層は明示の opt-in でだけ流す）',
+    );
+  }
+  const disposable = rawDisposable === '1';
   const stack = read('E2E_STACK') ?? null;
+  // #2040 / IADR-0662: 使い捨てのスタックでしか流せない試験は、向け先を明示しなければここで止める（context の照合は globalSetup）。
+  if (disposable && stack === null) {
+    throw new Error(
+      'E2E_DISPOSABLE=1 なのに E2E_STACK が無い（使い捨てのスタックの名前を明示する。既定値は持たない）',
+    );
+  }
   if (rawSweep !== '' && stack === null) {
     throw new Error(
       'E2E_SWEEP が設定されているのに E2E_STACK が無い（sweep の向け先は明示する。既定値は持たない）',
@@ -239,9 +264,9 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
       'E2E_LAYER に rw があるのに E2E_STACK が無い（書き込みは使い捨てのスタックの中だけ。向け先は明示する）',
     );
   }
-  if (stack !== null && rawSweep === '' && !layers.includes('rw')) {
+  if (stack !== null && rawSweep === '' && !layers.includes('rw') && !disposable) {
     throw new Error(
-      'E2E_STACK が設定されているのに E2E_SWEEP も層の rw も無い（何に向けるかを明示する）',
+      'E2E_STACK が設定されているのに E2E_SWEEP も層の rw も E2E_DISPOSABLE も無い（何に向けるかを明示する）',
     );
   }
   const runId = read('E2E_RUN_ID') ?? null;
@@ -262,6 +287,7 @@ export function parseLiveEnv(env: Env, defaultAuthDir: string): LiveEnv {
     stack,
     runId,
     issuedSecretsFile: read('E2E_ISSUED_SECRETS_FILE') ?? null,
+    disposable,
   };
 }
 

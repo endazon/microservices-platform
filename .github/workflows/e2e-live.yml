@@ -217,6 +217,9 @@ jobs:
           E2E_SWEEP: dry-run
           # IADR-0630: sweep と live-rw の門が同じ向け先（このジョブの使い捨てのスタック）を読む。
           E2E_STACK: ${{ env.CLUSTER }}
+          # #2040 / IADR-0662: 使い捨てのスタックでしか流せない試験（M-005 の初回の TOTP 登録。一時アカウントを Keycloak の管理 API で
+          # 作って消す）を live-ro に載せる。globalSetup が live-rw と同じ門で向け先を確かめる。常設の PoC では与えない（0 件）。
+          E2E_DISPOSABLE: "1"
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e-live.json
           # #2031 / IADR-0630 決定 6: 実行の中で発行された値（端末トークン・試験キー）を spec が追記する先（0600）。下の走査が探す。
           E2E_ISSUED_SECRETS_FILE: ${{ runner.temp }}/e2e-issued-secrets.env

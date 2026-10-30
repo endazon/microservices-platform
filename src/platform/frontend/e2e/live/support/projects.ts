@@ -5,6 +5,12 @@ import type { Layer, LiveEnv } from './env';
 
 type Project = NonNullable<PlaywrightTestConfig['projects']>[number];
 
+/**
+ * 使い捨てのスタックでしか流せない試験（#2040 / IADR-0662。M-005 の初回の TOTP 登録。一時アカウントを Keycloak の管理 API で作って消す）。
+ * `E2E_DISPOSABLE=1` が無ければ live-ro から外す（常設の PoC では 0 件）。
+ */
+const DISPOSABLE_ONLY_SPEC = /totp-enroll\.ro\.spec\.ts$/;
+
 /** e2e-revocable を無効化して全セッションを失効させる試験（#2033 / IADR-0632）。 */
 const REVOCATION_SPEC = /revocation\.rw\.spec\.ts$/;
 
@@ -46,7 +52,14 @@ const LAYER_PROJECTS: Record<Layer, Project> = {
 /**
  * live の project（純関数。#2033 / IADR-0632 で config から分けた —— L1 が依存の順序を直接見る）。`E2E_LIVE` が無ければ空。
  */
-export function liveProjects(cfg: Pick<LiveEnv, 'live' | 'layers'>): Project[] {
+export function liveProjects(
+  cfg: Pick<LiveEnv, 'live' | 'layers'> & Partial<Pick<LiveEnv, 'disposable'>>,
+): Project[] {
+  // IADR-0662: E2E_DISPOSABLE=1 が無ければ、使い捨てのスタック専用の試験を live-ro から外す。
+  const layerProject = (layer: Layer): Project =>
+    layer === 'ro' && !cfg.disposable
+      ? { ...LAYER_PROJECTS.ro, testIgnore: DISPOSABLE_ONLY_SPEC }
+      : LAYER_PROJECTS[layer];
   return cfg.live
     ? [
         {
@@ -62,7 +75,7 @@ export function liveProjects(cfg: Pick<LiveEnv, 'live' | 'layers'>): Project[] {
         ...cfg.layers.map((layer) =>
           layer === 'rw' && cfg.layers.includes('ro')
             ? { ...LAYER_PROJECTS.rw, dependencies: ['live-setup', 'live-ro'] }
-            : LAYER_PROJECTS[layer],
+            : layerProject(layer),
         ),
         // 🔴 #2033 / IADR-0632: e2e-revocable を無効化する試験は、その役割の状態を使う他の試験（live-ro の auth-errors・live-rw の
         // E-54 のリセット申請・アカウントコンソールなど）が**すべて終わってから**流す。project の依存で順序を固定する（同じ実行で選んだ層の project 全部に依存する）。

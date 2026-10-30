@@ -53,6 +53,7 @@ const DISPOSABLE_STACK_SCRIPT = fileURLToPath(
  * 🔴 **live-rw の門**（#2031 / IADR-0630）: 層に `rw` があれば、`E2E_STACK` が使い捨てのスタックで、kubectl の current-context が
  * `k3d-<stack>` であることを確かめる。違えば**例外で止める**（前提未整備の exit 2 ではない —— 向け先の取り違えは製品の不具合でも
  * 環境の未整備でもなく、流してはならない実行である）。`rw` が無ければ何もしない。`run` は試験が差し替える。
+ * ［2026-10-30 / #2040 / IADR-0662］`E2E_DISPOSABLE=1`（使い捨てのスタックでしか流せない試験。M-005 の一時アカウント）でも同じ門を通す。
  */
 export function assertDisposableStack(
   cfg: LiveEnv,
@@ -61,12 +62,13 @@ export function assertDisposableStack(
     return { status: r.status, stderr: r.stderr ?? r.error?.message ?? '' };
   },
 ): void {
-  if (!cfg.layers.includes('rw')) return;
-  if (!cfg.stack) throw new Error('E2E_LAYER に rw があるのに E2E_STACK が無い');
+  if (!cfg.layers.includes('rw') && !cfg.disposable) return;
+  if (!cfg.stack)
+    throw new Error('E2E_LAYER に rw があるか E2E_DISPOSABLE=1 なのに E2E_STACK が無い');
   const r = run([DISPOSABLE_STACK_SCRIPT, '--stack', cfg.stack]);
   if (r.status !== 0) {
     throw new Error(
-      `[e2e-live] live-rw は使い捨てのスタックの中だけで流す。止めた: ${r.stderr.trim() || `exit ${r.status}`}`,
+      `[e2e-live] live-rw と E2E_DISPOSABLE=1 の試験は使い捨てのスタックの中だけで流す。止めた: ${r.stderr.trim() || `exit ${r.status}`}`,
     );
   }
 }

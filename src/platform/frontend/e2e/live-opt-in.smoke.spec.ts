@@ -19,6 +19,7 @@ import { startFakeLiveStack } from './support/fakeLiveStack';
 import { revokeSessions, runSweep, sweepArgs, SWEEP_ROLES } from './live/support/teardown';
 import { createCleanup, creatorRole, e2eName } from './live/support/cleanup';
 import { assertDisposableStack, prepareIssuedSecretsFile } from './live/support/readiness';
+import { openKeycloakAdmin, parsePortForwardPort } from './live/support/keycloakAdmin';
 import { createRequire } from 'node:module';
 import { recordIssuedSecret } from './live/support/issuedSecrets';
 import { normalizeRows } from './live/support/dictionaries';
@@ -528,7 +529,7 @@ test('E2E_SWEEP は dry-run / delete だけを受け、E2E_LIVE=1 と E2E_STACK 
     /E2E_STACK が無い/,
   );
   expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_STACK: 'e2e-live' }, '/tmp/x')).toThrow(
-    /E2E_SWEEP も層の rw も無い/,
+    /E2E_SWEEP も層の rw も E2E_DISPOSABLE も無い/,
   );
   // 既定は dry-run の引数（--delete を付けない）。向け先はすべて明示で渡す。
   const dry = sweepArgs(
@@ -852,4 +853,64 @@ test('資格情報が欠けていれば Keycloak へ送る前に例外で止め�
     );
     expect(message).not.toContain(value);
   }
+});
+
+// NFR-10 / SC-14 / IADR-0662（#2040 / E-81）: 使い捨てのスタックでしか流せない試験（M-005 の初回の TOTP 登録）の門。
+test('E2E_DISPOSABLE は 1 か未設定・空だけを受け、E2E_LIVE=1 と E2E_STACK を要る（#2040 / IADR-0662）', () => {
+  expect(parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x').disposable).toBe(false);
+  expect(parseLiveEnv({ E2E_LIVE: '1', E2E_DISPOSABLE: '' }, '/tmp/x').disposable).toBe(false);
+  const on = parseLiveEnv({ E2E_LIVE: '1', E2E_DISPOSABLE: '1', E2E_STACK: 'e2e-live' }, '/tmp/x');
+  expect([on.disposable, on.stack]).toEqual([true, 'e2e-live']);
+  for (const bad of ['true', '0', 'yes'])
+    expect(() =>
+      parseLiveEnv({ E2E_LIVE: '1', E2E_DISPOSABLE: bad, E2E_STACK: 'e2e-live' }, '/tmp/x'),
+    ).toThrow(/E2E_DISPOSABLE の値域外/);
+  expect(() => parseLiveEnv({ E2E_DISPOSABLE: '1', E2E_STACK: 'e2e-live' }, '/tmp/x')).toThrow(
+    /E2E_LIVE=1 が無い/,
+  );
+  expect(() => parseLiveEnv({ E2E_LIVE: '1', E2E_DISPOSABLE: '1' }, '/tmp/x')).toThrow(
+    /E2E_DISPOSABLE=1 なのに E2E_STACK が無い/,
+  );
+});
+
+test('E2E_DISPOSABLE=1 なら層に rw が無くても globalSetup の門が使い捨てのスタックの判定器を呼ぶ（#2040 / IADR-0662）', () => {
+  const calls: string[][] = [];
+  const ro = parseLiveEnv({ E2E_LIVE: '1' }, '/tmp/x');
+  assertDisposableStack(ro, (args) => (calls.push(args), { status: 0, stderr: '' }));
+  expect(calls).toEqual([]);
+  const disposable = parseLiveEnv(
+    { E2E_LIVE: '1', E2E_DISPOSABLE: '1', E2E_STACK: 'e2e-live' },
+    '/tmp/x',
+  );
+  assertDisposableStack(disposable, (args) => (calls.push(args), { status: 0, stderr: '' }));
+  expect(calls.map((a) => a.slice(1))).toEqual([['--stack', 'e2e-live']]);
+  expect(() =>
+    assertDisposableStack(disposable, () => ({
+      status: 2,
+      stderr:
+        '[disposable-stack] 止めた: kubectl の current-context が k3d-e2e-live でない（rancher-desktop）',
+    })),
+  ).toThrow(/使い捨てのスタックの中だけで流す。止めた: .*rancher-desktop/);
+});
+
+test('M-005（初回の TOTP 登録）は E2E_DISPOSABLE=1 のときだけ live-ro に載り、常設の PoC（未設定）では 0 件（#2040 / IADR-0662）', () => {
+  const poc = runLive({ E2E_LIVE: '1' }, ['--list']);
+  expect(poc.status, poc.out).toBe(0);
+  expect(poc.out).toMatch(/\[live-ro\] › shell\.ro\.spec\.ts:/);
+  expect(poc.out).not.toMatch(/totp-enroll\.ro\.spec\.ts/);
+  const disposable = runLive({ E2E_LIVE: '1', E2E_DISPOSABLE: '1', E2E_STACK: 'e2e-live' }, [
+    '--list',
+  ]);
+  expect(disposable.status, disposable.out).toBe(0);
+  expect(disposable.out.match(/\[live-ro\] › totp-enroll\.ro\.spec\.ts:.*M-005/g)).toHaveLength(2);
+  // 管理 API の口は門の外では開かない（kubectl を 1 度も起こさずに例外）。
+  return expect(
+    openKeycloakAdmin({ disposable: false, stack: 'e2e-live' }, 'platform'),
+  ).rejects.toThrow(/E2E_DISPOSABLE=1 と E2E_STACK/);
+});
+
+test('port-forward の出力からローカルポートを読み、読めなければ null（#2040 / IADR-0662）', () => {
+  expect(parsePortForwardPort('Forwarding from 127.0.0.1:43123 -> 8080\n')).toBe(43123);
+  expect(parsePortForwardPort('Forwarding from [::1]:43123 -> 8080\n')).toBeNull();
+  expect(parsePortForwardPort('error: unable to forward')).toBeNull();
 });
