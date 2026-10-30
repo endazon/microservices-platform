@@ -10,7 +10,8 @@ namespace Platform.Shared.Infrastructure.Foundation.Messaging;
 //
 // ■ 窓（IADR-0609 の残余）: 送出表への書き込み（`StoreOutgoingAsync`）が一時的に失敗すると、Wolverine は例外を出さずに
 //   JasperFx の `RetryBlock<T>` でメモリ上に再試行する。その間に呼び出し側の確定（DataSourceService の watermark など）が
-//   成功し、再試行が済む前にプロセスが止まると、イベントが欠落し得る。気づく手段はブロックのエラーログだけだった。
+//   成功し、再試行が**上限（既定 4 回・約 0.5 秒。Wolverine は変えていない）で捨てられるか**、途中でプロセスが止まると、
+//   イベントが欠落する（上限の実測は IADR-0656）。気づく手段はブロックのエラーログだけだった。
 // ■ 🔴 **照合はメッセージテンプレートの完全一致 ＋ 例外つき ＋ Error 以上**である（文面の部分一致はしない）。
 //   カテゴリでは絞らない —— Wolverine がブロックへ渡すロガーのカテゴリは呼び出し元ごと・版ごとに変わり得るが、
 //   テンプレートはブロックの型が持つ。版上げでテンプレートが変われば、実物のブロックを動かす試験（`RetryBlockErrorMetricsTests`）が赤になる。

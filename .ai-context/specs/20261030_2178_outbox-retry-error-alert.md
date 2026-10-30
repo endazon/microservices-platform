@@ -89,3 +89,11 @@ issue: "#2178"
 - promtool の試験（`messaging-retry-block.test.yml`）は、手元に promtool が無いので CI（static-checks-units）で初めて走る。
   - 場面は `messaging-dead-letter.test.yml` と同じ型（初回・前進・不在・instance の入れ替わり）である。
 
+### ［2026-10-30 追記 / #2360 の AI レビュー］
+
+- 🟡 1: 運用仕様書の trace ブロックに IADR-0656・IADR-0609・#2178 を足した。
+- 🟡 2: 取得の印の巻き戻しは、対象のデータソースに絞る形（`"Id"` ＋ `"LastSyncedAt" >`）を第一にした。全体を戻す形は「特定できない場合に限る」とした。
+- 🟡 3: `RetryBlock<T>` の上限を実測した（IADR-0656 §再試行の上限）。
+  - 最初の 1 回 ＋ 再試行 3 回・約 0.5 秒の後、`Discarding message`（Information）で捨てる。Wolverine は上限を変えていない（IL のメタデータで確認）。
+  - 手順 1 の「再起動が無ければ欠落は起きていない」の断定を改め、**既定で埋め直す**形にした。警報の説明文（4 か所と promtool の期待値）も合わせた。
+

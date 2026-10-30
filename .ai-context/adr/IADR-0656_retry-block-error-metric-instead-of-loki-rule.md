@@ -36,6 +36,17 @@ IADR-0609 は、送出表への書き込み（`StoreOutgoingAsync`）の一時�
 
 issue は「このログを検知するアラートを、既存の監視（Loki と Alertmanager）に足す」と書く。🔴 **しかし develop に Loki の ruler は無い**（`deploy/loki-config.yaml`・`deploy/local/observability/loki.yaml` とも ruler の設定 0 件、LogQL の警報 0 件。2026-10-30 実測）。既存の警報はすべて Prometheus のルール（経路 A / B の 2 か所の写しと、暫定の Grafana の 2 か所の写し）である。
 
+### 再試行の上限（［2026-10-30 / #2360 のレビュー］実測）
+
+`JasperFx.Blocks.RetryBlock<T>`（JasperFx 2.37.0）には**上限がある**。IADR-0609 は「メモリ上で再試行する」とだけ書き、捨てる経路に触れていなかった。
+
+- **実測**: 常に失敗する処理を渡すと、最初の 1 回 ＋ 再試行 3 回（間隔は約 0.1／0.1／0.25 秒）の後、約 0.5 秒で `Discarding message {Message} after {Attempts} attempts`（**Information・例外なし**）を出し、その項目を捨てた。
+  - 型は `MaximumAttempts`・`Pauses` の公開プロパティを持つ。
+- **Wolverine は上限を変えていない**: WolverineFx 6.24.4 の各アセンブリ（Wolverine・Wolverine.RDBMS・Wolverine.RabbitMQ）のメタデータに、`set_MaximumAttempts`・`set_Pauses` への参照が 0 件（`RetryBlock` 型の参照はある）。既定のまま使われる。
+- **帰結**: 欠落は「再試行の途中でプロセスが止まった」ときだけでなく、**一時失敗が約 0.5 秒より長く続いたとき**にも起きる。プロセスが動き続けていても、捨てた操作は戻らない。
+  - 運用の手順は「既定で埋め直す」に改めた。省けるのは、`Discarding message` も再起動も無いと確かめたときだけである。
+  - 警報の説明文も合わせた。
+
 ## 決定
 
 1. **ログを計器に変える。** ロガーの提供者 `RetryBlockErrorLoggerProvider` を、`AddPlatformLogging` で全サービスに足す。
@@ -68,7 +79,8 @@ issue は「このログを検知するアラートを、既存の監視（Loki 
 ## 帰結・残余リスク
 
 - issue（#2178）の「Loki と Alertmanager に足す」とは手段が違う。通知の宛先は既存の Alertmanager の経路のままである。issue に記録した。
-- 警報は「再試行が失敗した」ことを告げるだけで、欠落が起きたかどうかは告げない。欠落は、再試行の途中でプロセスが止まったときだけ起きる。
-  - 運用仕様書 §送出の再試行中の欠落の窓 で、再起動の有無を確かめてから埋め直す手順を置いた。
+- 警報は「再試行が失敗した」ことを告げるだけで、欠落が起きたかどうかは告げない。欠落は、上限で捨てたとき（`Discarding message`。Information）と、再試行の途中でプロセスが止まったときに起きる（上の実測）。
+  - 運用仕様書 §送出の再試行中の欠落の窓 は、**既定で埋め直す**形にした（下流は冪等）。
+  - 捨てたこと自体（`Discarding message`）は計器にしていない。数えるなら、同じ提供者にテンプレートを 1 つ足す形になる（Information・例外なし）。今は「再試行の失敗」の警報から手順で確かめる。
 - 提供者は全サービスのロガーに 1 つ足される。照合は `{OriginalFormat}` の 1 回の比較で、`IsEnabled` は Error 以上だけを受ける。費用はエラーログの数に比例する。
 - 計器は、ロガーの最小の段（`Logging:LogLevel`）が Error を落とす構成では進まない。既定の構成は Error を出す。

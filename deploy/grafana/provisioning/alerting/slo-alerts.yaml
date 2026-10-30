@@ -672,7 +672,7 @@ groups:
           severity: warning
         annotations:
           summary: "Wolverine の耐久化の操作のメモリ上の再試行が失敗した（送出の欠落の窓。0 が正常）"
-          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行が済む前にプロセスが止まると、その送出は欠落し得る（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのエラーログ（Error while trying to retry）で時刻と例外を確かめ、窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
+          description: "{{ $labels.job }} の messaging_retry_block_errors_total（error_type={{ $labels.error_type }}）が直近 1 時間で前進した（初めて現れた場合を含む）。Wolverine（JasperFx の RetryBlock）が送出・受信の表への書き込みなどの耐久化の操作をメモリ上で再試行している。再試行には上限がある（既定で 4 回・約 0.5 秒）。上限で捨てられるか、再試行の途中でプロセスが止まると、その送出は欠落する（DataSourceService では watermark だけが進み、取得イベントが出ない）。当該サービスのログ（Error while trying to retry・Discarding message）で時刻を確かめ、既定では窓の間に取得した範囲を再取り込みする（運用仕様書 §送出の再試行中の欠落の窓）。"
         data:
           - refId: A
             relativeTimeRange: { from: 3600, to: 0 }
