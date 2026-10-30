@@ -166,8 +166,8 @@ public class GrpcAttributeValuesTests
     }
 
     // 🔴 T-03: **管理者の利用者トークンでも PERMISSION_DENIED**（confused deputy の防止）。
-    // REST の受け口は認可を持たないので、「認証さえあれば通る」形にすると
-    // s2s の面が利用者トークンでも開く（[[IADR-0379]] 決定 4）。
+    // 「認証さえあれば通る」形にすると、s2s の面が利用者トークンでも開く（[[IADR-0379]] 決定 4）。
+    // ［2026-10-30 訂正 / #2147］従前の前置き「REST の受け口は認可を持たないので」は失効した（属性値の REST は #1902 で撤去）。
     [Fact]
     public async Task ListValues_with_forwarded_admin_user_token_is_permission_denied()
     {

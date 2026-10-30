@@ -10,12 +10,15 @@ author: claude
 ids: [FR-05, FR-17, FR-18, UC-10, SC-03, SC-09, SC-21]
 adrs: [ADR-0033, ADR-0034, ADR-0050, ADR-0051, ADR-0063, ADR-0081]
 iadrs: [IADR-0242, IADR-0266, IADR-0272, IADR-0300, IADR-0323, IADR-0364, IADR-0380]
-specs: [20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260829_issue-450_ai-suggestion-approval, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20261030_2106_suggestion-generate-product-route]
-issues: [#450, #914, #915, #918, #1014, #1187, #1215, #1244, #2106]
+specs: [20261030_2147_stale-comments, 20260822_issue-914_ai-suggestion-state-machine, 20260823_issue-915_ai-suggestion-generation, 20260829_issue-450_ai-suggestion-approval, 20260903_issue-1187_tag-suggestion-reflection-and-dictionary, 20260905_issue-1244_similarity-candidate-source, 20261030_2106_suggestion-generate-product-route]
+issues: [#2147, #450, #914, #915, #918, #1014, #1187, #1215, #1244, #2106]
 -->
 
 # 機能仕様書: AI 提案（リンク候補・タグ候補）
 
+> **［2026-10-30 追記］起動の導線は文書詳細の承認欄に置いた**（§未決事項 1 の解消）。ただし 0 件のときの置き場所は計画の裁定待ちの暫定配置であり、
+> 本書は `in-progress` のままとする。次の段落は当時の理由である。
+>
 > **`status: in-progress` の理由**: 生成・承認・却下・再提示の経路は実装済みだが、**利用者が生成を起動する導線が無い**
 > （§未決事項）。本書は 2026-09-05 に、類似度候補の供給元が入った時点で起こした。それまで供給元は「常に空」で、
 > **提案は構造的に 0 件だった**（承認・却下・状態遷移はすべて緑のテストを持ちながら、守る対象が 1 件も生まれていなかった）。
