@@ -170,4 +170,60 @@ public class BffPrivateNoteQuotaTests(BffTestFactory baseFactory) : IClassFixtur
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         doc.LastPath.Should().Be("/private-notes/quotas/a%20b%40example");
     }
+
+    // ── #2348: 一括の照会（SC-17 の一覧の N+1 を解く）──────────────────────────
+
+    // 陽性対照: システム管理者の一括の照会は、本文と資格情報ごと後段の `POST /private-notes/quotas/lookup` へ 1 本で届く。
+    // 応答は利用者名と 2 つの数（と割合）だけを透過する。
+    [Fact]
+    public async Task システム管理者の一括の照会は本文と資格情報ごと後段へ1本で届く()
+    {
+        var (app, doc) = App();
+        doc.Body = """{"items":[{"ownerId":"alice","usedBytes":1536,"limitBytes":1073741824,"percent":0}]}""";
+
+        var res = await Client(app).PostAsJsonAsync("/bff/private-notes/quotas/lookup",
+            new PrivateNoteQuotaLookupRequest(["alice", "bob"]), TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        doc.LastPath.Should().Be("/private-notes/quotas/lookup");
+        doc.LastMethod.Should().Be("POST");
+        doc.LastAuthorization.Should().NotBeNullOrEmpty("後段も AdminOnly");
+        JsonSerializer.Deserialize<PrivateNoteQuotaLookupRequest>(doc.LastBody!,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))!
+            .OwnerIds.Should().Equal("alice", "bob");
+        var body = await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var json = JsonDocument.Parse(body);
+        json.RootElement.GetProperty("items")[0].EnumerateObject().Select(p => p.Name)
+            .Should().BeEquivalentTo(["ownerId", "usedBytes", "limitBytes", "percent"], "題名・件数・中身は返らない");
+    }
+
+    // 🔴 システム管理者でない（運用者・一般利用者）は 403 で、後段へ行かない。
+    [Theory]
+    [InlineData("platform-operator")]
+    [InlineData("platform-user")]
+    public async Task 一括の照会もシステム管理者でなければ403で後段へ行かない(string role)
+    {
+        var (app, doc) = App();
+
+        var res = await Client(app, role).PostAsJsonAsync("/bff/private-notes/quotas/lookup",
+            new PrivateNoteQuotaLookupRequest(["alice"]), TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        doc.LastPath.Should().BeNull("管理者でない要求は後段へ届かない");
+    }
+
+    // 後段の 400（件数・名前の検証）は本文ごと透過する。
+    [Fact]
+    public async Task 一括の照会の後段の400は本文ごと透過する()
+    {
+        var (app, doc) = App();
+        doc.Status = HttpStatusCode.BadRequest;
+        doc.Body = """{"errors":{"ownerIds":["1〜1000 件の、空白でない 256 文字以下の利用者名を指定してください。"]}}""";
+
+        var res = await Client(app).PostAsJsonAsync("/bff/private-notes/quotas/lookup",
+            new PrivateNoteQuotaLookupRequest([]), TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("ownerIds");
+    }
 }

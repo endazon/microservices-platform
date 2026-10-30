@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import {
   getBffUserAdminGetUserDepartmentQueryKey,
   getBffUserAdminListAssignableRolesQueryKey,
@@ -18,6 +18,8 @@ import {
 } from '@foundation/api/generated/authorization/authorization';
 import {
   getBffPrivateNoteQuotaGetQueryKey,
+  getBffPrivateNoteQuotaLookupQueryKey,
+  getBffPrivateNoteQuotaLookupQueryOptions,
   useBffPrivateNoteQuotaGet,
   useBffPrivateNoteQuotaSet,
 } from '@foundation/api/generated/private-notes/private-notes';
@@ -25,6 +27,8 @@ import { okArray, okData } from '@foundation/api/orvalSelect';
 import type {
   AttributeDefinitionDto,
   PlatformUserDto,
+  PrivateNoteOwnerUsageDto,
+  PrivateNoteQuotaLookupResponse,
   PrivateNoteUsageDto,
   UserDepartmentDto,
 } from '@foundation/api/generated/bff.schemas';
@@ -136,15 +140,52 @@ export function usePrivateNoteQuota(username: string) {
   });
 }
 
+/** 一括照会の 1 本あたりの上限（後段の検証と同じ）。これを超える行数は分けて引く。 */
+const PRIVATE_NOTE_QUOTA_LOOKUP_MAX = 1000;
+
+// 一括照会のキャッシュの接頭辞（上限の変更の後に、まとめて引き直すため）。
+const quotaLookupKeyPrefix = ['POST', '/bff/private-notes/quotas/lookup'] as const;
+
+/**
+ * FR-19, NFR-27, SC-17 (#2348): 表示中の行の利用者の容量を**まとめて**引く（行ごとの照会〔N+1〕をしない）。
+ * 1,000 人までは 1 本、それを超えたら 1,000 人ずつに分ける。読めた分だけを利用者名で引ける形に畳む。
+ * 一部の束が読めなくても、他の束の値は出す（読めない行は「—」）。
+ */
+export function usePrivateNoteQuotaLookup(
+  usernames: readonly string[],
+): ReadonlyMap<string, PrivateNoteOwnerUsageDto> {
+  const distinct = [...new Set(usernames)];
+  const chunks: string[][] = [];
+  for (let i = 0; i < distinct.length; i += PRIVATE_NOTE_QUOTA_LOOKUP_MAX) {
+    chunks.push(distinct.slice(i, i + PRIVATE_NOTE_QUOTA_LOOKUP_MAX));
+  }
+  const results = useQueries({
+    queries: chunks.map((ownerIds) =>
+      getBffPrivateNoteQuotaLookupQueryOptions<PrivateNoteQuotaLookupResponse, unknown>(
+        { ownerIds },
+        { query: { queryKey: getBffPrivateNoteQuotaLookupQueryKey({ ownerIds }), select: okData } },
+      ),
+    ),
+  });
+  const byOwner = new Map<string, PrivateNoteOwnerUsageDto>();
+  for (const r of results) {
+    for (const item of r.data?.items ?? []) byOwner.set(item.ownerId, item);
+  }
+  return byOwner;
+}
+
 /** 上限の変更（0〜1 TB。範囲外は後段が 400）。成功後はその人の容量を引き直す。 */
 export function useSetPrivateNoteQuota(username: string) {
   const queryClient = useQueryClient();
   return useBffPrivateNoteQuotaSet<unknown>({
     mutation: {
-      onSuccess: () =>
+      onSuccess: () => {
         void queryClient.invalidateQueries({
           queryKey: getBffPrivateNoteQuotaGetQueryKey(username),
-        }),
+        });
+        // #2348: 一覧の欄は一括照会から描くので、それも引き直す。
+        void queryClient.invalidateQueries({ queryKey: quotaLookupKeyPrefix });
+      },
     },
   });
 }

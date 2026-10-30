@@ -118,6 +118,18 @@ function mockApi(
   } = {},
 ) {
   mocks.apiRequest.mockImplementation((path: string, init?: { method?: string; body?: string }) => {
+    // #2348: 一覧の欄は一括照会（`POST /private-notes/quotas/lookup`）。依頼の利用者名ごとに返す。
+    if (String(path) === '/private-notes/quotas/lookup') {
+      const { ownerIds } = JSON.parse(init?.body ?? '{}') as { ownerIds: string[] };
+      return Promise.resolve(
+        jsonResponse({
+          items: ownerIds.map((ownerId) => ({
+            ownerId,
+            ...((overrides.quotas?.[ownerId] as object | undefined) ?? DEFAULT_QUOTA),
+          })),
+        }),
+      );
+    }
     // #2330: 容量の照会・変更（`/private-notes/quotas/{username}`）。変更は送った上限をそのまま返す。
     const quota = /\/private-notes\/quotas\/([^/?]+)/.exec(String(path));
     if (quota) {
@@ -199,16 +211,23 @@ describe('UserAccountManagementPage (SC-17)', () => {
     await renderPage();
 
     const rows = within(await usersTable());
-    expect(await rows.findByText('1.50 KB / 1.00 GB')).toBeInTheDocument();
+    // #2348: 1 本の一括照会で全行が同時に埋まる（田中・高橋の 2 行が同じ値）。
+    expect(await rows.findAllByText('1.50 KB / 1.00 GB')).toHaveLength(2);
     expect(await rows.findByText('0 B / 0 B')).toBeInTheDocument();
-    // 照会は利用者名ごとの口へ行く（題名・件数・中身を返す口は呼ばない）。
-    await waitFor(() =>
-      expect(
-        mocks.apiRequest.mock.calls.some(
-          (c) => String(c[0]) === '/private-notes/quotas/tanaka.taro',
-        ),
-      ).toBe(true),
+    // #2348: 一覧の欄は表示中の行の利用者をまとめて 1 本で引く（行ごとの照会をしない＝N+1 を解く）。
+    // 題名・件数・中身を返す口は呼ばない。
+    const lookups = mocks.apiRequest.mock.calls.filter(
+      (c) => String(c[0]) === '/private-notes/quotas/lookup',
     );
+    expect(lookups).toHaveLength(1);
+    expect(
+      (JSON.parse((lookups[0][1] as { body: string }).body) as { ownerIds: string[] }).ownerIds,
+    ).toEqual(expect.arrayContaining(['tanaka.taro', 'sato.hanako']));
+    expect(
+      mocks.apiRequest.mock.calls.some((c) =>
+        /^\/private-notes\/quotas\/(?!lookup$)[^/]+$/.test(String(c[0])),
+      ),
+    ).toBe(false);
     expect(
       mocks.apiRequest.mock.calls.some(
         (c) => String(c[0]).startsWith('/private-notes?') || String(c[0]) === '/private-notes',

@@ -37,7 +37,11 @@ import {
 } from '../types/userAccountVocabulary';
 import type { AssignmentIssue, DepartmentState } from '../types/userAccountVocabulary';
 import { useUserPermissionEditor } from '../hooks/useUserPermissionEditor';
-import { PrivateNoteQuotaCell, PrivateNoteQuotaEditor } from './PrivateNoteQuota';
+import {
+  PrivateNoteQuotaCell,
+  PrivateNoteQuotaEditor,
+  PrivateNoteQuotaLookupProvider,
+} from './PrivateNoteQuota';
 
 // SC-17, UC-05, FR-05, FR-09, ADR-0026: ユーザーアカウント管理（05_screens: ルート /admin/users）。
 //
@@ -359,12 +363,15 @@ export function UserAccountManagementPage() {
           errorDescription={toMessages(users.error, '').join(' / ') || undefined}
         >
           {() => (
-            <DataTable
-              caption={t`利用者アカウントの一覧`}
-              sortHint={t`並べ替え`}
-              columns={columns}
-              data={visible}
-            />
+            // FR-19, SC-17 (#2348): 容量の欄は表示中の行の利用者をまとめて 1 本で引く（N+1 を解く）。
+            <PrivateNoteQuotaLookupProvider usernames={visible.map((u) => u.username)}>
+              <DataTable
+                caption={t`利用者アカウントの一覧`}
+                sortHint={t`並べ替え`}
+                columns={columns}
+                data={visible}
+              />
+            </PrivateNoteQuotaLookupProvider>
           )}
         </QueryState>
       </Panel>

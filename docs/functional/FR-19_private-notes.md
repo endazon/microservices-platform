@@ -3,15 +3,15 @@ title: FR-19 個人資料（private-note） 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-10-30
+updated: 2026-10-31
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-13, FR-16, FR-20, FR-21, FR-22, UC-11, SC-10, SC-17, SC-19, SC-20]
 adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0057, ADR-0058, ADR-0061, ADR-0082, ADR-0096, ADR-0105, ADR-0110, ADR-0114, ADR-0143]
-iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610, IADR-0611, IADR-0612]
+iadrs: [IADR-0663, IADR-0253, IADR-0270, IADR-0277, IADR-0278, IADR-0283, IADR-0296, IADR-0396, IADR-0428, IADR-0431, IADR-0444, IADR-0455, IADR-0464, IADR-0474, IADR-0512, IADR-0529, IADR-0533, IADR-0598, IADR-0610, IADR-0611, IADR-0612]
 specs: [20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451b_notification-ingress, 20260828_issue-451a_private-notes-bff, 20260828_issue-451c_sc19-sc20-screens, 20260905_issue-1184_private-note-exposure-index-production, 20260911_issue-1409_private-note-disposal-after-window, 20260915_issue-1474_sync-conflict-resolve-publish, 20260925_1498_conflict-alias-inherits-tags, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20261008_1752_rag-ai-input-exposure-purpose, 20261010_1879_exposure-org-docs-wiki-gate, 20261010_issue-1255-1517_east-west-rest-retirement, 20261023_2112_sc05-doc-scope-default, 20261023_2046_break-glass-document-service, 20261024_2046_break-glass-bff-relay, 20261024_2046_break-glass-screens, 20261030_2120_ai-input-user-default]
-issues: [#2330, #451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, #2120, planning#472, planning#475, planning#492, planning#652, planning#784, planning#835, planning#841]
+issues: [#2348, #2330, #451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532, #1752, #1879, #1255, #1517, #2112, #2046, #2120, planning#472, planning#475, planning#492, planning#652, planning#784, planning#835, planning#841]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -55,6 +55,7 @@ issues: [#2330, #451, #516, #600, #986, #1184, #1409, #1474, #1498, #1521, #1532
 | 完全削除 | `POST /private-notes/purge`（ids 配列。単票も一括も同じ端点）。応答に**解放される容量**を返す。対象は削除済みのみ |
 | 露出設定 | `PUT /private-notes/{id}/exposure`（横断検索／グラフ／AI の 3 トグル。独立に設定・既定 OFF） |
 | 上限変更 | `PUT /private-notes/quotas/{ownerId}`（管理者のみ。**0〜1 TB**。［2026-10-30］従前の 1 バイト以上から 0 を許すよう改めた。画面はユーザーアカウント管理） |
+| 容量の一括照会 | `POST /private-notes/quotas/lookup`（管理者のみ。1〜1,000 人の利用者名。［2026-10-31］ユーザーアカウント管理の一覧が、表示中の行の利用者をまとめて 1 本で引く。返すのは利用者ごとの使用量・上限・割合だけ） |
 | 共有 | 既存の文書共有 API（`/documents/{id}/shares`。所有者のみ変更可・再共有不可） |
 
 ### 保存容量の規則

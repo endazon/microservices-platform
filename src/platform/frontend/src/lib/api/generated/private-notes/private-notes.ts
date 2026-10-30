@@ -35,6 +35,8 @@ import type {
   PrivateNoteDeletedResponse,
   PrivateNoteDto,
   PrivateNoteListResponse,
+  PrivateNoteQuotaLookupRequest,
+  PrivateNoteQuotaLookupResponse,
   PrivateNoteUsageDto,
   ProblemDetails,
   PurgePrivateNotesRequest,
@@ -2179,7 +2181,123 @@ export const useBffPrivateNoteQuotaSet = <TError = void,
       > => {
       return useMutation(getBffPrivateNoteQuotaSetMutationOptions(options));
     }
-    export type bffSyncSettingsGetResponse200 = {
+    export type bffPrivateNoteQuotaLookupResponse200 = {
+  data: PrivateNoteQuotaLookupResponse
+  status: 200
+}
+
+export type bffPrivateNoteQuotaLookupResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffPrivateNoteQuotaLookupResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffPrivateNoteQuotaLookupResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffPrivateNoteQuotaLookupResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffPrivateNoteQuotaLookupResponseSuccess = (bffPrivateNoteQuotaLookupResponse200) & {
+  headers: Headers;
+};
+export type bffPrivateNoteQuotaLookupResponseError = (bffPrivateNoteQuotaLookupResponse400 | bffPrivateNoteQuotaLookupResponse401 | bffPrivateNoteQuotaLookupResponse403 | bffPrivateNoteQuotaLookupResponse502) & {
+  headers: Headers;
+};
+
+export type bffPrivateNoteQuotaLookupResponse = (bffPrivateNoteQuotaLookupResponseSuccess | bffPrivateNoteQuotaLookupResponseError)
+
+export const getBffPrivateNoteQuotaLookupUrl = () => {
+
+
+
+
+  return `/bff/private-notes/quotas/lookup`
+}
+
+/**
+ * FR-19, NFR-27, SC-17: SC-17 の一覧の容量の欄が、表示中の行の利用者名でまとめて 1 本引く（行ごとの照会〔N+1〕を解く。#2348）。
+ * 依頼は 1〜1,000 件の、空白でない 256 文字以下の利用者名。応答は依頼の順に重複を除いて並べる。値の定義は 1 件の口と同じ
+ * （使用量は最新版と論理削除済みの合計・上限を設定していない利用者は既定の 1 GB）。
+ * **返すのは利用者ごとの 2 つの数（と割合）だけ**で、題名・件数・中身は返さない（SC-19 の禁止）。
+ * 読み取りだが POST にする（利用者名の列を URL に載せると要求行の上限に当たり得る）。
+ * システム管理者だけ（BFF と後段の両方で `AdminOnly`）。後段の状態コードと本文を詰め替えずに返す。
+ * @summary FR-19, NFR-27, SC-17: 複数の利用者の個人資料の使用量と上限をまとめて照会する（システム管理者。#2348）
+ */
+export const bffPrivateNoteQuotaLookup = async (privateNoteQuotaLookupRequest: PrivateNoteQuotaLookupRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffPrivateNoteQuotaLookupResponse> => {
+
+  return bffFetch<bffPrivateNoteQuotaLookupResponse>(getBffPrivateNoteQuotaLookupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(privateNoteQuotaLookupRequest)
+  }
+);}
+
+
+
+
+
+export const getBffPrivateNoteQuotaLookupQueryKey = (privateNoteQuotaLookupRequest?: PrivateNoteQuotaLookupRequest,) => {
+    return [
+    'POST', `/bff/private-notes/quotas/lookup`, privateNoteQuotaLookupRequest
+    ] as const;
+    }
+
+
+export const getBffPrivateNoteQuotaLookupQueryOptions = <TData = Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>, TError = void>(privateNoteQuotaLookupRequest: PrivateNoteQuotaLookupRequest, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffPrivateNoteQuotaLookupQueryKey(privateNoteQuotaLookupRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>> = ({ signal }) => bffPrivateNoteQuotaLookup(privateNoteQuotaLookupRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffPrivateNoteQuotaLookupQueryResult = NonNullable<Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>>
+export type BffPrivateNoteQuotaLookupQueryError = void
+
+
+/**
+ * @summary FR-19, NFR-27, SC-17: 複数の利用者の個人資料の使用量と上限をまとめて照会する（システム管理者。#2348）
+ */
+
+export function useBffPrivateNoteQuotaLookup<TData = Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>, TError = void>(
+ privateNoteQuotaLookupRequest: PrivateNoteQuotaLookupRequest, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffPrivateNoteQuotaLookup>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffPrivateNoteQuotaLookupQueryOptions(privateNoteQuotaLookupRequest,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffSyncSettingsGetResponse200 = {
   data: SyncSettingsDto
   status: 200
 }

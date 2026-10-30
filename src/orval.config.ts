@@ -26,6 +26,13 @@ export default defineConfig({
           path: './platform/frontend/src/lib/api/orvalMutator.ts',
           name: 'bffFetch',
         },
+        // FR-19, SC-17 (#2348): 容量の一括照会は読み取りだが POST（利用者名の列を URL に載せない）。
+        // 画面はキャッシュつきの照会として使うので、query のフックとして生成する（mutation にしない）。
+        operations: {
+          'bff-private-note-quota-lookup': {
+            query: { useQuery: true, useMutation: false },
+          },
+        },
       },
     },
   },
