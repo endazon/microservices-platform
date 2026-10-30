@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — live-rw の M-114（SC-22 の試験キー）を Vault の居る使い捨てのスタックで、既存の項目に書いて流す（#2240 / E-54b）
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-22, NFR-18, NFR-10, ADR-0095, ADR-0110, IADR-0453, IADR-0630, IADR-0658, IADR-0659]
 author: claude
 created: 2026-10-30
@@ -48,9 +48,15 @@ issue: "#2240"
 
 ## 受け入れ基準
 
-- [ ] M-114 が live-rw で流れる（e2e-live で skip 0・passed）
-- [ ] 書いた値は成果物にも画面にも出ない（成果物の走査 0）
-- [ ] 本番の SC-22 の項目一覧は変わらない（`sc22-secret-items.json` に差分が無い）
+- [x] M-114 が live-rw で流れる（e2e-live で skip 0・passed）
+- [x] 書いた値は成果物にも画面にも出ない（成果物の走査 0）
+- [x] 本番の SC-22 の項目一覧は変わらない（`sc22-secret-items.json` に差分が無い）
+
+## 結果（PR #2367 の e2e-live。run 41042099515・head 100bd889）
+
+- M-114: passed。annotation「SC-22 の書き込み」= `ast-app-secrets/fred-api-key 版 1`（レポートの成果物で確認）。
+- `check-e2e-skips`: 「live E2E: 56 件（skip 0 件）。全 skip の project は無い」。
+- `check-e2e-artifact-secrets`: 「成果物 2 ファイル（中の zip を含む）に資格情報 12 個・発行値 9 個の値は載っていない」（本試験の値を含む）。
 
 ## 母集合（規則 9）
 
