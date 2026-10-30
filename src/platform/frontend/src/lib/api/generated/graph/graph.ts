@@ -24,11 +24,13 @@ import type {
 
 import type {
   AiSuggestion,
+  BffGraphLinkCandidatesParams,
   BffGraphNeighborsParams,
   BffGraphSuggestionsParams,
   CreateGraphEdgeRequest,
   EdgeTypeCatalogItem,
   GraphEdgeCreatedDto,
+  GraphLinkCandidateDto,
   GraphView
 } from '../bff.schemas';
 
@@ -276,7 +278,127 @@ export const useBffGraphEdgeCreate = <TError = void,
       > => {
       return useMutation(getBffGraphEdgeCreateMutationOptions(options));
     }
-    export type bffGraphNodeResponse200 = {
+    export type bffGraphLinkCandidatesResponse200 = {
+  data: GraphLinkCandidateDto[]
+  status: 200
+}
+
+export type bffGraphLinkCandidatesResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffGraphLinkCandidatesResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffGraphLinkCandidatesResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffGraphLinkCandidatesResponseSuccess = (bffGraphLinkCandidatesResponse200) & {
+  headers: Headers;
+};
+export type bffGraphLinkCandidatesResponseError = (bffGraphLinkCandidatesResponse400 | bffGraphLinkCandidatesResponse401 | bffGraphLinkCandidatesResponse502) & {
+  headers: Headers;
+};
+
+export type bffGraphLinkCandidatesResponse = (bffGraphLinkCandidatesResponseSuccess | bffGraphLinkCandidatesResponseError)
+
+export const getBffGraphLinkCandidatesUrl = (params: BffGraphLinkCandidatesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/bff/graph/link-candidates?${stringifiedParams}` : `/bff/graph/link-candidates`
+}
+
+/**
+ * FR-17, SC-19, ADR-0034 決定 2・8: 個人資料からリンクを張るときの、リンク先の補完候補。
+ * **候補は作成者の read スコープ内に限る**（後段 GraphService が、辺の作成と同じスコープ・同じ述語で絞る）。
+ * グラフに同期済みのノードだけが候補になる（＝終点として受け付けられる文書と一致する）。
+ * **個人資料は呼び出し主体が所有者のものだけ**を返す（共有されて読める他人の個人資料も返さない。機械の主体には返さない）。
+ *
+ * 表題の部分一致（大小を区別しない）。並びは更新の新しい順。
+ * 🔴 **件数・総数・打ち切りの印は返さない**（応答は候補の配列だけ。ADR-0034 決定 2）。許可が無い主体には空の配列を返す。
+ * BFF は透過中継であり、後段の状態と本文を詰め替えない。
+ * @summary FR-17, SC-19: リンク作成の補完候補を表題で引く（#2343）
+ */
+export const bffGraphLinkCandidates = async (params: BffGraphLinkCandidatesParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphLinkCandidatesResponse> => {
+
+  return bffFetch<bffGraphLinkCandidatesResponse>(getBffGraphLinkCandidatesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffGraphLinkCandidatesQueryKey = (params?: BffGraphLinkCandidatesParams,) => {
+    return [
+    `/bff/graph/link-candidates`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getBffGraphLinkCandidatesQueryOptions = <TData = Awaited<ReturnType<typeof bffGraphLinkCandidates>>, TError = void>(params: BffGraphLinkCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffGraphLinkCandidates>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffGraphLinkCandidatesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffGraphLinkCandidates>>> = ({ signal }) => bffGraphLinkCandidates(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffGraphLinkCandidates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffGraphLinkCandidatesQueryResult = NonNullable<Awaited<ReturnType<typeof bffGraphLinkCandidates>>>
+export type BffGraphLinkCandidatesQueryError = void
+
+
+/**
+ * @summary FR-17, SC-19: リンク作成の補完候補を表題で引く（#2343）
+ */
+
+export function useBffGraphLinkCandidates<TData = Awaited<ReturnType<typeof bffGraphLinkCandidates>>, TError = void>(
+ params: BffGraphLinkCandidatesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffGraphLinkCandidates>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffGraphLinkCandidatesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffGraphNodeResponse200 = {
   data: GraphView
   status: 200
 }

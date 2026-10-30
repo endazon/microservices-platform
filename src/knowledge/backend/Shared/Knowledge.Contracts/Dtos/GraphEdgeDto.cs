@@ -21,3 +21,11 @@ public record GraphEdgeCreatedDto(
     Guid TargetDocumentId,
     Guid EdgeTypeId,
     string Provenance);
+
+// FR-17, SC-19, ADR-0034 決定 2・8・9, [[IADR-0655]] (#2343): リンク作成の補完候補の 1 件。
+// **文書 ID・表題・個人資料かどうかだけ**を運ぶ。件数・総数・打ち切りの印を運ぶ器は持たない（応答は配列そのもの）。
+// 候補は辺の作成と同じ read スコープ・同じ述語で絞ったグラフのノードで、個人資料は呼び出し主体が所有者のものだけである。
+public record GraphLinkCandidateDto(
+    Guid DocumentId,
+    string Title,
+    bool IsPrivateNote);

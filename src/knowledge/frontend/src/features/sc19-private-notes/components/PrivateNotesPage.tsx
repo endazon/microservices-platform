@@ -49,6 +49,7 @@ import type { SyncFilter, TabOption, VisibilityFilter } from '../routes/sc19Priv
 import { BreakGlassPanel } from './BreakGlassPanel';
 import { QuotaPanel } from './QuotaPanel';
 import { ShareTargetsDialog } from './ShareTargetsDialog';
+import { LinkCreateDialog } from './LinkCreateDialog';
 
 // SC-19, UC-11, FR-19/FR-21: 個人資料管理（05_screens: ルート /my/notes）。
 //
@@ -91,6 +92,11 @@ type Confirmation =
  * 「どの kind ならどの関数が走るか」を読む負担が両方へ乗る。
  */
 type Sharing = { kind: 'share'; note: PrivateNoteDto } | null;
+
+/**
+ * リンク作成ダイアログの状態（FR-17, ADR-0034 決定 8 / #2343）。共有先の変更と同じく、開いているときだけ値が入る。
+ */
+type Linking = { note: PrivateNoteDto } | null;
 
 /**
  * 公開範囲のバッジ（05_screens §SC-19 主要素 2）。
@@ -157,6 +163,7 @@ export function PrivateNotesPage() {
   const [vaultPath, setVaultPath] = useState('');
   const [confirming, setConfirming] = useState<Confirmation>(null);
   const [sharing, setSharing] = useState<Sharing>(null);
+  const [linking, setLinking] = useState<Linking>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // SC-19 主要素 8 / [[IADR-0612]] (#2046): 緊急アクセスの欄は**開いたときだけ描く**（状態・監査ログもそのときだけ引く）。
   const [showBreakGlass, setShowBreakGlass] = useState(false);
@@ -715,6 +722,26 @@ export function PrivateNotesPage() {
                                 >
                                   <Trans>共有先を変更する</Trans>
                                 </Button>
+                                {/*
+                                FR-17, ADR-0034 決定 8 (#2343): リンク作成 UI への導線。
+                                🔴 **グラフに表示しない資料では押させない** —— ノードが無く（ADR-0061 決定 4）、後段が必ず 404 を返す。
+                                理由を文言で示す（自分の資料の露出の状態なので、存在秘匿とは関係しない）。
+                              */}
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={pending || !note.includeInGraph}
+                                  onClick={() => setLinking({ note })}
+                                >
+                                  <Trans>リンクを張る</Trans>
+                                </Button>
+                                {!note.includeInGraph && (
+                                  <span className="w-full text-xs text-fg-muted">
+                                    <Trans>
+                                      「ナレッジグラフに表示する」をオンにするとリンクを張れます。
+                                    </Trans>
+                                  </span>
+                                )}
                                 <Button
                                   size="sm"
                                   variant="secondary"
@@ -800,6 +827,11 @@ export function PrivateNotesPage() {
       */}
       {sharing !== null && (
         <ShareTargetsDialog note={sharing.note} onClose={() => setSharing(null)} />
+      )}
+
+      {/* FR-17, ADR-0034 決定 8 (#2343): リンク作成ダイアログ。開いているときだけマウントする（候補・型を閉じている間に引かない）。 */}
+      {linking !== null && (
+        <LinkCreateDialog note={linking.note} onClose={() => setLinking(null)} />
       )}
     </section>
   );

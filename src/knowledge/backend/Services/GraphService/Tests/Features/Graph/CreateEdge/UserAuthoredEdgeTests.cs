@@ -220,6 +220,30 @@ public class UserAuthoredEdgeTests : IClassFixture<TestWebApplicationFactory>
             "対称型は (min, max) へ正規化されるので、逆向きは同じ 1 行である");
     }
 
+    // FR-17, SC-18, SC-19 (#2343。#2107 の受け入れ基準の案 3): **画面から作った辺が SC-18 のグラフ（近傍）に出る。**
+    // SC-19 のリンク作成は `POST /bff/graph/edges` をそのまま透過する。SC-18 は `/graph/{id}/neighbors` を読む。
+    private sealed record NeighborEdge(Guid Id, Guid EdgeTypeId);
+    private sealed record NeighborView(List<NeighborEdge> Edges);
+
+    [Fact]
+    public async Task 作成した辺は起点の近傍の照会に現れる()
+    {
+        var (visible, _, typeId) = await SeedAsync();
+        _factory.ScopeProvider = _ => InternalOnly();
+
+        var before = await _factory.CreateClient().GetFromJsonAsync<NeighborView>(
+            $"/graph/{visible}/neighbors", TestContext.Current.CancellationToken);
+        before!.Edges.Should().BeEmpty("前提: 作成の前は辺が無い");
+
+        var res = await PostAsync(visible, _visibleSecond, typeId);
+        res.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await res.Content.ReadFromJsonAsync<GraphEdgeCreatedDto>(TestContext.Current.CancellationToken);
+
+        var after = await _factory.CreateClient().GetFromJsonAsync<NeighborView>(
+            $"/graph/{visible}/neighbors", TestContext.Current.CancellationToken);
+        after!.Edges.Should().ContainSingle(e => e.Id == created!.Id).Which.EdgeTypeId.Should().Be(typeId);
+    }
+
     // 未認証は 401（存在秘匿の前段）。
     [Fact]
     public async Task Unauthenticated_is_unauthorized()

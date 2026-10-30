@@ -57,6 +57,10 @@ msgstr "(The body is empty)"
 msgid "（終端）"
 msgstr "(terminal)"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "（自分の個人資料）"
+msgstr "(your private note)"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "（表示 {shownCount} 件）"
 msgstr "({shownCount} shown)"
@@ -163,6 +167,10 @@ msgstr "Updated {writtenProperty} (version {writtenVersion})."
 msgid "「{editingName}」のアカウントを無効化します。その利用者の全セッションが即座に失効し、作業中の画面もその場で使えなくなります。"
 msgstr "This disables the account of “{editingName}”. All of that user's sessions expire immediately, and any screen they are working on stops working at once."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "「{noteTitle}」からリンクを張る"
+msgstr "Link from “{noteTitle}”"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "「{noteTitle}」の共有先"
 msgstr "Share targets for “{noteTitle}”"
@@ -194,6 +202,10 @@ msgstr "Use “+ Add source” to register an ingestion source."
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "「＋ 新規登録」から最初の文書を登録してください。"
 msgstr "Use “+ New” to register the first document."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "「ナレッジグラフに表示する」をオンにするとリンクを張れます。"
+msgstr "Turn on “Show in the knowledge graph” to add links."
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "「確認できない」の項目は、データソースの設定が保管先の値を参照しているかを確かめられませんでした（保管先に値があるのに参照を置けなかった場合など）。次の同期が失敗する場合は、もう一度更新してください。"
@@ -248,6 +260,7 @@ msgid "0〜1 TB の範囲で指定してください。"
 msgstr "Enter a value between 0 and 1 TB."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 msgid "2 文字以上入力すると候補が出ます。"
 msgstr "Enter at least 2 characters to see suggestions."
@@ -635,6 +648,7 @@ msgstr "Right now every one of your private notes is synchronised. To synchronis
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
@@ -843,6 +857,10 @@ msgstr "Update this property"
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
 msgid "このプロパティを書き込みますか？"
 msgstr "Write this property?"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "このリンクはすでにあります。"
+msgstr "This link already exists."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -1648,9 +1666,49 @@ msgstr "Redirect URIs (one per line)"
 msgid "リンク"
 msgstr "Link"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンクの種類"
+msgstr "Link type"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンクの種類を取得できませんでした。"
+msgstr "The link types could not be loaded."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンクの種類を読み込み中…"
+msgstr "Loading link types…"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンクを作成"
+msgstr "Create link"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンクを作成しました。"
+msgstr "The link was created."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンクを作成できませんでした。時間をおいて再度お試しください。"
+msgstr "The link could not be created. Please try again later."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
+msgid "リンクを張る"
+msgstr "Add a link"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "リンク先が表示されない場合、リンク切れなのか、閲覧権限がないのかは区別できません。これは、閲覧権限のない文書の存在を知られないようにするための仕様です。"
 msgstr "When a link target is not shown, you cannot tell whether the link is broken or whether you lack permission to view it. This is by design, so that the existence of documents you cannot view is not revealed."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンク先に選べるのは、あなたが閲覧できる文書と、あなたの個人資料のうちナレッジグラフに表示しているものです。"
+msgstr "You can link to documents you can view, and to your own private notes that are shown in the knowledge graph."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンク先の候補"
+msgstr "Link target candidates"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "リンク先の文書を表題で探す"
+msgstr "Find the target document by title"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "ローカル {localVersion} 版 ／ サーバ {serverVersion} 版"
@@ -1861,6 +1919,10 @@ msgstr "Created (oldest first)"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentListToolbar.tsx
 msgid "作成日時が新しい順"
 msgstr "Created (newest first)"
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "使えるリンクの種類がありません。"
+msgstr "No link types are available."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/EdgeTypeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -2882,6 +2944,7 @@ msgstr "Isolated document (no displayed edges)"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassPanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
@@ -3412,6 +3475,14 @@ msgstr "Could not load the documents."
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書を更新しました。"
 msgstr "The document has been updated."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "文書を検索できませんでした。"
+msgstr "Documents could not be searched."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "文書を検索中…"
+msgstr "Searching documents…"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書を登録しました。"
@@ -4803,6 +4874,10 @@ msgstr "The request failed ({status})."
 msgid "要求の形式が不正です。プラグインを最新にしてください。"
 msgstr "The request was malformed. Update the plugin to the latest version."
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "見つかりません。"
+msgstr "Not found."
+
 #: platform/frontend/src/components/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "Not found"
@@ -4893,6 +4968,10 @@ msgstr "No matching information was found."
 #: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "該当する提案はありません。"
 msgstr "There are no matching suggestions."
+
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "該当する文書がありません。"
+msgstr "No matching documents."
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "該当する文書はありません。"
@@ -5174,6 +5253,10 @@ msgstr "Applied by {appliedBy}"
 msgid "選び直す"
 msgstr "Choose again"
 
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
+msgid "選んだリンクの種類は使えません。種類を選び直してください。"
+msgstr "The selected link type cannot be used. Choose another type."
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "選択"
 msgstr "Select"
@@ -5198,6 +5281,7 @@ msgstr "Restore selected"
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
 msgid "選択してください"
 msgstr "Select…"
 
@@ -5267,6 +5351,7 @@ msgstr "Regenerating replaces the key in the store with a new one. Because this 
 #: knowledge/frontend/src/features/sc12-mcp-clients/components/McpClientManagementPage.tsx
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+#: knowledge/frontend/src/features/sc19-private-notes/components/LinkCreateDialog.tsx
 #: knowledge/frontend/src/features/sc19-private-notes/components/ShareTargetsDialog.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx

@@ -126,6 +126,16 @@ export interface GraphEdgeCreatedDto {
 }
 
 /**
+ * FR-17, SC-19: リンク作成の補完候補の 1 件。文書 ID・表題・個人資料かどうかだけを運ぶ（件数を運ぶ器は持たない）。
+ */
+export interface GraphLinkCandidateDto {
+  documentId: string;
+  title: string;
+  /** 自分の個人資料なら true（他人の個人資料は候補に出ない） */
+  isPrivateNote: boolean;
+}
+
+/**
  * FR-17, SC-18: 辺の型（描画用）。**使用件数を持たない** —— 意図した除外である
  * （件数は ABAC で絞られておらず、一般利用者へ返すと総量が漏れる）。
  */
@@ -2733,6 +2743,21 @@ export type BffConversionJobRetryParams = {
  * 別経路の呼び出しが素通りするためである。
  */
 discardCorrections?: boolean;
+};
+
+export type BffGraphLinkCandidatesParams = {
+/**
+ * 表題の部分一致の検索語（前後の空白を除いて 2〜200 文字）
+ * @minLength 2
+ * @maxLength 200
+ */
+q: string;
+/**
+ * 返す候補の上限（既定 20）
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
 };
 
 export type BffGraphNeighborsParams = {

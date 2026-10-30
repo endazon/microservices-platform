@@ -305,6 +305,7 @@
       "AiSuggestionEndpointsTests",
       "BatchLoopForeignCancellationTests",
       "BffGraphEdgeCreateTests",
+      "BffGraphLinkCandidateTests",
       "ClusterDetectionCatchUpTests",
       "ClusterDetectionMetricsTests",
       "ClusterDetectionScheduleTests",
@@ -319,6 +320,7 @@
       "GraphNeighborsTrustedRelayTests",
       "GraphSyncTimeoutTests",
       "GraphTypeGateArchitectureTests",
+      "LinkCandidateTests",
       "LinkEdgeSyncTests",
       "LinkRelinkTests",
       "ObsidianLinkParserTests",
@@ -505,7 +507,10 @@
       "UserDepartmentEndpointTests"
     ],
     "docs/tests/SC-19_private-notes-screen.md": [
-      "BffPrivateNoteEndpointTests"
+      "BffGraphLinkCandidateTests",
+      "BffPrivateNoteEndpointTests",
+      "LinkCandidateTests",
+      "UserAuthoredEdgeTests"
     ],
     "docs/tests/SC-20_obsidian-settings-screen.md": [
       "BffPrivateNoteEndpointTests",

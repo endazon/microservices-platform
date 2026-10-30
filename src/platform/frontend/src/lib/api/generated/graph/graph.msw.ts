@@ -20,12 +20,14 @@ import type {
   AiSuggestion,
   EdgeTypeCatalogItem,
   GraphEdgeCreatedDto,
+  GraphLinkCandidateDto,
   GraphView
 } from '../bff.schemas';
 
 import {
   getBffGraphEdgeCreateResponseMock,
   getBffGraphEdgeTypesResponseMock,
+  getBffGraphLinkCandidatesResponseMock,
   getBffGraphNeighborsResponseMock,
   getBffGraphNodeResponseMock,
   getBffGraphSuggestionApproveResponseMock,
@@ -34,7 +36,7 @@ import {
   getBffGraphSuggestionsResponseMock
 } from './graph.faker';
 
-export { getBffGraphEdgeTypesResponseMock, getBffGraphEdgeCreateResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock, getBffGraphSuggestionsResponseMock, getBffGraphSuggestionGenerateResponseMock, getBffGraphSuggestionApproveResponseMock, getBffGraphSuggestionRejectResponseMock } from './graph.faker';
+export { getBffGraphEdgeTypesResponseMock, getBffGraphEdgeCreateResponseMock, getBffGraphLinkCandidatesResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock, getBffGraphSuggestionsResponseMock, getBffGraphSuggestionGenerateResponseMock, getBffGraphSuggestionApproveResponseMock, getBffGraphSuggestionRejectResponseMock } from './graph.faker';
 
 
 export const getBffGraphEdgeTypesMockHandler = (overrideResponse?: EdgeTypeCatalogItem[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<EdgeTypeCatalogItem[]> | EdgeTypeCatalogItem[]), options?: RequestHandlerOptions) => {
@@ -57,6 +59,18 @@ export const getBffGraphEdgeCreateMockHandler = (overrideResponse?: GraphEdgeCre
     ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
     : getBffGraphEdgeCreateResponseMock(),
       { status: 201
+      })
+  }, options)
+}
+
+export const getBffGraphLinkCandidatesMockHandler = (overrideResponse?: GraphLinkCandidateDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<GraphLinkCandidateDto[]> | GraphLinkCandidateDto[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/graph/link-candidates', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffGraphLinkCandidatesResponseMock(),
+      { status: 200
       })
   }, options)
 }
@@ -135,6 +149,7 @@ export const getBffGraphSuggestionRejectMockHandler = (overrideResponse?: AiSugg
 export const getGraphMock = () => [
   getBffGraphEdgeTypesMockHandler(),
   getBffGraphEdgeCreateMockHandler(),
+  getBffGraphLinkCandidatesMockHandler(),
   getBffGraphNodeMockHandler(),
   getBffGraphNeighborsMockHandler(),
   getBffGraphSuggestionsMockHandler(),

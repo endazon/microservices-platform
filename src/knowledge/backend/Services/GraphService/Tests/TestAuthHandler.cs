@@ -23,6 +23,10 @@ public class TestAuthHandler(
     // （FeedbackService.Tests.TestAuthHandler と同一方針）。
     public const string RolesHeader = "X-Test-Roles";
 
+    // FR-17, ADR-0034 決定 9 (#2343): 機械の主体（サービスアカウント）として名乗る。値はクライアント ID。
+    // `MachinePrincipal.IsMachine` の腕 A（利用者名 = `service-account-<azp>`）に当たる形で発行する。
+    public const string MachineClientHeader = "X-Test-Machine-Client";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (Request.Headers.ContainsKey(AnonymousHeader))
@@ -32,7 +36,9 @@ public class TestAuthHandler(
             ? header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : ["platform-admin"];
 
-        var claims = new List<Claim> { new(ClaimTypes.Name, "test-user") };
+        var claims = Request.Headers.TryGetValue(MachineClientHeader, out var machine)
+            ? new List<Claim> { new(ClaimTypes.Name, $"service-account-{machine}"), new("azp", machine.ToString()) }
+            : new List<Claim> { new(ClaimTypes.Name, "test-user") };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);
