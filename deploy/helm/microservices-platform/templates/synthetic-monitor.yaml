@@ -124,7 +124,9 @@ spec:
             # ADR-0079 決定 1 の確定値。probe.js は既定値を持たない（未設定なら起動しない）。
             - name: PROBE_INTERVAL_SECONDS
               value: {{ $sm.intervalSeconds | quote }}
-            # 費用の出ない 2 経路のみ。LLM を呼ぶのは 60 分側（別の配備単位。下の synthetic-monitor-slo）である。
+            # 費用の出ない 2 経路のみ。LLM を呼ぶのは 60 分側（別の配備単位）である。
+            {{- /* IADR-0654 (#2335): 60 分側は本ファイル末尾の slo の Deployment。60 秒だけの有効の描画に SLO の名前を出さないため、
+                   この注記は Helm のテンプレートコメントに置く（描画されない）。 */}}
             - name: PROBE_PATHS
               value: {{ $sm.paths | quote }}
           volumeMounts:
