@@ -61,6 +61,14 @@ public class SyncAuditEntry
     // `SyncFailureReasons` のコード。成功なら null。**文言は画面が持つ**（記録はコードだけ）。
     public string? FailureReason { get; private set; }
 
+    // FR-20, 計画 ADR-0145 決定 3, [[IADR-0667]] (#2378): **停止期間ごとにまとめた拒否の行**だけが持つ。
+    // `PausePeriodId` は同期設定の停止期間の識別子（`(OwnerId, PausePeriodId)` で一意）、`RejectedCount` は拒んだ要求の数、
+    // `LastRejectedAt` は最後の拒否の時刻（最初の拒否の時刻は `OccurredAt`）。他の行は null / 0 のまま。
+    // 🔴 `RejectedCount` は同時実行トークンである（同時の拒否で数え落とさない。`DocumentDbContext` の注記）。
+    public Guid? PausePeriodId { get; private set; }
+    public int RejectedCount { get; private set; }
+    public DateTimeOffset? LastRejectedAt { get; private set; }
+
     private SyncAuditEntry() { }
 
     // ADR-0099 決定 5・6: 成功の記録。内訳は呼び出し元（各同期経路）が決める。
@@ -98,8 +106,35 @@ public class SyncAuditEntry
             FailureReason = failureReason,
         };
 
+    // ADR-0145 決定 3: 停止期間の最初の拒否で作る 1 行。**方向・端末・内訳は空**（停止期間の拒否は複数の口・端末から来る。
+    // 口ごとにも端末ごとにも分けない）。端末を指す列は空にする —— 1 台目の端末名を書くと「その端末だけが拒まれた」と読める。
+    public static SyncAuditEntry PausedRejection(string ownerId, Guid pausePeriodId, DateTimeOffset now) => new()
+    {
+        OwnerId = ownerId,
+        DeviceId = Guid.Empty,
+        DeviceName = string.Empty,
+        OccurredAt = now,
+        Direction = string.Empty,
+        Outcome = SyncOutcomes.Failure,
+        FailureReason = SyncFailureReasons.Paused,
+        PausePeriodId = pausePeriodId,
+        RejectedCount = 1,
+        LastRejectedAt = now,
+    };
+
+    // ADR-0145 決定 3: 同じ停止期間の 2 回目以降の拒否（回数と最後の時刻だけを進める）。
+    public void CountRejection(DateTimeOffset now)
+    {
+        RejectedCount++;
+        if (LastRejectedAt is null || now > LastRejectedAt) LastRejectedAt = now;
+    }
+
     // SC-20 主要素 6: 画面へ出す形（`Knowledge.Contracts`）。**`DeviceId` は載せない**（決定 5）。
+    // ADR-0145 決定 3: 停止期間の行だけが拒否回数と最初・最後の時刻を持つ。
     public SyncHistoryEntryDto ToDto()
-        => new(Id, OccurredAt, DeviceName, Direction, Added, Updated, Deleted, Conflicted,
-            Outcome, FailureReason);
+        => PausePeriodId is null
+            ? new(Id, OccurredAt, DeviceName, Direction, Added, Updated, Deleted, Conflicted,
+                Outcome, FailureReason)
+            : new(Id, OccurredAt, DeviceName, Direction, Added, Updated, Deleted, Conflicted,
+                Outcome, FailureReason, RejectedCount, OccurredAt, LastRejectedAt);
 }

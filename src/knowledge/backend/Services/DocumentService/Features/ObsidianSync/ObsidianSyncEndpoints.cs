@@ -34,6 +34,8 @@ public static class ObsidianSyncEndpoints
     {
         // JWT の RequireAuthorization は付けない（同期トークンが本経路の資格情報である）。
         var g = app.MapGroup("/private-notes/sync").WithTags("PrivateNotesSync");
+        // FR-20, 計画 ADR-0145 決定 2, [[IADR-0667]] (#2378): 停止中は群の口をすべて拒む（端点が呼び忘れても覆う）。
+        g.AddEndpointFilter(SyncPauseGate.InvokeAsync);
 
         SyncManifestEndpoint.Map(g);
         PushNoteEndpoint.Map(g);
@@ -54,7 +56,23 @@ public static class ObsidianSyncEndpoints
     //   認可サービスへの往復を生ませない（無資格の呼び出しが名簿の負荷を操れない）。
     // 🔴 **口は要求のサービスから引く**（端点の引数にしない）—— 同期トークンの検証は
     //   ここ 1 か所であり、新しい端点が引数を書き忘れても門を素通りできない形にする。
+    //
+    // [[IADR-0667]] (#2378): 結果（null を含む）は要求の `Items` に置く。一時停止の門（端点フィルタ）と端点が同じ要求で
+    // 2 度解くとき、名簿（認可サービス）を 2 度引かない。
     internal static async Task<SyncDevice?> ResolveDeviceAsync(HttpContext http,
+        DocumentDbContext db, DateTimeOffset now, CancellationToken ct)
+    {
+        if (http.Items.TryGetValue(ResolvedDeviceKey, out var cached)) return ((ResolvedDevice)cached!).Device;
+        var device = await ResolveDeviceUncachedAsync(http, db, now, ct);
+        http.Items[ResolvedDeviceKey] = new ResolvedDevice(device);
+        return device;
+    }
+
+    private static readonly object ResolvedDeviceKey = new();
+
+    private sealed record ResolvedDevice(SyncDevice? Device);
+
+    private static async Task<SyncDevice?> ResolveDeviceUncachedAsync(HttpContext http,
         DocumentDbContext db, DateTimeOffset now, CancellationToken ct)
     {
         var auth = http.Request.Headers.Authorization.ToString();

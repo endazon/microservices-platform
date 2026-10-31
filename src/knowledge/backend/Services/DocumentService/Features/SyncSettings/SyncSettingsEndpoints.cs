@@ -1,6 +1,7 @@
 using DocumentService.Domain;
 using DocumentService.Features.PrivateNotes;
 using DocumentService.Features.SyncSettings.Get;
+using DocumentService.Features.SyncSettings.Pause;
 using DocumentService.Features.SyncSettings.Update;
 using DocumentService.Infrastructure.Persistence;
 using Knowledge.Contracts.Dtos;
@@ -28,6 +29,8 @@ public static class SyncSettingsEndpoints
 
         GetSyncSettingsEndpoint.Map(g);
         UpdateSyncSettingsEndpoint.Map(g);
+        // FR-20, 計画 ADR-0145 決定 1, [[IADR-0667]] (#2378): 一時停止・再開（利用者単位）。
+        PauseSyncEndpoint.Map(g);
 
         return app;
     }
@@ -51,7 +54,10 @@ public static class SyncSettingsEndpoints
                     under.Count == 0 ? null : under.Max(n => n.UpdatedAt));
             })],
             settings?.UpdatedAt,
-            settings?.AiInputDefault ?? false);
+            settings?.AiInputDefault ?? false,
+            // FR-20, ADR-0145 決定 1・5 (#2378): 利用者単位の一時停止の状態（設定が無ければ有効）。
+            settings?.IsPaused ?? false,
+            settings?.PausedAt);
     }
 
     // FR-19, ADR-0143 決定 1 (#2120): 新しく作る資料の AI 入力の初期値（作成時点の利用者単位の既定。設定が無ければ false）。

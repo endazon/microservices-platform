@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-31
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-20, NFR-14]
-adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054, ADR-0096, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464, IADR-0474]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#451, #600, #1098, #1153, #1154, #1176, #1213, #1521, #1532, planning#652]
+adrs: [ADR-0021, ADR-0037, ADR-0046, ADR-0054, ADR-0096, ADR-0099, ADR-0105, ADR-0110, ADR-0114, ADR-0145]
+iadrs: [IADR-0667, IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0375, IADR-0464, IADR-0474]
+specs: [20261031_2378_sync-pause-server, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260828_issue-451b_notification-ingress, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260905_issue-1213_obsidian-plugin-release-assets, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#2378, #2127, #451, #600, #1098, #1153, #1154, #1176, #1213, #1521, #1532, planning#652]
 -->
 
 # 機能仕様書: Obsidian 双方向同期
@@ -72,6 +72,7 @@ issues: [#451, #600, #1098, #1153, #1154, #1176, #1213, #1521, #1532, planning#6
 | 新規作成 | フェイルセーフ既定（`doc_scope=private-note`・`owner=本人`・機密区分 `restricted`・トグル OFF）をサーバ側で適用する。容量 100% では拒否（507） |
 | 本文上限 | 1 MB / 413（本文受け入れ経路と同一の上限） |
 | 監査 | push / pull / delete ごとに「誰が・いつ・何件」。タイトル・内容は記録しない |
+| 一時停止（［2026-10-31］） | **利用者単位**ですべての端末の同期を止める。トークン・端末・有効期限は変えない（失効とは別の操作。再開すれば同じトークンで戻る）。停止中はサーバが同期の 5 つの口をすべて拒む（プラグインの版に依らない）。停止中の拒否は同期履歴に、停止期間ごとに 1 行で残る（拒否回数と最初・最後の時刻）。停止中に個人資料管理で起きた変更は、再開後の通常の同期で届き、競合にはならない |
 
 ## 処理フロー
 
@@ -131,6 +132,7 @@ sequenceDiagram
 | 容量 100% での新規作成 | 507 |
 | 削除済み資料への push・リネーム | 409（復元してから同期する） |
 | リネーム先の名前が既存の有効な資料と重なる | 409（上書きしない） |
+| 同期の一時停止中（トークンとアカウントは有効） | 423、本文 `error: sync_paused`（401 と取り違えさせない。資料は変えない） |
 
 ## 関連
 

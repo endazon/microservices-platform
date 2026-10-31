@@ -2494,6 +2494,198 @@ export const useBffSyncSettingsUpdate = <TError = void,
       > => {
       return useMutation(getBffSyncSettingsUpdateMutationOptions(options));
     }
+    export type bffSyncSettingsPauseResponse200 = {
+  data: SyncSettingsDto
+  status: 200
+}
+
+export type bffSyncSettingsPauseResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncSettingsPauseResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffSyncSettingsPauseResponseSuccess = (bffSyncSettingsPauseResponse200) & {
+  headers: Headers;
+};
+export type bffSyncSettingsPauseResponseError = (bffSyncSettingsPauseResponse401 | bffSyncSettingsPauseResponse403) & {
+  headers: Headers;
+};
+
+export type bffSyncSettingsPauseResponse = (bffSyncSettingsPauseResponseSuccess | bffSyncSettingsPauseResponseError)
+
+export const getBffSyncSettingsPauseUrl = () => {
+
+
+
+
+  return `/bff/private-notes/sync-settings/pause`
+}
+
+/**
+ * 停止中は、すべての端末の同期の要求をサーバが拒む（ADR-0145 決定 1・2）。**停止中の一時停止は冪等**で、停止期間を変えない。
+ * 停止中の拒否は同期履歴に、停止期間ごとに 1 行で残る（決定 3）。トークンの有効期限は止まらない。
+ * @summary FR-20, UC-11, SC-20 主要素 7: 同期を一時停止する（利用者単位・全端末。トークンは残る）
+ */
+export const bffSyncSettingsPause = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncSettingsPauseResponse> => {
+
+  return bffFetch<bffSyncSettingsPauseResponse>(getBffSyncSettingsPauseUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSyncSettingsPauseMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsPause>>, TError,void, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsPause>>, TError,void, TContext> => {
+
+const mutationKey = ['bffSyncSettingsPause'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffSyncSettingsPause>>, void> = () => {
+
+
+          return  bffSyncSettingsPause(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffSyncSettingsPauseMutationResult = NonNullable<Awaited<ReturnType<typeof bffSyncSettingsPause>>>
+
+    export type BffSyncSettingsPauseMutationError = void
+
+    /**
+ * @summary FR-20, UC-11, SC-20 主要素 7: 同期を一時停止する（利用者単位・全端末。トークンは残る）
+ */
+export const useBffSyncSettingsPause = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsPause>>, TError,void, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffSyncSettingsPause>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getBffSyncSettingsPauseMutationOptions(options));
+    }
+    export type bffSyncSettingsResumeResponse200 = {
+  data: SyncSettingsDto
+  status: 200
+}
+
+export type bffSyncSettingsResumeResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffSyncSettingsResumeResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffSyncSettingsResumeResponseSuccess = (bffSyncSettingsResumeResponse200) & {
+  headers: Headers;
+};
+export type bffSyncSettingsResumeResponseError = (bffSyncSettingsResumeResponse401 | bffSyncSettingsResumeResponse403) & {
+  headers: Headers;
+};
+
+export type bffSyncSettingsResumeResponse = (bffSyncSettingsResumeResponseSuccess | bffSyncSettingsResumeResponseError)
+
+export const getBffSyncSettingsResumeUrl = () => {
+
+
+
+
+  return `/bff/private-notes/sync-settings/resume`
+}
+
+/**
+ * 再開の後は同じトークンで同期できる（再発行・プラグインへの入れ直しは要らない。ADR-0145 決定 1）。停止中に SC-19 で起きた変更は、
+ * 通常の同期で追いつく（競合にしない。決定 4）。**有効なときの再開は冪等**（何もしない）。
+ * @summary FR-20, UC-11, SC-20 主要素 7: 同期を再開する（同じトークンのまま同期が戻る）
+ */
+export const bffSyncSettingsResume = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffSyncSettingsResumeResponse> => {
+
+  return bffFetch<bffSyncSettingsResumeResponse>(getBffSyncSettingsResumeUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffSyncSettingsResumeMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsResume>>, TError,void, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsResume>>, TError,void, TContext> => {
+
+const mutationKey = ['bffSyncSettingsResume'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffSyncSettingsResume>>, void> = () => {
+
+
+          return  bffSyncSettingsResume(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffSyncSettingsResumeMutationResult = NonNullable<Awaited<ReturnType<typeof bffSyncSettingsResume>>>
+
+    export type BffSyncSettingsResumeMutationError = void
+
+    /**
+ * @summary FR-20, UC-11, SC-20 主要素 7: 同期を再開する（同じトークンのまま同期が戻る）
+ */
+export const useBffSyncSettingsResume = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSyncSettingsResume>>, TError,void, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffSyncSettingsResume>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getBffSyncSettingsResumeMutationOptions(options));
+    }
     export type bffSyncHistoryListResponse200 = {
   data: SyncHistoryEntryDto[]
   status: 200

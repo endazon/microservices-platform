@@ -45,6 +45,7 @@ const EMPTY_SETTINGS: SyncSettingsDto = {
   targetFolders: [],
   updatedAt: null,
   aiInputDefault: false,
+  syncPaused: false,
 };
 
 function conflict(overrides: Partial<SyncConflictSummaryDto> = {}): SyncConflictSummaryDto {
@@ -184,6 +185,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
     ],
     updatedAt: new Date(Date.now() - DAY).toISOString(),
     aiInputDefault: false,
+    syncPaused: false,
   };
   const traffic = await installBffSession(page, {
     user: sessionUser([]),
@@ -202,6 +204,7 @@ test('SC-20 (#1442): removing a target folder stops syncing and says it is not a
           })),
           updatedAt: new Date().toISOString(),
           aiInputDefault: settings.aiInputDefault,
+          syncPaused: false,
         };
         return settings;
       },

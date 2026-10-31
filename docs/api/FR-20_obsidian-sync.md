@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-19, SC-20, NFR-14]
-adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0663, IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
-specs: [20261031_2348_sc17-quota-lookup-batch, 20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
-issues: [#2348, #2330, #451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
+adrs: [ADR-0021, ADR-0037, ADR-0054, ADR-0099, ADR-0105, ADR-0110, ADR-0114, ADR-0145]
+iadrs: [IADR-0667, IADR-0663, IADR-0270, IADR-0338, IADR-0348, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
+specs: [20261031_2378_sync-pause-server, 20261031_2348_sc17-quota-lookup-batch, 20261030_2330_sc17-private-note-quota, 20260823_issue-451_private-note-obsidian-sync-core, 20260828_issue-451a_private-notes-bff, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1154_private-notes-sync-edge-route, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable]
+issues: [#2378, #2127, #2348, #2330, #451, #1098, #1153, #1154, #1176, #1521, #1532, planning#652]
 -->
 
 # 通信仕様書: 個人資料・Obsidian 同期 API
@@ -47,11 +47,13 @@ issues: [#2348, #2330, #451, #1098, #1153, #1154, #1176, #1521, #1532, planning#
 | POST | `/private-notes/devices/{id}/reissue` | 手動再発行（旧トークン即時無効） | 200 / 404 |
 | DELETE | `/private-notes/devices/{id}` | 個別失効 | 204 / 404 |
 | POST | `/private-notes/devices/revoke-all` | 全端末一括失効 | 200 |
-| GET | `/private-notes/sync/manifest` | 同期対象の一覧（削除フラグ付き） | 200 / 401 |
-| POST | `/private-notes/sync/notes` | push（noteId 無し=新規・有り=更新。edits 1 件 = 1 版） | 201・200 / 401 / 404 / 409 / 413 / 507 |
-| GET | `/private-notes/sync/notes/{id}` | pull（本文取得） | 200 / 401 / 404 |
-| POST | `/private-notes/sync/notes/{id}/delete` | 論理削除（Obsidian 側削除の伝播） | 200 / 401 / 404 |
-| POST | `/private-notes/sync/notes/{id}/move` | リネーム（Obsidian 側の名前変更の伝播。`vaultPath` ＋ `version`） | 200 / 400 / 401 / 404 / 409 |
+| GET | `/private-notes/sync/manifest` | 同期対象の一覧（削除フラグ付き） | 200 / 401 / 423 |
+| POST | `/private-notes/sync/notes` | push（noteId 無し=新規・有り=更新。edits 1 件 = 1 版） | 201・200 / 401 / 404 / 409 / 413 / 423 / 507 |
+| GET | `/private-notes/sync/notes/{id}` | pull（本文取得） | 200 / 401 / 404 / 423 |
+| POST | `/private-notes/sync/notes/{id}/delete` | 論理削除（Obsidian 側削除の伝播） | 200 / 401 / 404 / 423 |
+| POST | `/private-notes/sync/notes/{id}/move` | リネーム（Obsidian 側の名前変更の伝播。`vaultPath` ＋ `version`） | 200 / 400 / 401 / 404 / 409 / 423 |
+| POST | `/private-notes/sync-settings/pause` | 同期の一時停止（利用者単位・全端末。トークンは残る。［2026-10-31］） | 200 / 401 |
+| POST | `/private-notes/sync-settings/resume` | 同期の再開（同じトークンのまま戻る。［2026-10-31］） | 200 / 401 |
 
 ## 認証・認可の規則
 
@@ -63,6 +65,27 @@ issues: [#2348, #2330, #451, #1098, #1153, #1154, #1176, #1521, #1532, planning#
   **同じ 401** である（通さない側へ倒す）。結果は持ち越さない（無効化の後の最初の要求から拒否する）。
 - 所有者スコープ外の資料 ID は **404**（存在秘匿。403 を返さない）。
 - ライフサイクル群の主体は JWT の主体のみから決める（クエリ・本文に主体の口を作らない）。
+
+## 一時停止の契約（423 応答。［2026-10-31］）
+
+同期の一時停止は**利用者単位**で、すべての端末の同期を止める。同期トークン・端末・有効期限は変わらず、再開すれば同じトークンで同期が戻る
+（失効・再発行とは別の操作。期限は停止中も進む）。
+
+- 停止中は、同期プロトコル群の **5 つの口すべて**（manifest・push・pull・delete・move）が、次の応答で拒む。拒んだ要求は資料を変えない。
+
+  ```json
+  { "error": "sync_paused", "pausedAt": "…" }
+  ```
+
+  状態は **423**。トークンの拒否（401）・競合（409）とは状態コードで分かれ、**判定は `error` の値で行う**。
+- 拒むのは**トークンの検証と所有者のアカウントの確認に通った要求だけ**である。トークンの欠落・不正・期限切れ・失効とアカウントの無効化は、
+  停止中でも従前どおり 401 になる。
+- 停止中の拒否は同期履歴に失敗（理由 `sync_paused`）として残る。**同じ停止期間の拒否は 1 行**で、拒否回数と最初・最後の時刻を持つ
+  （方向・端末名は空、内訳は 0）。再開の後に再び止めれば別の行になる。
+- 停止中に個人資料管理で起きた変更（削除・復元・露出の変更）は、再開後の通常の同期（manifest・pull）で端末へ届く。一時停止そのものは
+  競合の原因にならない。
+- 一時停止・再開の口（`/private-notes/sync-settings/pause`・`/resume`）は JWT（本人）で、冪等である。応答は同期設定
+  （`syncPaused`・`syncPausedAt` を含む）。画面は BFF の同名の口を呼ぶ。
 
 ## 競合の契約（409 応答）
 

@@ -269,6 +269,18 @@ public static class PrivateNoteBffEndpoints
                 httpFactory, http, ct))
             .WithName("BffSyncSettingsUpdate").Produces<SyncSettingsDto>();
 
+        // ── SC-20 主要素 7: 同期の一時停止・再開（計画 ADR-0145 決定 1。[[IADR-0667]] / #2378）──
+        // **利用者単位（全端末）。** トークン・端末・有効期限は変わらない（失効とは別の操作）。停止中の同期の要求は後段の
+        // 同期の口が 423 で拒む（決定 2。同期の口は BFF を通らない）。書き込みなので同期設定の更新と同じ門を通す。
+        settings.MapPost("/pause", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardIfWritableAsync(HttpMethod.Post, "/private-notes/sync-settings/pause", null,
+                httpFactory, http, ct))
+            .WithName("BffSyncSettingsPause").Produces<SyncSettingsDto>();
+        settings.MapPost("/resume", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
+            ForwardIfWritableAsync(HttpMethod.Post, "/private-notes/sync-settings/resume", null,
+                httpFactory, http, ct))
+            .WithName("BffSyncSettingsResume").Produces<SyncSettingsDto>();
+
         // ── SC-20 主要素 5: 同期競合（#1442）──────────────────────────
         // **未解決のみ・検出日時の新しい順。** 本文は載らない（2 ペイン差分は詳細が返す）。
         conflicts.MapGet("/", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>

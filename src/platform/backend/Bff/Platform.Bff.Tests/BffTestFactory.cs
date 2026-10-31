@@ -361,6 +361,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // （**表示件数が前段で固定されている**ことを測る）。
     public static readonly Guid StubSyncHistoryId = Guid.Parse("a0a0a0a0-a0a0-a0a0-a0a0-a0a0a0a0a0a0");
     public string? LastSyncHistoryPath { get; set; }
+    // #2378, SC-20 主要素 7: 一時停止・再開で後段へ渡ったパスの観測点。
+    public string? LastSyncPausePath { get; set; }
     // BFF が後段へ渡した Authorization の観測点。**テスト間で共有される**（IClassFixture）ため、
     // 観測する側が呼ぶ前に null へ戻すこと。
     public string? LastPrivateNoteForwardedAuthorization { get; set; }
@@ -1284,6 +1286,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 主体ごとに分かれる（②）。未設定は**空配列**（404 ではない）。
             if (segments[0] == "sync-settings")
             {
+                // #2378, ADR-0145 決定 1: 一時停止・再開。中継されたパスを記録する（BFF が詰め替えていないことを試験が見る）。
+                if (method == HttpMethod.Post && segments.Length > 1 && segments[1] is "pause" or "resume")
+                {
+                    owner.LastSyncPausePath = path;
+                    return Ok(new SyncSettingsDto([], now, false, segments[1] == "pause",
+                        segments[1] == "pause" ? now : null));
+                }
                 if (method == HttpMethod.Put)
                     return Ok(new SyncSettingsDto(
                         [new SyncTargetFolderDto("work", 2, now.AddHours(-1))], now));

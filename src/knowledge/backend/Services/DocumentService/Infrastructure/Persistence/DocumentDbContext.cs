@@ -225,6 +225,11 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             e.Property(a => a.Outcome).HasMaxLength(20).IsRequired();
             e.Property(a => a.FailureReason).HasMaxLength(40);
             e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
+            // FR-20, 計画 ADR-0145 決定 3, [[IADR-0667]] (#2378): 停止期間ごとの拒否は 1 行。同時の初回の拒否で 2 行を作らないよう一意にし、
+            // 同時の更新で数え落とさないよう回数を同時実行トークンにする（`SyncPauseGate` が衝突を再試行する）。
+            e.HasIndex(a => new { a.OwnerId, a.PausePeriodId }).IsUnique()
+                .HasFilter("\"PausePeriodId\" IS NOT NULL");
+            e.Property(a => a.RejectedCount).IsConcurrencyToken();
         });
 
         // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動記録。FK は張らない（`BreakGlassGrant` の注記）。

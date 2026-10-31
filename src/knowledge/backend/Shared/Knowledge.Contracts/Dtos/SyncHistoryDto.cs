@@ -22,7 +22,12 @@ public record SyncHistoryEntryDto(
     int Deleted,
     int Conflicted,
     string Outcome,
-    string? FailureReason);
+    string? FailureReason,
+    // FR-20, 計画 ADR-0145 決定 3, [[IADR-0667]] (#2378): **停止期間ごとにまとめた拒否の行だけ**が持つ（他の行は null）。
+    // 拒んだ要求の数と、最初・最後の拒否の時刻。行の `OccurredAt` は最初の拒否の時刻、方向は空、内訳は 0 である。
+    int? RejectedCount = null,
+    DateTimeOffset? FirstRejectedAt = null,
+    DateTimeOffset? LastRejectedAt = null);
 
 // ADR-0099 決定 5: 方向（送信＝端末→サーバ／受信＝サーバ→端末）。
 public static class SyncDirections
@@ -50,4 +55,8 @@ public static class SyncFailureReasons
     public const string BodyTooLarge = "body_too_large";
     public const string InvalidRequest = "invalid_request";
     public const string NotFound = "not_found";
+
+    // FR-20, 計画 ADR-0145 決定 2・3, [[IADR-0667]] (#2378): 一時停止中の拒否。**同期の口の応答（423 の `error`）と同じ値**を使う
+    // （プラグインと試験は状態コードではなくこの値で「停止中」を判定する）。
+    public const string Paused = "sync_paused";
 }

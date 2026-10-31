@@ -419,6 +419,9 @@ namespace DocumentService.Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<DateTimeOffset?>("LastRejectedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTimeOffset>("OccurredAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -432,12 +435,23 @@ namespace DocumentService.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<Guid?>("PausePeriodId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RejectedCount")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
                     b.Property<int>("Updated")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerId", "OccurredAt");
+
+                    b.HasIndex("OwnerId", "PausePeriodId")
+                        .IsUnique()
+                        .HasFilter("\"PausePeriodId\" IS NOT NULL");
 
                     b.ToTable("SyncAuditEntries");
                 });
@@ -545,6 +559,12 @@ namespace DocumentService.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
                         .HasDefaultValue(false);
+
+                    b.Property<Guid?>("PausePeriodId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("PausedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TargetFolders")
                         .IsRequired()

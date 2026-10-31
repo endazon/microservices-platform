@@ -535,6 +535,7 @@ const syncSettings: SyncSettingsDto = {
   ],
   updatedAt: new Date(Date.now() - DAY).toISOString(),
   aiInputDefault: false,
+  syncPaused: false,
 };
 
 const syncConflict: SyncConflictSummaryDto = {

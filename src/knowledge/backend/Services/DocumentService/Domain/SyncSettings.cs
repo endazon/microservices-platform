@@ -26,6 +26,14 @@ public class SyncSettings
     // 🔴 横断検索・ナレッジグラフの既定は置かない（決定 4）。
     public bool AiInputDefault { get; private set; }
 
+    // FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 1, [[IADR-0667]] (#2378): **利用者単位の一時停止**。
+    // `PausedAt` は今の停止期間の始まり（null＝有効）、`PausePeriodId` は停止期間の識別子（同期履歴の 1 行を引く鍵。決定 3）。
+    // 🔴 **同期トークン・端末・有効期限には触れない**（失効・同期停止〔ADR-0037 決定 4〕とは別の操作）。
+    public DateTimeOffset? PausedAt { get; private set; }
+    public Guid? PausePeriodId { get; private set; }
+
+    public bool IsPaused => PausedAt is not null;
+
     public DateTimeOffset UpdatedAt { get; private set; }
 
     private SyncSettings() { }
@@ -48,6 +56,25 @@ public class SyncSettings
     public void SetAiInputDefault(bool value, DateTimeOffset now)
     {
         AiInputDefault = value;
+        UpdatedAt = now;
+    }
+
+    // ADR-0145 決定 1: 一時停止。**停止中の一時停止は冪等**で、停止期間（始まりと識別子）を変えない ——
+    // 変えると、同じ停止の拒否が同期履歴の 2 行に分かれる（決定 3）。
+    public void Pause(DateTimeOffset now)
+    {
+        if (IsPaused) return;
+        PausedAt = now;
+        PausePeriodId = Guid.NewGuid();
+        UpdatedAt = now;
+    }
+
+    // ADR-0145 決定 1: 再開。有効なときの再開は何もしない（冪等）。次の一時停止は新しい停止期間になる。
+    public void Resume(DateTimeOffset now)
+    {
+        if (!IsPaused) return;
+        PausedAt = null;
+        PausePeriodId = null;
         UpdatedAt = now;
     }
 

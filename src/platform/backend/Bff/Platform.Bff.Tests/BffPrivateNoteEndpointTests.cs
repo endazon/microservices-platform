@@ -66,6 +66,9 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     // #1442: 同期対象範囲と同期競合（SC-20 主要素 3・5）。
     [InlineData("GET", "/bff/private-notes/sync-settings")]
     [InlineData("PUT", "/bff/private-notes/sync-settings")]
+    // #2378: 同期の一時停止・再開（SC-20 主要素 7・計画 ADR-0145）。
+    [InlineData("POST", "/bff/private-notes/sync-settings/pause")]
+    [InlineData("POST", "/bff/private-notes/sync-settings/resume")]
     [InlineData("GET", "/bff/private-notes/conflicts")]
     [InlineData("GET", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0")]
     [InlineData("POST", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0/resolve")]
@@ -208,6 +211,9 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
     [InlineData("POST", "/bff/private-notes/purge")]
     // #1442: 同期設定の更新と競合の解決も書き込みである（読み取りの 3 口は下の陽性対照が見る）。
     [InlineData("PUT", "/bff/private-notes/sync-settings")]
+    // #2378: 一時停止・再開も同期設定の書き込みである。
+    [InlineData("POST", "/bff/private-notes/sync-settings/pause")]
+    [InlineData("POST", "/bff/private-notes/sync-settings/resume")]
     [InlineData("POST", "/bff/private-notes/conflicts/c0c0c0c0-c0c0-c0c0-c0c0-c0c0c0c0c0c0/resolve")]
     // #1445: 指定先の追加・取り消しも書き込みである（一覧と同期履歴は下の陽性対照が見る）。
     [InlineData("POST", "/bff/private-notes/19191919-1919-1919-1919-191919191919/shares")]
@@ -395,6 +401,26 @@ public class BffPrivateNoteEndpointTests : IClassFixture<BffTestFactory>
             new ResolveSyncConflictRequest(SyncConflictResolutions.Server),
             TestContext.Current.CancellationToken);
         resolve.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 1 (#2378): 一時停止・再開は後段の同じ口へそのまま中継され、状態を返す。
+    [Fact]
+    public async Task The_owner_can_pause_and_resume_sync_through_the_bff()
+    {
+        var pause = await As(BffTestFactory.NoteOwner).PostAsync(
+            "/bff/private-notes/sync-settings/pause", null, TestContext.Current.CancellationToken);
+        pause.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastSyncPausePath.Should().Be("/private-notes/sync-settings/pause");
+        var paused = await pause.Content.ReadFromJsonAsync<SyncSettingsDto>(TestContext.Current.CancellationToken);
+        paused!.SyncPaused.Should().BeTrue();
+        paused.SyncPausedAt.Should().NotBeNull();
+
+        var resume = await As(BffTestFactory.NoteOwner).PostAsync(
+            "/bff/private-notes/sync-settings/resume", null, TestContext.Current.CancellationToken);
+        resume.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastSyncPausePath.Should().Be("/private-notes/sync-settings/resume");
+        (await resume.Content.ReadFromJsonAsync<SyncSettingsDto>(TestContext.Current.CancellationToken))!
+            .SyncPaused.Should().BeFalse();
     }
 
     // 陽性対照: write スコープがあれば、本人の同期設定の更新と競合の解決は通る。
