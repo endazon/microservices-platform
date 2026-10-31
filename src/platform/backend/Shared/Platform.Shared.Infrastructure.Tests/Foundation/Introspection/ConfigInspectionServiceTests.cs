@@ -120,6 +120,33 @@ public class ConfigInspectionServiceTests
             new McpToolDto("retrieval.search", "retrieval", "read", "internal"));
     }
 
+    // FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソース（計画の「コネクタ一覧」）は ID で一意化し、名前→ID の順に並べる。
+    // 同名のデータソースは潰さない（名前ではなく ID で一意化する）。コネクタの種別（Connectors）は変えない。
+    [Fact]
+    public async Task 実効構成には_登録済みのデータソースが名前の順に_ID_で一意化されて載る()
+    {
+        var ds = new ServiceIntrospectionDto("datasource-service", [], [], [new ConnectorDto("wiki", true)], DataSources:
+        [
+            new DataSourceSummaryDto("b0000000-0000-0000-0000-000000000002", "社内 Wiki", "wiki", false),
+            new DataSourceSummaryDto("a0000000-0000-0000-0000-000000000001", "共有フォルダ", "filesystem", true),
+            new DataSourceSummaryDto("c0000000-0000-0000-0000-000000000003", "共有フォルダ", "filesystem", true),
+        ]);
+        var effective = new EffectiveCollection(
+            [ds, ds with { Service = "datasource-service-2" }],
+            new HashSet<string>(["datasource-service", "datasource-service-2"], StringComparer.Ordinal),
+            new HashSet<string>(StringComparer.Ordinal));
+
+        var config = await Build(new PipelineOptions(), effective: effective)
+            .GetEffectiveConfigAsync(TestContext.Current.CancellationToken);
+
+        config.DataSources.Select(d => d.Id).Should().Equal(
+            "a0000000-0000-0000-0000-000000000001",
+            "c0000000-0000-0000-0000-000000000003",
+            "b0000000-0000-0000-0000-000000000002");
+        config.DataSources.Single(d => d.Name == "社内 Wiki").Enabled.Should().BeFalse("無効化したデータソースは無効として載る");
+        config.Connectors.Should().Equal(new ConnectorDto("wiki", true));
+    }
+
     [Fact]
     public async Task 誰も申告しなければ_MCP_の実効ツール一覧は空である()
     {

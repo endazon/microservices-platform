@@ -1613,7 +1613,7 @@ export interface PortSelectionDto {
 }
 
 /**
- * データソースコネクタと有効・無効状態
+ * データソースコネクタと有効・無効状態。#2285 の (b)(ii)・IADR-0666: 計画 10_composability §6 の「コネクタの種別」（プラグイン。常に有効）に当たる。登録済みのデータソースは `DataSourceSummaryDto`
  */
 export interface ConnectorDto {
   name: string;
@@ -1631,7 +1631,17 @@ export interface McpToolDto {
 }
 
 /**
- * FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）。#2285: `mcpTools` は MCP の実効ツール一覧（申告 ∩ 公開構成。MCP サーバーの自己申告が要求のたびに載せる）
+ * FR-15・FR-01（#2285 の (b)(ii)・IADR-0666）: SC-06 に登録したデータソース 1 件（ID・名前・種別・有効）。状態に依らず全件を名前→ID の順に載せる。接続先・設定・資格情報は載せない
+ */
+export interface DataSourceSummaryDto {
+  id: string;
+  name: string;
+  type: string;
+  enabled: boolean;
+}
+
+/**
+ * FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）。#2285: `mcpTools` は MCP の実効ツール一覧（申告 ∩ 公開構成。MCP サーバーの自己申告が要求のたびに載せる）。#2285 の (b)(ii)・IADR-0666: `dataSources` は SC-06 に登録したデータソースと有効・無効（計画 10_composability §6 の「コネクタ一覧」。データソースサービスが要求のたびに載せる）。`connectors` は計画の「コネクタの種別」（プラグイン。常に有効）
  */
 export interface EffectiveConfigDto {
   version: ConfigVersionDto;
@@ -1640,6 +1650,7 @@ export interface EffectiveConfigDto {
   ports: PortSelectionDto[];
   connectors: ConnectorDto[];
   mcpTools: McpToolDto[];
+  dataSources: DataSourceSummaryDto[];
 }
 
 /**

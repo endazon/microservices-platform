@@ -4290,6 +4290,35 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.DataSourceSummaryDto": {
+        "kind": "record",
+        "members": {
+          "Enabled": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 3
+          },
+          "Id": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Type": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.DocumentAttributeEncoding": {
         "kind": "class",
         "members": {
@@ -4370,6 +4399,11 @@
             "type": "IReadOnlyList<ConnectorDto>",
             "required": true,
             "position": 4
+          },
+          "DataSources": {
+            "source": "property",
+            "type": "IReadOnlyList<DataSourceSummaryDto>",
+            "required": false
           },
           "EventBindings": {
             "source": "positional",
@@ -5051,6 +5085,11 @@
             "type": "IReadOnlyList<ConnectorDto>",
             "required": true,
             "position": 3
+          },
+          "DataSources": {
+            "source": "property",
+            "type": "IReadOnlyList<DataSourceSummaryDto>",
+            "required": false
           },
           "McpTools": {
             "source": "property",

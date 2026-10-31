@@ -120,7 +120,17 @@ public sealed class ConfigInspectionService(
             .OrderBy(t => t.PublishedName, StringComparer.Ordinal)
             .ToList();
 
-        return new EffectiveConfigDto(version, stages, bindings, ports, connectors, mcpTools);
+        // FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソースと有効・無効（計画 10_composability §6 の「コネクタ一覧」。
+        // 申告するのはデータソースサービスだけ）。ID で一意化し、名前→ID の順に並べる。実行時データであり Git の宣言に無いので、ドリフト検出には使わない。
+        var dataSources = effective.Services
+            .SelectMany(s => s.DataSources)
+            .GroupBy(d => d.Id, StringComparer.Ordinal)
+            .Select(g => g.First())
+            .OrderBy(d => d.Name, StringComparer.Ordinal)
+            .ThenBy(d => d.Id, StringComparer.Ordinal)
+            .ToList();
+
+        return new EffectiveConfigDto(version, stages, bindings, ports, connectors, mcpTools, dataSources);
     }
 
     // イベント接続（イベント型ごとの発行者・購読者）を宣言 sources ＋実効段の入出力から組み立てる。

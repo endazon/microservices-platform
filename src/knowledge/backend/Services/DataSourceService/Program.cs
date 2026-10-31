@@ -1,5 +1,6 @@
 using DataSourceService.Infrastructure.ExternalServices;
 using DataSourceService.Features.DataSources;
+using DataSourceService.Features.DataSources.Introspection;
 using DataSourceService.Features.DataSources.Sync;
 using DataSourceService.Features.DataSources.Update;
 using FluentValidation;
@@ -91,9 +92,10 @@ builder.Host.UseWolverine(opts =>
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。パイプライン段はホストしない。
 // ［2026-10-26 / #2118・IADR-0029 フォローアップ 2］**登録済みのコネクタのプラグイン**（下の IDataSourceConnector の 4 種）を
-// 有効として申告する（計画 10_composability §5「コネクタ一覧」の**狭い読み**）。🔴 「有効・無効状態」はこの読みでは常に有効で
+// 有効として申告する（計画 10_composability §5「コネクタ一覧」の**狭い読み**）。~~🔴 「有効・無効状態」はこの読みでは常に有効で
 // 自明である —— 計画の意図は SC-06 に登録したデータソース（DB の実行時データ）の集約かもしれない。その読みは申告を要求ごとに
-// 組み立てる仕組みが要るので別に扱い、計画の答えを待つ。種別名は各コネクタの定数（Type）1 か所から取り、DI の登録との一致を試験が固定する。
+// 組み立てる仕組みが要るので別に扱い、計画の答えを待つ。~~ ［2026-10-31 / IADR-0666］計画は広い読みを採った。下の寄与を参照。
+// 種別名は各コネクタの定数（Type）1 か所から取り、DI の登録との一致を試験が固定する。
 // 選択中のオブジェクトストレージ（object-storage）も申告する。
 builder.Services.AddPlatformIntrospection("datasource-service", new PipelineOptions(), i => i
     .AddConnector(FileSystemConnector.Type, enabled: true)
@@ -101,6 +103,9 @@ builder.Services.AddPlatformIntrospection("datasource-service", new PipelineOpti
     .AddConnector(SaaSConnector.Type, enabled: true)
     .AddConnector(DatabaseConnector.Type, enabled: true)
     .AddObjectStoragePort(builder.Configuration));
+// FR-15, FR-01, SC-06, IADR-0666 (#2285 の (b)(ii)): ［2026-10-31］計画の「コネクタ一覧」は SC-06 に登録したデータソースと有効・無効を指す
+// （planning#850 の裁定 (ii)）。上のプラグイン 4 種は計画の「コネクタの種別」（別の項目・常に有効）である。データソースは要求のたびの寄与で載せる。
+builder.Services.AddIntrospectionContributor<RegisteredDataSourcesIntrospectionContributor>();
 
 // FR-05, UC-04, SC-06, SC-17, ADR-0064 決定 4, ADR-0074 決定 4 (#1194): `owner` の写像先の実在検証。
 //

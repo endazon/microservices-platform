@@ -7,7 +7,7 @@ related_ids:
   - ADR-0018
 author: claude
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-10-31
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md
   - planning:projects/microservices-platform/06_technical/10_composability-design.md
@@ -106,6 +106,8 @@ ADR-0018 と 10_composability-design.md §6 は、組み替え自由化（FR-14�
      「登録済みコネクタと有効・無効状態（09 の管理情報を集約）」の**広い読み**（SC-06 に登録したデータソースと有効・無効の集約。
      本 IADR が「実行時データのため静的申告の対象外」とした側）は、申告を要求ごとに組み立てる仕組みが要るので残す。
      どちらの読みかは計画へ問い合わせ、答えが出るまで広い読みは作らない。MCP サーバーの実効ツール一覧の統合も同じ仕組みと契約の追加が要るので残す。
+     ［2026-10-31 追記 / #2285］計画は広い読みを採った（planning#850 の裁定 (ii)）。登録済みのデータソースと有効・無効は、別の項目 `dataSources` として
+     データソースサービスの要求のたびの寄与で載せた（IADR-0666）。狭い読みの申告（プラグイン 4 種）は、計画の「コネクタの種別」として残る。
      ［2026-10-26 追記 / #2118］フォローアップ 3 の「CD が同期時に上書きする」のうちコミット ID は IADR-0646 が改めた（Argo CD のビルド変数）。
   3. Helm values / deployment に `Introspection:Services`・`Config:GitCommit` 等を GitOps 注入する。
   4. 適用直後のドリフト即時検出を ArgoCD PostSync フック等から起動する。

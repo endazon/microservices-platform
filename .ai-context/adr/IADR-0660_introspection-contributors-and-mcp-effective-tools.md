@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-15, FR-16, SC-11, ADR-0018, ADR-0024, IADR-0029, IADR-0122, IADR-0135, IADR-0462]
 author: claude
 created: 2026-10-30
-updated: 2026-10-30
+updated: 2026-10-31
 related_specs:
   - ../specs/20261030_2285_introspection-contributors-mcp-tools.md
 ---
@@ -38,6 +38,8 @@ related_specs:
    - 寄与が 1 つも無いサービスは、従前どおり静的な申告を返す。
    - 登録は `AddIntrospectionContributor<T>()`（同じ型の二重登録は 1 つ）。
    - (b)(ii) は、DataSourceService がコネクタを寄与する形で後から足せる。本決定ではコネクタを寄与する者を作らない。
+     ［2026-10-31 追記 / #2285］(b)(ii) は「コネクタを寄与する形」を採らなかった。計画（planning#850 の裁定 (ii)）が「コネクタ一覧」と「コネクタの種別」を別の項目にしたので、
+     寄与の器に `DataSources` を足し、別の項目 `dataSources` で載せた（IADR-0666）。器の `Connectors` は、いまも誰も寄与しない。
 2. 🔴 **寄与の例外は握り潰さない。** gRPC の失敗として返り、BFF の収集はそのサービスを「到達不能」として扱う（既存の縮退）。空の一覧を返すと「ツールが無い」と読まれ、障害と区別できないためである。
 3. **契約は非破壊の追加にする**:
    - proto: `ServiceIntrospectionReport` に `repeated McpTool mcp_tools = 5;`（`published_name`・`service`・`required_scope`・`egress_class`）。
@@ -61,7 +63,7 @@ related_specs:
   - (b)(ii) を同じ仕組みへ足す口ができた。
 - トレードオフ: 自己申告の 1 回の要求で寄与の分だけ処理が増える（MCP サーバーはメモリ上のカタログを読むだけ）。
 - 残余リスク:
-  - (b)(ii) は未着手（planning#850）。
+  - (b)(ii) は未着手（planning#850）。［2026-10-31 追記 / #2285］IADR-0666 で着地した。
   - 公開ツールが多いと応答が大きくなる（いまは数十件の規模）。
 - PoC 配備への影響: 新しい設定・権限は無い。BFF と MCP サーバー（と共通基盤を使う全サービス）の再配備で効く。古い BFF は新しいフィールドを読まないだけで、壊れない（非破壊の追加）。
 

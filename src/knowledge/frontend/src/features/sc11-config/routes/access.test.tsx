@@ -29,6 +29,7 @@ const EMPTY_CONFIG = {
   ports: [],
   connectors: [],
   mcpTools: [],
+  dataSources: [],
 };
 const EMPTY_DRIFT = { hasDrift: false, checkedAt: '2026-08-05T00:00:00Z', findings: [] };
 

@@ -3,14 +3,14 @@ title: 構成ビューア 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-07
-updated: 2026-10-24
+updated: 2026-10-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-15, SC-05, SC-10, SC-11]
 adrs: [ADR-0018, ADR-0031, ADR-0127, ADR-0017, ADR-0027]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0620]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20261021_planning-807_sc11-mock-note-resolved, 20261024_2022_sc08-sc10-sc11-e2e]
+iadrs: [IADR-0666, IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0620]
+specs: [20261031_2285_introspection-registered-datasources, 20260805_issue-504_sc09-11-admin-ops-screens, 20261021_planning-807_sc11-mock-note-resolved, 20261024_2022_sc08-sc10-sc11-e2e]
 issues: [#14, #19, #446, #504, #506, #519, #544, #552, #1746, #2022, planning#190, planning#198, planning#807]
 -->
 
@@ -228,7 +228,9 @@ hi-fi `436`（および wireframe `133`）が描く 1 行は **3 セルすべて
 | 段（ステップ）一覧 | `pipeline[]` | 段名・サービス・`consumer`・`input → outputs`・有効/無効 |
 | イベント接続 | `eventBindings[]` | イベント型 / 発行者 / 購読者 |
 | ポート実装選択 | `ports[]` | ポート / 実装 / 接続先 |
-| コネクタ一覧 | `connectors[]` | 名前 / 有効・無効 |
+| ~~コネクタ一覧~~ ［2026-10-31］コネクタの種別 | `connectors[]` | 名前 / 有効・無効（プラグインは常に有効） |
+| データソース（コネクタ一覧。［2026-10-31 追加］） | `dataSources[]` | 名前 / 種別 / 有効・無効（データソース管理画面に登録したもの。名前の順。0 件は空の状態。接続先・設定は出さない） |
+| MCP の実効ツール（［2026-10-30 追加］。表への追記は 2026-10-31） | `mcpTools[]` | 公開名 / 申告元サービス / 必要な権限スコープ / 越境分類 |
 | ドリフト明細 | `drift.findings[]` | 種別 / 深刻度 / 対象 / 説明（＋ 確認時刻） |
 | バージョン履歴 | `history[]` | コミット / 適用日時 / 適用者 / ドリフト有無（新しい順） |
 

@@ -790,20 +790,24 @@ msgid "コネクタ"
 msgstr "Connectors"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "コネクタの一覧"
-msgstr "List of connectors"
+msgid "コネクタのプラグインはサービスに組み込まれ、常に有効です。"
+msgstr "Connector plugins are built into the service and are always enabled."
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタの種別"
+msgstr "Connector types"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタの種別の一覧"
+msgstr "List of connector types"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタの種別はありません。"
+msgstr "There are no connector types."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 msgid "コネクタの設定（config）"
 msgstr "Connector settings (config)"
-
-#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "コネクタは Git（GitOps）の宣言で定義します。"
-msgstr "Connectors are defined in the Git (GitOps) declaration."
-
-#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "コネクタはありません。"
-msgstr "There are no connectors."
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "このアカウントを無効化しますか？"
@@ -1231,8 +1235,13 @@ msgstr "Tool"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "データソース"
 msgstr "Data sources"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "データソース（コネクタ一覧）"
+msgstr "Data sources (connector list)"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "データソースからの取り込みが済むとここに並びます。"
@@ -1277,6 +1286,10 @@ msgstr "Only administrators can update data source credentials. The value was no
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "データソースの資格情報を更新できるのは管理者だけです（データソースの登録・更新と同じ）。この一覧では状態だけを確認できます。"
 msgstr "Only administrators can update data source credentials (the same as registering and updating data sources). This list only shows their status."
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "データソースはデータソース管理画面で登録します。"
+msgstr "Data sources are registered on the data source management screen."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "データソースは登録されていません。"
@@ -4399,6 +4412,10 @@ msgstr "No clients are registered."
 msgid "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
 msgstr "This invalidates the tokens of every registered device. The action cannot be undone. Syncing stops on all devices, and to resume you must reissue a token for each device and paste it in again."
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "登録したデータソースはありません。"
+msgstr "No data sources are registered."
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "登録する"
 msgstr "Register"
@@ -4409,6 +4426,10 @@ msgstr "Sources are registered by an administrator."
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "登録済みデータソースの一覧"
+msgstr "List of registered data sources"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "登録済みのデータソースの一覧"
 msgstr "List of registered data sources"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx

@@ -6421,8 +6421,8 @@ components:
     # ── FR-15, IADR-0029: 構成情報 API（/bff/admin/config）─────
     EffectiveConfigDto:
       type: object
-      description: "FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）。#2285: `mcpTools` は MCP の実効ツール一覧（申告 ∩ 公開構成。MCP サーバーの自己申告が要求のたびに載せる）"
-      required: [version, pipeline, eventBindings, ports, connectors, mcpTools]
+      description: "FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）。#2285: `mcpTools` は MCP の実効ツール一覧（申告 ∩ 公開構成。MCP サーバーの自己申告が要求のたびに載せる）。#2285 の (b)(ii)・IADR-0666: `dataSources` は SC-06 に登録したデータソースと有効・無効（計画 10_composability §6 の「コネクタ一覧」。データソースサービスが要求のたびに載せる）。`connectors` は計画の「コネクタの種別」（プラグイン。常に有効）"
+      required: [version, pipeline, eventBindings, ports, connectors, mcpTools, dataSources]
       properties:
         version:
           $ref: "#/components/schemas/ConfigVersionDto"
@@ -6446,6 +6446,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/McpToolDto"
+        dataSources:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataSourceSummaryDto"
 
     ConfigVersionDto:
       type: object
@@ -6509,7 +6513,7 @@ components:
 
     ConnectorDto:
       type: object
-      description: "データソースコネクタと有効・無効状態"
+      description: "データソースコネクタと有効・無効状態。#2285 の (b)(ii)・IADR-0666: 計画 10_composability §6 の「コネクタの種別」（プラグイン。常に有効）に当たる。登録済みのデータソースは `DataSourceSummaryDto`"
       required: [name, enabled]
       properties:
         name: { type: string }
@@ -6524,6 +6528,16 @@ components:
         service: { type: string }
         requiredScope: { type: string }
         egressClass: { type: string }
+
+    DataSourceSummaryDto:
+      type: object
+      description: "FR-15・FR-01（#2285 の (b)(ii)・IADR-0666）: SC-06 に登録したデータソース 1 件（ID・名前・種別・有効）。状態に依らず全件を名前→ID の順に載せる。接続先・設定・資格情報は載せない"
+      required: [id, name, type, enabled]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        enabled: { type: boolean }
 
     DriftReportDto:
       type: object

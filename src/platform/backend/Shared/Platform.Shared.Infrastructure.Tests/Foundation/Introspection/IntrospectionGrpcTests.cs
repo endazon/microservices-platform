@@ -102,6 +102,29 @@ public sealed class IntrospectionGrpcTests
         second.Ports.Should().HaveCount(3, "静的な申告の残りは変えない");
     }
 
+    // 🔴 FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): 登録済みのデータソースの寄与は gRPC を往復し、コネクタの種別（静的な申告）とは別の項目に載る。
+    [Fact]
+    public async Task Data_source_contributions_round_trip_as_their_own_item()
+    {
+        var contributor = new MutableContributor
+        {
+            Current = new IntrospectionContribution([], [],
+                [new DataSourceSummaryDto("a0000000-0000-0000-0000-000000000001", "共有フォルダ", "filesystem", false)]),
+        };
+        await using var host = await IntrospectionGrpcTestHost.StartAsync(ct: Ct,
+            services: s => s.AddSingleton<IIntrospectionContributor>(contributor));
+        using var channel = GrpcClientExtensions.CreatePlatformChannel(
+            host.GrpcAddress, new FixedTokenProvider(IntrospectionGrpcTestHost.ServiceToken()));
+        var client = new Pb.ServiceIntrospection.ServiceIntrospectionClient(channel);
+
+        var dto = IntrospectionGrpcMapping.ToDto(
+            await client.GetAsync(new Pb.GetServiceIntrospectionRequest(), cancellationToken: Ct));
+
+        dto.DataSources.Should().Equal(
+            new DataSourceSummaryDto("a0000000-0000-0000-0000-000000000001", "共有フォルダ", "filesystem", false));
+        dto.Connectors.Select(c => c.Name).Should().Equal(["filesystem", "saas"], "コネクタの種別は静的な申告のまま（データソースを混ぜない）");
+    }
+
     // 🔴 IADR-0660: 寄与の例外は握り潰さない（空の一覧を返すと「ツールが無い」と読まれる）。gRPC の失敗として返る。
     [Fact]
     public async Task A_failing_contribution_fails_the_call_instead_of_reporting_nothing()
