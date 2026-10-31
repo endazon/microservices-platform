@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 構成取得 API と SC-11 に、SC-06 に登録したデータソースと有効・無効を載せる（#2285 の (b)(ii)）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-15, FR-01, SC-06, SC-11, ADR-0018, IADR-0029, IADR-0660, IADR-0666]
 author: claude
 created: 2026-10-31
@@ -62,12 +62,12 @@ issue: "#2285"
 
 ## 受け入れ基準（issue の案の 3 つ目 ＋ 寄与の再確認）
 
-- [ ] 実効構成 API の応答のデータソースの一覧（`dataSources`）に、登録済みのデータソースとその有効・無効が出る。
-- [ ] 登録・無効化の後の、次の要求に反映される（データソースサービスの寄与の試験。DB の実行時データ）。
-- [ ] 既存の `connectors`（種別 4 種）は変わらない。
-- [ ] 寄与が例外を投げたとき、gRPC の失敗になる（握り潰さない。既存の試験の形）。
-- [ ] SC-11 に「データソース（コネクタ一覧）」の表が出る。0 件で空の状態が出る。種別の表の表記が改まる。
-- [ ] 出力に接続先・設定・資格情報が含まれない（DTO の形で固定する）。
+- [x] 実効構成 API の応答のデータソースの一覧（`dataSources`）に、登録済みのデータソースとその有効・無効が出る。
+- [x] 登録・無効化の後の、次の要求に反映される（データソースサービスの寄与の試験。DB の実行時データ）。
+- [x] 既存の `connectors`（種別 4 種）は変わらない。
+- [x] 寄与が例外を投げたとき、gRPC の失敗になる（握り潰さない。既存の試験の形）。
+- [x] SC-11 に「データソース（コネクタ一覧）」の表が出る。0 件で空の状態が出る。種別の表の表記が改まる。
+- [x] 出力に接続先・設定・資格情報が含まれない（DTO の形で固定する）。
 
 ## 母集合（規則 9・10）
 
@@ -94,3 +94,16 @@ issue: "#2285"
 
 - データソースの数に比例して、応答が大きくなる（PoC は数件の規模）。上限は置かない。
 - データソースサービスの DB が落ちると、構成取得 API ではデータソースサービス全体（種別・ポートを含む）が「到達不能」になる（IADR-0660 の規律）。
+
+## 検証（2026-10-31・コミット `606a7c55`）
+
+| 対象 | 結果 |
+| --- | --- |
+| `dotnet test` platform | 合格 |
+| `dotnet test` knowledge | 合格。ただし `Knowledge.IntegrationTests` の `WikiSlugNonUniquePostgresTests` 1 件が失敗した。実 PostgreSQL の接続文字列が無いためで、本変更とは関係しない |
+| `dotnet format --verify-no-changes`（両ユニット） | 差分なし |
+| `pnpm run test` | 2156 件合格 |
+| `pnpm run typecheck`・`lint`（警告は既存のもの）・`format:check` | 合格 |
+| `pnpm run build` ＋ `check-chunk-budget --require` | 合格。床は 658,882 B に上げ、理由は `$comment` に書いた |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 1226 件合格 |
+| 文書・契約の検査 | すべて OK。対象は trace-blocks・adr-numbering・cross-repo-refs・plan-id-qualification・nul-bytes・doc-updated・doc-type-vocabulary・contract-schema・proto-contracts・test-spec-coverage・i18n-catalogs・doc-links・knowledge-graph |
