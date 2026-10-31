@@ -194,6 +194,10 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .Metadata.SetValueComparer(StringListComparer());
             // FR-19, ADR-0143 (#2120): 既存の行は false（未設定と OFF を区別しない。決定 1）。
             e.Property(s => s.AiInputDefault).HasDefaultValue(false);
+            // FR-20, 計画 ADR-0145 決定 1・3, [[IADR-0667]] (#2378): 停止期間の識別子を同時実行トークンにする。未停止の行への同時の
+            // 一時停止が後勝ちで別の停止期間を書かない（`PauseSyncEndpoint.ApplyStateAsync` が衝突を読み直す）。
+            // 🔴 トークンは行の全更新に効く。フォルダ・AI 入力の既定の更新も、同時の一時停止とは衝突として読み直す（`UpdateSyncSettingsEndpoint`）。
+            e.Property(s => s.PausePeriodId).IsConcurrencyToken();
         });
 
         // FR-20, SC-20 主要素 5, ADR-0037 決定 7, #1442: 同期競合。
@@ -225,6 +229,11 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
             e.Property(a => a.Outcome).HasMaxLength(20).IsRequired();
             e.Property(a => a.FailureReason).HasMaxLength(40);
             e.HasIndex(a => new { a.OwnerId, a.OccurredAt });
+            // FR-20, 計画 ADR-0145 決定 3, [[IADR-0667]] (#2378): 停止期間ごとの拒否は 1 行。同時の初回の拒否で 2 行を作らないよう一意にし、
+            // 同時の更新で数え落とさないよう回数を同時実行トークンにする（`SyncPauseGate` が衝突を再試行する）。
+            e.HasIndex(a => new { a.OwnerId, a.PausePeriodId }).IsUnique()
+                .HasFilter("\"PausePeriodId\" IS NOT NULL");
+            e.Property(a => a.RejectedCount).IsConcurrencyToken();
         });
 
         // FR-19, ADR-0036 D-08, [[IADR-0610]] (#2046): 緊急アクセスの発動記録。FK は張らない（`BreakGlassGrant` の注記）。

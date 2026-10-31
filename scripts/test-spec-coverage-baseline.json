@@ -395,6 +395,8 @@
       "ObsidianSyncProtocolTests",
       "PushSourceNoteTagsTests",
       "SyncDeviceTokenTests",
+      "SyncPauseConcurrencyTests",
+      "SyncPauseTests",
       "SyncTokenAccountStateTests"
     ],
     "docs/tests/FR-21_direct-body-intake.md": [

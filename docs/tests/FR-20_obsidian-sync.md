@@ -3,15 +3,15 @@ title: FR-20 Obsidian 双方向同期 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-08-23
-updated: 2026-09-26
+updated: 2026-10-31
 author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-22, UC-11, SC-17, SC-20, NFR-14]
-adrs: [ADR-0037, ADR-0046, ADR-0105, ADR-0110, ADR-0114]
-iadrs: [IADR-0270, IADR-0338, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
-specs: [20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete]
-issues: [#451, #1098, #1153, #1176, #1521, #1532, #1583]
+adrs: [ADR-0037, ADR-0046, ADR-0099, ADR-0105, ADR-0110, ADR-0114, ADR-0145]
+iadrs: [IADR-0667, IADR-0270, IADR-0338, IADR-0352, IADR-0360, IADR-0464, IADR-0474]
+specs: [20261031_2378_sync-pause-server, 20260823_issue-451_private-note-obsidian-sync-core, 20260902_issue-1098_obsidian-plugin-pull-stage1, 20260903_issue-1153_obsidian-plugin-push-delete-conflict-stage2, 20260903_issue-1176_obsidian-sync-rename-contract, 20260926_1521_plugin-keep-both-source-note-tags, 20260926_issue-1532_sync-token-rejected-after-disable, 20260926_issue-1583_purge-reread-before-delete]
+issues: [#2378, #2127, #451, #1098, #1153, #1176, #1521, #1532, #1583]
 -->
 
 # テスト仕様書: Obsidian 双方向同期
@@ -25,7 +25,7 @@ issues: [#451, #1098, #1153, #1176, #1521, #1532, #1583]
 実機で確かめる）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
 
 実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `ObsidianSyncMoveTests` /
-`SyncDeviceTokenTests` / `SyncTokenAccountStateTests` / `GrpcOwnerAccountDirectoryTests`（サーバ側）、
+`SyncDeviceTokenTests` / `SyncTokenAccountStateTests` / `GrpcOwnerAccountDirectoryTests` / `SyncPauseTests` / `SyncPauseConcurrencyTests`（サーバ側）、
 `src/obsidian-plugin/src/**/*.test.ts`（プラグイン側。Vitest・Obsidian 実体なし）。
 
 ## テスト観点
@@ -72,6 +72,13 @@ issues: [#451, #1098, #1153, #1176, #1521, #1532, #1583]
 | 30 | トークンが無い・不正・期限切れ・失効の要求では名簿を引かない | `…端末が有効と確定しない要求では名簿を引かない` |
 | 31 | 名簿の口が構成されていない配備では同期トークンが通らない（同じホストで発行は通る＝陽性対照） | `SyncTokenAccountDirectoryUnconfiguredTests` › `口が構成されていない配備では同期トークンが通らない` |
 | 32 | 名簿の応答の写像: 有効 → 通す／無効化 → 拒否／居ない → 拒否（無効化と区別）／輸送の失敗（全 status）・上限（5 秒）超過 → 判定不能／要求自身の取り消しは判定不能に畳まない（本番のチャネルが投げる取り消しの形でも）／未構成の縮退と既定値は判定不能／名簿は同期の経路の読み口で引き、失敗は「同期要求を拒否する」旨で記録する（退職の窓の文言で記録しない） | `GrpcOwnerAccountDirectoryTests`（9 メソッド・14 件） |
+| 33 | ［2026-10-31］同期の一時停止中は 5 つの口（manifest・pull・push・move・delete）がすべて 423 と `error: sync_paused` で拒み、別の端末も拒む。401 ではない。拒んだ要求は資料を変えない（停止の前は通る＝陽性対照） | `SyncPauseTests` › `停止中は5つの口がすべて423とsync_pausedで拒み別の端末も拒む` |
+| 34 | 再開すると同じトークンのまま 5 つの口が通る | `SyncPauseTests` › `再開すると同じトークンのまま5つの口が通る` |
+| 35 | 停止中でも不正なトークン・トークンなし・アカウントの無効化は 401 のまま（有効に戻れば 423＝陽性対照） | `SyncPauseTests` › `停止中でも無効なトークンとアカウントの無効化は401のまま` |
+| 36 | 同じ停止期間の拒否は同期履歴の 1 行（回数・最初と最後の時刻・方向と内訳は空）にまとまり、再開の後の再停止は別の行になる。構造化ログは拒否ごと | `SyncPauseTests` › `同じ停止期間の拒否は同期履歴の1行にまとまり再停止は別の行になる` |
+| 37 | 停止中に個人資料管理で削除した資料は、再開後の manifest に削除として出て、競合は作られない | `SyncPauseTests` › `停止中にSC19で削除した資料は再開後のmanifestで削除として出て競合は作られない` |
+| 38 | 一時停止・再開は冪等で状態を返し、トークンの有効期限を変えない。主体の無い要求は 401 | `SyncPauseTests` › `一時停止と再開は冪等で状態を返しトークンの有効期限を変えない` / `一時停止と再開は主体の無い要求を401で拒む` |
+| 39 | 同時の一時停止（行が無い利用者の初回・未停止の既存の行）は 1 つの停止期間に収まり、後の 1 本は冪等に終わる。フォルダの更新が同時の一時停止と衝突しても、停止の状態を残して当たる（衝突は保存の直前の割り込みで必ず起こす） | `SyncPauseConcurrencyTests` |
 
 ## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
 

@@ -3088,6 +3088,11 @@
             "type": "string",
             "value": "\"path_conflict\""
           },
+          "Paused": {
+            "source": "const",
+            "type": "string",
+            "value": "\"sync_paused\""
+          },
           "QuotaExceeded": {
             "source": "const",
             "type": "string",
@@ -3139,11 +3144,23 @@
             "required": true,
             "position": 9
           },
+          "FirstRejectedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 11
+          },
           "Id": {
             "source": "positional",
             "type": "Guid",
             "required": true,
             "position": 0
+          },
+          "LastRejectedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 12
           },
           "OccurredAt": {
             "source": "positional",
@@ -3156,6 +3173,12 @@
             "type": "string",
             "required": true,
             "position": 8
+          },
+          "RejectedCount": {
+            "source": "positional",
+            "type": "int?",
+            "required": false,
+            "position": 10
           },
           "Updated": {
             "source": "positional",
@@ -3188,6 +3211,18 @@
             "type": "bool",
             "required": false,
             "position": 2
+          },
+          "SyncPaused": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 3
+          },
+          "SyncPausedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 4
           },
           "TargetFolders": {
             "source": "positional",

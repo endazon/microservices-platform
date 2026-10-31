@@ -143,7 +143,10 @@ public record SyncTargetFolderDto(string Path, int NoteCount, DateTimeOffset? La
 
 // FR-20, SC-20 主要素 3, ADR-0037 決定 3・4: 本人の同期設定。`TargetFolders` が空なら全資料が対象。
 // FR-19, SC-20 主要素 8, ADR-0143 決定 1 (#2120): `AiInputDefault` は AI 入力の利用者単位の既定（新しく作る資料の初期値。未設定は false）。
-public record SyncSettingsDto(List<SyncTargetFolderDto> TargetFolders, DateTimeOffset? UpdatedAt, bool AiInputDefault = false);
+// FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 1・5, [[IADR-0667]] (#2378): `SyncPaused` は**利用者単位の一時停止**（全端末。トークンは残る）。
+// `SyncPausedAt` は今の停止期間の始まり（有効なら null）。🔴 トークンの期限切れ・同期停止（ADR-0037 決定 4）はここに含めない。
+public record SyncSettingsDto(List<SyncTargetFolderDto> TargetFolders, DateTimeOffset? UpdatedAt, bool AiInputDefault = false,
+    bool SyncPaused = false, DateTimeOffset? SyncPausedAt = null);
 
 // FR-20, SC-20 主要素 3: 同期対象フォルダの置き換え（全量）。
 // FR-19, ADR-0143 (#2120): `AiInputDefault` は省略（null）なら変えない —— フォルダだけを送る既存の呼び出しを壊さない。

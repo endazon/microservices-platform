@@ -2105,6 +2105,8 @@ export interface SyncTargetFolderDto {
  * FR-19, SC-20 主要素 8, ADR-0143 決定 1・2: `aiInputDefault` は AI 入力の**利用者単位の既定**（新しく作る資料
  * ＝SC-19 の作成・同期の新規 push の AI 入力の初期値。未設定は false）。変えても既存の資料は変わらない。
  * 同期競合の「両方を残す」で作る別名コピーには当てない（決定 3）。
+ * FR-20, SC-20 主要素 7, ADR-0145 決定 1・5: `syncPaused` は**利用者単位の一時停止**（全端末。トークンは残る）。
+ * `syncPausedAt` は今の停止期間の始まり（有効なら null）。トークンの期限切れ・同期停止（ADR-0037 決定 4）は含めない。
  */
 export interface SyncSettingsDto {
   targetFolders: SyncTargetFolderDto[];
@@ -2112,6 +2114,10 @@ export interface SyncSettingsDto {
   updatedAt?: string | null;
   /** AI 入力の利用者単位の既定（未設定は false） */
   aiInputDefault: boolean;
+  /** 同期の一時停止中か（利用者単位。既定は false） */
+  syncPaused: boolean;
+  /** 今の停止期間の始まり（有効なら null） */
+  syncPausedAt?: string | null;
 }
 
 /**
@@ -2270,8 +2276,10 @@ export interface BreakGlassAuditEntryDto {
  * 内訳は 1 回の同期操作で動いた件数（現行プロトコルは 1 操作 1 資料なので合計は 0 か 1）。
  * `outcome` は `success` / `failure`。`failureReason` は失敗のときだけ入るコード
  * （`version_conflict` / `deleted` / `path_conflict` / `quota_exceeded` / `body_too_large` /
- * `invalid_request` / `not_found`）。**利用者向けの文言は画面が持つ**（次に何をすればよいかが分かる形）。
+ * `invalid_request` / `not_found` / `sync_paused`）。**利用者向けの文言は画面が持つ**（次に何をすればよいかが分かる形）。
  * 🔴 **資料のタイトル・Vault のパス・資料 ID は載らない**（決定 5。完全削除後も題名が残らない）。
+ * ADR-0145 決定 3: 一時停止中の拒否（`sync_paused`）は**停止期間ごとに 1 行**にまとまる。その行だけが `rejectedCount`
+ * （拒んだ要求の数）・`firstRejectedAt`・`lastRejectedAt` を持ち、`direction` と `deviceName` は空、内訳は 0 である。
  */
 export interface SyncHistoryEntryDto {
   id: string;
@@ -2285,6 +2293,12 @@ export interface SyncHistoryEntryDto {
   conflicted: number;
   outcome: string;
   failureReason?: string | null;
+  /** 停止期間の行だけ。拒んだ要求の数 */
+  rejectedCount?: number | null;
+  /** 停止期間の行だけ。最初の拒否の時刻 */
+  firstRejectedAt?: string | null;
+  /** 停止期間の行だけ。最後の拒否の時刻 */
+  lastRejectedAt?: string | null;
 }
 
 /**
