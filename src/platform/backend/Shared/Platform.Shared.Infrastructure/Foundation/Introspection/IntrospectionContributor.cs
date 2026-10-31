@@ -7,19 +7,23 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 // FR-15, FR-16, ADR-0018, IADR-0660 (#2285): 自己申告への**要求のたびの寄与**。
 //
 // 自己申告（`ServiceIntrospectionDto`）は起動時に 1 回だけ組み立てる静的な申告である。実行時に変わる中身
-// （MCP の実効ツール一覧〔計画 11_mcp-server-integration §5〕、将来は登録済みのデータソースと有効・無効〔#2285 の (b)(ii)。
-// 計画の答え planning#850 を待つ〕）は、gRPC 面が要求に応える時点でここから足す。
+// （MCP の実効ツール一覧〔計画 11_mcp-server-integration §5〕、登録済みのデータソースと有効・無効〔#2285 の (b)(ii)。
+// ［2026-10-31］planning#850 の裁定 (ii)・IADR-0666〕）は、gRPC 面が要求に応える時点でここから足す。
 // 寄与はサービスごとに DI へ登録する（`AddIntrospectionContributor<T>()`）。1 つも無ければ静的な申告がそのまま返る。
 public interface IIntrospectionContributor
 {
     ValueTask<IntrospectionContribution> ContributeAsync(CancellationToken ct);
 }
 
-// 寄与の中身。`Connectors` は (b)(ii) のための器で、いまは誰も寄与しない。
+// 寄与の中身。`Connectors`（コネクタの種別）はいま誰も寄与しない。
+// ［2026-10-31 / IADR-0666］(b)(ii) は `Connectors` ではなく `DataSources` に載せる（計画が「コネクタ一覧」と「種別」を別の項目にした）。
 public sealed record IntrospectionContribution(
     IReadOnlyList<ConnectorDto> Connectors,
-    IReadOnlyList<McpToolDto> McpTools)
+    IReadOnlyList<McpToolDto> McpTools,
+    IReadOnlyList<DataSourceSummaryDto>? DataSources = null)
 {
+    public IReadOnlyList<DataSourceSummaryDto> DataSources { get; init; } = DataSources ?? [];
+
     public static IntrospectionContribution Empty { get; } = new([], []);
 }
 
@@ -31,6 +35,7 @@ public static class IntrospectionContributions
     {
         List<ConnectorDto>? connectors = null;
         List<McpToolDto>? tools = null;
+        List<DataSourceSummaryDto>? dataSources = null;
         foreach (var contributor in contributors)
         {
             var contribution = await contributor.ContributeAsync(ct);
@@ -38,13 +43,16 @@ public static class IntrospectionContributions
                 (connectors ??= [.. report.Connectors]).AddRange(contribution.Connectors);
             if (contribution.McpTools.Count > 0)
                 (tools ??= [.. report.McpTools]).AddRange(contribution.McpTools);
+            if (contribution.DataSources.Count > 0)
+                (dataSources ??= [.. report.DataSources]).AddRange(contribution.DataSources);
         }
-        return connectors is null && tools is null
+        return connectors is null && tools is null && dataSources is null
             ? report
             : report with
             {
                 Connectors = (IReadOnlyList<ConnectorDto>?)connectors ?? report.Connectors,
                 McpTools = (IReadOnlyList<McpToolDto>?)tools ?? report.McpTools,
+                DataSources = (IReadOnlyList<DataSourceSummaryDto>?)dataSources ?? report.DataSources,
             };
     }
 

@@ -36,6 +36,8 @@ public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactor
     // 🔴 FR-15, 計画 10_composability §5「コネクタ一覧」の狭い読み (#2118): **DI に登録したコネクタのプラグインの集合**と
     // 申告が一致し、すべて有効である。片方だけ足した（登録したが申告しない／申告したが登録しない）変更を捕まえる。
     // 「有効・無効状態」はこの読みでは常に有効で自明である（SC-06 のデータソースを集約する読みは計画の答え待ち。別 issue）。
+    // ［2026-10-31 / #2285・IADR-0666］計画は広い読みを採った。本試験の申告は計画の「コネクタの種別」として残り、
+    // 登録済みのデータソースは別の項目（`DataSources`）で載る（RegisteredDataSourcesIntrospectionTests）。
     [Fact]
     public void 登録済みのコネクタのプラグインをすべて有効として申告する()
     {

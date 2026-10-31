@@ -261,7 +261,8 @@
       "KeycloakRolesClaimsTransformationTests",
       "ObjectStoragePortIntrospectionTests",
       "PipelineDeclarationEffectivenessTests",
-      "PortSwapCompositionTests"
+      "PortSwapCompositionTests",
+      "RegisteredDataSourcesIntrospectionTests"
     ],
     "docs/tests/FR-16_mcp-server.md": [
       "AuthorizedGraphViewTests",

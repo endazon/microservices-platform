@@ -3,14 +3,14 @@ title: FR-15 構成情報 API（実効構成・ドリフト検出） テスト�
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-10-30
+updated: 2026-10-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-15, SC-11, NFR-16]
 adrs: [ADR-0018, ADR-0029, ADR-0075]
-iadrs: [IADR-0660, IADR-0009, IADR-0029, IADR-0030, IADR-0268, IADR-0379, IADR-0462, IADR-0465, IADR-0533, IADR-0646]
-specs: [20261030_2285_introspection-contributors-mcp-tools, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260911_issue-1382_drift-timeout-stops-host, 20260926_1514_introspection-grpc-fanout, 20260926_1537_conversion-introspection-grpc-wiring, 20260927_issue-1630_caller-cancel-controls-tce, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
+iadrs: [IADR-0666, IADR-0660, IADR-0009, IADR-0029, IADR-0030, IADR-0268, IADR-0379, IADR-0462, IADR-0465, IADR-0533, IADR-0646]
+specs: [20261031_2285_introspection-registered-datasources, 20261030_2285_introspection-contributors-mcp-tools, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260911_issue-1382_drift-timeout-stops-host, 20260926_1514_introspection-grpc-fanout, 20260926_1537_conversion-introspection-grpc-wiring, 20260927_issue-1630_caller-cancel-controls-tce, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
 issues: [#2285, #444, #1382, #1514, #1255, #1537, #1630, #1517, #2118]
 -->
 
@@ -62,6 +62,7 @@ issues: [#2285, #444, #1382, #1514, #1255, #1537, #1630, #1517, #2118]
 | 2i | 自己申告の REST の収集（撤去） | REST の受け口 `GET /internal/introspection` と、その収集を撤去したので、この行の表明は無くなった。1 宛先の失敗の隔離・取り消しの扱いは 2g が gRPC で持つ。REST の受け口が 404 を返すことは変換サービスの `IntrospectionEndpointTests` が見る | — |
 | 2m | 要求のたびの寄与（［2026-10-30 追加］） | 自己申告の gRPC 面は要求のたびに寄与を足す（寄与が変わると次の要求の応答が変わる・静的な申告は残る）・寄与の例外は空の一覧ではなく呼び出しの失敗になる | `Platform.Shared.Infrastructure.Tests/Foundation/Introspection/IntrospectionGrpcTests` |
 | 2n | MCP の実効ツール一覧（［2026-10-30 追加］） | MCP サーバーの寄与はカタログの実効ツールを公開名の順に載せ、更新は次の要求に反映される・本番の配線が寄与を登録する・実効構成はサービス横断で公開名で一意化して並べる・応答の JSON に `mcpTools` が載る | `McpServer.Tests/Features/EffectiveToolsIntrospectionContributorTests`・`Platform.Shared.Infrastructure.Tests/Foundation/Introspection/ConfigInspectionServiceTests`・`Platform.Bff.Tests/ConfigBffEndpointTests` |
+| 2o | 登録済みのデータソース（［2026-10-31 追加］。コネクタ一覧の広い読み） | データソースサービスの寄与は登録済みのデータソースを状態に依らず名前の順に載せ、登録・無効化は次の要求に反映される・コネクタの種別の申告は変わらない・本番の配線が寄与を登録する・ID・名前・種別・有効だけを載せ、接続先・設定・資格情報を載せない・寄与は gRPC を往復し、種別とは別の項目に載る・実効構成は ID で一意化して名前の順に並べる（同名を潰さない）・応答の JSON に `dataSources` が載る | `DataSourceService.Tests/Features/DataSources/RegisteredDataSourcesIntrospectionTests`・`Platform.Shared.Infrastructure.Tests/Foundation/Introspection/IntrospectionGrpcTests`・`Platform.Shared.Infrastructure.Tests/Foundation/Introspection/ConfigInspectionServiceTests`・`Platform.Bff.Tests/ConfigBffEndpointTests` |
 | 3 | ポリシー | ConfigViewer の OR 判定・AdminOnly 非侵食 | `AuthorizationService.Tests/ConfigViewerPolicyTests` |
 | 4 | ロール展開 | realm_access.roles → Role クレーム変換 | `AuthorizationService.Tests/KeycloakRolesClaimsTransformationTests` |
 | 5 | E2E（手動） | compose 実環境で operator=200 / 一般・無認証=404、実効構成の集約を確認 | Issue #118 監査で実測済み（poc-operator） |

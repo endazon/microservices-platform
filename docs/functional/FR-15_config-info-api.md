@@ -3,14 +3,14 @@ title: 構成情報 API（実効構成の可視化・ドリフト検出） 機�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-10-30
+updated: 2026-10-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15, SC-11, NFR-16]
 adrs: [ADR-0018, ADR-0029, ADR-0075]
-iadrs: [IADR-0660, IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462, IADR-0533, IADR-0646]
-specs: [20261030_2285_introspection-contributors-mcp-tools, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
+iadrs: [IADR-0666, IADR-0660, IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069, IADR-0268, IADR-0379, IADR-0462, IADR-0533, IADR-0646]
+specs: [20261031_2285_introspection-registered-datasources, 20261030_2285_introspection-contributors-mcp-tools, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, 20260926_1514_introspection-grpc-fanout, 20261010_issue-1255-1517_east-west-rest-retirement, 20261026_2118_introspection-ports-connectors-gitcommit]
 issues: [#2285, #444, #1514, #1255, #1517, #2118]
 -->
 
@@ -40,7 +40,7 @@ issues: [#2285, #444, #1514, #1255, #1517, #2118]
 | --- | --- |
 | 入力 | 各サービスの自己申告（イントロスペクション）エンドポイント（メッシュ内部限定）。収集先は `Introspection:Services`（構成キー＝pipeline.json の service 名 → h2c のアドレス）で注入し、east-west gRPC で収集する。［2026-10-10］REST の収集と受け口は撤去し、旧キー `Introspection:GrpcServices` が残っていれば起動を止める（詳細は [east-west gRPC 通信仕様書](../api/east-west-grpc.md) の 12 つ目の面と「REST 実装の退役」） |
 | 処理 | BFF の `ConfigInspectionService` が自己申告を集約し、宣言（pipeline.json）と突合（`DriftDetector`） |
-| 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択〔LLM・埋め込み・ベクトル DB・オブジェクトストレージ（`object-storage`）・Wiki 同期（`wiki-sync`）・検索の補助〕・コネクタ）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]）、`GET /bff/admin/config/history` → `ConfigVersionEntryDto[]`（コミット ID・適用日時・適用者・その時点のドリフト有無。新しい順） |
+| 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択〔LLM・埋め込み・ベクトル DB・オブジェクトストレージ（`object-storage`）・Wiki 同期（`wiki-sync`）・検索の補助〕・コネクタの種別〔プラグイン。常に有効〕・登録済みのデータソースと有効・無効〔`dataSources`。［2026-10-31］〕・MCP の実効ツール〔`mcpTools`〕）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]）、`GET /bff/admin/config/history` → `ConfigVersionEntryDto[]`（コミット ID・適用日時・適用者・その時点のドリフト有無。新しい順） |
 | 業務ルール | 認可・秘匿・監査（下記） |
 
 ### 認可・存在秘匿・監査
@@ -114,7 +114,10 @@ issues: [#2285, #444, #1514, #1255, #1517, #2118]
   有効として申告する。計画の「登録済みコネクタと有効・無効状態（コネクタ設計の管理情報を集約）」は、管理画面に登録したデータソースと
   その有効・無効の集約を指すかもしれない（狭い読みでは「有効・無効」は常に有効で自明である）。どちらの読みかは計画へ問い合わせ中で、
   広い読みは申告を要求ごとに組み立てる仕組みが要るので、答えが出るまで作らない。
+  ［2026-10-31 解消］計画は広い読みを採った（「コネクタ一覧」はデータソース管理画面に登録したデータソースと有効・無効を指し、プラグインの種別は別の項目）。
+  データソースサービスが要求のたびの寄与で登録済みのデータソース（ID・名前・種別・有効）を載せ、実効構成の `dataSources` に出る。
+  構成ビューアは「データソース（コネクタ一覧）」の表で出す。既存の `connectors` は「コネクタの種別」として残る。接続先・設定・資格情報は出さない。
 - ［2026-10-26］**MCP サーバーは収集先に入ったが、実効ツール一覧はまだ実効構成に入らない**（自己申告の契約に器が無い。別に追う）。
   ［2026-10-30 解消］自己申告に要求のたびの寄与を足し、MCP サーバーが実効ツール一覧（公開名・申告元サービス・必要な権限スコープ・越境分類）を載せるようになった。
   実効構成の `mcpTools` に出て、構成ビューアの実効構成の節に表で出る。収集の更新は次の要求に反映される。
-  コネクタ一覧の広い読みは、同じ寄与の仕組みに後から載せる（計画の答えを待つ）。
+  コネクタ一覧の広い読みは、同じ寄与の仕組みに後から載せる（計画の答えを待つ）。［2026-10-31 解消］上の項のとおり、別の項目 `dataSources` で載せた。
