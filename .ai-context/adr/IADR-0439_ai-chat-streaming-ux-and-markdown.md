@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-04, FR-08, SC-01, SC-04, SC-19, UC-01, NFR, ADR-0031, IADR-0009, IADR-0037, IADR-0121, IADR-0125, IADR-0126, IADR-0134, IADR-0365, IADR-0435, IADR-0436, IADR-0437]
 author: Claude
 created: 2026-09-12
-updated: 2026-09-12
+updated: 2026-10-31
 plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md
@@ -179,6 +179,7 @@ IADR-0126 決定 1（回答をキャッシュに載せない）と同じ理由�
 - フォローアップ:
   - 契約が位置情報を持ったら、脚注方式から本文中の印へ移せるか判断する。
   - 契約がモデル選択・越境設定を持ったら、右レールの設定 UI を足す。
+    ［2026-10-31 追記 / #2325］このフォローアップは取り下げる。計画は 5 要素（モデル選択・フォールバックモデル・データ越境設定・画面コンテキスト添付・回答の詳しさ）を射程外（後送り）とし、モデルと越境は利用者が選ばないと決めた（planning#854・利用者裁定 2026-10-30）。越境の判定を緩める口は作らない。
 
 ## 関連
 

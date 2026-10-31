@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-04, FR-05, FR-07, FR-08, FR-10, FR-11, SC-08, SC-10, UC-01, UC-02, UC-05, ADR-0031, ADR-0032, IADR-0121, IADR-0126, IADR-0131, IADR-0134]
 author: claude（実装）
 created: 2026-08-23
-updated: 2026-08-23
+updated: 2026-10-31
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
   - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
@@ -68,6 +68,7 @@ plan_refs:
   - **TanStack Table は v9 を採った**（`latest` が 9.1.2）。v8 と API が異なる（`useReactTable` → `useTable`、行モデルは `tableFeatures` のスロット登録）ため、v8 前提の資料はそのまま使えない。v8 を選ぶと Renovate（採用済み）の更新と衝突し続けるため v9 を採った。
   - **SC-08 のチャートは据え置いた。** 計画 §採用技術一覧 の備考は ECharts を「SC-08 / SC-10 で使用」とするが、`05_screens` §SC-08 は主要素に図を持たず、BFF の契約（`AiAnswerDto`）も系列・集計値を返さない。**計画側の 2 文書の食い違い**であり、環流の候補として残す。
   - **右レールの設定項目（モデル選択・フォールバック・データ越境設定・画面コンテキスト添付・回答の詳しさ）を置いていない。** `/bff/analysis/ask/stream` の要求本文は `question` と `attributeFilters` だけで、**送る先が契約に無い**。動かない設定 UI を置かない。契約が追いついた時点で足す。
+    ［2026-10-31 追記 / #2325］計画は画面別履歴だけを確定し、5 要素を射程外（後送り）とした（planning#854・利用者裁定 2026-10-30）。「契約が追いついた時点で足す」は改める —— 契約が追いついても足さない。モデルと越境は利用者が選ばず（LLM ゲートウェイと越境マトリクスが決める）、越境の判定を緩める口を作らない。足すときは先に計画で振る舞いを定める。
 - フォローアップ:
   1. 会話履歴の取得口が契約に入ったら、決定 3 に従って決定 5 の Query 引き渡しを有効にする。
   2. SC-02 / SC-06 / SC-07 / SC-09 / SC-11 の表の TanStack Table 化（後続の追随作業）。
