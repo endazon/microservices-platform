@@ -17,7 +17,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 // （撤去した REST の受け口は認証を持たなかった。この面はそれより**狭い**。）
 //
 // FR-15, FR-16, IADR-0660 (#2285): **要求のたびに寄与（`IIntrospectionContributor`）を足して返す。** 静的な申告（起動時の 1 つ）に、
-// 実行時に変わる中身（MCP の実効ツール一覧。将来は登録済みのデータソース〔#2285 の (b)(ii)〕）を重ねる。
+// 実行時に変わる中身（MCP の実効ツール一覧。［2026-10-31 / IADR-0666］登録済みのデータソース〔#2285 の (b)(ii)〕）を重ねる。
 // 🔴 寄与の例外は握り潰さない（gRPC の失敗になり、収集の側はこのサービスを「到達不能」として扱う）。
 //    握り潰して空を返すと「ツールが無い」と読まれ、障害と区別できない。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
@@ -70,6 +70,8 @@ public static class IntrospectionGrpcMapping
                 RequiredScope = tool.RequiredScope,
                 EgressClass = tool.EgressClass,
             });
+        foreach (var ds in dto.DataSources)
+            report.DataSources.Add(new Pb.DataSource { Id = ds.Id, Name = ds.Name, Type = ds.Type, Enabled = ds.Enabled });
         return report;
     }
 
@@ -87,5 +89,8 @@ public static class IntrospectionGrpcMapping
                 .ToList(),
             report.McpTools
                 .Select(t => new Dto.McpToolDto(t.PublishedName, t.Service, t.RequiredScope, t.EgressClass))
+                .ToList(),
+            report.DataSources
+                .Select(d => new Dto.DataSourceSummaryDto(d.Id, d.Name, d.Type, d.Enabled))
                 .ToList());
 }

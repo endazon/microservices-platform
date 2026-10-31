@@ -32,6 +32,7 @@ const CONFIG = {
   ports: [],
   connectors: [],
   mcpTools: [],
+  dataSources: [],
 };
 
 beforeEach(() => {

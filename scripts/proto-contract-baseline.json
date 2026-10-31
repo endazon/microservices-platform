@@ -1563,6 +1563,34 @@
             "names": []
           }
         },
+        "DataSource": {
+          "fields": {
+            "enabled": {
+              "number": 4,
+              "type": "bool",
+              "label": "singular"
+            },
+            "id": {
+              "number": 1,
+              "type": "string",
+              "label": "singular"
+            },
+            "name": {
+              "number": 2,
+              "type": "string",
+              "label": "singular"
+            },
+            "type": {
+              "number": 3,
+              "type": "string",
+              "label": "singular"
+            }
+          },
+          "reserved": {
+            "numbers": [],
+            "names": []
+          }
+        },
         "GetServiceIntrospectionRequest": {
           "fields": {},
           "reserved": {
@@ -1626,6 +1654,11 @@
             "connectors": {
               "number": 4,
               "type": "Connector",
+              "label": "repeated"
+            },
+            "data_sources": {
+              "number": 6,
+              "type": "DataSource",
               "label": "repeated"
             },
             "mcp_tools": {

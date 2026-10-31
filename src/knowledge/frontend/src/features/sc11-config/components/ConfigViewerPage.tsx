@@ -37,6 +37,7 @@ import type {
   ConfigVersionDto,
   ConfigVersionEntryDto,
   ConnectorDto,
+  DataSourceSummaryDto,
   DriftReportDto,
   EventBindingDto,
   McpToolDto,
@@ -139,6 +140,7 @@ export function ConfigViewerPage() {
               />
               <EventBindingsTable bindings={effective.eventBindings} />
               <PortsTable ports={effective.ports} />
+              <DataSourcesTable dataSources={effective.dataSources} />
               <ConnectorsTable connectors={effective.connectors} />
               <McpToolsTable tools={effective.mcpTools} />
             </Fold>
@@ -385,18 +387,70 @@ function PortsTable({ ports }: { ports: PortSelectionDto[] }) {
   );
 }
 
-function ConnectorsTable({ connectors }: { connectors: ConnectorDto[] }) {
+/**
+ * FR-15, FR-01, SC-06, 計画 10_composability §6「コネクタ一覧」, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソースと有効・無効。
+ * データソースサービスが要求のたびに申告する（登録・無効化は次の読み込みに出る）。名前・種別・状態だけを出す（接続先・設定は出さない）。
+ */
+function DataSourcesTable({ dataSources }: { dataSources: DataSourceSummaryDto[] }) {
   const { t } = useLingui();
   return (
-    <Panel heading={t`コネクタ`} className="mb-0">
-      {connectors.length === 0 ? (
+    <Panel heading={t`データソース（コネクタ一覧）`} className="mb-0">
+      {dataSources.length === 0 ? (
         <EmptyState
-          title={t`コネクタはありません。`}
-          description={t`コネクタは Git（GitOps）の宣言で定義します。`}
+          title={t`登録したデータソースはありません。`}
+          description={t`データソースはデータソース管理画面で登録します。`}
         />
       ) : (
         <Table>
-          <TableCaption>{t`コネクタの一覧`}</TableCaption>
+          <TableCaption>{t`登録済みのデータソースの一覧`}</TableCaption>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>
+                <Trans>データソース</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>種別</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>状態</Trans>
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {dataSources.map((d) => (
+              <TableRow key={d.id}>
+                <TableCell>{d.name}</TableCell>
+                <TableCell>{d.type}</TableCell>
+                <TableCell>
+                  <StatusBadge tone={d.enabled ? 'success' : 'neutral'}>
+                    {d.enabled ? t`有効` : t`無効`}
+                  </StatusBadge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Panel>
+  );
+}
+
+/**
+ * ［2026-10-31 / IADR-0666］計画 10_composability §6 の「コネクタの種別」（登録済みのコネクタのプラグイン。常に有効）。
+ * 登録したデータソース（計画の「コネクタ一覧」）は上の DataSourcesTable である。
+ */
+function ConnectorsTable({ connectors }: { connectors: ConnectorDto[] }) {
+  const { t } = useLingui();
+  return (
+    <Panel heading={t`コネクタの種別`} className="mb-0">
+      {connectors.length === 0 ? (
+        <EmptyState
+          title={t`コネクタの種別はありません。`}
+          description={t`コネクタのプラグインはサービスに組み込まれ、常に有効です。`}
+        />
+      ) : (
+        <Table>
+          <TableCaption>{t`コネクタの種別の一覧`}</TableCaption>
           <TableHead>
             <TableRow>
               <TableHeaderCell>

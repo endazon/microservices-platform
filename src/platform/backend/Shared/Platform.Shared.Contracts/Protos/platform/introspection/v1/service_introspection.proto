@@ -48,6 +48,9 @@ message ServiceIntrospectionReport {
   // FR-15, FR-16, ADR-0024 §5, IADR-0660 (#2285): MCP サーバーの実効ツール一覧（申告 ∩ 公開構成）。要求のたびに組み立てる寄与で載る。
   // MCP サーバー以外は空である。非破壊の追加（番号 5）。
   repeated McpTool mcp_tools = 5;
+  // FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソースと有効・無効（計画 10_composability §6 の「コネクタ一覧」）。
+  // データソースサービスが要求のたびの寄与で載せる。他のサービスは空である。非破壊の追加（番号 6）。
+  repeated DataSource data_sources = 6;
 }
 
 // `StepIntrospectionDto` と 1 対 1。
@@ -79,4 +82,12 @@ message McpTool {
 message Connector {
   string name = 1;
   bool enabled = 2;
+}
+
+// `DataSourceSummaryDto` と 1 対 1。接続先・設定・資格情報は持たない。
+message DataSource {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  bool enabled = 4;
 }
