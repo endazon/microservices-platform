@@ -65,6 +65,9 @@ const ISSUED_TOKEN = {
 
 const ALL_DEVICES = [ACTIVE_DEVICE, EXPIRING_DEVICE, EXPIRED_DEVICE, REVOKED_DEVICE];
 
+// #2379, ADR-0145: 停止期間の始まり。
+const PAUSED_AT = '2026-08-27T12:00:00Z';
+
 // #1442: 同期対象フォルダ（主要素 3）と競合（主要素 5）。
 const FOLDERS = [
   { path: '仕事/メモ', noteCount: 12, lastSyncAt: '2026-08-27T22:10:00Z' },
@@ -104,6 +107,10 @@ function respond({
   history = [] as unknown[],
   conflictDetail = CONFLICT_DETAIL as unknown,
   aiInputDefault = false,
+  paused = false,
+  pauseFails = false,
+  pausedAt = PAUSED_AT as string | null,
+  settingsMode = 'ok' as 'ok' | 'pending' | 'fail' | 'failAfterFirst',
 }: {
   devices?: unknown[];
   folders?: unknown[];
@@ -111,7 +118,21 @@ function respond({
   history?: unknown[];
   conflictDetail?: unknown;
   aiInputDefault?: boolean;
+  paused?: boolean;
+  pauseFails?: boolean;
+  pausedAt?: string | null;
+  settingsMode?: 'ok' | 'pending' | 'fail' | 'failAfterFirst';
 } = {}) {
+  // #2379, ADR-0145: 同期の一時停止の状態（POST の pause / resume で切り替わる）。
+  let syncPaused = paused;
+  let settingsReads = 0;
+  const settingsBody = () => ({
+    targetFolders: folders,
+    updatedAt: '2026-08-27T00:00:00Z',
+    aiInputDefault,
+    syncPaused,
+    syncPausedAt: syncPaused ? pausedAt : null,
+  });
   // apiRequest が受けるパスは /bff 接頭辞を**除いた**形である（bffFetch が付け直す）。
   mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
     const method = init?.method ?? 'GET';
@@ -121,10 +142,21 @@ function respond({
     if (path === '/private-notes/devices' && method === 'POST') {
       return Promise.resolve(jsonResponse(ISSUED_TOKEN, 201));
     }
+    if (
+      path === '/private-notes/sync-settings/pause' ||
+      path === '/private-notes/sync-settings/resume'
+    ) {
+      if (pauseFails) return Promise.reject(new Error('boom'));
+      syncPaused = path.endsWith('/pause');
+      return Promise.resolve(jsonResponse(settingsBody()));
+    }
     if (path === '/private-notes/sync-settings') {
-      return Promise.resolve(
-        jsonResponse({ targetFolders: folders, updatedAt: '2026-08-27T00:00:00Z', aiInputDefault }),
-      );
+      if (settingsMode === 'pending') return new Promise(() => {});
+      if (settingsMode === 'fail') return Promise.reject(new Error('boom'));
+      if (settingsMode === 'failAfterFirst' && settingsReads++ > 0) {
+        return Promise.reject(new Error('boom'));
+      }
+      return Promise.resolve(jsonResponse(settingsBody()));
     }
     if (path === '/private-notes/conflicts') return Promise.resolve(jsonResponse(conflicts));
     if (path === '/private-notes/sync-history') return Promise.resolve(jsonResponse(history));
@@ -849,5 +881,139 @@ describe('SC-20 Obsidian 連携設定: 競合の解決（#1442）', () => {
     // 購読者が居らず、TanStack Query は購読の無い問い合わせを即座に引き直さない（stale にするだけ）。
     // 無効化の配線そのものは `api/useSyncConflicts.ts` に在り、効き目は SC-19 を開いたときに現れる。
     // **「呼ばれていない」ことをここで陰性として書かない** —— 配線の有無と区別が付かないためである。
+  });
+});
+
+// FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 5, [[IADR-0668]] (#2379): 同期の一時停止・再開（利用者単位）。
+describe('SC-20 Obsidian 連携設定: 同期の一時停止（#2379）', () => {
+  const pausePanel = () => screen.getByRole('region', { name: '同期の状態' });
+
+  it('有効の状態と「一時停止する」を出し、押すと pause を送って「一時停止中」と「再開する」に変わる', async () => {
+    respond();
+    const user = userEvent.setup();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(within(panel).getByText('同期: 有効')).toBeInTheDocument();
+    await user.click(within(panel).getByRole('button', { name: '一時停止する' }));
+
+    await within(pausePanel()).findByRole('button', { name: '再開する' });
+    expect(within(pausePanel()).getByText(/同期: 一時停止中/)).toBeInTheDocument();
+    expect(writes()).toEqual([
+      expect.objectContaining({ path: '/private-notes/sync-settings/pause', method: 'POST' }),
+    ]);
+  });
+
+  it('停止中は開始の時刻つきで「一時停止中」を出し、「再開する」で resume を送って有効に戻る', async () => {
+    respond({ paused: true });
+    const user = userEvent.setup();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(
+      within(panel).getByText(`同期: 一時停止中（${formatDateTime(PAUSED_AT)} から）`),
+    ).toBeInTheDocument();
+    await user.click(within(panel).getByRole('button', { name: '再開する' }));
+
+    await within(pausePanel()).findByText('同期: 有効');
+    expect(writes()).toEqual([
+      expect.objectContaining({ path: '/private-notes/sync-settings/resume', method: 'POST' }),
+    ]);
+  });
+
+  it('操作の近くで「すべての端末の同期が止まる」「トークンは残り、再開すれば同期が戻る」の 2 点を伝える', async () => {
+    respond();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(panel.textContent).toMatch(/すべての端末の同期が止まります/);
+    expect(panel.textContent).toMatch(/トークンは残り、再開すれば同期が戻ります/);
+  });
+
+  it('🔴 期限切れの端末があっても状態は「有効」のまま（一時停止中は ADR-0145 の一時停止だけを指す）', async () => {
+    respond({ devices: [EXPIRED_DEVICE] });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    // 陽性対照: 期限切れは端末の行に出ている。
+    await screen.findByText('期限切れ（同期は停止しています）');
+    expect(within(panel).getByText('同期: 有効')).toBeInTheDocument();
+    expect(within(panel).queryByText(/^同期: 一時停止中/)).not.toBeInTheDocument();
+  });
+
+  it('🔴 操作は利用者単位で 1 つだけで、端末一覧の行には一時停止の操作が無い', async () => {
+    respond();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    // 陽性対照: 区画には在る。
+    expect(within(panel).getAllByRole('button', { name: '一時停止する' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /一時停止/ })).toHaveLength(1);
+    expect(
+      within(deviceRow('MacBook Pro')).queryByRole('button', { name: /一時停止/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  // AI レビュー #2384 🟡1: 設定が読めていない間は「有効」と言わない（実際は停止中の利用者を取り違えさせない）。
+  it('🔴 設定の取得中は「同期: 確認中」で、「同期: 有効」を出さず、ボタンは押せない', async () => {
+    respond({ settingsMode: 'pending' });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(within(panel).getByText('同期: 確認中')).toBeInTheDocument();
+    expect(within(panel).queryByText('同期: 有効')).not.toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: '一時停止する' })).toBeDisabled();
+  });
+
+  it('🔴 設定の取得に失敗したら状態が不明だと出し、「同期: 有効」を出さない', async () => {
+    respond({ settingsMode: 'fail' });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(await within(panel).findByText('同期: 状態を確認できません')).toBeInTheDocument();
+    expect(within(panel).getByRole('alert')).toHaveTextContent(/同期の状態を取得できませんでした/);
+    expect(within(panel).queryByText('同期: 有効')).not.toBeInTheDocument();
+  });
+
+  // AI レビュー #2384（再レビュー）🟡: 1 回読めた後に再取得が失敗したら、古い値が残っていても操作させない。
+  it('🔴 1 回読めた後に再取得が失敗したら「状態を確認できません」で、ボタンは押せない', async () => {
+    respond({ settingsMode: 'failAfterFirst' });
+    const user = userEvent.setup();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    // 陽性対照: 最初は読めていて、押せる。
+    expect(await within(panel).findByText('同期: 有効')).toBeInTheDocument();
+    await user.click(within(panel).getByRole('button', { name: '一時停止する' }));
+
+    // 一時停止の成功の後の再取得が失敗する（古い data は残る）。
+    expect(await within(pausePanel()).findByText('同期: 状態を確認できません')).toBeInTheDocument();
+    for (const button of within(pausePanel()).getAllByRole('button')) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  // AI レビュー #2384 🟡2: 開始の時刻が無い停止中に「（ から）」を出さない。
+  it('一時停止中で開始の時刻が無いときは「同期: 一時停止中」だけを出す', async () => {
+    respond({ paused: true, pausedAt: null });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(await within(panel).findByText('同期: 一時停止中')).toBeInTheDocument();
+    expect(panel.textContent).not.toMatch(/から）/);
+  });
+
+  it('一時停止に失敗したら区画の中に失敗を出し、状態は変えない', async () => {
+    respond({ pauseFails: true });
+    const user = userEvent.setup();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    await user.click(within(panel).getByRole('button', { name: '一時停止する' }));
+
+    expect(await within(pausePanel()).findByRole('alert')).toHaveTextContent(
+      /同期を一時停止できませんでした/,
+    );
+    expect(within(pausePanel()).getByText('同期: 有効')).toBeInTheDocument();
   });
 });

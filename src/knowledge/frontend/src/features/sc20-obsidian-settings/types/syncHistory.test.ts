@@ -2,12 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { i18n } from '@lingui/core';
 import type { MessageDescriptor } from '@lingui/core';
 import type { SyncHistoryEntryDto } from '@foundation/api/generated/bff.schemas';
-import { breakdownOf, directionLabel, failureReasonText, isSuccess } from './syncHistory';
+import {
+  breakdownOf,
+  directionLabel,
+  failureReasonText,
+  isPausedPeriod,
+  isSuccess,
+} from './syncHistory';
 
 // SC-20 主要素 6, FR-20, ADR-0099 決定 5・6 / IADR-0446（#1446）: 同期履歴の写像。
 //
-// 🔴 **失敗理由の 7 値はここへ独立に列挙する。** 実装が持つ配列を import すると、
-// **片方を消しても両方が同時に変わり**「契約の 7 値すべてに文言が在る」ことを確かめたことにならない。
+// 🔴 **失敗理由の 8 値はここへ独立に列挙する。** 実装が持つ配列を import すると、
+// **片方を消しても両方が同時に変わり**「契約の 8 値すべてに文言が在る」ことを確かめたことにならない。
 // 出典は `docs/api/openapi.yaml` の `SyncHistoryEntryDto.failureReason`（契約が正）。
 const CONTRACT_REASONS = [
   'version_conflict',
@@ -17,6 +23,8 @@ const CONTRACT_REASONS = [
   'body_too_large',
   'invalid_request',
   'not_found',
+  // #2379, ADR-0145 決定 3: 一時停止中の拒否（停止期間ごとの 1 行）。
+  'sync_paused',
 ] as const;
 
 function textOf(label: MessageDescriptor | string): string {
@@ -64,7 +72,7 @@ describe('SC-20 同期履歴: 結果', () => {
 });
 
 describe('SC-20 同期履歴: 失敗理由の文言（ADR-0099 決定 5）', () => {
-  it('契約の 7 値すべてに、次の行動が分かる文言が在る', () => {
+  it('契約の 8 値すべてに、次の行動が分かる文言が在る', () => {
     for (const code of CONTRACT_REASONS) {
       const text = textOf(failureReasonText(code));
       // ★ 陽性対照: 文言が在り、**コードそのままではない**。
@@ -85,7 +93,7 @@ describe('SC-20 同期履歴: 失敗理由の文言（ADR-0099 決定 5）', () 
     expect(textOf(failureReasonText('not_found'))).toContain('再同期');
   });
 
-  it('7 値の文言はすべて異なる（同じ文面へ丸めていない）', () => {
+  it('8 値の文言はすべて異なる（同じ文面へ丸めていない）', () => {
     const texts = CONTRACT_REASONS.map((code) => textOf(failureReasonText(code)));
     expect(new Set(texts).size).toBe(CONTRACT_REASONS.length);
   });
@@ -116,5 +124,37 @@ describe('SC-20 同期履歴: 件数の内訳', () => {
 
   it('すべて 0 なら空配列（呼び出し側が「—」を描く）', () => {
     expect(breakdownOf(entry())).toEqual([]);
+  });
+});
+
+// FR-20, SC-20 主要素 6・7, 計画 ADR-0145 決定 3, [[IADR-0668]] (#2379): 停止期間ごとの拒否の行。
+describe('SC-20 同期履歴: 停止期間の行（#2379）', () => {
+  const paused = entry({
+    deviceName: '',
+    direction: '',
+    outcome: 'failure',
+    failureReason: 'sync_paused',
+    rejectedCount: 3,
+    firstRejectedAt: '2026-10-31T01:00:00Z',
+    lastRejectedAt: '2026-10-31T05:00:00Z',
+  });
+
+  it('停止期間の行だけを停止期間の行と読む（陰性: 通常の失敗の行・回数の無い行）', () => {
+    expect(isPausedPeriod(paused)).toBe(true);
+    expect(isPausedPeriod(entry({ outcome: 'failure', failureReason: 'version_conflict' }))).toBe(
+      false,
+    );
+    expect(isPausedPeriod(entry())).toBe(false);
+  });
+
+  it('内訳は「拒否 N 回」だけを返す（0 の項目は出さない）', () => {
+    expect(breakdownOf(paused)).toEqual([{ kind: 'rejected', count: 3 }]);
+  });
+
+  it('失敗理由は、停止中だったことと、再開すれば同じトークンで戻ることを伝える', () => {
+    const text = textOf(failureReasonText('sync_paused'));
+    expect(text).toMatch(/一時停止/);
+    expect(text).toMatch(/同じトークン/);
+    expect(text).not.toMatch(/理由: sync_paused/);
   });
 });

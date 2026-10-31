@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { jsonResponse } from '@foundation/testing/bffResponse';
+import { formatDateTime } from '@foundation/utils/formatDateTime';
 
 // SC-20 主要素 6, UC-11, FR-20, ADR-0099 / IADR-0446（#1446）: 同期履歴の区画。
 //
@@ -60,6 +61,21 @@ const PULL_EMPTY = {
 };
 
 const ALL_ENTRIES = [PUSH_SUCCESS, PUSH_CONFLICT, PULL_EMPTY];
+
+/** #2379, ADR-0145 決定 3: 停止期間ごとの拒否の 1 行（方向・端末は空、内訳は 0）。 */
+const PAUSED_PERIOD = {
+  ...PUSH_SUCCESS,
+  id: '00000000-0000-0000-0000-0000000000e4',
+  occurredAt: '2026-09-11T07:00:00Z',
+  deviceName: '',
+  direction: '',
+  added: 0,
+  outcome: 'failure',
+  failureReason: 'sync_paused',
+  rejectedCount: 4,
+  firstRejectedAt: '2026-09-11T07:00:00Z',
+  lastRejectedAt: '2026-09-11T07:45:00Z',
+};
 
 /**
  * 過去に同期した端末（#1447 の 0 件の読み分けに使う）。
@@ -268,5 +284,38 @@ describe('SC-20 同期履歴: 取得の失敗（#1446）', () => {
     await userEvent.click(history.getByRole('button', { name: '再試行' }));
     await history.findByText('MacBook Pro');
     expect(historyCalls()).toBeGreaterThan(before);
+  });
+});
+
+// FR-20, SC-20 主要素 6・7, 計画 ADR-0145 決定 3, [[IADR-0668]] (#2379): 停止期間ごとの拒否の行。
+describe('SC-20 同期履歴: 停止期間の行（#2379）', () => {
+  it('端末は「すべての端末」、方向は「—」、内訳は「拒否 4 回」、実行日時は最初〜最後、理由は停止中と再開の案内', async () => {
+    respond({ history: [PUSH_SUCCESS, PAUSED_PERIOD] });
+    await renderPage();
+    const history = within(historyPanel());
+
+    await history.findByText('MacBook Pro');
+    const row = within(history.getByRole('row', { name: /すべての端末/ }));
+    expect(row.getByText('拒否 4 回')).toBeInTheDocument();
+    expect(
+      row.getByText(
+        `${formatDateTime(PAUSED_PERIOD.firstRejectedAt)} 〜 ${formatDateTime(PAUSED_PERIOD.lastRejectedAt)}`,
+      ),
+    ).toBeInTheDocument();
+    expect(row.getByText(/一時停止/)).toBeInTheDocument();
+    expect(row.getByText('—')).toBeInTheDocument();
+    // 陰性: 未知のコードとして扱っていない。
+    expect(row.queryByText(/理由: sync_paused/)).not.toBeInTheDocument();
+  });
+
+  it('並び順はサーバの順（実行日時の新しい順）のまま変えない', async () => {
+    respond({ history: [PUSH_SUCCESS, PAUSED_PERIOD] });
+    await renderPage();
+    const history = within(historyPanel());
+
+    await history.findByText('MacBook Pro');
+    const rows = history.getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('MacBook Pro');
+    expect(rows[1]).toHaveTextContent('すべての端末');
   });
 });

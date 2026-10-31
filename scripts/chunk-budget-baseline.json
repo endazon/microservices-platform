@@ -294,7 +294,14 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 658882,
+  "initialTotalBytes": 660917,
+  "$comment_initialTotalBytes_20261031_2379_sc20-sync-pause": [
+    "［2026-10-31 / #2379］658,882 → 660,917 B（+2.04 kB）へ引き上げた。実測値である（pnpm run build → 判定 3 が超過を報告し、--update で床を更新した）。",
+    "増分の帰属: SC-20 の同期の一時停止の区画と同期履歴の停止期間の行で足した固定文言 16 個の ja / en の訳である（英訳も 16 件。最初の push の 12 件と、取得中・失敗・時刻なしの状態の 4 件）。Lingui のカタログ（locales/<locale>/messages.ts）は",
+    "lib/i18n/index.ts が静的に import し、エントリのチャンクに載る（カタログは画面ごとに分割していない。既知の仕様で、#1455・#2285 と同じ型の増分）。",
+    "**画面の部品そのもの（SyncPausePanel ほか）は SC-20 の遅延チャンク側**であり、初期ロードに入っていない（dist/index.html が読み込む 4 本の JS のうち、",
+    "新しい文言を持つのはエントリ index-*.js だけで、その中身はカタログである）。"
+  ],
   "$comment_initialTotalBytes_20261031_2285_registered-datasources": [
     "［2026-10-31 / #2285 の (b)(ii)］658,276 → 658,882 B（+0.61 kB）へ引き上げた。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
     "増分の帰属: SC-11 の実効構成に「データソース（コネクタ一覧）」の表を足し、種別の表の表記を改めた（固定文言 8 つの ja / en の訳）。Lingui のカタログは入口チャンク（index-*.js）に入る。コンパイル済みのカタログは ja +362 B・en +284 B である。"

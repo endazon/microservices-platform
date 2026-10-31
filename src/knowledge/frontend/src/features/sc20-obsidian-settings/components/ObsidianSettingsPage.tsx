@@ -31,6 +31,7 @@ import { SyncTargetFoldersPanel } from './SyncTargetFoldersPanel';
 import { SyncConflictsPanel } from './SyncConflictsPanel';
 import { SyncHistoryPanel } from './SyncHistoryPanel';
 import { AiInputDefaultPanel } from './AiInputDefaultPanel';
+import { SyncPausePanel } from './SyncPausePanel';
 
 // SC-20, UC-11, FR-20: Obsidian 連携設定（05_screens: ルート /my/obsidian）。
 //
@@ -148,6 +149,9 @@ export function ObsidianSettingsPage() {
       <h1 className="text-[17px] font-medium text-fg">
         <Trans>Obsidian 連携設定</Trans>
       </h1>
+
+      {/* FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 5 (#2379): 同期の状態と一時停止・再開は見出しの近くに 1 つ（利用者単位）。 */}
+      <SyncPausePanel />
 
       {/*
         05_screens §SC-20「固定文言（確定）」の 3 段落。
