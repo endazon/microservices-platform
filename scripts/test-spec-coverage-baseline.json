@@ -394,6 +394,7 @@
       "ObsidianSyncProtocolTests",
       "PushSourceNoteTagsTests",
       "SyncDeviceTokenTests",
+      "SyncPauseConcurrencyTests",
       "SyncPauseTests",
       "SyncTokenAccountStateTests"
     ],

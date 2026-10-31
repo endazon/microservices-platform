@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DocumentService.Infrastructure.Migrations
 {
     [DbContext(typeof(DocumentDbContext))]
-    [Migration("20261031024303_AddSyncPause")]
+    [Migration("20261031032019_AddSyncPause")]
     partial class AddSyncPause
     {
         /// <inheritdoc />
@@ -564,6 +564,7 @@ namespace DocumentService.Infrastructure.Migrations
                         .HasDefaultValue(false);
 
                     b.Property<Guid?>("PausePeriodId")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("PausedAt")

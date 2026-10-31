@@ -561,6 +561,7 @@ namespace DocumentService.Infrastructure.Migrations
                         .HasDefaultValue(false);
 
                     b.Property<Guid?>("PausePeriodId")
+                        .IsConcurrencyToken()
                         .HasColumnType("uuid");
 
                     b.Property<DateTimeOffset?>("PausedAt")

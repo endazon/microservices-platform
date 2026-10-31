@@ -78,4 +78,4 @@ internal static class SyncPauseGate
 }
 
 // ADR-0145 決定 2: 停止中の拒否の本文。`Error` は理由コード（`SyncFailureReasons.Paused`）、`PausedAt` は停止期間の始まり。
-public record SyncPausedResponse(string Error, DateTimeOffset PausedAt);
+internal sealed record SyncPausedResponse(string Error, DateTimeOffset PausedAt);

@@ -25,7 +25,7 @@ issues: [#2378, #2127, #451, #1098, #1153, #1176, #1521, #1532, #1583]
 実機で確かめる）・実ブローカ／実ストレージでの結合（この環境では実行していない）。
 
 実体: `DocumentService.Tests` の `ObsidianSyncProtocolTests` / `ObsidianSyncMoveTests` /
-`SyncDeviceTokenTests` / `SyncTokenAccountStateTests` / `GrpcOwnerAccountDirectoryTests` / `SyncPauseTests`（サーバ側）、
+`SyncDeviceTokenTests` / `SyncTokenAccountStateTests` / `GrpcOwnerAccountDirectoryTests` / `SyncPauseTests` / `SyncPauseConcurrencyTests`（サーバ側）、
 `src/obsidian-plugin/src/**/*.test.ts`（プラグイン側。Vitest・Obsidian 実体なし）。
 
 ## テスト観点
@@ -78,6 +78,7 @@ issues: [#2378, #2127, #451, #1098, #1153, #1176, #1521, #1532, #1583]
 | 36 | 同じ停止期間の拒否は同期履歴の 1 行（回数・最初と最後の時刻・方向と内訳は空）にまとまり、再開の後の再停止は別の行になる。構造化ログは拒否ごと | `SyncPauseTests` › `同じ停止期間の拒否は同期履歴の1行にまとまり再停止は別の行になる` |
 | 37 | 停止中に個人資料管理で削除した資料は、再開後の manifest に削除として出て、競合は作られない | `SyncPauseTests` › `停止中にSC19で削除した資料は再開後のmanifestで削除として出て競合は作られない` |
 | 38 | 一時停止・再開は冪等で状態を返し、トークンの有効期限を変えない。主体の無い要求は 401 | `SyncPauseTests` › `一時停止と再開は冪等で状態を返しトークンの有効期限を変えない` / `一時停止と再開は主体の無い要求を401で拒む` |
+| 39 | 同時の一時停止（行が無い利用者の初回・未停止の既存の行）は 1 つの停止期間に収まり、後の 1 本は冪等に終わる。フォルダの更新が同時の一時停止と衝突しても、停止の状態を残して当たる（衝突は保存の直前の割り込みで必ず起こす） | `SyncPauseConcurrencyTests` |
 
 ## テストケース一覧（Obsidian プラグイン第 1 段。Obsidian 実体なし）
 

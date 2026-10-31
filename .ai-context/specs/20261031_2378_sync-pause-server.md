@@ -69,6 +69,10 @@ issue: "#2378"
    - `SyncHistoryEntryDto` に `RejectedCount`・`FirstRejectedAt`・`LastRejectedAt` を足す。いずれも null 可で、停止期間の行だけが持つ。
 6. **口**: `POST /private-notes/sync-settings/pause`・`/resume`（JWT・本人。応答は `SyncSettingsDto`）。BFF は `POST /bff/private-notes/sync-settings/pause|resume`（`ForwardIfWritableAsync`）。
 
+［2026-10-31 追記 / AI レビュー 🟡2・🟡3］同時の一時停止を 1 つの停止期間に収めるため、`PausePeriodId` を同時実行トークンにした。
+主キー・トークンの衝突は読み直して当て直し、既に停止中なら冪等の 200 とする（フォルダの更新も同じく読み直す）。マイグレーションは列の変化が無いので、
+同じ 1 本のまま作り直した。試験は `SyncPauseConcurrencyTests`（インターセプタで衝突を必ず起こす 3 件）。`SyncPausedResponse` は internal にした（🟢）。
+
 ## 受け入れ基準
 
 - [x] 停止中は 5 つの口すべてが 423 と `error: sync_paused` を返す。別の端末のトークンでも同じ（否定形）。応答は 401 ではない
@@ -78,6 +82,7 @@ issue: "#2378"
 - [x] 停止中に SC-19 で削除した資料は、再開後の manifest に削除として出る。競合は作られない
 - [x] 一時停止・再開は冪等で、トークンの有効期限を変えない
 - [x] 契約は追加だけ（契約の基準線・openapi と DTO のずれの検査が緑）
+- [x] 同時の一時停止（初回の作成・未停止の行）は 1 つの停止期間に収まり、後の 1 本は冪等の 200 で終わる
 
 ## 赤→緑
 
