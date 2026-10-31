@@ -68,7 +68,8 @@ export function SyncPausePanel() {
           )}
           <Button
             variant={paused ? 'primary' : 'secondary'}
-            disabled={!loaded || pending}
+            // 再取得に失敗した後は古い値が残るので、「状態を確認できません」の間は押させない（#2384 の再レビュー 🟡）。
+            disabled={!loaded || settings.isError || pending}
             onClick={toggle}
           >
             {paused ? <Trans>再開する</Trans> : <Trans>一時停止する</Trans>}

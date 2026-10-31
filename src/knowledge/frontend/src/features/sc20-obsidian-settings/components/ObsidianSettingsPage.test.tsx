@@ -110,7 +110,7 @@ function respond({
   paused = false,
   pauseFails = false,
   pausedAt = PAUSED_AT as string | null,
-  settingsMode = 'ok' as 'ok' | 'pending' | 'fail',
+  settingsMode = 'ok' as 'ok' | 'pending' | 'fail' | 'failAfterFirst',
 }: {
   devices?: unknown[];
   folders?: unknown[];
@@ -121,10 +121,11 @@ function respond({
   paused?: boolean;
   pauseFails?: boolean;
   pausedAt?: string | null;
-  settingsMode?: 'ok' | 'pending' | 'fail';
+  settingsMode?: 'ok' | 'pending' | 'fail' | 'failAfterFirst';
 } = {}) {
   // #2379, ADR-0145: 同期の一時停止の状態（POST の pause / resume で切り替わる）。
   let syncPaused = paused;
+  let settingsReads = 0;
   const settingsBody = () => ({
     targetFolders: folders,
     updatedAt: '2026-08-27T00:00:00Z',
@@ -152,6 +153,9 @@ function respond({
     if (path === '/private-notes/sync-settings') {
       if (settingsMode === 'pending') return new Promise(() => {});
       if (settingsMode === 'fail') return Promise.reject(new Error('boom'));
+      if (settingsMode === 'failAfterFirst' && settingsReads++ > 0) {
+        return Promise.reject(new Error('boom'));
+      }
       return Promise.resolve(jsonResponse(settingsBody()));
     }
     if (path === '/private-notes/conflicts') return Promise.resolve(jsonResponse(conflicts));
@@ -969,6 +973,24 @@ describe('SC-20 Obsidian 連携設定: 同期の一時停止（#2379）', () => 
     expect(await within(panel).findByText('同期: 状態を確認できません')).toBeInTheDocument();
     expect(within(panel).getByRole('alert')).toHaveTextContent(/同期の状態を取得できませんでした/);
     expect(within(panel).queryByText('同期: 有効')).not.toBeInTheDocument();
+  });
+
+  // AI レビュー #2384（再レビュー）🟡: 1 回読めた後に再取得が失敗したら、古い値が残っていても操作させない。
+  it('🔴 1 回読めた後に再取得が失敗したら「状態を確認できません」で、ボタンは押せない', async () => {
+    respond({ settingsMode: 'failAfterFirst' });
+    const user = userEvent.setup();
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    // 陽性対照: 最初は読めていて、押せる。
+    expect(await within(panel).findByText('同期: 有効')).toBeInTheDocument();
+    await user.click(within(panel).getByRole('button', { name: '一時停止する' }));
+
+    // 一時停止の成功の後の再取得が失敗する（古い data は残る）。
+    expect(await within(pausePanel()).findByText('同期: 状態を確認できません')).toBeInTheDocument();
+    for (const button of within(pausePanel()).getAllByRole('button')) {
+      expect(button).toBeDisabled();
+    }
   });
 
   // AI レビュー #2384 🟡2: 開始の時刻が無い停止中に「（ から）」を出さない。
