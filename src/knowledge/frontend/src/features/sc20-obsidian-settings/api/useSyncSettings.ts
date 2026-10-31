@@ -1,8 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
 import {
   getBffPrivateNoteListQueryKey,
+  getBffSyncHistoryListQueryKey,
   getBffSyncSettingsGetQueryKey,
   useBffSyncSettingsGet,
+  useBffSyncSettingsPause,
+  useBffSyncSettingsResume,
   useBffSyncSettingsUpdate,
 } from '@foundation/api/generated/private-notes/private-notes';
 import { okData } from '@foundation/api/orvalSelect';
@@ -48,4 +51,22 @@ export function useSyncSettingsActions() {
   };
 
   return { update: useBffSyncSettingsUpdate<unknown>({ mutation: { onSuccess: invalidate } }) };
+}
+
+/**
+ * FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 1・5, [[IADR-0668]] (#2379): 同期の一時停止・再開（利用者単位・全端末）。
+ *
+ * 🔴 **止めるのはサーバである**（子 A #2381・IADR-0667）。画面は状態を切り替えて表示するだけで、プラグインへ何かを送らない。
+ * 成功後は同期設定（状態）と同期履歴（停止期間の行）を引き直す。トークン・端末の一覧は変わらないので引き直さない。
+ */
+export function useSyncPauseActions() {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: syncSettingsKey });
+    void queryClient.invalidateQueries({ queryKey: getBffSyncHistoryListQueryKey() });
+  };
+  return {
+    pause: useBffSyncSettingsPause<unknown>({ mutation: { onSuccess: invalidate } }),
+    resume: useBffSyncSettingsResume<unknown>({ mutation: { onSuccess: invalidate } }),
+  };
 }

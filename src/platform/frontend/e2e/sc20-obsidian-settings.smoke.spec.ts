@@ -474,3 +474,65 @@ test('M-065: 端末は 有効・期限切れ間近（7 日以内）・期限切�
 
   expectBffTrafficIsComplete(traffic);
 });
+
+// FR-20, SC-20 主要素 7, 計画 ADR-0145 決定 5, IADR-0668 (#2379): 同期の一時停止・再開は利用者単位の 1 つの操作で、
+// 停止中の拒否は同期履歴の 1 行（すべての端末・拒否回数・最初〜最後）に出る。
+test('SC-20 (#2379): pausing and resuming sync is one per-user control, and the paused period shows as one history row', async ({
+  page,
+}) => {
+  let settings: SyncSettingsDto = { ...EMPTY_SETTINGS };
+  const pausedRow = historyEntry({
+    id: 'history-paused',
+    deviceName: '',
+    direction: '',
+    conflicted: 0,
+    failureReason: 'sync_paused',
+    rejectedCount: 3,
+    firstRejectedAt: new Date(Date.now() - 2 * DAY).toISOString(),
+    lastRejectedAt: new Date(Date.now() - DAY).toISOString(),
+  });
+  const traffic = await installBffSession(page, {
+    user: sessionUser([]),
+    handlers: {
+      'GET /private-notes/devices': [device()],
+      'GET /private-notes/conflicts': [],
+      'GET /private-notes/sync-history': [pausedRow],
+      'GET /private-notes/sync-settings': () => settings,
+      'POST /private-notes/sync-settings/pause': () => {
+        settings = { ...settings, syncPaused: true, syncPausedAt: new Date().toISOString() };
+        return settings;
+      },
+      'POST /private-notes/sync-settings/resume': () => {
+        settings = { ...settings, syncPaused: false, syncPausedAt: null };
+        return settings;
+      },
+    },
+  });
+
+  await page.goto('/my/obsidian');
+  const panel = page.getByRole('region', { name: '同期の状態' });
+
+  await expect(panel.getByText('同期: 有効')).toBeVisible();
+  await expect(panel).toContainText('すべての端末の同期が止まります');
+  await expect(panel).toContainText('トークンは残り、再開すれば同期が戻ります');
+  // 🔴 操作は利用者単位で 1 つ。端末の行には無い（陽性対照: 区画には在る）。
+  await expect(page.getByRole('button', { name: /一時停止/ })).toHaveCount(1);
+
+  await panel.getByRole('button', { name: '一時停止する' }).click();
+  await expect(panel.getByText(/^同期: 一時停止中/)).toBeVisible();
+  await panel.getByRole('button', { name: '再開する' }).click();
+  await expect(panel.getByText('同期: 有効')).toBeVisible();
+
+  const keys = traffic.calls.map((c) => c.key);
+  expect(keys).toContain('POST /private-notes/sync-settings/pause');
+  expect(keys).toContain('POST /private-notes/sync-settings/resume');
+
+  // 停止期間の 1 行: すべての端末・拒否 3 回・再開の案内（未知の理由コードとして描かない）。
+  const history = page.getByRole('region', { name: '同期履歴' });
+  const row = history.getByRole('row', { name: /すべての端末/ });
+  await expect(row).toContainText('拒否 3 回');
+  await expect(row).toContainText('同じトークンのまま同期が戻ります');
+  await expect(row).not.toContainText('理由: sync_paused');
+
+  expectBffTrafficIsComplete(traffic);
+});

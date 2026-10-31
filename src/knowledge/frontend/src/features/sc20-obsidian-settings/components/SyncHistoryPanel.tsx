@@ -18,7 +18,13 @@ import { QueryState } from '@foundation/ui/QueryState';
 import { formatDateTime } from '@foundation/utils/formatDateTime';
 import type { SyncHistoryEntryDto } from '@foundation/api/generated/bff.schemas';
 import { useSyncHistory } from '../api/useSyncHistory';
-import { breakdownOf, directionLabel, failureReasonText, isSuccess } from '../types/syncHistory';
+import {
+  breakdownOf,
+  directionLabel,
+  failureReasonText,
+  isPausedPeriod,
+  isSuccess,
+} from '../types/syncHistory';
 import type { SyncCountPart } from '../types/syncHistory';
 
 // SC-20 主要素 6, UC-11, FR-20, ADR-0037 決定 9 / ADR-0099 / IADR-0446: 同期履歴の区画。
@@ -64,6 +70,7 @@ function BreakdownCell({ entry }: { entry: SyncHistoryEntryDto }) {
     if (part.kind === 'added') return t`追加 ${count}`;
     if (part.kind === 'updated') return t`更新 ${count}`;
     if (part.kind === 'deleted') return t`削除 ${count}`;
+    if (part.kind === 'rejected') return t`拒否 ${count} 回`;
     return t`競合 ${count}`;
   };
   return (
@@ -145,11 +152,23 @@ export function SyncHistoryPanel({ hasPriorSync }: SyncHistoryPanelProps) {
               <TableBody>
                 {rows.map((entry) => {
                   const succeeded = isSuccess(entry.outcome);
+                  // FR-20, ADR-0145 決定 3, [[IADR-0668]] (#2379): 停止期間の拒否の 1 行。
+                  // 実行日時は最初〜最後の拒否、端末は「すべての端末」（行は特定の端末のものではない。空欄は取得漏れと
+                  // 区別できない）、方向は「—」。🔴 **並び順はサーバの順のまま**（作業仕様書 §方針 5）。
+                  const pausedPeriod = isPausedPeriod(entry);
+                  const firstRejected = formatDateTime(entry.firstRejectedAt ?? entry.occurredAt);
+                  const lastRejected = formatDateTime(entry.lastRejectedAt ?? entry.occurredAt);
                   return (
                     <TableRow key={entry.id}>
-                      <TableCell>{formatDateTime(entry.occurredAt)}</TableCell>
-                      <TableCell>{entry.deviceName}</TableCell>
-                      <TableCell>{labelOf(directionLabel(entry.direction))}</TableCell>
+                      <TableCell>
+                        {pausedPeriod
+                          ? t`${firstRejected} 〜 ${lastRejected}`
+                          : formatDateTime(entry.occurredAt)}
+                      </TableCell>
+                      <TableCell>{pausedPeriod ? t`すべての端末` : entry.deviceName}</TableCell>
+                      <TableCell>
+                        {pausedPeriod ? t`—` : labelOf(directionLabel(entry.direction))}
+                      </TableCell>
                       <TableCell>
                         <BreakdownCell entry={entry} />
                       </TableCell>

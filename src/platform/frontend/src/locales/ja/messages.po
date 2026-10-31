@@ -85,6 +85,10 @@ msgstr "{effectiveMinCount} 件以上検索された語のみを表示します�
 msgid "{failedCount} 件は復元できませんでした。"
 msgstr "{failedCount} 件は復元できませんでした。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "{firstRejected} 〜 {lastRejected}"
+msgstr "{firstRejected} 〜 {lastRejected}"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h}（上限）"
@@ -662,6 +666,7 @@ msgstr "いまは、あなたの個人資料がすべて同期の対象です。
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
@@ -1101,6 +1106,10 @@ msgstr "すべての同期状態"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "すべての文書を表示"
 msgstr "すべての文書を表示"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "すべての端末"
+msgstr "すべての端末"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "すべての端末を失効しますか？"
@@ -1779,6 +1788,14 @@ msgstr "ログ基盤で権限変更の監査ログを見る ↗"
 msgid "ログ基盤で監査ログを見る ↗"
 msgstr "ログ基盤で監査ログを見る ↗"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "一時停止する"
+msgstr "一時停止する"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "一時停止すると、すべての端末の同期が止まります。トークンは残り、再開すれば同期が戻ります（再発行も入れ直しも要りません）。トークンの有効期限は、一時停止中も進みます。"
+msgstr "一時停止すると、すべての端末の同期が止まります。トークンは残り、再開すれば同期が戻ります（再発行も入れ直しも要りません）。トークンの有効期限は、一時停止中も進みます。"
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "上の入力欄からタイトルを付けて作成し、本文は Obsidian 連携で書きます。"
 msgstr "上の入力欄からタイトルを付けて作成し、本文は Obsidian 連携で書きます。"
@@ -2406,6 +2423,10 @@ msgstr "再起動する消費側"
 msgid "再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
 msgstr "再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "再開する"
+msgstr "再開する"
+
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "最新へ"
 msgstr "最新へ"
@@ -2702,6 +2723,14 @@ msgstr "同じパスの資料が既にあります。Obsidian 側でファイル
 msgid "同じ資料が端末とサーバの両方で編集されたときに競合として記録されます。どちらを採るかは、両方の本文を見てあなたが選びます。"
 msgstr "同じ資料が端末とサーバの両方で編集されたときに競合として記録されます。どちらを採るかは、両方の本文を見てあなたが選びます。"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 一時停止中（{pausedSince} から）"
+msgstr "同期: 一時停止中（{pausedSince} から）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 有効"
+msgstr "同期: 有効"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
 msgstr "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
@@ -2721,6 +2750,10 @@ msgstr "同期トークン {count} 件が {deadline} に期限切れになりま
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "同期に失敗しました（理由: {code}）"
 msgstr "同期に失敗しました（理由: {code}）"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期の状態"
+msgstr "同期の状態"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "同期の競合"
@@ -2749,6 +2782,18 @@ msgstr "同期は全ソース共通の間隔で実行します。ソースごと
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
 msgstr "同期をトリガしました。"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "同期を一時停止していたため、端末からの同期を拒否しました。再開すると、同じトークンのまま同期が戻ります。"
+msgstr "同期を一時停止していたため、端末からの同期を拒否しました。再開すると、同じトークンのまま同期が戻ります。"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期を一時停止できませんでした。時間をおいて再度お試しください。"
+msgstr "同期を一時停止できませんでした。時間をおいて再度お試しください。"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期を再開できませんでした。時間をおいて再度お試しください。"
+msgstr "同期を再開できませんでした。時間をおいて再度お試しください。"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "同期対象"
@@ -3272,6 +3317,10 @@ msgstr "承認済み"
 #: knowledge/frontend/src/features/sc08-analysis/types/analysisRange.ts
 msgid "抽出"
 msgstr "抽出"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "拒否 {count} 回"
+msgstr "拒否 {count} 回"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 msgid "指名された管理者"

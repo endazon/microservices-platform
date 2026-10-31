@@ -85,6 +85,10 @@ msgstr "Only terms searched at least {effectiveMinCount} times are shown."
 msgid "{failedCount} 件は復元できませんでした。"
 msgstr "{failedCount} could not be restored."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "{firstRejected} 〜 {lastRejected}"
+msgstr "{firstRejected} – {lastRejected}"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "{h}（上限）"
 msgstr "{h} (max)"
@@ -662,6 +666,7 @@ msgstr "Right now every one of your private notes is synchronised. To synchronis
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/AiInputDefaultPanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 #: knowledge/frontend/src/features/sc22-secrets/components/SecretItemManagementPage.tsx
@@ -1101,6 +1106,10 @@ msgstr "All sync states"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "すべての文書を表示"
 msgstr "Show all documents"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "すべての端末"
+msgstr "All devices"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/ObsidianSettingsPage.tsx
 msgid "すべての端末を失効しますか？"
@@ -1779,6 +1788,14 @@ msgstr "Open the permission-change audit log in the logging stack ↗"
 msgid "ログ基盤で監査ログを見る ↗"
 msgstr "Open the audit log in the logging stack ↗"
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "一時停止する"
+msgstr "Pause"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "一時停止すると、すべての端末の同期が止まります。トークンは残り、再開すれば同期が戻ります（再発行も入れ直しも要りません）。トークンの有効期限は、一時停止中も進みます。"
+msgstr "Pausing stops sync on all devices. Your tokens are kept, and sync comes back when you resume (no reissue or re-entry needed). Token expiry keeps counting down while paused."
+
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "上の入力欄からタイトルを付けて作成し、本文は Obsidian 連携で書きます。"
 msgstr "Create one with a title in the field above; the body is written through the Obsidian integration."
@@ -2406,6 +2423,10 @@ msgstr "Consumer that restarts"
 msgid "再起動は稼働中の処理を中断します。止めてよい時機か確かめてから書き込んでください。"
 msgstr "A restart interrupts running work. Make sure it is a good time to stop before writing."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "再開する"
+msgstr "Resume"
+
 #: platform/frontend/src/components/ai-chat/AiChatRail.tsx
 msgid "最新へ"
 msgstr "Latest"
@@ -2702,6 +2723,14 @@ msgstr "A note with the same path already exists. Rename the file in Obsidian."
 msgid "同じ資料が端末とサーバの両方で編集されたときに競合として記録されます。どちらを採るかは、両方の本文を見てあなたが選びます。"
 msgstr "A conflict is recorded when the same note is edited both on your device and on the server. You decide which one to keep after reading both texts."
 
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 一時停止中（{pausedSince} から）"
+msgstr "Sync: paused (since {pausedSince})"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 有効"
+msgstr "Sync: active"
+
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
 msgstr "Synced notes are treated as work-related material. When you leave the company, administrators may view them for 30 days from your last day. Personal notes you put into a synced folder are treated the same way once they enter the knowledge base."
@@ -2721,6 +2750,10 @@ msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
 msgid "同期に失敗しました（理由: {code}）"
 msgstr "The sync failed (reason: {code})."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期の状態"
+msgstr "Sync status"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "同期の競合"
@@ -2749,6 +2782,18 @@ msgstr "Synchronisation runs on a single interval shared by every source. A per-
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
 msgstr "A synchronisation has been triggered."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/types/syncHistory.ts
+msgid "同期を一時停止していたため、端末からの同期を拒否しました。再開すると、同じトークンのまま同期が戻ります。"
+msgstr "Sync from devices was rejected because sync was paused. Resume to restore sync with the same token."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期を一時停止できませんでした。時間をおいて再度お試しください。"
+msgstr "Could not pause sync. Please try again later."
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期を再開できませんでした。時間をおいて再度お試しください。"
+msgstr "Could not resume sync. Please try again later."
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/PrivateNotesPage.tsx
 msgid "同期対象"
@@ -3272,6 +3317,10 @@ msgstr "Approved"
 #: knowledge/frontend/src/features/sc08-analysis/types/analysisRange.ts
 msgid "抽出"
 msgstr "Extract"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncHistoryPanel.tsx
+msgid "拒否 {count} 回"
+msgstr "Rejected {count} times"
 
 #: knowledge/frontend/src/features/sc19-private-notes/components/BreakGlassAuditLog.tsx
 msgid "指名された管理者"

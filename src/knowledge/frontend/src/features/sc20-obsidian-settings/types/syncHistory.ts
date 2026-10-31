@@ -16,7 +16,7 @@ import type { SyncHistoryEntryDto } from '@foundation/api/generated/bff.schemas'
 // **未知を既知へ丸めない** —— 方向は生値をそのまま出し、失敗理由はコードを添えた文言にする。
 // 丸めると「知らない失敗を知っている失敗として読む」ことになり、利用者が誤った対処を取る。
 
-// 契約が定める失敗理由の 7 値（`SyncHistoryEntryDto.failureReason`）。
+// 契約が定める失敗理由の 8 値（［2026-10-31 / #2379］`sync_paused` を足した）（`SyncHistoryEntryDto.failureReason`）。
 //
 // **export しない** —— 未使用 export の床（check-knip）を押し上げるためである。**テストは
 // この配列を import せず、7 値を独立に列挙する** —— 同じ配列を共有すると「7 値のうち 1 つを
@@ -29,6 +29,8 @@ const SYNC_FAILURE_REASONS = [
   'body_too_large',
   'invalid_request',
   'not_found',
+  // FR-20, ADR-0145 決定 3, [[IADR-0668]] (#2379): 一時停止中の拒否（停止期間ごとの 1 行）。
+  'sync_paused',
 ] as const;
 
 type SyncFailureReason = (typeof SYNC_FAILURE_REASONS)[number];
@@ -59,6 +61,8 @@ const FAILURE_TEXTS: Record<SyncFailureReason, MessageDescriptor> = {
   body_too_large: msg`本文が上限（1 MB）を超えています。分割してください。`,
   invalid_request: msg`要求の形式が不正です。プラグインを最新にしてください。`,
   not_found: msg`資料が見つかりません。Obsidian 側で再同期してください。`,
+  // ADR-0145 決定 1・3: 停止中は同期の口がすべて拒む。次の一手は「再開」であり、トークンの再発行ではない。
+  sync_paused: msg`同期を一時停止していたため、端末からの同期を拒否しました。再開すると、同じトークンのまま同期が戻ります。`,
 };
 
 function isKnownReason(code: string): code is SyncFailureReason {
@@ -78,8 +82,18 @@ export function failureReasonText(code: string): MessageDescriptor {
 
 /** 内訳 1 項目。**0 件の項目は作らない**（`breakdownOf` が落とす）。 */
 export interface SyncCountPart {
-  kind: 'added' | 'updated' | 'deleted' | 'conflicted';
+  kind: 'added' | 'updated' | 'deleted' | 'conflicted' | 'rejected';
   count: number;
+}
+
+/**
+ * 停止期間ごとにまとめた拒否の行か（ADR-0145 決定 3）。
+ *
+ * 契約では**この行だけ**が `rejectedCount` を持つ（他の行は null）。理由コードだけで判定しない ——
+ * 回数の無い行を停止期間の行として描くと、「拒否 0 回」のような読めない行になる。
+ */
+export function isPausedPeriod(entry: SyncHistoryEntryDto): boolean {
+  return entry.failureReason === 'sync_paused' && typeof entry.rejectedCount === 'number';
 }
 
 /**
@@ -91,6 +105,8 @@ export interface SyncCountPart {
  * 呼び出し側が「—」を描く（**空欄にしない** —— 取得漏れと区別できなくなる）。
  */
 export function breakdownOf(entry: SyncHistoryEntryDto): SyncCountPart[] {
+  // ADR-0145 決定 3: 停止期間の行の内訳は拒んだ回数だけである（追加・更新・削除・競合は 0）。
+  if (isPausedPeriod(entry)) return [{ kind: 'rejected', count: entry.rejectedCount ?? 0 }];
   const parts: SyncCountPart[] = [
     { kind: 'added', count: entry.added },
     { kind: 'updated', count: entry.updated },
