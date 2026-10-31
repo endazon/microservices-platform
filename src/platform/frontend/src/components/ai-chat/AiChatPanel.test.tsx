@@ -161,6 +161,24 @@ describe('AiChatPanel', () => {
     expect(screen.getByRole('button', { name: 'AI チャットを開く' })).toBeInTheDocument();
   });
 
+  // SC-01, UC-01, planning#854（利用者裁定 2026-10-30）, #2325: 確定しているのは画面別履歴だけである。
+  // モデル選択・フォールバックモデル・データ越境設定・画面コンテキスト添付・回答の詳しさの 5 要素は射程外（後送り）で、作らない。
+  // モデルと越境は利用者が選ばない（ゲートウェイと越境マトリクスが決める）。利用者が越境の判定を緩める口を作らない。
+  // 右レールに設定を操作する部品（選択・チェック・スイッチ・ラジオ）が 1 つも無いことと、5 要素の語が出ないことを固定する。
+  it('has no controls for the deferred settings (model, fallback, egress, screen context, answer detail)', async () => {
+    const user = userEvent.setup();
+    await renderPanel();
+    await user.click(screen.getByRole('button', { name: 'AI チャットを開く' }));
+    const rail = await screen.findByRole('complementary', { name: 'AI チャットパネル' });
+
+    for (const role of ['combobox', 'listbox', 'checkbox', 'switch', 'radio', 'slider'] as const) {
+      expect(within(rail).queryAllByRole(role)).toHaveLength(0);
+    }
+    for (const text of [/モデル/, /フォールバック/, /越境/, /画面コンテキスト/, /詳しさ/]) {
+      expect(within(rail).queryByText(text)).not.toBeInTheDocument();
+    }
+  });
+
   // UC-01 / IADR-0121 決定 5: 途中経過は自前フックが持ち、`done` で 1 往復が履歴へ確定する。
   // 裁定 6: 本文は Markdown として描く。
   it('streams an answer, renders it as markdown and keeps the confirmed turn in the history', async () => {

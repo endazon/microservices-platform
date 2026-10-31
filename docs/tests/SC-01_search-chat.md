@@ -3,15 +3,15 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-10-26
+updated: 2026-10-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-11, FR-13, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01, UC-07]
 adrs: [ADR-0054, ADR-0031, ADR-0066, ADR-0073]
 iadrs: [IADR-0009, IADR-0037, IADR-0126, IADR-0308, IADR-0365]
-specs: [20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff]
-issues: [#502, #539, #1065, #1200, #2111]
+specs: [20261031_2325_ai-chat-panel-scope, 20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff]
+issues: [#2325, #502, #539, #1065, #1200, #2111]
 -->
 
 # テスト仕様書: 検索／チャット質問画面
@@ -127,6 +127,7 @@ AI 分析ダッシュボードと共有する部品なので、テストも 1 �
 | T-44 | ★ 本画面が選択を**質問と一緒に送る**（SSE の要求本文） | `SearchChatPage.test.tsx` の `sends the selected scope with the question` |
 | T-45 | ★ **個人資料の出典は「個人資料」で描き、組織文書と区別する**。Wiki の台帳に載っていても個人資料が勝つ（Wiki の導線へ送らない）。同じ回答の組織文書は「組織文書」のまま | `SearchChatPage.test.tsx` の `renders a private-note citation as personal even when the wiki ledger lists the document` |
 | T-46 | 種別の判定を渡さない呼び出し（右レール）でも、文書スコープで個人資料を区別する | `CitationList.test.tsx` の `marks a private-note source as personal from its docScope when no kindOf is given` |
+| T-47 | ［2026-10-31 追加］右レールの射程: 確定は画面別履歴だけで、5 要素（モデル選択・フォールバックモデル・データ越境設定・画面コンテキスト添付・回答の詳しさ）は射程外（後送り）。右レールに設定を操作する部品（選択・チェック・スイッチ・ラジオ・スライダー）が無く、5 要素の語が出ない | `AiChatPanel.test.tsx` の `has no controls for the deferred settings (model, fallback, egress, screen context, answer detail)` |
 
 ## 未決事項
 

@@ -3,15 +3,15 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-10-30
+updated: 2026-10-31
 author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-08, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-08, SC-18, SC-19, UC-01, UC-07]
 adrs: [ADR-0054, ADR-0031, ADR-0036, ADR-0037, ADR-0043, ADR-0066, ADR-0073, ADR-0102]
 iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151, IADR-0308, IADR-0355, IADR-0365, IADR-0435, IADR-0436, IADR-0437, IADR-0438, IADR-0439, IADR-0440]
-specs: [20261030_2321_ask-question-length, 20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260912_frontend-nocturne-and-experience-gaps, 20261024_2017_sc01-search-e2e]
-issues: [#446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, #1200, #1456, #2017, #2111, #2321, planning#197, planning#200, planning#237, planning#244, planning#628]
+specs: [20261031_2325_ai-chat-panel-scope, 20261030_2321_ask-question-length, 20261026_2111_citation-private-note-kind, 20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, 20260830_issue-1065_feature-import-isolation, 20260903_issue-1200_sc04-wiki-screen-via-bff, 20260912_frontend-nocturne-and-experience-gaps, 20261024_2017_sc01-search-e2e]
+issues: [#2325, #446, #490, #502, #519, #539, #540, #541, #586, #599, #1065, #1200, #1456, #2017, #2111, #2321, planning#197, planning#200, planning#237, planning#244, planning#628]
 -->
 
 # 画面仕様書: 検索／チャット質問画面
@@ -342,7 +342,17 @@ UI/UX 改善で本画面と共通シェルの右レールへ同じ作法を入�
   共通シェル側は台帳を引かない。
 - **右レールに AI の設定 UI は置かない。** 応答を得る要求が受け取るのは質問と絞り込みだけであり、
   モデル選択・フォールバック・データ越境・画面コンテキスト添付・回答の詳しさを**送る先が無い**。
-  置くと「操作できるのに何も変わらない」設定になる。**繰り延べであって放棄ではない。**
+  置くと「操作できるのに何も変わらない」設定になる。~~**繰り延べであって放棄ではない。**~~
+- ［2026-10-31］**計画の裁定で、右レールの射程が決まった。**
+  - **確定しているのは画面別履歴（画面ごとの保持・全消去）だけである。** 現状はメモリ上の状態で、再読み込みで消える。
+    画面の単位はルートのパスである。保持の期間は計画も定めていない。
+  - **次の 5 要素は射程外（後送り）であり、作らない**: モデル選択・フォールバックモデル・データ越境設定・
+    画面コンテキスト添付・回答の詳しさ。契約が追いついても、それだけでは足さない。
+  - **モデルと越境は利用者が選ばない。** LLM ゲートウェイと越境マトリクスが決める。
+    **利用者が越境の判定を緩める口は作らない**（後送りの要素を将来足すときも、この線は動かさない）。
+  - 後送りの要素を足すときは、**先に計画で振る舞いの最小の定義を定める**（とくに画面コンテキスト添付の範囲と、属性による権限との関係）。
+  - 計画のモックアップは 5 要素を描いたままである（計画はモックを改めず、共通シェルの記述を正とした）。モックではなく本節に従う。
+  - 右レールに設定を操作する部品が無いことは、試験が固定する（テスト仕様書 T-47）。
 
 ## i18n
 
