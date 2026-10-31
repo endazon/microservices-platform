@@ -760,6 +760,7 @@ test('SC-11: 構成ビューアに WCAG 2.2 A/AA ＋ best-practice の違反が�
     ports: [],
     connectors: [],
     mcpTools: [],
+    dataSources: [],
   };
   const drift: DriftReportDto = {
     hasDrift: false,

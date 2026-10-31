@@ -6,14 +6,18 @@ namespace Platform.Shared.Contracts.Dtos;
 // 各サービス・段の自己申告（イントロスペクション）。メッシュ内部限定のエンドポイントが返す。
 // FR-15, FR-16, IADR-0660 (#2285): `McpTools` は MCP サーバーの実効ツール一覧（要求のたびの寄与で載る。他のサービスは空）。
 // 既定値つきの末尾の引数にして、既存の申告（段・ポート・コネクタだけ）の書き方を変えない。
+// FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): `DataSources` は SC-06 に登録したデータソースと有効・無効（計画 10_composability §6 の
+// 「コネクタ一覧」。planning#850 の裁定 (ii)）。データソースサービスが要求のたびの寄与で載せる（他のサービスは空）。
 public sealed record ServiceIntrospectionDto(
     string Service,
     IReadOnlyList<StepIntrospectionDto> Steps,
     IReadOnlyList<PortSelectionDto> Ports,
     IReadOnlyList<ConnectorDto> Connectors,
-    IReadOnlyList<McpToolDto>? McpTools = null)
+    IReadOnlyList<McpToolDto>? McpTools = null,
+    IReadOnlyList<DataSourceSummaryDto>? DataSources = null)
 {
     public IReadOnlyList<McpToolDto> McpTools { get; init; } = McpTools ?? [];
+    public IReadOnlyList<DataSourceSummaryDto> DataSources { get; init; } = DataSources ?? [];
 }
 
 // パイプライン段の実効値（宣言と照合された購読/発行・有効状態）。
@@ -28,7 +32,13 @@ public sealed record StepIntrospectionDto(
 public sealed record PortSelectionDto(string Port, string Implementation, string? Target);
 
 // データソースコネクタと有効・無効状態（09_datasource-connectors の管理情報を集約）。
+// ［2026-10-31 / #2285・IADR-0666］計画 10_composability §6 の「コネクタの種別」（プラグイン 4 種。常に有効）に当たる。
+// 計画の「コネクタ一覧」（SC-06 に登録したデータソースと有効・無効）は下の `DataSourceSummaryDto` である。
 public sealed record ConnectorDto(string Name, bool Enabled);
+
+// FR-15, FR-01, SC-06, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソース 1 件（ID・名前・種別・有効）。
+// 🔴 接続先・設定・資格情報は載せない（構成の可視化に要らない。SC-06 が正本）。
+public sealed record DataSourceSummaryDto(string Id, string Name, string Type, bool Enabled);
 
 // FR-16, ADR-0024 §2・§5, IADR-0660 (#2285): MCP の実効ツール 1 件（申告 ∩ 公開構成）。
 // 公開名・申告元サービス・実行に要る権限スコープ・越境分類。入力スキーマと説明は載せない（構成の可視化に要らない）。
@@ -42,10 +52,14 @@ public sealed record EffectiveConfigDto(
     IReadOnlyList<EventBindingDto> EventBindings,
     IReadOnlyList<PortSelectionDto> Ports,
     IReadOnlyList<ConnectorDto> Connectors,
-    IReadOnlyList<McpToolDto>? McpTools = null)
+    IReadOnlyList<McpToolDto>? McpTools = null,
+    IReadOnlyList<DataSourceSummaryDto>? DataSources = null)
 {
     // 既定値つきの末尾の引数（契約の非破壊の追加。IADR-0122）。応答では常に配列で出る（null を出さない）。
     public IReadOnlyList<McpToolDto> McpTools { get; init; } = McpTools ?? [];
+
+    // FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソースと有効・無効（計画の「コネクタ一覧」）。
+    public IReadOnlyList<DataSourceSummaryDto> DataSources { get; init; } = DataSources ?? [];
 }
 
 // 構成バージョン（適用中の構成定義の Git コミット ID・適用日時・適用者）。

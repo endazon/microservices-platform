@@ -55,6 +55,23 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         json.Should().Contain("\"mcpTools\":[{\"publishedName\":\"retrieval.search\",\"service\":\"retrieval\",\"requiredScope\":\"read\",\"egressClass\":\"internal\"}]");
     }
 
+    // FR-15, FR-01, IADR-0666 (#2285 の (b)(ii)): 実効構成の応答に、SC-06 に登録したデータソースと有効・無効が JSON の `dataSources` で載る
+    // （SC-11 が読む契約。計画の「コネクタ一覧」）。🔴 載るのは ID・名前・種別・有効だけである。
+    [Fact]
+    public async Task GetConfig_IncludesRegisteredDataSources()
+    {
+        var ds = new ServiceIntrospectionDto("datasource-service", [], [], [], DataSources:
+            [new DataSourceSummaryDto("a0000000-0000-0000-0000-000000000001", "共有フォルダ", "filesystem", true)]);
+        var wiki = SampleEffective().Services[0];
+        factory.StubEffective = new EffectiveCollection(
+            [wiki, ds], new HashSet<string> { "wiki-service", "datasource-service" }, new HashSet<string>());
+
+        var resp = await factory.CreateClient().GetAsync("/bff/admin/config", TestContext.Current.CancellationToken);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        json.Should().Contain("\"dataSources\":[{\"id\":\"a0000000-0000-0000-0000-000000000001\",\"name\":\"共有フォルダ\",\"type\":\"filesystem\",\"enabled\":true}]");
+    }
+
     // 運用者ロールでも閲覧できる（管理者・運用者に限定）。
     [Fact]
     public async Task GetConfig_AsOperator_ReturnsOk()

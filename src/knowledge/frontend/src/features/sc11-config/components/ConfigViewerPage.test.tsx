@@ -72,6 +72,15 @@ const CONFIG = {
       egressClass: 'internal',
     },
   ],
+  dataSources: [
+    {
+      id: 'a0000000-0000-0000-0000-000000000001',
+      name: '共有フォルダ',
+      type: 'filesystem',
+      enabled: true,
+    },
+    { id: 'b0000000-0000-0000-0000-000000000002', name: '社内 Wiki', type: 'wiki', enabled: false },
+  ],
 };
 
 const DRIFT = {
@@ -155,7 +164,10 @@ describe('ConfigViewerPage (SC-11)', () => {
 
     expect(screen.getByText('DocumentNormalized')).toBeInTheDocument();
     expect(screen.getByText('VoyageAI')).toBeInTheDocument();
-    expect(screen.getByText('filesystem')).toBeInTheDocument();
+    // ［2026-10-31 / IADR-0666］`filesystem` はコネクタの種別とデータソースの種別の両方に出るので、種別の表に絞って見る。
+    expect(
+      within(screen.getByRole('table', { name: 'コネクタの種別の一覧' })).getByText('filesystem'),
+    ).toBeInTheDocument();
 
     expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config', expect.anything());
     expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config/drift', expect.anything());
@@ -172,6 +184,28 @@ describe('ConfigViewerPage (SC-11)', () => {
     expect(within(row).getByText('retrieval')).toBeInTheDocument();
     expect(within(row).getByText('read')).toBeInTheDocument();
     expect(within(row).getByText('internal')).toBeInTheDocument();
+  });
+
+  // FR-15, FR-01, 計画 10_composability §6「コネクタ一覧」, IADR-0666 (#2285 の (b)(ii)): SC-06 に登録したデータソースと有効・無効を出す。
+  // 種別（プラグイン）の表とは別に出し、無効化したデータソースは「無効」と文字で示す（色だけにしない）。
+  it('lists the registered data sources with their type and enabled state, apart from the connector types', async () => {
+    mockApi();
+    await renderPage();
+
+    const table = await screen.findByRole('table', { name: '登録済みのデータソースの一覧' });
+    const wiki = within(table).getByRole('row', { name: /社内 Wiki/ });
+    expect(within(wiki).getByText('wiki')).toBeInTheDocument();
+    expect(within(wiki).getByText('無効')).toBeInTheDocument();
+    const share = within(table).getByRole('row', { name: /共有フォルダ/ });
+    expect(within(share).getByText('有効')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'コネクタの種別の一覧' })).toBeInTheDocument();
+  });
+
+  it('says no data source is registered rather than hiding the table', async () => {
+    mockApi({ config: { ...CONFIG, dataSources: [] } });
+    await renderPage();
+
+    expect(await screen.findByText('登録したデータソースはありません。')).toBeInTheDocument();
   });
 
   it('says no MCP tool is published rather than hiding the table', async () => {

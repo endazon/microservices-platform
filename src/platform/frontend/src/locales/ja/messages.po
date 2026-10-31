@@ -790,20 +790,24 @@ msgid "コネクタ"
 msgstr "コネクタ"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "コネクタの一覧"
-msgstr "コネクタの一覧"
+msgid "コネクタのプラグインはサービスに組み込まれ、常に有効です。"
+msgstr "コネクタのプラグインはサービスに組み込まれ、常に有効です。"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタの種別"
+msgstr "コネクタの種別"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタの種別の一覧"
+msgstr "コネクタの種別の一覧"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "コネクタの種別はありません。"
+msgstr "コネクタの種別はありません。"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceSettingsForm.tsx
 msgid "コネクタの設定（config）"
 msgstr "コネクタの設定（config）"
-
-#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "コネクタは Git（GitOps）の宣言で定義します。"
-msgstr "コネクタは Git（GitOps）の宣言で定義します。"
-
-#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
-msgid "コネクタはありません。"
-msgstr "コネクタはありません。"
 
 #: knowledge/frontend/src/features/sc17-users/components/UserAccountManagementPage.tsx
 msgid "このアカウントを無効化しますか？"
@@ -1231,8 +1235,13 @@ msgstr "ツール"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/routes/sc06DataSourcesRoute.tsx
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "データソース"
 msgstr "データソース"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "データソース（コネクタ一覧）"
+msgstr "データソース（コネクタ一覧）"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "データソースからの取り込みが済むとここに並びます。"
@@ -1277,6 +1286,10 @@ msgstr "データソースの資格情報を更新できるのは管理者だけ
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "データソースの資格情報を更新できるのは管理者だけです（データソースの登録・更新と同じ）。この一覧では状態だけを確認できます。"
 msgstr "データソースの資格情報を更新できるのは管理者だけです（データソースの登録・更新と同じ）。この一覧では状態だけを確認できます。"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "データソースはデータソース管理画面で登録します。"
+msgstr "データソースはデータソース管理画面で登録します。"
 
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "データソースは登録されていません。"
@@ -4399,6 +4412,10 @@ msgstr "登録されたクライアントはありません。"
 msgid "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
 msgstr "登録されているすべての端末のトークンを無効にします。この操作は元に戻せません。すべての端末で同期が停止し、再開するには端末ごとにトークンを再発行して入れ直す必要があります。"
 
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "登録したデータソースはありません。"
+msgstr "登録したデータソースはありません。"
+
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceForm.tsx
 msgid "登録する"
 msgstr "登録する"
@@ -4410,6 +4427,10 @@ msgstr "登録は管理者が行います。"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "登録済みデータソースの一覧"
 msgstr "登録済みデータソースの一覧"
+
+#: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+msgid "登録済みのデータソースの一覧"
+msgstr "登録済みのデータソースの一覧"
 
 #: knowledge/frontend/src/features/sc22-secrets/components/DataSourceCredentialGroupPanel.tsx
 msgid "登録済みのデータソースの一覧を取得できません。データソースの管理サービスの稼働を確認してください。"

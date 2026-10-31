@@ -294,7 +294,11 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 658276,
+  "initialTotalBytes": 658882,
+  "$comment_initialTotalBytes_20261031_2285_registered-datasources": [
+    "［2026-10-31 / #2285 の (b)(ii)］658,276 → 658,882 B（+0.61 kB）へ引き上げた。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
+    "増分の帰属: SC-11 の実効構成に「データソース（コネクタ一覧）」の表を足し、種別の表の表記を改めた（固定文言 8 つの ja / en の訳）。Lingui のカタログは入口チャンク（index-*.js）に入る。コンパイル済みのカタログは ja +362 B・en +284 B である。"
+  ],
   "$comment_initialTotalBytes_20261031_deps-rollup": [
     "［2026-10-31 / dependabot の 8 本をまとめた PR］655,695 → 658,276 B（+2.58 kB）へ引き上げた。実測値である（pnpm run build → --require が超過を報告し、--update で床を更新した）。",
     "増分の帰属（チャンクごとの実測。同じ develop 由来のビルドとの比較）: vendor-react 196.83 → 199.23 kB（+2.40）は @base-ui/react 1.8.0 → 1.9.0 の依存の更新による。1.9.0 は @base-ui/utils 0.4.0 → 0.5.0・use-sync-external-store 1.6.0 → 1.7.0 を引き、utils 0.5.0 は use-sync-external-store/shim を読む hydration モジュールを新たに持つ。manualChunks の vendor-react 規則は use-sync-external-store を拾う。use-sync-external-store の production の各ファイルの大きさは 1.6.0 と 1.7.0 で同じなので、増分は版の差ではなく、新たに到達したモジュールの分である。",

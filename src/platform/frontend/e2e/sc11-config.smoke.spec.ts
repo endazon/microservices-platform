@@ -21,6 +21,7 @@ const effective: EffectiveConfigDto = {
   ports: [],
   connectors: [],
   mcpTools: [],
+  dataSources: [],
 };
 
 const drift: DriftReportDto = { hasDrift: false, checkedAt: '2026-08-02T00:00:00Z', findings: [] };
