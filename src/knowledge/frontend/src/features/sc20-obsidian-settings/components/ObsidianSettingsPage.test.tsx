@@ -109,6 +109,8 @@ function respond({
   aiInputDefault = false,
   paused = false,
   pauseFails = false,
+  pausedAt = PAUSED_AT as string | null,
+  settingsMode = 'ok' as 'ok' | 'pending' | 'fail',
 }: {
   devices?: unknown[];
   folders?: unknown[];
@@ -118,6 +120,8 @@ function respond({
   aiInputDefault?: boolean;
   paused?: boolean;
   pauseFails?: boolean;
+  pausedAt?: string | null;
+  settingsMode?: 'ok' | 'pending' | 'fail';
 } = {}) {
   // #2379, ADR-0145: 同期の一時停止の状態（POST の pause / resume で切り替わる）。
   let syncPaused = paused;
@@ -126,7 +130,7 @@ function respond({
     updatedAt: '2026-08-27T00:00:00Z',
     aiInputDefault,
     syncPaused,
-    syncPausedAt: syncPaused ? PAUSED_AT : null,
+    syncPausedAt: syncPaused ? pausedAt : null,
   });
   // apiRequest が受けるパスは /bff 接頭辞を**除いた**形である（bffFetch が付け直す）。
   mocks.apiRequest.mockImplementation((path: string, init?: { method?: string }) => {
@@ -145,8 +149,11 @@ function respond({
       syncPaused = path.endsWith('/pause');
       return Promise.resolve(jsonResponse(settingsBody()));
     }
-    if (path === '/private-notes/sync-settings')
+    if (path === '/private-notes/sync-settings') {
+      if (settingsMode === 'pending') return new Promise(() => {});
+      if (settingsMode === 'fail') return Promise.reject(new Error('boom'));
       return Promise.resolve(jsonResponse(settingsBody()));
+    }
     if (path === '/private-notes/conflicts') return Promise.resolve(jsonResponse(conflicts));
     if (path === '/private-notes/sync-history') return Promise.resolve(jsonResponse(history));
     if (path.endsWith('/resolve')) {
@@ -941,6 +948,37 @@ describe('SC-20 Obsidian 連携設定: 同期の一時停止（#2379）', () => 
     expect(
       within(deviceRow('MacBook Pro')).queryByRole('button', { name: /一時停止/ }),
     ).not.toBeInTheDocument();
+  });
+
+  // AI レビュー #2384 🟡1: 設定が読めていない間は「有効」と言わない（実際は停止中の利用者を取り違えさせない）。
+  it('🔴 設定の取得中は「同期: 確認中」で、「同期: 有効」を出さず、ボタンは押せない', async () => {
+    respond({ settingsMode: 'pending' });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(within(panel).getByText('同期: 確認中')).toBeInTheDocument();
+    expect(within(panel).queryByText('同期: 有効')).not.toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: '一時停止する' })).toBeDisabled();
+  });
+
+  it('🔴 設定の取得に失敗したら状態が不明だと出し、「同期: 有効」を出さない', async () => {
+    respond({ settingsMode: 'fail' });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(await within(panel).findByText('同期: 状態を確認できません')).toBeInTheDocument();
+    expect(within(panel).getByRole('alert')).toHaveTextContent(/同期の状態を取得できませんでした/);
+    expect(within(panel).queryByText('同期: 有効')).not.toBeInTheDocument();
+  });
+
+  // AI レビュー #2384 🟡2: 開始の時刻が無い停止中に「（ から）」を出さない。
+  it('一時停止中で開始の時刻が無いときは「同期: 一時停止中」だけを出す', async () => {
+    respond({ paused: true, pausedAt: null });
+    await renderPage();
+    const panel = await screen.findByRole('region', { name: '同期の状態' });
+
+    expect(await within(panel).findByText('同期: 一時停止中')).toBeInTheDocument();
+    expect(panel.textContent).not.toMatch(/から）/);
   });
 
   it('一時停止に失敗したら区画の中に失敗を出し、状態は変えない', async () => {

@@ -2724,12 +2724,24 @@ msgid "同じ資料が端末とサーバの両方で編集されたときに競�
 msgstr "同じ資料が端末とサーバの両方で編集されたときに競合として記録されます。どちらを採るかは、両方の本文を見てあなたが選びます。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 一時停止中"
+msgstr "同期: 一時停止中"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
 msgid "同期: 一時停止中（{pausedSince} から）"
 msgstr "同期: 一時停止中（{pausedSince} から）"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
 msgid "同期: 有効"
 msgstr "同期: 有効"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 状態を確認できません"
+msgstr "同期: 状態を確認できません"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期: 確認中"
+msgstr "同期: 確認中"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncTargetFoldersPanel.tsx
 msgid "同期した資料は業務関連資料として扱われます。退職時には、退職日から 30 日間、管理者が閲覧することがあります。同期対象フォルダに入れた私的なメモも、ナレッジベースに入った時点で同じ扱いになります。"
@@ -2754,6 +2766,10 @@ msgstr "同期に失敗しました（理由: {code}）"
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
 msgid "同期の状態"
 msgstr "同期の状態"
+
+#: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncPausePanel.tsx
+msgid "同期の状態を取得できませんでした。時間をおいて再度お試しください。"
+msgstr "同期の状態を取得できませんでした。時間をおいて再度お試しください。"
 
 #: knowledge/frontend/src/features/sc20-obsidian-settings/components/SyncConflictsPanel.tsx
 msgid "同期の競合"

@@ -19,7 +19,7 @@ import type { SyncHistoryEntryDto } from '@foundation/api/generated/bff.schemas'
 // 契約が定める失敗理由の 8 値（［2026-10-31 / #2379］`sync_paused` を足した）（`SyncHistoryEntryDto.failureReason`）。
 //
 // **export しない** —— 未使用 export の床（check-knip）を押し上げるためである。**テストは
-// この配列を import せず、7 値を独立に列挙する** —— 同じ配列を共有すると「7 値のうち 1 つを
+// この配列を import せず、8 値を独立に列挙する** —— 同じ配列を共有すると「8 値のうち 1 つを
 // 消しても両方が同時に変わる」形になり、網羅を確かめたことにならない。
 const SYNC_FAILURE_REASONS = [
   'version_conflict',

@@ -12,8 +12,8 @@ import {
 
 // SC-20 主要素 6, FR-20, ADR-0099 決定 5・6 / IADR-0446（#1446）: 同期履歴の写像。
 //
-// 🔴 **失敗理由の 7 値はここへ独立に列挙する。** 実装が持つ配列を import すると、
-// **片方を消しても両方が同時に変わり**「契約の 7 値すべてに文言が在る」ことを確かめたことにならない。
+// 🔴 **失敗理由の 8 値はここへ独立に列挙する。** 実装が持つ配列を import すると、
+// **片方を消しても両方が同時に変わり**「契約の 8 値すべてに文言が在る」ことを確かめたことにならない。
 // 出典は `docs/api/openapi.yaml` の `SyncHistoryEntryDto.failureReason`（契約が正）。
 const CONTRACT_REASONS = [
   'version_conflict',
@@ -72,7 +72,7 @@ describe('SC-20 同期履歴: 結果', () => {
 });
 
 describe('SC-20 同期履歴: 失敗理由の文言（ADR-0099 決定 5）', () => {
-  it('契約の 7 値すべてに、次の行動が分かる文言が在る', () => {
+  it('契約の 8 値すべてに、次の行動が分かる文言が在る', () => {
     for (const code of CONTRACT_REASONS) {
       const text = textOf(failureReasonText(code));
       // ★ 陽性対照: 文言が在り、**コードそのままではない**。
@@ -93,7 +93,7 @@ describe('SC-20 同期履歴: 失敗理由の文言（ADR-0099 決定 5）', () 
     expect(textOf(failureReasonText('not_found'))).toContain('再同期');
   });
 
-  it('7 値の文言はすべて異なる（同じ文面へ丸めていない）', () => {
+  it('8 値の文言はすべて異なる（同じ文面へ丸めていない）', () => {
     const texts = CONTRACT_REASONS.map((code) => textOf(failureReasonText(code)));
     expect(new Set(texts).size).toBe(CONTRACT_REASONS.length);
   });

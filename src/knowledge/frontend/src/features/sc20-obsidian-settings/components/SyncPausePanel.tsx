@@ -20,7 +20,9 @@ export function SyncPausePanel() {
 
   const loaded = settings.data !== undefined;
   const paused = settings.data?.syncPaused ?? false;
-  const pausedSince = formatDateTime(settings.data?.syncPausedAt);
+  // 開始の時刻が無い停止中は時刻を添えない（「（ から）」のような読めない文にしない）。
+  const pausedAt = settings.data?.syncPausedAt;
+  const pausedSince = pausedAt ? formatDateTime(pausedAt) : '';
   const pending = pause.isPending || resume.isPending;
   const failed = pause.isError ? pause : resume.isError ? resume : null;
 
@@ -34,6 +36,11 @@ export function SyncPausePanel() {
   return (
     <Panel aria-label={t`同期の状態`} heading={<Trans>同期の状態</Trans>} headingAs="h2">
       <div className="flex flex-col gap-2">
+        {settings.isError && (
+          <Alert tone="danger" label={t`エラー`} role="alert">
+            {t`同期の状態を取得できませんでした。時間をおいて再度お試しください。`}
+          </Alert>
+        )}
         {failed && (
           <Alert tone="danger" label={t`エラー`} role="alert">
             {toMessages(
@@ -45,9 +52,17 @@ export function SyncPausePanel() {
           </Alert>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          {/* 状態は色だけでなく文字で示す（INDEX 決定 21）。 */}
-          {paused ? (
-            <StatusBadge tone="warning">{t`同期: 一時停止中（${pausedSince} から）`}</StatusBadge>
+          {/* 状態は色だけでなく文字で示す（INDEX 決定 21）。
+              🔴 **設定が読めていない間は「有効」と言わない**（AI レビュー #2384 🟡1）。実際は停止中の利用者に、読み込み中・
+              取得の失敗中だけ「有効」と見せない —— 読み込み中は「確認中」、失敗は「状態を確認できません」と出す。 */}
+          {settings.isError ? (
+            <StatusBadge tone="danger">{t`同期: 状態を確認できません`}</StatusBadge>
+          ) : !loaded ? (
+            <StatusBadge tone="neutral">{t`同期: 確認中`}</StatusBadge>
+          ) : paused ? (
+            <StatusBadge tone="warning">
+              {pausedSince ? t`同期: 一時停止中（${pausedSince} から）` : t`同期: 一時停止中`}
+            </StatusBadge>
           ) : (
             <StatusBadge tone="success">{t`同期: 有効`}</StatusBadge>
           )}
