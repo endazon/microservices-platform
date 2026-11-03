@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-22
+updated: 2026-11-04
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
-specs: [20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
-issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
+iadrs: [IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+issues: [#2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -34,6 +34,12 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 - 保管先は 2 か所: `C:\platform-infra-backups\` と `E:\platform-infra-backups\`（WSL のディストリからは
   `/mnt/c/...`・`/mnt/e/...`）。その下に `postgres\<回>\` と `vault\<回>\` が並ぶ。回の名前は UTC の時刻
   `YYYY-MM-DDTHHMMSSZ`（例 `2026-09-27T030000Z` は JST 12:00 の回）。
+- ［2026-11-04］回のディレクトリのほかに、次のものが一時的に、または失敗の後に見えることがある。
+  - `.publish.lock\`: 回が書いている間のロック（保管先ごと・種類ごと）。同じ種類の回が並行して走っても、互いの書きかけを消さないためにある。
+    終われば消える。Pod が強制終了されて残っても、2 時間を過ぎたら次の回が壊して取り直す。**手で消すのは、Job が 1 本も動いていないことを確かめてから。**
+  - `.incoming-<回>-<Pod 名>-<番号>\`: 書きかけ。次の回が、ロックの中で片付ける。
+  - `broken-<回>-<時刻>\`: 書いた後の検算が合わなかった回。回の名前の規則から外れるので、保持の対象にならず、「最新の完全な回」にも数えない。
+    調べた後に手で消してよい。
 - 時刻は米国市場の時間帯（JST 22:30〜05:00）を避けている。PC を止めていて取りこぼした回は、22:00 JST までに
   クラスタが戻れば後追いで走り、それを過ぎたら翌日の回を待つ。
 - **すべての成果物は age の公開鍵で暗号化されている。** 平文はディスクへ書かれない（生成器から age へパイプで渡す）。
@@ -157,6 +163,11 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
    `docker.io/library` へ戻すとヘルパーが動く機械でしか通らない。
 
 6. **初回を今すぐ走らせて確かめる**（翌日の 12:00 を待たない）:
+
+   🔴 ［2026-11-04］**停止（`suspend`）を外した直後は、取りそこねた回（後追いの締切の内側にある、その日の回）を CronJob が自動で起動することがある。**
+   手動の Job は、その回が終わってから作る（`kubectl -n platform-infra get jobs` で `platform-backup-*-<数字>` の Job が無いか、
+   `Complete` / `Failed` になったことを確かめる）。重なっても保管先ごとのロックで互いの書きかけは壊れないが、**同じ秒に始まった後の回は
+   「同じ名前の回が既にあります」で失敗として見える**。後の回が失敗したときは、先の回が `完了（保管先 2 か所）` になったことを確かめればよい。
 
    ```bash
    kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres platform-backup-postgres-manual-1
@@ -403,6 +414,10 @@ issues: [#1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 | `init のファイルがありません` / `init のファイルに unseal 鍵の行がありません`（回が `-partial`） | PVC の `.local-dev-init` が無い・壊れている | 秘匿管理のラッパーのログ（`vault-entrypoint`）を見る。**この回は同じ秘匿管理へは戻せるが、失ったときには開けない** |
 | `消せませんでした（想定外の中身があります）` | 回のディレクトリに手でファイルやフォルダを置いた | 置いたものを退けてから次の回を待つ |
 | Job が作られない | PC 停止で後追いの締切（22:00 JST）を過ぎた | 翌日の回を待つか、手動の Job を走らせる |
+| `ロックを取れません（別の回が書いています。…秒待ちました）` | 同じ種類の別の回（手動の Job と CronJob の回など）が書き続けている | `kubectl -n platform-infra get jobs` で動いている回を確かめ、終わってから手動の Job を走らせ直す。動いている回が無いのに続くときは、§何がどこに置かれるか の `.publish.lock` を確かめる |
+| `古いロックを壊します` | 前の回の Pod が強制終了され、ロックが残っていた | 対処は要らない（次の回が取り直した）。続くなら Job が時間切れで止まっていないか確かめる |
+| `同じ名前の回が既にあります` | 同じ種類の回が同じ秒に 2 本始まった（停止を外した直後の自動の回と手動の Job が重なった等） | 先の回のログが `完了（保管先 2 か所）` なら、保管先の回は揃っている。後の回の Job は消してよい |
+| `書いた回の検算が合いません。回を退かせました: …/broken-…` | 書いた後に保管先の回の中身が欠けた・変わった（並行した回の削除・ドライブの不調） | その回は保持の対象外。手動の Job を走らせ直し、§2 の確かめ方で新しい回が揃ったことを確かめてから `broken-…` を調べて消す |
 
 ## 記録
 
