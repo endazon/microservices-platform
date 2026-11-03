@@ -156,7 +156,9 @@ main() {
 
 	# 2. 使い捨ての Postgres（ネットワーク無し・ポートを開けない・パスワード不要＝外から届かない）
 	log "使い捨ての Postgres を起こします（$image・--network none）"
-	if ! "$cli" run -d --rm --network none --name "$name" -e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
+	# #2391: `--rm` を付けない。containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（drill_cleanup の rm -f）が
+	#    成功・失敗の両方で持つ。
+	if ! "$cli" run -d --network none --name "$name" -e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
 		err "コンテナを起こせません（$cli）"; return 1
 	fi
 	local i=0
@@ -306,7 +308,9 @@ STUB
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc --db report_svc)"; RC=$?
 	eq 'T-1560-37 --live: 戻して突き合わせ、合格する（台帳が増えただけ）' "$RC" "0"
 	LOG="$(cat "$log_file")"
-	has 'T-1560-37 使い捨てのコンテナはネットワーク無しで起こす' "$LOG" 'run -d --rm --network none'
+	has 'T-1560-37 使い捨てのコンテナはネットワーク無しで起こす' "$LOG" 'run -d --network none'
+	# #2391: containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（rm -f）が持つので、run に --rm を付けない。
+	lacks 'T-2391-01 使い捨てのコンテナを --rm 付きで起こさない（nerdctl が -d と --rm の併用を拒む）' "$(grep ' run ' "$log_file")" '--rm'
 	lacks 'T-1560-37 使い捨てのコンテナはポートを開けない' "$LOG" ' -p '
 	has 'T-1560-37 稼働側は読み取り専用トランザクションで数える' "$LOG" 'PGOPTIONS=-c default_transaction_read_only=on psql'
 	has 'T-1560-37 稼働側は platform-infra の postgres だけを見る' "$LOG" 'kubectl -n platform-infra exec -i deploy/postgres'
