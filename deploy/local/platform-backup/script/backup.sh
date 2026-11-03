@@ -427,13 +427,11 @@ acquire_lock() {
 			return 0
 		fi
 		# 古いロック（Pod が強制終了されて trap が走らなかった残骸）は壊して取り直す。持ち主の時刻が読めなければ古いと見なさない。
-		owner="$(head -n 1 "$lock/owner" 2>/dev/null)"
-		since="${owner##* }"
-		now="$(date +%s)"
-		if [[ "$since" =~ ^[0-9]+$ ]] && [ $((now - since)) -gt "$BACKUP_LOCK_STALE_SECONDS" ]; then
-			log "古いロックを壊します: $lock（持ち主 ${owner% *}・$((now - since)) 秒前）"
-			remove_flat_dir "$lock" || { err "古いロックを消せません（想定外の中身があります）: $lock"; return 1; }
-			continue
+		if lock_is_stale "$lock"; then
+			case "$(break_stale_lock "$lock")" in
+				broken) continue ;;
+				failed) return 1 ;;
+			esac
 		fi
 		if [ "$waited" -ge "$BACKUP_LOCK_WAIT_SECONDS" ]; then
 			err "ロックを取れません（別の回が書いています。${waited} 秒待ちました）: $lock"
@@ -443,6 +441,44 @@ acquire_lock() {
 		sleep 1
 		waited=$((waited + 1))
 	done
+}
+
+# 持ち主の時刻が BACKUP_LOCK_STALE_SECONDS より古いか（読めなければ古いと見なさない）。
+lock_is_stale() {
+	local owner since
+	owner="$(head -n 1 "$1/owner" 2>/dev/null)"
+	since="${owner##* }"
+	[[ "$since" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - since)) -gt "$BACKUP_LOCK_STALE_SECONDS" ]
+}
+
+# 古いロックを壊す。結果を 1 語で出す: broken（壊した・取り直してよい）/ busy（別の回が壊している・待つ）/ failed。
+# 🔴 #2389（レビュー 🟡1）: **壊すのは、破棄の印 `<ロック>.break`（mkdir の原子性）を取った 1 本だけで、印の中で古さを読み直す。**
+#    古いと見た後に止まっていた回が、別の回が壊して取ったばかりのロックを消すと、2 本が同時に書く（試験 T-2389-08）。
+#    印を持つ間は、古いロックはまだ在るので、誰も新しいロックを取れない。だから読み直して古ければ、それは生きたロックではない。
+#    印そのものが残った（印を取った直後の強制終了。ミリ秒の窓）ときは、印の作成から BACKUP_LOCK_BREAK_STALE_SECONDS で片付ける。
+break_stale_lock() {
+	local lock="$1" brk="$1.break" owner since mtime
+	if ! mkdir -- "$brk" 2>/dev/null; then
+		mtime="$(stat -c %Y -- "$brk" 2>/dev/null)"
+		if [[ "$mtime" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - mtime)) -gt "${BACKUP_LOCK_BREAK_STALE_SECONDS:-300}" ]; then
+			rmdir -- "$brk" 2>/dev/null
+		fi
+		echo busy
+		return 0
+	fi
+	if lock_is_stale "$lock"; then
+		owner="$(head -n 1 "$lock/owner" 2>/dev/null)"
+		since="${owner##* }"
+		log "古いロックを壊します: $lock（持ち主 ${owner% *}・$(($(date +%s) - since)) 秒前）" >&2
+		if ! remove_flat_dir "$lock"; then
+			err "古いロックを消せません（想定外の中身があります）: $lock"
+			rmdir -- "$brk" 2>/dev/null
+			echo failed
+			return 0
+		fi
+	fi
+	rmdir -- "$brk" 2>/dev/null
+	echo broken
 }
 
 # 自分のロックだけを解放する（持ち主が自分でなければ触らない）。
