@@ -300,6 +300,22 @@ assert_contains 'T-2389-07 古いロック: 壊したことをログに出す' "
 assert_eq 'T-2389-07 古いロック: ロックを残さない' "$(ls -A "$R/c/postgres" | grep -c '^\.publish\.lock')" "0"
 assert_eq 'T-2389-07 古いロック: ロックの中で前回の incoming の残骸を片付ける' "$(ls -A "$R/c/postgres" | grep -c '^\.incoming')" "0"
 
+# 持ち主のファイルが無いロック（mkdir の直後・owner を書く前の強制終了。2 回目のレビュー 🟡1）: 持ち主の時刻が読めないときは、
+# ロックのディレクトリの更新時刻で古さを読む。閾値を過ぎていれば壊して取り直す（永久に待って失敗しない）。
+new_env
+mkdir -p "$R/c/postgres/.publish.lock"
+touch -d '@1000' "$R/c/postgres/.publish.lock"
+BACKUP_LOCK_WAIT_SECONDS=2 run_backup
+assert_eq 'T-2389-09 持ち主の無い古いロック: 壊して取り直し、成功で終わる' "$RC" "0"
+assert_contains 'T-2389-09 持ち主の無い古いロック: 壊したことをログに出す' "$OUT" '古いロック'
+assert_eq 'T-2389-09 持ち主の無い古いロック: ロックを残さない' "$(ls -A "$R/c/postgres" | grep -c '^\.publish\.lock')" "0"
+# 対照: 持ち主の無い新しいロック（取った直後で、まだ owner を書いていない回）は壊さない。
+new_env
+mkdir -p "$R/c/postgres/.publish.lock"
+BACKUP_LOCK_WAIT_SECONDS=2 run_backup
+assert_ne 'T-2389-09 持ち主の無い新しいロック: 壊さずに待ち、待ち切れたら失敗で終わる' "$RC" "0"
+[ -d "$R/c/postgres/.publish.lock" ] && ok 'T-2389-09 持ち主の無い新しいロック: 消さない' || ng 'T-2389-09 持ち主の無い新しいロック: 消さない' 'removed'
+
 # 古いロックを 2 本が同時に壊す（レビュー 🟡1）: 先に古いと見た回 B が、消す直前で止まっている間に、回 A も古いと見て壊しにくる。
 # B が再開しても、A が取ったばかりのロックを消してはならない（消すと 2 本が同時に書き、A の書きかけを B が片付けで消す）。
 # どちらがどの保管先へ書くかは順序で変わる（B が C・A が E に書く回もある）ので、成否の組ではなく次の不変を確かめる:

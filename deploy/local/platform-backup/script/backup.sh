@@ -36,6 +36,8 @@ VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
 # 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 1800）の 2 倍である（生きた回のロックを壊さない）。
 BACKUP_LOCK_WAIT_SECONDS="${BACKUP_LOCK_WAIT_SECONDS:-900}"
 BACKUP_LOCK_STALE_SECONDS="${BACKUP_LOCK_STALE_SECONDS:-7200}"
+# 破棄の印（<ロック>.break）の残骸と見なす経過の秒（印を取った直後の強制終了。ミリ秒の窓）。
+BACKUP_LOCK_BREAK_STALE_SECONDS="${BACKUP_LOCK_BREAK_STALE_SECONDS:-300}"
 BACKUP_LOCK_NAME=".publish.lock"
 # 自分が持っているロック（保管先の kind_dir）。trap で解放する。
 HELD_LOCKS=()
@@ -443,11 +445,22 @@ acquire_lock() {
 	done
 }
 
-# 持ち主の時刻が BACKUP_LOCK_STALE_SECONDS より古いか（読めなければ古いと見なさない）。
-lock_is_stale() {
+# ロックの取った時刻（エポック秒）を出す。持ち主の時刻を読み、読めなければロックのディレクトリの更新時刻を使う。
+# 🔴 2 回目のレビュー 🟡1: `mkdir` の直後・owner を書く前に強制終了されたロックは、持ち主の時刻が無い。読めないから古くないと
+#    見なすと、以後の回が永久に待って失敗する。ディレクトリの更新時刻（作った時刻）で古さを読む（破棄の印と同じ手）。
+#    取った直後でまだ owner を書いていない回のロックは、更新時刻が新しいので壊さない。
+lock_since() {
 	local owner since
 	owner="$(head -n 1 "$1/owner" 2>/dev/null)"
 	since="${owner##* }"
+	[[ "$since" =~ ^[0-9]+$ ]] || since="$(stat -c %Y -- "$1" 2>/dev/null)"
+	printf '%s' "$since"
+}
+
+# 取った時刻が BACKUP_LOCK_STALE_SECONDS より古いか（どちらの時刻も読めなければ古いと見なさない）。
+lock_is_stale() {
+	local since
+	since="$(lock_since "$1")"
 	[[ "$since" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - since)) -gt "$BACKUP_LOCK_STALE_SECONDS" ]
 }
 
@@ -460,7 +473,7 @@ break_stale_lock() {
 	local lock="$1" brk="$1.break" owner since mtime
 	if ! mkdir -- "$brk" 2>/dev/null; then
 		mtime="$(stat -c %Y -- "$brk" 2>/dev/null)"
-		if [[ "$mtime" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - mtime)) -gt "${BACKUP_LOCK_BREAK_STALE_SECONDS:-300}" ]; then
+		if [[ "$mtime" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - mtime)) -gt "$BACKUP_LOCK_BREAK_STALE_SECONDS" ]; then
 			rmdir -- "$brk" 2>/dev/null
 		fi
 		echo busy
@@ -468,8 +481,8 @@ break_stale_lock() {
 	fi
 	if lock_is_stale "$lock"; then
 		owner="$(head -n 1 "$lock/owner" 2>/dev/null)"
-		since="${owner##* }"
-		log "古いロックを壊します: $lock（持ち主 ${owner% *}・$(($(date +%s) - since)) 秒前）" >&2
+		since="$(lock_since "$lock")"
+		log "古いロックを壊します: $lock（持ち主 ${owner:+${owner% *}}${owner:-不明〔持ち主のファイルが無い〕}・$(($(date +%s) - since)) 秒前）" >&2
 		if ! remove_flat_dir "$lock"; then
 			err "古いロックを消せません（想定外の中身があります）: $lock"
 			rmdir -- "$brk" 2>/dev/null
