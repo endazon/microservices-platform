@@ -63,12 +63,53 @@ STUB
 # cp は既定で本物を呼ぶ。$STATE/corrupt-copy があれば、写した先の暗号文を 1 つ書き換える
 # （保管先への写しが壊れた世界。publish が SHA256SUMS で検証せずに改名すると、壊れた回が残る）。
 REAL_CP="$(command -v cp)"
+# #2389: $STATE/pause-cp-<BACKUP_TEST_ID> があれば、保管先への写しの後に 1 度だけ止まる（$STATE/paused-<ID> を置き、
+# $STATE/release-<ID> が置かれるまで待つ）。並行する 2 本の回の順序を固定するための止め所である。
 cat > "$WORK/bin/cp" <<STUB
 #!/usr/bin/env bash
 "$REAL_CP" "\$@" || exit \$?
 if [ -f "\$STATE/corrupt-copy" ]; then
   dest="\${!#}"
   for f in "\$dest"/*.age; do [ -f "\$f" ] && { printf 'X' >> "\$f"; break; }; done
+fi
+id="\${BACKUP_TEST_ID:-}"
+if [ -n "\$id" ] && [ -f "\$STATE/pause-cp-\$id" ]; then
+  rm -f "\$STATE/pause-cp-\$id"
+  : > "\$STATE/paused-\$id"
+  for _ in \$(seq 1 600); do [ -f "\$STATE/release-\$id" ] && break; sleep 0.1; done
+fi
+exit 0
+STUB
+# #2389（レビュー 🟡1）: $STATE/pause-rm-<BACKUP_TEST_ID> があれば、ロックの持ち主のファイル（.publish.lock/owner）を
+# 消す直前に 1 度だけ止まる。古いロックを 2 本が同時に壊す順序を固定するための止め所である。
+REAL_RM="$(command -v rm)"
+cat > "$WORK/bin/rm" <<STUB
+#!/usr/bin/env bash
+id="\${BACKUP_TEST_ID:-}"
+if [ -n "\$id" ] && [ -f "\$STATE/pause-rm-\$id" ]; then
+  for a in "\$@"; do
+    case "\$a" in
+      */.publish.lock/owner)
+        "$REAL_RM" -f "\$STATE/pause-rm-\$id"
+        : > "\$STATE/paused-rm-\$id"
+        for _ in \$(seq 1 600); do [ -f "\$STATE/release-rm-\$id" ] && break; sleep 0.1; done
+        ;;
+    esac
+  done
+fi
+exec "$REAL_RM" "\$@"
+STUB
+# #2389: $STATE/drop-after-mv があれば、incoming を回の名前へ改名した直後に、改名の先から暗号文を 1 つ消す
+# （改名の後に中身が欠けた世界。9p の上で、改名の後に別の回の削除が同じ実体を消した事象の写し）。
+REAL_MV="$(command -v mv)"
+cat > "$WORK/bin/mv" <<STUB
+#!/usr/bin/env bash
+"$REAL_MV" "\$@" || exit \$?
+if [ -f "\$STATE/drop-after-mv" ]; then
+  src="\${@: -2:1}"; dest="\${!#}"
+  case "\$src" in
+    */.incoming-*) for f in "\$dest"/*.age; do [ -f "\$f" ] && { rm -f "\$f"; break; }; done ;;
+  esac
 fi
 exit 0
 STUB
@@ -195,6 +236,116 @@ assert_ne 'T-1560-27 保管先への写しが壊れた: 失敗で終わる（SHA
 assert_nofile 'T-1560-27 保管先への写しが壊れた: 壊れた回を C に残さない' "$R/c/postgres/2026-09-26T030000Z"
 assert_nofile 'T-1560-27 保管先への写しが壊れた: 壊れた回を E に残さない' "$R/e/postgres/2026-09-26T030000Z"
 assert_eq 'T-1560-27 保管先への写しが壊れた: incoming を残さない' "$(ls -A "$R/c/postgres" | grep -c '^\.incoming')" "0"
+
+# ---- #2389: 同じ種類の回が並行して走る（手動の Job と CronJob の回が同じ秒に重なった） ---------------
+# 2 本は Pod ごとに別の作業場（emptyDir）を持つので、試験でも staging を分ける。保管先と回の名前は同じである。
+wait_file() { local f="$1" i; for i in $(seq 1 300); do [ -f "$f" ] && return 0; sleep 0.1; done; return 1; }
+count_age() { local n=0 f; for f in "$1"/*.age; do [ -f "$f" ] && n=$((n + 1)); done; echo "$n"; }
+
+new_env
+mkdir -p "$R/staging-a" "$R/staging-b"
+: > "$STATE/pause-cp-A"
+( BACKUP_TEST_ID=A BACKUP_STAGING="$R/staging-a" bash "$HERE/backup.sh" > "$R/out-a" 2>&1; echo $? > "$R/rc-a" ) &
+PID_A=$!
+if wait_file "$STATE/paused-A"; then ok 'T-2389-01 並行: 回 A が C への写しの途中で止まる（順序の固定）'; else ng 'T-2389-01 並行: 回 A が C への写しの途中で止まる（順序の固定）' 'paused-A が来ない'; fi
+INC_A="$(ls -d "$R/c/postgres"/.incoming-* 2>/dev/null | head -n 1)"
+N_A="$(count_age "$INC_A")"
+( BACKUP_TEST_ID=B BACKUP_STAGING="$R/staging-b" BACKUP_LOCK_WAIT_SECONDS=30 bash "$HERE/backup.sh" > "$R/out-b" 2>&1; echo $? > "$R/rc-b" ) &
+PID_B=$!
+sleep 2
+assert_eq 'T-2389-02 並行: 後から来た回 B は、書いている途中の回 A の incoming を消さない' "$( [ -n "$INC_A" ] && [ -d "$INC_A" ] && count_age "$INC_A" )" "$N_A"
+: > "$STATE/release-A"
+wait "$PID_A" "$PID_B"
+assert_eq 'T-2389-03 並行: 先に書いた回 A は成功で終わる' "$(cat "$R/rc-a")" "0"
+assert_ne 'T-2389-03 並行: 同じ名前の回 B は失敗で終わる（書いていない）' "$(cat "$R/rc-b")" "0"
+assert_missing 'T-2389-03 並行: 回 B は「完了」を出さない' "$(cat "$R/out-b")" '完了（保管先'
+for t in c e; do
+	d="$R/$t/postgres/2026-09-26T030000Z"
+	assert_eq "T-2389-04 並行: $t の回は暗号文が欠けていない" "$(count_age "$d")" "4"
+	assert_eq "T-2389-04 並行: $t の回の SHA256SUMS が検証できる" "$(cd "$d" 2>/dev/null && sha256sum -c SHA256SUMS >/dev/null 2>&1; echo $?)" "0"
+	assert_eq "T-2389-04 並行: $t に incoming が残らない" "$(ls -A "$R/$t/postgres" | grep -c '^\.incoming')" "0"
+	assert_eq "T-2389-04 並行: $t にロックが残らない" "$(ls -A "$R/$t/postgres" | grep -c '^\.publish\.lock')" "0"
+done
+
+# 改名の後に中身が欠けた回を「完了」と記録しない（改名の後に保管先の回でもう一度検算する）。
+new_env
+: > "$STATE/drop-after-mv"
+run_backup
+assert_ne 'T-2389-05 改名の後に欠けた: 失敗で終わる' "$RC" "0"
+assert_missing 'T-2389-05 改名の後に欠けた: 「完了」を出さない' "$OUT" '完了（保管先'
+assert_missing 'T-2389-05 改名の後に欠けた: 「書きました」を出さない' "$OUT" '書きました'
+assert_nofile 'T-2389-05 改名の後に欠けた: 回の名前のまま残さない（保持の「完全な回」に数えない）' "$R/c/postgres/2026-09-26T030000Z"
+assert_eq 'T-2389-05 改名の後に欠けた: broken- へ退かせて残す（調べられるように）' "$(ls -A "$R/c/postgres" | grep -c '^broken-2026-09-26T030000Z')" "1"
+BROKEN="$(ls -A "$R/c/postgres" | grep '^broken-' | head -n 1)"
+if [ -n "$BROKEN" ] && [[ "$BROKEN" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-partial|-keep)?$ ]]; then ng 'T-2389-05 改名の後に欠けた: 退かせた名前は回の名前の規則に合わない' "$BROKEN"; else ok 'T-2389-05 改名の後に欠けた: 退かせた名前は回の名前の規則に合わない'; fi
+
+# ロック: 生きた別の回のロックは壊さず、待ち切れたらその保管先は失敗にする。古いロックは壊して取り直す。
+new_env
+mkdir -p "$R/c/postgres/.publish.lock"
+printf 'other-host 4242 %s\n' "$(date +%s)" > "$R/c/postgres/.publish.lock/owner"
+BACKUP_LOCK_WAIT_SECONDS=2 run_backup
+assert_ne 'T-2389-06 生きたロック: 待ち切れたら失敗で終わる' "$RC" "0"
+assert_contains 'T-2389-06 生きたロック: 理由をログに出す' "$OUT" 'ロックを取れません'
+assert_nofile 'T-2389-06 生きたロック: その保管先には書かない' "$R/c/postgres/2026-09-26T030000Z"
+assert_file 'T-2389-06 生きたロック: もう片方（E）には書く' "$R/e/postgres/2026-09-26T030000Z/SHA256SUMS"
+assert_file 'T-2389-06 生きたロック: 他の回のロックを消さない' "$R/c/postgres/.publish.lock/owner"
+
+new_env
+mkdir -p "$R/c/postgres/.publish.lock"
+printf 'gone-host 4242 1000\n' > "$R/c/postgres/.publish.lock/owner"
+mkdir -p "$R/c/postgres/.incoming-2026-09-25T030000Z"; echo x > "$R/c/postgres/.incoming-2026-09-25T030000Z/pg-a.dump.age"
+BACKUP_LOCK_WAIT_SECONDS=2 run_backup
+assert_eq 'T-2389-07 古いロック（強制終了の残骸）: 壊して取り直し、成功で終わる' "$RC" "0"
+assert_contains 'T-2389-07 古いロック: 壊したことをログに出す' "$OUT" '古いロック'
+assert_eq 'T-2389-07 古いロック: ロックを残さない' "$(ls -A "$R/c/postgres" | grep -c '^\.publish\.lock')" "0"
+assert_eq 'T-2389-07 古いロック: ロックの中で前回の incoming の残骸を片付ける' "$(ls -A "$R/c/postgres" | grep -c '^\.incoming')" "0"
+
+# 持ち主のファイルが無いロック（mkdir の直後・owner を書く前の強制終了。2 回目のレビュー 🟡1）: 持ち主の時刻が読めないときは、
+# ロックのディレクトリの更新時刻で古さを読む。閾値を過ぎていれば壊して取り直す（永久に待って失敗しない）。
+new_env
+mkdir -p "$R/c/postgres/.publish.lock"
+touch -d '@1000' "$R/c/postgres/.publish.lock"
+BACKUP_LOCK_WAIT_SECONDS=2 run_backup
+assert_eq 'T-2389-09 持ち主の無い古いロック: 壊して取り直し、成功で終わる' "$RC" "0"
+assert_contains 'T-2389-09 持ち主の無い古いロック: 壊したことをログに出す' "$OUT" '古いロック'
+assert_eq 'T-2389-09 持ち主の無い古いロック: ロックを残さない' "$(ls -A "$R/c/postgres" | grep -c '^\.publish\.lock')" "0"
+# 対照: 持ち主の無い新しいロック（取った直後で、まだ owner を書いていない回）は壊さない。
+new_env
+mkdir -p "$R/c/postgres/.publish.lock"
+BACKUP_LOCK_WAIT_SECONDS=2 run_backup
+assert_ne 'T-2389-09 持ち主の無い新しいロック: 壊さずに待ち、待ち切れたら失敗で終わる' "$RC" "0"
+[ -d "$R/c/postgres/.publish.lock" ] && ok 'T-2389-09 持ち主の無い新しいロック: 消さない' || ng 'T-2389-09 持ち主の無い新しいロック: 消さない' 'removed'
+
+# 古いロックを 2 本が同時に壊す（レビュー 🟡1）: 先に古いと見た回 B が、消す直前で止まっている間に、回 A も古いと見て壊しにくる。
+# B が再開しても、A が取ったばかりのロックを消してはならない（消すと 2 本が同時に書き、A の書きかけを B が片付けで消す）。
+# どちらがどの保管先へ書くかは順序で変わる（B が C・A が E に書く回もある）ので、成否の組ではなく次の不変を確かめる:
+# 書き込みの途中で失敗した回が無い・保管先ごとに書いた回はちょうど 1 本・保管先の回は検算が通る・ロックも破棄の印も残らない。
+new_env
+mkdir -p "$R/staging-a" "$R/staging-b"
+mkdir -p "$R/c/postgres/.publish.lock"
+printf 'gone-host 4242 1000\n' > "$R/c/postgres/.publish.lock/owner"
+: > "$STATE/pause-rm-B"
+( BACKUP_TEST_ID=B BACKUP_STAGING="$R/staging-b" BACKUP_LOCK_WAIT_SECONDS=30 bash "$HERE/backup.sh" > "$R/out-b" 2>&1; echo $? > "$R/rc-b" ) &
+PID_B=$!
+if wait_file "$STATE/paused-rm-B"; then ok 'T-2389-08 古いロックの同時の破棄: 回 B が古いロックを消す直前で止まる（順序の固定）'; else ng 'T-2389-08 古いロックの同時の破棄: 回 B が古いロックを消す直前で止まる（順序の固定）' 'paused-rm-B が来ない'; fi
+: > "$STATE/pause-cp-A"
+( BACKUP_TEST_ID=A BACKUP_STAGING="$R/staging-a" BACKUP_LOCK_WAIT_SECONDS=30 bash "$HERE/backup.sh" > "$R/out-a" 2>&1; echo $? > "$R/rc-a" ) &
+PID_A=$!
+# 修正の前は、A が古いロックを壊して取り、写しの途中で止まる。修正の後は、A は B の破棄が終わるまで待つ（止まらない）。
+for _ in $(seq 1 30); do [ -f "$STATE/paused-A" ] && break; sleep 0.1; done
+: > "$STATE/release-rm-B"
+sleep 2
+: > "$STATE/release-A"
+wait "$PID_A" "$PID_B"
+BOTH="$(cat "$R/out-a" "$R/out-b")"
+assert_missing 'T-2389-08 古いロックの同時の破棄: 書き込みの途中で失敗した回が無い（相手の取りたてのロックを消していない）' "$BOTH" '保管先へ書けませんでした'
+for t in c e; do
+	assert_eq "T-2389-08 古いロックの同時の破棄: $t へ書いた回はちょうど 1 本" "$(printf '%s\n' "$BOTH" | grep -c "書きました: $R/$t/postgres/")" "1"
+	d="$R/$t/postgres/2026-09-26T030000Z"
+	assert_eq "T-2389-08 古いロックの同時の破棄: $t の回は暗号文が欠けていない" "$(count_age "$d")" "4"
+	assert_eq "T-2389-08 古いロックの同時の破棄: $t の回の SHA256SUMS が検証できる" "$(cd "$d" 2>/dev/null && sha256sum -c SHA256SUMS >/dev/null 2>&1; echo $?)" "0"
+	assert_eq "T-2389-08 古いロックの同時の破棄: $t にロックも破棄の印も残らない" "$(ls -A "$R/$t/postgres" | grep -c '^\.publish\.lock')" "0"
+done
 
 # ---- 生成の失敗 ------------------------------------------------------------------
 new_env

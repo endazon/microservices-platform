@@ -10,6 +10,8 @@
 #        postgres: DB ごとに `pg_dump -Fc` ＋ `pg_dumpall --globals-only`
 #        vault:    raft の整合したスナップショット（k8s auth・最小ポリシー。中の SHA256SUMS で検算）＋ init のファイル（IADR-0548 / #1868）
 #   3. 各保管先へ `.incoming-<回>` として写し、SHA256SUMS で検証してから `<回>` へ改名する
+#      ［2026-11-04 / #2389・IADR-0669］保管先ごと・種類ごとのロック（`.publish.lock`）の中で書く。incoming は回ごとに一意
+#      （`.incoming-<回>-<ホスト名>-<PID>`）で、改名の後に保管先の回でもう一度検算してから「書きました」を出す
 #      **目印ファイル（.platform-backup-target）が無い保管先には書かない**（ドライブが外れていると kubelet が
 #      ディストリ内に空のディレクトリを作る。そこはクラスタ外ではない）
 #   4. 保持の規則で古い回を消す（名前の規則に合うディレクトリだけ・再帰削除をしない）
@@ -30,6 +32,15 @@ BACKUP_MARKER_NAME=".platform-backup-target"
 BACKUP_DAILY_KEEP="${BACKUP_DAILY_KEEP:-30}"
 BACKUP_LONG_YEARS="${BACKUP_LONG_YEARS:-7}"
 VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
+# NFR-21, IADR-0669 (#2389): 保管先ごとのロック。待つ上限と、古い（強制終了の残骸の）ロックと見なす経過の秒。
+# 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 1800）の 2 倍である（生きた回のロックを壊さない）。
+BACKUP_LOCK_WAIT_SECONDS="${BACKUP_LOCK_WAIT_SECONDS:-900}"
+BACKUP_LOCK_STALE_SECONDS="${BACKUP_LOCK_STALE_SECONDS:-7200}"
+# 破棄の印（<ロック>.break）の残骸と見なす経過の秒（印を取った直後の強制終了。ミリ秒の窓）。
+BACKUP_LOCK_BREAK_STALE_SECONDS="${BACKUP_LOCK_BREAK_STALE_SECONDS:-300}"
+BACKUP_LOCK_NAME=".publish.lock"
+# 自分が持っているロック（保管先の kind_dir）。trap で解放する。
+HELD_LOCKS=()
 
 # 回の名前: UTC の時刻 ＋ 任意の接尾辞（-partial = 一部失敗 / -keep = 運用者が長期保持へ改名したもの）。
 RUN_NAME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-partial|-keep)?$'
@@ -402,6 +413,105 @@ write_sums() {
 	(cd "$1" && sha256sum -- *.age > SHA256SUMS)
 }
 
+# ---------------------------------------------------------------- lock（#2389・IADR-0669）
+#
+# 同じ種類の回が並行して走ると（手動の Job は CronJob の concurrencyPolicy: Forbid の外にある）、互いの incoming を消し、
+# 欠けた回が「完了」と記録された（#2389）。保管先への書き込みと保持の削除を、保管先ごと・種類ごとのロックの中だけで行う。
+# 🔴 ロックは `mkdir` の原子性で取る（9p〔drvfs〕の hostPath でも flock に頼らない）。中に持ち主（ホスト名・PID・時刻）を書く。
+lock_owner_id() { printf '%s %s' "${HOSTNAME:-unknown}" "$$"; }
+
+acquire_lock() {
+	local kind_dir="$1" lock="$1/$BACKUP_LOCK_NAME" waited=0 owner since now
+	while :; do
+		if mkdir -- "$lock" 2>/dev/null; then
+			printf '%s %s\n' "$(lock_owner_id)" "$(date +%s)" > "$lock/owner" || { rmdir -- "$lock" 2>/dev/null; return 1; }
+			HELD_LOCKS+=("$kind_dir")
+			return 0
+		fi
+		# 古いロック（Pod が強制終了されて trap が走らなかった残骸）は壊して取り直す。持ち主の時刻が読めなければ古いと見なさない。
+		if lock_is_stale "$lock"; then
+			case "$(break_stale_lock "$lock")" in
+				broken) continue ;;
+				failed) return 1 ;;
+			esac
+		fi
+		if [ "$waited" -ge "$BACKUP_LOCK_WAIT_SECONDS" ]; then
+			err "ロックを取れません（別の回が書いています。${waited} 秒待ちました）: $lock"
+			return 1
+		fi
+		[ "$waited" -eq 0 ] && log "別の回が書いているので待ちます: $lock"
+		sleep 1
+		waited=$((waited + 1))
+	done
+}
+
+# ロックの取った時刻（エポック秒）を出す。持ち主の時刻を読み、読めなければロックのディレクトリの更新時刻を使う。
+# 🔴 2 回目のレビュー 🟡1: `mkdir` の直後・owner を書く前に強制終了されたロックは、持ち主の時刻が無い。読めないから古くないと
+#    見なすと、以後の回が永久に待って失敗する。ディレクトリの更新時刻（作った時刻）で古さを読む（破棄の印と同じ手）。
+#    取った直後でまだ owner を書いていない回のロックは、更新時刻が新しいので壊さない。
+lock_since() {
+	local owner since
+	owner="$(head -n 1 "$1/owner" 2>/dev/null)"
+	since="${owner##* }"
+	[[ "$since" =~ ^[0-9]+$ ]] || since="$(stat -c %Y -- "$1" 2>/dev/null)"
+	printf '%s' "$since"
+}
+
+# 取った時刻が BACKUP_LOCK_STALE_SECONDS より古いか（どちらの時刻も読めなければ古いと見なさない）。
+lock_is_stale() {
+	local since
+	since="$(lock_since "$1")"
+	[[ "$since" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - since)) -gt "$BACKUP_LOCK_STALE_SECONDS" ]
+}
+
+# 古いロックを壊す。結果を 1 語で出す: broken（壊した・取り直してよい）/ busy（別の回が壊している・待つ）/ failed。
+# 🔴 #2389（レビュー 🟡1）: **壊すのは、破棄の印 `<ロック>.break`（mkdir の原子性）を取った 1 本だけで、印の中で古さを読み直す。**
+#    古いと見た後に止まっていた回が、別の回が壊して取ったばかりのロックを消すと、2 本が同時に書く（試験 T-2389-08）。
+#    印を持つ間は、古いロックはまだ在るので、誰も新しいロックを取れない。だから読み直して古ければ、それは生きたロックではない。
+#    印そのものが残った（印を取った直後の強制終了。ミリ秒の窓）ときは、印の作成から BACKUP_LOCK_BREAK_STALE_SECONDS で片付ける。
+break_stale_lock() {
+	local lock="$1" brk="$1.break" owner since mtime
+	if ! mkdir -- "$brk" 2>/dev/null; then
+		mtime="$(stat -c %Y -- "$brk" 2>/dev/null)"
+		if [[ "$mtime" =~ ^[0-9]+$ ]] && [ $(($(date +%s) - mtime)) -gt "$BACKUP_LOCK_BREAK_STALE_SECONDS" ]; then
+			rmdir -- "$brk" 2>/dev/null
+		fi
+		echo busy
+		return 0
+	fi
+	if lock_is_stale "$lock"; then
+		owner="$(head -n 1 "$lock/owner" 2>/dev/null)"
+		since="$(lock_since "$lock")"
+		log "古いロックを壊します: $lock（持ち主 ${owner:+${owner% *}}${owner:-不明〔持ち主のファイルが無い〕}・$(($(date +%s) - since)) 秒前）" >&2
+		if ! remove_flat_dir "$lock"; then
+			err "古いロックを消せません（想定外の中身があります）: $lock"
+			rmdir -- "$brk" 2>/dev/null
+			echo failed
+			return 0
+		fi
+	fi
+	rmdir -- "$brk" 2>/dev/null
+	echo broken
+}
+
+# 自分のロックだけを解放する（持ち主が自分でなければ触らない）。
+release_lock() {
+	local kind_dir="$1" lock="$1/$BACKUP_LOCK_NAME" owner i
+	owner="$(head -n 1 "$lock/owner" 2>/dev/null)"
+	if [ "${owner% *}" = "$(lock_owner_id)" ]; then
+		remove_flat_dir "$lock"
+	fi
+	for i in "${!HELD_LOCKS[@]}"; do
+		[ "${HELD_LOCKS[$i]}" = "$kind_dir" ] && unset 'HELD_LOCKS[i]'
+	done
+	return 0
+}
+
+release_all_locks() {
+	local d
+	for d in "${HELD_LOCKS[@]}"; do release_lock "$d"; done
+}
+
 publish() {
 	local target="$1" run="$2" staging="$3" kind_dir incoming old
 	if [ ! -d "$target" ] || [ ! -f "$target/$BACKUP_MARKER_NAME" ]; then
@@ -413,12 +523,16 @@ publish() {
 		err "保管先にディレクトリを作れません: $kind_dir"
 		return 1
 	fi
+	# 🔴 #2389・IADR-0669: ここから先（片付け・incoming・改名・検算）はロックの中だけで行う。ロックを持つ間は、他の回が
+	#    この保管先へ書いていない。だから前回の残骸の片付けで、動いている別の回の incoming を消すことが無い。
+	acquire_lock "$kind_dir" || return 1
 	# 前回の途中で残った incoming を片付ける（平らなものだけ）。
 	for old in "$kind_dir"/.incoming-*; do
 		[ -L "$old" ] && continue
 		[ -d "$old" ] && remove_flat_dir "$old"
 	done
-	incoming="$kind_dir/.incoming-$run"
+	# incoming は回ごとに一意にする（同じ秒・同じ種類の回が重なっても、同じパスを使わない）。
+	incoming="$kind_dir/.incoming-$run-${HOSTNAME:-unknown}-$$"
 	if [ -e "$kind_dir/$run" ]; then
 		err "同じ名前の回が既にあります: $kind_dir/$run"
 		return 1
@@ -427,8 +541,20 @@ publish() {
 		cp -- "$staging"/* "$incoming"/ 2>/dev/null &&
 		(cd "$incoming" && sha256sum -c SHA256SUMS >/dev/null 2>&1) &&
 		mv -- "$incoming" "$kind_dir/$run" 2>/dev/null; then
-		log "書きました: $kind_dir/$run"
-		return 0
+		# 🔴 #2389: 改名の後に、保管先の回でもう一度検算する。通らなければ「書きました」を出さず、回を名前の規則の外
+		#    （broken-…）へ退かせる —— 保持の規則の「最新の完全な回」に数えさせないためである。
+		if (cd "$kind_dir/$run" && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
+			log "書きました: $kind_dir/$run"
+			return 0
+		fi
+		local broken
+		broken="$kind_dir/broken-$run-$(date -u +%Y%m%dT%H%M%SZ)"
+		if mv -- "$kind_dir/$run" "$broken" 2>/dev/null; then
+			err "書いた回の検算が合いません。回を退かせました: $broken"
+		else
+			err "書いた回の検算が合いません。退かせることもできませんでした: $kind_dir/$run（手で broken- へ改名してください）"
+		fi
+		return 1
 	fi
 	err "保管先へ書けませんでした: $kind_dir"
 	remove_flat_dir "$incoming"
@@ -553,6 +679,10 @@ main() {
 	fi
 	write_sums "$staging" || { err "SHA256SUMS を作れません"; remove_flat_dir "$staging"; return 1; }
 
+	# #2389・IADR-0669: 強制終了（activeDeadlineSeconds の TERM）でもロックを残さない。
+	trap 'release_all_locks' EXIT
+	trap 'release_all_locks; exit 143' TERM
+	trap 'release_all_locks; exit 130' INT
 	for target in $BACKUP_TARGETS; do
 		if publish "$target" "$run" "$staging"; then
 			written=$((written + 1))
@@ -560,6 +690,8 @@ main() {
 		else
 			rc=1
 		fi
+		# 保持の削除もロックの中で行い、終わったら解放する（publish が失敗したときもロックを持っていれば解放する）。
+		release_lock "$target/$BACKUP_KIND"
 	done
 	remove_flat_dir "$staging"
 	if [ "$written" -eq 0 ]; then

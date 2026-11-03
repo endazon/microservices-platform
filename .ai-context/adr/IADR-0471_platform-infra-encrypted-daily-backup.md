@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-21, NFR-05, NFR-18, ADR-0002, ADR-0008, IADR-0066, IADR-0068, IADR-0082, IADR-0210, IADR-0369, IADR-0457]
 author: claude
 created: 2026-09-26
-updated: 2026-10-20
+updated: 2026-11-04
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
@@ -152,6 +152,9 @@ age の公開鍵で暗号化して秘密鍵はクラスタに置かない、日�
   そこで運用者が準備で置く**目印ファイル `.platform-backup-target` が無い保管先には書かない**。
 - 片方に書けなくてももう片方には書き、最後に exit 1 で Job を失敗にする。書き込みは `.incoming-<回>` へ写して
   SHA256SUMS を検証してから改名する（途中で落ちても半端な回が「回」として残らない）。`backoffLimit: 0`（失敗を再試行で上書きしない）。
+  ［2026-11-04 追記 / #2389］同じ種類の回が並行すると（手動の Job は `concurrencyPolicy: Forbid` の外）、`.incoming-<回>` が同じパスになり、
+  残骸の片付けが動いている別の回の incoming を消して、欠けた回が「完了」と記録された。保管先ごとのロック・回ごとに一意の incoming・
+  改名の後の検算を足した（IADR-0669）。
 
 ### 6. 保持: 世代数と月の最初の回、消すのは名前の規則に合う平らなディレクトリだけ
 
