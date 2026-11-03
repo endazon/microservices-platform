@@ -12,7 +12,7 @@
 // - 🔴 **後始末で空に戻さない**: SC-22 は空の値を受けない（BFF は 400 `invalid-value`。計画 SC-22 / ADR-0095 も空へ戻す操作を定めていない）。
 //   書いた値はスタックごと消える。網羅表の「空に戻す」は #2013 で訂正する。
 import { randomBytes } from 'node:crypto';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import { parseLiveEnv, stateFile } from './support/env';
 import { DEFAULT_AUTH_DIR } from './support/paths';
 import { recordIssuedSecret } from './support/issuedSecrets';
@@ -57,6 +57,30 @@ function hasKey(value: unknown, key: string): boolean {
   if (value !== null && typeof value === 'object')
     return Object.entries(value).some(([k, v]) => k === key || hasKey(v, key));
   return false;
+}
+
+/**
+ * NFR, #2385: BFF の応答を待ち、**本文を届いた時点で読む**（method と pathname で特定する）。
+ * 判定の中で `text()` を読み、読めた応答だけを採る。移動（再読込）が捨てた前の文書の応答は本文が読めないので、
+ * 判定を偽にして次を待つ —— 待ちが解けた後に本文を読むと、その間の移動で `getResponseBody` が落ちる（#2385 の事象）。
+ * 判定は応答ごとに並行に走り得るので、本文は応答ごとに持つ。
+ */
+async function bffResponseWithText(
+  page: Page,
+  method: string,
+  path: string,
+): Promise<{ status: number; text: string }> {
+  const texts = new Map<Response, string>();
+  const res = await page.waitForResponse(async (r) => {
+    if (r.request().method() !== method || new URL(r.url()).pathname !== path) return false;
+    try {
+      texts.set(r, await r.text());
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  return { status: res.status(), text: texts.get(res) ?? '' };
 }
 
 /** 画面の操作が送った BFF の要求の応答を待つ（method と pathname で特定する）。 */
@@ -121,11 +145,14 @@ test(
     expect((await page.content()).includes(secret), '書いた値が画面の DOM に残った').toBe(false);
 
     // 再読込: 一覧の応答に値の鍵も値も無く、行は「設定済み」で最終更新者が記録されている。
-    const listed = bffResponse(page, 'GET', '/bff/secrets');
+    // 🔴 #2385: 書き込みの成功で一覧の問い合わせが無効になり、前の文書も GET /bff/secrets を取り直す。その応答で待ちが解けると、
+    //    再読込がその本文を捨てる。本文は届いた時点で読む（読めない応答は採らない）。採るのは書き込みの後の一覧の応答で、
+    //    前の文書の取り直しでも再読込の後の文書でも、確かめる内容は同じである（画面の表示は再読込の後で確かめる）。
+    const listed = bffResponseWithText(page, 'GET', '/bff/secrets');
     await page.reload();
     const list = await listed;
-    expect(list.status(), 'GET /bff/secrets').toBe(200);
-    const listText = await list.text();
+    expect(list.status, 'GET /bff/secrets').toBe(200);
+    const listText = list.text;
     expect(hasKey(JSON.parse(listText), 'value'), '一覧の応答の value').toBe(false);
     expect(listText.includes(secret), '書いた値が一覧の応答に出た').toBe(false);
     await expect(rowOf(page).getByText(T.set)).toBeVisible();
