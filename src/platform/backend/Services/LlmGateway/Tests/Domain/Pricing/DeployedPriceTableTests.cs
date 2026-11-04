@@ -65,6 +65,66 @@ public class DeployedPriceTableTests(TestWebApplicationFactory factory)
         result.Cost.Should().Be(inputTokens / 1_000_000m * (decimal)inputPerMillion + (decimal)outputPerMillion);
     }
 
+    // FR-10 T-2396-14, ADR-0044 決定 3, IADR-0671 (#2396): 実設定のキャッシュの書き（5 分）・読みの単価（提供元の公表値。2026-11-05 確認）。
+    // 百万トークンあたり: opus-5-5 書き $5・読み $0.20、sonnet-5-5 書き $2.50・読み $0.10（0.05 倍。$0.20 ではない）、
+    // haiku-5-5 は全体 100,000 以下 書き $0.125・読み $0.01、超 書き $0.625・読み $0.05。
+    [Theory]
+    [InlineData("claude-opus-5-5", 5.0, 0.20)]
+    [InlineData("claude-sonnet-5-5", 2.50, 0.10)]
+    [InlineData("claude-haiku-5-5", 0.125, 0.01)]
+    public void 実設定の55系のキャッシュの単価で換算される(string model, double writePerMillion, double readPerMillion)
+    {
+        var prices = factory.Services.GetRequiredService<ModelPriceTable>();
+        var at = new DateTimeOffset(2026, 11, 5, 0, 0, 0, TimeSpan.Zero);
+
+        // haiku の下段に収めるため、10 万トークンの単位で見る（10 倍して百万あたりへ戻す）。
+        var write = prices.Estimate(model, 100_000, 0, at, new PromptCacheTokens(100_000, 0));
+        var read = prices.Estimate(model, 100_000, 0, at, new PromptCacheTokens(0, 100_000));
+
+        write.Status.Should().Be(PricingStatus.Priced);
+        write.LongPromptApplied.Should().BeFalse();
+        (write.Cost * 10).Should().Be((decimal)writePerMillion);
+        read.Status.Should().Be(PricingStatus.Priced);
+        (read.Cost * 10).Should().Be((decimal)readPerMillion);
+    }
+
+    // FR-10 T-2396-14: haiku-5-5 の上段（全体 > 100,000）の書き・読み。全体 200,000 のうち書き 100,000・読み 100,000:
+    // 100000×0.625 + 100000×0.05 = 67,500 /1M = $0.0675。
+    [Fact]
+    public void 実設定のhaiku_5_5の上段のキャッシュの単価で換算される()
+    {
+        var prices = factory.Services.GetRequiredService<ModelPriceTable>();
+
+        var result = prices.Estimate(
+            "claude-haiku-5-5", 200_000, 0, new DateTimeOffset(2026, 11, 5, 0, 0, 0, TimeSpan.Zero),
+            new PromptCacheTokens(100_000, 100_000));
+
+        result.Status.Should().Be(PricingStatus.Priced);
+        result.LongPromptApplied.Should().BeTrue();
+        result.Cost.Should().Be(0.0675m);
+    }
+
+    // FR-10 T-2396-14: 実設定のどの単価（上段を含む）も書き・読みの単価を持つ（足し忘れると、キャッシュを使った要求だけが単価なしになる）。
+    [Fact]
+    public void 実設定のすべての単価はキャッシュの書きと読みの単価を持つ()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<ModelPricingOptions>>().Value;
+
+        foreach (var (model, entries) in options.Models)
+        {
+            foreach (var entry in entries)
+            {
+                entry.CacheWritePerMillionTokens.Should().NotBeNull(model);
+                entry.CacheReadPerMillionTokens.Should().NotBeNull(model);
+                if (entry.LongPrompt is { } lp)
+                {
+                    lp.CacheWritePerMillionTokens.Should().NotBeNull(model);
+                    lp.CacheReadPerMillionTokens.Should().NotBeNull(model);
+                }
+            }
+        }
+    }
+
     // FR-10 T-48, FR-11, ADR-0138 決定 7 (#1903): 実設定の単価表は 5.5 系の 3 モデルだけを持つ。
     // 旧 ID の行を残さない（決定 7「単価表に旧 ID の行を残さない」）。有効期間つきで残す形も採らない（同）。
     [Fact]

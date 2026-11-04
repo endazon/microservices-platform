@@ -85,6 +85,8 @@ public static class LlmGrpcMapping
         Model = req.Model ?? string.Empty,
         Confidentiality = req.Confidentiality ?? string.Empty,
         Purpose = req.Purpose ?? string.Empty,
+        // IADR-0671 (#2396): null（未指定）は空文字へ写す。受け側（ClaudeProvider）は空文字を未指定と同じに扱う。
+        CacheablePrefix = req.CacheablePrefix ?? string.Empty,
     };
 
     /// <summary>
@@ -107,7 +109,8 @@ public static class LlmGrpcMapping
         MaxTokens: req.MaxTokens == 0 ? DefaultMaxTokens : req.MaxTokens,
         Model: req.Model,
         Confidentiality: req.Confidentiality,
-        Purpose: req.Purpose);
+        Purpose: req.Purpose,
+        CacheablePrefix: string.IsNullOrEmpty(req.CacheablePrefix) ? null : req.CacheablePrefix);
 
     /// <summary>
     /// REST の <c>CompletionApiRequest.MaxTokens</c> の既定（IADR-0101）。
@@ -129,6 +132,8 @@ public static class LlmGrpcMapping
         // #1819: proto3 に null は無い。null は空文字 / 0 へ写し、受け側（ToDto）が null へ戻す。
         FailureKind = resp.FailureKind ?? string.Empty,
         UpstreamStatusCode = resp.UpstreamStatusCode ?? 0,
+        CacheCreationInputTokens = resp.CacheCreationInputTokens,
+        CacheReadInputTokens = resp.CacheReadInputTokens,
     };
 
     public static CompletionApiResponse ToDto(Pb.CompleteResponse resp) => new(
@@ -143,7 +148,9 @@ public static class LlmGrpcMapping
         StopReason: string.IsNullOrEmpty(resp.StopReason) ? null : resp.StopReason,
         FailureKind: string.IsNullOrEmpty(resp.FailureKind) ? null : resp.FailureKind,
         // HTTP の状態コードに 0 は無いので、0 を「無い」に使ってよい。
-        UpstreamStatusCode: resp.UpstreamStatusCode == 0 ? null : resp.UpstreamStatusCode);
+        UpstreamStatusCode: resp.UpstreamStatusCode == 0 ? null : resp.UpstreamStatusCode,
+        CacheCreationInputTokens: resp.CacheCreationInputTokens,
+        CacheReadInputTokens: resp.CacheReadInputTokens);
 
     /// <summary>
     /// SSE の 1 イベント（<c>CompletionStreamEvent</c>）を proto のメッセージへ写す。
@@ -167,6 +174,8 @@ public static class LlmGrpcMapping
         StopReason = ev.StopReason ?? string.Empty,
         FailureKind = ev.FailureKind ?? string.Empty,
         UpstreamStatusCode = ev.UpstreamStatusCode ?? 0,
+        CacheCreationInputTokens = ev.CacheCreationInputTokens,
+        CacheReadInputTokens = ev.CacheReadInputTokens,
     };
 
     public static CompletionStreamEvent ToDto(Pb.CompletionStreamEvent ev) => new(
@@ -180,5 +189,7 @@ public static class LlmGrpcMapping
         RoutingReason: string.IsNullOrEmpty(ev.RoutingReason) ? null : ev.RoutingReason,
         StopReason: string.IsNullOrEmpty(ev.StopReason) ? null : ev.StopReason,
         FailureKind: string.IsNullOrEmpty(ev.FailureKind) ? null : ev.FailureKind,
-        UpstreamStatusCode: ev.UpstreamStatusCode == 0 ? null : ev.UpstreamStatusCode);
+        UpstreamStatusCode: ev.UpstreamStatusCode == 0 ? null : ev.UpstreamStatusCode,
+        CacheCreationInputTokens: ev.CacheCreationInputTokens,
+        CacheReadInputTokens: ev.CacheReadInputTokens);
 }

@@ -59,6 +59,10 @@ public sealed class LlmUsageMetrics
 
     public const string TokenTypeInput = "input";
     public const string TokenTypeOutput = "output";
+    // FR-10, IADR-0671 (#2396): キャッシュの書き・読み。単価が入力と違うので型を分ける。
+    // input はキャッシュに関わらない残り（入力単価で数える分）であり、4 つの型は重ならない（和がプロンプト全体＋出力）。
+    public const string TokenTypeCacheWrite = "cache_write";
+    public const string TokenTypeCacheRead = "cache_read";
 
     // 単価が解決できなかった理由（PricingStatus の属性表現）。値域は 2 値で閉じる。
     public const string PricingOutOfPeriod = "out_of_period";
@@ -85,8 +89,9 @@ public sealed class LlmUsageMetrics
         var meter = meterFactory.Create(MeterName);
         _tokens = meter.CreateCounter<long>(
             TokensCounterName, unit: "{token}",
-            description: "送信が成立した LLM 補完のトークン消費量の累計（用途別・モデル別。入出力は "
-                       + "llm.token_type で分ける）。費用の分子である。");
+            description: "送信が成立した LLM 補完のトークン消費量の累計（用途別・モデル別。単価の区分を "
+                       + "llm.token_type で分ける: input＝キャッシュに関わらない入力・cache_write・cache_read・output。"
+                       + "4 つは重ならない）。費用の分子である。");
         _cost = meter.CreateCounter<double>(
             CostCounterName, unit: "{currency}",
             description: "LLM 補完の金額換算の累計（用途別・モデル別）。換算は有効期間つき単価表を読む "
@@ -120,7 +125,7 @@ public sealed class LlmUsageMetrics
     //     期間をまたぐ集計が正しい金額になる。
     public void RecordUsage(
         RoutingDecision decision, string purpose, SensitivityClass sensitivity,
-        long inputTokens, long outputTokens, DateTimeOffset? at = null)
+        long inputTokens, long outputTokens, DateTimeOffset? at = null, PromptCacheTokens cache = default)
     {
         var occurredAt = at ?? _clock.GetUtcNow();
         var routing = _routing.CurrentValue;
@@ -136,13 +141,20 @@ public sealed class LlmUsageMetrics
 
         // トークンは入出力で単価が違うため、属性で分けて 1 本の計器に載せる
         // （計器を 2 本に分けると PromQL 側で足し合わせる式が要り、用途別の内訳が読みにくくなる）。
-        RecordTokens(baseTags, TokenTypeInput, inputTokens);
+        // FR-10, IADR-0671 (#2396): inputTokens はプロンプト全体（キャッシュの書き・読みを含む）。キャッシュの書き・読みは単価が
+        // 違うので型を分け、input には残り（入力単価で数える分）だけを積む。4 つの型は重ならない（和 = 全体＋出力）。
+        var write = Math.Max(0, cache.Write);
+        var read = Math.Max(0, cache.Read);
+        RecordTokens(baseTags, TokenTypeInput, Math.Max(0, inputTokens - write - read));
+        RecordTokens(baseTags, TokenTypeCacheWrite, write);
+        RecordTokens(baseTags, TokenTypeCacheRead, read);
         RecordTokens(baseTags, TokenTypeOutput, outputTokens);
 
-        var estimate = _prices.Estimate(decision.Model, inputTokens, outputTokens, occurredAt);
+        var estimate = _prices.Estimate(decision.Model, inputTokens, outputTokens, occurredAt, cache);
         if (!estimate.IsPriced)
         {
             // ADR-0044 決定 3: **無音で 0 円として扱わない。** 金額は積まず、解決できなかったことを計上する。
+            // IADR-0671 (#2396): キャッシュの単価の欠け（NoCacheRate）も no_entry（必要な単価が未登録）として数える（値域は 2 値のまま）。
             var unpricedTags = new TagList
             {
                 { PricingStatusTag, estimate.Status == PricingStatus.OutOfEffectivePeriod ? PricingOutOfPeriod : PricingNoEntry },

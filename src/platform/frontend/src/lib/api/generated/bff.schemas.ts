@@ -1517,6 +1517,12 @@ export interface CompletionApiRequest {
   confidentiality?: CompletionApiRequestConfidentiality;
   /** 用途。null/空は default 扱い */
   purpose?: string | null;
+  /**
+     * #2396: 呼び出しをまたいで変わらないプロンプトの接頭辞（任意）。モデルが読む全文は `cacheablePrefix + prompt`
+     * （区切りを足さない）。Claude にはこの末尾へプロンプトキャッシュの区切り（cache_control・5 分）を置いて送る。
+     * null・空は従前と同じ形で送る。時刻など呼び出しごとに変わる値を入れるとキャッシュは読まれない。
+     */
+  cacheablePrefix?: string | null;
 }
 
 /**
@@ -1568,6 +1574,16 @@ export interface CompletionApiResponse {
      * （429＝レート制限・5xx＝呼び出し先の障害など）。輸送の失敗・その他の原因・sent=true では null。
      */
   upstreamStatusCode?: number | null;
+  /**
+     * #2396: inputTokens（プロンプト全体。キャッシュを含む）のうち、プロンプトキャッシュへ書いた分
+     * （提供元の `cache_creation_input_tokens`）。単価は入力の 1.25 倍。キャッシュを使わない呼び出しでは 0。
+     */
+  cacheCreationInputTokens: number;
+  /**
+     * #2396: inputTokens のうち、プロンプトキャッシュから読んだ分（提供元の `cache_read_input_tokens`）。
+     * 単価は入力の 0.05〜0.1 倍。キャッシュに関わらない残り = inputTokens − cacheCreationInputTokens − cacheReadInputTokens。
+     */
+  cacheReadInputTokens: number;
 }
 
 /**

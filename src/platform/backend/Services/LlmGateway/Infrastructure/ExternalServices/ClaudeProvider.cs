@@ -52,10 +52,39 @@ public class ClaudeProvider(
         {
             Model = model,
             MaxTokens = request.MaxTokens,
-            Messages = [new MessageParam { Role = Role.User, Content = request.Prompt }],
+            Messages = [new MessageParam { Role = Role.User, Content = UserContent(request) }],
             OutputConfig = effort is null ? null : new OutputConfig { Effort = effort },
         };
     }
+
+    // FR-11, ADR-0022, IADR-0671 (#2396): 呼び手が接頭辞を分けて渡したときだけ、user の 1 件の content を text ブロックに分け、
+    // 接頭辞の末尾へキャッシュの区切り（cache_control: ephemeral＝5 分。提供元の既定）を置く。区切りは 1 個だけ。
+    //   - system へは移さない（指示の役割が user から operator へ変わり、判断の内容が変わり得る）。モデルが読む本文は
+    //     接頭辞＋残りの連結で従前と同じ（ブロックの間に文字を足さない）。model・max_tokens・effort・messages の件数も変えない。
+    //   - 1 時間の TTL は使わない（呼び出しの間隔が 5 分より短い。書きが 1.25 倍 → 2 倍になるだけ）。
+    //   - 最小長（5.5 系は 512 トークン）に満たない接頭辞も弾かない。提供元がエラーにせず黙ってキャッシュしないだけで、
+    //     書きの割増も掛からない（cache_creation_input_tokens: 0）。
+    //   - 残りが空なら接頭辞のブロックだけを送る（空の text ブロックは提供元が拒む）。
+    // 接頭辞が無ければ従前と同じ文字列の content（cache_control なし）で送る（後方互換）。
+    private static MessageParamContent UserContent(CompletionRequest request)
+    {
+        if (!request.HasCacheablePrefix)
+            return request.Prompt;
+
+        var blocks = new List<ContentBlockParam>
+        {
+            new TextBlockParam { Text = request.CacheablePrefix!, CacheControl = new CacheControlEphemeral() },
+        };
+        if (!string.IsNullOrEmpty(request.Prompt))
+            blocks.Add(new TextBlockParam { Text = request.Prompt });
+        return blocks;
+    }
+
+    // FR-10, IADR-0671 (#2396): 提供元の input_tokens は**最後の区切りの後ろの残りだけ**である。ゲートウェイの InputTokens は
+    // プロンプト全体（残り＋書き＋読み）とし、従前の意味（キャッシュを使わなければ input_tokens と同じ）を保つ。
+    private static int Whole(long uncached, long write, long read) => (int)(uncached + write + read);
+
+    private static long OrZero(long? value) => value ?? 0;
 
     public async Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
     {
@@ -100,8 +129,11 @@ public class ClaudeProvider(
         if (CompletionStopReasons.IsRefusal(stopReason))
             text = string.Empty;
 
+        var write = OrZero(msg.Usage.CacheCreationInputTokens);
+        var read = OrZero(msg.Usage.CacheReadInputTokens);
         return new CompletionResult(
-            text ?? string.Empty, (int)msg.Usage.InputTokens, (int)msg.Usage.OutputTokens, stopReason);
+            text ?? string.Empty, Whole(msg.Usage.InputTokens, write, read), (int)msg.Usage.OutputTokens, stopReason,
+            (int)write, (int)read);
     }
 
     // IADR-0037: Anthropic SDK の SSE ストリーミングで本文デルタを逐次返す（真のストリーミング・主経路）。
@@ -111,6 +143,8 @@ public class ClaudeProvider(
     {
         var model = request.Model ?? _model;
         int inputTokens = 0, outputTokens = 0;
+        // IADR-0671 (#2396): プロンプト全体のうちのキャッシュの書き・読み（message_start で判明。message_delta の値が正のときだけ置き換える）。
+        long uncached = 0, cacheWrite = 0, cacheRead = 0;
         string? stopReason = null;
 
         // IADR-0562 決定 4: 逐次には呼び出し全体の期限を掛けない。期限（Timeout）が効くのは応答ヘッダの到着までで、
@@ -154,7 +188,10 @@ public class ClaudeProvider(
             var usageAdvanced = false;
             if (ev.TryPickStart(out var start))
             {
-                inputTokens = (int)start.Message.Usage.InputTokens;
+                uncached = start.Message.Usage.InputTokens;
+                cacheWrite = OrZero(start.Message.Usage.CacheCreationInputTokens);
+                cacheRead = OrZero(start.Message.Usage.CacheReadInputTokens);
+                inputTokens = Whole(uncached, cacheWrite, cacheRead);
                 usageAdvanced = inputTokens > 0;
             }
 
@@ -167,12 +204,20 @@ public class ClaudeProvider(
                     outputTokens = (int)delta.Usage.OutputTokens;
                     usageAdvanced = true;
                 }
+                // IADR-0671: message_delta の usage の書き・読みは累計（提供元）で減らない。**正の値のときだけ**置き換え、0・欠落は「未報告」と
+                // 同じに読んで start の値のまま残す（0 で上書きすると判明分の書き・読みが消え、残りを入力単価で過大に数える）。
+                if (delta.Usage.CacheCreationInputTokens is { } deltaWrite && deltaWrite > 0)
+                    cacheWrite = deltaWrite;
+                if (delta.Usage.CacheReadInputTokens is { } deltaRead && deltaRead > 0)
+                    cacheRead = deltaRead;
+                inputTokens = Whole(uncached, cacheWrite, cacheRead);
                 if (delta.Delta.StopReason?.Raw() is { Length: > 0 } deltaStop)
                     stopReason = deltaStop;
             }
 
             if (usageAdvanced)
-                yield return new CompletionChunk(string.Empty, Done: false, inputTokens, outputTokens);
+                yield return new CompletionChunk(
+                    string.Empty, Done: false, inputTokens, outputTokens, null, (int)cacheWrite, (int)cacheRead);
 
             // 本文デルタ（text_delta）だけを流す。thinking_delta / signature_delta は流さない（T-35）。
             if (ev.TryPickContentBlockDelta(out var blockDelta)
@@ -182,7 +227,8 @@ public class ClaudeProvider(
         }
 
         // 最終チャンク: 本文増分なし・トークン数と終了理由を伴う（呼び出し側が集計と縮退判断を確定できる）。
-        yield return new CompletionChunk(string.Empty, Done: true, inputTokens, outputTokens, stopReason);
+        yield return new CompletionChunk(
+            string.Empty, Done: true, inputTokens, outputTokens, stopReason, (int)cacheWrite, (int)cacheRead);
     }
 
     // 本文は先頭の text ブロック（旧 SDK の実装と同じ取り方）。それ以外のブロックは本文に使わずに捨て、その型名を記録する。

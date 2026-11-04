@@ -4,14 +4,14 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-10-30
+updated: 2026-11-05
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601]
-specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort]
-issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, planning#783]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671]
+specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching]
+issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, planning#783]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -64,9 +64,9 @@ Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲ�
 | `llm.model` | ルータが選んだモデル / `none` | tokens / cost / unpriced |
 | `llm.provider` | `claude` / `selfhosted` / `copilot` / `none` | tokens / cost |
 | `llm.confidentiality` | `public` / `internal` / `confidential` / `restricted` | tokens / cost |
-| `llm.token_type` | `input` / `output` | tokens |
+| `llm.token_type` | `input`（キャッシュに関わらない入力）/ `cache_write`（プロンプトキャッシュへの書き）/ `cache_read`（プロンプトキャッシュからの読み）/ `output`。4 つは重ならず、和がプロンプト全体＋出力になる（2026-11-05） | tokens |
 | `llm.currency` | 単価表の通貨（既定 `USD`） | cost / budget |
-| `llm.pricing_status` | `out_of_period` / `no_entry` | unpriced |
+| `llm.pricing_status` | `out_of_period` / `no_entry`（モデルの単価、またはキャッシュを使った要求の書き・読みの単価が未登録） | unpriced |
 | （合成の除外） | 用途・モデル・プロバイダ・機密区分（tokens / cost と同じ軸） | synthetic_excluded |
 | （不完全） | 用途・モデル・プロバイダ・機密区分（tokens / cost と同じ軸） | incomplete |
 | `llm.incomplete_reason` | `upstream_error`（上流が途中で切れた）/ `cancelled`（呼び出し側が取り消した）/ `no_final_chunk`（例外なく終わったが最終チャンクが無い） | incomplete |
@@ -90,9 +90,17 @@ Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲ�
   その要求の入力と出力の**両方**を上段で換算する（境界ちょうどは下段）。段は要求ごとに決まり、集計期間の合計では決めない。
   現在これを持つのは `claude-haiku-5-5` だけである（100,000 トークン以下 $0.10 / $0.50、超 $0.50 / $2.50。入力 / 出力・百万トークンあたり）。
   - **上段へ寄せた 1 段では持たない。** 大半の要求は境界の内側であり、上段の単価で 1 段にすると金額が約 5 倍に過大になる。
-  - 判定に使う入力トークン数はゲートウェイが受け取る `usage.input_tokens` である。提供元の判定量はキャッシュ読み・書きを含む入力の合計だが、
-    ゲートウェイはプロンプトキャッシュを使っていないので両者は一致する。**キャッシュを使い始めるときは判定量を見直す。**
+  - 判定に使う入力トークン数は**プロンプト全体**（キャッシュに関わらない入力＋キャッシュの書き＋読み）である。提供元の判定量と同じ。
+    ［2026-11-05］ゲートウェイがプロンプトキャッシュを使うようになったので、提供元の `usage.input_tokens`（最後の区切りの後ろの残りだけ）
+    では判定しない（残りだけで判定すると上段の要求を下段で数え、過小になる）。
   - 境界が 1 未満・上段の単価が負の単価表は**起動時に落とす**（境界が 0 だと全要求が上段になり、静かに過大計上する）。
+- **プロンプトキャッシュの書き（5 分）・読みの単価を区間（と上段）に持つ**（`CacheWritePerMillionTokens` / `CacheReadPerMillionTokens`。2026-11-05）。
+  金額は「残り × 入力単価 ＋ 書き × 書き単価 ＋ 読み × 読み単価 ＋ 出力 × 出力単価」で換算する。
+  現在の値（百万トークンあたり・提供元の公表値）: `claude-opus-5-5` 書き $5・読み $0.20、`claude-sonnet-5-5` 書き $2.50・読み $0.10、
+  `claude-haiku-5-5` は 100,000 トークン以下 書き $0.125・読み $0.01、超 書き $0.625・読み $0.05。
+  - **書き・読みを入力単価で数えない。** 書きは 1.25 倍（過小）、読みは 0.05〜0.1 倍（10〜20 倍の過大）になる。
+  - キャッシュを使った要求で該当の単価が無いときは、**0 円にせず**単価なし（`no_entry`）として数える。負値と、親にあって上段に無い単価は起動時に落とす。
+  - **1 時間の TTL（書き 2 倍）は使わない。** ゲートウェイは 5 分の区切りだけを置く。使うなら書きの単価を TTL ごとに分ける。
 - **単価改定は設定変更だけで反映できる。** 反映そのものは人手に残る（下記の警報が漏れを検知する）。
   - 🔴 **［2026-10-05 訂正］警報が検知できる漏れは片側だけである。** 下記の警報（単価を解決できなかった呼び出し）が
     捕まえるのは**区間が無い・区間が切れた**とき、すなわち**金額が過小になる**漏れに限る。
@@ -155,6 +163,10 @@ sum by (llm_purpose) (increase(llm_cost_total[$__range]))
 
 # モデル別のトークン消費量（入出力別）
 sum by (llm_model, llm_token_type) (increase(llm_tokens_total[$__range]))
+
+# プロンプトキャッシュの読みの比率（入力のうちキャッシュから読んだ割合。用途別）
+sum by (llm_purpose) (increase(llm_tokens_total{llm_token_type="cache_read"}[$__range]))
+  / clamp_min(sum by (llm_purpose) (increase(llm_tokens_total{llm_token_type=~"input|cache_write|cache_read"}[$__range])), 1)
 ```
 
 **単価は式に現れない。** 金額はゲートウェイが換算済みの値として出す。
