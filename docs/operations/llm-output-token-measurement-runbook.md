@@ -11,7 +11,7 @@ ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
 iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528, IADR-0531, IADR-0641, IADR-0671]
 specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models, 20261026_2136_llm-api-key-fail-fast, 20261105_2396_llm-gateway-prompt-caching]
-issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872, #1875, #2136, planning#783, #2396]
+issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872, #1875, #2136, #2396, planning#783]
 -->
 
 # 運用 Runbook: 既定層 LLM の出力トークン実測
