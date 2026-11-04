@@ -29,9 +29,19 @@ public sealed class ModelPricingOptionsValidator : IValidateOptions<ModelPricing
                 if (entry.InputPerMillionTokens < 0 || entry.OutputPerMillionTokens < 0)
                     errors.Add($"{model}[{i}] の単価が負値です（入力 {entry.InputPerMillionTokens} / 出力 {entry.OutputPerMillionTokens}）。");
 
+                // IADR-0671 (#2396): キャッシュの書き・読みの単価。負値は落とす。
+                if (entry.CacheWritePerMillionTokens < 0 || entry.CacheReadPerMillionTokens < 0)
+                    errors.Add($"{model}[{i}] のキャッシュの単価が負値です（書き {entry.CacheWritePerMillionTokens} / 読み {entry.CacheReadPerMillionTokens}）。");
+
                 // IADR-0531 (#1875): プロンプト長の上段。境界が 0 以下だと**全要求が上段**になり、静かに過大計上する。
                 if (entry.LongPrompt is { } lp)
                 {
+                    if (lp.CacheWritePerMillionTokens < 0 || lp.CacheReadPerMillionTokens < 0)
+                        errors.Add($"{model}[{i}] の LongPrompt のキャッシュの単価が負値です（書き {lp.CacheWritePerMillionTokens} / 読み {lp.CacheReadPerMillionTokens}）。");
+                    // IADR-0671: 親がキャッシュの単価を持つのに上段が持たないと、上段の要求でキャッシュを使ったときだけ単価なしになる。
+                    if ((entry.CacheWritePerMillionTokens is not null && lp.CacheWritePerMillionTokens is null)
+                        || (entry.CacheReadPerMillionTokens is not null && lp.CacheReadPerMillionTokens is null))
+                        errors.Add($"{model}[{i}] は親にキャッシュの単価があるのに LongPrompt に無い項目があります。上段のキャッシュの書き・読みの単価も定義してください。");
                     if (lp.ThresholdInputTokens < 1)
                         errors.Add($"{model}[{i}] の LongPrompt:ThresholdInputTokens が 1 未満です（{lp.ThresholdInputTokens}）。上段はこの値を超える入力トークン数の要求に適用します。");
                     if (lp.InputPerMillionTokens < 0 || lp.OutputPerMillionTokens < 0)

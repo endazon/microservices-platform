@@ -16,7 +16,8 @@ public interface ILlmProvider
     {
         var result = await CompleteAsync(request, ct);
         yield return new CompletionChunk(
-            result.Text, Done: true, result.InputTokens, result.OutputTokens, result.StopReason);
+            result.Text, Done: true, result.InputTokens, result.OutputTokens, result.StopReason,
+            result.CacheCreationInputTokens, result.CacheReadInputTokens);
     }
 }
 
@@ -28,16 +29,32 @@ public interface ILlmProvider
 // を見込む。1024 のままだと思考が上限を食い、本文が途中で切れる（例外にならず静かに縮退する）。
 // IADR-0531 (#1875): Purpose は用途別 effort（`Llm:PurposeEffort`）を引くためだけに渡す。null は effort を送らない。
 // 位置引数の末尾に既定値つきで足しているため、既存の 3 引数呼び出しは不変である。
-public record CompletionRequest(string Prompt, int MaxTokens = 4096, string? Model = null, string? Purpose = null);
+// FR-11, ADR-0022, IADR-0671 (#2396): CacheablePrefix は呼び出しをまたいで変わらない接頭辞（任意。null・空文字は「無い」）。
+// モデルが読む全文は FullPrompt（= CacheablePrefix + Prompt）。キャッシュの区切りを置けるプロバイダ（ClaudeProvider）だけが
+// 分けて送り、それ以外のプロバイダは FullPrompt を従前と同じ 1 つの文字列で送る（判断の材料を変えない）。
+public record CompletionRequest(
+    string Prompt, int MaxTokens = 4096, string? Model = null, string? Purpose = null, string? CacheablePrefix = null)
+{
+    public bool HasCacheablePrefix => !string.IsNullOrEmpty(CacheablePrefix);
+
+    public string FullPrompt => HasCacheablePrefix ? CacheablePrefix + Prompt : Prompt;
+}
 
 // IADR-0104: StopReason は応答の終了理由（CompletionStopReasons）。未対応プロバイダは null。
 // 位置引数の末尾に既定値つきで足しているため、既存の 3 引数呼び出しは不変である。
-public record CompletionResult(string Text, int InputTokens, int OutputTokens, string? StopReason = null);
+// FR-10, IADR-0671 (#2396): InputTokens は**プロンプト全体**（キャッシュの書き・読みを含む）。CacheCreationInputTokens /
+// CacheReadInputTokens はその**うち**の書き・読み（提供元の cache_creation_input_tokens / cache_read_input_tokens）。
+// キャッシュに関わらない残り（提供元の input_tokens）は InputTokens − 書き − 読み。キャッシュを使わないプロバイダは両方 0。
+public record CompletionResult(
+    string Text, int InputTokens, int OutputTokens, string? StopReason = null,
+    int CacheCreationInputTokens = 0, int CacheReadInputTokens = 0);
 
 // IADR-0037: ストリーミングの 1 チャンク。TextDelta は増分本文。Done=true は最終チャンク（トークン数を伴う）。
 // IADR-0104: StopReason は最終チャンクにのみ載る（message_delta で確定するため）。
 // FR-10, ADR-0044 決定 3, IADR-0601 決定 1 (#2116): Done=false のチャンクがトークン数を持つときは
 // **その時点で判明した累計**（経過報告）である。差分ではないので**足し合わせず、最新の値で置き換えて読む**。
 // 呼び出し側は逐次応答が Done を受け取らずに終わったときだけこの値を計上に使う（Done の値が来れば Done が正）。
+// IADR-0671 (#2396): InputTokens / CacheCreationInputTokens / CacheReadInputTokens の意味は CompletionResult と同じ（全体とそのうち）。
 public record CompletionChunk(
-    string TextDelta, bool Done = false, int InputTokens = 0, int OutputTokens = 0, string? StopReason = null);
+    string TextDelta, bool Done = false, int InputTokens = 0, int OutputTokens = 0, string? StopReason = null,
+    int CacheCreationInputTokens = 0, int CacheReadInputTokens = 0);

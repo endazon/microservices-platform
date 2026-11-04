@@ -30,7 +30,8 @@ public sealed class SelfHostedProvider(
         {
             model = request.Model ?? _defaultModel,
             max_tokens = request.MaxTokens,
-            messages = new[] { new { role = "user", content = request.Prompt } }
+            // IADR-0671 (#2396): キャッシュの区切りを持たないので、接頭辞と残りを連結した全文を 1 つの文字列で送る。
+            messages = new[] { new { role = "user", content = request.FullPrompt } }
         };
 
         var resp = await client.PostAsJsonAsync("/v1/chat/completions", body, ct);

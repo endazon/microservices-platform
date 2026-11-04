@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [FR-03, FR-10, FR-11, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0127, ADR-0138, IADR-0101, IADR-0102, IADR-0112, IADR-0114, IADR-0225, IADR-0340, IADR-0498, IADR-0511, IADR-0528, IADR-0562]
 author: claude
 created: 2026-10-10
-updated: 2026-10-17
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0025（既定モデル）
   - planning:projects/microservices-platform/07_adr/ADR-0044（LLM 利用実績と単価表。決定 3）
@@ -95,6 +95,9 @@ related_specs:
   段は要求ごとに決まり、集計期間の合計では決めない。換算結果に `LongPromptApplied` を載せる。
 - 判定に使う入力トークン数は `usage.input_tokens`。提供元の判定量はキャッシュ読み・書きを含む合計だが、**ゲートウェイはプロンプトキャッシュを使っていない**ので一致する。
   キャッシュを使い始めるときはここを見直す（`ModelPriceTable` のコメントに置いた）。
+  ［2026-11-05 追記 / #2396］ゲートウェイはプロンプトキャッシュを使うようになった（[IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md)）。
+  判定量は**プロンプト全体**（`input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。提供元と同じ）へ改め、
+  キャッシュの書き・読みは区間と上段の各々に持たせた単価で換算する（同 決定 5）。
 - 有効期間（区間）は親の `ModelPriceEntry` に従う。段を区間ごとに持てるので、単価改定と段の変更を同じ半開区間の規則で書ける。
 - 検証器は境界 < 1（全要求が上段になり静かに過大計上する）と上段の負値を起動時に落とす。
 - **採らなかった案**: ①上段の単価の 1 段（大半の要求を 5 倍に過大計上する。過大は警報に出ない —— #1741 で実際に起きた形）。
@@ -151,3 +154,4 @@ messages が user の 1 件だけ（prefill が無い）ことを固定する。
 - effort の対応モデル集合はコードに持つ。新しいモデルを許可集合へ足すとき、effort に対応するなら `ClaudeEffort.CapableModels` にも足す（足さなければ送らないだけで、壊れはしない）。
   ［2026-10-17 追記 / #1903］対応集合が実設定の許可集合と一致することを試験（`CapableModels_EqualDeployedClaudeEndpointModels`）で固定した。足し忘れも外し忘れも赤になる。
 - プロンプトキャッシュを使い始めると、Haiku 5.5 の段の判定量（キャッシュを含む入力の合計）と `usage.input_tokens` がずれる。
+  ［2026-11-05 追記 / #2396］解消した。判定量をプロンプト全体へ改めた（[IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md) 決定 5。`PromptCachePricingTests` が固定）。

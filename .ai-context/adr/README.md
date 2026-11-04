@@ -747,3 +747,4 @@
 | [IADR-0667](./IADR-0667_sync-pause-423-and-period-row.md) | 同期の一時停止は同期設定に停止期間を持ち、同期の口の群の端点フィルタが 423 と sync_paused で拒み、停止期間ごとに同期履歴の 1 行へまとめる（計画 ADR-0145 決定 1〜4。#2378 / #2127 の子 A） | Accepted |
 | [IADR-0668](./IADR-0668_sc20-sync-pause-control-and-period-row.md) | SC-20 の同期の一時停止は見出しの直下の利用者単位の 1 つの操作（確認なし）とし、同期履歴の停止期間の行はサーバの順のまま最初〜最後と拒否回数で描く（計画 ADR-0145 決定 5。#2379 / #2127 の子 B） | Accepted |
 | [IADR-0669](./IADR-0669_backup-publish-lock-and-post-rename-verify.md) | バックアップの回は保管先ごと・種類ごとのロック（mkdir の原子性）の中で書き、incoming を回ごとに一意にし、改名の後に保管先の回でもう一度検算してから「書きました」を出す（#2389） | Accepted |
+| [IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md) | LLM ゲートウェイは呼び手が分けた接頭辞を user の先頭の text ブロックにし、その末尾に 5 分のキャッシュの区切りを置く。InputTokens はプロンプト全体のまま、キャッシュの書き・読みを「うち」として返し、単価の区分ごとに計上する（#2396） | Accepted |

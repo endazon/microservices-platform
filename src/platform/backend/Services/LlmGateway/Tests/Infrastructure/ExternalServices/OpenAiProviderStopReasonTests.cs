@@ -166,6 +166,46 @@ public class OpenAiProviderStopReasonTests
         result.OutputTokens.Should().Be(22);
     }
 
+    // FR-11 T-2396-06, IADR-0671 (#2396): キャッシュの区切りを持たないプロバイダは、接頭辞と残りを連結した全文を
+    // 従前と同じ 1 つの文字列で送る（接頭辞を落とさない。判断の材料を変えない）。
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OpenAiCompatible_WithCacheablePrefix_SendsFullPromptAsSingleString(bool selfHosted)
+    {
+        var factory = new CapturingHttpClientFactory(ChatCompletionJson("stop", "本文"));
+        var config = Config(selfHosted ? "Llm:SelfHosted:BaseUrl" : "Llm:Copilot:BaseUrl");
+        ILlmProvider provider = selfHosted
+            ? new SelfHostedProvider(factory, config, new RecordingLogger<SelfHostedProvider>())
+            : new CopilotProvider(factory, config, new RecordingLogger<CopilotProvider>());
+
+        await provider.CompleteAsync(
+            new CompletionRequest("残り", CacheablePrefix: "固定の前文\n"), TestContext.Current.CancellationToken);
+
+        using var sent = System.Text.Json.JsonDocument.Parse(factory.LastBody!);
+        sent.RootElement.GetProperty("messages")[0].GetProperty("content").GetString().Should().Be("固定の前文\n残り");
+        factory.LastBody.Should().NotContain("cache_control");
+    }
+
+    private sealed class CapturingHttpClientFactory(string responseBody) : IHttpClientFactory
+    {
+        public string? LastBody { get; private set; }
+
+        public HttpClient CreateClient(string name) => new(new Capturing(this, responseBody));
+
+        private sealed class Capturing(CapturingHttpClientFactory owner, string responseBody) : HttpMessageHandler
+        {
+            protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            {
+                owner.LastBody = await request.Content!.ReadAsStringAsync(ct);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(responseBody, Encoding.UTF8, "application/json"),
+                };
+            }
+        }
+    }
+
     private static SelfHostedProvider SelfHosted(string body, out RecordingLogger<SelfHostedProvider> logs)
     {
         logs = new RecordingLogger<SelfHostedProvider>();

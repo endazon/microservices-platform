@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
+using LlmGateway.Domain.Pricing;
 using LlmGateway.Domain.Routing;
 using Platform.Shared.Contracts.Dtos;
 
@@ -88,8 +89,9 @@ public sealed class CompletionUseCase(
             var attempt = decision with { Model = chain[attemptIndex] };
             try
             {
+                // IADR-0671 (#2396): 呼び手が分けた接頭辞はそのまま渡す（キャッシュの区切りを置くかはプロバイダが決める）。
                 var result = await provider.CompleteAsync(
-                    new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model, purpose), ct);
+                    new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model, purpose, req.CacheablePrefix), ct);
                 CompletionEndpoints.LogStopReason(logger, result.StopReason, attempt);
                 // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
                 metrics.RecordCompletion(
@@ -105,11 +107,16 @@ public sealed class CompletionUseCase(
                 if (isSynthetic)
                     usage.RecordSyntheticExclusion(attempt, purpose, sensitivity);
                 else
-                    usage.RecordUsage(attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens);
+                    usage.RecordUsage(
+                        attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens,
+                        cache: new PromptCacheTokens(result.CacheCreationInputTokens, result.CacheReadInputTokens));
+                // FR-10, IADR-0671 (#2396): InputTokens はプロンプト全体（従前と同じ意味）。うちの書き・読みを並べて返す。
                 return new CompletionApiResponse(
                     result.Text, attempt.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
                     Sent: true, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
-                    StopReason: result.StopReason);
+                    StopReason: result.StopReason,
+                    CacheCreationInputTokens: result.CacheCreationInputTokens,
+                    CacheReadInputTokens: result.CacheReadInputTokens);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -211,6 +218,9 @@ public sealed class CompletionUseCase(
 
         var inputTokens = 0;
         var outputTokens = 0;
+        // IADR-0671 (#2396): inputTokens（プロンプト全体）のうちのキャッシュの書き・読み。
+        var cacheWrite = 0;
+        var cacheRead = 0;
         string? stopReason = null;
         // IADR-0212 決定 3: Done を受け取れないまま終わった送信は「0 トークン」ではない。
         // 最終チャンクの実数（inputTokens / outputTokens）を受け取れたかどうか。
@@ -223,6 +233,8 @@ public sealed class CompletionUseCase(
         // プロバイダの経過報告（Done=false でトークン数を持つチャンク）は**その時点の累計**なので、足さずに置き換える。
         var knownInput = 0;
         var knownOutput = 0;
+        var knownCacheWrite = 0;
+        var knownCacheRead = 0;
         // 上流から 1 チャンクでも受け取ったか（＝送信が成立し、課金が始まり得る）。
         var started = false;
         // 🔴 IADR-0601 決定 4: **計上は 1 回だけ。** 計器（llm.completion.total）と利用実績をこのストリームについて
@@ -234,7 +246,7 @@ public sealed class CompletionUseCase(
         // try/catch で囲む（yield は try/finally の中にあってよい）。こうすると
         // **chunk が届いた瞬間に yield できる**（元の `await foreach` ＋ Send と同じ位置で送出する）。
         var enumerator = provider
-            .StreamAsync(new CompletionRequest(req.Prompt, req.MaxTokens, decision.Model, purpose), ct)
+            .StreamAsync(new CompletionRequest(req.Prompt, req.MaxTokens, decision.Model, purpose, req.CacheablePrefix), ct)
             .GetAsyncEnumerator(ct);
         try
         {
@@ -278,6 +290,8 @@ public sealed class CompletionUseCase(
                     {
                         inputTokens = chunk.InputTokens;
                         outputTokens = chunk.OutputTokens;
+                        cacheWrite = chunk.CacheCreationInputTokens;
+                        cacheRead = chunk.CacheReadInputTokens;
                         stopReason = chunk.StopReason;
                         sawDone = true;
                     }
@@ -285,6 +299,8 @@ public sealed class CompletionUseCase(
                     {
                         knownInput = Math.Max(knownInput, chunk.InputTokens);
                         knownOutput = Math.Max(knownOutput, chunk.OutputTokens);
+                        knownCacheWrite = Math.Max(knownCacheWrite, chunk.CacheCreationInputTokens);
+                        knownCacheRead = Math.Max(knownCacheRead, chunk.CacheReadInputTokens);
                     }
                 }
             }
@@ -334,7 +350,9 @@ public sealed class CompletionUseCase(
                 if (isSynthetic)
                     usage.RecordSyntheticExclusion(decision, purpose, sensitivity);
                 else
-                    usage.RecordUsage(decision, purpose, sensitivity, inputTokens, outputTokens);
+                    usage.RecordUsage(
+                        decision, purpose, sensitivity, inputTokens, outputTokens,
+                        cache: new PromptCacheTokens(cacheWrite, cacheRead));
             }
             else
             {
@@ -344,7 +362,7 @@ public sealed class CompletionUseCase(
             yield return new CompletionStreamEvent(
                 string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
                 InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,
-                StopReason: stopReason);
+                StopReason: stopReason, CacheCreationInputTokens: cacheWrite, CacheReadInputTokens: cacheRead);
         }
         finally
         {
@@ -377,7 +395,9 @@ public sealed class CompletionUseCase(
 
             var known = knownInput > 0 || knownOutput > 0;
             if (known)
-                usage.RecordUsage(decision, purpose, sensitivity, knownInput, knownOutput);
+                usage.RecordUsage(
+                    decision, purpose, sensitivity, knownInput, knownOutput,
+                    cache: new PromptCacheTokens(knownCacheWrite, knownCacheRead));
             usage.RecordIncomplete(decision, purpose, sensitivity, reason, known);
         }
     }

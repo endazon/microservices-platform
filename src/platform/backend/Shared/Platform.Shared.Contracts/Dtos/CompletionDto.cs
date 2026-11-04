@@ -53,12 +53,17 @@ public static class CompletionFailureKinds
 // 思考の作業領域（〜3000）を見込む。1024 のままだと思考が上限を食い、本文が空または途中で切れる
 // （例外にならず静かに縮退する）。エンドポイントは req.MaxTokens を常に明示的にプロバイダへ渡すため、
 // max_tokens を省略したクライアントに効く既定値は ILlmProvider 側ではなく本 DTO のこの値である。
+// FR-11, ADR-0022, IADR-0671 (#2396): CacheablePrefix はプロンプトの**呼び出しをまたいで変わらない接頭辞**（任意）。
+//   モデルが読む全文は `CacheablePrefix + Prompt`（区切りを足さない）。Claude にはこの接頭辞の末尾にキャッシュの区切り
+//   （cache_control・5 分）を置いて送る。null・空文字は従前と同じ形で送る（後方互換）。
+//   🔴 接頭辞に時刻など呼び出しごとに変わる値を入れない（1 バイトでも違うとキャッシュは読まれず、書きの割増だけが掛かる）。
 public record CompletionApiRequest(
     string Prompt,
     int MaxTokens = 4096,
     string? Model = null,
     string? Confidentiality = null,
-    string? Purpose = null);
+    string? Purpose = null,
+    string? CacheablePrefix = null);
 
 // FR-11: Sent=false は機密区分による送信拒否（縮退）を示す。
 //   Endpoint / RoutingReason は選択・拒否した呼び出し先と理由（監査・縮退表示用）。
@@ -71,6 +76,10 @@ public record CompletionApiRequest(
 // IADR-0104 追記 (#1819): FailureKind は Sent=false の原因の種類（CompletionFailureKinds）。
 //   UpstreamStatusCode は FailureKind="upstream_error" で上流が HTTP 状態を返したときだけ載る（輸送の失敗は null）。
 //   いずれも Sent=true では null。Text / RoutingReason の意味は変えない（末尾追加＝旧い呼び出し側は無視できる）。
+// FR-10, FR-11, IADR-0671 (#2396): InputTokens は**プロンプト全体**の入力トークン数（キャッシュの書き・読みを含む。従前と同じ意味）。
+//   CacheCreationInputTokens / CacheReadInputTokens はその**うち**キャッシュへ書いた分・キャッシュから読んだ分（提供元の
+//   cache_creation_input_tokens / cache_read_input_tokens）。単価が違う（書き 1.25 倍・読み 0.05〜0.1 倍）ので費用は分けて数える。
+//   キャッシュに関わらない残り = InputTokens − 書き − 読み。キャッシュを使わない呼び出しでは両方 0。
 public record CompletionApiResponse(
     string Text,
     string Model,
@@ -81,7 +90,9 @@ public record CompletionApiResponse(
     string? RoutingReason = null,
     string? StopReason = null,
     string? FailureKind = null,
-    int? UpstreamStatusCode = null);
+    int? UpstreamStatusCode = null,
+    int CacheCreationInputTokens = 0,
+    int CacheReadInputTokens = 0);
 
 // IADR-0037: 逐次生成の 1 イベント（gRPC `CompletionStreamEvent` の写し。撤去した REST /complete/stream では SSE の data: 行の JSON だった）。
 //   Delta        — 本文の増分（Done=false のとき）。
@@ -92,6 +103,8 @@ public record CompletionApiResponse(
 //                  Delta を破棄すべきことを意味する（ストリームは撤回できないため呼び出し側の責務）。
 //   FailureKind / UpstreamStatusCode — #1819: Sent=false の最終イベントにだけ載る原因の種類と上流の HTTP 状態
 //                  （CompletionApiResponse と同じ意味）。呼び出し側が輸送の失敗で合成する done(Sent=false) では null。
+//   CacheCreationInputTokens / CacheReadInputTokens — IADR-0671 (#2396): 最終イベントの InputTokens（プロンプト全体）のうちの
+//                  キャッシュの書き・読み（CompletionApiResponse と同じ意味）。
 public record CompletionStreamEvent(
     string Delta,
     bool Done = false,
@@ -103,4 +116,6 @@ public record CompletionStreamEvent(
     string? RoutingReason = null,
     string? StopReason = null,
     string? FailureKind = null,
-    int? UpstreamStatusCode = null);
+    int? UpstreamStatusCode = null,
+    int CacheCreationInputTokens = 0,
+    int CacheReadInputTokens = 0);

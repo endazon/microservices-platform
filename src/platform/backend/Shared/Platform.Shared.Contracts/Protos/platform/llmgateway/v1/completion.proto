@@ -49,6 +49,9 @@ message CompleteRequest {
   string confidentiality = 4;
   // 用途。空文字は "default"。値域は設定（PurposeModels）が閉じ、計器は未定義値を other へ丸める（IADR-0110）。
   string purpose = 5;
+  // IADR-0671 (#2396): 呼び出しをまたいで変わらない接頭辞（任意）。モデルが読む全文は cacheable_prefix + prompt。
+  // Claude にはこの末尾へキャッシュの区切り（5 分）を置いて送る。空文字は未指定＝従前と同じ形で送る。
+  string cacheable_prefix = 6;
 }
 
 // REST の CompletionApiResponse と同じ形。
@@ -68,6 +71,9 @@ message CompleteResponse {
   string failure_kind = 9;
   // #1819: failure_kind=upstream_error で上流が HTTP 状態を返したときの状態コード。0 は「無い」（REST の null）。
   int32 upstream_status_code = 10;
+  // IADR-0671 (#2396): input_tokens（プロンプト全体）のうち、キャッシュへ書いた分・キャッシュから読んだ分。
+  int32 cache_creation_input_tokens = 11;
+  int32 cache_read_input_tokens = 12;
 }
 
 // REST の CompletionStreamEvent（SSE の data: 行）と同じ形。
@@ -91,4 +97,7 @@ message CompletionStreamEvent {
   // #1819: done=true / sent=false のメッセージにだけ載る（CompleteResponse の 9・10 と同じ意味）。
   string failure_kind = 10;
   int32 upstream_status_code = 11;
+  // IADR-0671 (#2396): done=true のメッセージの input_tokens（プロンプト全体）のうちのキャッシュの書き・読み。
+  int32 cache_creation_input_tokens = 12;
+  int32 cache_read_input_tokens = 13;
 }

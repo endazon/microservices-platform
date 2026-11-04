@@ -174,6 +174,68 @@ public class LlmUsageMetricsTests
         LlmUsageMetrics.PricingOutOfPeriod.Should().Be("out_of_period");
     }
 
+    // FR-10 T-2396-16, IADR-0671 (#2396): キャッシュの書き・読みは**単価の区分ごと**に型を分けて積む。
+    // input はキャッシュに関わらない残り（全体 13,000 − 書き 2,000 − 読み 10,000 = 1,000）で、4 つの型は重ならない
+    // （和 = プロンプト全体＋出力。重ねて数えない）。
+    [Fact]
+    public void キャッシュの書きと読みは型を分けて積み入力は残りだけ()
+    {
+        using var probe = NewProbe(out var metrics, pricing: CachedPricing());
+
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 13_000, 500, At, new PromptCacheTokens(2_000, 10_000));
+
+        var tokens = probe.Items.Where(m => m.Instrument == LlmUsageMetrics.TokensCounterName)
+            .ToDictionary(m => m.Tags[LlmUsageMetrics.TokenTypeTag], m => m.Value);
+        tokens.Should().BeEquivalentTo(new Dictionary<string, double>
+        {
+            [LlmUsageMetrics.TokenTypeInput] = 1_000,
+            [LlmUsageMetrics.TokenTypeCacheWrite] = 2_000,
+            [LlmUsageMetrics.TokenTypeCacheRead] = 10_000,
+            [LlmUsageMetrics.TokenTypeOutput] = 500,
+        });
+        LlmUsageMetrics.TokenTypeCacheWrite.Should().Be("cache_write");
+        LlmUsageMetrics.TokenTypeCacheRead.Should().Be("cache_read");
+    }
+
+    // FR-10 T-2396-16: 金額は書き・読みの単価で換算される（合成の単価: 入力 2・書き 2.5・読み 0.1・出力 10 /1M）。
+    // 1000×2 + 2000×2.5 + 10000×0.1 + 500×10 = 13,000 /1M = 0.013。
+    [Fact]
+    public void キャッシュを含む金額は書きと読みの単価で換算される()
+    {
+        using var probe = NewProbe(out var metrics, pricing: CachedPricing());
+
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 13_000, 500, At, new PromptCacheTokens(2_000, 10_000));
+
+        probe.Items.Single(m => m.Instrument == LlmUsageMetrics.CostCounterName).Value.Should().BeApproximately(0.013, 1e-12);
+    }
+
+    // FR-10 T-2396-17: キャッシュの単価の無いモデルでキャッシュを使った呼び出しは、金額を積まず no_entry で数える（0 円にしない）。
+    [Fact]
+    public void キャッシュの単価が無いモデルのキャッシュ利用は金額を積まず単価なしで数える()
+    {
+        using var probe = NewProbe(out var metrics);
+
+        metrics.RecordUsage(Decision(), "rag-answer", SensitivityClass.Internal, 13_000, 500, At, new PromptCacheTokens(2_000, 10_000));
+
+        probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.CostCounterName);
+        probe.Items.Single(m => m.Instrument == LlmUsageMetrics.UnpricedCounterName)
+            .Tags[LlmUsageMetrics.PricingStatusTag].Should().Be(LlmUsageMetrics.PricingNoEntry);
+    }
+
+    private static ModelPricingOptions CachedPricing()
+    {
+        var pricing = new ModelPricingOptions();
+        pricing.Models["test-model"] =
+        [
+            new ModelPriceEntry
+            {
+                InputPerMillionTokens = 2.0m, OutputPerMillionTokens = 10.0m,
+                CacheWritePerMillionTokens = 2.5m, CacheReadPerMillionTokens = 0.1m,
+            },
+        ];
+        return pricing;
+    }
+
     // FR-10, ADR-0044 決定 1 (T-18): 用途は設定で値域を閉じ、未定義値は other へ集約する
     // （IADR-0110 の規律の継承。カーディナリティ爆発を費用系の計器へ持ち込まない）。
     [Fact]

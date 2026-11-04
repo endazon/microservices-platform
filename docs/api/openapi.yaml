@@ -6355,6 +6355,13 @@ components:
           type: string
           nullable: true
           description: "用途。null/空は default 扱い"
+        cacheablePrefix:
+          type: string
+          nullable: true
+          description: |
+            #2396: 呼び出しをまたいで変わらないプロンプトの接頭辞（任意）。モデルが読む全文は `cacheablePrefix + prompt`
+            （区切りを足さない）。Claude にはこの末尾へプロンプトキャッシュの区切り（cache_control・5 分）を置いて送る。
+            null・空は従前と同じ形で送る。時刻など呼び出しごとに変わる値を入れるとキャッシュは読まれない。
 
     CompletionApiResponse:
       type: object
@@ -6362,7 +6369,7 @@ components:
         sent=false は機密区分による送信拒否（縮退）または呼び出し先不調を示す。
         IADR-0104: sent（越境させたか）と stopReason（モデル側の終了理由）は独立した軸である。
         #1819: sent=false の原因の種類は failureKind（と upstreamStatusCode）で値として返る。
-      required: [text, model, inputTokens, outputTokens, sent]
+      required: [text, model, inputTokens, outputTokens, sent, cacheCreationInputTokens, cacheReadInputTokens]
       properties:
         text: { type: string }
         model: { type: string }
@@ -6417,6 +6424,16 @@ components:
           description: |
             #1819: failureKind=`upstream_error` で、呼び出し先が HTTP 状態を返したときの状態コード
             （429＝レート制限・5xx＝呼び出し先の障害など）。輸送の失敗・その他の原因・sent=true では null。
+        cacheCreationInputTokens:
+          type: integer
+          description: |
+            #2396: inputTokens（プロンプト全体。キャッシュを含む）のうち、プロンプトキャッシュへ書いた分
+            （提供元の `cache_creation_input_tokens`）。単価は入力の 1.25 倍。キャッシュを使わない呼び出しでは 0。
+        cacheReadInputTokens:
+          type: integer
+          description: |
+            #2396: inputTokens のうち、プロンプトキャッシュから読んだ分（提供元の `cache_read_input_tokens`）。
+            単価は入力の 0.05〜0.1 倍。キャッシュに関わらない残り = inputTokens − cacheCreationInputTokens − cacheReadInputTokens。
 
     # ── FR-15, IADR-0029: 構成情報 API（/bff/admin/config）─────
     EffectiveConfigDto:

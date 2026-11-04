@@ -4003,6 +4003,12 @@
       "Platform.Shared.Contracts.Dtos.CompletionApiRequest": {
         "kind": "record",
         "members": {
+          "CacheablePrefix": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 5
+          },
           "Confidentiality": {
             "source": "positional",
             "type": "string?",
@@ -4038,6 +4044,18 @@
       "Platform.Shared.Contracts.Dtos.CompletionApiResponse": {
         "kind": "record",
         "members": {
+          "CacheCreationInputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 10
+          },
+          "CacheReadInputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 11
+          },
           "Endpoint": {
             "source": "positional",
             "type": "string?",
@@ -4153,6 +4171,18 @@
       "Platform.Shared.Contracts.Dtos.CompletionStreamEvent": {
         "kind": "record",
         "members": {
+          "CacheCreationInputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 11
+          },
+          "CacheReadInputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 12
+          },
           "Delta": {
             "source": "positional",
             "type": "string",

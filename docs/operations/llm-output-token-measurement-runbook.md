@@ -4,12 +4,12 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-10-26
+updated: 2026-11-05
 ---
 <!-- trace:
 ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
-iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528, IADR-0531, IADR-0641]
+iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528, IADR-0531, IADR-0641, IADR-0671]
 specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models, 20261026_2136_llm-api-key-fail-fast]
 issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872, #1875, #2136, planning#783]
 -->
@@ -219,10 +219,10 @@ AI 分析ダッシュボード（画面のルート `/analyze`）で、**機密�
 
 ### 3-3. 入力の実測値で上限を計算し直す
 
-5 回ほど依頼した後で、実際の平均入力トークンを読む。
+5 回ほど依頼した後で、実際の平均入力トークンを読む（プロンプト全体＝キャッシュに関わらない入力・キャッシュの書き・読みの和。2026-11-05 から型が分かれた）。
 
 ```sh
-q 'sum by (llm_purpose, llm_model) (increase(llm_tokens_total{llm_token_type="input"}[1d]))
+q 'sum by (llm_purpose, llm_model) (increase(llm_tokens_total{llm_token_type=~"input|cache_write|cache_read"}[1d]))
    / sum by (llm_purpose, llm_model) (increase(llm_completion_total{llm_result="sent"}[1d]))'
 ```
 

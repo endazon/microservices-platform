@@ -44,18 +44,31 @@ public sealed class ModelPriceEntry
     // 🔴 上段へ寄せた 1 段で持たない —— 大半の要求（≦100K）を 5 倍に過大計上し、費用の増加の検知が鈍る。
     public LongPromptPrice? LongPrompt { get; set; }
 
+    // FR-10, ADR-0044 決定 3, IADR-0671 (#2396): 百万トークンあたりのキャッシュの書き（5 分）・読みの単価。省略時（null）は「無い」。
+    // キャッシュのトークンがある要求でここが無いと、その要求は 0 円にせず単価なし（PricingStatus.NoCacheRate）として数える。
+    // 🔴 書き・読みを入力単価で数えない —— 書きは 1.25 倍（過小）、読みは 0.05〜0.1 倍（10〜20 倍の過大）になる。
+    public decimal? CacheWritePerMillionTokens { get; set; }
+
+    public decimal? CacheReadPerMillionTokens { get; set; }
+
     // 指定時刻がこの区間に含まれるか（[From, To)）。
     public bool Covers(DateTimeOffset at)
         => (EffectiveFrom is null || at >= EffectiveFrom.Value)
         && (EffectiveTo is null || at < EffectiveTo.Value);
 
-    // この要求の入力トークン数で適用する単価（入力, 出力, 上段か）を返す。
+    // この要求の入力トークン数で適用する単価を返す。
     // 境界ちょうど（= ThresholdInputTokens）は**下段**である（提供元の表記「100,000 トークン以下」に合わせる）。
-    public (decimal InputPerMillion, decimal OutputPerMillion, bool LongPromptApplied) RatesFor(long inputTokens)
+    // IADR-0671 (#2396): 引数はプロンプト全体（キャッシュの書き・読みを含む）。提供元の段の判定量と同じである。
+    public AppliedRates RatesFor(long inputTokens)
         => LongPrompt is { } lp && inputTokens > lp.ThresholdInputTokens
-            ? (lp.InputPerMillionTokens, lp.OutputPerMillionTokens, true)
-            : (InputPerMillionTokens, OutputPerMillionTokens, false);
+            ? new(lp.InputPerMillionTokens, lp.OutputPerMillionTokens, lp.CacheWritePerMillionTokens, lp.CacheReadPerMillionTokens, true)
+            : new(InputPerMillionTokens, OutputPerMillionTokens, CacheWritePerMillionTokens, CacheReadPerMillionTokens, false);
 }
+
+// 1 要求に適用する単価の組（百万トークンあたり）。キャッシュの単価は null＝「無い」。
+public readonly record struct AppliedRates(
+    decimal InputPerMillion, decimal OutputPerMillion, decimal? CacheWritePerMillion, decimal? CacheReadPerMillion,
+    bool LongPromptApplied);
 
 // FR-11, ADR-0044 決定 3, IADR-0531: プロンプト長による上段の単価。区間（有効期間）は親の ModelPriceEntry に従う。
 public sealed class LongPromptPrice
@@ -68,5 +81,10 @@ public sealed class LongPromptPrice
 
     // 上段の百万トークンあたりの出力単価。
     public decimal OutputPerMillionTokens { get; set; }
+
+    // IADR-0671 (#2396): 上段のキャッシュの書き（5 分）・読みの単価（親と同じく省略時は「無い」）。
+    public decimal? CacheWritePerMillionTokens { get; set; }
+
+    public decimal? CacheReadPerMillionTokens { get; set; }
 }
 

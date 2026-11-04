@@ -53,6 +53,54 @@ public class ModelPricingOptionsValidatorTests
     public void 負の単価は落とす()
         => Validator.Validate(null, With(Entry(null, null, -1m))).Failed.Should().BeTrue();
 
+    // FR-10 T-2396-15, IADR-0671 (#2396): キャッシュの書き・読みの単価の負値は落とす（親・上段とも）。
+    [Fact]
+    public void キャッシュの単価の負値は落とす()
+    {
+        var entry = Entry(null, null);
+        entry.CacheReadPerMillionTokens = -0.01m;
+        Validator.Validate(null, With(entry)).Failed.Should().BeTrue();
+
+        var tiered = Entry(null, null);
+        tiered.CacheWritePerMillionTokens = 1m;
+        tiered.CacheReadPerMillionTokens = 0.1m;
+        tiered.LongPrompt = new LongPromptPrice
+        {
+            ThresholdInputTokens = 100_000,
+            InputPerMillionTokens = 2m,
+            OutputPerMillionTokens = 2m,
+            CacheWritePerMillionTokens = -1m,
+            CacheReadPerMillionTokens = 0.1m,
+        };
+        Validator.Validate(null, With(tiered)).Failed.Should().BeTrue();
+    }
+
+    // FR-10 T-2396-15: 親がキャッシュの単価を持つのに上段が持たないと落とす（上段の要求だけが単価なしになる）。
+    // 上段も持てば通る（陽性対照）。
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void 上段のキャッシュの単価の欠けは落とす(bool longHasRates, bool expectFailed)
+    {
+        var entry = Entry(null, null);
+        entry.CacheWritePerMillionTokens = 1.25m;
+        entry.CacheReadPerMillionTokens = 0.1m;
+        entry.LongPrompt = new LongPromptPrice
+        {
+            ThresholdInputTokens = 100_000,
+            InputPerMillionTokens = 5m,
+            OutputPerMillionTokens = 5m,
+            CacheWritePerMillionTokens = longHasRates ? 6.25m : null,
+            CacheReadPerMillionTokens = longHasRates ? 0.5m : null,
+        };
+
+        var result = Validator.Validate(null, With(entry));
+
+        result.Failed.Should().Be(expectFailed);
+        if (expectFailed)
+            result.FailureMessage.Should().Contain("LongPrompt").And.Contain("キャッシュ");
+    }
+
     // FR-10, ADR-0044 決定 3 (T-13): 単価が 1 件も無いモデル項目は落とす
     // （空の項目は「登録したつもり」が最も起きやすい形である）。
     [Fact]
