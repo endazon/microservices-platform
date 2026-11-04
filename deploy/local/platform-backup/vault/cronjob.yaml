@@ -15,6 +15,9 @@
 #   同じノードの別 Pod から読める）。raft のファイルは読まない。
 # - 時刻: JST 12:15（Postgres の回と重ねない。米国市場の時間帯 JST 22:30〜05:00 を避ける）。後追いは 22:00 JST まで
 #   （35100 秒 = 12:15 から 9 時間 45 分）。
+#   ［2026-11-04 / #2394・IADR-0670］スクリプトは書き始める前に秘匿管理の起動（sys/health が 200）を上限つき（既定 600 秒）で待つ。
+#   ［2026-11-04 / #2395 のレビュー 🟡2］最悪の合計（依存先の待ち 600＋確かめの上限 10＋間隔 5＋保管先 2 か所×ロックの待ち 900＋
+#   余裕 300 = 2715 秒）が余りを持って収まるよう、activeDeadlineSeconds を 1800 から 3600（postgres と同じ）へ上げた（試験で固定）。
 # - 受取人・保管先・目印の扱いは Postgres の回（../postgres/cronjob.yaml）と同じ。
 # 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。
 apiVersion: batch/v1
@@ -35,7 +38,7 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 0
-      activeDeadlineSeconds: 1800
+      activeDeadlineSeconds: 3600
       template:
         metadata:
           labels:
