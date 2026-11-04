@@ -46,6 +46,7 @@ related_specs:
    - 解放するのは、自分が持ち主のロックだけである。EXIT・TERM・INT の trap でも解放する（`activeDeadlineSeconds` の TERM）。
    - **古いロックは壊して取り直す。** 持ち主の時刻が `BACKUP_LOCK_STALE_SECONDS`（既定 7200 秒）より古いものが対象である。
      - 既定は、Job の `activeDeadlineSeconds`（postgres 3600・vault 1800）の 2 倍にした。生きた回のロックは壊さない。
+       ［2026-11-04 追記 / #2394・IADR-0670］vault の `activeDeadlineSeconds` を 3600 へ上げた。7200 は両方の 2 倍になる。
      - SIGKILL で trap が走らなかった残骸は、次の回が片付ける。
    - **古いロックを壊すのは、破棄の印 `<ロック>.break`（`mkdir` の原子性）を取った 1 本だけである。** 印の中で古さを読み直してから消す。
      - 2 本が同時に古いと見たとき、先に壊して取り直した回のロックを、後の回が消さないためである（レビュー 🟡1。試験 T-2389-08）。

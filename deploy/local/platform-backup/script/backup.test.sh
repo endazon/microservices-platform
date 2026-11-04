@@ -27,10 +27,28 @@ assert_nofile() { [ ! -e "$2" ] && ok "$1" || ng "$1" "unexpected path: $2"; }
 
 # ---- スタブ ------------------------------------------------------------------
 mkdir -p "$WORK/bin"
+# #2394: $STATE/pg-down-count（残りの回数）があり 0 より大きい間、または $STATE/pg-never がある間は、Postgres が立ち上がっていない
+# 世界である。psql は名前解決の失敗で落ち、pg_isready は 2（応答なし）を返して残りの回数を 1 つ減らす。
+cat > "$WORK/bin/pg_isready" <<'STUB'
+#!/usr/bin/env bash
+echo "pg_isready $*" >> "$STUB_LOG"
+# #2395 のレビュー 🟡1: $STATE/pg-hang があれば、応答しない宛先（パケットを捨てる）として 20 秒止まる。
+# （本物の pg_isready と同じく 1 つのプロセスとして止まる。exec して、止められたときに子を残さない。）
+[ -f "$STATE/pg-hang" ] && exec sleep 20
+[ -f "$STATE/pg-never" ] && exit 2
+if [ -f "$STATE/pg-down-count" ]; then
+  n="$(cat "$STATE/pg-down-count")"
+  if [ "$n" -gt 0 ]; then echo $((n - 1)) > "$STATE/pg-down-count"; exit 2; fi
+fi
+exit 0
+STUB
 cat > "$WORK/bin/psql" <<'STUB'
 #!/usr/bin/env bash
 echo "psql $*" >> "$STUB_LOG"
 [ -f "$STATE/psql-fail" ] && exit 2
+if [ -f "$STATE/pg-never" ] || { [ -f "$STATE/pg-down-count" ] && [ "$(cat "$STATE/pg-down-count")" -gt 0 ]; }; then
+  echo 'psql: error: could not translate host name "postgres" to address: Try again' >&2; exit 2
+fi
 printf 'audit_svc\npostgres\nrisk_management_svc\n'
 STUB
 cat > "$WORK/bin/pg_dump" <<'STUB'
@@ -138,6 +156,8 @@ new_env() {
 	export VAULT_DATA_DIR="$R/vault"
 	export BACKUP_NOW="2026-09-26T030000Z"
 	export BACKUP_KIND=postgres
+	# #2394: 依存先の待ちは短くする（既定 600 秒。届かない世界の試験が試験の時間を食わないように）。
+	export BACKUP_DEPS_WAIT_SECONDS=2 BACKUP_DEPS_WAIT_INTERVAL=0.1
 }
 run_backup() { OUT="$(bash "$HERE/backup.sh" 2>&1)"; RC=$?; }
 
@@ -347,6 +367,44 @@ for t in c e; do
 	assert_eq "T-2389-08 古いロックの同時の破棄: $t にロックも破棄の印も残らない" "$(ls -A "$R/$t/postgres" | grep -c '^\.publish\.lock')" "0"
 done
 
+# ---- #2394: 書き始める前に依存先の起動を上限つきで待つ（PC の復帰の直後の後追いの回） -----------------------
+new_env
+echo 3 > "$STATE/pg-down-count"
+BACKUP_DEPS_WAIT_SECONDS=20 BACKUP_DEPS_WAIT_INTERVAL=0.1 run_backup
+assert_eq 'T-2394-01 Postgres が初めは立ち上がっておらず、待つうちに立ち上がる: 成功で終わる' "$RC" "0"
+assert_file 'T-2394-01 Postgres を待った回: 回が揃う' "$R/c/postgres/2026-09-26T030000Z/SHA256SUMS"
+assert_contains 'T-2394-01 Postgres を待った回: 待ったことをログに出す' "$OUT" '起動を待ちます'
+assert_contains 'T-2394-01 Postgres を待った回: 立ち上がったことをログに出す' "$OUT" '立ち上がりました'
+
+new_env
+: > "$STATE/pg-never"
+BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_WAIT_INTERVAL=0.1 run_backup
+assert_ne 'T-2394-02 Postgres が上限までに立ち上がらない: 失敗で終わる' "$RC" "0"
+assert_contains 'T-2394-02 Postgres が立ち上がらない: 理由をログに出す' "$OUT" '立ち上がりませんでした'
+assert_nofile 'T-2394-02 Postgres が立ち上がらない: C に何も書かない（fail-closed）' "$R/c/postgres"
+assert_nofile 'T-2394-02 Postgres が立ち上がらない: E に何も書かない' "$R/e/postgres"
+assert_eq 'T-2394-02 Postgres が立ち上がらない: staging に何も作らない' "$(ls -A "$R/staging")" ""
+assert_missing 'T-2394-02 Postgres が立ち上がらない: 生成器（pg_dump）を呼ばない' "$(cat "$STUB_LOG")" 'pg_dump '
+
+# 1 回の確かめにも上限がある（#2395 のレビュー 🟡1）: 応答しない宛先で、確かめが OS の接続の時間切れまで止まらない。
+new_env
+: > "$STATE/pg-hang"
+T0=$(date +%s)
+BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_PROBE_TIMEOUT=1 run_backup
+EL=$(( $(date +%s) - T0 ))
+rm -f "$STATE/pg-hang"
+assert_ne 'T-2394-07 応答しない Postgres: 失敗で終わる' "$RC" "0"
+[ "$EL" -lt 10 ] && ok "T-2394-07 応答しない Postgres: 1 回の確かめが上限で戻り、待ちの上限の近くで終わる（${EL} 秒）" || ng 'T-2394-07 応答しない Postgres: 1 回の確かめが上限で戻る' "${EL} 秒かかった"
+assert_nofile 'T-2394-07 応答しない Postgres: 何も書かない' "$R/c/postgres"
+
+# 書き込みの途中の失敗を再試行しない（backoffLimit: 0 の意図）。失敗した DB を 2 度呼ばない。
+new_env
+: > "$STATE/dump-fail-audit_svc"
+run_backup
+assert_ne 'T-2394-03 書き込みの途中の失敗: 失敗で終わる（-partial として書く）' "$RC" "0"
+assert_eq 'T-2394-03 書き込みの途中の失敗: 失敗した DB の pg_dump を 1 度しか呼ばない（再試行しない）' "$(grep -c 'pg_dump -Fc -d audit_svc' "$STUB_LOG")" "1"
+assert_eq 'T-2394-03 書き込みの途中の失敗: DB の一覧も 1 度しか取らない（全体をやり直さない）' "$(grep -c '^psql ' "$STUB_LOG")" "1"
+
 # ---- 生成の失敗 ------------------------------------------------------------------
 new_env
 : > "$STATE/dump-fail-audit_svc"
@@ -409,6 +467,17 @@ http.createServer((req, res) => {
   req.on('end', () => {
     fs.appendFileSync(reqLog, `${req.method} ${req.url} HTTP/${req.httpVersion} [${Object.keys(req.headers).sort().join(',')}]\n`);
     const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    // #2394: vault-down-count（残りの回数）が 0 より大きい間、または vault-never がある間は、立ち上がっていない秘匿管理である
+    // （再起動の直後で sealed）。どの要求にも 503 を返し、sys/health は残りの回数を 1 つ減らす。
+    // #2395 のレビュー 🟡1: vault-hang があれば、sys/health に答えない（接続は受けるが応答を返さない宛先）。
+    if (req.url === '/v1/sys/health' && has('vault-hang')) return;
+    const downFile = path.join(state, 'vault-down-count');
+    const down = has('vault-never') || (fs.existsSync(downFile) && Number(fs.readFileSync(downFile, 'utf8')) > 0);
+    if (down) {
+      if (req.url === '/v1/sys/health' && fs.existsSync(downFile)) fs.writeFileSync(downFile, String(Number(fs.readFileSync(downFile, 'utf8')) - 1));
+      return json(503, { errors: ['Vault is sealed'] });
+    }
+    if (req.method === 'GET' && req.url === '/v1/sys/health') return json(200, { initialized: true, sealed: false, standby: false });
     if (req.method === 'POST' && req.url === '/v1/auth/kubernetes/login') {
       let b = {};
       try { b = JSON.parse(body); } catch (e) { return json(400, { errors: ['bad json'] }); }
@@ -459,6 +528,38 @@ new_vault_env() {
 }
 # スタブの枠（先頭 4 バイト「AGE[」と末尾 1 バイト「]」）を外して中身を取り出す。
 unwrap_age() { local size; size=$(wc -c < "$1"); tail -c +5 "$1" | head -c $((size - 5)); }
+
+# #2394: 秘匿管理が初めは立ち上がっておらず（再起動の直後で sealed）、待つうちに立ち上がると、その回は成功する。
+new_vault_env
+echo 3 > "$STATE/vault-down-count"
+BACKUP_DEPS_WAIT_SECONDS=20 BACKUP_DEPS_WAIT_INTERVAL=0.1 run_backup
+assert_eq 'T-2394-04 秘匿管理が待つうちに立ち上がる: 成功で終わる' "$RC" "0"
+assert_file 'T-2394-04 秘匿管理を待った回: スナップショットが並ぶ' "$R/c/vault/2026-09-26T030000Z/vault-raft.snap.age"
+assert_contains 'T-2394-04 秘匿管理を待った回: sys/health で待つ' "$(cat "$WORK/vault-requests.log")" 'GET /v1/sys/health HTTP/1.0'
+# 上限までに立ち上がらない（sealed のまま・届かない）なら、ログインもせず何も書かずに失敗する。
+new_vault_env
+: > "$STATE/vault-never"
+BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_WAIT_INTERVAL=0.1 run_backup
+assert_ne 'T-2394-05 秘匿管理が立ち上がらない: 失敗で終わる' "$RC" "0"
+assert_contains 'T-2394-05 秘匿管理が立ち上がらない: 理由をログに出す' "$OUT" '立ち上がりませんでした'
+assert_nofile 'T-2394-05 秘匿管理が立ち上がらない: 何も書かない（fail-closed）' "$R/c/vault"
+assert_missing 'T-2394-05 秘匿管理が立ち上がらない: ログインしない（トークンを作らせない）' "$(cat "$WORK/vault-requests.log")" 'POST /v1/auth/kubernetes/login'
+new_vault_env
+export BACKUP_VAULT_ADDR="http://127.0.0.1:1"
+BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_WAIT_INTERVAL=0.1 run_backup
+assert_ne 'T-2394-05 秘匿管理へ届かない（名前解決・接続の前）: 失敗で終わる' "$RC" "0"
+assert_nofile 'T-2394-05 秘匿管理へ届かない: 何も書かない' "$R/c/vault"
+rm -f "$STATE/vault-never"
+# 1 回の確かめにも上限がある（#2395 のレビュー 🟡1）: 応答を返さない秘匿管理で、確かめが応答の待ち（BACKUP_VAULT_HTTP_TIMEOUT）まで止まらない。
+new_vault_env
+: > "$STATE/vault-hang"
+T0=$(date +%s)
+BACKUP_VAULT_HTTP_TIMEOUT=20 BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_PROBE_TIMEOUT=1 run_backup
+EL=$(( $(date +%s) - T0 ))
+rm -f "$STATE/vault-hang"
+assert_ne 'T-2394-08 応答しない秘匿管理: 失敗で終わる' "$RC" "0"
+[ "$EL" -lt 10 ] && ok "T-2394-08 応答しない秘匿管理: 1 回の確かめが上限で戻り、待ちの上限の近くで終わる（${EL} 秒）" || ng 'T-2394-08 応答しない秘匿管理: 1 回の確かめが上限で戻る' "${EL} 秒かかった"
+assert_nofile 'T-2394-08 応答しない秘匿管理: 何も書かない' "$R/c/vault"
 
 new_vault_env
 run_backup
@@ -676,6 +777,35 @@ if [ -L "$K/2019-01-01T030000Z" ]; then
 else
 	printf '  skip  T-1560-45 シンボリックリンクを作れない環境（Windows の Git Bash 等）\n'
 fi
+
+# ---- #2394: 待ちの上限は Job の時間切れ（activeDeadlineSeconds）の内側に余りを持って収まり、再試行はしない（backoffLimit: 0） ----
+# 最悪の合計 = 依存先の待ち ＋ 1 回の確かめの上限 ＋ 間隔 ＋ 保管先の数 × ロックの待ち ＋ 作業の余裕 300。
+# 🔴 #2395 のレビュー 🟡2: 余りが 0 の設計は脆いので、合計は時間切れより真に小さいこと（余り > 0）を求める。
+default_of() { sed -n "s/^$1=\"\\\${$1:-\\([0-9.]*\\)}\"\$/\\1/p" "$HERE/backup.sh"; }
+DEPS_WAIT="$(default_of BACKUP_DEPS_WAIT_SECONDS)"
+PROBE="$(default_of BACKUP_DEPS_PROBE_TIMEOUT)"
+INTERVAL="$(default_of BACKUP_DEPS_WAIT_INTERVAL)"
+LOCK_WAIT="$(default_of BACKUP_LOCK_WAIT_SECONDS)"
+NTARGETS="$(sed -n 's/^BACKUP_TARGETS="\${BACKUP_TARGETS:-\(.*\)}"$/\1/p' "$HERE/backup.sh" | wc -w)"
+for v in DEPS_WAIT PROBE INTERVAL LOCK_WAIT NTARGETS; do
+	[[ "${!v}" =~ ^[0-9]+$ ]] && ok "T-2394-06 既定値を読める: $v=${!v}" || ng "T-2394-06 既定値を読める: $v" "${!v}"
+done
+for kind in postgres vault; do
+	CJ="$HERE/../$kind/cronjob.yaml"
+	ADL="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9]*\).*/\1/p' "$CJ" | head -n 1)"
+	BOL="$(sed -n 's/^ *backoffLimit: *\([0-9]*\).*/\1/p' "$CJ" | head -n 1)"
+	assert_eq "T-2394-06 $kind の CronJob は再試行しない（backoffLimit: 0）" "$BOL" "0"
+	if [[ "$ADL" =~ ^[0-9]+$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL$LOCK_WAIT$NTARGETS" =~ ^[0-9]+$ ]]; then
+		WORST=$((DEPS_WAIT + PROBE + INTERVAL + NTARGETS * LOCK_WAIT + 300))
+		if [ "$WORST" -lt "$ADL" ]; then
+			ok "T-2394-06 $kind: 最悪の合計 $WORST 秒が activeDeadlineSeconds $ADL 秒より小さい（余り $((ADL - WORST)) 秒）"
+		else
+			ng "T-2394-06 $kind: 最悪の合計が activeDeadlineSeconds より小さい" "worst=$WORST adl=$ADL"
+		fi
+	else
+		ng "T-2394-06 $kind: 既定値と activeDeadlineSeconds を読める" "adl=$ADL"
+	fi
+done
 
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。
 printf '\nbackup.test.sh: %d passed, %d failed\n' "$PASSED" "$FAILED"

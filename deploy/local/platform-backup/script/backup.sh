@@ -6,6 +6,8 @@
 #
 # 1 回の実行で 1 種類（BACKUP_KIND=postgres | vault）を扱う:
 #   1. 受取人（公開鍵）を検査する。無い・占位のまま・不正な行があれば**何もせずに失敗する**（fail-closed）
+#   1b. ［2026-11-04 / #2394・IADR-0670］書き始める前に、依存先（postgres: pg_isready / vault: sys/health）が揃うのを
+#      上限つきで待つ（PC の復帰の直後の後追いの回）。上限を過ぎたら何も作らずに失敗する。待つのはここだけで、再試行はしない
 #   2. 成果物を staging（emptyDir）へ作る。**平文をディスクへ書かない** —— 生成器の出力を age へパイプで渡す
 #        postgres: DB ごとに `pg_dump -Fc` ＋ `pg_dumpall --globals-only`
 #        vault:    raft の整合したスナップショット（k8s auth・最小ポリシー。中の SHA256SUMS で検算）＋ init のファイル（IADR-0548 / #1868）
@@ -33,12 +35,21 @@ BACKUP_DAILY_KEEP="${BACKUP_DAILY_KEEP:-30}"
 BACKUP_LONG_YEARS="${BACKUP_LONG_YEARS:-7}"
 VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
 # NFR-21, IADR-0669 (#2389): 保管先ごとのロック。待つ上限と、古い（強制終了の残骸の）ロックと見なす経過の秒。
-# 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 1800）の 2 倍である（生きた回のロックを壊さない）。
+# 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 3600。IADR-0670 で vault を 1800 から上げた）の 2 倍である
+# （生きた回のロックを壊さない）。
 BACKUP_LOCK_WAIT_SECONDS="${BACKUP_LOCK_WAIT_SECONDS:-900}"
 BACKUP_LOCK_STALE_SECONDS="${BACKUP_LOCK_STALE_SECONDS:-7200}"
 # 破棄の印（<ロック>.break）の残骸と見なす経過の秒（印を取った直後の強制終了。ミリ秒の窓）。
 BACKUP_LOCK_BREAK_STALE_SECONDS="${BACKUP_LOCK_BREAK_STALE_SECONDS:-300}"
 BACKUP_LOCK_NAME=".publish.lock"
+# NFR-21, IADR-0670 (#2394): 書き始める前に依存先の起動を待つ上限と間隔。
+# 最悪の合計（依存先の待ち＋1 回の確かめの上限＋間隔＋保管先の数×ロックの待ち＋作業の余裕 300）が、Job の
+# activeDeadlineSeconds（postgres・vault とも 3600）より余りを持って小さい（試験 T-2394-06 で固定する）。
+BACKUP_DEPS_WAIT_SECONDS="${BACKUP_DEPS_WAIT_SECONDS:-600}"
+BACKUP_DEPS_WAIT_INTERVAL="${BACKUP_DEPS_WAIT_INTERVAL:-5}"
+# 1 回の確かめの上限（#2395 のレビュー 🟡1）。応答しない宛先（パケットを捨てる）で、/dev/tcp の接続や応答の待ちが
+# OS の時間切れ（約 2 分）や BACKUP_VAULT_HTTP_TIMEOUT（300 秒）まで止まらないようにする。
+BACKUP_DEPS_PROBE_TIMEOUT="${BACKUP_DEPS_PROBE_TIMEOUT:-10}"
 # 自分が持っているロック（保管先の kind_dir）。trap で解放する。
 HELD_LOCKS=()
 
@@ -247,9 +258,10 @@ vault_http() {
 vault_errors() { sed -n 's/.*"errors":\[\([^]]*\)\].*/\1/p' "$1" 2>/dev/null | head -c 200; }
 
 # k8s auth でログインし、トークンを VAULT_SNAPSHOT_TOKEN へ置く（標準出力へ出さない）。<作業ファイル> は応答の置き場で、読んだら消す。
-vault_login_k8s() {
-	local resp="$1" jwt body
-	VAULT_SNAPSHOT_TOKEN=""
+# ログインの入力（role の形・ServiceAccount のトークンの在りかと JWT の形）を確かめる。秘匿管理へは何も送らない。
+# #2394・IADR-0670: 依存先を待つ前にも呼ぶ（構成の誤りは待たずに失敗させる。待つ間の sys/health の前に確かめる）。
+check_vault_login_inputs() {
+	local jwt
 	if [[ ! "$BACKUP_VAULT_AUTH_ROLE" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 		err "BACKUP_VAULT_AUTH_ROLE の形が不正です: $BACKUP_VAULT_AUTH_ROLE"
 		return 1
@@ -265,6 +277,15 @@ vault_login_k8s() {
 		err "ServiceAccount のトークンが JWT の形ではありません: $BACKUP_VAULT_SA_JWT_FILE"
 		return 1
 	fi
+	return 0
+}
+
+vault_login_k8s() {
+	local resp="$1" jwt body
+	VAULT_SNAPSHOT_TOKEN=""
+	check_vault_login_inputs || return 1
+	jwt="$(< "$BACKUP_VAULT_SA_JWT_FILE")"
+	jwt="${jwt%$'\n'}"
 	printf -v body '{"role":"%s","jwt":"%s"}' "$BACKUP_VAULT_AUTH_ROLE" "$jwt"
 	if ! vault_http POST /v1/auth/kubernetes/login "$resp" "" "$body"; then
 		rm -f -- "$resp"
@@ -387,6 +408,92 @@ stage_vault() {
 		return 1
 	fi
 	log "init（unseal 鍵）: ok"
+	return 0
+}
+
+# ---------------------------------------------------------------- 依存先の起動を待つ（#2394・IADR-0670）
+#
+# PC の復帰（または起動）の直後に、CronJob は取りこぼした回を後追いで起こす（startingDeadlineSeconds）。その時点では
+# Postgres・秘匿管理・名前解決がまだ立ち上がっていないことが多く、backoffLimit: 0 なので 1 回の失敗で後追いが終わっていた。
+# 🔴 書き始める前（staging を作る前）に、依存先が揃うのを上限つきで待つ。待つのはここだけである —— 書き込みの途中の失敗を
+#    再試行しない（backoffLimit: 0 の意図を保つ）。上限を過ぎたら、何も作らず・何も書かずに失敗する（fail-closed）。
+
+# 1 回の確かめを上限つきで走らせる（#2395 のレビュー 🟡1）。シェルの関数も包めるように、`timeout` ではなく
+# 子のサブシェル＋見張りで止める。上限を過ぎたら子を止め、失敗（確かめが済まなかった）として返す。
+run_probe_with_timeout() {
+	local secs="$1" pid watcher rc
+	shift
+	( "$@" ) &
+	pid=$!
+	( trap 'kill "$s" 2>/dev/null; exit 0' TERM; sleep "$secs" & s=$!; wait "$s"; kill -TERM "$pid" 2>/dev/null ) &
+	watcher=$!
+	wait "$pid"
+	rc=$?
+	kill -TERM "$watcher" 2>/dev/null
+	wait "$watcher" 2>/dev/null
+	return "$rc"
+}
+
+# Postgres が接続を受け付けるか（PGHOST の名前解決を含む）。libpq の接続の時間切れも同じ上限にする。
+# pg_isready を子のサブシェルの唯一のコマンドとして走らせる（bash はそれを exec するので、止めるとき pg_isready そのものに届く）。
+deps_ready_postgres() {
+	run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" pg_isready -q -t "$BACKUP_DEPS_PROBE_TIMEOUT" >/dev/null 2>&1
+}
+
+# 秘匿管理が初期化済み・unseal 済み・active か（sys/health が 200。名前解決と接続を含む）。本文は読まない。
+# 接続の失敗の文言（vault_http の err）は、待つ間は出さない（待ち切れたときに 1 度だけ告げる）。
+deps_probe_vault() {
+	vault_http GET /v1/sys/health /dev/null 2>/dev/null && [ "$VAULT_HTTP_STATUS" = "200" ]
+}
+deps_ready_vault() { run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" deps_probe_vault; }
+
+# 待ち切れたときに、最後の確かめの理由を 1 度だけ出す（これも 1 回の確かめの上限の内側）。
+deps_reason_vault() {
+	if vault_http GET /v1/sys/health /dev/null; then
+		err "秘匿管理の sys/health が 200 ではありません（HTTP $VAULT_HTTP_STATUS。初期化・unseal・起動の途中）"
+	fi
+}
+deps_reason() {
+	local why
+	case "$BACKUP_KIND" in
+		postgres)
+			# pg_isready を直に包む（関数の中の子にすると、止めたときにその子が残る）。
+			why="$(run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" pg_isready -t "$BACKUP_DEPS_PROBE_TIMEOUT" 2>&1 | head -n 1)"
+			err "Postgres の確かめ: ${why:-${BACKUP_DEPS_PROBE_TIMEOUT} 秒以内に応答がありません}"
+			;;
+		vault)
+			run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" deps_reason_vault ||
+				err "秘匿管理の確かめも ${BACKUP_DEPS_PROBE_TIMEOUT} 秒以内に済みませんでした（宛先が応答しません）"
+			;;
+	esac
+}
+
+deps_label() {
+	case "$BACKUP_KIND" in
+		postgres) printf 'Postgres（%s:%s）' "${PGHOST:-既定}" "${PGPORT:-5432}" ;;
+		vault) printf '秘匿管理（%s）' "$BACKUP_VAULT_ADDR" ;;
+	esac
+}
+
+wait_for_dependencies() {
+	local start now waited=0 announced=0
+	start="$(date +%s)"
+	until "deps_ready_$BACKUP_KIND"; do
+		now="$(date +%s)"
+		waited=$((now - start))
+		if [ "$waited" -ge "$BACKUP_DEPS_WAIT_SECONDS" ]; then
+			# 最後の 1 回は理由を見せる（待つ間は黙っていた接続の失敗・状態コード）。
+			deps_reason
+			err "依存先 $(deps_label) が ${BACKUP_DEPS_WAIT_SECONDS} 秒以内に立ち上がりませんでした。何も書きません"
+			return 1
+		fi
+		if [ "$announced" -eq 0 ]; then
+			log "依存先 $(deps_label) の起動を待ちます（上限 ${BACKUP_DEPS_WAIT_SECONDS} 秒）"
+			announced=1
+		fi
+		sleep "$BACKUP_DEPS_WAIT_INTERVAL"
+	done
+	[ "$announced" -eq 1 ] && log "依存先 $(deps_label) が立ち上がりました（$(($(date +%s) - start)) 秒待ちました）"
 	return 0
 }
 
@@ -654,6 +761,10 @@ main() {
 	esac
 	check_recipients "$BACKUP_RECIPIENTS_FILE" || return 2
 	ensure_age || return 2
+	# #2394・IADR-0670: 書き始める前に依存先を待つ（staging も保管先も、まだ何も作っていない）。
+	# 構成の誤り（ServiceAccount のトークン）は待たずに失敗させる。
+	if [ "$BACKUP_KIND" = vault ]; then check_vault_login_inputs || return 2; fi
+	wait_for_dependencies || return 1
 
 	now="${BACKUP_NOW:-$(date -u +%Y-%m-%dT%H%M%SZ)}"
 	if ! is_run_name "$now"; then
