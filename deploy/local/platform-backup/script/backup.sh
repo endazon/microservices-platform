@@ -35,8 +35,8 @@ BACKUP_DAILY_KEEP="${BACKUP_DAILY_KEEP:-30}"
 BACKUP_LONG_YEARS="${BACKUP_LONG_YEARS:-7}"
 VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
 # NFR-21, IADR-0669 (#2389): 保管先ごとのロック。待つ上限と、古い（強制終了の残骸の）ロックと見なす経過の秒。
-# 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 1800）の 2 倍である（生きた回のロックを壊さない）。
-# ［2026-11-04 / #2395・IADR-0670］vault の activeDeadlineSeconds を 3600 へ上げた。7200 は両方の 2 倍になり、生きたロックを壊さない。
+# 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 3600。IADR-0670 で vault を 1800 から上げた）の 2 倍である
+# （生きた回のロックを壊さない）。
 BACKUP_LOCK_WAIT_SECONDS="${BACKUP_LOCK_WAIT_SECONDS:-900}"
 BACKUP_LOCK_STALE_SECONDS="${BACKUP_LOCK_STALE_SECONDS:-7200}"
 # 破棄の印（<ロック>.break）の残骸と見なす経過の秒（印を取った直後の強制終了。ミリ秒の窓）。
