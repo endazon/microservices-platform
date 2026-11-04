@@ -143,7 +143,7 @@ public class ClaudeProvider(
     {
         var model = request.Model ?? _model;
         int inputTokens = 0, outputTokens = 0;
-        // IADR-0671 (#2396): プロンプト全体のうちのキャッシュの書き・読み（message_start で判明。message_delta に値があれば累計で置き換える）。
+        // IADR-0671 (#2396): プロンプト全体のうちのキャッシュの書き・読み（message_start で判明。message_delta の値が正のときだけ置き換える）。
         long uncached = 0, cacheWrite = 0, cacheRead = 0;
         string? stopReason = null;
 
@@ -204,7 +204,8 @@ public class ClaudeProvider(
                     outputTokens = (int)delta.Usage.OutputTokens;
                     usageAdvanced = true;
                 }
-                // IADR-0671: message_delta の usage の書き・読みは累計（提供元）。値があるときだけ置き換える（無ければ start の値のまま）。
+                // IADR-0671: message_delta の usage の書き・読みは累計（提供元）で減らない。**正の値のときだけ**置き換え、0・欠落は「未報告」と
+                // 同じに読んで start の値のまま残す（0 で上書きすると判明分の書き・読みが消え、残りを入力単価で過大に数える）。
                 if (delta.Usage.CacheCreationInputTokens is { } deltaWrite && deltaWrite > 0)
                     cacheWrite = deltaWrite;
                 if (delta.Usage.CacheReadInputTokens is { } deltaRead && deltaRead > 0)

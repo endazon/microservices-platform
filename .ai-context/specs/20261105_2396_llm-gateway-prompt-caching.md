@@ -57,7 +57,7 @@ claude-api スキル（`shared/prompt-caching.md`・`csharp/claude-api/README.md
    - キャッシュのトークンがあるのに該当の単価が無いときは、**0 円にせず**単価なし（`PricingStatus.NoCacheRate`。計器の属性は既存の `no_entry`）として数え、警告を出す。
    - 検証器: 負値を落とす。親にキャッシュの単価があるのに上段に無いときも落とす（上段の要求だけが単価なしになる）。
    - 実配備の `appsettings.json` に 3 モデルの書き・読みの単価を入れる。
-6. **逐次**: `message_start` の usage の書き・読みを読み、`message_delta` に値があれば累計として置き換える。経過報告・最終チャンク・途中終了の計上（IADR-0601）に同じ値を通す。
+6. **逐次**: `message_start` の usage の書き・読みを読み、`message_delta` の書き・読みが正の値のときだけ置き換える（提供元の値は累計で減らないので、0・欠落は「未報告」として start の値のまま）。経過報告・最終チャンク・途中終了の計上（IADR-0601）に同じ値を通す。
 7. **AST 側**: 呼び手が接頭辞を分けて渡す変更は AST の別 issue にした（AST#1523。本 PR は MSP 側だけ）。
 
 ## 受け入れ基準と試験
@@ -68,10 +68,10 @@ claude-api スキル（`shared/prompt-caching.md`・`csharp/claude-api/README.md
 | AC2 | 接頭辞の無い要求は今と同じ形（content が文字列・`cache_control` が無い） | 同上 |
 | AC3 | model・max_tokens・output_config（effort）・messages の件数は接頭辞の有無で変わらない | 同上 |
 | AC4 | 応答の書き・読みが `CompletionResult` / チャンクへ載り、`InputTokens` は 3 つの和になる | 同上 |
-| AC5 | 金額が提供元の単価どおり（3 モデル・Haiku の 2 段の境界をキャッシュ込みの合計で判定） | `ModelPriceTableTests`・`DeployedPriceTableTests` |
-| AC6 | キャッシュの単価が無いのに書き・読みがある要求は 0 円にせず単価なし | `ModelPriceTableTests`・`LlmUsageMetricsTests` |
+| AC5 | 金額が提供元の単価どおり（3 モデル・Haiku の 2 段の境界をキャッシュ込みの合計で判定） | `PromptCachePricingTests`・`DeployedPriceTableTests` |
+| AC6 | キャッシュの単価が無いのに書き・読みがある要求は 0 円にせず単価なし | `PromptCachePricingTests`・`LlmUsageMetricsTests` |
 | AC7 | `llm.tokens.total` が input（残り）・cache_write・cache_read・output に分かれ、和がプロンプト全体＋出力 | `LlmUsageMetricsTests` |
-| AC8 | REST・gRPC の要求の接頭辞がプロバイダへ届き、応答の書き・読みが呼び手へ返る（gRPC の写像の往復を含む） | `CompletionPromptCacheEndpointTests`・`GrpcCompleteTests` |
+| AC8 | REST・gRPC の要求の接頭辞がプロバイダへ届き、応答の書き・読みが呼び手へ返る（gRPC の写像の往復を含む） | `CompletionPromptCacheEndpointTests` |
 | AC9 | 接頭辞の無い既存の呼び手の挙動・計上は変わらない | 既存の試験一式が緑のまま |
 | AC10 | 検証器が負値・上段の欠けを落とす | `ModelPricingOptionsValidatorTests` |
 | AC11 | キャッシュの区切りを持たないプロバイダは全文を 1 つの文字列で送る | `OpenAiProviderStopReasonTests` |
