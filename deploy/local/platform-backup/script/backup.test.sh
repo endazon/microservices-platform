@@ -32,6 +32,9 @@ mkdir -p "$WORK/bin"
 cat > "$WORK/bin/pg_isready" <<'STUB'
 #!/usr/bin/env bash
 echo "pg_isready $*" >> "$STUB_LOG"
+# #2395 のレビュー 🟡1: $STATE/pg-hang があれば、応答しない宛先（パケットを捨てる）として 20 秒止まる。
+# （本物の pg_isready と同じく 1 つのプロセスとして止まる。exec して、止められたときに子を残さない。）
+[ -f "$STATE/pg-hang" ] && exec sleep 20
 [ -f "$STATE/pg-never" ] && exit 2
 if [ -f "$STATE/pg-down-count" ]; then
   n="$(cat "$STATE/pg-down-count")"
@@ -383,6 +386,17 @@ assert_nofile 'T-2394-02 Postgres が立ち上がらない: E に何も書かな
 assert_eq 'T-2394-02 Postgres が立ち上がらない: staging に何も作らない' "$(ls -A "$R/staging")" ""
 assert_missing 'T-2394-02 Postgres が立ち上がらない: 生成器（pg_dump）を呼ばない' "$(cat "$STUB_LOG")" 'pg_dump '
 
+# 1 回の確かめにも上限がある（#2395 のレビュー 🟡1）: 応答しない宛先で、確かめが OS の接続の時間切れまで止まらない。
+new_env
+: > "$STATE/pg-hang"
+T0=$(date +%s)
+BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_PROBE_TIMEOUT=1 run_backup
+EL=$(( $(date +%s) - T0 ))
+rm -f "$STATE/pg-hang"
+assert_ne 'T-2394-07 応答しない Postgres: 失敗で終わる' "$RC" "0"
+[ "$EL" -lt 10 ] && ok "T-2394-07 応答しない Postgres: 1 回の確かめが上限で戻り、待ちの上限の近くで終わる（${EL} 秒）" || ng 'T-2394-07 応答しない Postgres: 1 回の確かめが上限で戻る' "${EL} 秒かかった"
+assert_nofile 'T-2394-07 応答しない Postgres: 何も書かない' "$R/c/postgres"
+
 # 書き込みの途中の失敗を再試行しない（backoffLimit: 0 の意図）。失敗した DB を 2 度呼ばない。
 new_env
 : > "$STATE/dump-fail-audit_svc"
@@ -455,6 +469,8 @@ http.createServer((req, res) => {
     const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     // #2394: vault-down-count（残りの回数）が 0 より大きい間、または vault-never がある間は、立ち上がっていない秘匿管理である
     // （再起動の直後で sealed）。どの要求にも 503 を返し、sys/health は残りの回数を 1 つ減らす。
+    // #2395 のレビュー 🟡1: vault-hang があれば、sys/health に答えない（接続は受けるが応答を返さない宛先）。
+    if (req.url === '/v1/sys/health' && has('vault-hang')) return;
     const downFile = path.join(state, 'vault-down-count');
     const down = has('vault-never') || (fs.existsSync(downFile) && Number(fs.readFileSync(downFile, 'utf8')) > 0);
     if (down) {
@@ -534,6 +550,16 @@ BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_WAIT_INTERVAL=0.1 run_backup
 assert_ne 'T-2394-05 秘匿管理へ届かない（名前解決・接続の前）: 失敗で終わる' "$RC" "0"
 assert_nofile 'T-2394-05 秘匿管理へ届かない: 何も書かない' "$R/c/vault"
 rm -f "$STATE/vault-never"
+# 1 回の確かめにも上限がある（#2395 のレビュー 🟡1）: 応答を返さない秘匿管理で、確かめが応答の待ち（BACKUP_VAULT_HTTP_TIMEOUT）まで止まらない。
+new_vault_env
+: > "$STATE/vault-hang"
+T0=$(date +%s)
+BACKUP_VAULT_HTTP_TIMEOUT=20 BACKUP_DEPS_WAIT_SECONDS=1 BACKUP_DEPS_PROBE_TIMEOUT=1 run_backup
+EL=$(( $(date +%s) - T0 ))
+rm -f "$STATE/vault-hang"
+assert_ne 'T-2394-08 応答しない秘匿管理: 失敗で終わる' "$RC" "0"
+[ "$EL" -lt 10 ] && ok "T-2394-08 応答しない秘匿管理: 1 回の確かめが上限で戻り、待ちの上限の近くで終わる（${EL} 秒）" || ng 'T-2394-08 応答しない秘匿管理: 1 回の確かめが上限で戻る' "${EL} 秒かかった"
+assert_nofile 'T-2394-08 応答しない秘匿管理: 何も書かない' "$R/c/vault"
 
 new_vault_env
 run_backup
@@ -752,20 +778,32 @@ else
 	printf '  skip  T-1560-45 シンボリックリンクを作れない環境（Windows の Git Bash 等）\n'
 fi
 
-# ---- #2394: 待ちの上限は Job の時間切れ（activeDeadlineSeconds）の内側に収まり、再試行はしない（backoffLimit: 0） ----
-DEPS_WAIT="$(sed -n 's/^BACKUP_DEPS_WAIT_SECONDS="\${BACKUP_DEPS_WAIT_SECONDS:-\([0-9]*\)}"$/\1/p' "$HERE/backup.sh")"
-LOCK_WAIT="$(sed -n 's/^BACKUP_LOCK_WAIT_SECONDS="\${BACKUP_LOCK_WAIT_SECONDS:-\([0-9]*\)}"$/\1/p' "$HERE/backup.sh")"
-[[ "$DEPS_WAIT" =~ ^[0-9]+$ ]] && ok 'T-2394-06 依存先の待ちの上限の既定を読める' || ng 'T-2394-06 依存先の待ちの上限の既定を読める' "DEPS_WAIT=$DEPS_WAIT"
+# ---- #2394: 待ちの上限は Job の時間切れ（activeDeadlineSeconds）の内側に余りを持って収まり、再試行はしない（backoffLimit: 0） ----
+# 最悪の合計 = 依存先の待ち ＋ 1 回の確かめの上限 ＋ 間隔 ＋ 保管先の数 × ロックの待ち ＋ 作業の余裕 300。
+# 🔴 #2395 のレビュー 🟡2: 余りが 0 の設計は脆いので、合計は時間切れより真に小さいこと（余り > 0）を求める。
+default_of() { sed -n "s/^$1=\"\\\${$1:-\\([0-9.]*\\)}\"\$/\\1/p" "$HERE/backup.sh"; }
+DEPS_WAIT="$(default_of BACKUP_DEPS_WAIT_SECONDS)"
+PROBE="$(default_of BACKUP_DEPS_PROBE_TIMEOUT)"
+INTERVAL="$(default_of BACKUP_DEPS_WAIT_INTERVAL)"
+LOCK_WAIT="$(default_of BACKUP_LOCK_WAIT_SECONDS)"
+NTARGETS="$(sed -n 's/^BACKUP_TARGETS="\${BACKUP_TARGETS:-\(.*\)}"$/\1/p' "$HERE/backup.sh" | wc -w)"
+for v in DEPS_WAIT PROBE INTERVAL LOCK_WAIT NTARGETS; do
+	[[ "${!v}" =~ ^[0-9]+$ ]] && ok "T-2394-06 既定値を読める: $v=${!v}" || ng "T-2394-06 既定値を読める: $v" "${!v}"
+done
 for kind in postgres vault; do
 	CJ="$HERE/../$kind/cronjob.yaml"
 	ADL="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9]*\).*/\1/p' "$CJ" | head -n 1)"
 	BOL="$(sed -n 's/^ *backoffLimit: *\([0-9]*\).*/\1/p' "$CJ" | head -n 1)"
 	assert_eq "T-2394-06 $kind の CronJob は再試行しない（backoffLimit: 0）" "$BOL" "0"
-	# 依存先の待ち＋ロックの待ち＋作業の余裕（300 秒）が時間切れの内側に収まる。
-	if [[ "$ADL" =~ ^[0-9]+$ ]] && [[ "$DEPS_WAIT" =~ ^[0-9]+$ ]] && [[ "$LOCK_WAIT" =~ ^[0-9]+$ ]] && [ $((DEPS_WAIT + LOCK_WAIT + 300)) -le "$ADL" ]; then
-		ok "T-2394-06 $kind: 待ちの上限（依存先 $DEPS_WAIT＋ロック $LOCK_WAIT＋余裕 300）が activeDeadlineSeconds（$ADL）の内側"
+	if [[ "$ADL" =~ ^[0-9]+$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL$LOCK_WAIT$NTARGETS" =~ ^[0-9]+$ ]]; then
+		WORST=$((DEPS_WAIT + PROBE + INTERVAL + NTARGETS * LOCK_WAIT + 300))
+		if [ "$WORST" -lt "$ADL" ]; then
+			ok "T-2394-06 $kind: 最悪の合計 $WORST 秒が activeDeadlineSeconds $ADL 秒より小さい（余り $((ADL - WORST)) 秒）"
+		else
+			ng "T-2394-06 $kind: 最悪の合計が activeDeadlineSeconds より小さい" "worst=$WORST adl=$ADL"
+		fi
 	else
-		ng "T-2394-06 $kind: 待ちの上限が activeDeadlineSeconds の内側" "deps=$DEPS_WAIT lock=$LOCK_WAIT adl=$ADL"
+		ng "T-2394-06 $kind: 既定値と activeDeadlineSeconds を読める" "adl=$ADL"
 	fi
 done
 

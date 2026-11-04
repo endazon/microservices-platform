@@ -3,7 +3,8 @@
 # - 時刻: JST 12:00（米国市場の時間帯 JST 22:30〜05:00 を避ける）。startingDeadlineSeconds は取りこぼし（PC 停止）の
 #   後追いを 22:00 JST までに限る（36000 秒 = 12:00 から 10 時間）。それを過ぎたら翌日の回を待つ。
 #   ［2026-11-04 / #2394・IADR-0670］後追いは PC の復帰の直後に起きるので、スクリプトは書き始める前に Postgres の起動を
-#   上限つき（既定 600 秒）で待つ。backoffLimit: 0（再試行しない）は変えない。待ちの合計は activeDeadlineSeconds の内側（試験で固定）。
+#   上限つき（既定 600 秒・1 回の確かめは 10 秒まで）で待つ。backoffLimit: 0（再試行しない）は変えない。
+#   最悪の合計（依存先の待ち＋確かめ＋間隔＋保管先 2 か所×ロックの待ち 900＋余裕 300 = 2715 秒）は activeDeadlineSeconds より小さい（試験で固定）。
 # - 資格情報: 超利用者のパスワードは Secret postgres のキー password（k8s-local-up.sh / ESO が供給）を env PGPASSWORD で渡す。
 #   🔴 値をマニフェスト・引数に書かない。
 # - 受取人（age の公開鍵）: ConfigMap platform-backup-age-recipients（kustomize の外。手順書参照）。optional なので

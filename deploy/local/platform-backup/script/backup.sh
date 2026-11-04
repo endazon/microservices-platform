@@ -36,15 +36,20 @@ BACKUP_LONG_YEARS="${BACKUP_LONG_YEARS:-7}"
 VAULT_DATA_DIR="${VAULT_DATA_DIR:-/vault/data}"
 # NFR-21, IADR-0669 (#2389): 保管先ごとのロック。待つ上限と、古い（強制終了の残骸の）ロックと見なす経過の秒。
 # 古さの既定は、Job の activeDeadlineSeconds（postgres 3600・vault 1800）の 2 倍である（生きた回のロックを壊さない）。
+# ［2026-11-04 / #2395・IADR-0670］vault の activeDeadlineSeconds を 3600 へ上げた。7200 は両方の 2 倍になり、生きたロックを壊さない。
 BACKUP_LOCK_WAIT_SECONDS="${BACKUP_LOCK_WAIT_SECONDS:-900}"
 BACKUP_LOCK_STALE_SECONDS="${BACKUP_LOCK_STALE_SECONDS:-7200}"
 # 破棄の印（<ロック>.break）の残骸と見なす経過の秒（印を取った直後の強制終了。ミリ秒の窓）。
 BACKUP_LOCK_BREAK_STALE_SECONDS="${BACKUP_LOCK_BREAK_STALE_SECONDS:-300}"
 BACKUP_LOCK_NAME=".publish.lock"
 # NFR-21, IADR-0670 (#2394): 書き始める前に依存先の起動を待つ上限と間隔。
-# 上限の既定は、ロックの待ち・作業の余裕と合わせて Job の activeDeadlineSeconds（vault 1800）の内側に収まる（試験で固定する）。
+# 最悪の合計（依存先の待ち＋1 回の確かめの上限＋間隔＋保管先の数×ロックの待ち＋作業の余裕 300）が、Job の
+# activeDeadlineSeconds（postgres・vault とも 3600）より余りを持って小さい（試験 T-2394-06 で固定する）。
 BACKUP_DEPS_WAIT_SECONDS="${BACKUP_DEPS_WAIT_SECONDS:-600}"
 BACKUP_DEPS_WAIT_INTERVAL="${BACKUP_DEPS_WAIT_INTERVAL:-5}"
+# 1 回の確かめの上限（#2395 のレビュー 🟡1）。応答しない宛先（パケットを捨てる）で、/dev/tcp の接続や応答の待ちが
+# OS の時間切れ（約 2 分）や BACKUP_VAULT_HTTP_TIMEOUT（300 秒）まで止まらないようにする。
+BACKUP_DEPS_PROBE_TIMEOUT="${BACKUP_DEPS_PROBE_TIMEOUT:-10}"
 # 自分が持っているロック（保管先の kind_dir）。trap で解放する。
 HELD_LOCKS=()
 
@@ -413,23 +418,52 @@ stage_vault() {
 # 🔴 書き始める前（staging を作る前）に、依存先が揃うのを上限つきで待つ。待つのはここだけである —— 書き込みの途中の失敗を
 #    再試行しない（backoffLimit: 0 の意図を保つ）。上限を過ぎたら、何も作らず・何も書かずに失敗する（fail-closed）。
 
-# Postgres が接続を受け付けるか（PGHOST の名前解決を含む）。
-deps_ready_postgres() { pg_isready -q >/dev/null 2>&1; }
+# 1 回の確かめを上限つきで走らせる（#2395 のレビュー 🟡1）。シェルの関数も包めるように、`timeout` ではなく
+# 子のサブシェル＋見張りで止める。上限を過ぎたら子を止め、失敗（確かめが済まなかった）として返す。
+run_probe_with_timeout() {
+	local secs="$1" pid watcher rc
+	shift
+	( "$@" ) &
+	pid=$!
+	( trap 'kill "$s" 2>/dev/null; exit 0' TERM; sleep "$secs" & s=$!; wait "$s"; kill -TERM "$pid" 2>/dev/null ) &
+	watcher=$!
+	wait "$pid"
+	rc=$?
+	kill -TERM "$watcher" 2>/dev/null
+	wait "$watcher" 2>/dev/null
+	return "$rc"
+}
+
+# Postgres が接続を受け付けるか（PGHOST の名前解決を含む）。libpq の接続の時間切れも同じ上限にする。
+# pg_isready を子のサブシェルの唯一のコマンドとして走らせる（bash はそれを exec するので、止めるとき pg_isready そのものに届く）。
+deps_ready_postgres() {
+	run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" pg_isready -q -t "$BACKUP_DEPS_PROBE_TIMEOUT" >/dev/null 2>&1
+}
 
 # 秘匿管理が初期化済み・unseal 済み・active か（sys/health が 200。名前解決と接続を含む）。本文は読まない。
 # 接続の失敗の文言（vault_http の err）は、待つ間は出さない（待ち切れたときに 1 度だけ告げる）。
-deps_ready_vault() {
+deps_probe_vault() {
 	vault_http GET /v1/sys/health /dev/null 2>/dev/null && [ "$VAULT_HTTP_STATUS" = "200" ]
 }
+deps_ready_vault() { run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" deps_probe_vault; }
 
-# 待ち切れたときに、最後の確かめの理由を 1 度だけ出す。
+# 待ち切れたときに、最後の確かめの理由を 1 度だけ出す（これも 1 回の確かめの上限の内側）。
+deps_reason_vault() {
+	if vault_http GET /v1/sys/health /dev/null; then
+		err "秘匿管理の sys/health が 200 ではありません（HTTP $VAULT_HTTP_STATUS。初期化・unseal・起動の途中）"
+	fi
+}
 deps_reason() {
+	local why
 	case "$BACKUP_KIND" in
-		postgres) pg_isready 2>&1 | head -n 1 | sed 's/^/==> platform-backup[postgres]: ERROR: /' >&2 ;;
+		postgres)
+			# pg_isready を直に包む（関数の中の子にすると、止めたときにその子が残る）。
+			why="$(run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" pg_isready -t "$BACKUP_DEPS_PROBE_TIMEOUT" 2>&1 | head -n 1)"
+			err "Postgres の確かめ: ${why:-${BACKUP_DEPS_PROBE_TIMEOUT} 秒以内に応答がありません}"
+			;;
 		vault)
-			if vault_http GET /v1/sys/health /dev/null; then
-				err "秘匿管理の sys/health が 200 ではありません（HTTP $VAULT_HTTP_STATUS。初期化・unseal・起動の途中）"
-			fi
+			run_probe_with_timeout "$BACKUP_DEPS_PROBE_TIMEOUT" deps_reason_vault ||
+				err "秘匿管理の確かめも ${BACKUP_DEPS_PROBE_TIMEOUT} 秒以内に済みませんでした（宛先が応答しません）"
 			;;
 	esac
 }
