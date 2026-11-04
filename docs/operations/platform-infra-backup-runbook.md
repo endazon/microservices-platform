@@ -9,9 +9,9 @@ updated: 2026-11-04
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
-specs: [20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
-issues: [#2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
+iadrs: [IADR-0670, IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -43,6 +43,8 @@ issues: [#2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
     調べた後に手で消してよい。
 - 時刻は米国市場の時間帯（JST 22:30〜05:00）を避けている。PC を止めていて取りこぼした回は、22:00 JST までに
   クラスタが戻れば後追いで走り、それを過ぎたら翌日の回を待つ。
+  ［2026-11-04］後追いの回は PC の復帰の直後に走るので、書き始める前に依存先（Postgres・秘匿管理・名前解決）の起動を最大 10 分待つ
+  （ログに `依存先 … の起動を待ちます` と `… が立ち上がりました` が出る）。10 分で立ち上がらなければ、何も書かずに失敗する。
 - **すべての成果物は age の公開鍵で暗号化されている。** 平文はディスクへ書かれない（生成器から age へパイプで渡す）。
   🔴 Vault の回の `vault-init.age` は unseal 鍵と初期 root トークンの平文ファイルである（Pod 内で自動 unseal するため）。
   **復号したスナップショットと init のファイルを合わせると、Vault の中身をすべて読める**。復号は必要なときだけ、使い捨ての場所で行う。
@@ -415,6 +417,7 @@ issues: [#2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 | `init のファイルがありません` / `init のファイルに unseal 鍵の行がありません`（回が `-partial`） | PVC の `.local-dev-init` が無い・壊れている | 秘匿管理のラッパーのログ（`vault-entrypoint`）を見る。**この回は同じ秘匿管理へは戻せるが、失ったときには開けない** |
 | `消せませんでした（想定外の中身があります）` | 回のディレクトリに手でファイルやフォルダを置いた | 置いたものを退けてから次の回を待つ |
 | Job が作られない | PC 停止で後追いの締切（22:00 JST）を過ぎた | 翌日の回を待つか、手動の Job を走らせる |
+| `依存先 … が 600 秒以内に立ち上がりませんでした。何も書きません` | PC の復帰・起動の直後に、Postgres・秘匿管理・名前解決が 10 分以内に立ち上がらなかった（直前の行に、最後の確かめの理由が出る） | `kubectl -n platform-infra get pods` で `postgres`・`vault` が Ready になったのを確かめてから、手動の Job を走らせる（§1 の 6）。何も書いていないので、片付けは要らない |
 | `ロックを取れません（別の回が書いています。…秒待ちました）` | 同じ種類の別の回（手動の Job と CronJob の回など）が書き続けている | `kubectl -n platform-infra get jobs` で動いている回を確かめ、終わってから手動の Job を走らせ直す。動いている回が無いのに続くときは、§何がどこに置かれるか の `.publish.lock` を確かめる |
 | `古いロックを壊します` | 前の回の Pod が強制終了され、ロックが残っていた | 対処は要らない（次の回が取り直した）。続くなら Job が時間切れで止まっていないか確かめる |
 | `同じ名前の回が既にあります` | 同じ種類の回が同じ秒に 2 本始まった（停止を外した直後の自動の回と手動の Job が重なった等） | 先の回のログが `完了（保管先 2 か所）` なら、保管先の回は揃っている。後の回の Job は消してよい |
