@@ -33,12 +33,16 @@ MSP chart はインフラを**デプロイせず**素のサービス名（`postg
   取引ユニット（AST）と基盤の他のクライアント（Keycloak の DB・Wiki.js・バックアップ）が切り替えるまでの併存である。
 - 基盤（MSP）のサービスは DB へ `SSL Mode=VerifyFull`＋基盤の CA、ブローカへ `amqps`（5671）で繋ぐ。CA は `[5/7]` が ConfigMap
   `platform-infra-ca`（`ca.crt` だけ）として **MSP と AST の名前空間**へ写す（AST の接続は変えない）。
+- ［2026-11-05 / 段 4b-2・IADR-0675（#2403）］基盤の他のクライアントも検証つきで繋ぐ: **Wiki.js**（`DB_SSL=true`＋`NODE_EXTRA_CA_CERTS`。
+  helm の既定は opt-in の `wikijs.db.tls.enabled=false`、経路B は `values-local.yaml` が有効にする）・**バックアップの CronJob**
+  （`PGSSLMODE=verify-full`＋`PGSSLROOTCERT`。CA は Secret `postgres-tls` の `ca.crt` だけを写す）。経路B の Keycloak は H2 で
+  postgres へ繋がない。compose では Keycloak の DB と取引ユニットの 3 サービスも切り替えた。**残る平文は AST の chart の接続**（AST リポジトリで切り替える）。
 - 確かめ方:
   ```bash
   kubectl -n platform-infra exec deploy/postgres -c postgres -- psql -U postgres -Atc \
     "select a.usename, s.ssl, count(*) from pg_stat_activity a join pg_stat_ssl s using (pid) where a.backend_type='client backend' group by 1,2"
   kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl -q list_connections user ssl
-  # 期待値: kp（MSP の *_svc）と msp-* は TLS（t / true）。ai・ast-*・sa は段 1 では平文（f / false）のまま
+  # 期待値: kp（MSP の *_svc・Wiki.js の wikijs）と msp-* は TLS（t / true）。ai・ast-* は AST の chart の切り替えまで平文（f / false）のまま
   ```
 - 証明書の更新: cert-manager は期限（1 年）の 30 日前に更新する。postgres / rabbitmq は起動時にしか読まないので、起動器は Pod の雛形へ
   証明書の指紋（注釈 `platform-infra.tls/cert-sha256`）を刻み、変わっていれば作り直す。**更新の後、期限までに一度は起動器を再実行する。**

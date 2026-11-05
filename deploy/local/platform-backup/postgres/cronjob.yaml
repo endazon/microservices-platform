@@ -64,6 +64,12 @@ spec:
                   value: postgres
                 - name: PGDATABASE
                   value: postgres
+                # NFR-16, NFR-18, IADR-0675（#2403）: 接続は TLS で、サーバ証明書を基盤の CA と名前（PGHOST）で検証する（libpq の verify-full。
+                #   PGSSLROOTCERT が読めなければ接続しない＝検証なしへ倒れない。実測）。pg_isready も同じ env を読む。
+                - name: PGSSLMODE
+                  value: verify-full
+                - name: PGSSLROOTCERT
+                  value: /etc/platform-infra-ca/ca.crt
                 - name: PGPASSWORD
                   valueFrom:
                     secretKeyRef:
@@ -83,6 +89,9 @@ spec:
                 - name: recipients
                   mountPath: /etc/platform-backup/recipients
                   readOnly: true
+                - name: platform-infra-ca
+                  mountPath: /etc/platform-infra-ca
+                  readOnly: true
                 - name: staging
                   mountPath: /staging
                 - name: target-c
@@ -101,6 +110,14 @@ spec:
               configMap:
                 name: platform-backup-age-recipients
                 optional: true
+            # NFR-16, IADR-0675: 基盤の CA。同じ名前空間の cert-manager の Secret postgres-tls（本体の postgres がマウントするもの。
+            #   deploy/local/infra-tls）からキー ca.crt だけを写す（鍵のキーは写さない）。非 optional（無ければ Pod は立たず、Job の失敗として見える）。
+            - name: platform-infra-ca
+              secret:
+                secretName: postgres-tls
+                items:
+                  - key: ca.crt
+                    path: ca.crt
             # 暗号化済みの成果物だけを置く（平文は pg_dump から age へパイプで渡し、ディスクへ書かない）。
             - name: staging
               emptyDir:

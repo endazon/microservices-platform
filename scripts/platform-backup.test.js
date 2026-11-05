@@ -23,6 +23,9 @@
  *  11. 🔴 ［#1868 / IADR-0548］Vault の回は raft の整合したスナップショットを k8s auth で取る。専用の SA（RBAC なし・自動マウントなし）の
  *      projected token、role は default ポリシーなし・1 回きり、ポリシーは sys/storage/raft/snapshot の read だけ。root トークン・
  *      Secret vault-dev-token を渡さない。作業場所はメモリの emptyDir。HTTP は curl / wget の引数でトークンを渡さない。
+ *  12. 🔴 ［#2403 / IADR-0675］Postgres の回は基盤の CA と名前を検証する TLS で繋ぐ（PGSSLMODE=verify-full・PGSSLROOTCERT）。
+ *      CA は同じ名前空間の Secret postgres-tls（cert-manager。本体の postgres がマウントするのと同じ名前）からキー ca.crt だけを
+ *      非 optional で読み取り専用に写す（鍵のキーは写さない）。検証を緩める sslmode を書かない。
  *  10. 🔴 ［#1709 / IADR-0489］ベースの取得元は匿名の取得にチャレンジを返さないミラー（mirror.gcr.io/library）。
  *      docker.io・ghcr.io・public.ecr.aws（と取得元を書かない FROM＝docker.io）は匿名でも 401 の Bearer チャレンジを返し、
  *      その応答でビルダーが資格情報ヘルパーを呼ぶ。稼働 PoC ではヘルパーが落ち、このイメージを作れなかった。
@@ -133,6 +136,8 @@ function cronJobView(doc) {
     name: v.name,
     hostPath: v.hostPath ? parseMap(v.hostPath) : null,
     configMap: v.configMap ? parseMap(v.configMap) : null,
+    // IADR-0675: 基盤の CA（Secret postgres-tls のキー ca.crt だけ）。items は { key, path } の並び。
+    secret: v.secret ? { ...parseMap(v.secret), items: parseList(parseMap(v.secret).items || []) } : null,
     pvc: v.persistentVolumeClaim ? parseMap(v.persistentVolumeClaim) : null,
     emptyDir: v.emptyDir ? parseMap(v.emptyDir) : null,
     // IADR-0548: projected の serviceAccountToken（k8s auth の名乗り）。
@@ -660,6 +665,61 @@ ok('🔴 11. 秘匿管理の回は raft の整合したスナップショット�
   bad((f) => (f.bootstrap = f.bootstrap.replace('  audience=vault token_policies', '  token_policies')), 'audience を要求しない role');
   bad((f) => (f.script += '\ncurl -H "X-Vault-Token: $t" "$BACKUP_VAULT_ADDR"\n'), 'curl でのトークンの受け渡し');
   bad((f) => (f.script += '\nVAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"\n'), 'root トークンの使用');
+});
+
+// ---------------------------------------------------------------- 12. 基盤への TLS（IADR-0675）
+
+const INFRA_TLS_SECRET = (() => {
+  const m = /^ {2}secretName: (postgres-tls)$/m.exec(read('deploy', 'local', 'infra-tls', 'certificates.yaml'));
+  return m ? m[1] : null;
+})();
+const CA_DIR = '/etc/platform-infra-ca';
+
+/** Postgres の回の TLS の約束。違反の一覧を返す（空 = 合格）。 */
+function checkPostgresTls(cj, { serverSecret }) {
+  const errors = [];
+  const mode = (envOf(cj, 'PGSSLMODE') || {}).value;
+  const root = (envOf(cj, 'PGSSLROOTCERT') || {}).value;
+  if (mode !== 'verify-full') errors.push(`PGSSLMODE が verify-full でない（${mode}）`);
+  const mount = mountOf(cj, 'platform-infra-ca');
+  if (!mount) errors.push('基盤の CA をマウントしない');
+  else {
+    if (mount.mountPath !== CA_DIR) errors.push(`CA のマウント先が ${CA_DIR} でない（${mount.mountPath}）`);
+    if (!mount.readOnly) errors.push('CA を読み取り専用でマウントしない');
+  }
+  if (root !== `${CA_DIR}/ca.crt`) errors.push(`PGSSLROOTCERT が CA のマウント先を指さない（${root}）`);
+  const vol = cj.volumes.find((v) => v.name === 'platform-infra-ca');
+  if (!vol || !vol.secret) errors.push('CA のボリュームが Secret でない');
+  else {
+    if (!serverSecret || vol.secret.secretName !== serverSecret) errors.push(`CA の Secret が本体のサーバ証明書の Secret（${serverSecret}）でない: ${vol.secret.secretName}`);
+    if (vol.secret.optional === 'true') errors.push('CA の Secret が optional（無いまま検証なしへ倒れ得る）');
+    const keys = vol.secret.items.map((i) => `${i.key}->${i.path}`);
+    if (keys.length !== 1 || keys[0] !== 'ca.crt->ca.crt') errors.push(`Secret から ca.crt だけを写していない（${keys.join(', ') || '全キー'}）`);
+  }
+  for (const e of cj.env) {
+    if (/^PGSSL/.test(e.name) && /^(disable|allow|prefer|require|verify-ca)$/.test(e.value || '')) errors.push(`${e.name} が検証を緩める（${e.value}）`);
+  }
+  return errors;
+}
+
+ok('🔴 12. Postgres の回は基盤の CA と名前を検証する TLS で繋ぎ、CA は Secret postgres-tls の ca.crt だけを写す（IADR-0675）', () => {
+  assert.ok(INFRA_TLS_SECRET, 'deploy/local/infra-tls/certificates.yaml に postgres-tls を読めない');
+  const server = find(INFRA_DOCS, 'Deployment', 'postgres');
+  assert.ok(server && server.body.includes(`secretName: ${INFRA_TLS_SECRET}`), '本体の postgres が同じ Secret をマウントしていない（名前が食い違う）');
+  const facts = { serverSecret: INFRA_TLS_SECRET };
+  assert.deepStrictEqual(checkPostgresTls(PG, facts), []);
+  // 変異: どれでも落ちる。
+  const bad = (patch, label) => {
+    const m = clone(PG);
+    patch(m);
+    assert.ok(checkPostgresTls(m, facts).length > 0, `${label} を見逃した`);
+  };
+  bad((m) => (envOf(m, 'PGSSLMODE').value = 'require'), 'sslmode=require');
+  bad((m) => (m.env = m.env.filter((e) => e.name !== 'PGSSLROOTCERT')), 'PGSSLROOTCERT の欠落');
+  bad((m) => (m.mounts = m.mounts.filter((x) => x.name !== 'platform-infra-ca')), 'CA のマウントの欠落');
+  bad((m) => (m.volumes.find((v) => v.name === 'platform-infra-ca').secret.items = []), 'Secret の全キー（鍵を含む）の写し');
+  bad((m) => (m.volumes.find((v) => v.name === 'platform-infra-ca').secret.optional = 'true'), 'optional の Secret');
+  bad((m) => (m.volumes.find((v) => v.name === 'platform-infra-ca').secret.secretName = 'rabbitmq-tls'), '別の Secret');
 });
 
 console.log(`[platform-backup.test] OK: ${passed} 件`);
