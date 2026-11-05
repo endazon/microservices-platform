@@ -97,7 +97,7 @@ spec:
         # 既定のユーザーの無効化の印（deploy/local/rabbitmq-setup/disable-default-user.sh が、全サービスの切り替えを確かめてから作る）。
         - name: default-user-flag
           configMap: { name: rabbitmq-default-user, optional: true }
-        # NFR-18, IADR-0674: 権限の段と絞った権限（reconcile-users.sh が当てるたびに写す）。無い間は段 1（vhost 全体）。
+        # NFR-18, IADR-0681: 権限の段と絞った権限（reconcile-users.sh が当てるたびに写す）。無い間は段 1（vhost 全体）。
         - name: permissions
           configMap: { name: rabbitmq-permissions, optional: true }
         # IADR-0591: TLS の設定と証明書（Secret は非 optional。無ければ Pod は立たない＝平文だけで黙って立たない）。
@@ -146,7 +146,7 @@ data:
     USERS_DIR="${RABBITMQ_BOOT_USERS_DIR:-/etc/rabbitmq-users}"
     FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
     VHOST="${RABBITMQ_BOOT_VHOST:-/}"
-    # NFR-18, IADR-0674: 権限の段（reconcile-users.sh が最後に当てた段と permissions.txt。ConfigMap rabbitmq-permissions）。
+    # NFR-18, IADR-0681: 権限の段（reconcile-users.sh が最後に当てた段と permissions.txt。ConfigMap rabbitmq-permissions）。
     #   無い・vhost なら vhost 全体（段 1）。narrow なら permissions.txt の行を当て、行の無いユーザーは作らない（vhost 全体へ倒さない）。
     PERMS_DIR="${RABBITMQ_BOOT_PERMISSIONS_DIR:-/etc/rabbitmq-permissions}"
     scope="$(cat "$PERMS_DIR/scope" 2>/dev/null || true)"

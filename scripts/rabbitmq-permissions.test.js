@@ -2,7 +2,7 @@
 'use strict';
 /*
  * rabbitmq-permissions.test.js
- * NFR-18, IADR-0674: ブローカのサービスごとのユーザーの権限を、使うキュー・exchange の名前へ絞る（段 1 は報告だけ・段 2 で当てる）。
+ * NFR-18, IADR-0681: ブローカのサービスごとのユーザーの権限を、使うキュー・exchange の名前へ絞る（段 1 は報告だけ・段 2 で当てる）。
  *
  * 固定するもの:
  *   1. 生成物 deploy/local/rabbitmq-setup/permissions.txt は、コード（Wolverine の配線）から導いた値と一致する（スナップショット）。

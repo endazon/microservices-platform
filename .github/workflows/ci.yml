@@ -845,7 +845,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-broker-per-service-users.test.js
 
-      # NFR-18, IADR-0674: ブローカの権限の絞り込み（deploy/local/rabbitmq-setup/permissions.txt）は、コード（Wolverine の配線）から導いた値と
+      # NFR-18, IADR-0681: ブローカの権限の絞り込み（deploy/local/rabbitmq-setup/permissions.txt）は、コード（Wolverine の配線）から導いた値と
       #   一致する（スナップショット）。欠け・隔て・段の切り替え・起動の直後の復元も固定する。取引ユニットの行は submodule の配線から導くので、
       #   submodule を取るこのジョブで、写しが無いことを失敗にして回す（既存ジョブへの段の追加・起動条件は不変）。
       - name: Test broker permissions narrowed from code (snapshot, coverage, staging)

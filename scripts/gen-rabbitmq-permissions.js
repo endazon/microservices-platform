@@ -2,7 +2,7 @@
 'use strict';
 /*
  * gen-rabbitmq-permissions.js
- * NFR-18, IADR-0674: ブローカのサービスごとのユーザー（deploy/local/rabbitmq-setup/users.txt）の権限を、
+ * NFR-18, IADR-0681: ブローカのサービスごとのユーザー（deploy/local/rabbitmq-setup/users.txt）の権限を、
  * **各サービスが実際に使うキューと exchange の名前だけ**へ絞った正規表現（configure / write / read）を、コードから導いて作る。
  *
  *   node scripts/gen-rabbitmq-permissions.js            # 照合（既定）。生成物 permissions.txt と食い違えば exit 1
@@ -469,7 +469,7 @@ function derive(repoRoot = REPO_ROOT, { requireAst = process.env.RABBITMQ_PERMIS
 }
 
 const HEADER = [
-  '# NFR-18, IADR-0674: 生成物（手で直さない）。node scripts/gen-rabbitmq-permissions.js --write が作り、同じスクリプト（既定の照合）と',
+  '# NFR-18, IADR-0681: 生成物（手で直さない）。node scripts/gen-rabbitmq-permissions.js --write が作り、同じスクリプト（既定の照合）と',
   '#   scripts/rabbitmq-permissions.test.js が、コード（Wolverine の配線）から導いた値と突き合わせる。',
   '# 書式: <ユーザー名> <configure> <write> <read>（RabbitMQ の set_permissions の 3 つの正規表現。vhost は 1 つ）。',
   '# 読み手: deploy/local/rabbitmq-setup/reconcile-users.sh（RABBITMQ_PERMISSIONS=narrow のとき適用・既定は差分の報告だけ）と、',

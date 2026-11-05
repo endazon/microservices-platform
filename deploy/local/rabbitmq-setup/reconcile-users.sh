@@ -7,7 +7,7 @@
 #   bash deploy/local/rabbitmq-setup/reconcile-users.sh --permissions-report   # 読むだけ（権限の絞り込みの差分と、ブローカに在る
 #                                                                  #   キュー・exchange・束ねが絞った権限で届くか）。届かないものがあれば exit 1
 #
-# NFR-18, IADR-0674: 権限の範囲は RABBITMQ_PERMISSIONS で段を選ぶ（取り違えると通信が止まり得るので段に分ける）:
+# NFR-18, IADR-0681: 権限の範囲は RABBITMQ_PERMISSIONS で段を選ぶ（取り違えると通信が止まり得るので段に分ける）:
 #   vhost  （既定・段 1）: vhost 全体（'.*' '.*' '.*'）のまま。絞り込みは --permissions-report で差分を見るだけ。
 #   narrow （段 2）      : permissions.txt（コードから導いた生成物。scripts/gen-rabbitmq-permissions.js）の行を当てる。
 #                          当てる前に、ブローカに在るものが絞った権限で届くかを確かめ、届かないものがあれば何も変えずに止める
@@ -79,7 +79,7 @@ secret_b64() {
 #   コンテナの標準入力の終わりとして届けないことがあり、そのとき rabbitmqctl は読み終わらずに止まる（統合スタックの実測）。
 password_line() { secret_b64 "$1" | base64 -d; printf '\n'; }
 
-# NFR-18, IADR-0674: 絞った権限（permissions.txt の 1 行 = <ユーザー> <configure> <write> <read>）。無ければ空。
+# NFR-18, IADR-0681: 絞った権限（permissions.txt の 1 行 = <ユーザー> <configure> <write> <read>）。無ければ空。
 declared_perms() { awk -v u="$1" '!/^[[:space:]]*#/ && $1 == u && NF == 4 { print $2 "\t" $3 "\t" $4; exit }' "$PERMS_FILE" 2>/dev/null; }
 
 # 絞った権限で、ブローカに在るもの（キュー・exchange・束ね）が届くかを確かめる。届かないものを 1 行ずつ出す（無ければ何も出さない）。
@@ -181,7 +181,7 @@ for u in $(users); do
     # NFR, #2194: Windows の Git Bash（MSYS2）は、ネイティブの kubectl.exe へ渡す引数のうち `/` で始まるもの（vhost の `/`）を
     #   Git の導入先のパス（`C:/Program Files/Git/`）へ書き換える。この呼び出しだけ書き換えを止める（他の環境では効かない変数）。
     #   起動器全体に付けないのは、起動器が一時ファイルのパスを kubectl へ渡すため（そちらは書き換えが要る）。
-    # NFR-18, IADR-0674: 段 1（vhost）は vhost 全体、段 2（narrow）は permissions.txt の行（上で全ユーザーの行が在ることを確かめた）。
+    # NFR-18, IADR-0681: 段 1（vhost）は vhost 全体、段 2（narrow）は permissions.txt の行（上で全ユーザーの行が在ることを確かめた）。
     if [ "$SCOPE" = "narrow" ]; then
       IFS=$'\t' read -r p_conf p_write p_read <<<"$(declared_perms "$u")"
     else
@@ -205,7 +205,7 @@ if [ -n "$fail" ]; then
   [ "$MODE" = "check" ] && echo "       合わせる: bash deploy/local/rabbitmq-setup/reconcile-users.sh" >&2
   exit 1
 fi
-# NFR-18, IADR-0674: 当てた段と絞った権限を、ブローカの起動の直後の復元へ渡す（ConfigMap。値は持たない）。
+# NFR-18, IADR-0681: 当てた段と絞った権限を、ブローカの起動の直後の復元へ渡す（ConfigMap。値は持たない）。
 if [ "$MODE" = "apply" ]; then
   if [ -f "$PERMS_FILE" ]; then
     kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$SCOPE" --from-file=permissions.txt="$PERMS_FILE" \

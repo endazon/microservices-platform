@@ -1,4 +1,4 @@
-# NFR-18, IADR-0674: 生成物（手で直さない）。node scripts/gen-rabbitmq-permissions.js --write が作り、同じスクリプト（既定の照合）と
+# NFR-18, IADR-0681: 生成物（手で直さない）。node scripts/gen-rabbitmq-permissions.js --write が作り、同じスクリプト（既定の照合）と
 #   scripts/rabbitmq-permissions.test.js が、コード（Wolverine の配線）から導いた値と突き合わせる。
 # 書式: <ユーザー名> <configure> <write> <read>（RabbitMQ の set_permissions の 3 つの正規表現。vhost は 1 つ）。
 # 読み手: deploy/local/rabbitmq-setup/reconcile-users.sh（RABBITMQ_PERMISSIONS=narrow のとき適用・既定は差分の報告だけ）と、

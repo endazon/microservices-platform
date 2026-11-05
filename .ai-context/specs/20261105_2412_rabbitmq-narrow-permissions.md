@@ -2,7 +2,7 @@
 title: 作業仕様書 — ブローカのサービスごとのユーザーの権限を、使うキューと exchange の名前へ絞る（段 1 は報告・段 2 で当てる。#2412）
 type: spec
 status: done
-related_ids: [NFR-18, IADR-0573, IADR-0577, IADR-0674]
+related_ids: [NFR-18, IADR-0573, IADR-0577, IADR-0681]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05

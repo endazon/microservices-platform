@@ -1,5 +1,5 @@
 ---
-title: IADR-0674 ブローカのサービスごとのユーザーの権限は、コード（Wolverine の配線）から導いたキューと exchange の名前の正規表現へ絞る。段 1 は報告だけ、段 2 で明示して当てる（#2412）
+title: IADR-0681 ブローカのサービスごとのユーザーの権限は、コード（Wolverine の配線）から導いたキューと exchange の名前の正規表現へ絞る。段 1 は報告だけ、段 2 で明示して当てる（#2412）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, IADR-0573, IADR-0577, IADR-0591]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2412_rabbitmq-narrow-permissions.md
 ---
 
-# IADR-0674: ブローカの権限を使う名前へ絞る（段 1 は報告・段 2 で当てる。#2412）
+# IADR-0681: ブローカの権限を使う名前へ絞る（段 1 は報告・段 2 で当てる。#2412）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
