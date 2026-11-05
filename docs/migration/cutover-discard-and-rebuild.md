@@ -249,9 +249,17 @@ done   # どちらも 0 でないこと
 - **任意の保全**: 調査用の記録を残したいなら、3 の前に次を取る（取るかどうかはオーナーが決める。戻すための手順ではない）。
 
   ```bash
-  kubectl -n platform-infra exec "$PG" -- pg_dumpall -U postgres --clean > cutover-pg-before.sql   # ai-stock-trading の DB も含む。扱いに注意
-  kubectl -n platform-infra exec "$KC" -- /opt/keycloak/bin/kcadm.sh get realms/platform > cutover-realm-before.json
+  # 🔴 平文をディスクへ書かない。バックアップと同じ受取人（ConfigMap platform-backup-age-recipients。公開鍵だけ）の age へパイプで渡す。
+  ( set -e -o pipefail   # ( ) の中で回す（失敗で止まっても手元のシェルを閉じない）
+    R="$(mktemp)"; trap 'rm -f -- "$R"' EXIT
+    kubectl -n platform-infra get configmap platform-backup-age-recipients -o jsonpath='{.data.recipients\.txt}' > "$R"
+    [ -s "$R" ] || { echo "受取人が無い（platform-infra-backup-runbook.md の §1）" >&2; exit 1; }
+    kubectl -n platform-infra exec "$PG" -- pg_dumpall -U postgres --clean | age -R "$R" -o cutover-pg-before.sql.age   # ai-stock-trading の DB も含む
+    kubectl -n platform-infra exec "$KC" -- /opt/keycloak/bin/kcadm.sh get realms/platform | age -R "$R" -o cutover-realm-before.json.age
+  )
   ```
+
+  読むときは `age -d -i <秘密鍵のファイル> cutover-pg-before.sql.age | less` のように、復号を画面かパイプの先へだけ流す。
 
 | リスク | 起きること | 抑え方 |
 | --- | --- | --- |

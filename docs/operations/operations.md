@@ -395,9 +395,10 @@ kubectl -n "$NS" wait --for=delete pod -l app=keycloak --timeout=180s
 kubectl -n "$NS" run kc-h2-backup --restart=Never --image=busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e \
   --overrides='{"spec":{"volumes":[{"name":"d","persistentVolumeClaim":{"claimName":"keycloak-data","readOnly":true}}],"containers":[{"name":"c","image":"busybox:1.37@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e","command":["sleep","600"],"volumeMounts":[{"name":"d","mountPath":"/d","readOnly":true}]}]}}'
 kubectl -n "$NS" wait --for=condition=Ready pod/kc-h2-backup --timeout=120s
-kubectl -n "$NS" exec kc-h2-backup -- tar -C /d -cf - h2 > "keycloak-h2-$(date +%Y%m%d%H%M).tar"
+# 平文をディスクへ書かない: age の受取人（公開鍵）へパイプで渡す（受取人ファイルは platform-infra-backup-runbook.md の §1）
+kubectl -n "$NS" exec kc-h2-backup -- tar -C /d -cf - h2 | age -R <受取人ファイル> -o "keycloak-h2-$(date +%Y%m%d%H%M).tar.age"
 kubectl -n "$NS" delete pod kc-h2-backup
-tar -tf keycloak-h2-*.tar   # keycloakdb.mv.db が在ることを確かめる
+age -d -i <秘密鍵のファイル> keycloak-h2-*.tar.age | tar -tf -   # keycloakdb.mv.db が在ることを確かめる（復号はパイプの先へだけ）
 # 3. 新しい版で起こす（起動器が取り込み元の Secret と Deployment を作り直し、realm の後追いを当てる）
 bash scripts/k8s-local-up.sh --live
 # 4. 移行と収束を確かめる
@@ -409,7 +410,8 @@ compose（Keycloak の DB は共有 Postgres の `keycloak`）:
 
 ```sh
 docker compose -f deploy/docker-compose.yml stop keycloak
-docker compose -f deploy/docker-compose.yml exec -T postgres pg_dump -U postgres -Fc keycloak > "keycloak-$(date +%Y%m%d%H%M).dump"
+# 平文をディスクへ書かない: age の受取人（公開鍵）へパイプで渡す（受取人ファイルは platform-infra-backup-runbook.md の §1）
+docker compose -f deploy/docker-compose.yml exec -T postgres pg_dump -U postgres -Fc keycloak | age -R <受取人ファイル> -o "keycloak-$(date +%Y%m%d%H%M).dump.age"
 docker compose -f deploy/docker-compose.yml up -d keycloak
 ```
 
@@ -423,7 +425,8 @@ docker compose -f deploy/docker-compose.yml up -d keycloak
      realm の宣言は 25 以降にしか無い `basic` スコープ（`oidc-sub-mapper`）を持つので、イメージだけを 24 に戻すと realm の後追いが
      24 へそれを当てようとし、realm の差分（G9）がいつまでも 0 にならない。
   2. **認証基盤の DB を退避から戻す**（24 は移行済みの H2・スキーマを開けない）。経路B は Keycloak を止め、PVC を書き込み可で付けた
-     使い捨ての Pod で `h2` を消して退避の tar を展開する。compose は `keycloak` DB を作り直して `pg_restore` する。
+     使い捨ての Pod で `h2` を消して退避の tar を展開する（`age -d -i <秘密鍵のファイル> <退避>.tar.age | kubectl exec -i … -- tar -C /d -xf -`。復号はパイプの先へだけ流す）。
+     compose は `keycloak` DB を作り直して `pg_restore` する（`age -d -i <秘密鍵のファイル> <退避>.dump.age | docker compose … exec -T postgres pg_restore …`）。
   その後に起動器（`bash scripts/k8s-local-up.sh --live`）か `docker compose up -d keycloak` で起こす。
   🔴 **起動器は H2 の版を見ない。** 新しい版のマニフェストのまま起動器を走らせるだけで、一方向の移行が起きる（止める仕掛けは無い）。
   退避は版を上げる変更を取り込む**前**に取る。
@@ -2831,7 +2834,7 @@ docker のデーモンは要らない。**匿名のトークン → manifest の
 ```bash
 # Docker Hub（library/ の公式イメージは repository:library/<name>）
 TOKEN=$(curl -sS "https://auth.docker.io/token?service=registry.docker.io&scope=repository:library/redis:pull" | jq -r .token)
-curl -sSI -H "Authorization: Bearer $TOKEN" \
+curl -sSI -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") \
   -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
   https://registry-1.docker.io/v2/library/redis/manifests/7-alpine | grep -i '^docker-content-digest'
 # ghcr.io / quay.io は 401 の WWW-Authenticate が示す realm（例 https://ghcr.io/token?scope=repository:<repo>:pull）から同じ形で取る

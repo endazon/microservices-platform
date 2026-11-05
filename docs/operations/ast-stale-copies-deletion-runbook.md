@@ -54,8 +54,13 @@ issues: [#1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
 
 ```bash
 kubectl -n microservices-platform port-forward svc/document-service 18092:8080 &
-export TOKEN="<platform-admin を持つ主体のアクセストークン>"
-curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18092/documents/ast-stale-copies > stale-copies.json
+read -rs -p 'platform-admin を持つ主体のアクセストークン: ' TOKEN; echo   # 貼り付けて Enter（表示されない・履歴に残らない。export しない）
+curl -sS -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") http://127.0.0.1:18092/documents/ast-stale-copies > stale-copies.json   # 引数に載せない
+```
+
+- トークンは手順の終わり（手順 A の 4 の後）で `unset TOKEN` で消す。期限が切れたら同じ `read -rs` で読み直す。
+
+```bash
 jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
 ```
 
@@ -85,7 +90,7 @@ jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
    ```bash
    jq -r '.items[].id' stale-copies.json > stale-ids.txt   # 2 で外した id はここから除く
    while read -r id; do
-     code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
+     code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") \
        "http://127.0.0.1:18092/documents/$id")
      echo "$id $code"
    done < stale-ids.txt | tee delete-result.txt

@@ -237,8 +237,9 @@ kubectl -n microservices-platform wait --for=condition=Available deploy --all --
 
 1. **バックアップを取る（必須）。** 移送は設定の平文を参照へ置き換える。**稼働の DB の上では元へ戻らない**（値は保管先に残る）。
    datasource の DB（`datasource_svc`）の論理バックアップを取り、取れたことを確かめてから進む
-   （例: `kubectl -n platform-infra exec deploy/postgres -- pg_dump -U <管理者> -d datasource_svc -Fc > datasource_svc-<日付>.dump`。
-   🔴 このファイルには平文が入る。置き場所と破棄の期限を [`記録`](#記録) に書く）。
+   （例: `kubectl -n platform-infra exec deploy/postgres -- pg_dump -U <管理者> -d datasource_svc -Fc | age -R <受取人ファイル> -o datasource_svc-<日付>.dump.age`。
+   🔴 中身は設定の平文を含む。**平文のままディスクへ書かない** —— バックアップと同じ受取人の age へパイプで渡す
+   （受取人ファイルは [バックアップの手順書](platform-infra-backup-runbook.md) の §1）。置き場所と破棄の期限を [`記録`](#記録) に書く）。
 2. **数える**: `bash scripts/migrate-datasource-credentials.sh --live --dry-run`。平文を持つ行とキーの件数だけが出る（何も書かない）。
 3. **移す**: `bash scripts/migrate-datasource-credentials.sh --live`。移送専用の policy の短命のトークン（既定 10 分）を発行し、
    標準入力で移送のコマンドへ渡し、終わったら失効させる。出力は件数（移した・衝突・失敗・平文が残る行）と行の番号だけである。

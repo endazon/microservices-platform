@@ -85,13 +85,20 @@ done                                                                          # 
 > この Secret は基盤の起動器（`scripts/k8s-local-up.sh`。ESO なし）が用意する —— 止まったら STEP 0 を先に回す。
 
 ```sh
-read -rs FINNHUB; export FINNHUB_API_KEY="$FINNHUB"; export MARKETDATA_FINNHUB_API_KEY="$FINNHUB"; unset FINNHUB
-export KB_AUTH_CLIENTSECRET="ai-stock-trading-kb-writer-dev-secret-change-me"
-export KB_READER_AUTH_CLIENTSECRET="ai-stock-trading-kb-reader-dev-secret-change-me"
-read -rs DISCORD_BOT_TOKEN; export DISCORD_BOT_TOKEN
-export DISCORD_BOT_KILLSWITCH_PHRASE="CONFIRM-KILL"
-bash src/ai-stock-trading/scripts/k8s-local-deploy.sh
+# 🔴 値は `read -rs` で読む（画面・シェルの履歴に残さない）。全体を ( ) の中で回し、export は起動器の 1 回だけに効かせる
+#   （終わった後のシェルの環境に残さない）。各行は値を貼り付けて Enter（表示されない）。
+(
+  read -rs -p 'Finnhub の API キー: ' FINNHUB; echo; export FINNHUB_API_KEY="$FINNHUB" MARKETDATA_FINNHUB_API_KEY="$FINNHUB"; unset FINNHUB
+  read -rs -p 'KB 書き手の client secret: ' KB_AUTH_CLIENTSECRET; echo; export KB_AUTH_CLIENTSECRET
+  read -rs -p 'KB 読み手の client secret: ' KB_READER_AUTH_CLIENTSECRET; echo; export KB_READER_AUTH_CLIENTSECRET
+  read -rs -p 'Discord ボットのトークン: ' DISCORD_BOT_TOKEN; echo; export DISCORD_BOT_TOKEN
+  read -rs -p 'キルスイッチの確認の言葉: ' DISCORD_BOT_KILLSWITCH_PHRASE; echo; export DISCORD_BOT_KILLSWITCH_PHRASE
+  bash src/ai-stock-trading/scripts/k8s-local-deploy.sh
+)
 ```
+
+> KB の client secret は認証基盤（Keycloak）の `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader` と同じ値を入れる。
+> キルスイッチの確認の言葉は、運用者が決めた言葉を入れる（手順書に固定の言葉を書かない。決めた言葉は秘匿の保管先に置く）。
 
 成功確認（①②③＋価格文脈と鍵の非空）:
 

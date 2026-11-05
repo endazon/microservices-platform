@@ -100,9 +100,10 @@ kubectl -n platform-infra exec deploy/loki -c loki -- df -h /tmp/loki
 ## 2. 前段を通る資格（読み取りのトークン）を用意する
 
 **トークンは Secret `observability-gate` の鍵 `reader` である。** 値はリポジトリにも本書にも無い。手元のシェルの変数へ読み込み、画面には出さない。
+🔴 **`export` しない**（シェルの変数に留め、子のプロセスの環境へ流さない）。スクリプトへは呼び出しの 1 回だけ `LOKI_TOKEN="$LOKI_TOKEN"` で渡す。
 
 ```sh
-export LOKI_TOKEN="$(kubectl -n platform-infra get secret observability-gate -o jsonpath='{.data.reader}' | base64 -d)"
+LOKI_TOKEN="$(kubectl -n platform-infra get secret observability-gate -o jsonpath='{.data.reader}' | base64 -d)"
 echo "reader のトークン: ${#LOKI_TOKEN} 文字（値は表示しない）"
 ```
 
@@ -137,7 +138,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H @<(printf 'Authorization: Bearer %s\
 ## 4. ログを保全する（時間範囲を指定してファイルへ書き出す）
 
 道具は `scripts/export-loki-logs.js`（読み取り専用。GET の `query_range` / `query` だけを呼ぶ）である。
-**MSP のリポジトリの直下で実行する。** 稼働クラスタへ当たるので、`--live`（または `LIVE=1`）を付ける。トークンは §2 の環境変数 `LOKI_TOKEN` から読む。
+**MSP のリポジトリの直下で実行する。** 稼働クラスタへ当たるので、`--live`（または `LIVE=1`）を付ける。トークンは環境変数 `LOKI_TOKEN` から読む（§2 のシェルの変数を、呼び出しの頭の `LOKI_TOKEN="$LOKI_TOKEN"` で 1 回だけ渡す）。
 
 - 時刻は**時差つき**の RFC 3339 で与える（`2026-10-14T00:00:00+09:00`）。時差の無い書き方は拒まれる。
 - `--from` を含み、`--to` を含まない。1 回の範囲は 30 日と 1 時間まで（Loki の `max_query_length`）。書き出しの時刻はミリ秒の単位まで（秒までの例はそのまま使える）。
@@ -150,7 +151,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H @<(printf 'Authorization: Bearer %s\
 ### 4-1. まず範囲に何があるかを見る（`--summary`）
 
 ```sh
-node scripts/export-loki-logs.js --live --summary \
+LOKI_TOKEN="$LOKI_TOKEN" node scripts/export-loki-logs.js --live --summary \
   --from 2026-10-14T00:00:00+09:00 --to 2026-10-15T00:00:00+09:00
 ```
 
@@ -186,7 +187,7 @@ curl -s -G -H @<(printf 'Authorization: Bearer %s\n' "$LOKI_TOKEN") \
 
 ```sh
 mkdir -p ~/loki-audit/20261014
-node scripts/export-loki-logs.js --live \
+LOKI_TOKEN="$LOKI_TOKEN" node scripts/export-loki-logs.js --live \
   --from 2026-10-14T00:00:00+09:00 --to 2026-10-15T00:00:00+09:00 \
   --out ~/loki-audit/20261014/all.jsonl
 ```
@@ -210,16 +211,16 @@ sha256: <64 桁>
 
 ```sh
 # AST の全サービス
-node scripts/export-loki-logs.js --live --query '{job=~`ai-stock-trading\..+`}' \
+LOKI_TOKEN="$LOKI_TOKEN" node scripts/export-loki-logs.js --live --query '{job=~`ai-stock-trading\..+`}' \
   --from 2026-10-14T00:00:00+09:00 --to 2026-10-15T00:00:00+09:00 --out ~/loki-audit/20261014/ast.jsonl
 # AST の監査サービスだけ・取引の時間帯（JST 22:30〜翌 05:00）
-node scripts/export-loki-logs.js --live --query '{job="ai-stock-trading.audit-service"}' \
+LOKI_TOKEN="$LOKI_TOKEN" node scripts/export-loki-logs.js --live --query '{job="ai-stock-trading.audit-service"}' \
   --from 2026-10-14T22:30:00+09:00 --to 2026-10-15T05:00:00+09:00 --out ~/loki-audit/20261014/ast-audit-night.jsonl
 # MSP の BFF で、本文に session を含む行だけ
-node scripts/export-loki-logs.js --live --query '{job="microservices-platform.bff"} |= `session`' \
+LOKI_TOKEN="$LOKI_TOKEN" node scripts/export-loki-logs.js --live --query '{job="microservices-platform.bff"} |= `session`' \
   --from 2026-10-14T00:00:00+09:00 --to 2026-10-15T00:00:00+09:00 --out ~/loki-audit/20261014/bff-session.jsonl
 # 秘匿管理の audit
-node scripts/export-loki-logs.js --live --query '{job="vault-audit"}' \
+LOKI_TOKEN="$LOKI_TOKEN" node scripts/export-loki-logs.js --live --query '{job="vault-audit"}' \
   --from 2026-10-14T00:00:00+09:00 --to 2026-10-15T00:00:00+09:00 --out ~/loki-audit/20261014/vault-audit.jsonl
 ```
 

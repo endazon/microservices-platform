@@ -226,6 +226,9 @@ kc_token() {   # 管理者のトークンを取り直す（何度でも呼べる
 }
 TOKEN="$(kc_token)"
 [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
+auth_hdr() {   # 管理者のトークンを curl の引数に載せない: その時点の $TOKEN を $WORK の見出しのファイル（0600）へ書き、そのパスを返す
+  printf 'Authorization: Bearer %s\n' "$TOKEN" > "$WORK/auth"; np "$WORK/auth"
+}
 ```
 
 🔴 **master realm の管理者のトークンは短命である**（既定で 60 秒）。1-3 の 5 の `PUT` の前と、[途中で止まったとき](#途中で止まったとき)の確かめ方の前に、
@@ -239,7 +242,7 @@ TOKEN="$(kc_token)"
 
 ```bash
 CLIENT=<client>   # 例: bff
-CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients?clientId=$CLIENT" | jq -j '.[0].id')"
+CID="$(curl -sf -H @"$(auth_hdr)" "$KC/admin/realms/platform/clients?clientId=$CLIENT" | jq -j '.[0].id')"
 [ -n "$CID" ] && [ "$CID" != null ] && echo "client ok"
 ```
 
@@ -251,7 +254,7 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
 2. **新しい client の表現を組み立てて確かめる**（client の表現を読み、`secret` だけを差し替える。値はファイルで渡し、引数にも画面にも出さない。まだどこにも書かない）:
 
    ```bash
-   curl -sf -H "Authorization: Bearer $TOKEN" -o "$(np "$WORK/client.json")" "$KC/admin/realms/platform/clients/$CID"
+   curl -sf -H @"$(auth_hdr)" -o "$(np "$WORK/client.json")" "$KC/admin/realms/platform/clients/$CID"
    printf '%s' "$NEW_VALUE" > "$WORK/secret"
    jq --rawfile s "$(np "$WORK/secret")" '.secret = $s' "$(np "$WORK/client.json")" > "$WORK/client-new.json"
    jq -e --arg cid "$CID" --arg c "$CLIENT" --rawfile s "$(np "$WORK/secret")" \
@@ -268,7 +271,7 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
 
    ```bash
    TOKEN="$(kc_token)"; [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
-   CODE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $TOKEN" \
+   CODE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H @"$(auth_hdr)" \
      -H 'Content-Type: application/json' --data-binary @"$(np "$WORK/client-new.json")" \
      "$KC/admin/realms/platform/clients/$CID")"
    [ "$CODE" = 204 ] && rm -f "$WORK/client-new.json"
@@ -402,7 +405,7 @@ kubectl -n <namespace> get secret <name> -o jsonpath='{.data.<key>}' | base64 -d
 TOKEN="$(kc_token)"
 printf '%s' "$NEW_VALUE" > "$WORK/secret"
 CODE="$(curl -s -o "$(np "$WORK/client-now.json")" -w '%{http_code}' \
-  -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID")"
+  -H @"$(auth_hdr)" "$KC/admin/realms/platform/clients/$CID")"
 if [ -z "$TOKEN" ] || [ "$TOKEN" = null ] || [ "$CODE" != 200 ]; then
   echo "判定不能: HTTP $CODE"
 else
