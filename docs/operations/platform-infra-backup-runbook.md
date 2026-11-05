@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-11-04
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0670, IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
-specs: [20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
-issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
+iadrs: [IADR-0675, IADR-0670, IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261105_2402_cloud-backup-alerts-heartbeat, 20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+issues: [#2402, #2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -21,6 +21,7 @@ issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, A
 >
 > 🔴 **ローカル開発・PoC 環境（`deploy/local`）専用である。本番のバックアップ設計ではない。**
 > 保管先は本機の C: と E: であり、本機そのものを失えば両方を失う（オフサイトではない）。
+> クラウドの最小構成（単一ノード・オブジェクトストレージへの保管・Discord への警報）の手順は、別の runbook（[cloud-backup-alerts-heartbeat-runbook.md](cloud-backup-alerts-heartbeat-runbook.md)）にある。
 >
 > 🔴 **秘密鍵（age の identity）はクラスタにもリポジトリにも置かない。** 本書のどの手順も秘密鍵の中身を表示しない。
 

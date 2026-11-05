@@ -1,0 +1,15 @@
+# NFR-18, NFR-21, IADR-0674 (#2401), IADR-0675 (#2402): クラウドの最小構成の全体。
+#   infra（#2401）＋ バックアップ（オブジェクトストレージ）＋ 警報と heartbeat（Prometheus・Alertmanager）。
+# 適用: kubectl apply -k deploy/cloud（先に bootstrap-secrets.sh と、運用の Secret・ConfigMap を作る。
+#       手順は deploy/cloud/README.md と docs/operations/cloud-backup-alerts-heartbeat-runbook.md）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - infra
+  - backup
+  - observability
+
+# otel-collector へメトリクスの remote write と自己テレメトリの Service の口を足す（#2401 の infra は単独でも描ける形のまま）。
+patches:
+  - path: observability/patches/otel-collector.yaml

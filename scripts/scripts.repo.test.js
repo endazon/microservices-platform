@@ -20269,6 +20269,8 @@ esac
       const docs = JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
       const dep = (n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
       dep('keycloak').spec.template.spec.containers[0].args = ['start-dev', '--import-realm'];
+      delete dep('keycloak').spec.template.spec.containers[0].livenessProbe;
+      delete dep('keycloak').spec.template.spec.containers[0].startupProbe;
       docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak').spec.type = 'LoadBalancer';
       dep('rabbitmq').spec.template.spec.containers[0].ports.push({ containerPort: 15672, hostPort: 15672 });
       dep('postgres').spec.template.spec.containers[0].env.push({ name: 'POSTGRES_PASSWORD', value: 'x' });
@@ -20276,7 +20278,7 @@ esac
       docs.push({ kind: 'Deployment', metadata: { name: 'valkey', labels: { app: 'valkey' } }, spec: { template: { spec: { containers: [] } } } });
       docs.push({ kind: 'ConfigMap', metadata: { name: 'x' }, data: { 'a.sql': "CREATE USER u WITH PASSWORD 'p';", b: cloud.DEV_LITERALS[0] } });
       const p = cloud.infraProblems(docs, rawDocs2401('deploy/local/infra').filter(Boolean));
-      for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
+      for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /livenessProbe が \/health\/live/, /startupProbe が \/health\/started/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
         assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
       }
     });

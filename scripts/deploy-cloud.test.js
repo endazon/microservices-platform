@@ -204,6 +204,11 @@ function infraProblems(docs, localDocs) {
     const args = (kc.spec.template.spec.containers[0].args || []).map(String);
     if (args.includes('start-dev')) out.push('infra: Keycloak の引数に start-dev がある');
     if (!args.includes('start')) out.push('infra: Keycloak の引数に start が無い');
+    // 起動の後のハングを作り直す（liveness）。起動中（realm の取り込み）は startupProbe が liveness を止める。
+    const kcc = kc.spec.template.spec.containers[0];
+    const probeAt = (p, path) => p && p.httpGet && p.httpGet.path === path && String(p.httpGet.port) === '9000';
+    if (!probeAt(kcc.livenessProbe, '/health/live')) out.push('infra: Keycloak の livenessProbe が /health/live（9000）でない');
+    if (!probeAt(kcc.startupProbe, '/health/started')) out.push('infra: Keycloak の startupProbe が /health/started（9000）でない（起動中に liveness が作り直す）');
   }
   for (const want of ['postgres', 'rabbitmq', 'keycloak', 'otel-collector']) {
     if (!docs.some((d) => d.kind === 'Deployment' && d.metadata.name === want)) out.push(`infra: ${want} の Deployment が無い`);

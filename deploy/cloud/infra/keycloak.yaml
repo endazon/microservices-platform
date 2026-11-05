@@ -54,12 +54,23 @@ spec:
             - containerPort: 8080
             - name: management
               containerPort: 9000
-          readinessProbe:
-            httpGet: { path: /health/ready, port: 9000 }
-            initialDelaySeconds: 30
+          # NFR-18, IADR-0675: 起動（realm の取り込みを含む）は startupProbe が最長 10 分まで待ち、その間は liveness を測らない。
+          # 起動の後にハングしたら liveness が作り直す（単一ノードで人がすぐ気付けないため）。
+          startupProbe:
+            httpGet: { path: /health/started, port: 9000 }
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: /health/live, port: 9000 }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 9000 }
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           volumeMounts:
             - { name: realms, mountPath: /opt/keycloak/data/import, readOnly: true }
             - { name: infra-ca, mountPath: /etc/platform-infra-ca, readOnly: true }
