@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using AiAnalysisService.Features.Analysis.Analyze;
 using Platform.Shared.Infrastructure.Foundation.Authz;
 using AiAnalysisService.Features.Analysis.Ask;
@@ -15,7 +16,9 @@ public static class AnalysisEndpoints
 {
     public static IEndpointRouteBuilder MapAnalysisEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/analysis").WithTags("Analysis");
+        // NFR-18, ADR-0084 決定 1, IADR-0685 (#2430): 群の認証の門（段 1 は報告だけ・段 2 で未認証を 401）。
+        // 段 1 のあいだは、下の IsAnonymous の短絡（200 ＋ 空回答）が従来どおり働く。
+        var g = app.MapGroup("/analysis").WithTags("Analysis").RequireAuthenticatedOrReport("analysis");
 
         AskEndpoint.Map(g);
         AskStreamEndpoint.Map(g);

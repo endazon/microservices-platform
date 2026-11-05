@@ -751,3 +751,4 @@
 | [IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md) | LLM ゲートウェイは呼び手が分けた接頭辞を user の先頭の text ブロックにし、その末尾に 5 分のキャッシュの区切りを置く。InputTokens はプロンプト全体のまま、キャッシュの書き・読みを「うち」として返し、単価の区分ごとに計上する（#2396） | Accepted |
 | [IADR-0672](./IADR-0672_infra-credentials-staged-fail-closed.md) | 基盤の資格情報の判定を、DB・オブジェクトストレージ・秘匿管理の管理者トークンへ広げる。dev ではない context で開発用の値になるとき、段 1 は報告だけ・段 2 は明示の切り替えで止める。検査と作り直しは利用者が実行するスクリプトにする（#2399） | Accepted |
 | [IADR-0673](./IADR-0673_platform-infra-tls-stage-4b2-other-clients.md) | 基盤との通信を TLS にする 段 4b-2 の MSP の分。compose の取引ユニットの 3 サービス・Keycloak の DB・Wiki.js・バックアップの CronJob も CA と名前を検証して繋ぐ（helm の Wiki.js は値で opt-in。AST の chart は AST リポジトリ。#2403） | Accepted |
+| [IADR-0685](./IADR-0685_internal-rest-staged-auth-gate.md) | 内部の AI 分析と Wiki の REST の群に、段階つきの共有の認証の門（Auth:InternalGate:Mode。段 1 は報告、段 2 は 401）を掛ける（#2430） | Accepted |

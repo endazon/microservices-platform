@@ -3,15 +3,15 @@ title: エッジ（BFF）認証の担保 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-10
-updated: 2026-10-16
+updated: 2026-11-06
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, FR-04, FR-06, FR-07, NFR-07, NFR-09, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-13, UC-01, UC-02, UC-03]
+ids: [FR-03, FR-04, FR-06, FR-07, NFR-07, NFR-09, NFR-18, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-13, UC-01, UC-02, UC-03]
 adrs: [ADR-0004, ADR-0032]
-iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160, IADR-0251, IADR-0273, IADR-0429, IADR-0510, IADR-0533]
-specs: [20260926_issue-1535_drop-bff-bearer-user-arm, 20261008_1780_bff-keyring-shared-two-hosts, 20261015_1902_east-west-rest-residue]
-issues: [#458, #656, #1393, #1534, #1535, #1780, #1902]
+iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160, IADR-0251, IADR-0273, IADR-0429, IADR-0510, IADR-0533, IADR-0685]
+specs: [20260926_issue-1535_drop-bff-bearer-user-arm, 20261008_1780_bff-keyring-shared-two-hosts, 20261015_1902_east-west-rest-residue, 20261106_2430_internal-rest-auth-gate]
+issues: [#458, #656, #1393, #1534, #1535, #1780, #1902, #2430]
 -->
 
 # テスト仕様書: エッジ（BFF）認証の担保
@@ -134,5 +134,8 @@ issues: [#458, #656, #1393, #1534, #1535, #1780, #1902]
 
 - **後段サービスの認可は本仕様の対象外**。BFF を塞いでも**クラスタ内から後段へ直接到達する
   経路は残る**。「塞いだので安全になった」と読まないこと。
+  - ［2026-11-06 追記］後段のうち端点（群）の門を持たなかった AI 分析の `/analysis/*` と Wiki の `/wiki/*` には、段階つきの認証の門を掛けた（設定 `Auth:InternalGate:Mode`）。
+    既定の `Report` は未認証の要求を計器 `auth.internal_gate.anonymous.total` に数えるだけで、応答は従来どおり（200 の空）。`Enforce` は 401 で拒む。
+    試験は各サービスの `InternalAuthGateTests` が持つ。グラフ・ダッシュボード・フィードバックの群は、すでに端点ごとに門を持つ。
 - **検査器は「認証を要求するか」までしか見ない。** 「**正しい**ロールが付いているか」は人が計画を読んで決める
   ——`x-roles` と実効ロールが**どちらも同じように間違っていれば通る**（契約と実効ロールの突合が持つ既知の限界）。
