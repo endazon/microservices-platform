@@ -2104,7 +2104,13 @@ ok('VAULT_BFF_WRITER (#2230): 既定（VAULT=1 だけ）の手順は、VAULT_BFF
   assert.strictEqual(base.status, 0, `VAULT=1 が非0終了: ${base.stderr}`);
   // 一時ファイルの名前（mktemp）は実行ごとに変わるので伏せる。並行して走る段の記録は行の順が入れ替わり得るので、
   // 順序ではなく行の多重集合で比べる（出すコマンドの集合が同じ＝手順が変わっていない）。
-  const norm = (lines) => lines.map((l) => l.replace(/\/tmp\/tmp\.[A-Za-z0-9]+/g, '/tmp/tmp.X')).sort();
+  // ［2026-11-06 / #2442］ノードの Ready 待ちの上限（`--timeout=<残り>s`）は、k3d-create.sh が起動からの経過（bash の SECONDS）
+  // で残りを計算するので、遅いランナーで秒の境目をまたぐと 2 回の起動で 1 秒ずれる（実測: 179s と 180s）。
+  // 値そのものは assertWaitBudget（下の #2273 の節）が範囲で固定しているので、ここでは伏せて手順の同一だけを見る。
+  const norm = (lines) => lines
+    .map((l) => l.replace(/\/tmp\/tmp\.[A-Za-z0-9]+/g, '/tmp/tmp.X'))
+    .map((l) => l.replace(/^(kubectl wait --for=condition=Ready node --all --timeout=)\d+s$/, '$1<remaining>s'))
+    .sort();
   assert.deepStrictEqual(norm(off.lines), norm(base.lines), 'VAULT_BFF_WRITER=0 で起動器の出すコマンドが既定と変わった');
   assert.ok(!anyLineHas(base.lines, 'bff-writer'), '既定の VAULT=1 で BFF の書き込みの役の bootstrap が出た');
   // vault-auth-rbac そのものは既定の VAULT=1 でもバックアップの bootstrap（永続化のとき）が当てるので、ここでは見ない（上の多重集合の一致が手順の不変を見る）。
