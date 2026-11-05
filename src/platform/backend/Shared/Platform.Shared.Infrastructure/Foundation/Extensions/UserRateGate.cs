@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -16,17 +17,24 @@ namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 //   - 段 1（`Bff:UserRateLimits:Mode` 未設定・`Report`）: 上限を超えた要求を計器と Warning で数えるだけ。応答は従来どおり。
 //   - 段 2（`Enforce`）: 429（Retry-After: 60）で拒み、後段へ転送しない。
 // 上限は群ごと（`Bff:UserRateLimits:Groups:<群>` = 直近 60 秒の件数）。設定が無い群は既定値を使う。
+// 🔴 設定は**起動時に**検証する（`AddUserRateLimits` の ValidateOnStart）。最初の要求で 500 にしない。
 // 状態はプロセス内（レプリカごと）。鍵は「利用者 × 群」で、利用者は検証済みの主体（sub → NameIdentifier → Name）。
 public static class UserRateGate
 {
-    public const string ModeConfigKey = "Bff:UserRateLimits:Mode";
-    public const string GroupsConfigSection = "Bff:UserRateLimits:Groups";
+    public const string SectionName = "Bff:UserRateLimits";
     public const string MeterName = "microservices-platform.bff-user-rate";
     public const string ExceededCounterName = "bff.user_rate.exceeded.total";
     public const string GroupTag = "bff.rate.group";
     public const string ModeTag = "bff.rate.mode";
 
-    private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
+    // 群の名前の値域（設定のキーと計器の属性）。群を足すときはここにも足す（設定の綴り違いを起動時に落とすため）。
+    public const string GroupAnalysis = "analysis";
+    public const string GroupSearch = "search";
+    public const string GroupGraphSuggestion = "graph-suggestion";
+
+    public static readonly IReadOnlySet<string> KnownGroups =
+        new HashSet<string>([GroupAnalysis, GroupSearch, GroupGraphSuggestion], StringComparer.OrdinalIgnoreCase);
+
     private static readonly TimeSpan LogInterval = TimeSpan.FromMinutes(5);
 
     public enum GateMode
@@ -35,24 +43,46 @@ public static class UserRateGate
         Enforce,
     }
 
-    public static GateMode ReadMode(IConfiguration configuration)
+    public sealed class Options
     {
-        var raw = configuration[ModeConfigKey];
-        if (string.IsNullOrWhiteSpace(raw)) return GateMode.Report;
-        if (Enum.TryParse<GateMode>(raw.Trim(), ignoreCase: true, out var mode) && Enum.IsDefined(mode)) return mode;
-        throw new InvalidOperationException($"{ModeConfigKey} の値が不正です（{raw}）。Report か Enforce を指定してください（#2432）。");
+        public GateMode Mode { get; set; } = GateMode.Report;
+
+        // 群 → 直近 60 秒の件数の上限。書かなかった群は端点に書いた既定値を使う。
+        // 🔴 文字列で受けて検証で解く（int で受けると、数値でない値を束ねる段で黙って捨てる。実測）。
+        public Dictionary<string, string> Groups { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+        internal static bool TryParseLimit(string? raw, out int limit)
+            => int.TryParse(raw?.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out limit)
+               && limit > 0;
     }
 
-    public static int ReadLimit(IConfiguration configuration, string group, int defaultPerMinute)
+    private sealed class Validator : IValidateOptions<Options>
     {
-        var raw = configuration[$"{GroupsConfigSection}:{group}"];
-        if (string.IsNullOrWhiteSpace(raw)) return defaultPerMinute;
-        if (int.TryParse(raw.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v) && v > 0)
-            return v;
-        throw new InvalidOperationException($"{GroupsConfigSection}:{group} は正の整数でなければなりません（{raw}。#2432）。");
+        public ValidateOptionsResult Validate(string? name, Options o)
+        {
+            var errors = new List<string>();
+            if (!Enum.IsDefined(o.Mode))
+                errors.Add($"{SectionName}:Mode が不正です（{o.Mode}）。Report か Enforce を指定してください。");
+            foreach (var (group, raw) in o.Groups)
+            {
+                if (!KnownGroups.Contains(group))
+                    errors.Add($"{SectionName}:Groups:{group} は既知の群ではありません（{string.Join(", ", KnownGroups)}）。");
+                if (!Options.TryParseLimit(raw, out _))
+                    errors.Add($"{SectionName}:Groups:{group} は正の整数でなければなりません（{raw}）。");
+            }
+            return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+        }
     }
 
-    // 群に上限を掛ける。`group` は計器とログの属性（固定の文字列）。`defaultPerMinute` は設定が無いときの上限。
+    // 設定を束ね、起動時に検証する（Mode の綴り違い・数値でない値は束ねる時点、0 以下・未知の群は検証で落ちる）。
+    public static IServiceCollection AddUserRateLimits(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<Options>().Bind(configuration.GetSection(SectionName)).ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Options>, Validator>();
+        return services;
+    }
+
+    // 群に上限を掛ける。`name` は KnownGroups のどれか（計器の属性。固定の文字列）。
     public static RouteGroupBuilder LimitPerUserOrReport(this RouteGroupBuilder group, string name, int defaultPerMinute)
     {
         Attach(group, name, defaultPerMinute);
@@ -68,7 +98,10 @@ public static class UserRateGate
     private static void Attach<TBuilder>(TBuilder builder, string name, int defaultPerMinute)
         where TBuilder : IEndpointConventionBuilder
     {
-        var state = new GateState(name, defaultPerMinute);
+        if (!KnownGroups.Contains(name))
+            throw new ArgumentException($"未知の群 '{name}' です。UserRateGate.KnownGroups に足してください。", nameof(name));
+
+        var state = new GateState(name);
         builder.AddEndpointFilter(async (ctx, next) =>
         {
             var http = ctx.HttpContext;
@@ -77,15 +110,18 @@ public static class UserRateGate
             if (user is null) return await next(ctx);
 
             var services = http.RequestServices;
-            var (mode, limit) = state.Settings(services.GetRequiredService<IConfiguration>());
-            var now = DateTimeOffset.UtcNow;
-            var exceeded = state.CountAndCheck(user, now, limit, consumeWhenExceeded: mode == GateMode.Report);
-            if (!exceeded) return await next(ctx);
+            var o = services.GetRequiredService<IOptions<Options>>().Value;
+            // 値は起動時に検証済み（正の整数）。
+            var limit = o.Groups.TryGetValue(name, out var raw) && Options.TryParseLimit(raw, out var configured)
+                ? configured
+                : defaultPerMinute;
+            if (!state.Window.CountAndCheck(user, DateTimeOffset.UtcNow, limit))
+                return await next(ctx);
 
-            state.Report(services, mode);
-            if (mode != GateMode.Enforce) return await next(ctx);
+            state.Report(services, o.Mode);
+            if (o.Mode != GateMode.Enforce) return await next(ctx);
 
-            http.Response.Headers.RetryAfter = ((int)Window.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            http.Response.Headers.RetryAfter = ((int)UserRateWindow.Length.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
             return Results.Problem(statusCode: StatusCodes.Status429TooManyRequests,
                 title: "短い間に要求が多すぎます。しばらく待ってから、もう一度試してください。");
         });
@@ -100,36 +136,14 @@ public static class UserRateGate
         return string.IsNullOrWhiteSpace(id) ? null : id.Trim();
     }
 
-    private sealed class GateState(string group, int defaultPerMinute)
+    private sealed class GateState(string group)
     {
-        private readonly object _gate = new();
-        private readonly Dictionary<string, Queue<DateTimeOffset>> _hits = new(StringComparer.Ordinal);
-        private (GateMode Mode, int Limit)? _settings;
+        private readonly object _logGate = new();
         private Counter<long>? _counter;
         private DateTimeOffset _lastLogged = DateTimeOffset.MinValue;
         private long _suppressed;
 
-        // 構成は起動の後に変わらない前提で、最初の要求で読む（不正な値はここで例外になる）。
-        public (GateMode Mode, int Limit) Settings(IConfiguration configuration)
-            => _settings ??= (ReadMode(configuration), ReadLimit(configuration, group, defaultPerMinute));
-
-        // 直近 60 秒の件数が上限に達していれば true。段 2 で拒んだ要求は枠を消費しない。
-        public bool CountAndCheck(string user, DateTimeOffset now, int limit, bool consumeWhenExceeded)
-        {
-            lock (_gate)
-            {
-                if (!_hits.TryGetValue(user, out var q))
-                    _hits[user] = q = new Queue<DateTimeOffset>();
-                while (q.Count > 0 && now - q.Peek() >= Window) q.Dequeue();
-                var exceeded = q.Count >= limit;
-                if (!exceeded || consumeWhenExceeded) q.Enqueue(now);
-                // 古い利用者の鍵を残し続けない（空になった列は捨てる）。
-                if (_hits.Count > 10_000)
-                    foreach (var key in _hits.Where(kv => kv.Value.Count == 0 || now - kv.Value.Last() >= Window).Select(kv => kv.Key).ToList())
-                        _hits.Remove(key);
-                return exceeded;
-            }
-        }
+        public UserRateWindow Window { get; } = new();
 
         public void Report(IServiceProvider services, GateMode mode)
         {
@@ -140,7 +154,7 @@ public static class UserRateGate
             _counter.Add(1, new TagList { { GroupTag, group }, { ModeTag, modeTag } });
 
             long suppressed;
-            lock (_gate)
+            lock (_logGate)
             {
                 var now = DateTimeOffset.UtcNow;
                 if (now - _lastLogged < LogInterval)
@@ -158,5 +172,40 @@ public static class UserRateGate
                     "BFF user rate limit exceeded in group {Group} (mode={Mode}; suppressedSinceLast={Suppressed}; logged at most once per {Interval}).",
                     group, modeTag, suppressed, LogInterval);
         }
+    }
+}
+
+// NFR-18, IADR-0686 (#2432): 利用者ごとの直近 60 秒の窓。
+// 🔴 **超えた要求は、段に依らず記録しない**（段 2 で拒んだ要求と同じ扱い）。記録は利用者ごとに上限の件数で頭打ちになり、
+// 段 1 と段 2 で「どの要求が超えたか」の判定が変わらない（段 1 の計器が、段 2 で拒む件数をそのまま表す）。
+internal sealed class UserRateWindow
+{
+    public static readonly TimeSpan Length = TimeSpan.FromMinutes(1);
+
+    private readonly object _gate = new();
+    private readonly Dictionary<string, Queue<DateTimeOffset>> _hits = new(StringComparer.Ordinal);
+
+    // 直近 60 秒の件数が上限に達していれば true（このとき記録しない）。達していなければ記録して false。
+    public bool CountAndCheck(string user, DateTimeOffset now, int limit)
+    {
+        lock (_gate)
+        {
+            if (!_hits.TryGetValue(user, out var q))
+                _hits[user] = q = new Queue<DateTimeOffset>();
+            while (q.Count > 0 && now - q.Peek() >= Length) q.Dequeue();
+            if (q.Count >= limit) return true;
+            q.Enqueue(now);
+            // 古い利用者の鍵を残し続けない。
+            if (_hits.Count > 10_000)
+                foreach (var key in _hits.Where(kv => kv.Value.Count == 0 || now - kv.Value.Last() >= Length).Select(kv => kv.Key).ToList())
+                    _hits.Remove(key);
+            return false;
+        }
+    }
+
+    // 試験用: 利用者の記録の件数。
+    internal int Tracked(string user)
+    {
+        lock (_gate) return _hits.TryGetValue(user, out var q) ? q.Count : 0;
     }
 }

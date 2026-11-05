@@ -1,10 +1,10 @@
-using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Knowledge.Bff.Endpoints.Usage;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 using System.Net.Http;
 using System.Net.Http.Json;

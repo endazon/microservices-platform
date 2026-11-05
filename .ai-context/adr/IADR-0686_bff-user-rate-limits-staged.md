@@ -35,13 +35,14 @@ related_specs:
 | `graph-suggestion` | `/bff/graph/suggestions/generate/{id}` | 10 |
 
 - 利用者は検証済みの主体（`sub` → `NameIdentifier` → `Name`）。未認証は群の門が先に落とすので、ここでは数えない。
-- 上限は `Bff:UserRateLimits:Groups:<群>` で変える。正の整数でない値は、最初の要求の時点で例外にする。
+- 上限は `Bff:UserRateLimits:Groups:<群>` で変える。［2026-11-06 / AI レビュー］設定（段・群の上限）は**起動時に**検証し、不正なら起動を止める（`AddUserRateLimits` の ValidateOnStart。BFF の Program.cs が呼ぶ）。不正な値は、段の綴り違い・数値でない値・0 以下・未知の群（`UserRateGate.KnownGroups` に無いキー）である。
 - 計器 `bff.user_rate.exceeded.total` の属性は、群と段だけにする。利用者の識別子は計器にもログにも載せない（基数と個人情報の両方の理由）。
 
 ### 決定 2 — 段は `Bff:UserRateLimits:Mode`。既定は `Report`
 
 - `Report`（段 1）: 超えた要求を数えるだけで、後段へ転送する。
-- `Enforce`（段 2）: 429 に `Retry-After: 60` を付けて返し、後段へ転送しない。拒んだ要求は枠を消費しない。
+- `Enforce`（段 2）: 429 に `Retry-After: 60` を付けて返し、後段へ転送しない。
+- ［2026-11-06 / AI レビュー］**超えた要求は、段に依らず記録しない。** 利用者ごとの記録は上限の件数で頭打ちになる（段 1 でも際限なく伸びない）。「どの要求が超えたか」の判定は段 1 と段 2 で同じなので、段 1 の計器は段 2 で拒む件数をそのまま表す。
 
 ## 結果・残余リスク
 
