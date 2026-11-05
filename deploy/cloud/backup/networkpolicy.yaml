@@ -1,4 +1,4 @@
-# NFR-21, NFR-18, IADR-0672 (#2402): バックアップの Pod の外向きの通信を、名前解決・Postgres・HTTPS（オブジェクトストレージ）に絞る。
+# NFR-21, NFR-18, IADR-0674 (#2402): バックアップの Pod の外向きの通信を、名前解決・Postgres・HTTPS（オブジェクトストレージ）に絞る。
 # 受けは持たない（Ingress の規則を書かない ＝ policyTypes に Ingress を入れない。受け口を増やさない）。
 # 🔴 HTTPS はクラスタの外（私設のアドレス帯を除く）だけへ出す。
 apiVersion: networking.k8s.io/v1

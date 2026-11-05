@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-10-30
+updated: 2026-11-05
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524, IADR-0654]
-specs: [20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe]
-issues: [#2148, #1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, planning#700, AST#1078]
+iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524, IADR-0654, IADR-0672]
+specs: [20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe, 20261105_2399_infra-credentials-staged-fail-closed]
+issues: [#2148, #1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, #2399, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -53,7 +53,7 @@ issues: [#2148, #1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1
 | --- | --- |
 | 認証基盤の realm の宣言（`deploy/keycloak/microservices-platform-realm.json`） | 宣言の client の `secret` は**開発用の値**だけであり、**client を新しく作るときにだけ**使う。宣言の追随（`deploy/local/keycloak-setup/reconcile-realm.sh`）は既存の client の `secret` を比べず・書かない。起動時の import は realm が在れば飛ばす。空の状態からの import では、管理用の 3 クライアント（`identity-admin`・`reset-gate`・`mcp-client-admin`）だけは起動器に与えた env の値で作る（与えなければ開発用の値） |
 | 保管先の種（`deploy/local/vault/eso/bootstrap.sh`） | 対になる秘密の KV は**無いときだけ作る**。在れば env を渡しても触らない |
-| 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **一部だけ塞いだ。** ［2026-10-22］`rabbitmq` / `keycloak-admin` は env か既存の Secret の値で作り、開発用既定値では作らない（無ければ止まる。使い捨ての環境だけ明示の opt-in で許す）。`postgres` / `reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
+| 🔴 手動の Secret 作成（`scripts/k8s-local-up.sh` の `apply_secret`） | **一部だけ塞いだ。** ［2026-10-22］`rabbitmq` / `keycloak-admin` は env か既存の Secret の値で作り、開発用既定値では作らない（無ければ止まる。使い捨ての環境だけ明示の opt-in で許す）。［2026-11-05］`postgres`（と `postgres-app`・`wikijs-db`・`object-storage-credentials`・`vault-dev-token`）も、env が無ければ既存の Secret の値で作る（既存の値が無いか開発用の値のときだけ開発用の値。dev ではない context では警告する）。`reset-gate-oidc` は `ESO=1` でも env か開発用既定値で Secret を作る。保管先の値は戻らないが、**次の同期までの間 Secret が既定値になる。** 起動の後に同期を促す（[起動の後](#起動の後に同期を促す)） |
 
 ## この手順を実行する条件（いつ走らせるか）
 
@@ -352,7 +352,8 @@ bash deploy/local/keycloak-setup/reconcile-realm.sh --check-dev-secrets
 
 `scripts/k8s-local-up.sh` を再実行すると、手動の Secret 作成が `postgres` / `rabbitmq` / `keycloak-admin` / `reset-gate-oidc` の Secret を
 **env か開発用既定値で**書き直す（保管先の値は戻らない）。［2026-10-22］`rabbitmq` / `keycloak-admin` だけは、env が無ければ既存の Secret の値で
-書き直し、既存の値も開発用の値なら止まる（開発用既定値では書かない）。env に新しい値を渡さなかったときは、起動の後に 4 つの同期を促す:
+書き直し、既存の値も開発用の値なら止まる（開発用既定値では書かない）。［2026-11-05］`postgres` も env が無ければ既存の Secret の値で書き直す
+（既存の値が開発用の値のときだけ開発用の値。dev ではない context では警告する）。env に新しい値を渡さなかったときは、起動の後に 4 つの同期を促す:
 
 ```sh
 for es in postgres rabbitmq keycloak-admin reset-gate-oidc; do

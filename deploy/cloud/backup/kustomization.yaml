@@ -1,4 +1,4 @@
-# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0672 (#2402): クラウドの最小構成の日次バックアップ（Postgres → S3 互換のオブジェクトストレージ）。
+# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0674 (#2402): クラウドの最小構成の日次バックアップ（Postgres → S3 互換のオブジェクトストレージ）。
 # 本体スクリプトはローカルと同じもの（deploy/local/platform-backup/script を取り込む。二重に持たない）。
 # 🔴 クラウドの最小構成（deploy/cloud/ の infra。#2401）の kustomization の resources へ、このディレクトリを足して使う。
 #    単独で当てても動く（Postgres の Service `postgres` と Secret `postgres` が platform-infra に在ること）。

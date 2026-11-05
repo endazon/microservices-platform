@@ -2,7 +2,7 @@
 'use strict';
 /*
  * cloud-ops.test.js
- * NFR-21, NFR-03, NFR-05, ADR-0002, ADR-0006, IADR-0672 (#2402):
+ * NFR-21, NFR-03, NFR-05, ADR-0002, ADR-0006, IADR-0674 (#2402):
  * クラウドの最小構成の運用の部品（deploy/cloud/backup・deploy/cloud/observability）の**配備の形**を、kustomize の描画結果で固定する。
  * バックアップの本体の分岐は deploy/local/platform-backup/script/backup.test.sh、リストア試験は
  * scripts/backup-restore-drill.sh --self-test が持つ。ここはその 2 つが見られない「配備の形」と警報の設定を見る。

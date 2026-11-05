@@ -1,6 +1,6 @@
-# NFR-21, NFR-03, ADR-0006, IADR-0672 (#2402): クラウドの最小構成の Alertmanager（platform-infra）。
+# NFR-21, NFR-03, ADR-0006, IADR-0674 (#2402): クラウドの最小構成の Alertmanager（platform-infra）。
 # - 既定の受信先は Discord の webhook（`discord`）。🔴 URL は Secret `alertmanager-discord` のキー `webhook-url` から
-#   initContainer が描く（v0.27 の discord_configs は URL のファイル読みを持たない。IADR-0672 決定 3。形は IADR-0571 と同じ）。
+#   initContainer が描く（v0.27 の discord_configs は URL のファイル読みを持たない。IADR-0674 決定 3。形は IADR-0571 と同じ）。
 #   **URL はリポジトリにも描画にも置かない。** 描いた設定は Pod の emptyDir にだけ在る。
 # - 常に鳴る警報 Watchdog は `heartbeat`（Healthchecks.io の ping）へ 5 分ごとに送る。Discord の送信の失敗
 #   （AlertmanagerDiscordFailing）は `heartbeat-fail`（同じ check の /fail）へ送る。URL は Secret `alertmanager-heartbeat`
@@ -53,7 +53,7 @@ data:
       - source_matchers: [severity = "critical"]
         target_matchers: [severity = "warning"]
         equal: ['alertname', 'job']
-  # IADR-0672 決定 3: 受信先の描画。initContainer が実行する。🔴 値をログへ出さない。
+  # IADR-0674 決定 3: 受信先の描画。initContainer が実行する。🔴 値をログへ出さない。
   #   Discord の URL が空・不正 → 起動しない（exit 1）
   #   heartbeat の ping-url / fail-url が無い・不正・fail-url が「ping-url/fail」でない → 起動しない（exit 1）
   #   正しい値 → テンプレートへ差し込み、amtool check-config を通す

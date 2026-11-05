@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, ADR-0124, IADR-0572, IADR-0485, IADR-0286, IADR-0517]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密・初期投入は無いときだけ作る）
 related_specs:
@@ -52,4 +52,5 @@ related_specs:
 ## 残余
 
 1. `postgres` 等のほかの基盤の資格情報は従来どおり（今回の範囲外）。
+   ［2026-11-05 追記 / #2399］[IADR-0672](./IADR-0672_infra-credentials-staged-fail-closed.md) が同じ口（`scripts/lib/infra-credentials.sh`）へ段階の対象として広げた（段 1＝報告・段 2＝`INFRA_CREDENTIALS_ENFORCE=1`）。検査と作り直しのスクリプトも同 IADR。
 2. `deploy/docker-compose.yml` の手元の経路は対象外（kube context を持たない）。
