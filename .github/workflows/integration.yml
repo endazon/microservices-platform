@@ -76,13 +76,37 @@ jobs:
           dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # NFR / #2128 段 1: ConversionService の外部ツール依存の試験（実 pandoc 4・実 pdftotext 5）を実走させる。
       # ツールが無いと Assert.SkipUnless で Skipped になり、どのワークフローでも走っていなかった（監査 run 39538321988 で Skipped: 9）。
-      # 版は本番イメージ（ConversionService/Dockerfile）と同じ noble の apt に揃う。
+      # 版はランナーのイメージの apt のもの（［2026-11-06 / #2439］ubuntu-26.04 で pandoc 3.7・poppler 26.01）。
+      # 本番イメージ（ConversionService/Dockerfile。noble の pandoc 3.1.3・poppler 24.02）とは違う（揃えるかは別件）。
       # 🔴 失敗を握り潰さない（|| true を付けない）。入らなければ 9 件が黙って Skipped に戻り、緑のまま回収が空になる。
       # 逆向きの 4 件（Assert.SkipWhen。ツールが無いときの失敗・縮退）はここで Skipped になるが、ci.yml（PR。ツール無し）で走る。
+      #
+      # NFR (#2439): apt の取得が時に 8〜13 分止まり、試験の最長（約 20.5 分）と重なってジョブの上限 30 分に達した。
+      # .deb をランナーのイメージの名前と版の鍵でキャッシュし、在れば取得せずに入れる。無ければ時間切れと再試行の付いた apt で
+      # 取得して同じ置き場へ置く。導入の step の上限で、止まりがジョブの上限を食い潰さないようにする（ジョブの上限は変えない）。
+      - name: Conversion tools cache key (runner image)
+        id: conversion-tools-key
+        run: echo "key=conversion-tools-debs-${ImageOS:-unknown}-${ImageVersion:-unknown}-pandoc-poppler-utils-v1" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/conversion-tools-debs
+          key: ${{ steps.conversion-tools-key.outputs.key }}
       - name: Install conversion tools (pandoc / poppler-utils)
+        timeout-minutes: 10
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends pandoc poppler-utils
+          set -euo pipefail
+          debs="$HOME/.cache/conversion-tools-debs"
+          if compgen -G "$debs/*.deb" >/dev/null && sudo dpkg -i "$debs"/*.deb; then
+            echo "変換ツールをキャッシュの .deb から入れた（取得なし）"
+          else
+            apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+            sudo apt-get update -qq "${apt_opts[@]}"
+            mkdir -p "$debs/partial"
+            sudo apt-get install -y -qq -f --no-install-recommends "${apt_opts[@]}" -o Dir::Cache::Archives="$debs" pandoc poppler-utils
+            # 次の回のキャッシュに置く物だけを残す（apt の lock と partial は置かない。actions/cache が読めるよう所有者を戻す）。
+            sudo rm -rf "$debs/partial" "$debs/lock"
+            sudo chown -R "$(id -u):$(id -g)" "$debs"
+          fi
           pandoc --version
           pdftotext -v
       # 自動起票が本当に動くかを実測するための入口（IADR-0232 残余リスク）。

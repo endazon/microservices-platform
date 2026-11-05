@@ -19729,6 +19729,61 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR (#2439): 回収実行の変換ツールの導入（apt の取得）が時に 8〜13 分止まり、ジョブの上限 30 分に達した ----------------
+  // .deb をランナーのイメージの名前と版で鍵を付けてキャッシュし、在れば取得せずに dpkg -i で入れる。無ければ時間切れと
+  // 再試行の付いた apt で取得して同じ置き場へ置く。導入の step に上限を付け、ジョブの上限は変えない（根拠は仕様書）。
+  {
+    const REPO_2439 = path.join(__dirname, '..');
+    const wf2439 = fs.readFileSync(path.join(REPO_2439, '.github/workflows/integration.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const stepsOf2439 = (text) => text.split(/\n(?= {6}- )/).slice(1);
+    const DEBS_2439 = '~/.cache/conversion-tools-debs';
+    const issues2439 = (text) => {
+      const out = [];
+      const steps = stepsOf2439(text);
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st));
+      const cacheAt = steps.findIndex((st) => /uses: actions\/cache@[0-9a-f]{40}/.test(st) && st.includes(`path: ${DEBS_2439}`));
+      if (toolAt < 0) return ['導入の step が無い'];
+      if (cacheAt < 0) out.push('変換ツールの .deb のキャッシュの step が無い');
+      else {
+        if (cacheAt > toolAt) out.push('キャッシュの step が導入の step より後にある');
+        const keyRef = /key: \$\{\{ steps\.([A-Za-z0-9_-]+)\.outputs\.key \}\}/.exec(steps[cacheAt]);
+        const keyStep = keyRef && steps.find((st) => new RegExp(`\\bid: ${keyRef[1]}\\b`).test(st));
+        if (!keyStep) out.push('キャッシュの鍵を作る step が無い');
+        else if (!/\$\{?ImageOS\}?/.test(keyStep) || !/\$\{?ImageVersion\}?/.test(keyStep)) out.push('キャッシュの鍵がランナーのイメージの名前と版を含まない');
+      }
+      const st = steps[toolAt];
+      const dir = '"$HOME/.cache/conversion-tools-debs"';
+      if (!st.includes(dir)) out.push('導入の step がキャッシュの置き場を使わない');
+      if (!/sudo dpkg -i "\$debs"\/\*\.deb/.test(st)) out.push('キャッシュの .deb を dpkg -i で入れていない');
+      if (!/Acquire::Retries=\d+/.test(st) || !/Acquire::https?::Timeout=\d+/.test(st)) out.push('apt の取得に再試行と時間切れが無い');
+      if (!/-o Dir::Cache::Archives="\$debs"/.test(st)) out.push('取得した .deb をキャッシュの置き場へ置いていない');
+      const stepTimeout = /^\s+timeout-minutes:\s*(\d+)/m.exec(st);
+      if (!stepTimeout || Number(stepTimeout[1]) > 15) out.push('導入の step に 15 分以下の上限が無い');
+      const jobTimeout = /\n {4}timeout-minutes:\s*(\d+)/.exec(text);
+      if (!jobTimeout || Number(jobTimeout[1]) !== 30) out.push('ジョブの上限が 30 分でない（上げるだけの直しをしない。根拠は仕様書）');
+      return out;
+    };
+
+    ok('#2439: 回収実行は変換ツールの .deb をイメージの版の鍵でキャッシュし、無いときは時間切れと再試行の付いた apt で取り、導入に上限を付ける', () => {
+      assert.deepStrictEqual(issues2439(wf2439), []);
+    });
+
+    ok('#2439 陰性対照: キャッシュの step を外す・鍵から版を外す・時間切れを外す・上限を外す・ジョブの上限を上げると赤', () => {
+      const head = wf2439.split(/\n(?= {6}- )/)[0];
+      const steps = stepsOf2439(wf2439);
+      const join = (arr) => [head, ...arr].join('\n');
+      const cacheAt = steps.findIndex((st) => st.includes(`path: ${DEBS_2439}`));
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st));
+      assert.ok(cacheAt >= 0 && toolAt >= 0, '陽性の前提（キャッシュと導入の step）が無い');
+      const has = (text, re) => issues2439(text).some((e) => re.test(e));
+      assert.ok(has(join(steps.filter((_, i) => i !== cacheAt)), /キャッシュの step が無い/));
+      assert.ok(has(join(steps.map((st) => st.replace(/\$\{?ImageVersion\}?/g, 'x'))), /イメージの名前と版/));
+      assert.ok(has(join(steps.map((st, i) => (i === toolAt ? st.replace(/ -o Acquire::https?::Timeout=\d+/g, '') : st))), /再試行と時間切れ/));
+      assert.ok(has(join(steps.map((st, i) => (i === toolAt ? st.replace(/^\s+timeout-minutes:.*\n/m, '') : st))), /15 分以下の上限/));
+      assert.ok(has(join(steps).replace(/(\n {4}timeout-minutes:\s*)30/, '$145'), /ジョブの上限が 30 分でない/));
+    });
+  }
+
   // --- NFR / #2039 / IADR-0661: 視覚回帰の Docker イメージの版 ------------------------------------------------------
   {
     const REPO_2039 = path.join(__dirname, '..');
