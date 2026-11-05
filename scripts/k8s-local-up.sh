@@ -307,19 +307,21 @@ fi
 #   判定の前に 1 回読み、DEV_CLUSTER_MARKER で判定へ渡す。段 1（既定）は名前だけで判定し、印が無ければ警告する。
 #   段 2（DEV_CLUSTER_MARKER_REQUIRED=1）は名前と印の両方が揃うときだけ dev とする（既定化は印を置いた後の別の PR）。
 dev_marker_ctx="$(dev_client_secret_current_context)"
-dev_marker_applied=0
+# 置くと決めたら、判定には今すぐ present を渡す（段 2 で止めない）。**書くのは [3/7] の最初の書き込みと一緒**（下の
+#   dev_cluster_marker_write_pending）—— 判定で止まる実行が何かを書いてから止まらないようにする（「何も書かずに止まる」の約束）。
+DEV_CLUSTER_MARKER_PENDING=""
 if [ "${K3D_CLUSTER_CREATED_HERE:-}" = "1" ] || [ "${MARK_DEV_CLUSTER:-}" = "1" ]; then
-  if dev_cluster_marker_apply "$dev_marker_ctx"; then
-    dev_marker_applied=1
-    echo "    クラスタ側の dev の印を置いた（ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME}。IADR-0676）"
+  if dev_client_secret_context_name_is_dev "$dev_marker_ctx"; then
+    DEV_CLUSTER_MARKER_PENDING="$dev_marker_ctx"
+    DEV_CLUSTER_MARKER=present
+    export DEV_CLUSTER_MARKER
   elif [ "${MARK_DEV_CLUSTER:-}" = "1" ]; then
-    echo "ERROR: MARK_DEV_CLUSTER=1: kube context '${dev_marker_ctx:-（読めない）}' は名前が dev の許可集合（k3d-* / kind-* / rancher-desktop / docker-desktop）に無いか、印を置けない。印を置かずに止める（IADR-0676）。" >&2
+    echo "ERROR: MARK_DEV_CLUSTER=1: kube context '${dev_marker_ctx:-（読めない）}' は名前が dev の許可集合に無い。印を置かずに止める（IADR-0676）。" >&2
     exit 1
   fi
 fi
-# 置いたばかりなら読み直さない（dev_cluster_marker_apply が DEV_CLUSTER_MARKER=present を export 済み）。
-[ "$dev_marker_applied" = "1" ] || dev_cluster_marker_probe "k8s-local-up.sh" "$dev_marker_ctx"
-unset dev_marker_ctx dev_marker_applied
+[ -n "$DEV_CLUSTER_MARKER_PENDING" ] || dev_cluster_marker_probe "k8s-local-up.sh" "$dev_marker_ctx"
+unset dev_marker_ctx
 dev_client_secret_load_targets || exit 1
 dev_secret_args=()
 for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
@@ -509,6 +511,15 @@ echo "==> [2/7] build & import images"
 bash "$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
 
 echo "==> [3/7] infra namespace, secrets, realm ConfigMap & realm import Secret (dev 既定; env で上書き可)"
+# NFR-18, IADR-0676 (#2407): 判定を通った後の最初の書き込みと一緒に、クラスタ側の dev の印を置く（[1/7] の直後で決めた）。
+if [ -n "${DEV_CLUSTER_MARKER_PENDING:-}" ]; then
+  if dev_cluster_marker_apply "$DEV_CLUSTER_MARKER_PENDING"; then
+    echo "    クラスタ側の dev の印を置いた（ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME}。IADR-0676）"
+  else
+    echo "ERROR: クラスタ側の dev の印（ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME}）を置けない（IADR-0676）。" >&2
+    exit 1
+  fi
+fi
 kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f -
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）は下の [4/7] infra rollout（ブロッキング）で
 # **非 optional** に消費されるため、Vault/ESO がまだ存在しないこの時点で手動作成が必須（bootstrap）。よって PR-1〜3 と

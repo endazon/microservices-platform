@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 基盤の資格情報の段階の fail-closed を続ける（管理者トークンの作り直しの持続・対象の引き直し・dev のクラスタの 2 つ目の手掛かり。#2407）
 type: spec
-status: review
+status: in-progress
 related_ids: [NFR-18, ADR-0124, IADR-0672, IADR-0574, IADR-0517, IADR-0457, IADR-0676]
 author: claude
 created: 2026-11-05
