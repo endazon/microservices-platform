@@ -92,6 +92,26 @@ patches:
         value:
           name: data
           mountPath: /var/lib/grafana
+      # NFR-18, IADR-0676 決定 3 (#2407): 内蔵の管理者のパスワードを、起動のたびに Secret grafana-admin の値へ合わせる。
+      #   製品は DB の初回の作成のときしか GF_SECURITY_ADMIN_PASSWORD を読まない（永続化した DB には効かない）。
+      #   DB が在り env が在るときだけ CLI で合わせる（値は stdin。引数に載せない）。失敗しても起動は止めない（WARN だけ）。
+      #   入口はイメージの /run.sh のまま（exec で置き換える）。
+      - op: add
+        path: /spec/template/spec/containers/0/command
+        value:
+          - /bin/sh
+          - -c
+          - |
+            db="${GF_PATHS_DATA:-/var/lib/grafana}/grafana.db"
+            if [ -n "${GF_SECURITY_ADMIN_PASSWORD:-}" ] && [ -f "$db" ]; then
+              if printf '%s' "$GF_SECURITY_ADMIN_PASSWORD" | grafana cli --homepath "${GF_PATHS_HOME:-/usr/share/grafana}" \
+                  --config "${GF_PATHS_CONFIG:-/etc/grafana/grafana.ini}" admin reset-admin-password --password-from-stdin >/dev/null 2>&1; then
+                echo "grafana-admin: local admin password synced from Secret grafana-admin"
+              else
+                echo "WARN: grafana-admin: could not sync the local admin password (continuing)"
+              fi
+            fi
+            exec /run.sh
   # ★ PVC を掴む Deployment は Recreate にする（IADR-0210 決定 7）。
   #   ReadWriteOnce と RollingUpdate は両立しない。local-path は単一ノードの hostPath なので
   #   **スケジューリングでは詰まらず、アプリのロックで詰まる** —— Prometheus は

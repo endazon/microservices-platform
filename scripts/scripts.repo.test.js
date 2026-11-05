@@ -34,6 +34,38 @@ if (require.main === module) {
 }
 
 module.exports = ({ ok, assert }) => {
+  // --- NFR-18 / #2416: guard-secrets.js が Anthropic の API キーの形（sk-ant-<種別><2 桁>-…）を止める ------------------------
+  //   既存の `sk-[A-Za-z0-9]{20,}` は `sk-` の直後に `-` を含む形に掛からない。見張り値は実行時に連結で組む
+  //   （本ファイル自体がフックや秘密の走査に掛からないように）。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const HOOK = path.join(__dirname, '..', '.claude', 'hooks', 'guard-secrets.js');
+    const runHook = (file, content) => spawnSync(process.execPath, [HOOK], {
+      input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: file, content } }), encoding: 'utf8',
+    });
+    const fake = (kind) => ['sk', 'ant', kind].join('-') + '-' + 'Ab9_-'.repeat(18) + 'xAA';
+    ok('NFR-18 / #2416: guard-secrets.js は Anthropic の API キー・OAuth トークンの形をブロックする', () => {
+      for (const kind of ['api03', 'admin01', 'oat01']) {
+        const r = runHook('src/a.ts', `const k = "${fake(kind)}";`);
+        assert.strictEqual(r.status, 2, `${kind} の形を止めない: exit ${r.status}`);
+        assert.match(r.stderr, /Anthropic/);
+      }
+    });
+    ok('NFR-18 / #2416: guard-secrets.js は接頭辞への言及・短い値・語の途中は誤検知しない', () => {
+      for (const content of [
+        `キーの形は ${['sk', 'ant', 'api03'].join('-')}- で始まる`,
+        `x = "${['sk', 'ant', 'api03'].join('-')}-short"`,
+        `task${fake('api03').slice(2)}`,
+      ]) {
+        const r = runHook('src/a.ts', content);
+        assert.strictEqual(r.status, 0, `誤検知した: ${content.slice(0, 40)}…（exit ${r.status}）`);
+      }
+      // 例示・文書は従来どおり警告に緩める（ブロックしない）。
+      assert.strictEqual(runHook('docs/x.md', fake('api03')).status, 0);
+    });
+  }
+
   // --- companion の単体実行: 沈黙の exit 0 を返さない（NFR / #797 / IADR-0208） -------
 
   {
@@ -19783,6 +19815,8 @@ printf '%s\n' "$*" >> "$S/argv"
 if [ "$1" = "-n" ]; then ns="$2"; shift 2; fi
 case "$1 $2" in
   "get secret")
+    # IADR-0676: \`-o name\` は在るか（そのSecret のキーのファイルが 1 つでも在れば在る）
+    if [ "$5" = "name" ]; then ls "$S/secret/@{ns}__$3__"* >/dev/null 2>&1; exit; fi
     f="$S/secret/@{ns}__$3__$(printf '%s' "$5" | sed -E 's/^jsonpath=\{\.data\.(.*)\}$/\1/')"
     [ -f "$f" ] || exit 0; base64 -w0 < "$f"; exit 0 ;;
   "get externalsecret") [ -f "$S/es/@{ns}__$3" ]; exit ;;
@@ -19797,6 +19831,10 @@ case "$1 $2" in
     pf=""; prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && pf="$a"; prev="$a"; done
     node -e 'const fs=require("fs");const [,f,dir,pre]=process.argv;const d=JSON.parse(fs.readFileSync(f,"utf8")).data;for(const[k,v]of Object.entries(d))fs.writeFileSync(dir+"/"+pre+"__"+k,Buffer.from(v,"base64"));' "$pf" "$S/secret" "@{ns}__$3"
     echo "SECRET PATCH @{ns}/$3" >> "$S/calls"; exit 0 ;;
+  "create secret")
+    # IADR-0676: create secret generic <名前> --from-file=<キー>=<ファイル>
+    for a in "$@"; do case "$a" in --from-file=*) kv="@{a#--from-file=}"; cp "@{kv#*=}" "$S/secret/@{ns}__$4__@{kv%%=*}";; esac; done
+    echo "SECRET CREATE @{ns}/$4" >> "$S/calls"; exit 0 ;;
   "annotate externalsecret")
     echo "ESO SYNC @{ns}/$3" >> "$S/calls"
     [ "@{STUB_NO_SYNC:-}" = "1" ] && exit 0
@@ -19826,8 +19864,12 @@ u=""; while [ "$#" -gt 0 ]; do [ "$1" = "-U" ] && u="$2"; shift; done
 `.replace(/@\{/g, '$' + '{');
     const VAULT2399 = String.raw`#!/usr/bin/env bash
 S="$STUB_STATE"; T="$S/tokens"
+printf '%s\n' "$*" >> "$S/pod-argv"
 has() { grep -qxF "$1" "$T" 2>/dev/null; }
 case "$1 $2" in
+  # IADR-0676 (#2407): 作成・失効は値を stdin で受ける（id=- / token=-）
+  "write auth/token/create-orphan") has "$VAULT_TOKEN" || exit 1; case " $* " in *" id=- "*) ;; *) exit 1 ;; esac; v="$(cat)"; [ -n "$v" ] || exit 1; printf '%s\n' "$v" >> "$T"; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
+  "write auth/token/revoke") has "$VAULT_TOKEN" || exit 1; case " $* " in *" token=- "*) ;; *) exit 1 ;; esac; v="$(cat)"; grep -vxF "$v" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
   "token lookup") has "$VAULT_TOKEN" ;;
   "token create") has "$VAULT_TOKEN" || exit 1; for a in "$@"; do case "$a" in -id=*) printf '%s\n' "@{a#-id=}" >> "$T";; esac; done; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
   "token revoke") has "$VAULT_TOKEN" || exit 1; grep -vxF "$3" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
@@ -19847,7 +19889,7 @@ esac
         fs2399.writeFileSync(path2399.join(podBin, 'psql'), PSQL2399, { mode: 0o755 });
         fs2399.writeFileSync(path2399.join(podBin, 'vault'), VAULT2399, { mode: 0o755 });
         fs2399.writeFileSync(path2399.join(podBin, 'hostname'), '#!/bin/sh\necho 10.42.0.9\n', { mode: 0o755 });
-        for (const f of ['argv', 'calls']) fs2399.writeFileSync(path2399.join(st, f), '');
+        for (const f of ['argv', 'calls', 'pod-argv']) fs2399.writeFileSync(path2399.join(st, f), '');
         const put = (rel, v) => fs2399.writeFileSync(path2399.join(st, rel), v);
         // 既定の世界: 全部が開発用の値のまま（Secret・DB 利用者・トークン）。deploy postgres / vault が在り、ESO は無い。
         for (const [k, v] of Object.entries(DEV2399)) put(`secret/${k}`, v);
@@ -19866,7 +19908,7 @@ esac
         const walk = (d) => { for (const e of fs2399.readdirSync(d, { withFileTypes: true })) { const f = path2399.join(d, e.name); if (e.isDirectory()) walk(f); else snap[path2399.relative(st, f).split(path2399.sep).join('/')] = fs2399.readFileSync(f, 'utf8'); } };
         walk(st);
         const read = (rel) => snap[rel] || '';
-        return { ...r, read, argv: read('argv'), calls: read('calls').split('\n').filter(Boolean) };
+        return { ...r, read, argv: read('argv'), podArgv: read('pod-argv'), calls: read('calls').split('\n').filter(Boolean) };
       } finally {
         fs2399.rmSync(dir, { recursive: true, force: true });
       }
@@ -19957,6 +19999,9 @@ esac
       assert.ok(at('VAULT TOKEN CREATE') < at('SECRET PATCH platform-infra/vault-dev-token') && at('SECRET PATCH platform-infra/vault-dev-token') < at('ROLLOUT restart platform-infra/deploy/vault')
         && at('ROLLOUT restart platform-infra/deploy/vault') < at('VAULT TOKEN REVOKE'), `順序が違う:\n${r.calls.join('\n')}`);
       assert.ok(!r.argv.includes(nv) && !`${r.stdout}${r.stderr}`.includes(nv), '新しいトークンが引数・出力に出た');
+      // IADR-0676 (#2407): Pod の中の vault の引数にも、新旧どちらのトークンも載らない（作成・失効は stdin）
+      assert.ok(r.podArgv.length > 0, 'Pod の中の vault が呼ばれていない');
+      assert.ok(!r.podArgv.includes(nv) && !r.podArgv.includes('devroot'), `トークンが Pod の中の vault の引数に出た:\n${r.podArgv.replace(/[0-9a-f]{48}/g, '<v>')}`);
     });
 
     ok('IADR-0672: 作り直し（秘匿管理のトークン）は、ExternalSecret が同じ名前で在っても Secret へ直接書く（Vault の KV へは書かない）', () => {
@@ -20040,9 +20085,543 @@ esac
       assert.ok(!broken.calls.some((c) => c.startsWith('ROLLOUT')), 'ストア側が失敗したのに消費側を作り直した');
     });
 
+    // --- NFR-18, IADR-0676 (#2407): 作り直したトークンが、秘匿管理の再起動と起動器の再実行を跨いで保たれる ---
+    // 作り直し（上のスタブの世界）の後の状態を、永続化のラッパー（vault-entrypoint.sh）と起動器の判定（infra_cred_staged_resolve）へ渡す。
+    const WRAPPER2407 = path2399.join(__dirname, '..', 'deploy', 'local', 'vault-persistence', 'vault-entrypoint.sh');
+    const LIB2407 = path2399.join(__dirname, 'lib');
+    // ラッパーが呼ぶ vault のスタブ（トークンの集合は作り直しのスタブと同じ形のファイル）。値は stdin で受ける。
+    const WRAPPER_VAULT2407 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"; T="$S/tokens"
+printf '%s\n' "$*" >> "$S/pod-argv"
+has() { grep -qxF "$1" "$T" 2>/dev/null; }
+case "$1 $2" in
+  "status ") exit 0 ;;
+  "operator init") exit 0 ;;
+  "token lookup") has "$VAULT_TOKEN" ;;
+  "write auth/token/create-orphan") has "$VAULT_TOKEN" || exit 1; v="$(cat)"; printf '%s\n' "$v" >> "$T"; echo "WRAPPER CREATE" >> "$S/calls" ;;
+  "audit list") echo '{"stdout/":{}}' ;;
+  "secrets list") echo '{"secret/":{}}' ;;
+  *) exit 0 ;;
+esac
+`;
+    // restart2407 <状態> <Secret の値> <段 2> → ラッパーの起動（bootstrap_after_start）を、作り直しの後の状態で走らせる
+    const restart2407 = (state, secretToken, { initOnly = '', marker = true } = {}) => {
+      const dir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0676-'));
+      try {
+        const bin = path2399.join(dir, 'bin'); const st = path2399.join(dir, 'state'); const data = path2399.join(dir, 'data');
+        for (const d of [bin, st, data]) fs2399.mkdirSync(d, { recursive: true });
+        fs2399.writeFileSync(path2399.join(bin, 'vault'), WRAPPER_VAULT2407, { mode: 0o755 });
+        // 初期の root トークン（init の出力）は在る。作り直しの世界のトークンの集合へ足す。
+        const initRoot = ['stub', 'init', 'root', '2407'].join('-');
+        fs2399.writeFileSync(path2399.join(st, 'tokens'), `${state.read('tokens')}${initRoot}\n`);
+        for (const f of ['calls', 'pod-argv']) fs2399.writeFileSync(path2399.join(st, f), '');
+        fs2399.writeFileSync(path2399.join(data, '.local-dev-init'), `Unseal Key 1: stub-unseal\n\nInitial Root Token: ${initRoot}\n`, { mode: 0o600 });
+        if (marker) fs2399.writeFileSync(path2399.join(data, '.local-dev-root-token-created'), '');
+        const r = spawn2399('bash', ['-c', 'VAULT_ENTRYPOINT_LIB=1 . "$1"; bootstrap_after_start', '_', WRAPPER2407], {
+          encoding: 'utf8', timeout: 30000,
+          env: { ...process.env, PATH: `${bin}${path2399.delimiter}${process.env.PATH}`, STUB_STATE: st, VAULT_DATA_DIR: data,
+            VAULT_INIT_FILE: path2399.join(data, '.local-dev-init'), VAULT_DEV_ROOT_TOKEN_ID: secretToken, VAULT_ROOT_TOKEN_INIT_ONLY: initOnly,
+            VAULT_WAIT_TRIES: '2', VAULT_WAIT_INTERVAL: '0', VAULT_AUDIT_STDOUT_TRIES: '1', VAULT_AUDIT_STDOUT_INTERVAL: '0' },
+        });
+        const tokens = fs2399.readFileSync(path2399.join(st, 'tokens'), 'utf8').split('\n').filter(Boolean).filter((t) => t !== initRoot);
+        return { ...r, tokens, calls: fs2399.readFileSync(path2399.join(st, 'calls'), 'utf8').split('\n').filter(Boolean),
+          podArgv: fs2399.readFileSync(path2399.join(st, 'pod-argv'), 'utf8') };
+      } finally {
+        fs2399.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('IADR-0676: 作り直し（秘匿管理のトークン）は、Secret の値に想定外の字（単一引用符など）があれば、何も変えずに止まり値を出さない', () => {
+      const odd = ["probe'0676", 'probe 0676', 'probe$0676'];
+      for (const v of odd) {
+        const r = run2399(ROTATE2399, ['--live', 'vault-root-token'], { setup: ({ put }) => { put('secret/platform-infra__vault-dev-token__token', v); put('vault-root', v); put('tokens', `${v}\n`); } });
+        assert.strictEqual(r.status, 1, `${JSON.stringify(v)}: 止まらない\n${r.stderr}`);
+        assert.ok(/想定外の字がある/.test(r.stderr) && /何も変えていない/.test(r.stderr), r.stderr);
+        assert.deepStrictEqual(r.calls, [], `${JSON.stringify(v)}: 何かを変えた: ${r.calls.join(', ')}`);
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+    });
+
+    ok('IADR-0676: 作り直したトークンは、秘匿管理の再起動（段 1・段 2）で作り直されず、起動器の再実行でも Secret が新しい値のまま保たれる', () => {
+      const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
+      const nv = rot.read('secret/platform-infra__vault-dev-token__token');
+      assert.ok(/^[0-9a-f]{48}$/.test(nv), 'Secret が新しい値になっていない');
+      for (const initOnly of ['', '1']) {
+        const re = restart2407(rot, nv, { initOnly });
+        assert.strictEqual(re.status, 0, `段 ${initOnly ? 2 : 1} の再起動が失敗した:\n${re.stdout}${re.stderr}`);
+        assert.deepStrictEqual(re.calls, [], `再起動でトークンを作った（段 ${initOnly ? 2 : 1}）`);
+        assert.deepStrictEqual(re.tokens, [nv], '再起動の後のトークンが作り直した値だけでない（古い値が戻った）');
+        assert.ok(!`${re.stdout}${re.stderr}`.includes(nv), '再起動がトークンを出力した');
+      }
+      // 起動器の再実行: 既存の Secret の値を引き継ぐ（IADR-0672 決定 2）。dev の context でも開発用の値へ戻らない。
+      const sdir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0676-s-'));
+      try {
+        fs2399.writeFileSync(path2399.join(sdir, 'platform-infra__vault-dev-token__token'), nv);
+        const r = spawn2399('bash', ['-c', [
+          '. "$LIB/dev-client-secret-guard.sh"; . "$LIB/infra-credentials.sh"',
+          'reader() { local ns=platform-infra; [ "$1" = msp ] && ns=microservices-platform; cat "$SDIR/${ns}__$2__$3" 2>/dev/null || true; }',
+          'unset VAULT_DEV_ROOT_TOKEN PG_PASSWORD APP_DB_PASSWORD WIKIJS_DB_PASSWORD OBJECT_STORAGE_SECRET_KEY',
+          'VAULT=1 infra_cred_staged_resolve t reader k3d-msp-local 2>/dev/null || exit 9',
+          '[ "$VAULT_DEV_ROOT_TOKEN" = "$EXPECT" ] && echo kept || echo changed',
+        ].join('\n')], { encoding: 'utf8', env: { ...process.env, LIB: LIB2407, SDIR: sdir, EXPECT: nv } });
+        assert.strictEqual(r.stdout.trim(), 'kept', `起動器の再実行で Secret の値が変わる:\n${r.stderr}`);
+      } finally {
+        fs2399.rmSync(sdir, { recursive: true, force: true });
+      }
+    });
+
+    ok('IADR-0676: 作り直しの後に Secret が開発用の値へ戻っても、段 2 の再起動は失効させたトークンを作り直さない（段 1 は警告して作る）', () => {
+      const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
+      const nv = rot.read('secret/platform-infra__vault-dev-token__token');
+      const stage2 = restart2407(rot, 'devroot', { initOnly: '1' });
+      assert.notStrictEqual(stage2.status, 0, '段 2 なのに起動した');
+      assert.deepStrictEqual(stage2.tokens, [nv], '段 2 で失効させたトークンが作り直された');
+      assert.ok(/refusing to create it again/.test(stage2.stdout), stage2.stdout);
+      const stage1 = restart2407(rot, 'devroot');
+      assert.strictEqual(stage1.status, 0, `${stage1.stdout}${stage1.stderr}`);
+      assert.ok(/WARN: the fixed root token was already created on this store/.test(stage1.stdout), stage1.stdout);
+      assert.ok(!stage1.podArgv.includes('devroot'), 'ラッパーがトークンを vault の引数に載せた');
+      // 印の無いストア（#2407 より前・初回）は従前どおり作る（段 2 でも）
+      const fresh = restart2407(rot, 'devroot', { initOnly: '1', marker: false });
+      assert.strictEqual(fresh.status, 0, `${fresh.stdout}${fresh.stderr}`);
+      assert.ok(fresh.calls.includes('WRAPPER CREATE'));
+    });
+
+    ok('IADR-0676: 検査は、Grafana が在るとき管理者の Secret が無いか開発用の値なら名指し、乱数の値なら名指さない。Grafana が無ければ見ない', () => {
+      const clean = ({ put }) => {
+        for (const k of Object.keys(DEV2399)) put(`secret/${k}`, `probe-0676-${k.length}`);
+        for (const r of ['postgres', 'kp', 'ai']) put(`pg/${r}`, `probe-0676-${r}`);
+        put('tokens', 'probe-0676-root\n'); put('vault-root', 'probe-0676-root');
+      };
+      const none = run2399(CHECK2399, ['--live'], { setup: clean });
+      assert.strictEqual(none.status, 0, `Grafana が無いのに名指した:\n${none.stdout}`);
+      const absent = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); } });
+      assert.strictEqual(absent.status, 1, absent.stdout);
+      assert.ok(/!! GRAFANA_ADMIN_PASSWORD（Secret platform-infra\/grafana-admin\/password）: 無い/.test(absent.stdout), absent.stdout);
+      const dev = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); h.put('secret/platform-infra__grafana-admin__password', 'admin'); } });
+      assert.strictEqual(dev.status, 1, dev.stdout);
+      assert.ok(/!! GRAFANA_ADMIN_PASSWORD.*開発用の値のまま/.test(dev.stdout), dev.stdout);
+      const good = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); h.put('secret/platform-infra__grafana-admin__password', 'probe-0676-gf'); } });
+      assert.strictEqual(good.status, 0, good.stdout);
+      assert.ok(!`${good.stdout}${good.stderr}`.includes('probe-0676-gf'), '値が出力に出た');
+    });
+
+    ok('IADR-0676: 作り直し（grafana-admin）は、Secret を乱数で書き（無ければ作り）、Grafana を作り直す。値は引数・出力に出ない', () => {
+      const withGf = ({ put }) => put('deploy/platform-infra__grafana', '');
+      const created = run2399(ROTATE2399, ['--live', 'grafana-admin'], { setup: withGf });
+      assert.strictEqual(created.status, 0, `${created.stdout}\n${created.stderr}`);
+      const v = created.read('secret/platform-infra__grafana-admin__password');
+      assert.ok(/^[0-9a-f]{48}$/.test(v), 'Secret が乱数の値で作られていない');
+      assert.ok(created.calls.indexOf('SECRET CREATE platform-infra/grafana-admin') >= 0
+        && created.calls.indexOf('SECRET CREATE platform-infra/grafana-admin') < created.calls.indexOf('ROLLOUT restart platform-infra/deploy/grafana'), created.calls.join('\n'));
+      assert.ok(!created.argv.includes(v) && !`${created.stdout}${created.stderr}`.includes(v), '値が引数・出力に出た');
+      const patched = run2399(ROTATE2399, ['--live', 'grafana-admin'], { setup: (h) => { withGf(h); h.put('secret/platform-infra__grafana-admin__password', 'probe-0676-old'); } });
+      assert.strictEqual(patched.status, 0, patched.stderr);
+      assert.ok(patched.calls.includes('SECRET PATCH platform-infra/grafana-admin'), patched.calls.join('\n'));
+      assert.notStrictEqual(patched.read('secret/platform-infra__grafana-admin__password'), 'probe-0676-old');
+      const noGf = run2399(ROTATE2399, ['--live', 'grafana-admin']);
+      assert.notStrictEqual(noGf.status, 0, 'Grafana が無いのに成功した');
+      assert.ok(/deploy\/grafana が無い/.test(noGf.stderr) && /何も変えていない/.test(noGf.stderr), noGf.stderr);
+    });
+
     ok('IADR-0672: 検査・作り直しは scripts/README.md の一覧に載る', () => {
       const readme = fs2399.readFileSync(path2399.join(__dirname, 'README.md'), 'utf8');
       for (const n of ['check-infra-credentials.sh', 'rotate-infra-credentials.sh']) assert.ok(readme.includes(`\`${n}\``), `${n} が README に無い`);
+    });
+  }
+
+  // --- NFR-18, IADR-0674 (#2401): クラウドの最小構成（deploy/cloud）。描画は scripts/deploy-cloud.test.js（kubectl・helm。CI）が固定する。
+  // ここは素の環境で走る分: 宣言そのもの（kustomize は resources だけで変換を持たないので、描画と同じ集合）への同じ判定・realm の組み立て・
+  // Secret の初回の作成（kubectl をスタブにして、openssl・node は本物）・ノードの準備の手順書の項目。
+  {
+    const fs2401 = require('fs');
+    const os2401 = require('os');
+    const path2401 = require('path');
+    const { spawnSync: spawn2401 } = require('child_process');
+    const ROOT2401 = path2401.join(__dirname, '..');
+    const cloud = require('./deploy-cloud.test.js');
+    const { buildCloudRealm, CLOUD_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
+    const realm2401 = JSON.parse(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+    const rawDocs2401 = (dir) => {
+      const k = cloud.docsOf(fs2401.readFileSync(path2401.join(ROOT2401, dir, 'kustomization.yaml'), 'utf8'))[0];
+      // 名前空間の外の宣言のディレクトリ（deploy/local/infra の ../../mail-relay）は、その kustomization の resources を辿る。
+      return k.resources.flatMap((r) => (fs2401.statSync(path2401.join(ROOT2401, dir, r)).isDirectory()
+        ? rawDocs2401(path2401.join(dir, r))
+        : cloud.docsOf(fs2401.readFileSync(path2401.join(ROOT2401, dir, r), 'utf8'))));
+    };
+    // 値は実行時に組む（gitleaks）
+    const secret2401 = (c) => ['probe', '2401', c, 'x'.repeat(32)].join('-');
+
+    ok('IADR-0674: deploy/cloud/infra の kustomization は resources だけを持ち、変換（patches・images・generators 等）を持たない（宣言＝描画）', () => {
+      const k = cloud.docsOf(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/infra/kustomization.yaml'), 'utf8'))[0];
+      assert.deepStrictEqual(Object.keys(k).filter((x) => !['apiVersion', 'kind', 'resources'].includes(x)), []);
+      for (const r of k.resources) assert.ok(!r.includes('..') && !r.includes('/'), `${r}: deploy/cloud/infra の外を読まない`);
+    });
+
+    ok('IADR-0674 AC1〜AC6・AC11・AC12: 基盤の宣言に、持ち込まない資源・外への口・既定の資格情報・start-dev が無く、外部のイメージは deploy/local/infra と同じ digest。MSP の入りを絞り、Postgres は TLS だけ、RabbitMQ は永続', () => {
+      const localDocs = rawDocs2401('deploy/local/infra').filter(Boolean);
+      assert.deepStrictEqual(cloud.infraProblems(rawDocs2401('deploy/cloud/infra'), localDocs), []);
+    });
+
+    ok('IADR-0674 陰性対照: 判定は start-dev・LoadBalancer・hostPort・字面の資格情報・既定の字面・持ち込まない資源・別の digest を検出する', () => {
+      const docs = JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const dep = (n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
+      dep('keycloak').spec.template.spec.containers[0].args = ['start-dev', '--import-realm'];
+      delete dep('keycloak').spec.template.spec.containers[0].livenessProbe;
+      delete dep('keycloak').spec.template.spec.containers[0].startupProbe;
+      docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak').spec.type = 'LoadBalancer';
+      dep('rabbitmq').spec.template.spec.containers[0].ports.push({ containerPort: 15672, hostPort: 15672 });
+      dep('postgres').spec.template.spec.containers[0].env.push({ name: 'POSTGRES_PASSWORD', value: 'x' });
+      dep('otel-collector').spec.template.spec.containers[0].image = 'otel/opentelemetry-collector-contrib:0.102.0@sha256:' + '0'.repeat(64);
+      docs.push({ kind: 'Deployment', metadata: { name: 'valkey', labels: { app: 'valkey' } }, spec: { template: { spec: { containers: [] } } } });
+      docs.push({ kind: 'ConfigMap', metadata: { name: 'x' }, data: { 'a.sql': "CREATE USER u WITH PASSWORD 'p';", b: cloud.DEV_LITERALS[0] } });
+      const p = cloud.infraProblems(docs, rawDocs2401('deploy/local/infra').filter(Boolean));
+      for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /livenessProbe が \/health\/live/, /startupProbe が \/health\/started/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      }
+    });
+
+    ok('IADR-0674 陰性対照（AC6・AC11・AC12）: 入りの既定拒否の欠落・送り元の OR 化・ポートの追加、平文の TCP・弱い認証、RabbitMQ の非永続を検出する', () => {
+      const base = () => JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const np = (docs, n) => docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === n);
+      const dep = (docs, n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
+      const expect = (docs, fn, want) => {
+        const p = fn(docs);
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      };
+      // AC6
+      let d = base();
+      d.splice(d.indexOf(np(d, 'default-deny-ingress')), 1);
+      expect(d, cloud.mspIngressProblems, /入りの既定拒否/);
+      d = base();
+      const from = np(d, 'llmgateway-ingress-from-ast').spec.ingress[0].from;
+      from.push({ podSelector: from[0].podSelector });
+      delete from[0].podSelector;
+      expect(d, cloud.mspIngressProblems, /同じ要素/);
+      d = base();
+      np(d, 'llmgateway-ingress-from-ast').spec.ingress[0].ports.push({ protocol: 'TCP', port: 8081 });
+      expect(d, cloud.mspIngressProblems, /TCP\/8080 だけでない/);
+      d = base();
+      d.push({ kind: 'NetworkPolicy', metadata: { name: 'x', namespace: 'microservices-platform' }, spec: { podSelector: {}, policyTypes: ['Ingress'], ingress: [{}] } });
+      expect(d, cloud.mspIngressProblems, /LLM ゲートウェイ以外への入りの許可/);
+      // AC11
+      d = base();
+      const hba = d.find((x) => x.kind === 'ConfigMap' && x.metadata.name === 'postgres-hba');
+      hba.data['pg_hba.conf'] += 'host all all 0.0.0.0/0 scram-sha-256\nhostssl all all 10.0.0.0/8 trust\n';
+      for (const want of [/TLS でない TCP の行がある（host）/, /scram-sha-256 でない（trust）/]) expect(d, cloud.postgresHbaProblems, want);
+      d = base();
+      const pgc = dep(d, 'postgres').spec.template.spec.containers[0];
+      pgc.args = pgc.args.filter((a) => !String(a).startsWith('hba_file='));
+      expect(d, cloud.postgresHbaProblems, /hba_file を指定していない/);
+      // AC12
+      d = base();
+      const mq = dep(d, 'rabbitmq');
+      mq.spec.template.spec.volumes.find((v) => v.name === 'data').persistentVolumeClaim = undefined;
+      mq.spec.template.spec.volumes.find((v) => v.name === 'data').emptyDir = {};
+      mq.spec.template.spec.containers[0].env = mq.spec.template.spec.containers[0].env.filter((e) => e.name !== 'RABBITMQ_NODENAME');
+      delete mq.spec.strategy;
+      for (const want of [/PVC でない/, /RABBITMQ_NODENAME/, /Recreate でない/]) expect(d, cloud.rabbitmqPersistenceProblems, want);
+    });
+
+    ok('IADR-0674 AC13・AC14（値と chart の口）: values-cloud は LLM ゲートウェイの受け口を TLS にし、gRPC を外し、ルートを読み取り専用にする。chart は併記を止める', () => {
+      const { parseDocuments } = require('./lib/yaml-subset');
+      const v = parseDocuments(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/values-cloud.yaml'), 'utf8'))[0];
+      const gw = v.services.llmgateway;
+      assert.strictEqual(gw.grpcPort, null, 'grpcPort を外していない（h2c は平文でしか立たない）');
+      assert.deepStrictEqual(gw.tls, { secretName: 'llmgateway-tls' });
+      assert.strictEqual(String(gw.readOnlyRootFilesystem), 'true');
+      assert.strictEqual(String(v.networkPolicy.enabled), 'false');
+      const tpl = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/helm/microservices-platform/templates/deployment.yaml'), 'utf8');
+      for (const want of [/tls と grpcPort は併記できません/, /readOnlyRootFilesystem: true/, /scheme: HTTPS/, /https:\/\/\+:%v/, /mountPath: \/tmp/]) assert.match(tpl, want);
+    });
+
+    ok('IADR-0674 陰性対照（AC15）: Keycloak の Service の型の欠落・NodePort、別名の差し替え、エッジの資源（Ingress・Gateway・HTTPRoute）を検出する', () => {
+      const base = () => JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const kcSvc = (docs, ns) => docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak' && d.metadata.namespace === ns);
+      const expect = (docs, want) => {
+        const p = cloud.keycloakExposureProblems(docs, 'infra');
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      };
+      assert.deepStrictEqual(cloud.keycloakExposureProblems(base(), 'infra'), []);
+      let d = base();
+      delete kcSvc(d, 'platform-infra').spec.type;
+      expect(d, /ClusterIP と明示されていない（未指定）/);
+      d = base();
+      kcSvc(d, 'platform-infra').spec.type = 'NodePort';
+      expect(d, /ClusterIP と明示されていない（NodePort）/);
+      d = base();
+      kcSvc(d, 'microservices-platform').spec = { type: 'LoadBalancer', ports: [{ port: 8080 }] };
+      expect(d, /別名（ExternalName）でない/);
+      for (const kind of ['Ingress', 'Gateway', 'HTTPRoute']) {
+        d = base();
+        d.push({ kind, metadata: { name: 'kc', namespace: 'platform-infra' }, spec: { rules: [{ backendRefs: [{ name: 'keycloak', port: 8080 }] }] } });
+        expect(d, new RegExp(`エッジの資源を描いている（${kind}/kc）`));
+      }
+    });
+
+    ok('IADR-0674: クラウドの realm は取引ユニットの 5 つの機密クライアントと組み込みだけを残し、secret を渡した値へ差し替え、人の利用者・SMTP を持ち込まない', () => {
+      const secrets = Object.fromEntries(CLOUD_CLIENTS.map((c) => [c, secret2401(c)]));
+      const out = buildCloudRealm(realm2401, secrets);
+      assert.deepStrictEqual(out.clients.map((c) => c.clientId).sort(), [...CLOUD_CLIENTS, 'account', 'account-console'].sort());
+      for (const c of CLOUD_CLIENTS) assert.strictEqual(out.clients.find((x) => x.clientId === c).secret, secret2401(c));
+      assert.deepStrictEqual(out.users.map((u) => u.username).sort(), CLOUD_CLIENTS.map((c) => `service-account-${c}`).sort());
+      assert.ok(!('smtpServer' in out), 'SMTP を持ち込んだ');
+      const text = JSON.stringify(out);
+      for (const c of realm2401.clients.filter((x) => typeof x.secret === 'string')) assert.ok(!text.includes(JSON.stringify(c.secret)), `宣言の secret（${c.clientId}）が残った`);
+      assert.ok(!/\$\{E2E_/.test(text), '試験の利用者の置換が残った');
+      assert.strictEqual(out.realm, 'platform');
+    });
+
+    ok('IADR-0674: クラウドの realm は、secret が無い・短い・宣言の値と同じなら止める', () => {
+      const base = Object.fromEntries(CLOUD_CLIENTS.map((c) => [c, secret2401(c)]));
+      const declared = realm2401.clients.find((c) => c.clientId === CLOUD_CLIENTS[0]).secret;
+      for (const bad of [{ ...base, [CLOUD_CLIENTS[0]]: undefined }, { ...base, [CLOUD_CLIENTS[0]]: 'short' }, { ...base, [CLOUD_CLIENTS[0]]: declared }]) {
+        assert.throws(() => buildCloudRealm(realm2401, bad));
+      }
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は --live が無ければ何もせずに 3 で終わる', () => {
+      const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/bootstrap-secrets.sh')], { encoding: 'utf8', env: { ...process.env, LIVE: '' } });
+      assert.strictEqual(r.status, 3, r.stderr);
+    });
+
+    // kubectl のスタブ: 名前空間は在る。Secret・ConfigMap は state へファイルとして作る（--from-file のパスから中身を写す）。
+    const KUBECTL2401 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"; printf '%s\n' "$*" >> "$S/argv"
+ns=""; if [ "$1" = "-n" ]; then ns="$2"; shift 2; fi
+case "$1 $2" in
+  "get namespace") exit 0 ;;
+  "get secret"|"get configmap")
+    [ -d "$S/obj/$ns/$2/$3" ] || exit 1
+    case "$*" in
+      *"-o json"*) node -e 'const fs=require("fs"),p=require("path");const d=process.argv[1];const o={};for(const f of fs.readdirSync(d))o[f]=fs.readFileSync(p.join(d,f)).toString("base64");process.stdout.write(JSON.stringify({data:o}))' "$S/obj/$ns/$2/$3" ;;
+    esac
+    exit 0 ;;
+  "create secret"|"create configmap")
+    kind="$2"; [ "$kind" = "secret" ] && name="$4" || name="$3"
+    d="$S/obj/$ns/$kind/$name"; mkdir -p "$d"
+    for a in "$@"; do case "$a" in --from-file=*) kv="@{a#--from-file=}"; cp "@{kv#*=}" "$d/@{kv%%=*}" ;; esac; done
+    echo "CREATE $ns/$kind/$name" >> "$S/calls"; echo "kind: x"; exit 0 ;;
+  "apply -f") cat >/dev/null; exit 0 ;;
+esac
+echo "unhandled: $*" >&2; exit 9
+`.replace(/@\{/g, '$' + '{');
+    const runBootstrap2401 = ({ setup = () => {}, env = {} } = {}) => {
+      const dir = fs2401.mkdtempSync(path2401.join(os2401.tmpdir(), 'iadr0674-'));
+      try {
+        const bin = path2401.join(dir, 'bin');
+        const st = path2401.join(dir, 'state');
+        fs2401.mkdirSync(bin, { recursive: true });
+        fs2401.mkdirSync(path2401.join(st, 'obj'), { recursive: true });
+        fs2401.writeFileSync(path2401.join(bin, 'kubectl'), KUBECTL2401, { mode: 0o755 });
+        for (const f of ['argv', 'calls']) fs2401.writeFileSync(path2401.join(st, f), '');
+        setup({ st, dir });
+        const extra = typeof env === 'function' ? env({ dir }) : env;
+        const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/bootstrap-secrets.sh'), '--live'], {
+          encoding: 'utf8', timeout: 120000, env: { ...process.env, PATH: `${bin}${path2401.delimiter}${process.env.PATH}`, STUB_STATE: st, ANTHROPIC_API_KEY_FILE: '', ...extra },
+        });
+        const objs = {};
+        const objDir = path2401.join(st, 'obj');
+        for (const ns of fs2401.readdirSync(objDir)) for (const kind of fs2401.readdirSync(path2401.join(objDir, ns))) for (const name of fs2401.readdirSync(path2401.join(objDir, ns, kind))) {
+          objs[`${ns}/${kind}/${name}`] = Object.fromEntries(fs2401.readdirSync(path2401.join(objDir, ns, kind, name)).map((k) => [k, fs2401.readFileSync(path2401.join(objDir, ns, kind, name, k), 'utf8')]));
+        }
+        return { ...r, objs, argv: fs2401.readFileSync(path2401.join(st, 'argv'), 'utf8'), calls: fs2401.readFileSync(path2401.join(st, 'calls'), 'utf8').split('\n').filter(Boolean) };
+      } finally {
+        fs2401.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('IADR-0674: bootstrap-secrets.sh は初回にすべての資格情報を乱数で作り、既定の値を使わず、値を引数・出力に出さない', () => {
+      const r = runBootstrap2401();
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      const I = 'platform-infra/secret/';
+      for (const n of ['postgres', 'ast-db', 'keycloak-db', 'keycloak-admin', 'rabbitmq', 'rabbitmq-users', 'keycloak-client-secrets', 'keycloak-realm-import', 'postgres-tls', 'rabbitmq-tls']) {
+        assert.ok(r.objs[I + n], `${n} を作っていない`);
+      }
+      const values = [];
+      for (const n of ['postgres', 'ast-db', 'keycloak-db', 'keycloak-admin', 'rabbitmq']) {
+        const o = r.objs[I + n];
+        assert.ok(/^[0-9a-f]{48}$/.test(o.password), `${n} のパスワードが乱数でない`);
+        assert.ok(/^[a-z]+_[0-9a-f]{6}$/.test(o.username), `${n} の利用者名が乱数の接尾辞を持たない`);
+        assert.ok(!['postgres', 'ai', 'kp', 'admin', 'guest', 'sa', 'password'].includes(o.username), `${n} の利用者名が既定の値`);
+        values.push(o.password);
+      }
+      assert.strictEqual(new Set(values).size, values.length, '同じパスワードを使い回した');
+      const users = r.objs[I + 'rabbitmq-users'];
+      assert.ok(Object.keys(users).length >= 10 && Object.keys(users).every((u) => u.startsWith('ast-')), `取引ユニットのユーザーだけでない: ${Object.keys(users).join(',')}`);
+      const cs = r.objs[I + 'keycloak-client-secrets'];
+      assert.deepStrictEqual(Object.keys(cs).sort(), [...CLOUD_CLIENTS].sort());
+      const imported = JSON.parse(r.objs[I + 'keycloak-realm-import']['platform-realm.json']);
+      for (const c of CLOUD_CLIENTS) assert.strictEqual(imported.clients.find((x) => x.clientId === c).secret, cs[c], `${c} の realm の secret が Secret と違う`);
+      assert.ok(/BEGIN CERTIFICATE/.test(r.objs['platform-infra/configmap/platform-infra-ca']['ca.crt']) && r.objs['microservices-platform/configmap/platform-infra-ca'], 'CA を両方の名前空間へ置いていない');
+      assert.ok(!Object.values(r.objs).some((o) => Object.keys(o).some((k) => /ca\.key/.test(k))), 'CA の鍵を保存した');
+      // LLM ゲートウェイの受け口の証明書: 同じ CA が発行し、MSP の名前空間の Service 名を持つ（取引ユニットが CA と名前で検証できる）。
+      const gw = r.objs['microservices-platform/secret/llmgateway-tls'];
+      assert.ok(gw && /BEGIN CERTIFICATE/.test(gw['tls.crt']) && /PRIVATE KEY/.test(gw['tls.key']), 'LLM ゲートウェイの証明書を作っていない');
+      const vd = fs2401.mkdtempSync(path2401.join(os2401.tmpdir(), 'iadr0674-gw-'));
+      try {
+        fs2401.writeFileSync(path2401.join(vd, 'ca.crt'), r.objs['microservices-platform/configmap/platform-infra-ca']['ca.crt']);
+        fs2401.writeFileSync(path2401.join(vd, 'gw.crt'), gw['tls.crt']);
+        const v = spawn2401('openssl', ['verify', '-CAfile', path2401.join(vd, 'ca.crt'), '-purpose', 'sslserver', path2401.join(vd, 'gw.crt')], { encoding: 'utf8' });
+        assert.strictEqual(v.status, 0, `CA で検証できない: ${v.stdout}${v.stderr}`);
+        const t = spawn2401('openssl', ['x509', '-in', path2401.join(vd, 'gw.crt'), '-noout', '-ext', 'subjectAltName'], { encoding: 'utf8' });
+        assert.match(t.stdout, /DNS:llmgateway-service\.microservices-platform\.svc\.cluster\.local/);
+        assert.match(t.stdout, /DNS:llmgateway-service\.microservices-platform(,|\s|$)/);
+      } finally {
+        fs2401.rmSync(vd, { recursive: true, force: true });
+      }
+      for (const v of [...values, ...Object.values(cs), ...Object.values(users)]) {
+        assert.ok(!r.argv.includes(v), '値が kubectl の引数に出た');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+      assert.strictEqual(r.objs['microservices-platform/secret/llm-provider-credentials']['anthropic-api-key'], '', '鍵のファイルが無いのに鍵を入れた');
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は在る Secret を触らない。LLM の鍵はファイルからだけ読み、値を出さない', () => {
+      const keep = ['probe', '2401', 'keep'].join('-');
+      const key = ['probe', '2401', 'llm', 'key'].join('-');
+      const r = runBootstrap2401({
+        setup: ({ st, dir }) => {
+          const d = path2401.join(st, 'obj/platform-infra/secret/postgres');
+          fs2401.mkdirSync(d, { recursive: true });
+          fs2401.writeFileSync(path2401.join(d, 'password'), keep);
+          fs2401.writeFileSync(path2401.join(dir, 'llm.key'), `${key}\n`, { mode: 0o600 });
+        },
+        env: { ANTHROPIC_API_KEY_FILE: '' },
+      });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.strictEqual(r.objs['platform-infra/secret/postgres'].password, keep, '在る Secret を書き換えた');
+      assert.ok(!r.calls.includes('CREATE platform-infra/secret/postgres'), '在る Secret を作り直した');
+      const withKey = runBootstrap2401({
+        setup: ({ dir }) => fs2401.writeFileSync(path2401.join(dir, 'llm.key'), `${key}\n`, { mode: 0o600 }),
+        env: ({ dir }) => ({ ANTHROPIC_API_KEY_FILE: path2401.join(dir, 'llm.key') }),
+      });
+      assert.strictEqual(withKey.status, 0, withKey.stderr);
+      assert.strictEqual(withKey.objs['microservices-platform/secret/llm-provider-credentials']['anthropic-api-key'], key, '鍵のファイルの値（改行を除く）で作っていない');
+      assert.ok(!withKey.argv.includes(key) && !`${withKey.stdout}${withKey.stderr}`.includes(key), '鍵が引数・出力に出た');
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は証明書の組（postgres-tls・rabbitmq-tls・CA）が一部だけ在るなら、作り直さずに止める', () => {
+      const keep = ['probe', '2401', 'cert'].join('-');
+      const r = runBootstrap2401({
+        setup: ({ st }) => {
+          const d = path2401.join(st, 'obj/platform-infra/secret/postgres-tls');
+          fs2401.mkdirSync(d, { recursive: true });
+          fs2401.writeFileSync(path2401.join(d, 'tls.crt'), keep);
+        },
+      });
+      assert.notStrictEqual(r.status, 0, '一部だけ在る組で止まらなかった');
+      assert.match(r.stderr, /一部だけ/);
+      assert.strictEqual(r.objs['platform-infra/secret/postgres-tls']['tls.crt'], keep, '在る証明書を書き換えた');
+      assert.ok(!r.calls.includes('CREATE platform-infra/secret/rabbitmq-tls') && !r.objs['platform-infra/configmap/platform-infra-ca'], '別の CA の組を作った（使用中の証明書と食い違う）');
+    });
+
+    ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {
+      const readme = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/README.md'), 'utf8');
+      for (const want of [/SSH（TCP 22）だけ/, /80・443・6443・50000 は開けない/, /PasswordAuthentication no/, /--disable traefik --disable servicelb/, /--secrets-encryption/,
+        /--bind-address 127\.0\.0\.1/, /ssh -N -L 6443/, /LUKS/, /cryptsetup luksFormat/, /\/var\/lib\/rancher/, /chrony/, /JST 07:00〜21:00/, /Unattended-Upgrade::Automatic-Reboot "false";/, /\/var\/run\/reboot-required/, /systemctl disable k3s/, /systemctl start k3s/, /mountpoint \/var\/lib\/rancher/, /wait --for=condition=Ready pod -l app=keycloak/, /ctr images import/, /digest を記録/, /825 日/, /期限の 30 日前まで/, /openssl x509 -noout -enddate/]) {
+        assert.ok(want.test(readme), `手順書に ${want} が無い`);
+      }
+      // 再起動の扱いと記述が食い違わない: 自動の再起動を有効にする設定が無い（「人が解錠する」と両立しない）。
+      assert.ok(!/Automatic-Reboot\s+"true"/.test(readme) && !/Automatic-Reboot-Time/.test(readme), '手順書が自動の再起動を設定している');
+      // k3s の drop-in: マウント点でなければ起動しない。インストールの後・イメージの節の前に置く（インストーラが enable した後に止める）。
+      const dropIn = readme.match(/\/etc\/systemd\/system\/k3s\.service\.d\/[^\s]+\.conf <<'EOF'\n([\s\S]*?)\nEOF\n/);
+      assert.ok(dropIn, 'k3s.service の drop-in が無い');
+      assert.match(dropIn[1], /^\[Unit\]$/m);
+      assert.match(dropIn[1], /^ConditionPathIsMountPoint=\/var\/lib\/rancher$/m);
+      assert.match(dropIn[1], /^RequiresMountsFor=\/var\/lib\/rancher$/m);
+      const at = (re) => readme.search(re);
+      assert.ok(at(/get\.k3s\.io/) < at(/ConditionPathIsMountPoint/) && at(/ConditionPathIsMountPoint/) < at(/^systemctl disable k3s/m) && at(/^systemctl disable k3s/m) < at(/^## 2\. /m), 'drop-in と disable が k3s のインストールの直後に無い');
+      assert.ok(at(/mountpoint \/var\/lib\/rancher/) < at(/^systemctl start k3s$/m), '解錠の手順でマウントを確かめる前に k3s を起こしている');
+    });
+
+    ok('IADR-0674: ローカルの PoC の宣言（deploy/local）は deploy/cloud を参照しない（クラウドの変更が描画へ混ざらない）', () => {
+      const hits = spawn2401('git', ['grep', '-l', 'deploy/cloud', '--', 'deploy/local', 'scripts/k8s-local-up.sh'], { cwd: ROOT2401, encoding: 'utf8' });
+      assert.strictEqual(hits.stdout.trim(), '', `deploy/local が deploy/cloud を参照している:\n${hits.stdout}`);
+    });
+  }
+
+  // --- NFR (#2436): pipefail の下の「… | grep -q」を戻さない（#2200・#2202 に続く同型の 3 回目）。
+  // grep -q は一致で読むのをやめて終わり、まだ書いている書き手（bash の printf は 1 行ごとに write する）が SIGPIPE で落ちる。
+  // pipefail はそれをパイプラインの失敗にするので、判定が反転する。#2200 は「自分で pipefail を立てるファイル」を見たが、
+  // source した先から受け継ぐ形（backup.test.sh が backup.sh を source する）を見落とした。ここでは受け継ぎも見る。
+  {
+    const fs2436 = require('fs');
+    const path2436 = require('path');
+    const { spawnSync: spawn2436 } = require('child_process');
+    const ROOT2436 = path2436.join(__dirname, '..');
+    const PIPEFAIL_RE = /^\s*set\s+(?:-[A-Za-z]*o\s+pipefail|-o\s+pipefail|.*\s-o\s+pipefail)\b/;
+    const SOURCE_RE = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\.|source)\s+("?)([^"\s;]+)\1/;
+    const GREP_Q_RE = /\|\s*grep\s+(?:-[A-Za-z]*q[A-Za-z]*|--quiet)\b/;
+    const isComment = (l) => /^\s*#/.test(l);
+    // Pod の中の sh -c へ渡す文字列（vexec '…'）は、その sh が pipefail を立てないので対象外。
+    const insidePodShell = (l) => /\bvexec\s+'[^']*\|\s*grep/.test(l);
+    // source のパスを、そのファイルの置き場所から読む（$HERE・$DIR・$SCRIPT_DIR・$(dirname …) の形）。
+    const resolveSource = (file, raw) => {
+      const dir = path2436.dirname(file);
+      const rel = raw.replace(/^\$\{?(?:HERE|DIR|SCRIPT_DIR|SCRIPTS_DIR|ROOT_DIR)\}?\//, '').replace(/^"\$\(dirname\s+"?\$\{?(?:0|BASH_SOURCE\[0\])\}?"?\)"\//, '');
+      if (/\$/.test(rel)) return null;
+      return path2436.normalize(path2436.join(dir, rel));
+    };
+    /**
+     * files: [{ path, text }]（path はリポジトリの根からの相対）。pipefail の下の「| grep -q」を [path:行] で返す。
+     */
+    const findGrepQUnderPipefail = (files) => {
+      const byPath = new Map(files.map((f) => [path2436.normalize(f.path), f.text]));
+      const isSh = (text) => !/^#!\s*\/bin\/sh\b/.test(text);
+      const setsPipefail = (text) => text.split('\n').some((l) => !isComment(l) && PIPEFAIL_RE.test(l));
+      // pipefail を立てるファイルから source される lib は、ファイル全体を pipefail の下とみなす。
+      const libUnderPipefail = new Set();
+      for (const [p, text] of byPath) {
+        if (!setsPipefail(text)) continue;
+        for (const l of text.split('\n')) {
+          const m = !isComment(l) && SOURCE_RE.exec(l);
+          const target = m && resolveSource(p, m[2]);
+          if (target && byPath.has(target)) libUnderPipefail.add(target);
+        }
+      }
+      const out = [];
+      for (const [p, text] of byPath) {
+        if (!isSh(text)) continue;
+        let under = libUnderPipefail.has(p);
+        text.split('\n').forEach((l, i) => {
+          if (isComment(l)) return;
+          if (PIPEFAIL_RE.test(l)) under = true;
+          const m = SOURCE_RE.exec(l);
+          if (m) {
+            const target = resolveSource(p, m[2]);
+            if (target && byPath.has(target) && setsPipefail(byPath.get(target))) under = true;
+          }
+          if (under && GREP_Q_RE.test(l) && !insidePodShell(l)) out.push(`${p}:${i + 1}`);
+        });
+      }
+      return out.sort();
+    };
+    const trackedSh = () => {
+      const r = spawn2436('git', ['ls-files', '--', 'deploy', 'scripts'], { cwd: ROOT2436, encoding: 'utf8' });
+      return r.stdout.split('\n').filter((p) => /\.(sh|bash)$/.test(p))
+        .map((p) => ({ path: p, text: fs2436.readFileSync(path2436.join(ROOT2436, p), 'utf8') }));
+    };
+
+    ok('#2436: 追跡下の deploy と scripts の bash の .sh に、pipefail の下（自分で立てる・source で受け継ぐ）の「… | grep -q」が無い', () => {
+      assert.deepStrictEqual(findGrepQUnderPipefail(trackedSh()), []);
+    });
+
+    ok('#2436 陰性対照: 自分で立てる形・source で受け継ぐ形・lib の形を見つけ、#!/bin/sh・vexec の文字列・pipefail の無いファイルを見つけない', () => {
+      const files = [
+        { path: 'd/lib.sh', text: '#!/usr/bin/env bash\nset -u\nset -o pipefail\nf() { :; }\n' },
+        { path: 'd/self.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "$x" | grep -qx y\n' },
+        { path: 'd/inherit.test.sh', text: '#!/usr/bin/env bash\nset -u\nprintf "%s\\n" "$x" | grep -q a\nBACKUP_LIB=1 . "$HERE/lib.sh"\nhas() { printf "%s\\n" "$D" | grep -qx -- "$1"; }\n' },
+        { path: 'd/caller.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\n. "$HERE/sourced-lib.sh"\n' },
+        { path: 'd/sourced-lib.sh', text: '# lib\nis_x() { printf "%s" "$1" | grep -Fxq -- z; }\n' },
+        { path: 'd/posix.sh', text: '#!/bin/sh\nset -e\nvault list | grep -q a\n' },
+        { path: 'd/pod.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\nvexec \'vault auth list | grep -q "k/" || vault auth enable k\'\n' },
+        { path: 'd/plain.sh', text: '#!/usr/bin/env bash\nset -u\nprintf "%s" "$x" | grep -q a\n' },
+        { path: 'd/herestring.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\ngrep -qx -- y <<< "$x"\n# printf x | grep -q y\n' },
+      ];
+      assert.deepStrictEqual(findGrepQUnderPipefail(files), ['d/inherit.test.sh:5', 'd/self.sh:3', 'd/sourced-lib.sh:2']);
     });
   }
 };
