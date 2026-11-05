@@ -511,7 +511,9 @@ jobs:
       #   - postgres: pg_stat_ssl で、MSP のサービスの利用者（kp）が MSP の DB（*_svc）へ張っている接続がすべて ssl（1 本以上）
       #   - rabbitmq: list_connections で、MSP のサービスの利用者（msp-*）の接続がすべて ssl=true（1 本以上）
       #   - 対照: サーバ証明書を基盤の CA と素の名前で検証できる（openssl の Verify return code: 0）。名前を変えると検証に失敗する
-      # 取引ユニット（ai / ast-*）と基盤の他のクライアント（Keycloak・Wiki.js）は段 1 では平文のまま（併存）なので、数を出すだけで判定しない。
+      #   - ［2026-11-05 / #2403・IADR-0673］Wiki.js（利用者 kp・DB wikijs）の接続もすべて ssl（1 本以上）。values-local が有効にする
+      # 取引ユニット（ai / ast-*）は AST の chart の切り替えまで平文のまま（併存）なので、数を出すだけで判定しない。経路B の Keycloak は H2 で
+      # postgres へ繋がず、バックアップの CronJob は本スタックでは走らない（どちらも静的な試験が形を固定する）。
       # ISTIO の有無によらず測る（メッシュの外の通信の暗号化であり、auto-mTLS とは関係しない）。
       - name: 🔴 Gate — 基盤への接続が TLS で効いている（DB・ブローカ）
         id: infra-tls
@@ -525,7 +527,12 @@ jobs:
           n_tls="$(grep -c ' true$' <<<"$rows" || true)"; n_plain="$(grep -c ' false$' <<<"$rows" || true)"
           [ "$n_tls" -ge 1 ] || { echo "::error::MSP のサービスの TLS の DB 接続が 1 本も無い（測れていない）"; fail=1; }
           [ "$n_plain" -eq 0 ] || { echo "::error::MSP のサービスの平文の DB 接続が ${n_plain} 本ある"; fail=1; }
-          other="$(pg "select a.usename || ' ' || s.ssl from pg_stat_activity a join pg_stat_ssl s using (pid) where a.backend_type = 'client backend' and not (a.usename = 'kp' and a.datname like '%\_svc')" | sort | uniq -c || true)"
+          wiki="$(pg "select s.ssl from pg_stat_activity a join pg_stat_ssl s using (pid) where a.usename = 'kp' and a.datname = 'wikijs' and a.backend_type = 'client backend'")"
+          w_tls="$(grep -c '^t' <<<"$wiki" || true)"; w_plain="$(grep -c '^f' <<<"$wiki" || true)"
+          echo "--- postgres（Wiki.js・kp・wikijs）: TLS ${w_tls} / 平文 ${w_plain} ---"
+          [ "$w_tls" -ge 1 ] || { echo "::error::Wiki.js の TLS の DB 接続が 1 本も無い（測れていない）"; fail=1; }
+          [ "$w_plain" -eq 0 ] || { echo "::error::Wiki.js の平文の DB 接続が ${w_plain} 本ある"; fail=1; }
+          other="$(pg "select a.usename || ' ' || s.ssl from pg_stat_activity a join pg_stat_ssl s using (pid) where a.backend_type = 'client backend' and not (a.usename = 'kp' and (a.datname like '%\_svc' or a.datname = 'wikijs'))" | sort | uniq -c || true)"
           echo "--- postgres（それ以外・判定しない）---"; echo "${other:-（無し）}"
           conns="$(kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl -q list_connections user ssl)"
           echo "--- rabbitmq の接続（user ssl）---"; echo "${conns:-（無し）}"

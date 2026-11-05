@@ -6,7 +6,7 @@
 #   bash scripts/backup-restore-drill.sh --self-test
 #
 # 手順（docs/operations/platform-infra-backup-runbook.md の「リストア試験」）:
-#   0. ［2026-11-05 / #2402・IADR-0674］--from-s3 なら、オブジェクトストレージの回を rclone で作業場所へ落とす（暗号文だけ）。
+#   0. ［2026-11-05 / #2402・IADR-0675］--from-s3 なら、オブジェクトストレージの回を rclone で作業場所へ落とす（暗号文だけ）。
 #      COMPLETE（SHA256SUMS の sha256）が無い・合わない回は書きかけとして戻さない。資格情報は rclone の env で渡す（引数に載せない）
 #   1. 回のディレクトリの SHA256SUMS で暗号文を検証する（写しの破損を先に見つける）
 #   2. 使い捨ての Postgres をコンテナで起こす（**--network none**。外から一切つながらない。ポートも開けない）
@@ -398,7 +398,7 @@ STUB
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db 'x;drop')"; RC=$?
 	eq 'T-1560-41 不正な DB 名は止まる' "$RC" "2"
 
-	# ---- #2402・IADR-0674: オブジェクトストレージの回から戻す（--from-s3） ----
+	# ---- #2402・IADR-0675: オブジェクトストレージの回から戻す（--from-s3） ----
 	# rclone のスタブは、リモート `objstore:` を $w/s3 の下のディレクトリとして扱う（オブジェクトストレージのモック）。
 	cat > "$w/bin/rclone" <<'STUB'
 #!/usr/bin/env bash

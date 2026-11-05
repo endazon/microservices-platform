@@ -1,4 +1,4 @@
-# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0674 (#2402): クラウドの最小構成の日次バックアップ（CronJob）のイメージ。
+# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0675 (#2402): クラウドの最小構成の日次バックアップ（CronJob）のイメージ。
 # ローカルのイメージ（deploy/local/platform-backup/image/Dockerfile）と同じベース・同じ age に、rclone（S3 互換の
 # オブジェクトストレージへ送る）を足したもの。**実行時にネットワークから何も入れない。**
 #

@@ -3,7 +3,7 @@
 # **age の公開鍵で暗号化して**クラスタ外の 2 か所（hostPath）へ置く CronJob の本体。
 #
 # 🔴 ローカル開発・PoC 環境のもの。本番のバックアップ設計ではない。
-# ［2026-11-05 / #2402・IADR-0674］クラウドの最小構成（deploy/cloud/backup/）も同じ本体を使い、保管先を S3 互換の
+# ［2026-11-05 / #2402・IADR-0675］クラウドの最小構成（deploy/cloud/backup/）も同じ本体を使い、保管先を S3 互換の
 #   オブジェクトストレージ（BACKUP_S3_DEST）にする（BACKUP_TARGETS=none で hostPath を使わない）。hostPath の既定は変えない。
 #
 # 1 回の実行で 1 種類（BACKUP_KIND=postgres | vault）を扱う:
@@ -19,7 +19,7 @@
 #      **目印ファイル（.platform-backup-target）が無い保管先には書かない**（ドライブが外れていると kubelet が
 #      ディストリ内に空のディレクトリを作る。そこはクラスタ外ではない）
 #   4. 保持の規則で古い回を消す（名前の規則に合うディレクトリだけ・再帰削除をしない）
-#   3s. ［#2402・IADR-0674］BACKUP_S3_DEST があれば、オブジェクトストレージへも書く（publish_s3）。改名とロックの代わりに、
+#   3s. ［#2402・IADR-0675］BACKUP_S3_DEST があれば、オブジェクトストレージへも書く（publish_s3）。改名とロックの代わりに、
 #      送った回を読み戻して検算してから最後に COMPLETE を置く。保持の削除はバケットの lifecycle が行う（ここでは消さない）
 #   片方の保管先に書けなくてももう片方には書く。**どこかで失敗したら exit 1**（Job を失敗として見せる）。
 #
@@ -56,7 +56,7 @@ BACKUP_DEPS_WAIT_INTERVAL="${BACKUP_DEPS_WAIT_INTERVAL:-5}"
 BACKUP_DEPS_PROBE_TIMEOUT="${BACKUP_DEPS_PROBE_TIMEOUT:-10}"
 # 自分が持っているロック（保管先の kind_dir）。trap で解放する。
 HELD_LOCKS=()
-# NFR-21, IADR-0674 (#2402): S3 互換のオブジェクトストレージの宛先（rclone のリモート名:バケット[/接頭辞]）。空なら使わない。
+# NFR-21, IADR-0675 (#2402): S3 互換のオブジェクトストレージの宛先（rclone のリモート名:バケット[/接頭辞]）。空なら使わない。
 # 資格情報は rclone の env（RCLONE_CONFIG_<リモート>_ACCESS_KEY_ID 等。secretKeyRef）で渡し、🔴 引数に載せない。
 BACKUP_S3_DEST="${BACKUP_S3_DEST:-}"
 # rclone の 1 回の呼び出しの上限（秒）。最悪の合計は Job の activeDeadlineSeconds の内側に収める（試験 T-2402-12）。
@@ -764,7 +764,7 @@ prune_target() {
 	return "$rc"
 }
 
-# ---------------------------------------------------------------- S3 互換のオブジェクトストレージ（#2402・IADR-0674）
+# ---------------------------------------------------------------- S3 互換のオブジェクトストレージ（#2402・IADR-0675）
 #
 # 置き場所: <BACKUP_S3_DEST>/<種類>/daily/<回>/ と、月の最初の完全な回だけ <BACKUP_S3_DEST>/<種類>/monthly/<回>/。
 # 🔴 オブジェクトストレージには改名も mkdir の原子性も無い。IADR-0669 のロックと改名の代わりに、次の順で書く:
@@ -887,7 +887,7 @@ main() {
 	esac
 	check_recipients "$BACKUP_RECIPIENTS_FILE" || return 2
 	ensure_age || return 2
-	# #2402・IADR-0674: 保管先の構成の誤り（S3 の宛先の形・rclone の不在・保管先 0 件）は、何も作らずに失敗させる。
+	# #2402・IADR-0675: 保管先の構成の誤り（S3 の宛先の形・rclone の不在・保管先 0 件）は、何も作らずに失敗させる。
 	check_destinations || return 2
 	# #2394・IADR-0670: 書き始める前に依存先を待つ（staging も保管先も、まだ何も作っていない）。
 	# 構成の誤り（ServiceAccount のトークン）は待たずに失敗させる。

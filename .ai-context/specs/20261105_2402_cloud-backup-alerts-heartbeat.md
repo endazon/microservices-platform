@@ -2,7 +2,7 @@
 title: 作業仕様書 — クラウドの最小構成で、バックアップを S3 互換のオブジェクトストレージへ書き、警報を Discord へ送り、クラスタの中から外の監視へ heartbeat を送る（#2402）
 type: spec
 status: done
-related_ids: [NFR-21, NFR-03, NFR-05, ADR-0002, ADR-0006, ADR-0008, IADR-0471, IADR-0548, IADR-0571, IADR-0669, IADR-0670, IADR-0674]
+related_ids: [NFR-21, NFR-03, NFR-05, ADR-0002, ADR-0006, ADR-0008, IADR-0471, IADR-0548, IADR-0571, IADR-0669, IADR-0670, IADR-0675]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05
@@ -21,7 +21,7 @@ issue: "#2402"
 - Alertmanager の通知先が無い（compose は `default-null`。経路 B は mail-relay 宛てだけ）。NFR-03 の障害に誰も気付けない。
 - ホストの外からの死活監視が、PowerShell 前提である。
 
-## 方針（IADR-0674）
+## 方針（IADR-0675）
 
 1. **バックアップ**: 既存の `backup.sh` に、S3 互換の保管先（`BACKUP_S3_DEST`）へ書く経路を足す。
    - 受取人の検査・age・依存先の待ち・staging・`SHA256SUMS` は、そのまま流用する。
@@ -62,7 +62,7 @@ issue: "#2402"
     - `scripts/backup-restore-drill.sh`（`--from-s3`）。
     - `.github/workflows/ci.yml`（新しい試験 `scripts/cloud-ops.test.js` と amtool の導入）。
     - IADR の索引（`.ai-context/adr/README.md`）。
-    - 新設: `deploy/cloud/backup/`・`deploy/cloud/observability/`・`docs/operations/cloud-backup-alerts-heartbeat-runbook.md`・IADR-0674。
+    - 新設: `deploy/cloud/backup/`・`deploy/cloud/observability/`・`docs/operations/cloud-backup-alerts-heartbeat-runbook.md`・IADR-0675。
   - 対象外:
     - `deploy/alertmanager/alertmanager.yml`（compose）と `deploy/local/observability/`: クラウドの経路ではない。変えない。
     - `scripts/host-liveness-monitor.ps1`: ローカルの PoC の監視として残す（クラウドへ移った後の扱いは #2401 と AST の移行の issue が決める）。
@@ -72,5 +72,5 @@ issue: "#2402"
 
 ## 残すもの（本件の外）
 
-- バックアップの Job の失敗を Prometheus で見る手段（kube-state-metrics 等）は持ち込まない。失敗はオーナーの週次のリストア試験と Job の一覧で見る（IADR-0674 の残余）。
+- バックアップの Job の失敗を Prometheus で見る手段（kube-state-metrics 等）は持ち込まない。失敗はオーナーの週次のリストア試験と Job の一覧で見る（IADR-0675 の残余）。
 - `deploy/cloud/` の infra（#2401）との結線（kustomization の resources への追加・Secret の名前の突き合わせ）は、後にマージする側が行う。

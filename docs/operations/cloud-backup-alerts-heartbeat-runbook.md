@@ -9,7 +9,7 @@ updated: 2026-11-05
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0674, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
+iadrs: [IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
 specs: [20261105_2402_cloud-backup-alerts-heartbeat]
 issues: [#2402, #2401]
 -->

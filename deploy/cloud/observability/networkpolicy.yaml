@@ -1,4 +1,4 @@
-# NFR-21, NFR-18, IADR-0674 (#2402): 警報の Pod の通信を絞る。受け口は増やさない（クラスタの外からは何も届かない）。
+# NFR-21, NFR-18, IADR-0675 (#2402): 警報の Pod の通信を絞る。受け口は増やさない（クラスタの外からは何も届かない）。
 # - Alertmanager: 受けは Prometheus からの :9093 だけ。外へは名前解決と HTTPS（Discord・Healthchecks.io）だけ。
 # - Prometheus: 受けは otel-collector からの remote write（:9090）だけ。外へは制限しない（クラスタ内を収集する）。
 # 🔴 HTTPS はクラスタの外（私設のアドレス帯を除く）だけへ出す。

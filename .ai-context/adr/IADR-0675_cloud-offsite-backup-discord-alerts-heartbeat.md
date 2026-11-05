@@ -1,5 +1,5 @@
 ---
-title: IADR-0674 クラウドの最小構成は、バックアップを S3 互換のオブジェクトストレージ（Object Lock・lifecycle）へ書き、警報を Discord へ送り、常に鳴る警報をクラスタの中から外の監視（Healthchecks.io）へ heartbeat として送る（#2402）
+title: IADR-0675 クラウドの最小構成は、バックアップを S3 互換のオブジェクトストレージ（Object Lock・lifecycle）へ書き、警報を Discord へ送り、常に鳴る警報をクラスタの中から外の監視（Healthchecks.io）へ heartbeat として送る（#2402）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-21, NFR-03, NFR-05, ADR-0002, ADR-0006, ADR-0008, IADR-0471, IADR-0548, IADR-0571, IADR-0669, IADR-0670]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2402_cloud-backup-alerts-heartbeat.md
 ---
 
-# IADR-0674: クラウドのバックアップ・警報・heartbeat（#2402）
+# IADR-0675: クラウドのバックアップ・警報・heartbeat（#2402）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

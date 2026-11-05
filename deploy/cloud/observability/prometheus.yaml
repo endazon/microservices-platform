@@ -1,4 +1,4 @@
-# NFR-21, NFR-03, ADR-0006, IADR-0674 (#2402): クラウドの最小構成の Prometheus（platform-infra）。
+# NFR-21, NFR-03, ADR-0006, IADR-0675 (#2402): クラウドの最小構成の Prometheus（platform-infra）。
 # - 8 GB のノード向けに絞る: 保持 7 日・1GB、メモリの上限 768Mi、データは emptyDir（2Gi。再起動で消えるのは受け入れる）。
 # - 収集: 自分・Alertmanager・otel-collector の自己テレメトリ（:8888）。アプリのメトリクスは otel-collector の remote write で受ける。
 # - 規則: 下の platform-rules.yml（heartbeat・Discord の到達と失敗・AST の規則の不在・collector の停止）と、AST の PrometheusRule。
@@ -36,7 +36,7 @@ data:
           - targets: ['otel-collector:8888']
   platform-rules.yml: |
     groups:
-      # IADR-0674 決定 4: 外の監視（Healthchecks.io）への heartbeat。
+      # IADR-0675 決定 4: 外の監視（Healthchecks.io）への heartbeat。
       - name: cloud-heartbeat
         rules:
           # 常に鳴る。Alertmanager が heartbeat の receiver へ 5 分ごとに送る。止まったら、Prometheus・Alertmanager・

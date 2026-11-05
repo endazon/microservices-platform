@@ -1,8 +1,8 @@
-# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0674 (#2402): platform-infra の Postgres（全 DB ＋ globals）を日次で age 暗号化し、
+# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0675 (#2402): platform-infra の Postgres（全 DB ＋ globals）を日次で age 暗号化し、
 # S3 互換のオブジェクトストレージ（Hetzner Object Storage を想定）へ置く CronJob。
 #
 # - 本体はローカルと同じ backup.sh。BACKUP_TARGETS=none で hostPath を使わず、BACKUP_S3_DEST へだけ書く。
-#   送った回を読み戻して検算し、最後に COMPLETE を置く（COMPLETE の無い回は完了ではない。IADR-0674 決定 1）。
+#   送った回を読み戻して検算し、最後に COMPLETE を置く（COMPLETE の無い回は完了ではない。IADR-0675 決定 1）。
 # - 時刻: JST 12:00（米国市場の時間帯 JST 22:30〜05:00 を避ける）。ノードは常時起動なので、後追いは 1 時間に限る。
 # - 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle**（bucket-lifecycle.json）が行い、スクリプトは消さない。
 #   バケットは Object Lock（object-lock.json。COMPLIANCE・28 日。日次の保持より短くし、期限の日の削除を拒ませない）で作る。
