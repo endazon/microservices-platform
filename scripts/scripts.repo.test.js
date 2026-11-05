@@ -20388,4 +20388,86 @@ echo "unhandled: $*" >&2; exit 9
       assert.strictEqual(hits.stdout.trim(), '', `deploy/local が deploy/cloud を参照している:\n${hits.stdout}`);
     });
   }
+
+  // --- NFR (#2436): pipefail の下の「… | grep -q」を戻さない（#2200・#2202 に続く同型の 3 回目）。
+  // grep -q は一致で読むのをやめて終わり、まだ書いている書き手（bash の printf は 1 行ごとに write する）が SIGPIPE で落ちる。
+  // pipefail はそれをパイプラインの失敗にするので、判定が反転する。#2200 は「自分で pipefail を立てるファイル」を見たが、
+  // source した先から受け継ぐ形（backup.test.sh が backup.sh を source する）を見落とした。ここでは受け継ぎも見る。
+  {
+    const fs2436 = require('fs');
+    const path2436 = require('path');
+    const { spawnSync: spawn2436 } = require('child_process');
+    const ROOT2436 = path2436.join(__dirname, '..');
+    const PIPEFAIL_RE = /^\s*set\s+(?:-[A-Za-z]*o\s+pipefail|-o\s+pipefail|.*\s-o\s+pipefail)\b/;
+    const SOURCE_RE = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\.|source)\s+("?)([^"\s;]+)\1/;
+    const GREP_Q_RE = /\|\s*grep\s+(?:-[A-Za-z]*q[A-Za-z]*|--quiet)\b/;
+    const isComment = (l) => /^\s*#/.test(l);
+    // Pod の中の sh -c へ渡す文字列（vexec '…'）は、その sh が pipefail を立てないので対象外。
+    const insidePodShell = (l) => /\bvexec\s+'[^']*\|\s*grep/.test(l);
+    // source のパスを、そのファイルの置き場所から読む（$HERE・$DIR・$SCRIPT_DIR・$(dirname …) の形）。
+    const resolveSource = (file, raw) => {
+      const dir = path2436.dirname(file);
+      const rel = raw.replace(/^\$\{?(?:HERE|DIR|SCRIPT_DIR|SCRIPTS_DIR|ROOT_DIR)\}?\//, '').replace(/^"\$\(dirname\s+"?\$\{?(?:0|BASH_SOURCE\[0\])\}?"?\)"\//, '');
+      if (/\$/.test(rel)) return null;
+      return path2436.normalize(path2436.join(dir, rel));
+    };
+    /**
+     * files: [{ path, text }]（path はリポジトリの根からの相対）。pipefail の下の「| grep -q」を [path:行] で返す。
+     */
+    const findGrepQUnderPipefail = (files) => {
+      const byPath = new Map(files.map((f) => [path2436.normalize(f.path), f.text]));
+      const isSh = (text) => !/^#!\s*\/bin\/sh\b/.test(text);
+      const setsPipefail = (text) => text.split('\n').some((l) => !isComment(l) && PIPEFAIL_RE.test(l));
+      // pipefail を立てるファイルから source される lib は、ファイル全体を pipefail の下とみなす。
+      const libUnderPipefail = new Set();
+      for (const [p, text] of byPath) {
+        if (!setsPipefail(text)) continue;
+        for (const l of text.split('\n')) {
+          const m = !isComment(l) && SOURCE_RE.exec(l);
+          const target = m && resolveSource(p, m[2]);
+          if (target && byPath.has(target)) libUnderPipefail.add(target);
+        }
+      }
+      const out = [];
+      for (const [p, text] of byPath) {
+        if (!isSh(text)) continue;
+        let under = libUnderPipefail.has(p);
+        text.split('\n').forEach((l, i) => {
+          if (isComment(l)) return;
+          if (PIPEFAIL_RE.test(l)) under = true;
+          const m = SOURCE_RE.exec(l);
+          if (m) {
+            const target = resolveSource(p, m[2]);
+            if (target && byPath.has(target) && setsPipefail(byPath.get(target))) under = true;
+          }
+          if (under && GREP_Q_RE.test(l) && !insidePodShell(l)) out.push(`${p}:${i + 1}`);
+        });
+      }
+      return out.sort();
+    };
+    const trackedSh = () => {
+      const r = spawn2436('git', ['ls-files', '--', 'deploy', 'scripts'], { cwd: ROOT2436, encoding: 'utf8' });
+      return r.stdout.split('\n').filter((p) => /\.(sh|bash)$/.test(p))
+        .map((p) => ({ path: p, text: fs2436.readFileSync(path2436.join(ROOT2436, p), 'utf8') }));
+    };
+
+    ok('#2436: 追跡下の deploy と scripts の bash の .sh に、pipefail の下（自分で立てる・source で受け継ぐ）の「… | grep -q」が無い', () => {
+      assert.deepStrictEqual(findGrepQUnderPipefail(trackedSh()), []);
+    });
+
+    ok('#2436 陰性対照: 自分で立てる形・source で受け継ぐ形・lib の形を見つけ、#!/bin/sh・vexec の文字列・pipefail の無いファイルを見つけない', () => {
+      const files = [
+        { path: 'd/lib.sh', text: '#!/usr/bin/env bash\nset -u\nset -o pipefail\nf() { :; }\n' },
+        { path: 'd/self.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "$x" | grep -qx y\n' },
+        { path: 'd/inherit.test.sh', text: '#!/usr/bin/env bash\nset -u\nprintf "%s\\n" "$x" | grep -q a\nBACKUP_LIB=1 . "$HERE/lib.sh"\nhas() { printf "%s\\n" "$D" | grep -qx -- "$1"; }\n' },
+        { path: 'd/caller.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\n. "$HERE/sourced-lib.sh"\n' },
+        { path: 'd/sourced-lib.sh', text: '# lib\nis_x() { printf "%s" "$1" | grep -Fxq -- z; }\n' },
+        { path: 'd/posix.sh', text: '#!/bin/sh\nset -e\nvault list | grep -q a\n' },
+        { path: 'd/pod.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\nvexec \'vault auth list | grep -q "k/" || vault auth enable k\'\n' },
+        { path: 'd/plain.sh', text: '#!/usr/bin/env bash\nset -u\nprintf "%s" "$x" | grep -q a\n' },
+        { path: 'd/herestring.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\ngrep -qx -- y <<< "$x"\n# printf x | grep -q y\n' },
+      ];
+      assert.deepStrictEqual(findGrepQUnderPipefail(files), ['d/inherit.test.sh:5', 'd/self.sh:3', 'd/sourced-lib.sh:2']);
+    });
+  }
 };

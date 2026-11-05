@@ -671,7 +671,9 @@ FIX+=("2019-09-15T030000Z-keep" "2019-09-30T030000Z-keep") # 切替前に運用�
 FIX+=("2026-09-20T040000Z-partial" "2026-07-15T030000Z-partial")
 FIX+=("notes.txt" "2026-09-01" "2026-09-01T030000Z-other" "../2026-01-01T030000Z")
 DEL="$(prune_list "2026-09-26T030000Z" "${FIX[@]}")"
-has_del() { printf '%s\n' "$DEL" | grep -qx -- "$1"; }
+# NFR (#2436): here-string で調べる。この行は上の source で pipefail の下にある。「printf … | grep -q」は grep が一致で終わると
+# printf が SIGPIPE で落ち、pipefail が判定を反転させる（在るのに無いと読む）。
+has_del() { grep -qx -- "$1" <<< "$DEL"; }
 check_kept() { has_del "$2" && ng "$1" "deleted: $2" || ok "$1"; }
 check_del() { has_del "$2" && ok "$1" || ng "$1" "kept: $2"; }
 
@@ -709,7 +711,7 @@ assert_eq 'T-1560-28 一部失敗だけの月は 1 つ目（2/10）を月次に�
 STREAK=("2026-08-01T030000Z" "2026-08-02T030000Z")
 for i in $(seq 0 34); do STREAK+=("$(date -u -d "2026-08-03 +$i day" +%Y-%m-%d)T030000Z-partial"); done
 DEL4="$(prune_list "2026-09-06T030000Z" "${STREAK[@]}")"
-has_del4() { printf '%s\n' "$DEL4" | grep -qx -- "$1"; }
+has_del4() { grep -qx -- "$1" <<< "$DEL4"; }   # #2436: has_del と同じ理由で here-string
 has_del4 '2026-08-02T030000Z' && ng 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 最新の完全な回（8/2）を残す' 'deleted' || ok 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 最新の完全な回（8/2）を残す'
 has_del4 '2026-08-01T030000Z' && ng 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 月次（8/1）も残す' 'deleted' || ok 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 月次（8/1）も残す'
 has_del4 '2026-08-03T030000Z-partial' && ok 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 30 日付を過ぎた一部失敗の回は消す' || ng 'T-1560-29 完全な回 2 つ → 一部失敗 35 日: 30 日付を過ぎた一部失敗の回は消す' 'kept'
