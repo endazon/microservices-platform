@@ -4,7 +4,7 @@ type: runbook
 status: fixed
 author: claude
 created: 2026-09-28
-updated: 2026-10-11
+updated: 2026-11-05
 ---
 <!-- trace:
 ids: [FR-06, FR-05, FR-19, SC-05, NFR-09, UC-03]
