@@ -1,8 +1,8 @@
-using Platform.Shared.Infrastructure.Foundation.Extensions;
 using AiAnalysisService.Features.Analysis.Analyze;
-using Platform.Shared.Infrastructure.Foundation.Authz;
 using AiAnalysisService.Features.Analysis.Ask;
 using AiAnalysisService.Features.Analysis.AskStream;
+using Platform.Shared.Infrastructure.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace AiAnalysisService.Features.Analysis;
 
