@@ -1423,7 +1423,7 @@ wikijs:
     # DB パスワードを保持する Secret（key=password）。事前に kubectl/ArgoCD で作成する。
     existingSecret: wikijs-db
     passwordKey: password
-    # NFR-16, NFR-18, IADR-0675（#2403）: DB への接続を TLS にし、サーバ証明書を基盤の CA（global.infraCa）と名前（db.host）で
+    # NFR-16, NFR-18, IADR-0673（#2403）: DB への接続を TLS にし、サーバ証明書を基盤の CA（global.infraCa）と名前（db.host）で
     #   検証する（DB_SSL=true ＋ NODE_EXTRA_CA_CERTS。CA の ConfigMap は非 optional でマウントする）。
     #   🔴 **既定 false（opt-in）**: 有効にすると CA の ConfigMap が無い配備では Pod が立たない（Recreate なので Wiki.js が止まる）。
     #   本番像は CA の供給元を決めてから有効にする。経路B は values-local が有効にする（起動器が helm の前に CA を写す）。

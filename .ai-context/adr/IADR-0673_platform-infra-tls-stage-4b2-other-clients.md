@@ -1,5 +1,5 @@
 ---
-title: IADR-0675 基盤との通信を TLS にする 段 4b-2 の MSP の分（compose の取引ユニットの 3 サービス・Keycloak の DB・Wiki.js・バックアップの CronJob も CA と名前を検証して繋ぐ。helm の Wiki.js は値で opt-in。AST の chart は AST リポジトリ）
+title: IADR-0673 基盤との通信を TLS にする 段 4b-2 の MSP の分（compose の取引ユニットの 3 サービス・Keycloak の DB・Wiki.js・バックアップの CronJob も CA と名前を検証して繋ぐ。helm の Wiki.js は値で opt-in。AST の chart は AST リポジトリ）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-16, NFR-18, ADR-0005, ADR-0023, IADR-0591, IADR-0471]
@@ -14,7 +14,7 @@ related_specs:
   - ../specs/20261105_2403_infra-tls-stage-4b2.md
 ---
 
-# IADR-0675: 基盤との通信を TLS にする 段 4b-2 の MSP の分（#2403）
+# IADR-0673: 基盤との通信を TLS にする 段 4b-2 の MSP の分（#2403）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -73,7 +73,7 @@ related_specs:
 - Wiki.js 2.5（pg 8.16.3・Node 24）: `DB_SSL=true` ＋ `NODE_EXTRA_CA_CERTS` → 接続・`TLSv1.3`。CA を足さない → `UNABLE_TO_VERIFY_LEAF_SIGNATURE` で拒否。別の名前 → `ERR_TLS_CERT_ALTNAME_INVALID` で拒否。
 - Keycloak 26.7.4（pgjdbc）: `KC_DB_URL_PROPERTIES=?sslmode=verify-full&sslrootcert=…` → 起動・`TLSv1.3` の接続 3 本。別の名前 → `PgjdbcHostnameVerifier` で拒否。`sslrootcert` 無し → ルート証明書のファイルが無いとして拒否（既定の置き場へ倒れない）。
 - pg_dump / psql 16（libpq）: `PGSSLMODE=verify-full` ＋ `PGSSLROOTCERT` → `pg_dump --schema-only` 成功・`TLSv1.3`。別の名前 → 名前の不一致で拒否。`PGSSLROOTCERT` 無し → ルート証明書が無いとして拒否。
-- 統合スタック（k3d・`ISTIO=1`）の門の結果は PR の報告に記す。
+- 統合スタック（k3d・`ISTIO=1`。PR のブランチの workflow_dispatch、run 42023613547）: すべての門が緑。基盤の TLS の門で Wiki.js（kp・wikijs）は TLS 1 本・平文 0 本。サーバ証明書は CA と素の名前で検証が通り（0）、別の名前では検証が失敗した（62 hostname mismatch）。
 
 ## 結果
 

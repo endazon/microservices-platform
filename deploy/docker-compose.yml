@@ -18,7 +18,7 @@ x-common-env: &common-env
 
 # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: DB への接続は TLS で、サーバ証明書を検証する（VerifyFull ＋ 基盤の CA）。
 # CA は下の infra-tls-init が作り、ボリューム infra-tls-ca を /etc/platform-infra-ca へ読み取り専用でマウントする（*infra-ca-volumes）。
-# NFR-16, NFR-18, IADR-0675（#2403）: 段 4b-2 で取引ユニット（AST）のサービス（configuration / risk-management / market-monitor）も
+# NFR-16, NFR-18, IADR-0673（#2403）: 段 4b-2 で取引ユニット（AST）のサービス（configuration / risk-management / market-monitor）も
 #   同じ形へ切り替えた（個別の接続文字列も VerifyFull ＋ 基盤の CA で終える）。
 x-db-env: &db-env
   ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Username=kp;Password=kp;SSL Mode=VerifyFull;Root Certificate=/etc/platform-infra-ca/ca.crt
@@ -35,7 +35,7 @@ x-db-env: &db-env
 x-rabbit-env: &rabbit-env
   RabbitMq__ConnectionString: amqps://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5671
   SSL_CERT_DIR: /etc/ssl/certs:/etc/platform-infra-ca
-#   ［2026-11-05 / #2403・IADR-0675］取引ユニット（AST）のサービスも段 4b-2 でこの形へ寄せた（平文の x-rabbit-env-ast-plain は消した）。
+#   ［2026-11-05 / #2403・IADR-0673］取引ユニット（AST）のサービスも段 4b-2 でこの形へ寄せた（平文の x-rabbit-env-ast-plain は消した）。
 #   AST のブローカの名前の照合（UsePlatformRabbitMq に相当する呼び出し）は AST リポジトリが入れる。それまでは CA の連鎖の検証だけが効く。
 
 # NFR-16, IADR-0591: 基盤の CA（公開の証明書だけ）をクライアントへ読み取り専用で渡す。
@@ -210,7 +210,7 @@ services:
       KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: kp
       KC_DB_PASSWORD: kp
-      # NFR-16, NFR-18, IADR-0675（#2403）: DB への接続は TLS で、サーバ証明書を基盤の CA と名前（KC_DB_URL_HOST）で検証する
+      # NFR-16, NFR-18, IADR-0673（#2403）: DB への接続は TLS で、サーバ証明書を基盤の CA と名前（KC_DB_URL_HOST）で検証する
       #   （pgjdbc の verify-full。sslrootcert が無いと既定の置き場を探して失敗する＝検証なしへ倒れない。実測）。
       KC_DB_URL_PROPERTIES: "?sslmode=verify-full&sslrootcert=/etc/platform-infra-ca/ca.crt"
       # #438, ADR-0026: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体を
@@ -224,7 +224,7 @@ services:
       # IADR-0524: 26 は取り込みのファイル名が `<realm>-realm.json` でないと起動しない（realm 名は platform）。
       - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/platform-realm.json:ro
       - ./keycloak/themes/platform:/opt/keycloak/themes/platform:ro
-      # NFR-16, IADR-0675: 基盤の CA（DB のサーバ証明書の検証に使う。*infra-ca-volumes と同じ 1 行）。
+      # NFR-16, IADR-0673: 基盤の CA（DB のサーバ証明書の検証に使う。*infra-ca-volumes と同じ 1 行）。
       - infra-tls-ca:/etc/platform-infra-ca:ro
     ports:
       - "127.0.0.1:8080:8080"
@@ -824,7 +824,7 @@ services:
       DB_USER: kp
       DB_PASS: kp
       DB_NAME: wikijs
-      # NFR-16, NFR-18, IADR-0675（#2403）: DB への接続は TLS で、サーバ証明書を基盤の CA と名前（DB_HOST）で検証する。
+      # NFR-16, NFR-18, IADR-0673（#2403）: DB への接続は TLS で、サーバ証明書を基盤の CA と名前（DB_HOST）で検証する。
       #   Wiki.js 2.5 は DB_SSL=true で ssl: { rejectUnauthorized: true } を渡す。CA は NODE_EXTRA_CA_CERTS で Node の既定の
       #   信頼ストアへ足す（置き換えない）。検証を緩める env（NODE_TLS_REJECT_UNAUTHORIZED 等）は置かない。
       DB_SSL: "true"
@@ -1049,7 +1049,7 @@ services:
         SERVICE_DLL: ConfigurationService.dll
     expose:
       - "8080"
-    # NFR-16, IADR-0675（#2403）: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    # NFR-16, IADR-0673（#2403）: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
     volumes: *infra-ca-volumes
     environment:
       # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義する（2e）。
@@ -1073,7 +1073,7 @@ services:
         SERVICE_DLL: RiskManagementService.dll
     expose:
       - "8080"
-    # NFR-16, IADR-0675（#2403）: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    # NFR-16, IADR-0673（#2403）: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
     volumes: *infra-ca-volumes
     environment:
       # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義済み（#283 2e）。
@@ -1100,7 +1100,7 @@ services:
         SERVICE_DLL: MarketMonitorService.dll
     expose:
       - "8080"
-    # NFR-16, IADR-0675（#2403）: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
+    # NFR-16, IADR-0673（#2403）: 基盤の CA（DB・ブローカのサーバ証明書の検証に使う）。
     volumes: *infra-ca-volumes
     environment:
       # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義済み（#283 2e）。

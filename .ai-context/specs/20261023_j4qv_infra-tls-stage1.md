@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [NFR-16, NFR-18, ADR-0005, ADR-0023, ADR-0047, IADR-0591, IADR-0206, IADR-0573, IADR-0577, IADR-0589, IADR-0590]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化: 恒久はサービス間 mTLS・外部通信 TLS）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービス間通信を mTLS で徹底する）
@@ -76,3 +76,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 - `deploy/local/infra-tls/`（新規）・`deploy/local/infra/{postgres,rabbitmq}.yaml`・`deploy/local/values-local.yaml`・`deploy/helm/microservices-platform/{values.yaml,templates/deployment.yaml}`・`deploy/docker-compose.yml`・`deploy/rabbitmq/20-tls.conf`（新規）・`scripts/k8s-local-up.sh`・試験・`.github/workflows/{ci,integration-stack}.yml`・`src/platform/backend/Shared/Platform.Shared.Infrastructure`（共通ヘルパ）・`src/knowledge/backend/Services/*/Program.cs`（7）・文書。
 - 稼働のクラスタ: 再実行で cert-manager が入り、postgres と rabbitmq が作り直される（ブローカは永続化していないので、キューは作り直しで空から立つ。起動の直後にサービスごとのユーザーは復元される）。基盤のサービスは TLS で繋ぎ直す。AST の接続は変わらない。
+
+［2026-11-05 追記 / #2403］未チェックの「統合スタック（`ISTIO=1`）を PR のブランチで流し、門が緑」は、段 4b-2 の PR のブランチで流した run 42023613547（workflow_dispatch・`ISTIO=1`）で満たした。段 1 の門（基盤の TLS・メッシュの mTLS・外向き通信ほか）を含め、すべての門が緑だった。

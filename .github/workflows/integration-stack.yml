@@ -511,7 +511,7 @@ jobs:
       #   - postgres: pg_stat_ssl で、MSP のサービスの利用者（kp）が MSP の DB（*_svc）へ張っている接続がすべて ssl（1 本以上）
       #   - rabbitmq: list_connections で、MSP のサービスの利用者（msp-*）の接続がすべて ssl=true（1 本以上）
       #   - 対照: サーバ証明書を基盤の CA と素の名前で検証できる（openssl の Verify return code: 0）。名前を変えると検証に失敗する
-      #   - ［2026-11-05 / #2403・IADR-0675］Wiki.js（利用者 kp・DB wikijs）の接続もすべて ssl（1 本以上）。values-local が有効にする
+      #   - ［2026-11-05 / #2403・IADR-0673］Wiki.js（利用者 kp・DB wikijs）の接続もすべて ssl（1 本以上）。values-local が有効にする
       # 取引ユニット（ai / ast-*）は AST の chart の切り替えまで平文のまま（併存）なので、数を出すだけで判定しない。経路B の Keycloak は H2 で
       # postgres へ繋がず、バックアップの CronJob は本スタックでは走らない（どちらも静的な試験が形を固定する）。
       # ISTIO の有無によらず測る（メッシュの外の通信の暗号化であり、auto-mTLS とは関係しない）。

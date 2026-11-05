@@ -33,7 +33,7 @@ MSP chart はインフラを**デプロイせず**素のサービス名（`postg
   取引ユニット（AST）と基盤の他のクライアント（Keycloak の DB・Wiki.js・バックアップ）が切り替えるまでの併存である。
 - 基盤（MSP）のサービスは DB へ `SSL Mode=VerifyFull`＋基盤の CA、ブローカへ `amqps`（5671）で繋ぐ。CA は `[5/7]` が ConfigMap
   `platform-infra-ca`（`ca.crt` だけ）として **MSP と AST の名前空間**へ写す（AST の接続は変えない）。
-- ［2026-11-05 / 段 4b-2・IADR-0675（#2403）］基盤の他のクライアントも検証つきで繋ぐ: **Wiki.js**（`DB_SSL=true`＋`NODE_EXTRA_CA_CERTS`。
+- ［2026-11-05 / 段 4b-2・IADR-0673（#2403）］基盤の他のクライアントも検証つきで繋ぐ: **Wiki.js**（`DB_SSL=true`＋`NODE_EXTRA_CA_CERTS`。
   helm の既定は opt-in の `wikijs.db.tls.enabled=false`、経路B は `values-local.yaml` が有効にする）・**バックアップの CronJob**
   （`PGSSLMODE=verify-full`＋`PGSSLROOTCERT`。CA は Secret `postgres-tls` の `ca.crt` だけを写す）。経路B の Keycloak は H2 で
   postgres へ繋がない。compose では Keycloak の DB と取引ユニットの 3 サービスも切り替えた。**残る平文は AST の chart の接続**（AST リポジトリで切り替える）。

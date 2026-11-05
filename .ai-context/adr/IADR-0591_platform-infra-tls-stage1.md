@@ -98,5 +98,5 @@ related_specs:
 
 ## ［2026-11-05 追記 / #2403］段 4b-2 の MSP の分
 
-- 段の表の 4b-2 のうち MSP リポジトリにある部分（compose の取引ユニットの 3 サービス・compose の Keycloak の DB・Wiki.js・バックアップの CronJob）は [IADR-0675](./IADR-0675_platform-infra-tls-stage-4b2-other-clients.md) で切り替えた。helm の Wiki.js は値で opt-in（経路B は有効）。
+- 段の表の 4b-2 のうち MSP リポジトリにある部分（compose の取引ユニットの 3 サービス・compose の Keycloak の DB・Wiki.js・バックアップの CronJob）は [IADR-0673](./IADR-0673_platform-infra-tls-stage-4b2-other-clients.md) で切り替えた。helm の Wiki.js は値で opt-in（経路B は有効）。
 - 4b-2 の残りは AST の chart の接続と AST の Wolverine の名前の照合（AST リポジトリ）。4b-3 の前提は変わらない。

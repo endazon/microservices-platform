@@ -23,7 +23,7 @@
  *  11. 🔴 ［#1868 / IADR-0548］Vault の回は raft の整合したスナップショットを k8s auth で取る。専用の SA（RBAC なし・自動マウントなし）の
  *      projected token、role は default ポリシーなし・1 回きり、ポリシーは sys/storage/raft/snapshot の read だけ。root トークン・
  *      Secret vault-dev-token を渡さない。作業場所はメモリの emptyDir。HTTP は curl / wget の引数でトークンを渡さない。
- *  12. 🔴 ［#2403 / IADR-0675］Postgres の回は基盤の CA と名前を検証する TLS で繋ぐ（PGSSLMODE=verify-full・PGSSLROOTCERT）。
+ *  12. 🔴 ［#2403 / IADR-0673］Postgres の回は基盤の CA と名前を検証する TLS で繋ぐ（PGSSLMODE=verify-full・PGSSLROOTCERT）。
  *      CA は同じ名前空間の Secret postgres-tls（cert-manager。本体の postgres がマウントするのと同じ名前）からキー ca.crt だけを
  *      非 optional で読み取り専用に写す（鍵のキーは写さない）。検証を緩める sslmode を書かない。
  *  10. 🔴 ［#1709 / IADR-0489］ベースの取得元は匿名の取得にチャレンジを返さないミラー（mirror.gcr.io/library）。
@@ -136,7 +136,7 @@ function cronJobView(doc) {
     name: v.name,
     hostPath: v.hostPath ? parseMap(v.hostPath) : null,
     configMap: v.configMap ? parseMap(v.configMap) : null,
-    // IADR-0675: 基盤の CA（Secret postgres-tls のキー ca.crt だけ）。items は { key, path } の並び。
+    // IADR-0673: 基盤の CA（Secret postgres-tls のキー ca.crt だけ）。items は { key, path } の並び。
     secret: v.secret ? { ...parseMap(v.secret), items: parseList(parseMap(v.secret).items || []) } : null,
     pvc: v.persistentVolumeClaim ? parseMap(v.persistentVolumeClaim) : null,
     emptyDir: v.emptyDir ? parseMap(v.emptyDir) : null,
@@ -667,7 +667,7 @@ ok('🔴 11. 秘匿管理の回は raft の整合したスナップショット�
   bad((f) => (f.script += '\nVAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"\n'), 'root トークンの使用');
 });
 
-// ---------------------------------------------------------------- 12. 基盤への TLS（IADR-0675）
+// ---------------------------------------------------------------- 12. 基盤への TLS（IADR-0673）
 
 const INFRA_TLS_SECRET = (() => {
   const m = /^ {2}secretName: (postgres-tls)$/m.exec(read('deploy', 'local', 'infra-tls', 'certificates.yaml'));
@@ -702,7 +702,7 @@ function checkPostgresTls(cj, { serverSecret }) {
   return errors;
 }
 
-ok('🔴 12. Postgres の回は基盤の CA と名前を検証する TLS で繋ぎ、CA は Secret postgres-tls の ca.crt だけを写す（IADR-0675）', () => {
+ok('🔴 12. Postgres の回は基盤の CA と名前を検証する TLS で繋ぎ、CA は Secret postgres-tls の ca.crt だけを写す（IADR-0673）', () => {
   assert.ok(INFRA_TLS_SECRET, 'deploy/local/infra-tls/certificates.yaml に postgres-tls を読めない');
   const server = find(INFRA_DOCS, 'Deployment', 'postgres');
   assert.ok(server && server.body.includes(`secretName: ${INFRA_TLS_SECRET}`), '本体の postgres が同じ Secret をマウントしていない（名前が食い違う）');

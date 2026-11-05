@@ -15,7 +15,7 @@
  *   5. 切り戻し（tls.enabled=false）は平文の従来の形に戻り、マウントも SSL_CERT_DIR も描かない。
  *   6. 変異: 接続文字列の検証の部分を外す・SSL_CERT_DIR の既定のストアを落とす・マウントを外すと判定が赤になる。
  *
- *   7. ［#2403 / IADR-0675］Wiki.js は wikijs.db.tls.enabled（既定 false＝opt-in）で描き分ける。既定（本番像）は従来の形
+ *   7. ［#2403 / IADR-0673］Wiki.js は wikijs.db.tls.enabled（既定 false＝opt-in）で描き分ける。既定（本番像）は従来の形
  *      （DB_SSL・NODE_EXTRA_CA_CERTS・CA のマウントを描かない）。有効（values-local を含む）なら DB_SSL=true ＋
  *      NODE_EXTRA_CA_CERTS=/etc/platform-infra-ca/<caKey> ＋ CA の非 optional の 1 キーのマウント。変異（マウントを外す）で赤。
  *
@@ -75,7 +75,7 @@ function violations(rendered, { caConfigMap = 'platform-infra-ca', caKey = 'ca.c
   let db = 0;
   let mq = 0;
   for (const d of deployments(rendered)) {
-    if (d.app === 'wiki-js') continue; // IADR-0675: Wiki.js は .NET の接続文字列を持たない。wikiViolations が見る。
+    if (d.app === 'wiki-js') continue; // IADR-0673: Wiki.js は .NET の接続文字列を持たない。wikiViolations が見る。
     const conn = envValue(d.text, 'ConnectionStrings__DefaultConnection');
     const amqp = envValue(d.text, 'RabbitMq__ConnectionString');
     const certDir = envValue(d.text, 'SSL_CERT_DIR');
@@ -103,7 +103,7 @@ function violations(rendered, { caConfigMap = 'platform-infra-ca', caKey = 'ca.c
   return out;
 }
 
-/** IADR-0675: Wiki.js の DB の TLS。違反の一覧を返す（空 = 合格）。 */
+/** IADR-0673: Wiki.js の DB の TLS。違反の一覧を返す（空 = 合格）。 */
 function wikiViolations(rendered, { enabled, caConfigMap = 'platform-infra-ca', caKey = 'ca.crt' }) {
   const wiki = deployments(rendered).filter((d) => d.app === 'wiki-js');
   if (wiki.length !== 1) return [`wiki-js の Deployment を読めない（${wiki.length} 件）`];
@@ -186,7 +186,7 @@ ok('変異: 検証の部分を外す・既定のストアを落とす・マウ�
     .some((v) => /マウントしない/.test(v)), 'マウントを外した変異を捕まえない');
 });
 
-ok('IADR-0675: Wiki.js は既定（本番像）で従来の形、wikijs.db.tls.enabled と values-local では DB_SSL ＋ NODE_EXTRA_CA_CERTS ＋ CA の非 optional のマウント', () => {
+ok('IADR-0673: Wiki.js は既定（本番像）で従来の形、wikijs.db.tls.enabled と values-local では DB_SSL ＋ NODE_EXTRA_CA_CERTS ＋ CA の非 optional のマウント', () => {
   assert.deepStrictEqual(wikiViolations(mustRender([]), { enabled: false }), []);
   assert.deepStrictEqual(wikiViolations(mustRender(['--set', 'wikijs.db.tls.enabled=true']), { enabled: true }), []);
   assert.deepStrictEqual(wikiViolations(mustRender(['-f', VALUES_LOCAL]), { enabled: true }), []);
@@ -201,7 +201,7 @@ ok('IADR-0675: Wiki.js は既定（本番像）で従来の形、wikijs.db.tls.e
   assert.ok(wikiViolations(mustRender([]), { enabled: true }).length > 0, '既定の描画を見分けない');
 });
 
-ok('IADR-0675: 変異（Wiki.js の CA のマウントを外す・DB_SSL を落とす）で判定が赤になる', () => {
+ok('IADR-0673: 変異（Wiki.js の CA のマウントを外す・DB_SSL を落とす）で判定が赤になる', () => {
   const tpl = path.join(REPO_ROOT, CHART, 'templates', 'wikijs.yaml');
   const src = fs.readFileSync(tpl, 'utf8');
   const mutate = (from, to) => {

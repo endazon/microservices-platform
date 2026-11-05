@@ -19082,7 +19082,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(k8s.includes('listeners.ssl.default = 5671'), 'TLS の受け口が無い（読めていない）');
     });
 
-    ok('IADR-0591 / IADR-0675: compose の基盤のクライアント（AST の 3 サービスを含む）は検証つきの TLS で繋ぎ、CA をマウントする', () => {
+    ok('IADR-0591 / IADR-0673: compose の基盤のクライアント（AST の 3 サービスを含む）は検証つきの TLS で繋ぎ、CA をマウントする', () => {
       const y = readR('deploy/docker-compose.yml');
       const blocks = {};
       let cur = null;
@@ -19105,7 +19105,7 @@ server.listen(0, '127.0.0.1', async () => {
         if (usesMq) mqClients++;
         assert.match(text, /^ {4}volumes: \*infra-ca-volumes$/m, `${svc}: 基盤の CA をマウントしない`);
       }
-      // IADR-0675 決定 1: AST の 3 サービスも切り替えた（段 4b-2）。DB は VerifyFull、ブローカは *rabbit-env（amqps）。
+      // IADR-0673 決定 1: AST の 3 サービスも切り替えた（段 4b-2）。DB は VerifyFull、ブローカは *rabbit-env（amqps）。
       for (const svc of ast) {
         const text = (blocks[svc] || []).join('\n');
         assert.ok(text, `${svc} のブロックを読めない`);
@@ -19118,12 +19118,12 @@ server.listen(0, '127.0.0.1', async () => {
       }
       assert.ok(!/rabbit-env-ast-plain|amqp:\/\/\S+@rabbitmq:5672/.test(y.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')), 'compose に平文のブローカ接続（x-rabbit-env-ast-plain / amqp://…:5672）が残る');
       assert.ok(dbClients >= 13 && mqClients >= 9, `読めていない（DB ${dbClients} / MQ ${mqClients}）`);
-      // IADR-0675 決定 2: Keycloak の DB は pgjdbc の verify-full ＋ 基盤の CA。CA を既存の volumes に足す。
+      // IADR-0673 決定 2: Keycloak の DB は pgjdbc の verify-full ＋ 基盤の CA。CA を既存の volumes に足す。
       const kc = (blocks.keycloak || []).join('\n');
       assert.match(kc, /^ {6}KC_DB: postgres$/m, 'keycloak のブロックを読めない（外部 DB でない）');
       assert.match(kc, /^ {6}KC_DB_URL_PROPERTIES: "\?sslmode=verify-full&sslrootcert=\/etc\/platform-infra-ca\/ca\.crt"$/m, 'keycloak: DB の接続が verify-full ＋ 基盤の CA でない');
       assert.match(kc, /^ {6}- infra-tls-ca:\/etc\/platform-infra-ca:ro$/m, 'keycloak: 基盤の CA をマウントしない');
-      // IADR-0675 決定 3: Wiki.js は DB_SSL=true ＋ NODE_EXTRA_CA_CERTS（既定のストアに足す）＋ CA のマウント。
+      // IADR-0673 決定 3: Wiki.js は DB_SSL=true ＋ NODE_EXTRA_CA_CERTS（既定のストアに足す）＋ CA のマウント。
       const wk = (blocks['wiki-js'] || []).join('\n');
       assert.match(wk, /^ {6}DB_HOST: postgres$/m, 'wiki-js のブロックを読めない');
       assert.match(wk, /^ {6}DB_SSL: "true"$/m, 'wiki-js: DB_SSL が true でない');
@@ -19135,7 +19135,7 @@ server.listen(0, '127.0.0.1', async () => {
     ok('IADR-0591: 配備の宣言に検証を緩める接続の形が無い（Trust Server Certificate・SSL Mode=Require/Prefer/Allow・sslmode=require 等）', () => {
       const files = ['deploy/docker-compose.yml', 'deploy/local/values-local.yaml', 'deploy/helm/microservices-platform/values.yaml',
         'deploy/helm/microservices-platform/templates/deployment.yaml',
-        // IADR-0675: 段 4b-2 で切り替えたクライアント（Wiki.js・バックアップ）。
+        // IADR-0673: 段 4b-2 で切り替えたクライアント（Wiki.js・バックアップ）。
         'deploy/helm/microservices-platform/templates/wikijs.yaml', 'deploy/local/platform-backup/postgres/cronjob.yaml'];
       const weak = /Trust\s*Server\s*Certificate\s*=\s*true|SSL\s*Mode\s*=\s*(Require|Prefer|Allow)\b|sslmode=(require|prefer|allow|verify-ca)\b|verify_none|NODE_TLS_REJECT_UNAUTHORIZED|rejectUnauthorized\s*:\s*false/i;
       for (const f of files) {
