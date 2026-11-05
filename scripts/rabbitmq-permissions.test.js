@@ -190,7 +190,8 @@ const KUBECTL = [
   '  *"rabbitmqctl -q list_user_permissions --no-table-headers "*) u="${*: -1}"; awk -v u="$u" \'$1 == u { print "/\\t" $2 "\\t" $3 "\\t" $4 }\' "$H/perms"; exit 0;;',
   '  *"rabbitmqctl -q set_permissions "*) shift 9; [ "$3" = "${STUB_FAIL_USER:-}" ] && exit 1; echo "SET $3 $4 $5 $6" >> "$H/log"; exit 0;;',
   '  *"rabbitmqctl add_user "*|*"rabbitmqctl change_password "*|*"rabbitmqctl authenticate_user "*) cat >/dev/null; exit 0;;',
-  '  *"create configmap"*) echo "CM $*" >> "$H/log"; exit 0;;',
+  // 段の値はファイル（--from-file=scope=<パス>）で届く。模型はその中身を読んで記録する（引数に値を載せないことも見る）。
+  '  *"create configmap"*) f="$(printf "%s\\n" "$@" | sed -n "s/^--from-file=scope=//p")"; echo "CM scope=$(cat "$f" 2>/dev/null) $*" >> "$H/log"; exit 0;;',
   '  *"apply -f -"*) cat >/dev/null; exit 0;;',
   'esac',
   'exit 0',
@@ -234,7 +235,8 @@ ok('合わせ（段 1・既定）: 権限は vhost 全体のまま。段を Conf
   assert.deepStrictEqual(r.sets, ['SET msp-a .* .* .*', 'SET msp-b .* .* .*']);
   // 段の記録は 2 回: 当てる前に applying、当て終えて確定の段（途中で止まれば applying が残る）。
   assert.strictEqual(r.cms.length, 2, r.cms.join('\n'));
-  assert.ok(/--from-literal=scope=applying/.test(r.cms[0]) && /--from-literal=scope=vhost/.test(r.cms[1]) && /--from-file=permissions\.txt=/.test(r.cms[1]), r.cms.join('\n'));
+  assert.ok(/^CM scope=applying /.test(r.cms[0]) && /^CM scope=vhost /.test(r.cms[1]) && /--from-file=permissions\.txt=/.test(r.cms[1]), r.cms.join('\n'));
+  assert.ok(!r.cms.some((c) => /--from-literal/.test(c)), `値を引数（--from-literal）に載せた:\n${r.cms.join('\n')}`);
   assert.ok(/--permissions-report/.test(r.out) && /権限 vhost/.test(r.out), r.out);
 });
 

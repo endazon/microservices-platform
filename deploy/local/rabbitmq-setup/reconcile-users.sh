@@ -171,12 +171,17 @@ fi
 # NFR-18, IADR-0681: 段の記録（ConfigMap。値は持たない）。当てる前に「applying」と書き、全ユーザーを当て終えてから確定の段へ書き換える。
 #   途中で失敗・中断すると applying が残り、ブローカの起動の直後の復元は広い側（vhost 全体）で作り直す ——
 #   絞る途中で止まっても、広げる途中で止まっても、再起動の後は通信を止めない側に倒れる（段 2 は合わせを回し直して確定させる）。
+#   値は引数（--from-literal）に載せず、ファイル（--from-file）で渡す（起動器の約束。段の値は秘密ではないが同じ形に揃える）。
+SCOPE_DIR=""
+trap 'rm -rf -- "${SCOPE_DIR:-/nonexistent-scope-dir}"' EXIT
 record_scope() {
+  [ -n "$SCOPE_DIR" ] || SCOPE_DIR="$(mktemp -d)"
+  printf '%s' "$1" > "$SCOPE_DIR/scope"
   if [ -f "$PERMS_FILE" ]; then
-    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$1" --from-file=permissions.txt="$PERMS_FILE" \
+    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-file=scope="$SCOPE_DIR/scope" --from-file=permissions.txt="$PERMS_FILE" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   else
-    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$1" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-file=scope="$SCOPE_DIR/scope" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   fi
 }
 [ "$MODE" = "apply" ] && record_scope applying
