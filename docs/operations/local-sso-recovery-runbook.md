@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [NFR-09]
 adrs: [ADR-0132, ADR-0106]
-iadrs: [IADR-0577, IADR-0525, IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
-specs: [20261029_2133_runbook-derived-values, 20261022_ast-pin-29a4d9dd, 20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
-issues: [#2133, #1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078, AST#1428, AST#1430]
+iadrs: [IADR-0682, IADR-0577, IADR-0525, IADR-0494, IADR-0492, IADR-0084, IADR-0091, IADR-0095, IADR-0096, IADR-0103, IADR-0220, IADR-0327, IADR-0328, IADR-0342, IADR-0363, IADR-0369, IADR-0461]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261029_2133_runbook-derived-values, 20261022_ast-pin-29a4d9dd, 20261009_1840_secret-store-openbao, 20261003_1728_eso-force-sync-after-bootstrap, 20260902_issue-1127_wikijs-oidc-strategy-seed, 20260903_issue-1163_tool-oidc-login-verifier, 20260925_1499_object-storage-seaweedfs]
+issues: [#2413, #2133, #1840, #1728, #1696, #1499, #328, #388, #841, #1088, #1127, #1163, AST#245, AST#1078, AST#1428, AST#1430]
 -->
 
 # 経路B SSO 復旧 Runbook
@@ -37,13 +37,14 @@ realm の変更は起動器の realm の後追い Job（Keycloak の起動の直
 
 ## STEP 0: クラスタ起動（これだけで SSO が揃う）
 
-```sh
+```bash
 cd <repo>
 git checkout develop && git pull --ff-only origin develop && git submodule update --init --recursive
 
-read -rs ANTHROPIC_API_KEY; export ANTHROPIC_API_KEY
-LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 ARGOCD=1 \
-  bash scripts/k8s-local-up.sh --live     # 永続化は既定オン（PERSIST=1 は不要。外すときだけ PERSIST=0）
+# 鍵は read -rs で読み（画面・履歴に残さない）、( ) の中で起動器の 1 回だけに渡す（終わった後のシェルの環境に残さない）
+( read -rs -p 'Anthropic の API キー: ' ANTHROPIC_API_KEY; echo; export ANTHROPIC_API_KEY
+  LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 ARGOCD=1 \
+    bash scripts/k8s-local-up.sh --live )   # 永続化は既定オン（PERSIST=1 は不要。外すときだけ PERSIST=0）
 ```
 
 > `ESO=1` は `VAULT=1` 必須（未併記なら fail-fast）。この起動で ①ESO seed 投入 ②ESO 供給後の rollout
@@ -84,8 +85,8 @@ done                                                                          # 
 > また ESO の無い経路では、ブローカの資格情報の Secret `ai-stock-trading/ast-rabbitmq-users` が無いと helm の前で止まる。
 > この Secret は基盤の起動器（`scripts/k8s-local-up.sh`。ESO なし）が用意する —— 止まったら STEP 0 を先に回す。
 
-```sh
-# 🔴 値は `read -rs` で読む（画面・シェルの履歴に残さない）。全体を ( ) の中で回し、export は起動器の 1 回だけに効かせる
+```bash
+# 🔴 値は `read -rs` で読む（画面・シェルの履歴に残さない。`read -rs -p` は bash の機能なので bash で回す）。全体を ( ) の中で回し、export は起動器の 1 回だけに効かせる
 #   （終わった後のシェルの環境に残さない）。各行は値を貼り付けて Enter（表示されない）。
 (
   read -rs -p 'Finnhub の API キー: ' FINNHUB; echo; export FINNHUB_API_KEY="$FINNHUB" MARKETDATA_FINNHUB_API_KEY="$FINNHUB"; unset FINNHUB
@@ -98,6 +99,9 @@ done                                                                          # 
 ```
 
 > KB の client secret は認証基盤（Keycloak）の `ai-stock-trading-kb-writer` / `ai-stock-trading-kb-reader` と同じ値を入れる。
+> 取得: 保管先（KV `ai-stock-trading/app-secrets` の `kb-auth-client-secret` / `kb-reader-auth-client-secret`）が同期済みなら、貼り付けの代わりに
+> `IFS= read -r KB_AUTH_CLIENTSECRET < <(kubectl -n ai-stock-trading get secret ast-secrets -o jsonpath='{.data.kb-auth-client-secret}' | base64 -d)` で読む
+> （読み手は同じ形でキー `kb-reader-auth-client-secret`。画面にも履歴にも値が出ない）。
 > キルスイッチの確認の言葉は、運用者が決めた言葉を入れる（手順書に固定の言葉を書かない。決めた言葉は秘匿の保管先に置く）。
 
 成功確認（①②③＋価格文脈と鍵の非空）:

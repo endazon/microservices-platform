@@ -37,18 +37,25 @@ drill_cleanup() {
 	fi
 }
 
-# コンテナの中で走らせる手順（値を出さない。KV の名前の数だけを出す）。
+# コンテナの中で走らせる手順（値を出さない。KV の名前の数だけを出す）。各段の前に値を含まない印（step=<段>）を標準出力へ出す。
+# 失敗したとき、どの段で止まったかを最後の印で名指す（標準エラーは値を含み得るので捨てる）。
 IN_CONTAINER='
 set -e
 export BAO_ADDR=http://127.0.0.1:8200
+echo step=verify-snapshot
 mkdir -p /drill/x && tar -xzf /drill/raft.snap -C /drill/x && (cd /drill/x && sha256sum -c SHA256SUMS >/dev/null)
+echo step=init
 bao operator init -key-shares=1 -key-threshold=1 > /drill/new
+echo step=unseal-new
 printf "%s" "$(sed -n "s/^Unseal Key 1: //p" /drill/new)" | bao write sys/unseal key=- >/dev/null
 sleep 3
-BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /drill/new)" bao operator raft snapshot restore -force /drill/raft.snap
+echo step=restore
+BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /drill/new)" bao operator raft snapshot restore -force /drill/raft.snap >/dev/null
 sleep 3
+echo step=unseal-restored
 printf "%s" "$(sed -n "s/^Unseal Key 1: //p" /drill/init)" | bao write sys/unseal key=- >/dev/null
 sleep 3
+echo step=list
 n="$(BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /drill/init)" bao kv list -format=json secret/msp | grep -c "\"")"
 echo "kv-names=$n"
 '
@@ -118,7 +125,9 @@ main() {
 	# 4. 戻して開ける
 	local out
 	if ! out="$("$cli" exec "$name" sh -c "$IN_CONTAINER" 2>/dev/null)"; then
-		err "使い捨ての OpenBao へ戻して開けられません（スナップショットの検算・init・戻し・unseal のどこかで失敗）"; return 1
+		local at
+		at="$(printf '%s\n' "$out" | sed -n 's/^step=//p' | tail -1)"
+		err "使い捨ての OpenBao へ戻して開けられません（止まった段: ${at:-起動の前}。値は表示しません）"; return 1
 	fi
 	local n
 	n="$(printf '%s\n' "$out" | sed -n 's/^kv-names=//p' | tail -1)"
@@ -148,7 +157,7 @@ case "$*" in
   rm\ *) exit 0 ;;
   *"bao status"*) [ -f "$STUB_STATE/hang" ] && { : > "$STUB_STATE/hanging"; sleep 3; }; exit 0 ;;
   *"cat > /drill/"*) cat >> "$STUB_STATE/received"; exit 0 ;;
-  *"bao operator init"*) [ -f "$STUB_STATE/restore-fail" ] && exit 1; echo "kv-names=4"; exit 0 ;;
+  *"bao operator init"*) [ -f "$STUB_STATE/restore-fail" ] && { echo step=verify-snapshot; echo step=init; echo step=restore; exit 1; }; echo "kv-names=4"; exit 0 ;;
 esac
 exit 0
 STUB
@@ -192,6 +201,7 @@ STUB
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --image openbao/openbao:stub)"; RC=$?
 	rm -f "$w/state/restore-fail"
 	eq 'T-V-06 戻せなければ失敗' "$RC" "1"
+	has 'T-V-06 止まった段を値を含まない印で名指す' "$OUT" '止まった段: restore'
 	has 'T-V-06 失敗しても使い捨てのコンテナをボリュームごと消す' "$(cat "$log_file")" 'docker rm -f -v vault-restore-drill-'
 
 	: > "$log_file"; : > "$w/state/run-fail"

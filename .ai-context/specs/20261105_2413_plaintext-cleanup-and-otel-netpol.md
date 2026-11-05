@@ -5,7 +5,7 @@ status: done
 related_ids: [NFR-18, NFR-21, IADR-0471, IADR-0589, IADR-0682]
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 issue: "#2413"
 ---
 
@@ -72,6 +72,11 @@ issue: "#2413"
     - `search-rerank-s3-measurement-runbook.md` の `--dump`: 検索の評価の結果で、DB・資格情報のダンプではない。
     - `deploy/local/platform-backup/script/backup.sh`: 既に age へパイプで渡している（方式の手本）。
     - `deploy/cloud/`: 並行の作業で develop に無い。
+- ［2026-11-06 追記 / #2423］AI レビューを受けて、`read -rs` を `bash` 以外のフェンスで使う箇所を `docs/`・`deploy/` の .md の全件で引き直した。
+  - 3 件増えた（`alertmanager-mail-receiver-runbook.md` 2 か所・`keycloak-smtp-relay-setup-runbook.md`・`local-sso-recovery-runbook.md` の STEP 0）。
+  - いずれも `bash` フェンスにした。
+  - あわせて同種を 2 つ直した: STEP 0 の API キーは `( )` の中で起動器へ渡す。alertmanager の値のファイルは umask 077・mktemp・trap にした。
+  - 改稿した文書（`git diff --name-only origin/develop...HEAD -- docs` の 10 件）の trace ブロックに、本 IADR・本仕様書・#2413 を足した。
 - **規則 10**: 次を本変更で改める。
   - 手順書の §3 の 5 の後ろの「`| wc -l` を付ける」（スクリプトが数を出すので古くなる）。
   - `ast-stale-copies` の `unset TOKEN` の位置（後の削除の手順でも使うので、手順の終わりへ移す）。

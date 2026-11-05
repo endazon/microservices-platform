@@ -3,15 +3,15 @@ title: 運用 Runbook — Keycloak smtpServer（SMTP リレー）の設定
 type: runbook
 status: draft
 created: 2026-08-23
-updated: 2026-10-03
+updated: 2026-11-06
 author: claude
 ---
 <!-- trace:
 ids: [SC-10, SC-15, FR-05, FR-09, FR-22, NFR-05, NFR-13, NFR-21]
 adrs: [ADR-0006, ADR-0026, ADR-0045, ADR-0078, ADR-0094, ADR-0097, ADR-0111]
-iadrs: [IADR-0494, IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
-specs: [20261003_1728_eso-force-sync-after-bootstrap, 20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb, 20260926_1544_reset-floor-zero-endpoint-alert]
-issues: [#1728, #438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, planning#656]
+iadrs: [IADR-0682, IADR-0494, IADR-0197, IADR-0261, IADR-0329, IADR-0332, IADR-0344, IADR-0347, IADR-0369, IADR-0404, IADR-0421, IADR-0432]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261003_1728_eso-force-sync-after-bootstrap, 20260823_issue-438_keycloak-theme-and-smtp, 20260831_issue-1102_keycloak-smtp-externalsecret-wiring, 20260902_issue-1144_dev-mail-capture-mta, 20260902_issue-1143_reset-existence-concealment, 20260906_issue-1245_nearby-mta-relay, 20260907_issue-1245_reset-gate, 20260909_issue-1245_mail-relay-observation, 20260926_1500_reset-floor-default-on, 20260926_1543_reset-floor-replicas-pdb, 20260926_1544_reset-floor-zero-endpoint-alert]
+issues: [#2413, #1728, #438, #578, #600, #1102, #1143, #1144, #1245, #1500, #1543, #1544, planning#656]
 -->
 
 # 運用 Runbook: Keycloak smtpServer（SMTP リレー）の設定
@@ -137,7 +137,7 @@ kubectl -n platform-infra exec -i "$KC_POD" -- sh -c   '/opt/keycloak/bin/kcadm.
 （[`deploy/local/vault/eso/bootstrap.sh`](../../deploy/local/vault/eso/bootstrap.sh)）。値を対話的に読み込んで
 再実行する（シェル履歴に残る `export` 形は避け、`read -rs` を使う。既存の Vault OIDC 手順と同じ作法）。
 
-```sh
+```bash
 read -rs SMTP_FROM;     export SMTP_FROM
 read -rs SMTP_USER;     export SMTP_USER
 read -rs SMTP_PASSWORD; export SMTP_PASSWORD

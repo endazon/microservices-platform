@@ -9,9 +9,9 @@ updated: 2026-11-05
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
-iadrs: [IADR-0515, IADR-0461, IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
-specs: [20261010_1877_paired-rotation-windows-portable, 20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
-issues: [#1877, #1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
+iadrs: [IADR-0682, IADR-0515, IADR-0461, IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261010_1877_paired-rotation-windows-portable, 20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#2413, #1877, #1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し

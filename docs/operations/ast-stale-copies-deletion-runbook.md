@@ -9,9 +9,9 @@ updated: 2026-11-05
 <!-- trace:
 ids: [FR-06, FR-05, FR-19, SC-05, NFR-09, UC-03]
 adrs: [ADR-0122, ADR-0121, ADR-0057, ADR-0119]
-iadrs: [IADR-0484, IADR-0483, IADR-0459, IADR-0529, AST:IADR-0436]
-specs: [20261011_1891_ast-draft-not-duplicate, 20260928_issue-1667_ast-stale-copies-enumeration]
-issues: [#1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
+iadrs: [IADR-0682, IADR-0484, IADR-0483, IADR-0459, IADR-0529, AST:IADR-0436]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261011_1891_ast-draft-not-duplicate, 20260928_issue-1667_ast-stale-copies-enumeration]
+issues: [#2413, #1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
 -->
 
 # 運用 Runbook: 内容の ABAC の前に、株取引の外部システムの古い写しを列挙して消す

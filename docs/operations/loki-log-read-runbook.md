@@ -9,9 +9,9 @@ updated: 2026-11-05
 <!-- trace:
 ids: [NFR-18]
 adrs: [ADR-0133, ADR-0112, ADR-0006]
-iadrs: [IADR-0543, IADR-0553, IADR-0555, IADR-0526, IADR-0210, IADR-0369]
-specs: [20261015_1935_loki-log-read-runbook, 20261016_1965_loki-grpc-msg-size, 20261017_1969_loki-export-window-reconcile, 20261009_1842_loki-tempo-front-auth]
-issues: [#1935, #1965, #1969, #1842, #1867]
+iadrs: [IADR-0682, IADR-0543, IADR-0553, IADR-0555, IADR-0526, IADR-0210, IADR-0369]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261015_1935_loki-log-read-runbook, 20261016_1965_loki-grpc-msg-size, 20261017_1969_loki-export-window-reconcile, 20261009_1842_loki-tempo-front-auth]
+issues: [#2413, #1935, #1965, #1969, #1842, #1867]
 -->
 
 # 運用 Runbook: 経路 B の Loki のログを読む・保全する
