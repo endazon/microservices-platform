@@ -6638,7 +6638,7 @@ function decideAll(cases) {
     `out="$(dev_client_secret_decide ${q(c.ctx)} ${q(c.override)} ${c.args.map(q).join(' ')})" && rc=0 || rc=$?`,
     `printf '%s\\t%s\\t%s\\n' ${i} "$rc" "$(printf '%s' "$out" | tr '\\n' ' ')"`,
   ].join('\n')).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_load_targets\n${body}`, 'x', DEV_GUARD_LIB], { encoding: 'utf8', shell: false });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. scripts/lib/dev-client-secret-guard.sh\ndev_client_secret_load_targets\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, `判定器が実行できない: ${r.stderr}`);
   return r.stdout.split('\n').filter(Boolean).map((l) => {
     const [i, rc, out] = l.split('\t');
@@ -7338,7 +7338,7 @@ ok('IADR-0574: 判定の真理値表 — 明示（無し / 開発用の値 / 別
     }
   }
   const body = cases.map((c, i) => `ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_decide ${q(c.name)} ${q(c.ev)} ${q(c.xv)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\n${body}`, 'x', INFRA_LIB_0573], { encoding: 'utf8', shell: false });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. scripts/lib/infra-credentials.sh\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
   assert.strictEqual(got.length, cases.length);
@@ -7436,7 +7436,7 @@ ok('IADR-0574 陽性対照: CI の integration-stack / cutover-rehearsal は使�
   }
 });
 // --- NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 基盤の資格情報の判定を段階の対象へ広げる（段 1＝報告・段 2＝強制） ----------
-// 判定は scripts/lib/infra-credentials.sh（IADR-0574 と同じ口）。値は実行時に組む（gitleaks）。
+// 判定は scripts/lib/infra-credentials.sh（IADR-0574 と同じ口）。試験の bash はリポジトリの根を cwd にし、ライブラリを相対パスで読む（CodeQL）。値は実行時に組む（gitleaks）。
 const custom0672 = (what) => ['probe', '0672', what].join('-');
 const STAGED0672 = {
   PG_PASSWORD: { dev: 'postgres', secret: 'postgres', key: 'password', stub: 'STUB_PG_EXISTING' },
@@ -7465,7 +7465,7 @@ ok('IADR-0672: 判定の真理値表 — 明示 × 既存 × context（dev / 非
     }
   }
   const body = cases.map((c, i) => `INFRA_CREDENTIALS_ENFORCE=${q(c.enforce)}; ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_staged_decide APP_DB_PASSWORD ${q(c.ev)} ${q(c.xv)} ${q(c.ctx)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\n. "$2"\n${body}`, 'x', path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'), INFRA_LIB_0573], { encoding: 'utf8', shell: false });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. scripts/lib/dev-client-secret-guard.sh\n. scripts/lib/infra-credentials.sh\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
   assert.strictEqual(got.length, cases.length);
@@ -7567,7 +7567,7 @@ ok('IADR-0676: dev の判定の真理値表 — 名前（許可集合 / 外）×
     }
   }
   const body = cases.map((c, i) => `DEV_CLUSTER_MARKER='${c.marker}' DEV_CLUSTER_MARKER_REQUIRED='${c.req}' dev_client_secret_context_is_dev '${c.ctx}' && echo "${i} dev" || echo "${i} no"`).join('\n');
-  const r = spawnSync('bash', ['-c', `. "$1"\n${body}`, 'x', GUARD_LIB_0676], { encoding: 'utf8', shell: false });
+  const r = spawnSync('bash', ['-c', `. scripts/lib/dev-client-secret-guard.sh\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const tally = {};
   for (const line of r.stdout.trim().split('\n')) {
@@ -7652,13 +7652,22 @@ ok('IADR-0676: 秘匿管理の NetworkPolicy は 8200 を、ESO・bff/datasource
     'app: platform-backup, app.kubernetes.io/component: vault', 'app.kubernetes.io/name: traefik', 'istio: ingressgateway', '{ protocol: TCP, port: 8200 }']) {
     assert.ok(np.includes(want), `送り手 ${want} が無い`);
   }
-  // 送り手の取りこぼし: リポジトリの中で秘匿管理の Service を宛先に書くもの（マニフェスト・values）は、上のどれかである
-  const refs = spawnSync('git', ['-C', REPO_ROOT, 'grep', '-l', '-E', 'vault\\.platform-infra(\\.svc[a-z.]*)?:8200|number: 8200', '--', 'deploy/'], { encoding: 'utf8' }).stdout.trim().split('\n').filter(Boolean);
-  const known = ['deploy/local/values-local.yaml', 'deploy/local/platform-backup/vault/cronjob.yaml', 'deploy/local/edge/admin-ingress-infra.yaml',
-    'deploy/local/edge-istio/virtualservice-admin.yaml', 'deploy/local/vault/clustersecretstore.yaml', 'deploy/local/vault/eso/clustersecretstore-k8s.yaml',
-    // バックアップの本体（CronJob の Pod の中で走る）・秘匿管理自身の待受の設定
-    'deploy/local/platform-backup/script/backup.sh', 'deploy/local/platform-backup/script/backup.test.sh', 'deploy/local/vault-persistence/local.hcl'];
-  for (const f of refs) assert.ok(known.includes(f) || f.startsWith('deploy/cloud/'), `秘匿管理の新しい送り手 ${f} が NetworkPolicy の表に無い`);
+  // 送り手の取りこぼし: リポジトリの中で秘匿管理の Service を宛先に書くもの（マニフェスト・values・スクリプト・製品のコードの既定値）は、
+  //   上のどれかである。網は 3 つの字面 —— 短縮形を含む Service の名前＋8200（vault:8200 / vault.platform-infra[.svc[.cluster.local]]:8200）と
+  //   number: 8200 —— を deploy/・scripts/・src/（試験・文書を除く）で引く。ほかの書き方（環境変数で宛先を与える・別名の Service・取引ユニットの
+  //   リポジトリ）は捕まえない（段 2 の前に別の軸で引き直す。IADR-0676 決定 6）。
+  const refs = spawnSync('git', ['-C', REPO_ROOT, 'grep', '-l', '-E', '(^|[^a-z0-9-])vault(\\.platform-infra)?(\\.svc(\\.cluster\\.local)?)?:8200|number: 8200',
+    '--', 'deploy/', 'scripts/', 'src/', ':!*.test.*', ':!*Tests*', ':!*.md'], { encoding: 'utf8', shell: false }).stdout.trim().split('\n').filter(Boolean);
+  const known = {
+    'deploy/local/values-local.yaml': 'bff / datasource', 'deploy/local/platform-backup/vault/cronjob.yaml': 'バックアップ',
+    'deploy/local/platform-backup/script/backup.sh': 'バックアップ（CronJob の Pod の中で走る）', 'deploy/local/edge/admin-ingress-infra.yaml': 'エッジ（Traefik）',
+    'deploy/local/edge-istio/virtualservice-admin.yaml': 'エッジ（Istio）', 'deploy/local/vault/clustersecretstore.yaml': 'ESO',
+    'deploy/local/vault/eso/clustersecretstore-k8s.yaml': 'ESO', 'deploy/local/vault-persistence/local.hcl': '秘匿管理自身の待受',
+    'src/platform/backend/Bff/Platform.Bff/Foundation/Secrets/VaultKvClient.cs': 'bff（注記の例）',
+    'src/knowledge/backend/Services/DataSourceService/Infrastructure/Secrets/VaultConnectorSecretOptions.cs': 'datasource（注記の例）',
+  };
+  assert.ok(refs.length >= 8, `陽性対照: 送り手を拾えていない（${refs.length}）`);
+  for (const f of refs) assert.ok(Object.prototype.hasOwnProperty.call(known, f) || f.startsWith('deploy/cloud/'), `秘匿管理の新しい送り手 ${f} が NetworkPolicy の表に無い`);
 });
 
 ok('IADR-0676: DB の初期化の kp の値（postgres-init-users）は APP_DB_PASSWORD と同じ値で置く。値は引数に出ない', () => {
