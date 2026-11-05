@@ -54,6 +54,12 @@ elif [ -n "${1:-}" ]; then
   echo "ERROR: 未知の引数: $1（受け付けるのは --check と --check-dev-secrets だけ）" >&2
   exit 2
 fi
+# NFR-18, IADR-0686: サービスアカウントの余剰のロールを apply で外すか（0 / 1 だけ。既定 0＝報告だけ）。クラスタに触る前に検める。
+REMOVE_SURPLUS="${RECONCILE_REMOVE_SURPLUS:-0}"
+case "$REMOVE_SURPLUS" in
+  0 | 1) ;;
+  *) echo "ERROR: RECONCILE_REMOVE_SURPLUS は 0 か 1 だけを受ける" >&2; exit 2 ;;
+esac
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$HERE/../../../scripts/lib/dev-client-secret-guard.sh"
 KC_CONTEXT="$(dev_client_secret_current_context)"
@@ -92,6 +98,7 @@ kubectl -n "$INFRA_NS" delete job "$JOB" --ignore-not-found --wait=true >/dev/nu
 sed -e "s/^\(  name:\) keycloak-realm-reconcile\$/\1 $JOB/" \
     -e "s/^\(              value:\) \"apply\"\$/\1 \"$MODE\"/" \
     -e "s/^\(              value:\) \"deny\"\$/\1 \"$DEV_SECRETS\"/" \
+    -e "s/^\(              value:\) \"0\"\$/\1 \"$REMOVE_SURPLUS\"/" \
     "$MANIFEST" | kubectl apply -f - >/dev/null
 
 # 4. 完了を待つ。Complete / Failed のどちらかが立つまで見る（`kubectl wait --for=condition=complete` は

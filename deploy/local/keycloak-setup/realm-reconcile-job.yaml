@@ -48,6 +48,10 @@ spec:
             # 作ってよいか。起動器が kube context から決めて allow へ書き換える。**既定は deny**（直接 apply しても安全側）。
             - name: DEV_CLIENT_SECRETS_ALLOWED
               value: "deny"
+            # NFR-18, IADR-0686: サービスアカウントの余剰のロールを apply で外すか（`1` だけ）。既定は "0"（報告だけ・段 1）。
+            #   起動器の reconcile-realm.sh が env RECONCILE_REMOVE_SURPLUS（0 / 1）から差し替える。
+            - name: RECONCILE_REMOVE_SURPLUS
+              value: "0"
             # 管理者名・パスワードの単一情報源は Secret keycloak-admin（deploy/local/infra/keycloak.yaml も同じ Secret を読む）。
             - name: KC_ADMIN_USER
               valueFrom:

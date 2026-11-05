@@ -35,6 +35,7 @@ const {
   SEED_USER_SELF_SERVICE_ROLES, KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, isKeycloakAutoAssignedScope,
   resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, describe,
   applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
+  REMOVE_SURPLUS_ENV, isKeycloakOwnedSaRole,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 const { generate: generateE2eAccounts, placeholderNames, propertyName } = require('./gen-e2e-accounts.js');
 
@@ -101,6 +102,11 @@ function liveFrom(desired) {
         user: { id: uuid(), username: u.username, attributes: clone(u.attributes || {}) },
         realmRoles: [...(u.realmRoles || [])],
         clientRoles: clone(u.clientRoles || {}),
+        // IADR-0686: 全部の割当（collectLive が role-mappings から読む形）。Keycloak が付ける既定ロールを含む。
+        all: {
+          realm: [...(u.realmRoles || []), `default-roles-${desired.realm}`].map((name) => ({ id: uuid(), name })),
+          clients: Object.fromEntries(Object.entries(u.clientRoles || {}).map(([cid, names]) => [cid, { clientUuid: `cu-${cid}`, roles: names.map((name) => ({ id: uuid(), name })) }])),
+        },
       };
     } else {
       users[u.username] = { id: uuid(), username: u.username, attributes: clone(u.attributes || {}), requiredActions: [] };
@@ -452,6 +458,48 @@ ok('グループが無ければ group.create（サブグループは deferred）
   assert.strictEqual(ops[0].path, `/admin/realms/platform/groups/${dept.id}/children`);
 });
 
+// --- NFR-18, IADR-0686: サービスアカウントの権限の余剰 ---
+const saOf = (live, username) => {
+  const u = REALM.users.find((x) => x.username === username);
+  return live.serviceAccounts[u.serviceAccountClientId];
+};
+const firstSa = REALM.users.find((u) => u.serviceAccountClientId && (u.realmRoles || []).length > 0);
+ok('IADR-0686: 宣言より多い realm ロール・client ロールは余剰として計画し、ops（差分の適用）には入れない', () => {
+  const live = liveFrom(REALM);
+  const sa = saOf(live, firstSa.username);
+  sa.all.realm.push({ id: 'r-extra', name: 'platform-admin' });
+  sa.all.clients['realm-management'] = { clientUuid: 'cu-rm', roles: [{ id: 'rm-1', name: 'manage-realm' }] };
+  const surplus = [];
+  const ops = plan(REALM, live, { surplus });
+  assert.deepStrictEqual(ops, [], '余剰が ops に入った（段 1 の apply が外す／収束しない）');
+  const realm = surplus.find((o) => o.op === 'user.realmRoles.remove' && o.target === firstSa.username);
+  assert.ok(realm && realm.method === 'DELETE' && realm.body.some((r) => r.name === 'platform-admin' && r.id === 'r-extra'), JSON.stringify(surplus));
+  assert.ok(!realm.body.some((r) => (firstSa.realmRoles || []).includes(r.name)), '宣言のロールまで外そうとした');
+  const cr = surplus.find((o) => o.op === 'user.clientRoles.remove' && o.target === `${firstSa.username}:realm-management`);
+  assert.ok(cr && cr.path.endsWith('/role-mappings/clients/cu-rm') && cr.body[0].name === 'manage-realm', JSON.stringify(surplus));
+});
+
+ok('IADR-0686: Keycloak が付けるもの（既定ロール・自分の client の uma_protection）と、宣言どおりの割当は余剰に数えない', () => {
+  const surplus = [];
+  plan(REALM, liveFrom(REALM), { surplus });
+  assert.deepStrictEqual(surplus, [], `宣言どおりの稼働で余剰が出た: ${JSON.stringify(surplus.map((o) => o.target))}`);
+  const live = liveFrom(REALM);
+  const sa = saOf(live, firstSa.username);
+  sa.all.clients[firstSa.serviceAccountClientId] = { clientUuid: 'cu-self', roles: [{ id: 'u1', name: 'uma_protection' }] };
+  const s2 = [];
+  plan(REALM, live, { surplus: s2 });
+  assert.deepStrictEqual(s2, [], 'uma_protection を余剰に数えた');
+  assert.ok(isKeycloakOwnedSaRole('platform', 'realm', null, 'default-roles-platform', 'x'));
+  assert.ok(!isKeycloakOwnedSaRole('platform', 'client', 'other', 'uma_protection', 'x'), '他の client の uma_protection まで許した');
+  // 全割当を読めない（all が無い）稼働では余剰を見ない（推測で外さない）
+  const old = liveFrom(REALM);
+  delete saOf(old, firstSa.username).all;
+  const s3 = [];
+  plan(REALM, old, { surplus: s3 });
+  assert.deepStrictEqual(s3, []);
+});
+
+
 ok('seed 利用者が無ければ user.create（資格情報・requiredActions・グループを body に、ロール割当を postSteps に運ぶ）', () => {
   const live = liveFrom(REALM);
   live.users.developer = null;
@@ -627,7 +675,7 @@ ok('merge: オブジェクトは再帰、配列とスカラーは置換、宣言
 // #1373: 稼働側のクライアントが在って service account が無効なとき、collectLive は SA 利用者を「未存在」として
 // 返し、plan は client.update（SA 有効化）＋ deferred を出す。Keycloak はこの状態の service-account-user に
 // 400 を返す（404 ではない）ため、以前はここで例外になり realm 全体の追随が止まっていた（2026-09-10 実測: `bff`）。
-function fakeKc({ saEnabled, saUser, seen = [] }) {
+function fakeKc({ saEnabled, saUser, seen = [], mappings = undefined }) {
   const R = `/admin/realms/${encodeURIComponent(REALM.realm)}`;
   const bff = { id: 'c-bff', clientId: 'bff', serviceAccountsEnabled: saEnabled };
   return {
@@ -641,6 +689,8 @@ function fakeKc({ saEnabled, saUser, seen = [] }) {
         return saUser;
       }
       if (p === `${R}/users/${saUser.id}/role-mappings/realm`) return [{ name: 'platform-service' }];
+      // IADR-0686: 全部の割当（与えたときだけ。既定の [] は「読めない形」＝余剰を見ない）
+      if (mappings !== undefined && p === `${R}/users/${saUser.id}/role-mappings`) return mappings;
       if (p === `${R}/clients/c-bff/client-secret`) return { value: 'live-secret' };
       return [];
     },
@@ -770,6 +820,34 @@ ok('#2026: 既存の利用者（人の seed も e2e も）には PUT も user.cr
 /** async の試験は下の async ブロックで待って数える（`ok` は同期）。 */
 const laterCases = [];
 const okLater = (name, fn) => laterCases.push([name, fn]);
+
+ok('IADR-0686: Job は余剰を外す切り替えを "0" の既定で持ち、起動器の口は 0 / 1 以外で止まる', () => {
+  const job = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'realm-reconcile-job.yaml'), 'utf8');
+  assert.ok(new RegExp(`- name: ${REMOVE_SURPLUS_ENV}\\n\\s+value: "0"\\n`).test(job), 'Job が切り替えを "0" の既定で持たない');
+  assert.strictEqual((job.match(/^\s+value: "0"$/gm) || []).length, 1, '"0" の value が 2 つ以上ある（起動器の差し替えが別の env に当たる）');
+  const { spawnSync } = require('child_process');
+  const r = spawnSync('bash', ['deploy/local/keycloak-setup/reconcile-realm.sh'], { cwd: REPO_ROOT, encoding: 'utf8', shell: false, env: { ...process.env, [REMOVE_SURPLUS_ENV]: 'true', KUBECONFIG: '/nonexistent' } });
+  assert.strictEqual(r.status, 2, `0 / 1 以外で止まらない: ${r.status} ${r.stderr}`);
+});
+
+okLater('IADR-0686: reconcileRealm — check は余剰を返し、apply は既定で外さず（収束に入れない）、RECONCILE_REMOVE_SURPLUS 相当（removeSurplus）でだけ DELETE を打つ', async () => {
+  const withExtra = () => { const l = liveFrom(REALM); saOf(l, firstSa.username).all.realm.push({ id: 'r-x', name: 'platform-admin' }); return l; };
+  const quiet = async (f) => { const log = console.log; const err = console.error; console.log = () => {}; console.error = () => {}; try { return await f(); } finally { console.log = log; console.error = err; } };
+  const chk = await quiet(() => reconcileRealm(fakeAdminApi(() => 204), REALM, { mode: 'check', devSecretsAllowed: true, collect: async () => withExtra() }));
+  assert.strictEqual(chk.surplus.length, 1);
+  const kc1 = fakeAdminApi(() => 204);
+  const ap = await quiet(() => reconcileRealm(kc1, REALM, { mode: 'apply', devSecretsAllowed: true, collect: async () => withExtra() }));
+  assert.deepStrictEqual(ap.ops, [], '段 1 の apply が収束しない');
+  assert.strictEqual(ap.surplus.length, 1, '段 1 の apply が余剰を報告しない');
+  assert.ok(!kc1.calls.some((c) => c.method === 'DELETE'), '段 1 の apply が外した');
+  let n = 0;
+  const kc2 = fakeAdminApi(() => 204);
+  const rm = await quiet(() => reconcileRealm(kc2, REALM, { mode: 'apply', devSecretsAllowed: true, removeSurplus: true, collect: async () => (n++ === 0 ? withExtra() : liveFrom(REALM)) }));
+  assert.ok(kc2.calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/role-mappings/realm') && c.body.some((r) => r.name === 'platform-admin')), JSON.stringify(kc2.calls.map((c) => `${c.method} ${c.path}`)));
+  assert.deepStrictEqual(rm.ops, []);
+  assert.deepStrictEqual(rm.surplus, []);
+  assert.strictEqual(REMOVE_SURPLUS_ENV, 'RECONCILE_REMOVE_SURPLUS');
+});
 
 /** 偽の Admin API。method + path ごとに状態を返し、呼ばれた順を記録する。 */
 function fakeAdminApi(statusOf) {
@@ -969,6 +1047,18 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
     assert.deepStrictEqual(live.serviceAccounts.bff.realmRoles, ['platform-service']);
     passed++;
     process.stdout.write('  ok  #1373 陰性対照: SA 有効なら service-account-user とロールを読む\n');
+  }
+  {
+    // IADR-0686: collectLive は全部の割当を 1 回で読み、client の割当は clientId で引ける形にする。読めない形なら all を持たない。
+    const mappings = { realmMappings: [{ id: 'r1', name: 'platform-service' }, { id: 'r2', name: 'default-roles-platform' }],
+      clientMappings: { 'realm-management': { id: 'cu-rm', client: 'realm-management', mappings: [{ id: 'm1', name: 'view-users' }] } } };
+    const live = await collectLive(fakeKc({ saEnabled: true, saUser: { id: 'u-bff', username: 'service-account-bff' }, mappings }), REALM);
+    assert.deepStrictEqual(live.serviceAccounts.bff.all.realm.map((r) => r.name), ['platform-service', 'default-roles-platform']);
+    assert.deepStrictEqual(live.serviceAccounts.bff.all.clients['realm-management'], { clientUuid: 'cu-rm', roles: [{ id: 'm1', name: 'view-users' }] });
+    const none = await collectLive(fakeKc({ saEnabled: true, saUser: { id: 'u-bff', username: 'service-account-bff' } }), REALM);
+    assert.ok(!('all' in none.serviceAccounts.bff), '読めない形でも all を持った（推測で外す）');
+    passed++;
+    process.stdout.write('  ok  IADR-0686: collectLive は全部の割当を読み、読めない形なら余剰を見ない\n');
   }
   {
     // #1682 / IADR-0485: collectLive は client の secret を読みに行かない（比べないので要らない。秘密が Job を通らない）。

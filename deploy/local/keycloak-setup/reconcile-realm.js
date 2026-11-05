@@ -101,6 +101,7 @@
  *   REALM_DIR           realm JSON の置き場（既定 /import ＝ ConfigMap keycloak-realms のマウント先）
  *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
  *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0572）
+ *   RECONCILE_REMOVE_SURPLUS  1 のときだけ、apply でサービスアカウントの余剰のロールを外す（IADR-0686。既定は報告だけ）
  *   E2E_<ROLE>_PASSWORD / E2E_<ROLE>_TOTP_SECRET  試験アカウントの資格情報（Secret e2e-accounts。無ければ e2e 利用者を作らない。#2024）
  *
  * 引数 `--render-import`: 標準入力の realm JSON へ同じ差し込みを当てて標準出力へ書く（Keycloak へは接続しない。#2024）。
@@ -139,6 +140,17 @@ const GATE_OWNED_REALM_KEYS = new Set(['resetPasswordAllowed']);
 //    属性は**実行時にだけ存在する** —— 門が書き、本 Job は読むだけである。
 const GATE_STATE_ATTRIBUTE = 'reset-gate.state';
 const GATE_STATE_CLOSED = 'closed';
+
+// ［2026-11-06 / IADR-0686］**サービスアカウントの権限の余剰も差分として数える。**
+//   サービスアカウント利用者のロールは宣言が全集合である（IADR-0369 の境界表）。従来は欠落だけを見ていたので、稼働で足された
+//   ロールがあっても drift=0 になった（偽の安心）。宣言より多い realm ロール・client ロールを `surplus` として計画する。
+//   - check: drift に数える（G9 が赤くなる）。
+//   - apply: 段 1（既定）は外さずに報告する（収束の判定に入れない＝起動器を止めない）。RECONCILE_REMOVE_SURPLUS=1（`1` だけ）で外す。
+//   Keycloak が自分で付けるもの（既定ロール default-roles-<realm>・認可サービスの client の uma_protection）は余剰に数えない。
+const REMOVE_SURPLUS_ENV = 'RECONCILE_REMOVE_SURPLUS';
+const isKeycloakOwnedSaRole = (realmName, kind, clientId, name, saClientId) =>
+  (kind === 'realm' && name === `default-roles-${String(realmName).toLowerCase()}`)
+  || (kind === 'client' && clientId === saClientId && name === 'uma_protection');
 
 // client 表現のうち、トップレベルの PUT で扱わないキー（別端点で当てる／同一性／読み取り専用）。
 const CLIENT_SKIP_KEYS = new Set([
@@ -268,7 +280,7 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  * 返す操作: { op, target, method, path, body, reason }。`op === 'deferred'` は前提（依存先の実体）が
  * まだ無く、次の周で計画し直すもの。check モードでは drift として数える。
  */
-function plan(desired, live) {
+function plan(desired, live, { surplus = [] } = {}) {
   const ops = [];
   const realmName = desired.realm;
   const R = `/admin/realms/${encodeURIComponent(realmName)}`;
@@ -485,6 +497,25 @@ function plan(desired, live) {
         if (!cr) { defer(`service account ${user.username} clientRoles ${clientId}`, 'client かロールがまだ無い'); continue; }
         add({ op: 'user.clientRoles.add', target: `${user.username}:${clientId}`, method: 'POST',
           path: `${U}/role-mappings/clients/${cr.clientUuid}`, body: cr.refs, reason: `client ロールの欠落: ${missing.join(', ')}` });
+      }
+      // IADR-0686: 宣言より多いロール（余剰）。稼働の全割当（collectLive の all）を読めたときだけ見る。
+      if (sa.all && Array.isArray(sa.all.realm)) {
+        const declRealm = new Set(user.realmRoles || []);
+        const extraRealm = sa.all.realm.filter((r) => r && r.name && !declRealm.has(r.name)
+          && !isKeycloakOwnedSaRole(realmName, 'realm', null, r.name, user.serviceAccountClientId));
+        if (extraRealm.length > 0) {
+          surplus.push({ op: 'user.realmRoles.remove', target: user.username, method: 'DELETE', path: `${U}/role-mappings/realm`,
+            body: extraRealm.map((r) => ({ id: r.id, name: r.name })), reason: `realm ロールの余剰（宣言が全集合）: ${extraRealm.map((r) => r.name).join(', ')}` });
+        }
+        for (const [clientId, entry] of Object.entries(sa.all.clients || {})) {
+          const decl = new Set(((user.clientRoles || {})[clientId]) || []);
+          const extra = ((entry && entry.roles) || []).filter((r) => r && r.name && !decl.has(r.name)
+            && !isKeycloakOwnedSaRole(realmName, 'client', clientId, r.name, user.serviceAccountClientId));
+          if (extra.length === 0) continue;
+          surplus.push({ op: 'user.clientRoles.remove', target: `${user.username}:${clientId}`, method: 'DELETE',
+            path: `${U}/role-mappings/clients/${entry.clientUuid}`, body: extra.map((r) => ({ id: r.id, name: r.name })),
+            reason: `client ロールの余剰（宣言が全集合）: ${extra.map((r) => r.name).join(', ')}` });
+        }
       }
       if (user.attributes && !contains(user.attributes, sa.user.attributes || {})) {
         add({ op: 'user.attributes.update', target: user.username, method: 'PUT', path: U,
@@ -797,7 +828,17 @@ async function collectLive(kc, desired) {
         const cc = clientByClientId.get(cid);
         if (cc) cr[cid] = ((await kc.get(`${R}/users/${user.id}/role-mappings/clients/${cc.id}`)) || []).map((r) => r.name);
       }
-      serviceAccounts[u.serviceAccountClientId] = { user, realmRoles: realmMappings.map((r) => r.name), clientRoles: cr };
+      // IADR-0686: 余剰を見るため、全部の割当（realm と全 client）を 1 回で読む。読めない形なら余剰は見ない（all を持たない）。
+      const allMappings = await kc.get(`${R}/users/${user.id}/role-mappings`);
+      let all;
+      if (isObj(allMappings)) {
+        const clients = {};
+        for (const [cid, e] of Object.entries(allMappings.clientMappings || {})) {
+          if (isObj(e)) clients[e.client || cid] = { clientUuid: e.id, roles: (e.mappings || []).map((r) => ({ id: r.id, name: r.name })) };
+        }
+        all = { realm: (allMappings.realmMappings || []).map((r) => ({ id: r.id, name: r.name })), clients };
+      }
+      serviceAccounts[u.serviceAccountClientId] = { user, realmRoles: realmMappings.map((r) => r.name), clientRoles: cr, ...(all ? { all } : {}) };
     } else {
       const found = (await kc.get(`${R}/users?username=${encodeURIComponent(u.username)}&exact=true`)) || [];
       users[u.username] = found[0] || null;
@@ -905,8 +946,15 @@ async function applyOps(kc, realmName, ops) {
  * 1 つの realm を計画し、apply なら当てて計画し直す（MAX_PASSES まで）。`collect` は試験で差し替える（既定 collectLive）。
  * ［2026-10-25 / #2026］当てられなかった操作の数（applyErrors）を返す —— 作成の後の手順の失敗は再計画の差分に戻らないことがある。
  */
-async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive }) {
-  let ops = plan(desired, await collect(kc, desired));
+async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive, removeSurplus = false }) {
+  // IADR-0686: 余剰（surplus）は plan の出力先で受ける。apply で外すのは removeSurplus のときだけ（そのときは ops に足す）。
+  let surplus = [];
+  const planOf = async () => {
+    surplus = [];
+    const o = plan(desired, await collect(kc, desired), { surplus });
+    return mode === 'apply' && removeSurplus ? o.concat(surplus) : o;
+  };
+  let ops = await planOf();
   let applied = 0;
   let guardBlocked = 0;
   let applyErrors = 0;
@@ -928,10 +976,12 @@ async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = 
       applied += r.applied;
       for (const e of r.errors) console.error(`    ERROR ${e}`);
       applyErrors += r.errors.length;
-      ops = plan(desired, await collect(kc, desired));
+      ops = await planOf();
     }
   }
-  return { ops, applied, guardBlocked, applyErrors };
+  // 外したなら最後の計画の余剰は ops に入っている（二重に数えない）。
+  if (mode === 'apply' && removeSurplus) surplus = [];
+  return { ops, surplus, applied, guardBlocked, applyErrors };
 }
 
 function readRealmFiles(dir) {
@@ -991,8 +1041,14 @@ async function main() {
     // #2024 / IADR-0570: 試験アカウントの資格情報を差し込む。差し込めない利用者は作らない（drift にも数えない）。
     const { desired, skipped } = resolveE2eCredentials(declared, process.env);
     for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
-    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed });
+    const removeSurplus = process.env[REMOVE_SURPLUS_ENV] === '1';
+    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, removeSurplus });
     const ops = r.ops;
+    // IADR-0686: 余剰は check では drift に数え、apply（外さない段 1）では報告だけにする（起動器を止めない）。
+    for (const op of r.surplus) {
+      console.log(`    ${mode === 'check' ? 'drift' : 'surplus'}   ${describe(op)}${mode === 'check' ? '' : `（外すのは ${REMOVE_SURPLUS_ENV}=1）`}`);
+    }
+    if (mode === 'check') drift += r.surplus.length;
     applied += r.applied;
     guardBlocked += r.guardBlocked;
     applyErrors += r.applyErrors;
@@ -1022,6 +1078,7 @@ if (require.main === module) {
 
 module.exports = {
   applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
+  REMOVE_SURPLUS_ENV, isKeycloakOwnedSaRole,
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,
   DEV_SECRETS_ALLOWED_ENV,
