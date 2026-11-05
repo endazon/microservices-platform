@@ -19973,15 +19973,17 @@ esac
     });
 
     ok('IADR-0672: 作り直し（app-db）の 2 つ目の保管先が失敗したら、1 つ目の Vault の KV を元の値へ戻す（ESO あり）', () => {
+      // 元の値は実行時に組む（リポジトリの慣行。gitleaks の generic-api-key に字面で掛からない）。
+      const oldKv = ['probe', '0672', 'kv', 'old'].join('-');
       const eso = ({ put }) => {
         put('es/microservices-platform__postgres-app', ''); put('es/microservices-platform__wikijs-db', '');
-        put('kv/msp__postgres-app__password', 'probe-0672-kv-old'); put('kv/msp__wikijs-db__password', 'probe-0672-kv-old');
+        put('kv/msp__postgres-app__password', oldKv); put('kv/msp__wikijs-db__password', oldKv);
       };
       const r = run2399(ROTATE2399, ['--live', 'app-db'], { setup: eso, env: { STUB_KV_PATCH_FAIL: 'msp/wikijs-db' } });
       assert.notStrictEqual(r.status, 0, '2 つ目の保管先が失敗したのに成功した');
-      assert.strictEqual(r.read('kv/msp__postgres-app__password'), 'probe-0672-kv-old', '1 つ目の KV が元の値へ戻っていない');
+      assert.strictEqual(r.read('kv/msp__postgres-app__password'), oldKv, '1 つ目の KV が元の値へ戻っていない');
       assert.ok(/元へ戻した: Vault secret\/msp\/postgres-app の password/.test(r.stderr), r.stderr);
-      assert.ok(!`${r.stdout}${r.stderr}`.includes('probe-0672-kv-old') && !r.argv.includes('probe-0672-kv-old'), '元の値が出力・引数に出た');
+      assert.ok(!`${r.stdout}${r.stderr}`.includes(oldKv) && !r.argv.includes(oldKv), '元の値が出力・引数に出た');
     });
 
     ok('IADR-0672: 作り直し（app-db）のストア側が失敗したら、2 つの保管先を元へ戻し、消費側を作り直さない', () => {
