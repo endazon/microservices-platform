@@ -193,6 +193,13 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 > `KEYCLOAK_ADMIN_PASSWORD` / `RABBITMQ_PASSWORD` の明示 ＞ 既存の Secret（`platform-infra` の `keycloak-admin` / `rabbitmq`）の値の順に使い、
 > どちらも無い（または開発用の値と同じ）なら何も作らずに止まる。**使い捨ての開発環境だけ** `ALLOW_DEV_INFRA_CREDENTIALS=1` で開発用の値を許す
 > （警告を出す）。残すクラスタでは開発用ではない値を env で与える（一度作れば、次からは既存の Secret の値を使う）。
+>
+> **DB の管理者・DB 利用者（`postgres-app` / `wikijs-db`）・オブジェクトストレージ・秘匿管理の管理者トークン（`VAULT=1`）も同じ口で決める**
+> （[IADR-0672](../../.ai-context/adr/IADR-0672_infra-credentials-staged-fail-closed.md)。段階で入れる）。明示 ＞ 既存の Secret の値の順に使い、どちらも無ければ:
+> dev の context（k3d-* / kind-* / rancher-desktop / docker-desktop）は従来どおり開発用の値で作る。dev ではない context は**段 1 では警告して作り**、
+> `INFRA_CREDENTIALS_ENFORCE=1` を付けると何も作らずに止まる（使い捨ての環境だけ `ALLOW_DEV_INFRA_CREDENTIALS=1` で通す）。
+> 稼働中の値が開発用の値のままかは `bash scripts/check-infra-credentials.sh --live`（読むだけ・値は出さない）で確かめ、
+> 残っていれば `bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>` で作り直す（値は表示しない）。
 
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 
@@ -378,12 +385,13 @@ ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-user
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
 | --- | --- | --- | --- |
-| `PG_PASSWORD` | `platform-infra/postgres.password` | `postgres` | Postgres 管理 |
+| `PG_PASSWORD` | `platform-infra/postgres.password` | `postgres`（dev の context だけ。上の注） | Postgres 管理 |
 | `RABBITMQ_USER` | `platform-infra/rabbitmq.username` | `guest` | RabbitMQ の既定のユーザー名（#1022。ブローカの初期化だけに使う。サービスは名乗らない＝IADR-0577） |
 | `RABBITMQ_PASSWORD` | `platform-infra/rabbitmq.password` | `guest` | RabbitMQ の既定のユーザーのパスワード（アプリ側の共通の Secret `rabbitmq-app` は IADR-0577 で撤去） |
 | `KEYCLOAK_ADMIN_PASSWORD` | `platform-infra/keycloak-admin.password` | `admin` | Keycloak 管理 |
-| `OBJECT_STORAGE_ACCESS_KEY`/`OBJECT_STORAGE_SECRET_KEY` | `microservices-platform/object-storage-credentials` | `objectstorage-dev` / `objectstorage-dev-secret` | オブジェクトストレージ（SeaweedFS。chart 参照。旧名 `MINIO_*` / `minio-credentials`・IADR-0461） |
-| `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
+| `OBJECT_STORAGE_ACCESS_KEY`/`OBJECT_STORAGE_SECRET_KEY` | `microservices-platform/object-storage-credentials` | `objectstorage-dev` / `objectstorage-dev-secret`（secret は dev の context だけ。上の注） | オブジェクトストレージ（SeaweedFS。chart 参照。旧名 `MINIO_*` / `minio-credentials`・IADR-0461） |
+| `APP_DB_PASSWORD` | `microservices-platform/postgres-app.password` | `kp`（dev の context だけ。上の注） | サービスの DB 利用者（下と同値） |
+| `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp`（dev の context だけ。上の注） | Wiki.js DB |
 | `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空→**bootstrap が発行**（#1108） | WikiService→Wiki.js 同期。**明示指定が無ければ `deploy/local/wikijs-setup/bootstrap.sh` が Wiki.js に発行させて書き戻す**。up の再実行では既存値を保つ（空で潰さない） |
 | `WIKIJS_ADMIN_PASSWORD` | `microservices-platform/wikijs-admin.password` | **無し（乱数生成）** | Wiki.js の管理者（#1108 / [IADR-0327](../../.ai-context/adr/IADR-0327_wikijs-setup-bootstrap.md)）。**dev 既定文字列を置かない** —— エッジに露出する実ログイン口である |
 | `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空＝**LLM ゲートウェイが起動しない** | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線）。🔴 鍵が空なら起動時に止まる（#2136 / [IADR-0641](../../.ai-context/adr/IADR-0641_llm-api-key-fail-fast.md)）。PoC は鍵を入れて起こす。鍵なしで動かす使い捨てのスタックだけが `LLM_KEYLESS=1` を付ける（opt-out の env を足す。CI の 3 ワークフローは付けている）。PoC には付けない。戻し方は運用仕様書 §LLM ゲートウェイの Claude の API キーが空のとき |
