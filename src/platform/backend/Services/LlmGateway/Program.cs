@@ -84,6 +84,9 @@ builder.Services.AddOptions<LlmRoutingOptions>()
     .Bind(builder.Configuration.GetSection(LlmRoutingOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, ClaudeApiKeyStartupValidator>();
+// NFR-18, FR-11, ADR-0044, IADR-0674 (#2411): 経路の設定（用途のモデルの割当・上流の宛先・単価表）の起動時検査。
+// 🔴 **既定（段 1）は警告だけ**（下の起動後のブロックが 1 件 1 行で出す）。`Llm:RouteValidation:Mode=Fail`（段 2）で誤りがあれば起動を止める。
+builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, LlmRouteStartupValidator>();
 builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
 
 // FR-11: ルーターの判定に従って呼び出し先を切り替えるため、プロバイダをキー付きで登録する。
@@ -179,6 +182,24 @@ app.Services.GetRequiredService<LlmBudgetMetrics>();
                 + "Claude への呼び出しは 401 で失敗する。鍵なしの検証スタック専用である（#2136 / IADR-0641）。",
                 string.Join(", ", enabledClaude), AnthropicClientFactory.ApiKeyConfigKey,
                 ClaudeApiKeyStartupValidator.AllowMissingConfigKey);
+    }
+}
+
+// NFR-18, IADR-0674 (#2411): 段 1（Warn）で経路の設定の誤りを起動時に 1 件 1 行の Warning で出す（段 2 は上の検証が起動を止める）。
+{
+    if (LlmRouteConfigurationCheck.TryReadMode(app.Configuration, out var routeMode) && routeMode == LlmRouteValidationMode.Warn)
+    {
+        var findings = LlmRouteConfigurationCheck.Find(
+            app.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value,
+            app.Services.GetRequiredService<IOptions<EmbeddingRoutingOptions>>().Value,
+            app.Services.GetRequiredService<IOptions<ModelPricingOptions>>().Value,
+            app.Configuration,
+            app.Services.GetRequiredService<TimeProvider>().GetUtcNow());
+        var routeLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LlmGateway.Startup");
+        foreach (var finding in findings)
+            routeLogger.LogWarning(
+                "LLM の経路の設定に誤りがある（kind={Kind}）: {Finding} 段 2（{ModeKey}=Fail）では起動を止める（#2411 / IADR-0674）。",
+                finding.Kind, finding.Message, LlmRouteConfigurationCheck.ModeConfigKey);
     }
 }
 
