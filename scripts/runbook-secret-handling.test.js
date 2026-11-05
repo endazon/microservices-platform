@@ -2,7 +2,7 @@
 'use strict';
 /*
  * runbook-secret-handling.test.js
- * NFR-18, IADR-0674: 手順書（docs/ と deploy/ の .md）のコマンドが、秘密を手元に残さない形であることを固定する。
+ * NFR-18, IADR-0682: 手順書（docs/ と deploy/ の .md）のコマンドが、秘密を手元に残さない形であることを固定する。
  *
  * 見るもの（コードの行。行頭の空白・`$ ` を除いて読む）:
  *   1. 秘密らしい名前（PASS / SECRET / TOKEN / PHRASE / KEY を含む）へ、字面の値か手元のコマンド置換を `export` しない

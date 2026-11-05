@@ -1,8 +1,8 @@
-# NFR-18, IADR-0674: otel-collector の到達の制限（ingress / egress）。**opt-in（段 1）**。
+# NFR-18, IADR-0682: otel-collector の到達の制限（ingress / egress）。**opt-in（段 1）**。
 # ⚠️ deploy/local/infra/kustomization.yaml には**含めない**。既定の経路B 起動には出てこない（IADR-0589 の段の進め方と同じ）。
 # 適用（opt-in）: kubectl apply -k deploy/local/otel-collector-netpol
 # 戻す:          kubectl delete -k deploy/local/otel-collector-netpol
-# 既定へ入れる（段 2）のは、統合スタックで強制を確かめてから（IADR-0674 §残る制約）。
+# 既定へ入れる（段 2）のは、統合スタックで強制を確かめてから（IADR-0682 §残る制約）。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

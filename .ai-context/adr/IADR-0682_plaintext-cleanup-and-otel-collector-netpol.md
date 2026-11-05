@@ -1,5 +1,5 @@
 ---
-title: IADR-0674 復号した物と秘密は手元のディスク・シェルの環境・コマンドの引数に残さない（リストア試験は tmpfs と trap、手順書は read -rs・age へのパイプ）。otel-collector の到達は opt-in の NetworkPolicy で絞る（#2413）
+title: IADR-0682 復号した物と秘密は手元のディスク・シェルの環境・コマンドの引数に残さない（リストア試験は tmpfs と trap、手順書は read -rs・age へのパイプ）。otel-collector の到達は opt-in の NetworkPolicy で絞る（#2413）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-21, IADR-0471, IADR-0548, IADR-0589, IADR-0526]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2413_plaintext-cleanup-and-otel-netpol.md
 ---
 
-# IADR-0674: 復号物・秘密の後始末と otel-collector の到達の制限（#2413）
+# IADR-0682: 復号物・秘密の後始末と otel-collector の到達の制限（#2413）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

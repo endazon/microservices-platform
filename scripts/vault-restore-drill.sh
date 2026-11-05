@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-21, NFR-18, IADR-0471, IADR-0674: 秘匿管理（OpenBao）のバックアップの回を、使い捨ての OpenBao（コンテナ。ネットワーク無し）へ戻して
+# NFR-21, NFR-18, IADR-0471, IADR-0682: 秘匿管理（OpenBao）のバックアップの回を、使い捨ての OpenBao（コンテナ。ネットワーク無し）へ戻して
 # 開けることを確かめる（docs/operations/platform-infra-backup-runbook.md の §3 の 5）。稼働中の秘匿管理には触れない。
 #
 #   bash scripts/vault-restore-drill.sh --run-dir <回のディレクトリ> --identity <age の秘密鍵ファイル> [--image <イメージ>]

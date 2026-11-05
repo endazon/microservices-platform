@@ -2,7 +2,7 @@
 'use strict';
 /*
  * otel-collector-network-policy.test.js
- * NFR-18, IADR-0674: otel-collector の到達の制限（deploy/local/otel-collector-netpol。opt-in の段 1）を、k8s の評価規則で通信の一覧へ当てて固定する。
+ * NFR-18, IADR-0682: otel-collector の到達の制限（deploy/local/otel-collector-netpol。opt-in の段 1）を、k8s の評価規則で通信の一覧へ当てて固定する。
  *
  * 固定するもの:
  *   1. 送り先（egress）は collector の設定（既定構成 deploy/local/infra/otel-collector.yaml と転送構成

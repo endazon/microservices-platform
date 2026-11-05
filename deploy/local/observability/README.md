@@ -123,7 +123,7 @@ Loki・Tempo は製品単体で認証を掛けられず、運用の口（`/flush
 - Grafana の Explore（`{job="vault-audit"}` を含む）はそのまま使える（datasource が読み取りのトークンを送る）。
 - compose（経路 A）には前段も到達の制限も無い（0 段）。datasource のヘッダの宣言は compose にも同じ形で置いてあり、値は空になる。
 
-## otel-collector の到達の制限（NFR-18・IADR-0674・opt-in の段 1）
+## otel-collector の到達の制限（NFR-18・IADR-0682・opt-in の段 1）
 
 collector（`app: otel-collector`）へ届いてよい相手と、collector が出てよい先を NetworkPolicy で絞る。**既定の経路 B には入れない**（opt-in）。
 

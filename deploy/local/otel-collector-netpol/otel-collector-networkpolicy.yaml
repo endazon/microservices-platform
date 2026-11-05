@@ -1,4 +1,4 @@
-# NFR-18, IADR-0674: otel-collector（platform-infra の `app: otel-collector`）へ届いてよい相手と、collector が出てよい先。
+# NFR-18, IADR-0682: otel-collector（platform-infra の `app: otel-collector`）へ届いてよい相手と、collector が出てよい先。
 #
 # 届いてよい相手（ingress）:
 #   - OTLP gRPC 4317 … microservices-platform と ai-stock-trading の名前空間の Pod（helm の global.otel.endpoint / 取引ユニットの otlpEndpoint）

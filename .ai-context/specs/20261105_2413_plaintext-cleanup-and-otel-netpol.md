@@ -2,7 +2,7 @@
 title: 作業仕様書 — 復号物・秘密を手元に残さない形へ揃え（リストア試験・手順書）、otel-collector の到達を opt-in で絞る（#2413）
 type: spec
 status: done
-related_ids: [NFR-18, NFR-21, IADR-0471, IADR-0589, IADR-0674]
+related_ids: [NFR-18, NFR-21, IADR-0471, IADR-0589, IADR-0682]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05

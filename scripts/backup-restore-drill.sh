@@ -13,7 +13,7 @@
 #      与えた TSV（--live-counts）と突き合わせる
 #   5. 使い捨てのコンテナを消す（失敗しても・止められても消す。名前の無いボリュームごと）
 #
-# 🔴 NFR-18, IADR-0674: 戻した DB は平文である。使い捨ての Postgres のデータ領域は tmpfs（メモリ）に置き、ディスクへ書かない。
+# 🔴 NFR-18, IADR-0682: 戻した DB は平文である。使い捨ての Postgres のデータ領域は tmpfs（メモリ）に置き、ディスクへ書かない。
 #    イメージは VOLUME を宣言しているので、tmpfs が無いと名前の無いボリュームに平文が残る。片付けは `rm -f -v` でボリュームも消す。
 #
 # 判定:
@@ -87,7 +87,7 @@ DRILL_NAME=""
 DRILL_WORK=""
 # 使い捨てのコンテナと作業ファイル（行数の TSV だけ。平文のダンプは置かない）を片付ける。
 # 🔴 再帰削除をしない —— 作ったファイルを名前で消してから rmdir する。
-# 🔴 NFR-18, IADR-0674: `-v` で名前の無いボリュームも消す（データ領域は tmpfs だが、イメージの他の VOLUME や別のイメージに備える）。
+# 🔴 NFR-18, IADR-0682: `-v` で名前の無いボリュームも消す（データ領域は tmpfs だが、イメージの他の VOLUME や別のイメージに備える）。
 drill_cleanup() {
 	if [ -n "$DRILL_NAME" ] && [ -n "$DRILL_CLI" ]; then
 		"$DRILL_CLI" rm -f -v "$DRILL_NAME" >/dev/null 2>&1 || true
@@ -153,7 +153,7 @@ main() {
 	DRILL_NAME="platform-backup-drill-$$"
 	DRILL_WORK="$(mktemp -d)"
 	trap drill_cleanup EXIT
-	# NFR-18, IADR-0674: 止められた（Ctrl-C・SIGTERM・端末の切断）ときも EXIT の片付けへ進める（シグナルで落ちると EXIT の trap が走らない）。
+	# NFR-18, IADR-0682: 止められた（Ctrl-C・SIGTERM・端末の切断）ときも EXIT の片付けへ進める（シグナルで落ちると EXIT の trap が走らない）。
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
 	trap 'exit 129' HUP
@@ -166,7 +166,7 @@ main() {
 	log "使い捨ての Postgres を起こします（$image・--network none）"
 	# #2391: `--rm` を付けない。containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（drill_cleanup の rm -f -v）が
 	#    成功・失敗の両方で持つ。
-	# NFR-18, IADR-0674: データ領域（PGDATA）は tmpfs。戻した平文をディスク（名前の無いボリューム）へ書かない。大きさはメモリが上限になる。
+	# NFR-18, IADR-0682: データ領域（PGDATA）は tmpfs。戻した平文をディスク（名前の無いボリューム）へ書かない。大きさはメモリが上限になる。
 	if ! "$cli" run -d --network none --name "$name" --tmpfs /var/lib/postgresql/data -e PGDATA=/var/lib/postgresql/data \
 		-e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
 		err "コンテナを起こせません（$cli）"; return 1
@@ -330,7 +330,7 @@ STUB
 	lacks 'T-1560-37 秘密鍵の中身が出力に出ない' "$OUT" "$secret"
 	lacks 'T-1560-37 秘密鍵の中身がどのコマンドの引数にも出ない' "$LOG" "$secret"
 	has 'T-1560-37 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f -v platform-backup-drill-'
-	# NFR-18, IADR-0674: 戻した DB（平文）をディスクへ残さない。データ領域はメモリ（tmpfs）に置き、名前の無いボリュームも消す。
+	# NFR-18, IADR-0682: 戻した DB（平文）をディスクへ残さない。データ領域はメモリ（tmpfs）に置き、名前の無いボリュームも消す。
 	has 'T-NFR18-01 使い捨ての Postgres のデータ領域を tmpfs に置く' "$(grep ' run ' "$log_file")" '--tmpfs /var/lib/postgresql/data'
 	has 'T-NFR18-01 データ領域の場所をイメージの既定に任せない（PGDATA を tmpfs に固定する）' "$(grep ' run ' "$log_file")" '-e PGDATA=/var/lib/postgresql/data'
 	lacks 'T-NFR18-02 片付けはボリュームを残す rm -f（-v なし）を使わない' "$LOG" 'docker rm -f platform-backup-drill-'
@@ -343,7 +343,7 @@ STUB
 	eq 'T-1560-38 戻せなければ失敗' "$RC" "1"
 	has 'T-1560-38 失敗しても使い捨てのコンテナを消す（ボリュームごと）' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
 
-	# NFR-18, IADR-0674: コンテナを起こせなかった（途中まで作られ得る）・止められた（SIGTERM）経路でも、ボリュームごと消す。
+	# NFR-18, IADR-0682: コンテナを起こせなかった（途中まで作られ得る）・止められた（SIGTERM）経路でも、ボリュームごと消す。
 	: > "$log_file"
 	: > "$w/state/run-fail"
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc)"; RC=$?
