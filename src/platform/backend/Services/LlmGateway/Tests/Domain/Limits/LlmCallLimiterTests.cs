@@ -14,7 +14,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace LlmGateway.Tests.Domain.Limits;
 
-// NFR-18, NFR-21, ADR-0044, IADR-0672 (#2404): 送る前の上限の判定器（LlmCallLimiter）の単体試験。
+// NFR-18, NFR-21, ADR-0044, IADR-0678 (#2404): 送る前の上限の判定器（LlmCallLimiter）の単体試験。
 // 時刻は FakeTimeProvider で進める（60 秒の窓・UTC の日付の切り替わり）。
 // 計器は共有 Meter へ発行するので SharedMeterCollection に入る（IADR-0394）。
 [Collection(SharedMeterCollection.Name)]

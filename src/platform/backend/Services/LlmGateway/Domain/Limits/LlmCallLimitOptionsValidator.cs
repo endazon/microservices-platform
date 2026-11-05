@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Domain.Limits;
 
-// NFR-18, IADR-0672 (#2404): 送る前の上限の設定を起動時に検証する（ValidateOnStart）。
+// NFR-18, IADR-0678 (#2404): 送る前の上限の設定を起動時に検証する（ValidateOnStart）。
 //
 // 0 以下の上限は「常に超過」になり、段 2 では全件を止める。用途の綴り違いは「上限を設定した」と
 // 読めるのに 1 件も数えない。**どちらも配備の失敗として表に出す**（LlmBudgetOptionsValidator と同じ判断）。

@@ -3,7 +3,7 @@ using System.Diagnostics.Metrics;
 
 namespace LlmGateway.Common.Observability;
 
-// NFR-18, NFR-21, IADR-0672 決定 4 (#2404): 送る前の上限を超えた呼び出しの件数。
+// NFR-18, NFR-21, IADR-0678 決定 4 (#2404): 送る前の上限を超えた呼び出しの件数。
 //
 // 段 1（Report）では「止めていたら止まった件数」、段 2（Enforce）では「止めた件数」である。
 // **段 2 へ切り替える前に、この系列（llm.limit.mode=report）で誤って止める呼び手が無いことを確かめる。**

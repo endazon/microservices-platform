@@ -5,17 +5,17 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Domain.Limits;
 
-// NFR-18, NFR-21, FR-11, ADR-0044, IADR-0672 (#2404): **送る前の呼び出しの上限の唯一の判定器。**
+// NFR-18, NFR-21, FR-11, ADR-0044, IADR-0678 (#2404): **送る前の呼び出しの上限の唯一の判定器。**
 //
 // `CompletionUseCase` の一括・逐次の両方が、プロバイダへ送る直前にここを呼ぶ（判定器を 2 つにしない。
 // IADR-0400 決定 2 と同型）。輸送（REST・gRPC）は呼び手の名前を渡すだけである。
 //
-// 🔴 **呼び手は検証済みのトークンの主体、用途は計器と同じ正規化の後の値で数える**（IADR-0672 決定 3）。
+// 🔴 **呼び手は検証済みのトークンの主体、用途は計器と同じ正規化の後の値で数える**（IADR-0678 決定 3）。
 // 用途の名前を変えても `other` の 1 つの枠に入り、枠を分けられない。
 // 🔴 **合成監視の標識が付いた呼び出しも数える。** 費用の計上から外すこと（IADR-0378）と上限から外すことは別である。
-// 🔴 **段 1（Report）は送信を止めない。** 止めるのは Enforce のときだけ（IADR-0672 決定 4）。
+// 🔴 **段 1（Report）は送信を止めない。** 止めるのは Enforce のときだけ（IADR-0678 決定 4）。
 //
-// 状態はプロセス内（IADR-0672 決定 5・残余 1）。鍵の数は「呼び手 × 正規化した用途」で閉じる。
+// 状態はプロセス内（IADR-0678 決定 5・残余 1）。鍵の数は「呼び手 × 正規化した用途」で閉じる。
 public sealed class LlmCallLimiter(
     IOptionsMonitor<LlmCallLimitOptions> options,
     IOptionsMonitor<LlmRoutingOptions> routing,
@@ -68,7 +68,7 @@ public sealed class LlmCallLimiter(
         if (maxTokens <= 0 || maxTokens > o.MaxOutputTokens) exceeded.Add(KindMaxTokens);
         if (promptChars > o.MaxPromptChars) exceeded.Add(KindPromptLength);
 
-        // 費用の上限が無い呼び手では換算しない（単価表の警告を増やさない。IADR-0672 決定 2）。
+        // 費用の上限が無い呼び手では換算しない（単価表の警告を増やさない。IADR-0678 決定 2）。
         decimal? estimate = null;
         if (limits.HasCostLimit)
         {
@@ -93,7 +93,7 @@ public sealed class LlmCallLimiter(
                     exceeded.Add(KindPurposeCost);
             }
 
-            // 段 2 で止めた呼び出しは枠を消費しない（IADR-0672 決定 4）。
+            // 段 2 で止めた呼び出しは枠を消費しない（IADR-0678 決定 4）。
             if (!(enforce && exceeded.Count > 0))
             {
                 Enqueue(callerKey, now);

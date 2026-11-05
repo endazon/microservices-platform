@@ -26,7 +26,7 @@ public static class CompleteEndpoint
             // 判定は単一情報源（SyntheticTraffic）にあり、gRPC 面は同じ関数を
             // ServerCallContext.GetHttpContext().Request から呼ぶ。
             var isSynthetic = SyntheticTraffic.IsSyntheticInternalRequest(http.Request);
-            // NFR-18, IADR-0672 決定 3 (#2404): 上限を数える呼び手は**検証済みのトークンの主体**から決める。
+            // NFR-18, IADR-0678 決定 3 (#2404): 上限を数える呼び手は**検証済みのトークンの主体**から決める。
             return Results.Ok(await useCase.ExecuteAsync(req, isSynthetic, ct, MachinePrincipal.ClientIdOf(http.User)));
         })
             .WithName("Complete")

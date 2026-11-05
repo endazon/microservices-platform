@@ -2,7 +2,7 @@
 title: 作業仕様書 — LLM ゲートウェイの呼び出しの上限を、送る前に呼び手ごとに判定する（段 1 は報告・強制は設定の切り替え。#2404）
 type: spec
 status: done
-related_ids: [NFR-18, NFR-21, FR-10, FR-11, ADR-0010, ADR-0044, IADR-0378, IADR-0424, IADR-0466, IADR-0672]
+related_ids: [NFR-18, NFR-21, FR-10, FR-11, ADR-0010, ADR-0044, IADR-0378, IADR-0424, IADR-0466, IADR-0678]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05
@@ -22,7 +22,7 @@ issue: "#2404"
 - 門（`ServiceCaller`）は realm ロール `platform-service` を見る。**呼び手（サービスアカウント）ごとの量の区別は無い**。
 - llmgateway のレプリカは 1（`deploy/helm/microservices-platform/values.yaml` の `llmgateway.replicas`）。
 
-## 方針（IADR-0672）
+## 方針（IADR-0678）
 
 1. **判定は 1 か所**（`LlmCallLimiter`）に置き、一括と逐次の両方が `CompletionUseCase` の中で同じ判定を通る（判定器を 2 つにしない。IADR-0400 決定 2 と同型）。
 2. 判定する上限（送る前に）:

@@ -41,7 +41,7 @@ public static class CompletionFailureKinds
     // 呼び出し先が例外を返した（HTTP 4xx/5xx・輸送の失敗）。HTTP 状態が取れれば UpstreamStatusCode に載る。
     public const string UpstreamError = "upstream_error";
 
-    // NFR-18, IADR-0672 (#2404): 送る前の上限（max_tokens・プロンプト長・呼び手ごとの要求数・当日の費用）を超えたため
+    // NFR-18, IADR-0678 (#2404): 送る前の上限（max_tokens・プロンプト長・呼び手ごとの要求数・当日の費用）を超えたため
     // 送信しなかった（ゲートウェイの段 2 でだけ返る）。要求数・費用は時間が経てば変わり得る。Text に超えた種類が載る。
     public const string LimitExceeded = "limit_exceeded";
 }

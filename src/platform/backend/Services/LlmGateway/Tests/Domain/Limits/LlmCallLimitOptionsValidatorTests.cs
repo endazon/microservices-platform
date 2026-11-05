@@ -4,7 +4,7 @@ using LlmGateway.Domain.Routing;
 
 namespace LlmGateway.Tests.Domain.Limits;
 
-// NFR-18, IADR-0672 (#2404): 送る前の上限の設定の起動時検証。
+// NFR-18, IADR-0678 (#2404): 送る前の上限の設定の起動時検証。
 // 0 以下の上限は段 2 で全件を止め、綴り違いの用途は「設定した」と読めるのに 1 件も数えない。どちらも起動で落とす。
 [Trait("TestKind", "Unit")]
 public class LlmCallLimitOptionsValidatorTests

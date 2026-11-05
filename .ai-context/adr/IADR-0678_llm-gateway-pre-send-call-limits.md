@@ -1,5 +1,5 @@
 ---
-title: IADR-0672 LLM ゲートウェイは送る前に、入力の上限と、呼び手ごと・呼び手×用途ごとの要求数と当日の費用（見込み額を含む）を 1 か所で判定する。段 1 は報告だけ、段 2 は設定の切り替えで Sent=false にする（#2404）
+title: IADR-0678 LLM ゲートウェイは送る前に、入力の上限と、呼び手ごと・呼び手×用途ごとの要求数と当日の費用（見込み額を含む）を 1 か所で判定する。段 1 は報告だけ、段 2 は設定の切り替えで Sent=false にする（#2404）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-21, FR-10, FR-11, ADR-0010, ADR-0044, IADR-0378, IADR-0400, IADR-0424, IADR-0466]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2404_llm-gateway-call-limits.md
 ---
 
-# IADR-0672: LLM ゲートウェイの送る前の呼び出しの上限（#2404）
+# IADR-0678: LLM ゲートウェイの送る前の呼び出しの上限（#2404）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

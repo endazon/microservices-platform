@@ -318,6 +318,16 @@ infra_cred_existing() { # <Secret 名> <キー> → 既存の値（無ければ�
   kubectl -n "$INFRA_NS" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null | base64 -d 2>/dev/null || true
 }
 infra_cred_resolve "k8s-local-up.sh" infra_cred_existing || exit 1
+# NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 段階の対象（DB の管理者・DB 利用者の 2 つの Secret・オブジェクトストレージ・
+#   VAULT=1 のときの秘匿管理の管理者トークン）も同じ口で決める。明示 ＞ 既存の Secret（開発用でない）の値。どちらも無ければ、
+#   dev の context は従前どおり開発用の値・dev ではない context は段 1 で警告して作る（INFRA_CREDENTIALS_ENFORCE=1 で止める）。
+#   既存の値を使うので、作り直した値（scripts/rotate-infra-credentials.sh）が再実行で戻らない。選んだ値は export する。
+infra_cred_staged_existing() { # <infra|msp> <Secret 名> <キー> → 既存の値（無ければ空）。値は出力しない
+  local ns="$INFRA_NS"
+  [ "$1" = "msp" ] && ns="$MSP_NS"
+  kubectl -n "$ns" get secret "$2" -o "jsonpath={.data.$3}" 2>/dev/null | base64 -d 2>/dev/null || true
+}
+infra_cred_staged_resolve "k8s-local-up.sh" infra_cred_staged_existing "$(dev_client_secret_current_context)" || exit 1
 
 # NFR, ADR-0021, IADR-0317 (#1691): **入口がすでに Istio Ingress Gateway へ移っているかを、クラスタの状態で読む。**
 #   前回の istio-edge-up.sh が HelmChartConfig kube-system/traefik を `service.enabled: false`
@@ -481,7 +491,7 @@ kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f
 # **非 optional** に消費されるため、Vault/ESO がまだ存在しないこの時点で手動作成が必須（bootstrap）。よって PR-1〜3 と
 # 異なり **ESO=1 でも手動 apply をスキップしない**。ESO はこの後の ESO ブロックで `creationPolicy: Merge` の
 # ExternalSecret を適用し、既存 Secret に **同一値を上書きするだけ**（所有・再作成しない）で本番同等の供給経路を配線する。
-apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
+apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:?}"  # IADR-0672: 値は [1/7] の直後で決めた
 # NFR, #1022: ブローカ自身の資格情報（利用者名・パスワード）を Secret 由来にする。
 # deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
 # NFR-18, IADR-0577: サービスはこのユーザーで名乗らない（サービスごとのユーザー。users.txt）。既定のユーザーはブローカの
@@ -953,11 +963,11 @@ fi
 # （サーバとクライアント双方が読む Secret であり、次に製品が替わっても名前を変えずに済むようにする）。
 if [ "${ESO:-}" != "1" ]; then
   apply_secret "$MSP_NS" object-storage-credentials \
-    "accessKey=${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}" "secretKey=${OBJECT_STORAGE_SECRET_KEY:-objectstorage-dev-secret}"
+    "accessKey=${OBJECT_STORAGE_ACCESS_KEY:-objectstorage-dev}" "secretKey=${OBJECT_STORAGE_SECRET_KEY:?}"  # IADR-0672
   # NFR, ADR-0002, #1012: サービス DB のパスワード。**appsettings.json から接続文字列を撤去した**ため、
   # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
   # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
-  apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:-kp}"
+  apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:?}"  # IADR-0672
   # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: ブローカのサービスごとのユーザー。
   #   ESO を使わない経路でも共通の 1 組へ戻さない —— ブローカ側の写し（platform-infra/rabbitmq-users）と消費側
   #   （microservices-platform/msp-rabbitmq-users）を、既存の値＞乱数で作り、ブローカへ合わせてから helm へ進む
@@ -968,7 +978,7 @@ if [ "${ESO:-}" != "1" ]; then
     echo "ERROR: ブローカのサービスごとのユーザーを合わせられない。bash deploy/local/rabbitmq-setup/reconcile-users.sh で再実行できる" >&2
     exit 1
   fi
-  apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
+  apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:?}"  # IADR-0672
   # FR-13, IADR-0327 (#1108): 🔴 **発行済みの API キーを空で潰さない。**
   # Wiki.js のセットアップ後、`deploy/local/wikijs-setup/bootstrap.sh` がここへ実キーを書き戻す。
   # 素直に `apiKey=${WIKIJS_SYNC_APIKEY:-}` で apply すると、**up を再実行するたびに空へ戻り**、
@@ -1233,7 +1243,7 @@ platform_backup_vault_bootstrap() {
 if [ "${VAULT:-}" = "1" ]; then
   echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
   # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
-  apply_secret "$INFRA_NS" vault-dev-token "token=${VAULT_DEV_ROOT_TOKEN:-devroot}"
+  apply_secret "$INFRA_NS" vault-dev-token "token=${VAULT_DEV_ROOT_TOKEN:?}"  # IADR-0672: 値は [1/7] の直後で決めた（既存の値を引き継ぐ）
   # IADR-0094 (#353): Keycloak OIDC の client secret（平文コミットしない・dev 既定 or env 上書き）。
   # Vault OIDC は runtime 設定のため vault-dev.yaml へは注入せず、bootstrap（deploy/local/vault/oidc/bootstrap.sh）が
   # 本 Secret を読んで `vault write auth/oidc/config` へ渡す。

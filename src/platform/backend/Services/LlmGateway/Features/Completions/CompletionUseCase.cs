@@ -31,7 +31,7 @@ namespace LlmGateway.Features.Completions;
 // `FailureKind` を名乗る**（越境拒否・プロバイダ未登録・上流不調）。上流不調は HTTP 状態も載せる。
 // 呼び出し側が文言（Text）を解釈せずに原因を記録し分けられるようにするためである。
 //
-// 🔴 NFR-18, NFR-21, IADR-0672 (#2404): **送る直前に上限の判定器（LlmCallLimiter）を通す**（一括・逐次の両方）。
+// 🔴 NFR-18, NFR-21, IADR-0678 (#2404): **送る直前に上限の判定器（LlmCallLimiter）を通す**（一括・逐次の両方）。
 // 段 1（Report）は判定して報告するだけで送信の挙動を変えない。段 2（Enforce）で超えた呼び出しは
 // `Sent=false`・`FailureKind=limit_exceeded` で返す（例外にしない）。`caller` は輸送が検証済みのトークンから決めて渡す。
 public sealed class CompletionUseCase(
@@ -84,7 +84,7 @@ public sealed class CompletionUseCase(
                 FailureKind: CompletionFailureKinds.ProviderMissing);
         }
 
-        // NFR-18, IADR-0672 決定 1 (#2404): 送る前の上限。見込み額の換算にモデルが要るので越境判定の後に置く。
+        // NFR-18, IADR-0678 決定 1 (#2404): 送る前の上限。見込み額の換算にモデルが要るので越境判定の後に置く。
         var admission = limiter.Admit(caller, purpose, decision.Model, PromptChars(req), req.MaxTokens);
         if (admission.Denied)
         {
@@ -96,7 +96,7 @@ public sealed class CompletionUseCase(
                 FailureKind: CompletionFailureKinds.LimitExceeded);
         }
 
-        // IADR-0672 決定 2: 送れなかった（上流の失敗・取り消し）ときは見込みを戻す。Settle の後の Release は何もしない。
+        // IADR-0678 決定 2: 送れなかった（上流の失敗・取り消し）ときは見込みを戻す。Settle の後の Release は何もしない。
         try
         {
             // FR-11, ADR-0038 決定 3 (#863): 第 1 候補 → フォールバック順序 の順に試す。
@@ -114,7 +114,7 @@ public sealed class CompletionUseCase(
                     var result = await provider.CompleteAsync(
                         new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model, purpose, req.CacheablePrefix), ct);
                     CompletionEndpoints.LogStopReason(logger, result.StopReason, attempt);
-                    // IADR-0672 決定 2: 見込み額を実額へ置き換える（実際に投げたモデルの単価）。
+                    // IADR-0678 決定 2: 見込み額を実額へ置き換える（実際に投げたモデルの単価）。
                     admission.Settle(
                         attempt.Model, result.InputTokens, result.OutputTokens,
                         new PromptCacheTokens(result.CacheCreationInputTokens, result.CacheReadInputTokens));
@@ -232,7 +232,7 @@ public sealed class CompletionUseCase(
             yield break;
         }
 
-        // NFR-18, IADR-0672 決定 1 (#2404): 送る前の上限（一括と同じ判定器）。
+        // NFR-18, IADR-0678 決定 1 (#2404): 送る前の上限（一括と同じ判定器）。
         var admission = limiter.Admit(caller, purpose, decision.Model, PromptChars(req), req.MaxTokens);
         if (admission.Denied)
         {
@@ -423,7 +423,7 @@ public sealed class CompletionUseCase(
                 RecordUnfinishedUsage(LlmUsageMetrics.IncompleteCancelled);
             }
 
-            // IADR-0672 決定 2: 見込み額を、実数（Done）か判明分で置き換える。どちらも無ければ戻す。
+            // IADR-0678 決定 2: 見込み額を、実数（Done）か判明分で置き換える。どちらも無ければ戻す。
             if (sawDone)
                 admission.Settle(decision.Model, inputTokens, outputTokens, new PromptCacheTokens(cacheWrite, cacheRead));
             else if (knownInput > 0 || knownOutput > 0)
@@ -452,7 +452,7 @@ public sealed class CompletionUseCase(
         }
     }
 
-    // IADR-0672 (#2404): 判定に使うプロンプトの長さ（モデルが読む全文 = 接頭辞 + 本文）。
+    // IADR-0678 (#2404): 判定に使うプロンプトの長さ（モデルが読む全文 = 接頭辞 + 本文）。
     private static int PromptChars(CompletionApiRequest req)
         => (int)Math.Min(int.MaxValue, (long)(req.CacheablePrefix?.Length ?? 0) + (req.Prompt?.Length ?? 0));
 

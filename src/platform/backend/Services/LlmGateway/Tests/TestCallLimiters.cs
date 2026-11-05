@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LlmGateway.Tests;
 
-// NFR-18, IADR-0672 (#2404): 判定器（CompletionUseCase）を直接組む試験が使う上限の判定器。
+// NFR-18, IADR-0678 (#2404): 判定器（CompletionUseCase）を直接組む試験が使う上限の判定器。
 // 既定（Report）なら送信の挙動を変えないので、上限が主題でない試験は既定のまま渡せばよい。
 internal static class TestCallLimiters
 {

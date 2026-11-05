@@ -10,7 +10,7 @@ using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace LlmGateway.Tests.Features.Completions;
 
-// NFR-18, NFR-21, FR-11, ADR-0044, IADR-0672 (#2404): 送る前の呼び出しの上限を REST の面（POST /complete）で固定する。
+// NFR-18, NFR-21, FR-11, ADR-0044, IADR-0678 (#2404): 送る前の呼び出しの上限を REST の面（POST /complete）で固定する。
 //
 // 🔴 **段 1（Report・既定）は送信を止めない。段 2（Enforce）は送らずに Sent=false・FailureKind=limit_exceeded で返す。**
 // 呼び出しが送られたかどうかは、スタブの本文（"テスト回答"）が返ったかで見る。

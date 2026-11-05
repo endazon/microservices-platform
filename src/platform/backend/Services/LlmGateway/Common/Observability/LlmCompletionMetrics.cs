@@ -43,7 +43,7 @@ public sealed class LlmCompletionMetrics
     public const string ResultEgressDenied = CompletionFailureKinds.EgressDenied;       // 機密区分により送信しなかった
     public const string ResultProviderMissing = CompletionFailureKinds.ProviderMissing; // 呼び出し先プロバイダ未登録
     public const string ResultUpstreamError = CompletionFailureKinds.UpstreamError;     // 呼び出し先が不調（例外）
-    public const string ResultLimitExceeded = CompletionFailureKinds.LimitExceeded;     // IADR-0672: 送る前の上限で送らなかった（段 2）
+    public const string ResultLimitExceeded = CompletionFailureKinds.LimitExceeded;     // IADR-0678: 送る前の上限で送らなかった（段 2）
     // ADR-0038 決定 6 (#863), IADR-0225: 上流が HTTP 400 系を返し、**次の候補モデルへ切り替えた**呼び出し。
     // フォールバックが起きた 1 リクエストは 2 回計上される（見送った第 1 候補が fallback、
     // 成功した第 2 候補が sent）。llm.model が候補ごとに違うため、用途別・モデル別の利用実績として読める。

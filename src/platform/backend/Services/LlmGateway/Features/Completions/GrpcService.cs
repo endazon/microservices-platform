@@ -78,7 +78,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
     private static bool IsSynthetic(ServerCallContext context) =>
         SyntheticTraffic.IsSyntheticInternalRequest(context.GetHttpContext().Request);
 
-    // NFR-18, IADR-0672 決定 3 (#2404): 上限を数える呼び手（検証済みのトークンの主体。REST と同じ関数）。
+    // NFR-18, IADR-0678 決定 3 (#2404): 上限を数える呼び手（検証済みのトークンの主体。REST と同じ関数）。
     private static string? Caller(ServerCallContext context) =>
         MachinePrincipal.ClientIdOf(context.GetHttpContext().User);
 }
