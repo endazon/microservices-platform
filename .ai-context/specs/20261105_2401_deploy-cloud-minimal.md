@@ -40,7 +40,7 @@ issue: "#2401"
 2. `deploy/cloud/values-cloud.yaml`: LLM ゲートウェイだけを on。chart の NetworkPolicy は描かない（入り・出とも `deploy/cloud/infra/networkpolicy.yaml`。［2026-11-05 追記 / #2401］レビューの 🔴：chart の `fromAst` は `networkPolicy.enabled` の内側で、`enabled=false` では描かれなかった）。メッシュ・エッジ・HPA/PDB・同期の後の確かめは off。
 3. 資格情報: `deploy/cloud/bootstrap-secrets.sh --live` が**初回に乱数で作る**（在れば触らない）。利用者名も乱数の接尾辞。realm は `realm-for-cloud.js` が宣言から組む。証明書はその場の CA で発行し、CA の鍵は保存しない。秘密の値はリポジトリに置かない（暗号化したファイルも置かない）。
 4. 秘匿管理（OpenBao / ESO）は持ち込まない（IADR-0674 決定 4）。Secret は k3s の保存時の暗号化（`--secrets-encryption`）とデータの領域の LUKS で守る。
-5. 手順書 `deploy/cloud/README.md`: ファイアウォール（SSH だけ）・SSH の鍵認証・LUKS・chrony・更新と再起動の時間帯（JST 07:00〜21:00）・k3s のフラグ（traefik・servicelb を外す・`--secrets-encryption`・API サーバーはループバック）・SSH のトンネル・イメージの取り込みと digest の記録・配備の順序。
+5. 手順書 `deploy/cloud/README.md`: ファイアウォール（SSH だけ）・SSH の鍵認証・LUKS・chrony・更新の時間帯（JST 07:00〜21:00。［2026-11-05 追記 / #2401］自動の再起動はしない）・k3s のフラグ（traefik・servicelb を外す・`--secrets-encryption`・API サーバーはループバック）・SSH のトンネル・イメージの取り込みと digest の記録・配備の順序。
 
 ## 受け入れ基準と試験の写像
 
@@ -57,7 +57,7 @@ issue: "#2401"
 | AC9 | 手順書の項目（ファイアウォール・k3s のフラグ・LUKS・chrony・更新の時間帯・digest） | 同 |
 | AC10 | deploy/local は deploy/cloud を参照しない（ローカルの描画は変わらない。本 PR は deploy/local のファイルを変えない） | 同 |
 | AC11 | Postgres は TCP を hostssl だけで受け、認証は scram-sha-256 だけ（host・hostnossl・trust・md5 が無い）。空のボリュームからの初回起動が通る（実物のイメージ） | `scripts/deploy-cloud.test.js`・`scripts.repo.test.js`（陰性対照つき）・`scripts/deploy-cloud-postgres.test.js`（docker。CI。宣言を弱めると赤になることを確かめた） |
-| AC12 | RabbitMQ はデータを PVC に置き、ノード名を固定し、Recreate で替わる（無人の再起動でキュー・持続のメッセージを失わない） | 同 |
+| AC12 | RabbitMQ はデータを PVC に置き、ノード名を固定し、Recreate で替わる（再起動でキュー・持続のメッセージを失わない） | 同 |
 | AC13 | LLM ゲートウェイの受け口は TLS だけ（https・証明書は Secret `llmgateway-tls`・probe は HTTPS・gRPC の h2c の受け口が無い）。`tls` と `grpcPort` の併記は描画で止まる。bootstrap が同じ CA で証明書を発行する | `scripts/deploy-cloud.test.js`（陰性対照つき）・`scripts.repo.test.js`（値・bootstrap の証明書の検証） |
 | AC14 | LLM ゲートウェイはルートのファイルシステムを読み取り専用にし、書き込みは `/tmp` の emptyDir だけ | 同 |
 | AC15 | Keycloak はクラスタの中だけ（基盤の Service は ClusterIP と明示・別名は ExternalName だけ）。描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）が無い | 同（陰性対照つき） |
@@ -68,6 +68,7 @@ issue: "#2401"
 - ［2026-11-05 追記 / #2401］監査の P-1・P-2 で、LLM ゲートウェイの受け口の TLS（アプリで。メッシュは入れない）と読み取り専用のルートを足した（AC13・AC14。IADR-0674 決定 2a・2b）。chart には opt-in の口（`services.<名>.tls`・`readOnlyRootFilesystem`）を足し、既定の描画は変えない。
   証明書の組が一部だけ在るとき、bootstrap は作り直さずに止める（レビューの 🟢。試験で固定）。
   監査の T-1 で、Keycloak をクラスタの中だけに置くこと（AC15）を描画の試験で固定した。
+  再レビューの 🟡 で、k3s が LUKS のマウントの前に起動しないこと（drop-in の `ConditionPathIsMountPoint` と `systemctl disable k3s`）と、自動の再起動をしないこと（`Automatic-Reboot "false"`。IADR-0674 残余 4）を手順書に入れ、手順書の試験で固定した（AC9）。
 - 🔴 手元に helm・kubectl が無い（導入しない）ので、`scripts/deploy-cloud.test.js` の描画は CI で確かめる。基盤の判定は、宣言そのものへ同じ関数を当てて手元でも確かめた。
 
 ## 対象外（issue の関連）

@@ -1,7 +1,7 @@
 # NFR-18, IADR-0674 (#2401): ブローカ。deploy/local/infra/rabbitmq.yaml を写した（Deployment・TLS・起動時のユーザーの復元は同じ）。
 # 変えたもの: 到達の制限（NetworkPolicy）は networkpolicy.yaml に取引ユニットのサービスだけで置く（MSP のサービスはブローカを使わない）。
 #   既定のユーザーの無効化の印（rabbitmq-default-user）を最初から立てる（サービスごとのユーザーが揃えば、起動のたびに既定のユーザーを消す）。
-#   データ（/var/lib/rabbitmq）を PVC へ置く。クラウドは無人で再起動するので、キュー・exchange・持続（persistent）のメッセージを
+#   データ（/var/lib/rabbitmq）を PVC へ置く。ノードやブローカの再起動（更新・障害）の後へ、キュー・exchange・持続（persistent）のメッセージを
 #   再起動の後へ残す。ノード名を固定する（既定はホスト名＝Pod 名で、Pod が替わるたびに別のデータの置き場を作る）。PVC と両立するよう Recreate。
 #   メッセージが残るのは、キューが durable で、送り手が persistent で出したものだけ（Wolverine は送り先の endpoint が Durable のときだけ persistent で出す）。
 # 🔴 イメージの digest は deploy/local/infra/rabbitmq.yaml と同じに保つ（試験が突き合わせる）。

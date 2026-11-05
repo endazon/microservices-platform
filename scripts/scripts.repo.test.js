@@ -20333,9 +20333,20 @@ echo "unhandled: $*" >&2; exit 9
     ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {
       const readme = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/README.md'), 'utf8');
       for (const want of [/SSH（TCP 22）だけ/, /80・443・6443・50000 は開けない/, /PasswordAuthentication no/, /--disable traefik --disable servicelb/, /--secrets-encryption/,
-        /--bind-address 127\.0\.0\.1/, /ssh -N -L 6443/, /LUKS/, /cryptsetup luksFormat/, /\/var\/lib\/rancher/, /chrony/, /JST 07:00〜21:00/, /Automatic-Reboot-Time/, /ctr images import/, /digest を記録/, /825 日/, /期限の 30 日前まで/, /openssl x509 -noout -enddate/]) {
+        /--bind-address 127\.0\.0\.1/, /ssh -N -L 6443/, /LUKS/, /cryptsetup luksFormat/, /\/var\/lib\/rancher/, /chrony/, /JST 07:00〜21:00/, /Unattended-Upgrade::Automatic-Reboot "false";/, /\/var\/run\/reboot-required/, /systemctl disable k3s/, /systemctl start k3s/, /mountpoint \/var\/lib\/rancher/, /wait --for=condition=Ready pod -l app=keycloak/, /ctr images import/, /digest を記録/, /825 日/, /期限の 30 日前まで/, /openssl x509 -noout -enddate/]) {
         assert.ok(want.test(readme), `手順書に ${want} が無い`);
       }
+      // 再起動の扱いと記述が食い違わない: 自動の再起動を有効にする設定が無い（「人が解錠する」と両立しない）。
+      assert.ok(!/Automatic-Reboot\s+"true"/.test(readme) && !/Automatic-Reboot-Time/.test(readme), '手順書が自動の再起動を設定している');
+      // k3s の drop-in: マウント点でなければ起動しない。インストールの後・イメージの節の前に置く（インストーラが enable した後に止める）。
+      const dropIn = readme.match(/\/etc\/systemd\/system\/k3s\.service\.d\/[^\s]+\.conf <<'EOF'\n([\s\S]*?)\nEOF\n/);
+      assert.ok(dropIn, 'k3s.service の drop-in が無い');
+      assert.match(dropIn[1], /^\[Unit\]$/m);
+      assert.match(dropIn[1], /^ConditionPathIsMountPoint=\/var\/lib\/rancher$/m);
+      assert.match(dropIn[1], /^RequiresMountsFor=\/var\/lib\/rancher$/m);
+      const at = (re) => readme.search(re);
+      assert.ok(at(/get\.k3s\.io/) < at(/ConditionPathIsMountPoint/) && at(/ConditionPathIsMountPoint/) < at(/^systemctl disable k3s/m) && at(/^systemctl disable k3s/m) < at(/^## 2\. /m), 'drop-in と disable が k3s のインストールの直後に無い');
+      assert.ok(at(/mountpoint \/var\/lib\/rancher/) < at(/^systemctl start k3s$/m), '解錠の手順でマウントを確かめる前に k3s を起こしている');
     });
 
     ok('IADR-0674: ローカルの PoC の宣言（deploy/local）は deploy/cloud を参照しない（クラウドの変更が描画へ混ざらない）', () => {

@@ -43,7 +43,8 @@ mkfs.ext4 /dev/mapper/rancher
 mkdir -p /var/lib/rancher && mount /dev/mapper/rancher /var/lib/rancher
 ```
 
-- 再起動の後は `cryptsetup open` と `mount` を人が行い、それから k3s を起こす（パスフレーズはノードに置かない）。
+- 再起動の後は `cryptsetup open` と `mount` を人が行い、それから k3s を起こす（パスフレーズはノードに置かない。手順は 1-5）。
+- **k3s は暗号化した領域をマウントする前に起動させない**（起動すると `/var/lib/rancher` がルートのディスクの上に平文で作られる）。1-4 の drop-in と `systemctl disable k3s` で止める。
 
 ### 1-3. 時刻同期・更新の時間帯
 
@@ -52,12 +53,14 @@ mkdir -p /var/lib/rancher && mount /dev/mapper/rancher /var/lib/rancher
   - `/etc/apt/apt.conf.d/52unattended-upgrades-local`:
 
     ```
-    Unattended-Upgrade::Automatic-Reboot "true";
-    Unattended-Upgrade::Automatic-Reboot-Time "08:30";
+    Unattended-Upgrade::Automatic-Reboot "false";
     ```
 
   - タイムゾーンは `timedatectl set-timezone Asia/Tokyo`。`apt-daily-upgrade.timer` の `OnCalendar` も JST 07:00〜21:00 の中に置く。
-  - 再起動の後は 1-2 の手順（`cryptsetup open`）が要る。無人で起きないので、時間帯の中で人が戻せる日に限る。
+  - **自動の再起動はしない**（`Automatic-Reboot "false"`）。無人で再起動すると、k3s が上がらないまま止まる（取引も止まる。平文は出ない）。
+    再起動が要る更新は `/var/run/reboot-required` が在ることで分かる（`ls /var/run/reboot-required` と、理由は `/var/run/reboot-required.pkgs`）。
+    人が JST 07:00〜21:00（米国の場の時間外）に `systemctl reboot` し、1-5 の手順で解錠して k3s を起こす。
+  - k3s が上がらないまま止まったことは、監視の外からの生存の確かめ（heartbeat。MSP#2402）で気付ける。
 
 ### 1-4. k3s
 
@@ -69,6 +72,20 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
   --write-kubeconfig-mode 0600" sh -
 ```
 
+インストールの**直後に**、k3s が暗号化した領域のマウントの前に起動しないようにする（二重に止める）:
+
+```sh
+mkdir -p /etc/systemd/system/k3s.service.d
+cat > /etc/systemd/system/k3s.service.d/10-require-encrypted-data.conf <<'EOF'
+[Unit]
+# /var/lib/rancher が LUKS の領域のマウント点でなければ起動しない（ルートのディスクに平文で作らない）。
+ConditionPathIsMountPoint=/var/lib/rancher
+RequiresMountsFor=/var/lib/rancher
+EOF
+systemctl daemon-reload
+systemctl disable k3s      # 起動時に自動で起こさない。マウントの後に人が systemctl start k3s する（1-5）
+```
+
 - `--disable traefik --disable servicelb`: 入口（Ingress・LoadBalancer）を持たない。描画にも LoadBalancer の Service と hostPort は無い（試験で固定）。
 - `--secrets-encryption`: Secret を保存時に暗号化する（`k3s secrets-encrypt status` で確かめる）。
 - **API サーバーは公開 IP に出さない**（`--bind-address 127.0.0.1`）。管理（kubectl・helm）は SSH のトンネル越しに行う:
@@ -76,6 +93,18 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
   ```sh
   ssh -N -L 6443:127.0.0.1:6443 <ノード>      # 手元の kubeconfig は https://127.0.0.1:6443 を向ける
   ```
+
+### 1-5. 再起動の後の解錠と k3s の起動（人が行う）
+
+```sh
+cryptsetup open /dev/disk/by-id/scsi-0HC_Volume_<id> rancher     # パスフレーズは対話で入れる
+mount /dev/mapper/rancher /var/lib/rancher
+mountpoint /var/lib/rancher                                       # 「is a mountpoint」を確かめてから起こす
+systemctl start k3s
+kubectl -n platform-infra get pods                                # すべてが Ready に戻るまで見る
+```
+
+- マウントせずに `systemctl start k3s` しても、drop-in の条件で起動しない（`systemctl status k3s` に条件が満たされない旨が出る）。
 
 ## 2. イメージ
 
@@ -98,10 +127,12 @@ kubectl apply -f deploy/cloud/infra/namespaces.yaml
 ANTHROPIC_API_KEY_FILE=<鍵の 0600 のファイル> bash deploy/cloud/bootstrap-secrets.sh --live   # 値は表示しない。在る Secret は触らない
 kubectl apply -k deploy/cloud/infra
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
+kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
 
+- **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットが読む Secret（`ast-db`・`rabbitmq-users`・
   `keycloak-client-secrets`）と CA（ConfigMap `platform-infra-ca`）の写し方も、取引ユニットの側の手順が持つ。
 
