@@ -1,0 +1,198 @@
+# NFR-18, IADR-0674 (#2401): クラウドの最小構成の到達の制限（入り・出の既定拒否と、要る組だけの許可）。
+# クラウドの外への口は SSH だけ（README のファイアウォール）。クラスタの中でも、基盤へ届くのは要る Pod だけにする。
+#
+# platform-infra:
+#   - 入り・出とも既定で拒否する。出は名前解決と同じ名前空間（Keycloak → Postgres）だけ。
+#   - Postgres ← 取引ユニットの DB を持つサービス・Keycloak。ブローカ ← 取引ユニットのブローカを使うサービス（users.txt の AST の行）。
+#   - Keycloak ← 取引ユニットの名前空間・MSP の LLM ゲートウェイ（トークンの発行・鍵の取得）。collector ← 取引ユニット・MSP。
+# microservices-platform（MSP は LLM ゲートウェイだけ）:
+#   - 出は既定で拒否する。LLM ゲートウェイだけに、名前解決・Keycloak・collector・クラスタの外の 443（提供元の API）を許す。
+#   - 入りも既定で拒否する。LLM ゲートウェイへは、取引ユニットの呼び出し元（報告書・取引判断）の 8080（REST）だけを許す。
+#     chart の fromAst の規則は networkPolicy.enabled の内側にあり、それを有効にすると chart の出の既定拒否も外せない
+#     （values-cloud.yaml は chart の NetworkPolicy を描かない）ので、入りもここで持つ。送り元と行き先は chart の fromAst.llmGateway と同じ。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: platform-infra
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-dns-and-intra-namespace
+  namespace: platform-infra
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress-clients
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: postgres } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: keycloak } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - audit-service
+                  - configuration-service
+                  - cost-control-service
+                  - market-monitor-service
+                  - order-execution-service
+                  - report-service
+                  - risk-management-service
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq-ingress-clients
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: rabbitmq } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - audit-service
+                  - backtest-service
+                  - configuration-service
+                  - cost-control-service
+                  - information-collection-service
+                  - market-monitor-service
+                  - notification-service
+                  - order-execution-service
+                  - report-service
+                  - risk-management-service
+                  - trade-decision-service
+      ports:
+        - { protocol: TCP, port: 5671 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-ingress-clients
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: keycloak } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
+          podSelector: { matchLabels: { app: llmgateway-service } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-ingress-clients
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: otel-collector } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
+      ports:
+        - { protocol: TCP, port: 4317 }
+        - { protocol: TCP, port: 4318 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: microservices-platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 送り元は「取引ユニットの名前空間 かつ 呼び出し元の Pod」（同じ from の要素に置く＝AND。分けると OR になり名前空間全体へ開く）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llmgateway-ingress-from-ast
+  namespace: microservices-platform
+spec:
+  podSelector: { matchLabels: { app: llmgateway-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [report-service, trade-decision-service]
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: microservices-platform
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llmgateway-egress
+  namespace: microservices-platform
+spec:
+  podSelector: { matchLabels: { app: llmgateway-service } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: keycloak } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: otel-collector } }
+      ports:
+        - { protocol: TCP, port: 4317 }
+    # 提供元の API（HTTPS）。クラスタの中・リンクローカル（メタデータの口）・私設の範囲へは、この許可では出さない。
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 443 }

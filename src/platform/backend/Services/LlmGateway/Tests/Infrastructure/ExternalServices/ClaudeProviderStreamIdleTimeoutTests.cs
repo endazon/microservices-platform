@@ -15,6 +15,9 @@ namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 //   ②呼び出し側の取り消し → OperationCanceledException（TimeoutException にしない）
 //   ③期限より短い間隔でイベントが届き続ける相手 → 全体が期限を超えても打ち切らない（時計はイベントごとに戻る）
 //   ④受け取り側（yield の先）が遅い → 打ち切らない（待つ間だけ時計を回す）
+// ［2026-11-06 / #2426］③④は実時間で測るので、期限と間隔の比を大きく取る（期限 5 秒に対して上流の間隔 0.2 秒以下）。
+//   期限 1 秒・間隔 0.4 秒では、CI の負荷で 1 回の間隔が期限を超えて遅れ、③が落ちた（製品の欠陥ではない）。
+//   変異で赤になる量（③は全体が期限を超える・④は受け取り側の遅れが期限を超える）は、期限より十分に大きく取る。
 //   ⑤設定の解決（未設定は Llm:AnthropicTimeoutSeconds に従う・有効値・不正値は warn）
 // 変異: 無通信の期限を外すと①が待ち続けて xUnit の上限で赤、時計を戻さないと③が赤、受け取り後に時計を止めないと④が赤。
 [Trait("TestKind", "Unit")]
@@ -41,6 +44,12 @@ public class ClaudeProviderStreamIdleTimeoutTests
 
     private static Dictionary<string, string?> IdleOneSecond() =>
         new() { [AnthropicClientFactory.StreamIdleConfigKey] = "1" };
+
+    // ③④の期限（#2426）。上流の間隔（0.2 秒以下）との比を 25 倍以上に取る。
+    private static readonly TimeSpan WideIdle = TimeSpan.FromSeconds(5);
+
+    private static Dictionary<string, string?> IdleWide() =>
+        new() { [AnthropicClientFactory.StreamIdleConfigKey] = ((int)WideIdle.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture) };
 
     private static CompletionRequest Request() => new("q", 512, "claude-sonnet-5-5", "rag-answer");
 
@@ -101,22 +110,20 @@ public class ClaudeProviderStreamIdleTimeoutTests
         (await act.Should().ThrowAsync<OperationCanceledException>()).Which.Should().NotBeOfType<TimeoutException>();
     }
 
-    // T-45 ③: 期限（1 秒）より短い間隔（0.4 秒）でイベントが届き続ける相手は、全体（約 2 秒）が期限を超えても打ち切らない。
-    // 時計を最初の 1 回だけ掛けて戻さない形にすると赤になる。
-    [Fact(Timeout = 15000)]
+    // T-45 ③: 期限（5 秒）より十分に短い間隔（0.2 秒）でイベントが届き続ける相手は、全体（約 7 秒）が期限を超えても打ち切らない。
+    // 時計を最初の 1 回だけ掛けて戻さない形にすると、期限（5 秒）の時点で打ち切られて赤になる。
+    [Fact(Timeout = 30000)]
     public async Task 期限より短い間隔で届き続ける相手は全体が期限を超えても打ち切らない()
     {
-        var gap = TimeSpan.FromMilliseconds(400);
-        var handler = new ScriptedSseHandler(
-        [
-            (TimeSpan.Zero, Start + BlockStart),
-            (gap, TextDelta("一")),
-            (gap, TextDelta("二")),
-            (gap, TextDelta("三")),
-            (gap, TextDelta("四")),
-            (gap, End),
-        ], stallAtEnd: false);
-        var provider = TestClaudeProviders.Create(handler, IdleOneSecond());
+        var gap = TimeSpan.FromMilliseconds(200);
+        // 全体が期限を 2 秒以上超える回数（35 × 0.2 秒 = 7 秒）。
+        var count = (int)((WideIdle.TotalMilliseconds + 2000) / gap.TotalMilliseconds);
+        var texts = Enumerable.Range(0, count).Select(i => ((char)('a' + i % 26)).ToString()).ToList();
+        var parts = new List<(TimeSpan, string)> { (TimeSpan.Zero, Start + BlockStart) };
+        parts.AddRange(texts.Select(t => (gap, TextDelta(t))));
+        parts.Add((gap, End));
+        var handler = new ScriptedSseHandler(parts, stallAtEnd: false);
+        var provider = TestClaudeProviders.Create(handler, IdleWide());
 
         var chunks = new List<CompletionChunk>();
         var stopwatch = Stopwatch.StartNew();
@@ -124,15 +131,16 @@ public class ClaudeProviderStreamIdleTimeoutTests
             chunks.Add(chunk);
         stopwatch.Stop();
 
-        stopwatch.Elapsed.Should().BeGreaterThan(TimeSpan.FromSeconds(1.5), "全体は期限を超えている（試験の前提）");
-        string.Concat(chunks.Select(c => c.TextDelta)).Should().Be("一二三四");
+        stopwatch.Elapsed.Should().BeGreaterThan(WideIdle, "全体は期限を超えている（試験の前提）");
+        string.Concat(chunks.Select(c => c.TextDelta)).Should().Be(string.Concat(texts));
         chunks.Last().Done.Should().BeTrue();
         chunks.Last().StopReason.Should().Be("end_turn");
     }
 
     // T-45 ④: 受け取り側（yield の先。gRPC への書き込み）が遅くても、上流を待っていない間の時間は数えない。
-    // 受け取った後に時計を止めない形にすると赤になる。
-    [Fact(Timeout = 15000)]
+    // 受け取った後に時計を止めない形にすると、受け取り側の遅れ（期限 ＋ 1 秒）が期限を超えて赤になる。
+    // 上流の間隔（0.1 秒）は期限（5 秒）より十分に短い（#2426）。
+    [Fact(Timeout = 30000)]
     public async Task 受け取り側が遅くても上流を待つ間だけを数える()
     {
         var handler = new ScriptedSseHandler(
@@ -141,14 +149,20 @@ public class ClaudeProviderStreamIdleTimeoutTests
                 // 受け取り側が遅い間に、上流は次の断片を用意し終えている（上流は止まっていない）。
                 (TimeSpan.FromMilliseconds(100), TextDelta("二") + End),
             ], stallAtEnd: false);
-        var provider = TestClaudeProviders.Create(handler, IdleOneSecond());
+        var provider = TestClaudeProviders.Create(handler, IdleWide());
 
         var received = new List<string>();
+        var slowedOnce = false;
         await foreach (var chunk in provider.StreamAsync(Request(), TestContext.Current.CancellationToken))
         {
             if (!IsProgress(chunk))
                 received.Add(chunk.TextDelta);
-            await Task.Delay(TimeSpan.FromMilliseconds(1500), TestContext.Current.CancellationToken);
+            // 受け取り側の遅れは 1 回だけ（期限 ＋ 1 秒）。1 回で変異を赤にでき、試験の所要時間を抑える。
+            if (!slowedOnce && !IsProgress(chunk))
+            {
+                slowedOnce = true;
+                await Task.Delay(WideIdle + TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+            }
         }
 
         received.Should().Equal("一", "二", string.Empty);
