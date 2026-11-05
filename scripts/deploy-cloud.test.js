@@ -28,6 +28,7 @@
  */
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { parseDocuments } = require('./lib/yaml-subset');
@@ -270,8 +271,8 @@ function renderInfra() {
 function renderLocalInfra() {
   return docsOf(run('kubectl', ['kustomize', 'deploy/local/infra']));
 }
-function renderChart(extra = []) {
-  return docsOf(run('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', '-f', 'deploy/cloud/values-cloud.yaml',
+function renderChart(extra = [], chartDir = CHART) {
+  return docsOf(run('helm', ['template', 'msp', chartDir, '-n', 'microservices-platform', '-f', 'deploy/cloud/values-cloud.yaml',
     '--set-string', `global.image.tag=${IMAGE_TAG}`, ...extra]));
 }
 
@@ -307,6 +308,29 @@ if (require.main === module) {
       '--set-string', `global.image.tag=${IMAGE_TAG}`, '--set', 'services.llmgateway.grpcPort=8081'], { cwd: REPO_ROOT, encoding: 'utf8' });
     assert.notStrictEqual(r.status, 0, 'tls と grpcPort の併記が描画で止まらない');
     assert.match(r.stderr, /tls と grpcPort は併記できません/);
+  });
+  ok('変異（AC13）: chart の受け口の証明書のマウント・probe の HTTPS・https の受け口を外すと判定が赤になる（判定が空振りしない）', () => {
+    const src = fs.readFileSync(path.join(REPO_ROOT, CHART, 'templates', 'deployment.yaml'), 'utf8');
+    const mutate = (from, to) => {
+      assert.ok(src.includes(from), `変異の置換元が無い（試験が古い）: ${from}`);
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-'));
+      try {
+        fs.cpSync(path.join(REPO_ROOT, CHART), dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'templates', 'deployment.yaml'), src.replace(from, to));
+        return chartProblems(renderChart([], dir));
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const cases = [
+      ['            {{- if $tlsListen }}\n            - name: service-tls\n', '            {{- if false }}\n            - name: service-tls\n', /受け口の証明書が Secret llmgateway-tls から来ない/],
+      ['              {{- if $tlsListen }}\n              scheme: HTTPS\n', '              {{- if false }}\n              scheme: HTTPS\n', /livenessProbe が HTTPS でない/],
+      ['value: {{ printf "https://+:%v" $svc.port | quote }}', 'value: {{ printf "http://+:%v" $svc.port | quote }}', /https だけでない/],
+    ];
+    for (const [from, to, want] of cases) {
+      const p = mutate(from, to);
+      assert.ok(p.some((x) => want.test(x)), `${want} の変異を捕まえない:\n${p.join('\n')}`);
+    }
   });
   ok('陰性対照: 基盤の描画へ start-dev・LoadBalancer・字面のパスワードを足すと判定に落ちる', () => {
     const docs = JSON.parse(JSON.stringify(renderInfra()));
