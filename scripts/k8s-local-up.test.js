@@ -6638,7 +6638,7 @@ function decideAll(cases) {
     `out="$(dev_client_secret_decide ${q(c.ctx)} ${q(c.override)} ${c.args.map(q).join(' ')})" && rc=0 || rc=$?`,
     `printf '%s\\t%s\\t%s\\n' ${i} "$rc" "$(printf '%s' "$out" | tr '\\n' ' ')"`,
   ].join('\n')).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\ndev_client_secret_load_targets\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_load_targets\n${body}`, 'x', DEV_GUARD_LIB], { encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, `判定器が実行できない: ${r.stderr}`);
   return r.stdout.split('\n').filter(Boolean).map((l) => {
     const [i, rc, out] = l.split('\t');
@@ -7338,7 +7338,7 @@ ok('IADR-0574: 判定の真理値表 — 明示（無し / 開発用の値 / 別
     }
   }
   const body = cases.map((c, i) => `ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_decide ${q(c.name)} ${q(c.ev)} ${q(c.xv)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\n${body}`, 'x', INFRA_LIB_0573], { encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
   assert.strictEqual(got.length, cases.length);
@@ -7465,7 +7465,7 @@ ok('IADR-0672: 判定の真理値表 — 明示 × 既存 × context（dev / 非
     }
   }
   const body = cases.map((c, i) => `INFRA_CREDENTIALS_ENFORCE=${q(c.enforce)}; ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_staged_decide APP_DB_PASSWORD ${q(c.ev)} ${q(c.xv)} ${q(c.ctx)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'))}\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\n. "$2"\n${body}`, 'x', path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'), INFRA_LIB_0573], { encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
   assert.strictEqual(got.length, cases.length);
@@ -7567,7 +7567,7 @@ ok('IADR-0676: dev の判定の真理値表 — 名前（許可集合 / 外）×
     }
   }
   const body = cases.map((c, i) => `DEV_CLUSTER_MARKER='${c.marker}' DEV_CLUSTER_MARKER_REQUIRED='${c.req}' dev_client_secret_context_is_dev '${c.ctx}' && echo "${i} dev" || echo "${i} no"`).join('\n');
-  const r = spawnSync('bash', ['-c', `. '${GUARD_LIB_0676}'\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `. "$1"\n${body}`, 'x', GUARD_LIB_0676], { encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const tally = {};
   for (const line of r.stdout.trim().split('\n')) {
