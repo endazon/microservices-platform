@@ -1,0 +1,87 @@
+# NFR-18, IADR-0674 (#2401): 認可サーバ（Keycloak）を**本番モード（start）**で動かす。deploy/local/infra/keycloak.yaml との違い:
+#   - start-dev ではなく start。DB は共有 Postgres（TLS・サーバ証明書を検証する）。利用者名・パスワードは Secret keycloak-db から読む。
+#   - 管理者は Secret keycloak-admin から読む（bootstrap-secrets.sh が乱数で作る）。
+#   - hostname はクラスタの中の名前だけ（画面を公開しないので、外向きのホストと証明書を持たない）。HTTP はクラスタの中だけで受ける
+#     （Service は ClusterIP。外への口は描かない。到達は networkpolicy.yaml が絞る）。
+#   - realm の取り込み元は Secret keycloak-realm-import（bootstrap-secrets.sh が deploy/cloud/realm-for-cloud.js で宣言から組む。
+#     取引ユニットの 5 つの機密クライアントの secret は乱数・人の利用者は持ち込まない）。
+#   - キャッシュは単一ノードの local（クラスタの探索をしない）。ヒープは 8 GB のノードに収まるよう、メモリの上限の半分まで。
+#   - テーマは持ち込まない（画面を公開しない）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: platform-infra
+  labels: { app: keycloak }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: keycloak }
+  template:
+    metadata:
+      labels: { app: keycloak }
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
+          args: ["start", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-admin, key: password } }
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://postgres:5432/keycloak?sslmode=verify-full&sslrootcert=/etc/platform-infra-ca/ca.crt
+            - name: KC_DB_USERNAME
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: username } }
+            - name: KC_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
+            - name: KC_HOSTNAME
+              value: http://keycloak:8080
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_CACHE
+              value: local
+            - name: JAVA_OPTS_KC_HEAP
+              value: "-XX:MaxRAMPercentage=50 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20"
+          ports:
+            - containerPort: 8080
+            - name: management
+              containerPort: 9000
+          readinessProbe:
+            httpGet: { path: /health/ready, port: 9000 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
+          volumeMounts:
+            - { name: realms, mountPath: /opt/keycloak/data/import, readOnly: true }
+            - { name: infra-ca, mountPath: /etc/platform-infra-ca, readOnly: true }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: realms
+          secret: { secretName: keycloak-realm-import }
+        - name: infra-ca
+          configMap: { name: platform-infra-ca }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: platform-infra
+  labels: { app: keycloak }
+# NFR-18, IADR-0674: 管理の面を持つので、クラスタの中だけ（ClusterIP）に置き、エッジ（Ingress・Gateway・NodePort・LoadBalancer）へ出さない。
+spec:
+  type: ClusterIP
+  selector: { app: keycloak }
+  ports:
+    - port: 8080
+      targetPort: 8080
