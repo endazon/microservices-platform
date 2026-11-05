@@ -62,6 +62,9 @@ public sealed class LlmCallerPolicy
 {
     public const string UnknownCaller = "unknown";
 
+    // 計器の属性と抑止の鍵に使う、許可表に無い呼び手の集約先（値域を閉じる。用途の other と同じ扱い）。
+    public const string OtherCaller = "other";
+
     // 違反の種類（llm.policy.kind）。3 値で閉じる。
     public const string KindUnknownCaller = "unknown_caller";
     public const string KindPurposeNotAllowed = "purpose_not_allowed";
@@ -116,15 +119,17 @@ public sealed class LlmCallerPolicy
         if (violations.Count > 0)
         {
             var mode = enforce ? "enforce" : "report";
-            // 計器の用途は値域を閉じた正規化の後の値（呼び手は realm の有限集合）。
+            // 🔴 計器の属性と抑止の鍵は**値域を閉じた値**だけで作る。用途は計器と同じ正規化、
+            // 呼び手は許可表にある名前（小文字）か other。ログの本文には Sanitize した実名を出す。
             var normalized = LlmMetricValues.NormalizePurpose(_routing.CurrentValue, asked);
+            var callerLabel = grant is null ? OtherCaller : who.ToLowerInvariant();
             foreach (var kind in violations)
             {
                 _violations.Add(1, new TagList
                 {
-                    { KindTag, kind }, { ModeTag, mode }, { CallerTag, who }, { LlmCompletionMetrics.PurposeTag, normalized },
+                    { KindTag, kind }, { ModeTag, mode }, { CallerTag, callerLabel }, { LlmCompletionMetrics.PurposeTag, normalized },
                 });
-                if (_throttle.ShouldLog($"caller-policy|{kind}|{who}|{normalized}", out var suppressed))
+                if (_throttle.ShouldLog($"caller-policy|{kind}|{callerLabel}|{normalized}", out var suppressed))
                     _logger.LogWarning(
                         "LLM caller policy violation: kind={PolicyKind} mode={PolicyMode} caller={Caller} purpose={Purpose} "
                         + "suppressedSinceLast={Suppressed} (allowed={Allowed}; logged at most once per {Interval})",

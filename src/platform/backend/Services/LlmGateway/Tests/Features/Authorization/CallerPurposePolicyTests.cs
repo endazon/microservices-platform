@@ -8,6 +8,8 @@ using LlmGateway.Tests.Grpc;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Grpc;
@@ -138,6 +140,47 @@ public sealed class CallerPurposePolicyTests : IDisposable
             cancellationToken: TestContext.Current.CancellationToken);
 
         resp.Sent.Should().BeTrue();
+    }
+
+    // AI レビュー #2429: gRPC でも段 2 の拒否（PERMISSION_DENIED）を実測する。gRPC の器は共有で構成を差し替えられないので、
+    // 判定器が毎回読む IOptionsMonitor の現在値の段だけを、この試験の間だけ Enforce にして元へ戻す
+    // （SharedMeterCollection の試験は直列に走る）。
+    [Fact]
+    public async Task 段2ではgRPCでも許可表に無い用途をPERMISSION_DENIEDで拒む()
+    {
+        var options = _grpc.Services.GetRequiredService<IOptionsMonitor<LlmGateway.Domain.Authorization.LlmCallerPolicyOptions>>().CurrentValue;
+        var before = options.Mode;
+        options.Mode = LlmGateway.Domain.Authorization.LlmCallerPolicyMode.Enforce;
+        try
+        {
+            using var channel = GrpcClientExtensions.CreatePlatformChannel(
+                _grpc.GrpcAddress,
+                new FixedTokenProvider(GrpcKestrelFactory.IssueToken("service-account-graph-service", [PlatformAuthPolicies.ServiceRole])));
+            var client = new Pb.LlmCompletion.LlmCompletionClient(channel);
+
+            var denied = async () => await client.CompleteAsync(
+                new Pb.CompleteRequest { Prompt = "本文", MaxTokens = 10, Confidentiality = "public", Purpose = "rag-answer" },
+                cancellationToken: TestContext.Current.CancellationToken);
+            (await denied.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+
+            var stream = async () =>
+            {
+                using var call = client.CompleteStream(
+                    new Pb.CompleteRequest { Prompt = "本文", MaxTokens = 10, Confidentiality = "public", Purpose = "rag-answer" },
+                    cancellationToken: TestContext.Current.CancellationToken);
+                while (await call.ResponseStream.MoveNext(TestContext.Current.CancellationToken)) { }
+            };
+            (await stream.Should().ThrowAsync<RpcException>()).Which.StatusCode.Should().Be(StatusCode.PermissionDenied);
+
+            (await client.CompleteAsync(
+                    new Pb.CompleteRequest { Prompt = "本文", MaxTokens = 10, Confidentiality = "public", Purpose = "graph-suggestion" },
+                    cancellationToken: TestContext.Current.CancellationToken))
+                .Sent.Should().BeTrue("許可表にある用途は段 2 でも通る");
+        }
+        finally
+        {
+            options.Mode = before;
+        }
     }
 
     private sealed class FixedTokenProvider(string token) : IServiceTokenProvider

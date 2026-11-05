@@ -4,10 +4,10 @@ type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, ADR-0010, IADR-0379, IADR-0424]
 author: claude
-created: 2026-11-05
-updated: 2026-11-05
+created: 2026-11-06
+updated: 2026-11-06
 related_specs:
-  - ../specs/20261105_2417_llm-caller-purpose-policy.md
+  - ../specs/20261106_2417_llm-caller-purpose-policy.md
 ---
 
 # IADR-0684: LLM ゲートウェイの補完の呼び手ごとの許可表（#2417）
@@ -15,14 +15,14 @@ related_specs:
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
-- 日付: 2026-11-05
-- 決定者: claude（#2417。コーディネーターの指示 2026-11-05）
+- 日付: 2026-11-06
+- 決定者: claude（#2417。コーディネーターの指示 2026-11-06）
 
 ## 起点・関連
 
 - 起点 issue: #2417。
 - 前提: 計画 ADR-0084 決定 1（端点ごとの門）。IADR-0379 決定 4・IADR-0424（補完の 2 面は同じ `ServiceCaller`）。
-- 作業仕様書: `.ai-context/specs/20261105_2417_llm-caller-purpose-policy.md`。
+- 作業仕様書: `.ai-context/specs/20261106_2417_llm-caller-purpose-policy.md`。
 
 ## コンテキスト
 
@@ -45,6 +45,13 @@ related_specs:
 
 - `Report`（段 1）: 数えるだけで、通す。
 - `Enforce`（段 2）: REST は 403、gRPC は `PERMISSION_DENIED` で拒む。認可の失敗なので、`Sent=false` の縮退ではなく状態コードで返す。共有契約は変えない。
+
+- 計器の属性（`llm.caller`）と Warning の抑止の鍵には、許可表にある呼び手の名前（小文字）か `other` だけを使う（値域を閉じる。用途の正規化と同じ扱い）。ログの本文には Sanitize した実名を出す。
+
+### 決定 4 — 段 2 へ切り替える前提
+
+- 稼働で段 1 の違反（`llm_policy_mode="report"`）が、想定外の呼び手・用途から出ていないことを確かめる。
+- **gRPC の面で段 2 の拒否（`PERMISSION_DENIED`）を一度は実測する。** 試験では、共有の gRPC の器で段だけを一時的に `Enforce` にして固定した（`CallerPurposePolicyTests`）。稼働でも、切り替えの直後に許可表の外の主体で 1 回確かめる。
 
 ## 結果・残余リスク
 

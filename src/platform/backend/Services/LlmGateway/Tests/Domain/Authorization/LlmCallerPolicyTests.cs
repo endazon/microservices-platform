@@ -4,6 +4,7 @@ using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Authorization;
 using LlmGateway.Domain.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
@@ -18,7 +19,7 @@ public sealed class LlmCallerPolicyTests : IDisposable
 
     public void Dispose() => _meters.Dispose();
 
-    private LlmCallerPolicy Policy(LlmCallerPolicyMode mode)
+    private LlmCallerPolicy Policy(LlmCallerPolicyMode mode, ILoggerFactory? loggers = null)
     {
         var o = new LlmCallerPolicyOptions { Mode = mode };
         o.Callers["retrieval-service"] = new LlmCallerGrant { Purposes = ["rerank", "default"] };
@@ -30,7 +31,7 @@ public sealed class LlmCallerPolicyTests : IDisposable
             new TestClaudeProviders.StaticOptionsMonitor<LlmRoutingOptions>(routing),
             _meters.GetRequiredService<IMeterFactory>(),
             new LogOccurrenceThrottle(new FakeTimeProvider()),
-            NullLogger<LlmCallerPolicy>.Instance);
+            loggers is null ? NullLogger<LlmCallerPolicy>.Instance : new Logger<LlmCallerPolicy>(loggers));
     }
 
     [Fact]
@@ -72,5 +73,34 @@ public sealed class LlmCallerPolicyTests : IDisposable
         v.Validate(null, new LlmCallerPolicyOptions()).Succeeded.Should().BeTrue();
         v.Validate(null, o).Failed.Should().BeTrue();
         v.Validate(null, new LlmCallerPolicyOptions { Mode = (LlmCallerPolicyMode)9 }).Failed.Should().BeTrue();
+    }
+
+    // AI レビュー #2429: 許可表に無い呼び手の名前を何通り流しても、計器の系列と Warning の抑止の鍵は増えない（other に丸める）。
+    [Fact]
+    public void 許可表に無い呼び手は計器と抑止の鍵でotherに丸め_100通り流しても系列とログは増えない()
+    {
+        var callers = new HashSet<string>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (i, l) =>
+        {
+            if (i.Name == LlmCallerPolicy.ViolationCounterName) l.EnableMeasurementEvents(i);
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            foreach (var t in tags)
+                if (t.Key == LlmCallerPolicy.CallerTag) lock (callers) callers.Add(t.Value?.ToString() ?? "");
+        });
+        listener.Start();
+        using var loggers = new RecordingLoggerFactory();
+        var p = Policy(LlmCallerPolicyMode.Report, loggers);
+
+        for (var i = 0; i < 100; i++)
+            p.Evaluate($"stranger-{i}", "rerank", null);
+        p.Evaluate("retrieval-service", "analysis", null);
+
+        lock (callers) callers.Should().BeEquivalentTo([LlmCallerPolicy.OtherCaller, "retrieval-service"]);
+        var warnings = loggers.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
+        warnings.Should().HaveCount(2, "抑止の鍵は (種類, other, 用途) と (種類, retrieval-service, 用途) の 2 つだけ");
+        warnings[0].Values["Caller"].Should().Be("stranger-0", "ログの本文には実名を出す");
     }
 }

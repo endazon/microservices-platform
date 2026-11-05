@@ -4,14 +4,14 @@ type: spec
 status: done
 related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, IADR-0424, IADR-0684]
 author: claude
-created: 2026-11-05
-updated: 2026-11-05
+created: 2026-11-06
+updated: 2026-11-06
 issue: "#2417"
 ---
 
 # 作業仕様書 — 補完の呼び手ごとの許可表（#2417）
 
-> 本仕様書は、実装に着手する前に作成した（着手 2026-11-05。`origin/develop` `170f1efb0`）。
+> 本仕様書は、実装に着手する前に作成した（着手 2026-11-06。`origin/develop` `170f1efb0`）。
 
 ## 事象
 
