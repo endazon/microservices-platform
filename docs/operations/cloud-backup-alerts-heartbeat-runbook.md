@@ -194,11 +194,18 @@ bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/p
 原因を直してから、完全な回をもう 1 つ取る（その月の月次が未だなら、そこで月次にも書かれる）。
 月次の回が途中で失敗して `COMPLETE` の無い `monthly/<回>/` が残っても、その月は「取得済み」と数えない。次の完全な回（翌日の定時の回か、手動で起こした回）が月次に書かれる。
 確かめるのは、その月の回の新しい順に 2 件まで（`BACKUP_S3_MONTHLY_CHECK_MAX`）。それを超えて取りこぼしが溜まると、月次を決めずに失敗で止まる（下の分岐）。
-上限を超えて溜まったときは、原因を直してから、上限を上げた 1 回だけを手で起こす（CronJob の既定は変えない。この 1 回は確かめの数だけ長くかかる）:
+上限を超えて溜まったときは、原因を直してから、上限を上げた 1 回だけを手で起こす（CronJob の既定は変えない）。
+この 1 回は確かめの数だけ長くかかり得るので、**同じパイプでその Job の時間切れ（`activeDeadlineSeconds`）も上げる**:
 ```bash
 kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres backup-monthly-<日付> --dry-run=client -o yaml \
-  | kubectl set env --local -f - BACKUP_S3_MONTHLY_CHECK_MAX=31 -o yaml | kubectl apply -f -
+  | kubectl set env --local -f - BACKUP_S3_MONTHLY_CHECK_MAX=31 -o yaml \
+  | kubectl patch --local -f - --type merge -p '{"spec":{"activeDeadlineSeconds":10800}}' -o yaml \
+  | kubectl apply -f -
 ```
+- K = 31 は、1 か月の定時の回の数の上限（1 日 1 回）。取りこぼしの回は 1 回に 1 つまでしか増えない。
+- 時間切れの値は、定時の回と同じ式（依存先の待ち 600 ＋ 確かめ 10 ＋ 間隔 5 ＋（9 ＋ K）× rclone の 1 回の上限 240 ＋ 余裕 300）で決めた。
+  K = 31 で 615 ＋ 40 × 240 ＋ 300 ＝ 10,515 秒なので、切り上げて 10,800 秒（3 時間）にする。K を変えたら、この式で値を引き直す（試験 T-2402-16 が突き合わせる）。
+- 中身を確かめる回は新しい順なので、分けて何回か起こしても古い回へは届かない。1 回で上げる。
 
 ## 失敗したときの分岐
 

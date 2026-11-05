@@ -1047,6 +1047,22 @@ else
 	ng 'T-2402-12 クラウド: 既定値（確かめる回の上限を含む）と activeDeadlineSeconds を読める' "adl=$CADL s3=$S3_CALL k=$MCHECK"
 fi
 
+# runbook の「上限を上げた 1 回」: 同じパイプで上げる activeDeadlineSeconds が、その K での最悪の合計（T-2402-12 と同じ式）より大きい。
+# 手順の値を変えたら、ここが式で突き合わせる（#2406 の再レビュー 🟡）。
+RUNBOOK_MD="$HERE/../../../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md"
+RK="$(sed -n 's/.*BACKUP_S3_MONTHLY_CHECK_MAX=\([0-9][0-9]*\).*/\1/p' "$RUNBOOK_MD" 2>/dev/null | head -n 1)"
+RADL="$(sed -n 's/.*"activeDeadlineSeconds":\([0-9][0-9]*\).*/\1/p' "$RUNBOOK_MD" 2>/dev/null | head -n 1)"
+if [[ "$RK" =~ ^[0-9]+$ ]] && [[ "$RADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
+	RWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + RK) * S3_CALL + 300))
+	if [ "$RWORST" -lt "$RADL" ]; then
+		ok "T-2402-16 runbook: 上限を上げた 1 回（K=$RK）の最悪の合計 $RWORST 秒が、同じ手順で上げる activeDeadlineSeconds $RADL 秒より小さい"
+	else
+		ng 'T-2402-16 runbook: 上限を上げた 1 回の最悪の合計が、その Job の activeDeadlineSeconds より小さい' "k=$RK worst=$RWORST adl=$RADL"
+	fi
+else
+	ng 'T-2402-16 runbook: 上限を上げた 1 回の K と activeDeadlineSeconds を手順から読める' "k=$RK adl=$RADL"
+fi
+
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。
 printf '\nbackup.test.sh: %d passed, %d failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]
