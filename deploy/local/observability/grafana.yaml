@@ -1605,7 +1605,7 @@ spec:
             # fail-safe: 匿名アクセスを無効化。ロックアウト回避の break-glass は local admin（パスワードは下の Secret grafana-admin）。
             - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }
             # NFR-18, IADR-0676 決定 3 (#2407): local admin のパスワード。optional: Secret が無くても起動する。製品は DB の初回の作成の
-            #   ときしか読まないので、永続化の overlay（observability-persistence）は init container で起動のたびに DB へ合わせる。
+            #   ときしか読まないので、永続化の overlay（observability-persistence）は command のラッパーで起動のたびに DB へ合わせ、/run.sh へ exec する。
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef: { name: grafana-admin, key: password, optional: true }

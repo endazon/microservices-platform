@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 基盤の資格情報の段階の fail-closed を続ける（管理者トークンの作り直しの持続・対象の引き直し・dev のクラスタの 2 つ目の手掛かり。#2407）
 type: spec
-status: done
+status: review
 related_ids: [NFR-18, ADR-0124, IADR-0672, IADR-0574, IADR-0517, IADR-0457, IADR-0676]
 author: claude
 created: 2026-11-05
@@ -106,6 +106,12 @@ IADR-0672 の 2 つの語に、次の 2 つを足した（`scripts/`・`deploy/l
 - AC-6: 印の段 1 は判定を変えずに警告し、段 2 は印の無い dev 名の context を dev と見なさない（試験）。
 - AC-7: 既定（切り替え無し）で、既存の dev のクラスタの起動器の再実行が止まらない（既存の試験が通る）。
 - AC-8: 秘匿管理の NetworkPolicy は 8200 を走査で引いた送り手だけへ開け、段 1 は opt-in。新しい送り手は試験が止める（試験）。
+
+## 検証（/verify。2026-11-05）
+
+- `vault-entrypoint.test.sh` 77 passed。`scripts.repo.test.js` を個別に全件: 失敗は `check-adr-numbering`（仮番号の前の未マージ分による欠番）だけ。
+- `k8s-local-up.test.js`: 本件の試験と関連（#1793 ほか）を個別に実行して通過。全件はマシンの負荷で手元で完走できず、CI で確かめる。
+- 文書・静的の検査は通過。状態は、改番と CI の全件の通過を確かめた後に done へ進める。
 
 ## 残余
 

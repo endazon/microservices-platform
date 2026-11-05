@@ -75,7 +75,7 @@ related_specs:
 
 - 起動器は、`OBSERVABILITY=1` のとき Secret `platform-infra/grafana-admin`（`password`）を **明示（`GRAFANA_ADMIN_PASSWORD`）＞ 既存の値 ＞ 乱数**で作る。開発用の値を持たない（セッションストア・観測の前段と同じ形）。
 - Grafana は `GF_SECURITY_ADMIN_PASSWORD` を optional に読む（Secret が無くても起動する）。
-- 製品は管理者を DB の初回の作成のときしか env で作らない。永続化の overlay は、起動のたびに init container で Secret の値を DB へ合わせる（`grafana cli admin reset-admin-password --password-from-stdin`。値は stdin。失敗しても起動は止めない）。
+- 製品は管理者を DB の初回の作成のときしか env で作らない。永続化の overlay は、コンテナの command を薄いラッパー（`/bin/sh -c`）に差し替え、起動のたびに Secret の値を DB へ合わせてから製品の入口 `/run.sh` へ `exec` する（`grafana cli admin reset-admin-password --password-from-stdin`。DB が在り env が在るときだけ。値は stdin。失敗しても起動は止めない）。init container は使わない（イメージの参照を 2 か所に持たないため）。
 - 検査（`check-infra-credentials.sh`）は、Grafana が在るとき Secret が無いか開発用の値と同じなら名指す。作り直し（`rotate-infra-credentials.sh grafana-admin`）は Secret を乱数で書き、Grafana を作り直す。
 
 ### 決定 4 — DB の初期化の `kp` を Secret の値で作る（IADR-0672 残余 1）
@@ -110,7 +110,8 @@ related_specs:
 - 起動器・Vault の種・OIDC の bootstrap は `kubectl exec`（Pod の中）で叩くので、送り手に入れない。
 - Egress は絞らない（k8s auth の TokenReview・OIDC・audit の送り先を止めない）。
 - 段 1: 起動器の `VAULT_NETWORK_POLICY=1` で当て、`=0` で外す。未指定は何も変えない。取りこぼした送り手は秘匿管理の停止になるため、当てた後に ESO の同期・SC-22 の一覧・バックアップの回を確かめてから既定にする（段 2 は別の PR）。
-- 試験は、リポジトリの中で秘匿管理の Service を宛先に書くファイルが表に在ることを突き合わせる（新しい送り手の取りこぼしを止める）。
+- 試験は、`deploy/` の中で秘匿管理の Service の FQDN（`vault.platform-infra…:8200`）か `number: 8200` を書くファイルが表に在ることを突き合わせる。網はこの 2 つの字面だけで、ほかの書き方（環境変数で宛先を与える・別名の Service・取引ユニットのリポジトリ）は捕まえない。
+- **段 2（既定化）の前提条件**: 当てる前に、送り手の母集合を Pod のラベルと ServiceAccount 名の軸で引き直す（稼働の Pod の一覧と、秘匿管理の audit の記録に現れる送り手を突き合わせる）。取引ユニットのリポジトリの送り手も含める。
 
 ## 結果
 
@@ -123,6 +124,7 @@ related_specs:
   - 段 1 のうちは、印の後に無いトークンも作る（報告だけ）。
   - 段 2 の秘匿管理は、Secret を作り直しの外で変えると起動しない。戻すのは手順書（secret-rotation-runbook B-1）である。
   - 既存の Grafana は、永続化の overlay を当て直した次の起動で、管理者のパスワードが Secret の値に変わる。
+  - 永続化の overlay は Grafana のイメージの ENTRYPOINT を command で上書きする。イメージの版を上げて入口（`/run.sh`）が変わると、ラッパーの `exec` が失敗して Grafana が起動しない（版を上げるときに入口を確かめる）。
 
 ## 残余
 

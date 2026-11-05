@@ -71,6 +71,8 @@ dev_client_secret_context_is_dev() {
   dev_client_secret_context_name_is_dev "$1" || return 1
   # NFR-18, IADR-0676 (#2407): 段 2（DEV_CLUSTER_MARKER_REQUIRED=1。`1` だけ）は、クラスタ側の印（dev_cluster_marker_probe が
   #   入れる DEV_CLUSTER_MARKER）が present のときだけ dev とする。印を読んでいない（空）は absent と同じ（fail-closed）。
+  #   🔴 DEV_CLUSTER_MARKER は環境変数として信頼する（起動器を実行する人の環境を信頼するのは context の名前と同じ）。
+  #      入口が先頭で読み直すので外から与える必要は無いが、与えれば読み直しを省く（bootstrap.sh・reconcile-realm.sh は空のときだけ読む）。
   #   段 1（既定）は名前だけで判定する（従前どおり。入口の dev_cluster_marker_probe が警告する）。
   if [ "${DEV_CLUSTER_MARKER_REQUIRED:-}" = "1" ] && [ "${DEV_CLUSTER_MARKER:-}" != "present" ]; then
     return 1

@@ -119,6 +119,8 @@ vault_sh() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -s; }
 
 # NFR-18, IADR-0676 (#2407): トークンの作成・失効は、値を Pod の中の vault の引数に載せない（stdin で渡す）。
 #   スクリプトの中の printf は sh の組み込みなので、値はプロセスの引数にならない。使うトークンは環境変数 VAULT_TOKEN。
+#   🔴 値を単一引用符で囲んでスクリプトへ埋めるので、値は 16 進（new_value）か、作り直しの前の Secret の値に限る。
+#      単一引用符を含む値は扱えない（固定のトークンは起動器・本スクリプトが 16 進か開発用の値で作る）。
 # vault_create_root <使うトークン> <作るトークン> —— 永続化のラッパーと同じ作り方（root policy・orphan）
 vault_create_root() {
   printf "printf '%%s' '%s' | VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault write auth/token/create-orphan id=- policies=root no_default_policy=true display_name=local-dev-root >/dev/null\n" \
