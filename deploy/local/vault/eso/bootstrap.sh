@@ -85,6 +85,42 @@ if [ "${#infra_cred_needed[@]}" -gt 0 ]; then
   infra_cred_guard "bootstrap.sh" "${infra_cred_needed[@]}" || exit 1
 fi
 unset infra_cred_needed
+# NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 段階の対象（DB の管理者・DB 利用者・オブジェクトストレージ）の KV も、
+#   **まだ無いものだけ**を明示の値と kube context で判定する（在る KV は触らない。IADR-0485）。dev の context は従前どおり、
+#   dev ではない context は段 1 で警告して作り、INFRA_CREDENTIALS_ENFORCE=1 で止める。🔴 Vault へ何か書く前に判定する。
+#   KV の有無は「在る」「無い」（CLI の No value found＝404 相当）「確かめられない」（接続・認可の失敗など）の 3 つに分ける。
+#   🔴 確かめられないものを「無い」と見なさない —— 在る KV を作る扱いで判定にかけ、強制の段で誤って止める（PR #2400 のレビュー）。
+#   確かめられなければ判定へ進まずに止め、パスを名指す（値は出さない。メタデータの問い合わせは値を返さない）。
+infra_cred_staged_needed=()
+infra_cred_staged_unknown=""
+# vkv_presence_for_staged <パス> → 標準出力 present / absent / unknown
+vkv_presence_for_staged() {
+  local out rc=0
+  out="$(vexec "vault kv metadata get secret/$1 2>&1 >/dev/null")" || rc=$?
+  if [ "$rc" -eq 0 ]; then echo present; return 0; fi
+  case "$out" in
+    *"No value found at"*) echo absent ;;
+    *) echo unknown ;;
+  esac
+}
+for staged_pair in PG_PASSWORD:msp/postgres APP_DB_PASSWORD:msp/postgres-app WIKIJS_DB_PASSWORD:msp/wikijs-db \
+  OBJECT_STORAGE_SECRET_KEY:msp/object-storage-credentials; do
+  case "$(vkv_presence_for_staged "${staged_pair#*:}")" in
+    present) ;;
+    absent) infra_cred_staged_needed+=("${staged_pair%%:*}") ;;
+    *) infra_cred_staged_unknown="${infra_cred_staged_unknown:+$infra_cred_staged_unknown, }secret/${staged_pair#*:}" ;;
+  esac
+done
+if [ -n "$infra_cred_staged_unknown" ]; then
+  echo "ERROR: bootstrap.sh: Vault の KV ${infra_cred_staged_unknown} が在るかを確かめられない（接続・認可の失敗など。「無い」とは見なさない）。" >&2
+  echo "       判定へ進まずに止める（何も書かない）。秘匿管理が動いているか・root トークン（Secret platform-infra/vault-dev-token）を確かめて再実行する。" >&2
+  exit 1
+fi
+unset staged_pair infra_cred_staged_unknown
+if [ "${#infra_cred_staged_needed[@]}" -gt 0 ]; then
+  infra_cred_staged_guard "bootstrap.sh" "$(dev_client_secret_current_context)" "${infra_cred_staged_needed[@]}" || exit 1
+fi
+unset infra_cred_staged_needed
 
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'

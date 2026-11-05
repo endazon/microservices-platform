@@ -49,3 +49,8 @@ db7c148ec4268631fecd54456d11d0f69dc19c0b:.ai-context/specs/20261021_2024_e2e-acc
 # 鍵名 totpSecret の隣に直書きしていた。値ではない（値はリポジトリに無い。OpenBao → ESO）。generic-api-key は鍵と見分けられない。
 # 後続のコミットで名前を実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
 5de7782b56557ce1a00fc718d184e10ffcf1b71e:src/platform/frontend/e2e/live-opt-in.smoke.spec.ts:generic-api-key:90
+
+# #2399 の試験で、作り直しの「元の値」の目印（Vault の KV の password の隣の偽の値）を直書きしていた。値は秘密ではないが、
+# generic-api-key は鍵と見分けられない（同じ行に 2 件）。後続のコミットで実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
+# squash merge の後の develop のコミットは、ツリーに値が無いので同じ検知は出ない（#2054 の注記の形とは違い、develop 用の行は要らない）。
+aed18a698ce735fe20afcc56b754b41c0d842905:scripts/scripts.repo.test.js:generic-api-key:19978

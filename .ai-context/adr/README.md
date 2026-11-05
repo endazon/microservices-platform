@@ -749,4 +749,5 @@
 | [IADR-0669](./IADR-0669_backup-publish-lock-and-post-rename-verify.md) | バックアップの回は保管先ごと・種類ごとのロック（mkdir の原子性）の中で書き、incoming を回ごとに一意にし、改名の後に保管先の回でもう一度検算してから「書きました」を出す（#2389） | Accepted |
 | [IADR-0670](./IADR-0670_backup-wait-dependencies-before-write.md) | バックアップの回は書き始める前に依存先（Postgres・OpenBao・名前解決）の起動を上限つきで待ち、再試行はしない（PC の復帰の直後の後追いの回。#2394） | Accepted |
 | [IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md) | LLM ゲートウェイは呼び手が分けた接頭辞を user の先頭の text ブロックにし、その末尾に 5 分のキャッシュの区切りを置く。InputTokens はプロンプト全体のまま、キャッシュの書き・読みを「うち」として返し、単価の区分ごとに計上する（#2396） | Accepted |
+| [IADR-0672](./IADR-0672_infra-credentials-staged-fail-closed.md) | 基盤の資格情報の判定を、DB・オブジェクトストレージ・秘匿管理の管理者トークンへ広げる。dev ではない context で開発用の値になるとき、段 1 は報告だけ・段 2 は明示の切り替えで止める。検査と作り直しは利用者が実行するスクリプトにする（#2399） | Accepted |
 | [IADR-0674](./IADR-0674_deploy-cloud-minimal.md) | 取引ユニットをクラウドの単一ノードへ移すための MSP の最小構成を deploy/cloud に置く。基盤は変換を持たない kustomize、MSP は LLM ゲートウェイだけ、資格情報は初回に乱数で作り、秘匿管理（OpenBao）は最初の稼働では持ち込まない（#2401） | Accepted |
