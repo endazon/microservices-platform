@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, ADR-0027, ADR-0124, IADR-0066, IADR-0096, IADR-0099, IADR-0494, IADR-0522]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-18 シークレット管理）
 related_specs:
@@ -95,6 +95,7 @@ related_specs:
 ## 残る制約
 
 1. 権限は vhost 全体（`.*`）である。キュー・exchange の名前で絞るのは、サービスごとの名前の導出を固定してから（段 3 の後）。
+   ［2026-11-05 追記 / #2412］名前で絞る作業は IADR-0674 が引き継いだ（コードから導いた生成物。段 1 は報告だけ・段 2 は `RABBITMQ_PERMISSIONS=narrow` で明示して当てる）。
 2. NetworkPolicy の強制は稼働クラスタで実測していない（IADR-0522 残余 1 と同じ）。強制されないクラスタでは、防御はサービスごとの資格情報の 1 段になる（段 2・3 の後）。
 3. `ESO` を使わない経路（手動の Secret）ではサービスごとのユーザーを作らない。その経路では既定のユーザーのまま（段 3 で扱いを決める）。
 4. ブローカを使うサービスを足すときは、users.txt・NetworkPolicy・消費側の chart を同じ変更でそろえる（試験が食い違いを止める）。

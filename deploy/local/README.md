@@ -370,6 +370,11 @@ ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-user
 消した後は印（ConfigMap `platform-infra/rabbitmq-default-user`）に従い、再起動のたびに消し直す。管理 UI へ既定のユーザーで入れなくなるので、
 ブローカの操作は `kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl …` で行う。戻すときはスクリプト冒頭の手順。
 ブローカへの到達は NetworkPolicy `rabbitmq-ingress-clients`（`deploy/local/infra/rabbitmq.yaml`）が `users.txt` の Pod だけに絞る。
+権限は段で選ぶ。既定（段 1）は vhost 全体のままである。
+`bash deploy/local/rabbitmq-setup/reconcile-users.sh --permissions-report` で、使う名前へ絞った権限（同じディレクトリの `permissions.txt`。
+`node scripts/gen-rabbitmq-permissions.js` がコードから作る生成物）との差分と、ブローカに在るものに届くかを読む（何も書かない）。
+届くことを確かめてから `RABBITMQ_PERMISSIONS=narrow bash deploy/local/rabbitmq-setup/reconcile-users.sh` で当てる（段 2。届かないものがあれば何も変えずに止まる）。
+戻すときは `RABBITMQ_PERMISSIONS=vhost` で回し直す。再起動の直後の作り直しも、最後に当てた段に従う（ConfigMap `platform-infra/rabbitmq-permissions`）。
 ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |

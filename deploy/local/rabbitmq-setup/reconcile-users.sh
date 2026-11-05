@@ -4,6 +4,15 @@
 #
 #   bash deploy/local/rabbitmq-setup/reconcile-users.sh            # 作る・合わせる
 #   bash deploy/local/rabbitmq-setup/reconcile-users.sh --check    # 読むだけ（宣言のユーザーが在り、値で認証できるか）
+#   bash deploy/local/rabbitmq-setup/reconcile-users.sh --permissions-report   # 読むだけ（権限の絞り込みの差分と、ブローカに在る
+#                                                                  #   キュー・exchange・束ねが絞った権限で届くか）。届かないものがあれば exit 1
+#
+# NFR-18, IADR-0674: 権限の範囲は RABBITMQ_PERMISSIONS で段を選ぶ（取り違えると通信が止まり得るので段に分ける）:
+#   vhost  （既定・段 1）: vhost 全体（'.*' '.*' '.*'）のまま。絞り込みは --permissions-report で差分を見るだけ。
+#   narrow （段 2）      : permissions.txt（コードから導いた生成物。scripts/gen-rabbitmq-permissions.js）の行を当てる。
+#                          当てる前に、ブローカに在るものが絞った権限で届くかを確かめ、届かないものがあれば何も変えずに止める
+#                          （RABBITMQ_PERMISSIONS_ALLOW_GAPS=1 で押し切れる）。戻すときは RABBITMQ_PERMISSIONS=vhost で回し直す。
+#   どちらの段で当てたかと permissions.txt は ConfigMap rabbitmq-permissions に写し、ブローカの起動の直後の復元が同じ段で作り直す。
 #
 # 前提: Secret `rabbitmq-users`（platform-infra）が在る。ESO=1 は externalsecret-rabbitmq-users.yaml が Vault の 2 つの KV から同期し
 # （bootstrap.sh が無いときだけ乱数で種を入れる）、ESO を使わない経路は k8s-local-up.sh が既存の値＞乱数で作る（IADR-0577）。
@@ -11,7 +20,7 @@
 #
 # 手順（ユーザーごと）:
 #   1. 在れば change_password、無ければ add_user（パスワードは**標準入力**で渡す。コマンドの引数に載せない）
-#   2. set_permissions -p <vhost> <user> '.*' '.*' '.*'（vhost は 1 つのまま。IADR-0573 決定 2）
+#   2. set_permissions -p <vhost> <user> <configure> <write> <read>（vhost は 1 つのまま。IADR-0573 決定 2。値は上の段で決まる）
 #   3. set_user_tags <user>（タグなし＝管理 UI・管理 API へ入れない）
 #   4. authenticate_user で、その値で認証できることを確かめる（できなければ止める）
 # 🔴 既定のユーザー（Secret `rabbitmq` の username）と宣言の外のユーザーには触れない（無効化は disable-default-user.sh が
@@ -27,11 +36,19 @@ USERS_FILE="${RABBITMQ_USERS_FILE:-$ROOT/deploy/local/rabbitmq-setup/users.txt}"
 SECRET="${RABBITMQ_USERS_SECRET:-rabbitmq-users}"
 VHOST="${RABBITMQ_USERS_VHOST:-/}"
 TIMEOUT="${RABBITMQ_USERS_TIMEOUT:-180}"
+PERMS_FILE="${RABBITMQ_PERMISSIONS_FILE:-$ROOT/deploy/local/rabbitmq-setup/permissions.txt}"
+SCOPE="${RABBITMQ_PERMISSIONS:-vhost}"
+PERMS_CM="${RABBITMQ_PERMISSIONS_CONFIGMAP:-rabbitmq-permissions}"
 MODE=apply
 case "${1:-}" in
   "") ;;
   --check) MODE=check ;;
-  *) echo "ERROR: 未知の引数: $1（受け付けるのは --check だけ）" >&2; exit 2 ;;
+  --permissions-report) MODE=report ;;
+  *) echo "ERROR: 未知の引数: $1（受け付けるのは --check と --permissions-report だけ）" >&2; exit 2 ;;
+esac
+case "$SCOPE" in
+  vhost|narrow) ;;
+  *) echo "ERROR: RABBITMQ_PERMISSIONS は vhost（段 1・既定）か narrow（段 2）: ${SCOPE}" >&2; exit 2 ;;
 esac
 
 # 宣言のユーザー名（コメント・空行を除く 1 列目）。
@@ -62,6 +79,64 @@ secret_b64() {
 #   コンテナの標準入力の終わりとして届けないことがあり、そのとき rabbitmqctl は読み終わらずに止まる（統合スタックの実測）。
 password_line() { secret_b64 "$1" | base64 -d; printf '\n'; }
 
+# NFR-18, IADR-0674: 絞った権限（permissions.txt の 1 行 = <ユーザー> <configure> <write> <read>）。無ければ空。
+declared_perms() { awk -v u="$1" '!/^[[:space:]]*#/ && $1 == u && NF == 4 { print $2 "\t" $3 "\t" $4; exit }' "$PERMS_FILE" 2>/dev/null; }
+
+# 絞った権限で、ブローカに在るもの（キュー・exchange・束ね）が届くかを確かめる。届かないものを 1 行ずつ出す（無ければ何も出さない）。
+#   キュー: 宣言（configure）と購読（read）ができるユーザーが居る。exchange: 宣言（configure）できるユーザーが居る。
+#   束ね（exchange → キュー）: exchange を読め（read）キューへ書ける（write）ユーザーが居る。既定の exchange（名前が空）と amq.* は見ない。
+#   名前の照合は awk の正規表現（ERE）で行う。生成物の正規表現は ^( … | … )$・\.・.* だけで書くので、RabbitMQ（PCRE）と同じに読める。
+coverage_gaps() {
+  local objects
+  objects="$( { rmqctl list_queues --no-table-headers name | awk '{ print "Q\t" $0 }'
+                rmqctl list_exchanges --no-table-headers name | awk '{ print "E\t" $0 }'
+                rmqctl list_bindings --no-table-headers source_name destination_name destination_kind | awk -F'\t' '$3 == "queue" { print "B\t" $1 "\t" $2 }'
+              } )" || { echo "(ブローカの一覧を読めない)"; return 0; }
+  awk -F'\t' -v users="$(users | tr '\n' ' ')" '
+    BEGIN { n = split(users, us, " "); for (i = 1; i <= n; i++) want[us[i]] = 1 }
+    FNR == NR { if ($0 ~ /^[[:space:]]*#/ || NF == 0) next; split($0, f, /[[:space:]]+/); if (f[1] in want) { k++; C[k] = f[2]; W[k] = f[3]; R[k] = f[4] } next }
+    function sys(x) { return x == "" || x ~ /^amq\./ }
+    $1 == "Q" && !sys($2) { ok = 0; for (i = 1; i <= k; i++) if ($2 ~ C[i] && $2 ~ R[i]) { ok = 1; break } if (!ok) print "キュー " $2 "（宣言・購読できるユーザーが居ない）" }
+    $1 == "E" && !sys($2) { ok = 0; for (i = 1; i <= k; i++) if ($2 ~ C[i]) { ok = 1; break } if (!ok) print "exchange " $2 "（宣言できるユーザーが居ない）" }
+    $1 == "B" && !sys($2) { ok = 0; for (i = 1; i <= k; i++) if ($2 ~ R[i] && $3 ~ W[i]) { ok = 1; break } if (!ok) print "束ね " $2 " → " $3 "（束ねられるユーザーが居ない）" }
+  ' "$PERMS_FILE" - <<<"$objects"
+}
+
+# 宣言の全ユーザーに絞った権限の行が在ることを、何かを変える前に確かめる（欠けたまま当てると、そのサービスだけ黙って止まる）。
+if [ "$SCOPE" = "narrow" ] || [ "$MODE" = "report" ]; then
+  [ -f "$PERMS_FILE" ] || { echo "ERROR: 絞った権限の生成物が無い: ${PERMS_FILE}（node scripts/gen-rabbitmq-permissions.js --write）" >&2; exit 1; }
+  missing_perms=""
+  for u in $(users); do
+    [ -n "$(declared_perms "$u")" ] || missing_perms="${missing_perms} ${u}"
+  done
+  if [ -n "$missing_perms" ]; then
+    echo "ERROR: ${PERMS_FILE} に次のユーザーの行が無い（何も変えていない）:${missing_perms}" >&2
+    echo "       作り直す: node scripts/gen-rabbitmq-permissions.js --write" >&2
+    exit 1
+  fi
+fi
+
+# 読むだけ: ユーザーごとの差分（今の権限 → 段 2 の権限）と、ブローカに在るものが段 2 の権限で届くか。
+if [ "$MODE" = "report" ]; then
+  same=0
+  changes=""
+  for u in $(users); do
+    now="$(rmqctl list_user_permissions --no-table-headers "$u" 2>/dev/null | awk -F'\t' -v v="$VHOST" '$1 == v { print $2 "\t" $3 "\t" $4; exit }')" || now=""
+    if [ "$now" = "$(declared_perms "$u")" ]; then same=$((same + 1)); else changes="${changes} ${u}"; fi
+  done
+  echo "    段 2（RABBITMQ_PERMISSIONS=narrow）の権限と同じユーザー: ${same} 件"
+  [ -n "$changes" ] && echo "    段 2 で権限が変わるユーザー:${changes}"
+  gaps="$(coverage_gaps)"
+  if [ -n "$gaps" ]; then
+    echo "ERROR: 段 2 の権限では、ブローカに在る次のものに届かない（このまま当てると通信が止まり得る）:" >&2
+    sed 's/^/       /' <<<"$gaps" >&2
+    echo "       導出を確かめる: node scripts/gen-rabbitmq-permissions.js --explain" >&2
+    exit 1
+  fi
+  echo "    ブローカに在るキュー・exchange・束ねは、段 2 の権限ですべて届く"
+  exit 0
+fi
+
 # ESO の同期を待つ（宣言の全ユーザーのキーが揃うまで）。
 deadline=$((SECONDS + TIMEOUT))
 while :; do
@@ -81,6 +156,17 @@ done
 
 existing="$(rmqctl list_users --formatter json | tr ',' '\n' | sed -n 's/.*"user":"\([^"]*\)".*/\1/p')"
 
+# 段 2 は、当てる前にブローカに在るものが届くかを確かめる（届かなければ何も変えずに止める）。
+if [ "$MODE" = "apply" ] && [ "$SCOPE" = "narrow" ]; then
+  gaps="$(coverage_gaps)"
+  if [ -n "$gaps" ] && [ "${RABBITMQ_PERMISSIONS_ALLOW_GAPS:-0}" != "1" ]; then
+    echo "ERROR: 段 2 の権限では、ブローカに在る次のものに届かない（何も変えていない）:" >&2
+    sed 's/^/       /' <<<"$gaps" >&2
+    echo "       押し切るときは RABBITMQ_PERMISSIONS_ALLOW_GAPS=1（届かないものを使うサービスは止まる）" >&2
+    exit 1
+  fi
+fi
+
 n=0
 fail=""
 # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
@@ -95,7 +181,13 @@ for u in $(users); do
     # NFR, #2194: Windows の Git Bash（MSYS2）は、ネイティブの kubectl.exe へ渡す引数のうち `/` で始まるもの（vhost の `/`）を
     #   Git の導入先のパス（`C:/Program Files/Git/`）へ書き換える。この呼び出しだけ書き換えを止める（他の環境では効かない変数）。
     #   起動器全体に付けないのは、起動器が一時ファイルのパスを kubectl へ渡すため（そちらは書き換えが要る）。
-    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rmqctl set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null
+    # NFR-18, IADR-0674: 段 1（vhost）は vhost 全体、段 2（narrow）は permissions.txt の行（上で全ユーザーの行が在ることを確かめた）。
+    if [ "$SCOPE" = "narrow" ]; then
+      IFS=$'\t' read -r p_conf p_write p_read <<<"$(declared_perms "$u")"
+    else
+      p_conf='.*'; p_write='.*'; p_read='.*'
+    fi
+    MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rmqctl set_permissions -p "$VHOST" "$u" "$p_conf" "$p_write" "$p_read" >/dev/null
     rmqctl set_user_tags "$u" >/dev/null
   elif ! grep -Fxq -- "$u" <<<"$existing"; then
     fail="${fail} ${u}(無い)"
@@ -113,4 +205,16 @@ if [ -n "$fail" ]; then
   [ "$MODE" = "check" ] && echo "       合わせる: bash deploy/local/rabbitmq-setup/reconcile-users.sh" >&2
   exit 1
 fi
-echo "    ブローカのサービスごとのユーザー: ${n} 件（${MODE}。vhost ${VHOST}。値は表示しない）"
+# NFR-18, IADR-0674: 当てた段と絞った権限を、ブローカの起動の直後の復元へ渡す（ConfigMap。値は持たない）。
+if [ "$MODE" = "apply" ]; then
+  if [ -f "$PERMS_FILE" ]; then
+    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$SCOPE" --from-file=permissions.txt="$PERMS_FILE" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  else
+    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope=vhost --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  fi
+  if [ "$SCOPE" = "vhost" ]; then
+    echo "    権限は段 1（vhost 全体）。段 2 への切り替えの点検: bash deploy/local/rabbitmq-setup/reconcile-users.sh --permissions-report"
+  fi
+fi
+echo "    ブローカのサービスごとのユーザー: ${n} 件（${MODE}。vhost ${VHOST}。権限 ${SCOPE}。値は表示しない）"

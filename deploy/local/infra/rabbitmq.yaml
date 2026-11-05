@@ -75,6 +75,7 @@ spec:
             - { name: boot, mountPath: /opt/rabbitmq-boot, readOnly: true }
             - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
             - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
+            - { name: permissions, mountPath: /etc/rabbitmq-permissions, readOnly: true }
             # IADR-0591: conf.d へ 1 ファイルだけ足す（subPath。イメージの 10-defaults.conf を隠さない）。
             - { name: tls-conf, mountPath: /etc/rabbitmq/conf.d/20-tls.conf, subPath: 20-tls.conf, readOnly: true }
             - { name: tls, mountPath: /etc/rabbitmq-tls, readOnly: true }
@@ -96,6 +97,9 @@ spec:
         # 既定のユーザーの無効化の印（deploy/local/rabbitmq-setup/disable-default-user.sh が、全サービスの切り替えを確かめてから作る）。
         - name: default-user-flag
           configMap: { name: rabbitmq-default-user, optional: true }
+        # NFR-18, IADR-0674: 権限の段と絞った権限（reconcile-users.sh が当てるたびに写す）。無い間は段 1（vhost 全体）。
+        - name: permissions
+          configMap: { name: rabbitmq-permissions, optional: true }
         # IADR-0591: TLS の設定と証明書（Secret は非 optional。無ければ Pod は立たない＝平文だけで黙って立たない）。
         - name: tls-conf
           configMap: { name: rabbitmq-tls, defaultMode: 0444 }
@@ -142,6 +146,11 @@ data:
     USERS_DIR="${RABBITMQ_BOOT_USERS_DIR:-/etc/rabbitmq-users}"
     FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
     VHOST="${RABBITMQ_BOOT_VHOST:-/}"
+    # NFR-18, IADR-0674: 権限の段（reconcile-users.sh が最後に当てた段と permissions.txt。ConfigMap rabbitmq-permissions）。
+    #   無い・vhost なら vhost 全体（段 1）。narrow なら permissions.txt の行を当て、行の無いユーザーは作らない（vhost 全体へ倒さない）。
+    PERMS_DIR="${RABBITMQ_BOOT_PERMISSIONS_DIR:-/etc/rabbitmq-permissions}"
+    scope="$(cat "$PERMS_DIR/scope" 2>/dev/null || true)"
+    [ "$scope" = "narrow" ] || scope=vhost
     tries="${RABBITMQ_BOOT_TRIES:-90}"
     # 🔴 postStart はサーバの起動と並んで root で走る。サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
     #   root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。サーバが作った cookie が在るまで
@@ -171,11 +180,18 @@ data:
       if ! rabbitmqctl add_user "$u" < "$f" >/dev/null 2>&1; then
         rabbitmqctl change_password "$u" < "$f" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       fi
-      rabbitmqctl -q set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      if [ "$scope" = "narrow" ]; then
+        line="$(awk -v u="$u" '!/^[[:space:]]*#/ && $1 == u && NF == 4 { print $2 " " $3 " " $4; exit }' "$PERMS_DIR/permissions.txt" 2>/dev/null)"
+        if [ -z "$line" ]; then log "絞った権限の行が無い（権限を付けない）: $u"; failed=$((failed + 1)); continue; fi
+        p_conf="${line%% *}"; rest="${line#* }"; p_write="${rest%% *}"; p_read="${rest#* }"
+      else
+        p_conf='.*'; p_write='.*'; p_read='.*'
+      fi
+      rabbitmqctl -q set_permissions -p "$VHOST" "$u" "$p_conf" "$p_write" "$p_read" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       rabbitmqctl -q set_user_tags "$u" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       n=$((n + 1))
     done
-    log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件）"
+    log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件・権限 ${scope}）"
     if [ "$(cat "$FLAG" 2>/dev/null)" = "true" ]; then
       if [ "$n" -gt 0 ] && [ "$failed" -eq 0 ] && [ -n "${RABBITMQ_DEFAULT_USER:-}" ]; then
         if rabbitmqctl -q delete_user "$RABBITMQ_DEFAULT_USER" >/dev/null 2>&1; then
