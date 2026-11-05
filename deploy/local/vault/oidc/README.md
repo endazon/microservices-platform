@@ -98,6 +98,7 @@ curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 \
 - OIDC role `default`（`groups_claim=groups`・`token_policies=default`＝**最小・secret アクセス無し**）。
 - policy `admin`（`policies/admin.hcl`）／`operator`（`policies/operator.hcl`）を作成。
   - ［2026-11-05 / IADR-0683］`operator` は KV の値を読まない（メタデータの read / list を msp・ai-stock-trading・datasource の接頭辞だけ）。値の投入・更新は SC-22 の画面、値の読み取りは `admin` が行う。
+    一覧はマウントの根を `vault kv list secret/`（API では `LIST secret/metadata/`。末尾のスラッシュつき）で引く。末尾のスラッシュの無い `secret/metadata` は policy の path に当たらず拒否され得る。
 - **external group** `platform-admin`→`admin` / `platform-operator`→`operator` を作成し group-alias で OIDC accessor に紐付け。
   realm ロールが `groups` クレームで届き、**external group に一致したユーザーのみ**該当 policy を得る。
 - **`auth tune -listing-visibility=unauth`**（IADR-0103）: これが無いと未認証の `sys/internal/ui/mounts` が

@@ -19785,7 +19785,7 @@ server.listen(0, '127.0.0.1', async () => {
     const dir = path2421.join(__dirname, '..', 'deploy/local/vault/eso');
     const used = new Set();
     for (const f of fs2421.readdirSync(dir).filter((n) => n.endsWith('.hcl'))) {
-      for (const m of fs2421.readFileSync(path2421.join(dir, f), 'utf8').matchAll(/path\s+"secret\/(?:data|metadata)\/([a-z-]+)\//g)) used.add(m[1]);
+      for (const m of fs2421.readFileSync(path2421.join(dir, f), 'utf8').matchAll(/path\s+"secret\/(?:data|metadata)\/([a-z0-9-]+)\//g)) used.add(m[1]);
     }
     assert.ok(used.size >= 3, `陽性対照: 接頭辞を拾えていない（${[...used]}）`);
     for (const u of used) assert.ok(blocks.some((b) => b.path === `secret/metadata/${u}/*`), `接頭辞 ${u} が運用者のメタデータの一覧に無い`);
