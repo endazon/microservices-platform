@@ -15,6 +15,10 @@
  *   5. 切り戻し（tls.enabled=false）は平文の従来の形に戻り、マウントも SSL_CERT_DIR も描かない。
  *   6. 変異: 接続文字列の検証の部分を外す・SSL_CERT_DIR の既定のストアを落とす・マウントを外すと判定が赤になる。
  *
+ *   7. ［#2403 / IADR-0673］Wiki.js は wikijs.db.tls.enabled（既定 false＝opt-in）で描き分ける。既定（本番像）は従来の形
+ *      （DB_SSL・NODE_EXTRA_CA_CERTS・CA のマウントを描かない）。有効（values-local を含む）なら DB_SSL=true ＋
+ *      NODE_EXTRA_CA_CERTS=/etc/platform-infra-ca/<caKey> ＋ CA の非 optional の 1 キーのマウント。変異（マウントを外す）で赤。
+ *
  * 🔴 **helm が無ければ落ちる（fail-closed）。** CI は static-checks-units で走らせる。
  *
  * 外部依存ゼロ（Node 標準モジュール ＋ helm）。実行: node scripts/helm-infra-tls.test.js
@@ -71,6 +75,7 @@ function violations(rendered, { caConfigMap = 'platform-infra-ca', caKey = 'ca.c
   let db = 0;
   let mq = 0;
   for (const d of deployments(rendered)) {
+    if (d.app === 'wiki-js') continue; // IADR-0673: Wiki.js は .NET の接続文字列を持たない。wikiViolations が見る。
     const conn = envValue(d.text, 'ConnectionStrings__DefaultConnection');
     const amqp = envValue(d.text, 'RabbitMq__ConnectionString');
     const certDir = envValue(d.text, 'SSL_CERT_DIR');
@@ -95,6 +100,29 @@ function violations(rendered, { caConfigMap = 'platform-infra-ca', caKey = 'ca.c
   }
   if (db < 10) out.push(`DB へ繋ぐ Deployment を読めない（${db} 件）`);
   if (mq < 7) out.push(`ブローカへ繋ぐ Deployment を読めない（${mq} 件）`);
+  return out;
+}
+
+/** IADR-0673: Wiki.js の DB の TLS。違反の一覧を返す（空 = 合格）。 */
+function wikiViolations(rendered, { enabled, caConfigMap = 'platform-infra-ca', caKey = 'ca.crt' }) {
+  const wiki = deployments(rendered).filter((d) => d.app === 'wiki-js');
+  if (wiki.length !== 1) return [`wiki-js の Deployment を読めない（${wiki.length} 件）`];
+  const t = wiki[0].text;
+  const out = [];
+  const ssl = envValue(t, 'DB_SSL');
+  const extra = envValue(t, 'NODE_EXTRA_CA_CERTS');
+  const mount = new RegExp(`- name: platform-infra-ca\\n\\s*mountPath: ${CA_DIR}\\n\\s*readOnly: true`).test(t);
+  const vol = new RegExp(`- name: platform-infra-ca\\n\\s*configMap:\\n\\s*name: ${caConfigMap}\\n\\s*items:\\n\\s*- key: ${caKey.replace('.', '\\.')}\\n\\s*path: ${caKey.replace('.', '\\.')}\\n`).test(t);
+  if (/NODE_TLS_REJECT_UNAUTHORIZED|rejectUnauthorized\s*:\s*false/i.test(t)) out.push('wiki-js: 検証を緩める形がある');
+  if (/name: platform-infra-ca[\s\S]{0,200}optional: true/.test(t)) out.push('wiki-js: CA の ConfigMap が optional');
+  if (enabled) {
+    if (ssl !== 'true') out.push(`wiki-js: DB_SSL が true でない（${ssl}）`);
+    if (extra !== `${CA_DIR}/${caKey}`) out.push(`wiki-js: NODE_EXTRA_CA_CERTS が基盤の CA を指さない（${extra}）`);
+    if (!(mount && vol)) out.push(`wiki-js: 基盤の CA をマウントしない（mount=${mount} vol=${vol}）`);
+  } else {
+    if (ssl !== null || extra !== null) out.push('wiki-js: opt-in でないのに TLS の env を描く');
+    if (mount || vol) out.push('wiki-js: opt-in でないのに CA をマウントする');
+  }
   return out;
 }
 
@@ -156,6 +184,39 @@ ok('変異: 検証の部分を外す・既定のストアを落とす・マウ�
   assert.ok(mutate('"/etc/ssl/certs:/etc/platform-infra-ca"', '"/etc/platform-infra-ca"').some((v) => /SSL_CERT_DIR/.test(v)), '既定のストアを落とした変異を捕まえない');
   assert.ok(mutate('{{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication }}\n          volumeMounts:', '{{- if or $pipelineMount $vaultToken $mcpPublication }}\n          volumeMounts:')
     .some((v) => /マウントしない/.test(v)), 'マウントを外した変異を捕まえない');
+});
+
+ok('IADR-0673: Wiki.js は既定（本番像）で従来の形、wikijs.db.tls.enabled と values-local では DB_SSL ＋ NODE_EXTRA_CA_CERTS ＋ CA の非 optional のマウント', () => {
+  assert.deepStrictEqual(wikiViolations(mustRender([]), { enabled: false }), []);
+  assert.deepStrictEqual(wikiViolations(mustRender(['--set', 'wikijs.db.tls.enabled=true']), { enabled: true }), []);
+  assert.deepStrictEqual(wikiViolations(mustRender(['-f', VALUES_LOCAL]), { enabled: true }), []);
+  const moved = mustRender(['--set', 'wikijs.db.tls.enabled=true', '--set', 'global.infraCa.configMap=infra-ca-x', '--set', 'global.infraCa.caKey=root.pem']);
+  assert.deepStrictEqual(wikiViolations(moved, { enabled: true, caConfigMap: 'infra-ca-x', caKey: 'root.pem' }), []);
+  // CA の無いまま検証つきの接続を描かない（.NET のサービスを切り戻していても止まる）。
+  const r = render(['--set', 'wikijs.db.tls.enabled=true', '--set', 'global.db.tls.enabled=false', '--set', 'global.messaging.tls.enabled=false', '--set', 'global.infraCa.configMap=']);
+  assert.notStrictEqual(r.status, 0, 'CA の ConfigMap 名が空のまま Wiki.js の TLS を描いた');
+  assert.match(r.stderr, /wikijs\.db\.tls\.enabled には global\.infraCa\.configMap \/ caKey が要ります/);
+  // 判定の自己検査: 有効の描画を「無効のはず」で見れば赤、既定の描画を「有効のはず」で見れば赤。
+  assert.ok(wikiViolations(mustRender(['-f', VALUES_LOCAL]), { enabled: false }).length > 0, '有効の描画を見分けない');
+  assert.ok(wikiViolations(mustRender([]), { enabled: true }).length > 0, '既定の描画を見分けない');
+});
+
+ok('IADR-0673: 変異（Wiki.js の CA のマウントを外す・DB_SSL を落とす）で判定が赤になる', () => {
+  const tpl = path.join(REPO_ROOT, CHART, 'templates', 'wikijs.yaml');
+  const src = fs.readFileSync(tpl, 'utf8');
+  const mutate = (from, to) => {
+    assert.ok(src.includes(from), `変異の置換元が無い（試験が古い）: ${from}`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'helm-infra-tls-wiki-'));
+    try {
+      fs.cpSync(path.join(REPO_ROOT, CHART), dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'templates', 'wikijs.yaml'), src.replace(from, to));
+      return wikiViolations(mustRender(['--set', 'wikijs.db.tls.enabled=true'], dir), { enabled: true });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  };
+  assert.ok(mutate('mountPath: /etc/platform-infra-ca', 'mountPath: /etc/elsewhere').some((v) => /マウントしない/.test(v)), 'マウントを外した変異を捕まえない');
+  assert.ok(mutate('value: "true"', 'value: "false"').some((v) => /DB_SSL/.test(v)), 'DB_SSL を落とした変異を捕まえない');
 });
 
 process.stdout.write(`helm-infra-tls: ${passed} tests passed\n`);

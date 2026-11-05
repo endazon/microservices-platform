@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [NFR-16, NFR-18, ADR-0023, IADR-0591]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化）
 issue: "GHSA-j4qv-2w99-xg5p"
@@ -44,3 +44,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 - 新しく立てるクラスタでは、注釈を刻むことで postgres・rabbitmq の作り直しが 1 回増える。
 - 稼働のクラスタでは、初めて当てる再実行で 1 回作り直される（AST の接続も一度切れる）。以後は証明書が変わったときだけ作り直す。
+
+［2026-11-05 追記 / #2403］未チェックの「統合スタック（`ISTIO=1`）を PR のブランチで流し、門が緑」は、段 4b-2 の PR のブランチで流した run 42023613547（workflow_dispatch・`ISTIO=1`）で満たした。段 1 の門（基盤の TLS・メッシュの mTLS・外向き通信ほか）を含め、すべての門が緑だった。
