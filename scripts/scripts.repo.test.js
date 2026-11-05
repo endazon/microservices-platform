@@ -19769,17 +19769,23 @@ case "$1 $2" in
   "get deploy") [ -f "$S/deploy/@{ns}__$3" ]; exit ;;
   "patch secret")
     [ "@{STUB_PATCH_FAIL:-}" = "1" ] && { echo "stub: patch failed" >&2; exit 1; }
+    # IADR-0672: 名指した Secret の書き込みだけを、STUB_PATCH_FAIL_COUNT 回目以降（既定 1 回目から）失敗させる
+    if [ -n "@{STUB_PATCH_FAIL_SECRET:-}" ] && [ "$3" = "@{STUB_PATCH_FAIL_SECRET}" ]; then
+      n=$(( $(cat "$S/patch-count-$3" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$S/patch-count-$3"
+      [ "$n" -ge "@{STUB_PATCH_FAIL_COUNT:-1}" ] && { echo "stub: patch failed" >&2; exit 1; }
+    fi
     pf=""; prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && pf="$a"; prev="$a"; done
     node -e 'const fs=require("fs");const [,f,dir,pre]=process.argv;const d=JSON.parse(fs.readFileSync(f,"utf8")).data;for(const[k,v]of Object.entries(d))fs.writeFileSync(dir+"/"+pre+"__"+k,Buffer.from(v,"base64"));' "$pf" "$S/secret" "@{ns}__$3"
     echo "SECRET PATCH @{ns}/$3" >> "$S/calls"; exit 0 ;;
   "annotate externalsecret")
     echo "ESO SYNC @{ns}/$3" >> "$S/calls"
+    [ "@{STUB_NO_SYNC:-}" = "1" ] && exit 0
     for k in "$S"/kv/*; do [ -f "$k" ] || continue; b="$(basename "$k")"; case "$b" in "msp__$3__"*) cp "$k" "$S/secret/@{ns}__$3__@{b#msp__$3__}";; esac; done
     exit 0 ;;
   "rollout restart"|"rollout status")
     [ "$2" = "status" ] && [ -n "@{STUB_ROLLOUT_FAIL:-}" ] && [ "$3" = "deploy/@{STUB_ROLLOUT_FAIL}" ] && exit 1
     echo "ROLLOUT $2 @{ns}/$3" >> "$S/calls"; exit 0 ;;
-  "wait --for=condition=Available") echo "WAIT @{ns}" >> "$S/calls"; exit 0 ;;
+  "wait --for=condition=Available") [ "@{STUB_WAIT_FAIL:-}" = "1" ] && exit 1; echo "WAIT @{ns}" >> "$S/calls"; exit 0 ;;
   "exec -i")
     target="$3"
     while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift
@@ -19788,7 +19794,7 @@ case "$1 $2" in
       "deploy/postgres psql "*)
         sql="$(cat)"; role="$(printf '%s' "$sql" | sed -nE 's/^ALTER ROLE "([^"]+)" WITH PASSWORD .*/\1/p')"
         val="$(printf '%s' "$sql" | sed -nE "s/^ALTER ROLE \"[^\"]+\" WITH PASSWORD '([^']*)';$/\1/p")"
-        [ -n "$role" ] || exit 1; printf '%s' "$val" > "$S/pg/$role" || exit 1; echo "PG ALTER $role" >> "$S/calls"; exit 0 ;;
+        [ -n "$role" ] || exit 1; [ "@{STUB_ALTER_FAIL:-}" = "1" ] && exit 1; printf '%s' "$val" > "$S/pg/$role" || exit 1; echo "PG ALTER $role" >> "$S/calls"; exit 0 ;;
     esac ;;
 esac
 echo "unhandled: $*" >&2; exit 9
@@ -19805,7 +19811,8 @@ case "$1 $2" in
   "token lookup") has "$VAULT_TOKEN" ;;
   "token create") has "$VAULT_TOKEN" || exit 1; for a in "$@"; do case "$a" in -id=*) printf '%s\n' "@{a#-id=}" >> "$T";; esac; done; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
   "token revoke") has "$VAULT_TOKEN" || exit 1; grep -vxF "$3" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
-  "kv patch") has "$VAULT_TOKEN" || exit 1; p="@{3#secret/}"; kv="@{4%%=-}"; cat > "$S/kv/$(printf '%s' "$p" | tr '/' '_' | sed 's/_/__/')__$kv"; echo "VAULT KV PATCH $p $kv" >> "$S/calls" ;;
+  "kv get") has "$VAULT_TOKEN" || exit 1; f="@{3#-field=}"; p="@{4#secret/}"; k="$S/kv/$(printf '%s' "$p" | tr '/' '_' | sed 's/_/__/')__$f"; [ -f "$k" ] || exit 2; cat "$k" ;;
+  "kv patch") has "$VAULT_TOKEN" || exit 1; p="@{3#secret/}"; kv="@{4%%=-}"; [ "$p" = "@{STUB_KV_PATCH_FAIL:-}" ] && exit 2; cat > "$S/kv/$(printf '%s' "$p" | tr '/' '_' | sed 's/_/__/')__$kv"; echo "VAULT KV PATCH $p $kv" >> "$S/calls" ;;
   *) exit 1 ;;
 esac
 `.replace(/@\{/g, '$' + '{');
@@ -19942,14 +19949,65 @@ esac
     ok('IADR-0672: 作り直し（秘匿管理のトークン）が新しいトークンを作った後に失敗したら、どの経路でも事実どおりに告げ、古いトークンを失効させない', () => {
       const patch = run2399(ROTATE2399, ['--live', 'vault-root-token'], { env: { STUB_PATCH_FAIL: '1' } });
       assert.notStrictEqual(patch.status, 0, 'Secret を書けないのに成功した');
-      assert.ok(/新しいトークンは作成済み/.test(patch.stderr) && /古いトークンは失効させていない/.test(patch.stderr), patch.stderr);
-      assert.ok(!/ストア側は変えていない/.test(patch.stderr), `事実と違うことを告げた:\n${patch.stderr}`);
-      assert.ok(!patch.calls.some((c) => c.startsWith('ROLLOUT') || c === 'VAULT TOKEN REVOKE'), '失敗の後に先へ進んだ');
-      assert.strictEqual(patch.read('tokens').split('\n').filter(Boolean).length, 2, '古いトークンが残っていない');
+      assert.ok(/ここまでに変えたもの: .*新しい固定のトークンを作った/.test(patch.stderr), patch.stderr);
+      assert.ok(/元へ戻した: 新しい固定のトークンを失効させた/.test(patch.stderr), `作ったトークンを戻していない:\n${patch.stderr}`);
+      assert.ok(!/何も変えていない/.test(patch.stderr), `事実と違うことを告げた:\n${patch.stderr}`);
+      assert.ok(!patch.calls.some((c) => c.startsWith('ROLLOUT')), '失敗の後に先へ進んだ');
+      assert.deepStrictEqual(patch.read('tokens').split('\n').filter(Boolean), ['devroot'], '古いトークンだけが残る形に戻っていない');
       const restart = run2399(ROTATE2399, ['--live', 'vault-root-token'], { env: { STUB_ROLLOUT_FAIL: 'vault' } });
       assert.notStrictEqual(restart.status, 0, '秘匿管理が立ち上がらないのに成功した');
-      assert.ok(/新しいトークンは作成済み/.test(restart.stderr) && /Secret は新しいトークン/.test(restart.stderr) && /古いトークンは失効させていない/.test(restart.stderr), restart.stderr);
+      assert.ok(/ここまでに変えたもの: .*新しい固定のトークンを作った.*Secret platform-infra\/vault-dev-token の token を書いた/.test(restart.stderr), restart.stderr);
+      assert.ok(/まだしていないもの: .*古いトークンの失効/.test(restart.stderr), restart.stderr);
       assert.ok(!restart.calls.includes('VAULT TOKEN REVOKE'), '立ち上がらないのに古いトークンを失効させた');
+    });
+
+    ok('IADR-0672: 作り直し（app-db）の 2 つ目の保管先が失敗したら、1 つ目を元の値へ戻し、ここまでに変えたものと戻したことを事実どおりに告げる（ESO なし）', () => {
+      const r = run2399(ROTATE2399, ['--live', 'app-db'], { env: { STUB_PATCH_FAIL_SECRET: 'wikijs-db' } });
+      assert.notStrictEqual(r.status, 0, '2 つ目の保管先が失敗したのに成功した');
+      assert.ok(/ここまでに変えたもの: .*Secret microservices-platform\/postgres-app の password を書いた/.test(r.stderr), r.stderr);
+      assert.ok(/元へ戻した: Secret microservices-platform\/postgres-app の password/.test(r.stderr), `戻したことを告げていない:\n${r.stderr}`);
+      assert.ok(!/ストア側は変えていない。?$/m.test(r.stderr) || /まだしていないもの: .*ストア側/.test(r.stderr), r.stderr);
+      assert.strictEqual(r.read('secret/microservices-platform__postgres-app__password'), 'kp', '1 つ目の保管先が元の値へ戻っていない');
+      assert.strictEqual(r.read('pg/kp'), 'kp', 'ストア側を変えた');
+      assert.ok(!r.calls.some((c) => c.startsWith('PG ALTER') || c.startsWith('ROLLOUT')), '先へ進んだ');
+    });
+
+    ok('IADR-0672: 作り直し（app-db）の 2 つ目の保管先が失敗したら、1 つ目の Vault の KV を元の値へ戻す（ESO あり）', () => {
+      const eso = ({ put }) => {
+        put('es/microservices-platform__postgres-app', ''); put('es/microservices-platform__wikijs-db', '');
+        put('kv/msp__postgres-app__password', 'probe-0672-kv-old'); put('kv/msp__wikijs-db__password', 'probe-0672-kv-old');
+      };
+      const r = run2399(ROTATE2399, ['--live', 'app-db'], { setup: eso, env: { STUB_KV_PATCH_FAIL: 'msp/wikijs-db' } });
+      assert.notStrictEqual(r.status, 0, '2 つ目の保管先が失敗したのに成功した');
+      assert.strictEqual(r.read('kv/msp__postgres-app__password'), 'probe-0672-kv-old', '1 つ目の KV が元の値へ戻っていない');
+      assert.ok(/元へ戻した: Vault secret\/msp\/postgres-app の password/.test(r.stderr), r.stderr);
+      assert.ok(!`${r.stdout}${r.stderr}`.includes('probe-0672-kv-old') && !r.argv.includes('probe-0672-kv-old'), '元の値が出力・引数に出た');
+    });
+
+    ok('IADR-0672: 作り直し（app-db）のストア側が失敗したら、2 つの保管先を元へ戻し、消費側を作り直さない', () => {
+      const r = run2399(ROTATE2399, ['--live', 'app-db'], { env: { STUB_ALTER_FAIL: '1' } });
+      assert.notStrictEqual(r.status, 0);
+      for (const sec of ['postgres-app', 'wikijs-db']) {
+        assert.strictEqual(r.read(`secret/microservices-platform__${sec}__password`), 'kp', `${sec} が元へ戻っていない`);
+        assert.ok(new RegExp(`元へ戻した: .*Secret microservices-platform/${sec} の password`).test(r.stderr), r.stderr);
+      }
+      assert.ok(/ストア側（DB 利用者 kp）を変えられない/.test(r.stderr), r.stderr);
+      assert.ok(!r.calls.some((c) => c.startsWith('ROLLOUT')), '消費側を作り直した');
+    });
+
+    ok('IADR-0672: 作り直しのストア側を変えた後（同期・作り直し）の失敗は、元へ戻さずに、変えたものとまだしていないものを告げる', () => {
+      const eso = ({ put }) => { put('es/microservices-platform__postgres-app', ''); put('es/microservices-platform__wikijs-db', ''); };
+      const sync = run2399(ROTATE2399, ['--live', 'app-db'], { setup: eso, env: { STUB_NO_SYNC: '1' } });
+      assert.strictEqual(sync.status, 1, `同期されないのに成功したか、期限で止まらなかった（${sync.status}）`);
+      assert.ok(/ここまでに変えたもの: .*Vault secret\/msp\/postgres-app.*DB 利用者 kp のパスワードを変えた/.test(sync.stderr), sync.stderr);
+      assert.ok(/まだしていないもの: .*消費側の作り直し/.test(sync.stderr), sync.stderr);
+      assert.ok(!/元へ戻した/.test(sync.stderr), 'ストア側を変えた後に保管先を戻した（ストア側と食い違う）');
+      const wait = run2399(ROTATE2399, ['--live', 'app-db'], { env: { STUB_WAIT_FAIL: '1' } });
+      assert.notStrictEqual(wait.status, 0);
+      assert.ok(/ここまでに変えたもの: .*DB 利用者 kp のパスワードを変えた.*microservices-platform の Deployment の作り直しを始めた/.test(wait.stderr), wait.stderr);
+      // 複数の対象を続けて回すとき、先に済んだ対象も「変えたもの」に入る
+      const two = run2399(ROTATE2399, ['--live', 'postgres-admin', 'app-db'], { env: { STUB_PATCH_FAIL_SECRET: 'wikijs-db' } });
+      assert.ok(/ここまでに変えたもの: .*postgres-admin を作り直した/.test(two.stderr), two.stderr);
     });
 
     ok('IADR-0672: 作り直しは、ストア側を変えられなければ止まり、消費側を作り直さない', () => {
