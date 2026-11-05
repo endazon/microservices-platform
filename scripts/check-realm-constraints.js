@@ -1697,6 +1697,72 @@ function checkRealmPlatformAudienceText(text, opts) {
   return collectPlatformAudienceGaps(JSON.parse(text), opts);
 }
 
+// --- 検査9 の 2（#2418）: 取引ユニット（AST）の API の audience ------------------
+// NFR-09, IADR-0680 (#2418): AST の REST は AST 専用の audience（ai-stock-trading-api）を検査する（AST#1541）。🔴 platform-api（検査9）は流用しない。
+// 載せてよいのは次の 2 つだけ（BFF は利用者のトークンを AST へ中継する口、ai-stock-trading-owner は AST の所有者の操作の主体）。
+// ほかのサービスアカウントに付けると、そのトークンが AST の REST を通る。付ける先を足すときは判断を記録してこの表へ加える。
+const AST_AUDIENCE = 'ai-stock-trading-api';
+const AST_AUDIENCE_SCOPE = 'ai-stock-trading-api-audience';
+const AST_AUDIENCE_HOLDERS = Object.freeze(['ai-stock-trading-owner', 'bff']);
+function emitsAudience(m, audience) {
+  if (!m || m.protocolMapper !== 'oidc-audience-mapper') return false;
+  const cfg = mapperConfig(m);
+  return PLATFORM_AUDIENCE_MAPPER_KEYS.some((k) => String(cfg[k] ?? '').trim() === audience);
+}
+
+function collectAstAudienceGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
+  if (!realm || realm.realm !== realmName) return [];
+  const gaps = [];
+  const scope = (realm.clientScopes || []).find((s) => s && s.name === AST_AUDIENCE_SCOPE);
+  const mappers = scope ? (scope.protocolMappers || []) : [];
+  const exact = mappers.length === 1 && mappers[0].protocolMapper === 'oidc-audience-mapper'
+    && mapperConfig(mappers[0])['included.custom.audience'] === AST_AUDIENCE
+    && String(mapperConfig(mappers[0])['access.token.claim']) === 'true'
+    && String(mapperConfig(mappers[0])['id.token.claim'] ?? 'false') !== 'true'
+    && !mapperConfig(mappers[0])['included.client.audience'];
+  if (!exact) {
+    gaps.push({ path: `clientScopes[${AST_AUDIENCE_SCOPE}]`,
+      detail: `audience の写像 1 つだけ（oidc-audience-mapper・included.custom.audience=${AST_AUDIENCE}・access token だけ）を持つスコープが無い。取引ユニットの REST が 401 になる` });
+  }
+  for (const s of realm.clientScopes || []) {
+    if (!s || s.name === AST_AUDIENCE_SCOPE) continue;
+    for (const m of s.protocolMappers || []) {
+      if (!emitsAudience(m, AST_AUDIENCE)) continue;
+      gaps.push({ path: `clientScopes[${s.name}].protocolMappers[${m.name || '?'}]`,
+        detail: `${AST_AUDIENCE} を出す audience の写像が ${AST_AUDIENCE_SCOPE} 以外のスコープにある（写像は ${AST_AUDIENCE_SCOPE} の中にだけ置く）` });
+    }
+  }
+  for (const c of realm.clients || []) {
+    if (!c || !c.clientId) continue;
+    for (const m of c.protocolMappers || []) {
+      if (!emitsAudience(m, AST_AUDIENCE)) continue;
+      gaps.push({ path: `clients[${c.clientId}].protocolMappers[${m.name || '?'}]`,
+        detail: `${AST_AUDIENCE} を出す audience の写像がクライアントに直付けされている（既定スコープへ ${AST_AUDIENCE_SCOPE} を入れる形にする）` });
+    }
+    if ((c.optionalClientScopes || []).includes(AST_AUDIENCE_SCOPE)) {
+      gaps.push({ path: `clients[${c.clientId}].optionalClientScopes`, detail: `${AST_AUDIENCE_SCOPE} を任意スコープに置かない（scope を要求すれば誰でも載る）` });
+    }
+    const has = (c.defaultClientScopes || []).includes(AST_AUDIENCE_SCOPE);
+    const allowed = AST_AUDIENCE_HOLDERS.includes(c.clientId);
+    if (has && !allowed) {
+      gaps.push({ path: `clients[${c.clientId}].defaultClientScopes`,
+        detail: `${AST_AUDIENCE_SCOPE} は ${AST_AUDIENCE_HOLDERS.join(' と ')} だけに付ける。このクライアントのトークンが取引ユニットの REST を通る` });
+    }
+    if (!has && allowed) {
+      gaps.push({ path: `clients[${c.clientId}].defaultClientScopes`, detail: `${AST_AUDIENCE_SCOPE} が無い。取引ユニットの REST で 401 になる` });
+    }
+  }
+  for (const id of AST_AUDIENCE_HOLDERS) {
+    if (!(realm.clients || []).some((c) => c && c.clientId === id)) gaps.push({ path: `clients[${id}]`, detail: `${AST_AUDIENCE_SCOPE} を付ける先のクライアントが無い` });
+  }
+  for (const key of ['defaultDefaultClientScopes', 'defaultOptionalClientScopes']) {
+    if ((realm[key] || []).includes(AST_AUDIENCE_SCOPE)) {
+      gaps.push({ path: `${key}`, detail: `${AST_AUDIENCE_SCOPE} を realm の既定に置かない（後から作るクライアントへ黙って継がれる）` });
+    }
+  }
+  return gaps;
+}
+
 // --- 検査10: アカウントコンソール（SC-16）の構成（#1894・IADR-0546） ------------------------------
 const ACCOUNT_CLIENT = 'account';
 const ACCOUNT_CONSOLE_CLIENT = 'account-console';
@@ -1865,7 +1931,8 @@ function checkFiles(relPaths) {
       serverUrlGaps: checkRealmServerSideUrlsText(text),
       machineGaps: checkRealmMachineJudgementText(text),
       secretGaps: checkRealmDeclaredSecretsText(text),
-      audienceGaps: checkRealmPlatformAudienceText(text),
+      // #2418: 取引ユニットの API の audience の範囲も同じ分類で数える。
+      audienceGaps: [...checkRealmPlatformAudienceText(text), ...collectAstAudienceGaps(JSON.parse(text))],
       accountConsoleGaps: checkRealmAccountConsoleText(text),
       autoScopeGaps: checkRealmAutoAssignedScopesText(text),
     });
@@ -3256,6 +3323,40 @@ function selfTest() {
     return one(without) && one(withIt);
   })() });
   cases.push({ name: '検査9: platform 以外の realm は見ない', pass: audMut((r) => { r.realm = 'other'; r.clientScopes = []; }).length === 0 });
+  // --- 検査9 の 2（#2418）: 取引ユニットの API の audience ---
+  const astRealm = () => ({
+    realm: AUTH_POLICY_REALM,
+    clientScopes: [{ name: AST_AUDIENCE_SCOPE, protocolMappers: [{ name: 'a', protocolMapper: 'oidc-audience-mapper',
+      config: { 'included.custom.audience': AST_AUDIENCE, 'id.token.claim': 'false', 'access.token.claim': 'true' } }] }],
+    clients: [
+      { clientId: 'bff', defaultClientScopes: ['profile', AST_AUDIENCE_SCOPE] },
+      { clientId: 'ai-stock-trading-owner', serviceAccountsEnabled: true, defaultClientScopes: ['roles', AST_AUDIENCE_SCOPE] },
+      { clientId: 'ai-stock-trading-svc', serviceAccountsEnabled: true, defaultClientScopes: ['roles'] },
+    ],
+  });
+  const astMut = (f) => { const r = astRealm(); f(r); return collectAstAudienceGaps(r); };
+  cases.push({ name: '検査9 の 2: bff と ai-stock-trading-owner だけに付ければ 0 件', pass: astMut(() => {}).length === 0 });
+  cases.push({ name: '検査9 の 2: ほかのサービスアカウントに付けると赤', pass: astMut((r) => { r.clients[2].defaultClientScopes.push(AST_AUDIENCE_SCOPE); }).length === 1 });
+  cases.push({ name: '検査9 の 2: 付ける先から外すと赤', pass: astMut((r) => { r.clients[1].defaultClientScopes = ['roles']; }).length === 1 });
+  cases.push({ name: '検査9 の 2: 任意スコープ・realm の既定に置くと赤', pass: astMut((r) => {
+    r.clients[2].optionalClientScopes = [AST_AUDIENCE_SCOPE]; r.defaultDefaultClientScopes = [AST_AUDIENCE_SCOPE]; }).length === 2 });
+  cases.push({ name: '検査9 の 2: 写像が platform-api・id token にも載る・2 つ目の写像・スコープが無いと赤', pass:
+    astMut((r) => { r.clientScopes[0].protocolMappers[0].config['included.custom.audience'] = 'platform-api'; }).length === 1
+    && astMut((r) => { r.clientScopes[0].protocolMappers[0].config['id.token.claim'] = 'true'; }).length === 1
+    && astMut((r) => { r.clientScopes[0].protocolMappers.push({ name: 'b', protocolMapper: 'oidc-usermodel-attribute-mapper', config: {} }); }).length === 1
+    && astMut((r) => { r.clientScopes = []; }).length === 1 });
+  cases.push({ name: '検査9 の 2: 別のスコープ・クライアント直付けで ai-stock-trading-api を出すと赤（platform-api-audience へ足すのも）', pass:
+    astMut((r) => { r.clientScopes.push({ name: 'platform-api-audience', protocolMappers: [{ name: 'x', protocolMapper: 'oidc-audience-mapper', config: { 'included.custom.audience': AST_AUDIENCE } }] }); })
+      .some((g) => g.path === 'clientScopes[platform-api-audience].protocolMappers[x]')
+    && astMut((r) => { r.clients[2].protocolMappers = [{ name: 'y', protocolMapper: 'oidc-audience-mapper', config: { 'included.client.audience': AST_AUDIENCE } }]; }).length === 1 });
+  cases.push({ name: '🔴 検査9 の 2: 実データの realm が前提を守る（付ける先はちょうど bff と ai-stock-trading-owner）', pass: (() => {
+    const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+    if (!fs.existsSync(realmPath)) return true;
+    const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+    const holders = (realm.clients || []).filter((c) => (c.defaultClientScopes || []).includes(AST_AUDIENCE_SCOPE)).map((c) => c.clientId).sort();
+    return JSON.stringify(holders) === JSON.stringify([...AST_AUDIENCE_HOLDERS].sort()) && collectAstAudienceGaps(realm).length === 0
+      && collectPlatformAudienceGaps(realm).length === 0;
+  })() });
   cases.push({
     name: '🔴 検査9: 実データの realm が前提を守る（呼び出し元 15 件以上が audience を持つ。0 件の走査を緑にしない）',
     pass: (() => {
@@ -3614,6 +3715,8 @@ module.exports = {
   collectDeclaredSecretGaps,
   checkRealmDeclaredSecretsText,
   collectPlatformAudienceGaps,
+  collectAstAudienceGaps,
+  AST_AUDIENCE_HOLDERS,
   checkRealmPlatformAudienceText,
   collectAccountConsoleGaps,
   checkRealmAccountConsoleText,
