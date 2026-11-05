@@ -770,6 +770,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/deploy-cloud.test.js
 
+      # NFR-18, IADR-0674, Issue #2401: クラウドの最小構成の Postgres を、宣言と同じ digest の実物のイメージで**空のボリュームから**
+      # 起動して固定する —— 初期化が pg_hba（ソケットも scram-sha-256）の下で終わる・8 つの DB ができる・TCP の平文は拒み TLS は受ける。
+      # docker（ランナーが持つ）を使う。試験の値はその場の乱数で、--env-file からだけ渡す。
+      - name: Check cloud Postgres first start (docker)
+        if: ${{ !cancelled() }}
+        run: node scripts/deploy-cloud-postgres.test.js
+
       # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1・2, IADR-0469, Issue #1287: helm チャートの合成監視
       # （既定オフ）を**実際に helm template で描いて**固定する —— 無効時はバイト等価、有効時は標識と同じ描画、
       # 除外の面が欠ける／AllowLlmEgress が立つ構成は描画で落ちる、ローカルの門（SYNTHETIC=1）・overlay との一致、変異。

@@ -11,7 +11,7 @@ issue: "#2401"
 
 # 作業仕様書 — deploy/cloud の最小構成（#2401）
 
-> 本仕様書は実装着手前に作成した（着手 2026-11-05。develop `b05b19b9`）。判断の記録は **IADR-0674**（仮の番号。マージの前に develop を取り込んだ時点の最大＋1 へ改番する）。
+> 本仕様書は実装着手前に作成した（着手 2026-11-05。develop `b05b19b9`）。判断の記録は **IADR-0674**（［2026-11-05 追記 / #2401］番号は 0674 で確定した。develop の 0673 を取り込んだ時点の最大＋1）。
 > 🔴 クラスタには触らない。確かめは描画（kubectl kustomize・helm template）とスタブの下の実行だけで行う。値は表示しない・リポジトリに置かない。
 
 ## 起点（issue #2401 の本文を正とする）
@@ -56,7 +56,7 @@ issue: "#2401"
 | AC8 | bootstrap は初回に乱数で作り、在るものを触らず、値を引数・出力に出さない。CA の鍵を保存しない。LLM の鍵はファイルからだけ読む | 同 |
 | AC9 | 手順書の項目（ファイアウォール・k3s のフラグ・LUKS・chrony・更新の時間帯・digest） | 同 |
 | AC10 | deploy/local は deploy/cloud を参照しない（ローカルの描画は変わらない。本 PR は deploy/local のファイルを変えない） | 同 |
-| AC11 | Postgres は TCP を hostssl だけで受け、認証は scram-sha-256 だけ（host・hostnossl・trust・md5 が無い） | `scripts/deploy-cloud.test.js`・`scripts.repo.test.js`（陰性対照つき） |
+| AC11 | Postgres は TCP を hostssl だけで受け、認証は scram-sha-256 だけ（host・hostnossl・trust・md5 が無い）。空のボリュームからの初回起動が通る（実物のイメージ） | `scripts/deploy-cloud.test.js`・`scripts.repo.test.js`（陰性対照つき）・`scripts/deploy-cloud-postgres.test.js`（docker。CI。宣言を弱めると赤になることを確かめた） |
 | AC12 | RabbitMQ はデータを PVC に置き、ノード名を固定し、Recreate で替わる（無人の再起動でキュー・持続のメッセージを失わない） | 同 |
 | AC13 | LLM ゲートウェイの受け口は TLS だけ（https・証明書は Secret `llmgateway-tls`・probe は HTTPS・gRPC の h2c の受け口が無い）。`tls` と `grpcPort` の併記は描画で止まる。bootstrap が同じ CA で証明書を発行する | `scripts/deploy-cloud.test.js`（陰性対照つき）・`scripts.repo.test.js`（値・bootstrap の証明書の検証） |
 | AC14 | LLM ゲートウェイはルートのファイルシステムを読み取り専用にし、書き込みは `/tmp` の emptyDir だけ | 同 |

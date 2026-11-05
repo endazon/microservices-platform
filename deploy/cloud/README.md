@@ -131,3 +131,17 @@ kubectl kustomize deploy/cloud/infra
 helm template msp deploy/helm/microservices-platform -n microservices-platform -f deploy/cloud/values-cloud.yaml --set-string global.image.tag=0123456789ab
 node scripts/deploy-cloud.test.js    # 上の 2 つを描いて、持ち込まない資源・外への口・既定の資格情報の字面・start-dev が無いことを固定する
 ```
+
+## 6. 運用: 証明書の更新
+
+- `bootstrap-secrets.sh` が発行する CA とサーバ証明書（Postgres・RabbitMQ・LLM ゲートウェイ）の有効期限は **825 日**（`CERT_DAYS` の既定）。
+  CA の鍵を保存しないので、更新は**組ごとの作り直し**になる（1 枚だけを延ばすことはできない）。
+- 発行した日と期限を記録しておく。期限は次で読める（値ではなく証明書の公開の部分だけを読む）:
+  `kubectl -n platform-infra get configmap platform-infra-ca -o jsonpath='{.data.ca\.crt}' | openssl x509 -noout -enddate`
+- **期限の 30 日前まで**に、場の時間帯（JST 22:30〜05:00）を避けて、次の順で作り直す:
+  1. 組を消す: `platform-infra` の Secret `postgres-tls`・`rabbitmq-tls` と ConfigMap `platform-infra-ca`、
+     `microservices-platform` の Secret `llmgateway-tls` と ConfigMap `platform-infra-ca`。
+  2. `bootstrap-secrets.sh --live` を流す（在る資格情報は触らず、証明書の組だけを作る）。
+  3. 取引ユニットの名前空間の CA の写しを新しいものへ差し替える（AST#1525 の手順）。
+  4. Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ、取引ユニットのサービスの順に作り直す（`kubectl rollout restart`）。
+- 組が一部だけ在る状態で `bootstrap-secrets.sh` を流すと、作り直さずに止まる（在る証明書と別の CA にしない）。

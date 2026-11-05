@@ -20333,7 +20333,7 @@ echo "unhandled: $*" >&2; exit 9
     ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {
       const readme = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/README.md'), 'utf8');
       for (const want of [/SSH（TCP 22）だけ/, /80・443・6443・50000 は開けない/, /PasswordAuthentication no/, /--disable traefik --disable servicelb/, /--secrets-encryption/,
-        /--bind-address 127\.0\.0\.1/, /ssh -N -L 6443/, /LUKS/, /cryptsetup luksFormat/, /\/var\/lib\/rancher/, /chrony/, /JST 07:00〜21:00/, /Automatic-Reboot-Time/, /ctr images import/, /digest を記録/]) {
+        /--bind-address 127\.0\.0\.1/, /ssh -N -L 6443/, /LUKS/, /cryptsetup luksFormat/, /\/var\/lib\/rancher/, /chrony/, /JST 07:00〜21:00/, /Automatic-Reboot-Time/, /ctr images import/, /digest を記録/, /825 日/, /期限の 30 日前まで/, /openssl x509 -noout -enddate/]) {
         assert.ok(want.test(readme), `手順書に ${want} が無い`);
       }
     });

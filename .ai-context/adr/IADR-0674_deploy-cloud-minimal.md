@@ -13,7 +13,7 @@ related_specs:
 # IADR-0674: クラウドの最小構成（deploy/cloud。#2401）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
-> 番号は仮である。マージの前に develop を取り込んだ時点の最大＋1 へ改番する（2026-11-05 の採番の取り決め）。
+> ［2026-11-05 追記 / #2401］番号は 0674 で確定した（develop の 0673 を取り込んだ時点の最大＋1。2026-11-05 の採番の取り決めどおり）。
 
 - 状態: Accepted
 - 日付: 2026-11-05
@@ -43,6 +43,10 @@ related_specs:
     クラウドは無人で再起動するので、キュー・exchange・持続のメッセージを再起動の後へ残す。キューは Wolverine の既定で durable（`RabbitMqQueue.IsDurable` の既定は true）。
     メッセージの持続は送り手の endpoint による —— Wolverine.RabbitMQ 6.24.5 の `RabbitMqSender` は `Persistent` を自分の `_isDurable` から設定する（アセンブリの IL で確かめた）。
   - Postgres の pg_hba は、TCP を `hostssl` だけで受ける（`host`・`hostnossl` を書かない。認証は scram-sha-256 だけ）。クラウドには平文で繋ぐ利用者がいない。ソケット（`local`）は初期化と `pg_isready` が使う。
+    ソケットの行も scram-sha-256 にする（`peer`・`trust` にしない）。空のボリュームからの初回起動は、実物のイメージ（宣言と同じ digest）で通ることを確かめた:
+    イメージの起動器は初期化の間 `POSTGRES_PASSWORD` を `PGPASSWORD` として psql に渡すので、`01-create-databases.sh` もパスワードで入れる。`pg_isready` は認証を要さない。
+    `peer` は Pod の中の OS の利用者名と DB の役割名を結ぶが、管理者の役割名は乱数の接尾辞を持つので一致せず、役に立たない。`trust` はコンテナの中の任意のプロセスを管理者として通す。どちらも採らない。
+    確かめは `scripts/deploy-cloud-postgres.test.js`（docker。CI）が固定する: 初回起動が終わる・8 つの DB ができる・ソケットはパスワード必須・TCP の平文は拒む・TLS は受ける。
 - Postgres の初期化は、利用者名・パスワードを Secret から env で受け、psql の `\getenv` で読む（値を SQL・引数・ConfigMap に書かない）。管理者の利用者名も Secret から読む。データは PVC。
 - Keycloak は本番モード（`start`）。DB は共有 Postgres（`sslmode=verify-full`）。hostname はクラスタの中の名前（`http://keycloak:8080`）だけ（画面を公開しないので、外向きのホストと証明書を持たない）。キャッシュは local（単一ノード）。
 - 到達の制限（NetworkPolicy）を同じ kustomize に置く。platform-infra は入り・出とも既定で拒否し、要る組だけを許す。MSP の名前空間は出を既定で拒否し、LLM ゲートウェイだけに名前解決・Keycloak・collector・クラスタの外の 443 を許す。

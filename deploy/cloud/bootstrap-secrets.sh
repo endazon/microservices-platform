@@ -119,17 +119,17 @@ mk_realm_import() {
 once "$INFRA_NS" keycloak-realm-import mk_realm_import
 
 echo "==> 3. データストア・ブローカのサーバ証明書（この場で作る CA。CA の鍵は保存しない）"
-# 組（3 つのサーバ証明書と CA）は同じ CA で揃っていなければならない。一部だけ在るときに作り直すと、在る側（使用中の証明書）と
+# 組（3 つのサーバ証明書と、2 つの名前空間の CA）は同じ CA で揃っていなければならない。一部だけ在るときに作り直すと、在る側（使用中の証明書）と
 # 新しい CA が食い違う。作り直さずに止め、手順書の証明書の項（組を消してから流す）へ回す。
 tls_have=0
-for o in "$INFRA_NS secret postgres-tls" "$INFRA_NS secret rabbitmq-tls" "$MSP_NS secret llmgateway-tls" "$INFRA_NS configmap platform-infra-ca"; do
+for o in "$INFRA_NS secret postgres-tls" "$INFRA_NS secret rabbitmq-tls" "$MSP_NS secret llmgateway-tls" "$INFRA_NS configmap platform-infra-ca" "$MSP_NS configmap platform-infra-ca"; do
   # shellcheck disable=SC2086
   exists $o && tls_have=$((tls_have + 1))
 done
-if [ "$tls_have" -eq 4 ]; then
-  echo "    在る: Secret postgres-tls / rabbitmq-tls / ${MSP_NS}/llmgateway-tls・ConfigMap platform-infra-ca（触らない）"
+if [ "$tls_have" -eq 5 ]; then
+  echo "    在る: Secret postgres-tls / rabbitmq-tls / ${MSP_NS}/llmgateway-tls・ConfigMap platform-infra-ca（両方の名前空間。触らない）"
 elif [ "$tls_have" -gt 0 ]; then
-  echo "ERROR: 証明書の組（Secret postgres-tls / rabbitmq-tls / ${MSP_NS}/llmgateway-tls・ConfigMap platform-infra-ca）が一部だけ在る（${tls_have}/4）。作り直さずに止める（手順書の証明書の項: 組を消してから流す）" >&2
+  echo "ERROR: 証明書の組（Secret postgres-tls / rabbitmq-tls / ${MSP_NS}/llmgateway-tls・ConfigMap platform-infra-ca（両方の名前空間））が一部だけ在る（${tls_have}/5）。作り直さずに止める（手順書の証明書の項: 組を消してから流す）" >&2
   exit 1
 else
   ( umask 077
