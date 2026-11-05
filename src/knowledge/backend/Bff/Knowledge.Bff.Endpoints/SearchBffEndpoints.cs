@@ -33,7 +33,9 @@ public static class SearchBffEndpoints
         // 「ABAC の権限内で全利用者が利用できる」と定めており、書かれていない制限を足さない。
         // 無認証でも ABAC が fail-closed で空を返していたが、**それは防御が 1 枚しかない状態**である
         // （利用者条件を持たないポリシーが 1 件でも入ると開く。IADR-0044 の多層防御）。
-        var g = app.MapGroup("/bff/search").WithTags("Search BFF").RequireAuthorization();
+        var g = app.MapGroup("/bff/search").WithTags("Search BFF").RequireAuthorization()
+            // NFR-18, IADR-0686 (#2432): 利用者ごとの要求数の上限（再順位付けで LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 60 件/分。
+            .LimitPerUserOrReport("search", defaultPerMinute: 60);
 
         // FR-03, UC-01: 横断検索。要求は query（＋任意 topK）。Scope はクライアントから受け取らずサーバで解決する。
         g.MapPost("/", async (

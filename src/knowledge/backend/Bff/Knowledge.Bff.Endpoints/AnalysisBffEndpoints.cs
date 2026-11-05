@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Knowledge.Bff.Endpoints.Usage;
 using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
@@ -20,7 +21,9 @@ public static class AnalysisBffEndpoints
         // **ロールは要求しない**（SC-01 / SC-08 は利用者グループ。計画 `05_screens`）。
         // 無認証でも `RagOrchestrator` が `!Granted` で LLM 呼び出し前に縮退していたが、
         // **その安全は ABAC ポリシーの内容だけに依存していた**（IADR-0044 の多層防御）。
-        var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF").RequireAuthorization();
+        var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF").RequireAuthorization()
+            // NFR-18, IADR-0686 (#2432): 利用者ごとの要求数の上限（LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 20 件/分。
+            .LimitPerUserOrReport("analysis", defaultPerMinute: 20);
 
         // FR-04, UC-01, UC-02: 検索結果を根拠に AI 回答＋出典を返す。
         // AiAnalysisService へ集約し、ABAC 権限解決のため Authorization ヘッダを伝播する。

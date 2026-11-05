@@ -3,15 +3,15 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-10-31
+updated: 2026-11-06
 author: Claude
 ---
 <!-- trace:
-ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-22, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11]
+ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-13, FR-15, FR-16, FR-19, FR-20, FR-22, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-12, SC-17, SC-19, SC-20, SC-22, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-07, UC-09, UC-11, NFR-18]
 adrs: [ADR-0091, ADR-0011, ADR-0024, ADR-0026, ADR-0031, ADR-0032, ADR-0036, ADR-0037, ADR-0043, ADR-0073, ADR-0074, ADR-0095, ADR-0098, ADR-0099, ADR-0100, ADR-0101, ADR-0104, ADR-0110, ADR-0116, ADR-0145]
-iadrs: [IADR-0667, IADR-0663, IADR-0644, IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0429, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0473, IADR-0537, IADR-0545, IADR-0544, IADR-0561, IADR-0565, IADR-0610, IADR-0611]
-specs: [20261031_2378_sync-pause-server, 20261031_2348_sc17-quota-lookup-batch, 20261030_2135_unrouted-backend-endpoints, 20261030_2280_bff-relay-input-failure-body, 20261026_2109_datasource-bff-relay-error-body, 20261026_2108_wiki-deep-link-document-id, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay, 20261026_2255_figure-correction-job-changed-409]
-issues: [#2378, #2348, #2135, #2330, #2280, #1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, #2255, #2108, #2109, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841]
+iadrs: [IADR-0667, IADR-0663, IADR-0644, IADR-0009, IADR-0010, IADR-0020, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215, IADR-0285, IADR-0297, IADR-0301, IADR-0335, IADR-0346, IADR-0352, IADR-0355, IADR-0359, IADR-0429, IADR-0433, IADR-0444, IADR-0445, IADR-0446, IADR-0447, IADR-0448, IADR-0449, IADR-0450, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0473, IADR-0537, IADR-0545, IADR-0544, IADR-0561, IADR-0565, IADR-0610, IADR-0611, IADR-0686]
+specs: [20261031_2378_sync-pause-server, 20261031_2348_sc17-quota-lookup-batch, 20261030_2135_unrouted-backend-endpoints, 20261030_2280_bff-relay-input-failure-body, 20261026_2109_datasource-bff-relay-error-body, 20261026_2108_wiki-deep-link-document-id, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, 20260903_issue-1194_sc06-owner-mapping-table, 20260903_issue-1199_bff-wiki-routes, 20260912_1441-1442_private-note-contract-gaps, 20260912_1445-1446_share-targets-and-sync-history, 20260912_1447-1448_current-groups-binding-and-set-valued-matching, 20260914_issue-1411_sc22-secret-injection-screen, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260926_issue-1535_drop-bff-bearer-user-arm, 20260927_issue-1610_sc17-department-edits-group-membership, 20261009_1845_sc12-secret-once-and-audit, 20261015_1923_document-list-sort-filter, 20261015_1905_bff-document-content, 20261020_1993_document-list-index-status, 20261024_2046_break-glass-bff-relay, 20261026_2255_figure-correction-job-changed-409, 20261106_2432_bff-user-rate-limits]
+issues: [#2378, #2348, #2135, #2330, #2280, #1610, #1845, #439, #452, #506, #519, #520, #521, #538, #544, #586, #600, #629, #634, #640, #1194, #1199, #1411, #1441, #1442, #1445, #1446, #1447, #1448, #1451, #1477, #1502, #1523, #1535, #1923, #1905, #1993, #2046, #2255, #2108, #2109, planning#200, planning#236, planning#244, planning#299, planning#518, planning#618, planning#621, planning#652, planning#841, #2432]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -380,6 +380,11 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
   `Authorization: Bearer` を受理するのは**無人の主体（サービスアカウント・利用者名を持たない機械クライアント）だけ**で、
   **利用者のトークンは発行元のクライアントに関わらず 401** になる（BFF 自身のクライアント名義で取ったものも含む）。
   Cookie セッションのリクエストは、BFF がセッションに保持するアクセストークンを下流への `Authorization` に載せ替えて中継する。
+- **利用者ごとの要求数の上限**: LLM を伴う口には、利用者（検証済みの主体）ごと・群ごとの直近 60 秒の件数の上限がある。
+  群は 3 つで、`analysis`（`/bff/analysis/*`。既定 20 件/分）、`search`（`/bff/search`。既定 60 件/分）、`graph-suggestion`（`/bff/graph/suggestions/generate/*`。既定 10 件/分）。
+  上限の値は `Bff:UserRateLimits:Groups:<群>` で変えられる。段は `Bff:UserRateLimits:Mode` で切り替える。
+  既定の `Report` は、超えた要求を計器 `bff.user_rate.exceeded.total`（群・段。利用者は属性にしない）に数えるだけで、応答は変えない。
+  `Enforce` は 429（`Retry-After: 60`）で拒み、後段へ転送しない。状態はレプリカごとに持つ。
 - **バージョニング**: 契約の破壊的変更は `scripts/check-contract-schema.js`（契約スキーマの抽出方式と後方互換ゲート）が
   C# ソース側で検出する。**OpenAPI 側には同等のゲートが無い**（§未決事項 1）。
 

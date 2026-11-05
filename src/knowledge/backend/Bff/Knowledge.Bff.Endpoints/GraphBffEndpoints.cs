@@ -196,12 +196,14 @@ public static class GraphBffEndpoints
         // 提案しか生まれず、それを一般利用者へ見せる形になって存在秘匿を破る（ADR-0034 決定 2）。**ロールの門を置かない。**
         // 資格は後段が read のスコープで判定し、見えない・無い起点は 404。BFF は本文も状態コードも詰め替えない（`ForwardAsync`）。
         // 🔴 **構成の鍵に依らず常に載る**（[[IADR-0530]] 決定 1 の計測専用・管理者限定の口は撤去した。計測も本口で行う）。
-        // 🔴 **LLM の費用が出る**（用途 `graph-suggestion`。前月比と累計で見る。決定 3）。BFF に LLM 経路の流量制限は無い
-        // （AI 分析・図の変換と同じ）。タイミングは要求時だけである（自動起動・定期は採らない。採るなら計画へ環流する）。
+        // 🔴 **LLM の費用が出る**（用途 `graph-suggestion`。前月比と累計で見る。決定 3）。［2026-11-06 / #2432］BFF の利用者ごとの
+        // 要求数の上限を下の LimitPerUserOrReport で掛けた（AI 分析・検索と同じ形。図の変換は対象外）。タイミングは要求時だけである（自動起動・定期は採らない。採るなら計画へ環流する）。
         g.MapPost("/suggestions/generate/{documentId:guid}", (Guid documentId,
                 IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
             => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/generate/{documentId}", httpFactory, http, ct))
             .WithName("BffGraphSuggestionGenerate")
+            // NFR-18, IADR-0686 (#2432): 利用者ごとの要求数の上限（LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 10 件/分。
+            .LimitPerUserOrReport("graph-suggestion", defaultPerMinute: 10)
             .Produces<List<AiSuggestionDto>>()
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status502BadGateway);
