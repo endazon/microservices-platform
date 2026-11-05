@@ -29,7 +29,7 @@ issue: "#2402"
    - 書き方: 回が既に無いことを確かめる → 成果物と `SHA256SUMS` を送る → 送った回を読み戻して検算する → 最後に `COMPLETE`（`SHA256SUMS` の sha256）を置く。
      ロック（IADR-0669）の代わりに、`COMPLETE` の無い回を「完了」と見なさない。
    - 保持: 日次（`daily/`）は 30 日、月の最初の完全な回（`monthly/`）は 12 か月。削除はバケットの lifecycle が行い、スクリプトは消さない。
-   - 消せない形: バケットの Object Lock（COMPLIANCE・30 日）。資格情報は、バックアップ専用のプロジェクトに閉じる。
+   - 消せない形: バケットの Object Lock（COMPLIANCE・28 日。日次の保持より短くする。#2406 のレビュー 🟡4）。資格情報は、バックアップ専用のプロジェクトに閉じる。
    - hostPath の既定（`BACKUP_TARGETS` の既定値）は変えない。クラウドの CronJob は `BACKUP_TARGETS=none` で hostPath を使わない。
    - リストア試験: `backup-restore-drill.sh --from-s3 <回>` が、rclone で暗号文だけを作業場所へ落とし、`COMPLETE` を確かめてから既存の手順で戻す。
 2. **警報**: `deploy/cloud/observability/` に Prometheus と Alertmanager を置く（Grafana・Loki・Tempo は置かない）。
@@ -41,7 +41,7 @@ issue: "#2402"
 3. **heartbeat**: 常に鳴る警報 `Watchdog` を、Alertmanager の webhook で Healthchecks.io（無料）へ 5 分ごとに送る。
    - 受け口は開けない（クラスタの中から外へ送るだけ）。
    - Prometheus・Alertmanager・ノード・外への通信のどれが止まっても、ping が止まり、Healthchecks.io がオーナーへ知らせる。
-   - Discord への通知の失敗は、警報 `AlertmanagerDiscordFailing` が同じ check の `/fail` へ送る（Discord が届かないことも黙らない）。
+   - Discord への到達は別の check B で見る（失敗が無い間だけ鳴る `DiscordDeliveryHealthy` を B へ送り、失敗は B の `/fail` へ。#2406 のレビュー 🟡3）。
    - オーナーの手順は runbook に書く。
 
 ## 受け入れ基準（issue の写像）

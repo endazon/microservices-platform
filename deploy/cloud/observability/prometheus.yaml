@@ -1,7 +1,7 @@
 # NFR-21, NFR-03, ADR-0006, IADR-0674 (#2402): クラウドの最小構成の Prometheus（platform-infra）。
 # - 8 GB のノード向けに絞る: 保持 7 日・1GB、メモリの上限 768Mi、データは emptyDir（2Gi。再起動で消えるのは受け入れる）。
 # - 収集: 自分・Alertmanager・otel-collector の自己テレメトリ（:8888）。アプリのメトリクスは otel-collector の remote write で受ける。
-# - 規則: 下の platform-rules.yml（heartbeat・Discord の失敗・AST の規則の不在・collector の停止）と、AST の PrometheusRule。
+# - 規則: 下の platform-rules.yml（heartbeat・Discord の到達と失敗・AST の規則の不在・collector の停止）と、AST の PrometheusRule。
 #   🔴 AST の PrometheusRule は ConfigMap `ast-prometheus-rules`（kustomize の外。AST の YAML をそのまま入れる）を
 #   initContainer が `spec` だけ取り出し、promtool check rules を通してから読む（Prometheus Operator を持ち込まない）。
 #   読めない規則があれば起動しない（Watchdog が止まり、外の監視が知らせる）。ConfigMap が無ければ起動し、
@@ -47,9 +47,17 @@ data:
             annotations:
               summary: "常に鳴る警報（外の監視への heartbeat）"
               description: "これが外の監視へ届かなくなったら、警報の経路そのものが止まっている。"
-          # Discord へ送れないことを、Discord ではなく外の監視（同じ check の /fail）へ知らせる。
+          # Discord へ届いている間だけ鳴る。外の監視の check B へ 5 分ごとに送る（失敗の間は鳴らず、B が下がる）。
+          # 系列が無い（Alertmanager を収集できない）ときも鳴らない ＝ B が下がる（黙らない）。
+          - alert: DiscordDeliveryHealthy
+            expr: sum(increase(alertmanager_notifications_failed_total{integration="discord"}[15m])) == 0
+            labels: { severity: none }
+            annotations:
+              summary: "Discord への通知に失敗が無い（外の監視への heartbeat）"
+              description: "これが外の監視へ届かなくなったら、Discord へ警報が届いていない。"
+          # Discord へ送れないことを、Discord ではなく外の監視（check B の /fail）へ知らせる。
           - alert: AlertmanagerDiscordFailing
-            expr: increase(alertmanager_notifications_failed_total{integration="discord"}[15m]) > 0
+            expr: sum(increase(alertmanager_notifications_failed_total{integration="discord"}[15m])) > 0
             labels: { severity: critical }
             annotations:
               summary: "Discord への通知が失敗している"

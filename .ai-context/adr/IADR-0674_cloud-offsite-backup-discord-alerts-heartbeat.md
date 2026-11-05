@@ -46,9 +46,19 @@ related_specs:
      **`COMPLETE` の無い回を完了と見なさない**ことで同じ約束（欠けた回を完了と記録しない）を守る。
      リストア試験も `COMPLETE` と `SHA256SUMS` の一致を確かめてから戻す。
    - hostPath の既定（`BACKUP_TARGETS` の既定値）は変えない。`BACKUP_TARGETS=none` で hostPath を使わない。
+   - ［2026-11-05 / #2406 のレビュー 🔴2］**一覧（`rclone lsf`）の終了コード 3（directory not found）だけを「空」と見なす。**
+     実測（rclone v1.75.2）: bucket 型の `:memory:` では無い接頭辞が 3。S3 の API（`rclone serve s3`）では無い接頭辞が 0 と空、
+     **バケットが無いと 3**。3 を空と見なしても、バケットが無いときは続く送信が `NoSuchBucket` で失敗する（実測）。
+     3 以外の失敗（認証の誤り・接続・時間切れ）は失敗のまま返し、何も送らない（認証の誤りで実測。試験 T-2402-13）。
+     同じ実測で、初回の回・月の最初の回・同じ名前の回の拒否・バケットの不在・鍵の誤りが、`rclone serve s3` の実物の上で期待どおりに動いた。
 2. **保持は、日次 30 日・月次 12 か月とし、削除はバケットの lifecycle が行う。** スクリプトは S3 の回を消さない。
    - 月次は、その月の最初の完全な回を `monthly/` へも書く（`monthly/` に同じ月の回が無いときだけ）。
-   - 消せない形: バケットを Object Lock（COMPLIANCE・既定の保持 30 日）で作る。保持の期間の内は、資格情報を持つ者でも消せない。
+   - 消せない形: バケットを Object Lock（COMPLIANCE・既定の保持 **28 日**）で作る。保持の期間の内は、資格情報を持つ者でも消せない。
+   - ［2026-11-05 / #2406 のレビュー 🟡4］**Object Lock は日次の保持（lifecycle の 30 日）より真に短くする。** 同じ 30 日だと、
+     期限の日に lifecycle が版を消そうとしたとき、まだ Object Lock の内側に在って拒まれ得る（作成の時刻と lifecycle の評価の時刻の
+     ずれで、どちらが先かが決まらない）。版付きのバケットでは、期限で現行の版に削除の印が付き、古い版は NoncurrentDays（1 日）の後に
+     消える。Object Lock を 28 日にすれば、現行の版の期限（30 日）にも、古い版の削除（31 日）にも、2 日以上の余りが残る。
+     月次（365 日）は Object Lock より十分に長い。試験 T-2402-36 が「Object Lock ＜ 日次の保持」を固定する。
    - 資格情報は、バックアップのバケットだけを持つ専用のプロジェクトのものにする。スクリプトは存在の確かめと読み戻しをするので、
      読み・一覧・書きが要る。**書き込みだけには絞らない**（消せないことは Object Lock が持つ）。
    - 費用: Hetzner Object Storage の基本料（1 TB の保管・転送を含む）の範囲に収まる（暗号化したダンプは数十 MB/回）。
@@ -65,7 +75,10 @@ related_specs:
    - クラスタの中から外へ送るだけで、受け口を増やさない。
    - Prometheus・Alertmanager・ノード・外への通信のどれが止まっても ping が止まり、外の監視がオーナーへ知らせる
      （監視の側が止まっても黙らない）。Alertmanager の設定の誤り（決定 3）も、同じく ping の停止として見える。
-   - Discord への送信の失敗は、警報 `AlertmanagerDiscordFailing` が同じ check の `/fail` へ送る。
+   - ［2026-11-05 / #2406 のレビュー 🟡3］**Discord への到達は、死活（check A）と別の check B で見る。** Discord への送信に失敗が無い間だけ
+     鳴る `DiscordDeliveryHealthy` を B へ 5 分ごとに送り、失敗（`AlertmanagerDiscordFailing`）は B の `/fail` へ送る。
+     失敗の間は B へ ping が来ないので B は下がったままになる。同じ check の `/fail` にすると、次の Watchdog の ping で
+     すぐに「up」へ戻り、失敗が続いているのに知らせが 1 度で止まる。Healthchecks.io の無料の枠で check を 1 つ足すだけで済む。
    - ping の URL も Secret から読む（Alertmanager の `webhook_configs` の `url_file`）。
 
 ## 却下した代替案

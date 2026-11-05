@@ -777,6 +777,18 @@ prune_target() {
 # rclone を上限つきで呼ぶ（rclone は外部のコマンドなので timeout で包める）。資格情報は env にあり、引数に無い。
 s3() { timeout "$BACKUP_S3_CALL_TIMEOUT" rclone -q "$@"; }
 
+# 接頭辞の一覧を出す。🔴 #2402 のレビュー 🔴2: rclone は、まだ無い接頭辞の一覧で「directory not found」（終了コード 3）を返し得る
+# （bucket 型のバックエンドで実測。S3 の API〔rclone serve s3〕では 0 と空。バケットそのものが無いときも 3）。
+# **3 だけを「空」と見なす**。それ以外の失敗（認証・接続・時間切れ）は失敗のまま返す。バケットが無いときは、続く送信が失敗する。
+s3_lsf() {
+	local out rc
+	out="$(s3 lsf "$1" 2>/dev/null)"
+	rc=$?
+	if [ "$rc" -eq 3 ]; then return 0; fi
+	[ "$rc" -eq 0 ] || return "$rc"
+	printf '%s' "$out"
+}
+
 check_s3_dest() {
 	[ -n "$BACKUP_S3_DEST" ] || return 0
 	if [[ ! "$BACKUP_S3_DEST" =~ $S3_DEST_RE ]] || [[ "$BACKUP_S3_DEST" == *..* ]]; then
@@ -803,7 +815,7 @@ check_destinations() {
 # 1 つの宛先（daily か monthly の回）へ書く。0 = 書けた / 1 = 書けなかった（COMPLETE は置いていない）。
 publish_s3_to() {
 	local dest="$1" staging="$2" tag="$3" verify listed sums_hash marker
-	if ! listed="$(s3 lsf "$dest/")"; then
+	if ! listed="$(s3_lsf "$dest/")"; then
 		err "オブジェクトストレージへ書けませんでした（宛先を確かめられません）: $dest"
 		return 1
 	fi
@@ -854,7 +866,7 @@ publish_s3() {
 	[ "$BACKUP_S3_MONTHLY" = 1 ] || return 0
 	case "$run" in *-partial) return 0 ;; esac
 	month="${now:0:7}"
-	if ! existing="$(s3 lsf "$base/monthly/")"; then
+	if ! existing="$(s3_lsf "$base/monthly/")"; then
 		err "monthly の回を確かめられません: $base/monthly"
 		return 1
 	fi

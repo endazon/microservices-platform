@@ -42,46 +42,183 @@ function render(dir) {
   return r.stdout;
 }
 
-/** 描画結果を文書ごとに分ける。各文書は { kind, name, text }。 */
+/**
+ * 描画結果（kustomize が出すブロック形式の YAML）を木に組む最小の解析器。外部依存ゼロ。
+ * 扱うもの: ブロックの写像・列、プレーン／引用符のスカラー、ブロックスカラー（| / |-）、複数行の二重引用符。
+ * フロー形式（`[a, b]` / `{ a: b }`）は解かずに文字列のまま返す（自前の設定の照合は文字列で足りる）。
+ * 🔴 複数行を正規表現で探さない（後戻りの爆発を避ける。#2402 の CodeQL の指摘）。行ごとに字下げで読む。
+ */
+function parseYaml(text) {
+  const lines = text.split('\n');
+  const ind = (l) => l.length - l.trimStart().length;
+  const blank = (l) => l.trim() === '' || l.trimStart().startsWith('#');
+  const skip = (i) => {
+    while (i < lines.length && blank(lines[i])) i += 1;
+    return i;
+  };
+  const isItem = (l) => {
+    const s = l.trimStart();
+    return s === '-' || s.startsWith('- ');
+  };
+  /** `key: rest` / `key:` を分ける。キーでなければ null。 */
+  const splitKey = (s) => {
+    if (s.startsWith('"') || s.startsWith("'") || s.startsWith('[') || s.startsWith('{')) return null;
+    const k = s.indexOf(': ');
+    if (k > 0) return [s.slice(0, k), s.slice(k + 2)];
+    if (s.endsWith(':') && !s.includes(' ')) return [s.slice(0, -1), ''];
+    return null;
+  };
+  const scalar = (raw) => {
+    const s = raw.trim();
+    if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+      try {
+        return JSON.parse(s);
+      } catch {
+        return s.slice(1, -1);
+      }
+    }
+    if (s.length >= 2 && s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).split("''").join("'");
+    return s;
+  };
+  function blockScalar(i, parentIndent) {
+    const out = [];
+    let base = -1;
+    while (i < lines.length) {
+      const l = lines[i];
+      if (l.trim() === '') {
+        out.push('');
+        i += 1;
+        continue;
+      }
+      if (ind(l) <= parentIndent) break;
+      if (base < 0) base = ind(l);
+      out.push(l.slice(base));
+      i += 1;
+    }
+    while (out.length && out[out.length - 1] === '') out.pop();
+    return [out.join('\n') + '\n', i];
+  }
+  function value(rest, i, indent) {
+    if (rest === '') {
+      const j = skip(i);
+      if (j < lines.length && (ind(lines[j]) > indent || (ind(lines[j]) === indent && isItem(lines[j])))) {
+        return node(j, ind(lines[j]));
+      }
+      return [null, i];
+    }
+    if (rest === '|' || rest === '|-' || rest === '|+' || rest === '>') return blockScalar(i, indent);
+    if (rest.startsWith('"') && (rest.length < 2 || !rest.endsWith('"'))) {
+      // 複数行の二重引用符（kustomize が長い文字列を折る形）。中身は使わないので、つないで返す。
+      let s = rest;
+      while (i < lines.length && lines[i].trim() !== '' && ind(lines[i]) > indent) {
+        s += ' ' + lines[i].trim();
+        i += 1;
+      }
+      return [s, i];
+    }
+    return [scalar(rest), i];
+  }
+  function map(i, indent) {
+    const obj = {};
+    for (i = skip(i); i < lines.length && ind(lines[i]) === indent && !isItem(lines[i]); i = skip(i)) {
+      const kv = splitKey(lines[i].trim());
+      if (!kv) throw new Error(`YAML の写像の行として読めない: ${lines[i].trim().slice(0, 60)}`);
+      const [v, j] = value(kv[1], i + 1, indent);
+      obj[scalar(kv[0])] = v;
+      i = j;
+    }
+    return [obj, i];
+  }
+  function list(i, indent) {
+    const arr = [];
+    for (i = skip(i); i < lines.length && ind(lines[i]) === indent && isItem(lines[i]); i = skip(i)) {
+      const s = lines[i].trimStart();
+      const rest = s === '-' ? '' : s.slice(2);
+      if (rest === '') {
+        const [v, j] = value('', i + 1, indent);
+        arr.push(v);
+        i = j;
+      } else if (splitKey(rest)) {
+        lines[i] = ' '.repeat(indent + 2) + rest;
+        const [v, j] = map(i, indent + 2);
+        arr.push(v);
+        i = j;
+      } else {
+        arr.push(scalar(rest));
+        i += 1;
+      }
+    }
+    return [arr, i];
+  }
+  function node(i, indent) {
+    return isItem(lines[i]) ? list(i, indent) : map(i, indent);
+  }
+  const start = skip(0);
+  if (start >= lines.length) return null;
+  return node(start, ind(lines[start]))[0];
+}
+
+/** 描画結果を文書ごとに分けて木に組む。各文書は { kind, name, obj, text }。 */
 function docs(yaml) {
   return yaml
-    .split(/^---$/m)
+    .split('\n---\n')
     .map((t) => t.trim())
-    .filter(Boolean)
-    .map((text) => ({
-      kind: (/^kind: (\S+)/m.exec(text) || [])[1],
-      name: (/^metadata:\n(?:  .*\n)*?  name: (\S+)/m.exec(text + '\n') || [])[1],
-      text,
-    }));
+    .filter((t) => t && t !== '---')
+    .map((text) => {
+      const obj = parseYaml(text) || {};
+      return { kind: obj.kind, name: (obj.metadata || {}).name, obj, text };
+    });
 }
 const find = (ds, kind, name) => ds.find((d) => d.kind === kind && d.name === name);
 
-/** ConfigMap の data のキーの中身（ブロックスカラー `key: |` の字下げを外したもの）。 */
+/** ConfigMap の data のキーの中身（文字列の比較だけ。正規表現を組み立てない）。 */
 function cmData(doc, key) {
-  const lines = doc.text.split('\n');
-  const i = lines.findIndex((l) => new RegExp(`^  ${key.replace(/\./g, '\\.')}: \\|`).test(l));
-  if (i < 0) return undefined;
-  const out = [];
-  for (let j = i + 1; j < lines.length; j += 1) {
-    if (lines[j].trim() !== '' && !/^ {4}/.test(lines[j])) break;
-    out.push(lines[j].slice(4));
-  }
-  return out.join('\n').replace(/\n+$/, '\n');
+  const data = doc && doc.obj && doc.obj.data;
+  return data && typeof data[key] === 'string' ? data[key] : undefined;
 }
+
+/** 木を深さ優先で歩き、各写像を fn(写像, 親のキー) へ渡す。 */
+function walk(node, fn, parentKey = '') {
+  if (Array.isArray(node)) for (const n of node) walk(n, fn, parentKey);
+  else if (node && typeof node === 'object') {
+    fn(node, parentKey);
+    for (const [k, v] of Object.entries(node)) walk(v, fn, k);
+  }
+}
+/** Pod の雛形のコンテナ（initContainers を含む）。 */
+function containersOf(obj) {
+  const out = [];
+  walk(obj, (m) => {
+    for (const k of ['containers', 'initContainers']) if (Array.isArray(m[k])) out.push(...m[k]);
+  });
+  return out;
+}
+const envOf = (container, name) => (container.env || []).find((e) => e.name === name);
+const volumeOf = (obj, name) => {
+  let found;
+  walk(obj, (m) => {
+    if (Array.isArray(m.volumes)) found = found || m.volumes.find((v) => v.name === name);
+  });
+  return found;
+};
 
 // ---------------------------------------------------------------- 判定（純関数）
 
-/** 受け口を増やす資源（LoadBalancer・NodePort・hostPort・hostNetwork・Ingress）を挙げる。 */
-function inboundExposures(yaml) {
+/** 受け口を増やす資源（LoadBalancer・NodePort・hostPort・hostNetwork・Ingress）を挙げる。入力は docs() の結果。 */
+function inboundExposures(ds) {
   const out = [];
-  if (/^\s*type: (LoadBalancer|NodePort)\s*$/m.test(yaml)) out.push('Service type LoadBalancer/NodePort');
-  if (/^\s*-?\s*hostPort:/m.test(yaml)) out.push('hostPort');
-  if (/^\s*hostNetwork: true/m.test(yaml)) out.push('hostNetwork');
-  if (/^kind: (Ingress|Gateway|HTTPRoute)$/m.test(yaml)) out.push('Ingress/Gateway');
+  for (const d of ds) {
+    if (['Ingress', 'Gateway', 'HTTPRoute'].includes(d.kind)) out.push(`${d.kind} ${d.name}`);
+    if (d.kind === 'Service' && ['LoadBalancer', 'NodePort'].includes((d.obj.spec || {}).type)) out.push(`Service ${d.name} type ${d.obj.spec.type}`);
+    walk(d.obj, (m) => {
+      if (m.hostPort !== undefined) out.push(`hostPort in ${d.name}`);
+      if (m.hostNetwork === 'true') out.push(`hostNetwork in ${d.name}`);
+    });
+  }
   return out;
 }
 
-/** 秘密の値に見えるもの（Discord の webhook・Healthchecks の ping の UUID・S3 の鍵）を挙げる。 */
+/** 秘密の値に見えるもの（Discord の webhook・Healthchecks の ping の UUID・age の秘密鍵）を挙げる。 */
 function secretLookingValues(text) {
   const out = [];
   const pats = [
@@ -96,12 +233,17 @@ function secretLookingValues(text) {
   return out;
 }
 
-/** env の名前が秘密を示すのに value を直書きしているものを挙げる。 */
-function inlineSecretEnv(yaml) {
+/** env の名前が秘密を示すのに value を直書きしているものを挙げる。入力は docs() の結果。 */
+const SECRET_ENV_WORDS = ['PASSWORD', 'SECRET', 'TOKEN', 'ACCESS_KEY', 'WEBHOOK'];
+function inlineSecretEnv(ds) {
   const out = [];
-  const re = /- name: (\S*(?:PASSWORD|SECRET|TOKEN|ACCESS_KEY|WEBHOOK)\S*)\n(\s+)value:/g;
-  let m;
-  while ((m = re.exec(yaml))) out.push(m[1]);
+  for (const d of ds) {
+    for (const c of containersOf(d.obj)) {
+      for (const e of c.env || []) {
+        if (SECRET_ENV_WORDS.some((w) => String(e.name).includes(w)) && e.value !== undefined) out.push(e.name);
+      }
+    }
+  }
   return out;
 }
 
@@ -114,6 +256,11 @@ const bytesOf = (s) => {
   const m = /^(\d+)(Mi|Gi|MB|GB)$/.exec(s || '');
   if (!m) return NaN;
   return Number(m[1]) * { Mi: 2 ** 20, Gi: 2 ** 30, MB: 1e6, GB: 1e9 }[m[2]];
+};
+/** `--name=value` の形の引数の値。 */
+const argValue = (args, name) => {
+  const a = (args || []).find((x) => String(x).startsWith(`--${name}=`));
+  return a === undefined ? undefined : String(a).slice(name.length + 3);
 };
 
 // ---------------------------------------------------------------- 実行
@@ -132,18 +279,23 @@ function t(name, fn) {
 }
 
 // ---- 判定の変異試験（見ているつもりで見ていない、を防ぐ）
-t('T-2402-49 変異: LoadBalancer・hostPort・Ingress を拾う', () => {
-  assert.strictEqual(inboundExposures('spec:\n  type: LoadBalancer\n').length, 1);
-  assert.strictEqual(inboundExposures('ports:\n  - containerPort: 1\n    hostPort: 80\n').length, 1);
-  assert.strictEqual(inboundExposures('kind: Ingress\n').length, 1);
-  assert.strictEqual(inboundExposures('spec:\n  type: ClusterIP\n').length, 0);
+t('T-2402-49 変異: 解析器はブロックの写像・列・ブロックスカラー・引用符を読む', () => {
+  const o = parseYaml("a:\n  b: 'x'\n  c:\n  - name: n\n    value: \"v\"\n  - plain\n  d: |\n    l1\n\n    l2\ne: [f, g]\n");
+  assert.deepStrictEqual(o, { a: { b: 'x', c: [{ name: 'n', value: 'v' }, 'plain'], d: 'l1\n\nl2\n' }, e: '[f, g]' });
 });
-t('T-2402-49 変異: 秘密の値に見えるものを拾う', () => {
+t('T-2402-49 変異: LoadBalancer・hostPort・Ingress を拾う', () => {
+  assert.strictEqual(inboundExposures(docs('kind: Service\nmetadata:\n  name: s\nspec:\n  type: LoadBalancer\n')).length, 1);
+  assert.strictEqual(inboundExposures(docs('kind: Pod\nmetadata:\n  name: p\nspec:\n  containers:\n  - ports:\n    - containerPort: 1\n      hostPort: 80\n')).length, 1);
+  assert.strictEqual(inboundExposures(docs('kind: Ingress\nmetadata:\n  name: i\n')).length, 1);
+  assert.strictEqual(inboundExposures(docs('kind: Service\nmetadata:\n  name: s\nspec:\n  type: ClusterIP\n')).length, 0);
+});
+t('T-2402-49 変異: 秘密の値に見えるもの・env の直書きを拾う', () => {
   assert.strictEqual(secretLookingValues('url: https://discord.com/api/webhooks/123456/abcdefghijklmnop').length, 1);
   assert.strictEqual(secretLookingValues('https://hc-ping.com/0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b').length, 1);
   assert.strictEqual(secretLookingValues("webhook_url: '__DISCORD_WEBHOOK_URL__'").length, 0);
-  assert.deepStrictEqual(inlineSecretEnv('- name: RCLONE_CONFIG_X_SECRET_ACCESS_KEY\n  value: x\n'), ['RCLONE_CONFIG_X_SECRET_ACCESS_KEY']);
-  assert.deepStrictEqual(inlineSecretEnv('- name: RCLONE_CONFIG_X_SECRET_ACCESS_KEY\n  valueFrom:\n'), []);
+  const pod = (env) => docs(`kind: Pod\nmetadata:\n  name: p\nspec:\n  containers:\n  - name: c\n    env:\n${env}`);
+  assert.deepStrictEqual(inlineSecretEnv(pod('    - name: RCLONE_CONFIG_X_SECRET_ACCESS_KEY\n      value: x\n')), ['RCLONE_CONFIG_X_SECRET_ACCESS_KEY']);
+  assert.deepStrictEqual(inlineSecretEnv(pod('    - name: RCLONE_CONFIG_X_SECRET_ACCESS_KEY\n      valueFrom:\n        secretKeyRef:\n          name: s\n')), []);
 });
 
 let backup = '';
@@ -154,56 +306,70 @@ t('T-2402-30 deploy/cloud/backup と deploy/cloud/observability を描画でき�
 });
 const bds = docs(backup);
 const ods = docs(obs);
+const EMPTY = { obj: {}, text: '' };
 
 // ---------------------------------------------------------------- バックアップ
-const cj = find(bds, 'CronJob', 'platform-backup-postgres') || { text: '' };
+const cj = find(bds, 'CronJob', 'platform-backup-postgres') || EMPTY;
+const cjSpec = cj.obj.spec || {};
+const jobSpec = ((cjSpec.jobTemplate || {}).spec) || {};
+const backupC = containersOf(cj.obj).find((c) => c.name === 'backup') || {};
 t('T-2402-30 バックアップ: CronJob platform-backup-postgres が出る', () => assert.ok(cj.text, 'CronJob が無い'));
-t('T-2402-30 バックアップ: hostPath を持たない（保管先はクラスタ外のオブジェクトストレージ）', () =>
-  assert.ok(!/hostPath:/.test(backup), 'hostPath がある'));
+t('T-2402-30 バックアップ: hostPath を持たない（保管先はクラスタ外のオブジェクトストレージ）', () => {
+  const found = [];
+  for (const d of bds) walk(d.obj, (m) => m.hostPath !== undefined && found.push(d.name));
+  assert.deepStrictEqual(found, [], 'hostPath がある');
+});
 t('T-2402-31 バックアップ: BACKUP_TARGETS=none・宛先は ConfigMap・資格情報は secretKeyRef', () => {
-  assert.match(cj.text, /- name: BACKUP_TARGETS\n\s+value: none/);
-  assert.match(cj.text, /- name: BACKUP_S3_DEST\n\s+valueFrom:\n\s+configMapKeyRef:\n(?:\s+.*\n)*?\s+name: platform-backup-s3-target/);
+  assert.strictEqual((envOf(backupC, 'BACKUP_TARGETS') || {}).value, 'none');
+  const dest = envOf(backupC, 'BACKUP_S3_DEST') || {};
+  assert.strictEqual((((dest.valueFrom || {}).configMapKeyRef) || {}).name, 'platform-backup-s3-target');
   for (const k of ['RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID', 'RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY', 'PGPASSWORD']) {
-    assert.match(cj.text, new RegExp(`- name: ${k}\\n\\s+valueFrom:\\n\\s+secretKeyRef:`), `${k} が secretKeyRef でない`);
+    const e = envOf(backupC, k) || {};
+    assert.ok(e.valueFrom && e.valueFrom.secretKeyRef && e.value === undefined, `${k} が secretKeyRef でない`);
   }
-  assert.deepStrictEqual(inlineSecretEnv(backup), []);
-  assert.ok(!/^kind: Secret$/m.test(backup), '描画に Secret がある（資格情報をリポジトリに置かない）');
+  assert.deepStrictEqual(inlineSecretEnv(bds), []);
+  assert.ok(!bds.some((d) => d.kind === 'Secret'), '描画に Secret がある（資格情報をリポジトリに置かない）');
 });
 const dockerCloud = read('deploy/cloud/backup/image/Dockerfile');
 const dockerLocal = read('deploy/local/platform-backup/image/Dockerfile');
-const argOf = (src, n) => (new RegExp(`^ARG ${n}=(\\S+)$`, 'm').exec(src) || [])[1];
+/** Dockerfile の `ARG <名>=<値>` の値（正規表現を組み立てない）。 */
+const argOf = (src, n) => {
+  const line = src.split('\n').find((l) => l.startsWith(`ARG ${n}=`));
+  return line === undefined ? undefined : line.slice(`ARG ${n}=`.length).trim();
+};
 t('T-2402-32 バックアップ: イメージは自製・pull しない・タグはイメージの中身の版から作る', () => {
-  const m = /image: (microservices-platform\/platform-backup-cloud:(\S+))/.exec(cj.text);
-  assert.ok(m, 'イメージが microservices-platform/platform-backup-cloud でない');
-  assert.match(cj.text, /imagePullPolicy: Never/);
+  const repo = 'microservices-platform/platform-backup-cloud:';
+  assert.ok(String(backupC.image).startsWith(repo), 'イメージが microservices-platform/platform-backup-cloud でない');
+  assert.strictEqual(backupC.imagePullPolicy, 'Never');
   const pg = /postgres:(\d+\.\d+)-alpine/.exec(dockerCloud)[1];
-  assert.strictEqual(m[2], `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'RCLONE_VERSION')}`);
+  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'RCLONE_VERSION')}`);
 });
 t('T-2402-33 バックアップ: ベースと age の固定はローカルのイメージと同じ（片側だけ上げない）', () => {
-  const from = (s) => /^FROM (.+)$/m.exec(s)[1];
+  const from = (s) => s.split('\n').find((l) => l.startsWith('FROM '));
   assert.strictEqual(from(dockerCloud), from(dockerLocal));
   for (const n of ['BASE_REGISTRY', 'AGE_VERSION', 'AGE_APK_SHA256_X86_64', 'AGE_APK_SHA256_AARCH64', 'ALPINE_BRANCH']) {
     assert.strictEqual(argOf(dockerCloud, n), argOf(dockerLocal, n), n);
   }
   assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
   assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
-  assert.ok(!/--allow-untrusted/.test(dockerCloud), '署名の検証を外している');
+  assert.ok(!dockerCloud.includes('--allow-untrusted'), '署名の検証を外している');
 });
 t('T-2402-34 バックアップ: 本体スクリプトはローカルと同じもの（二重に持たない）', () => {
   const cm = find(bds, 'ConfigMap', 'platform-backup-script');
   assert.ok(cm, 'ConfigMap platform-backup-script が無い');
   // 同じ configMapGenerator（deploy/local/platform-backup/script）を取り込む。コピーを置かない。
-  assert.match(read('deploy/cloud/backup/kustomization.yaml'), /^  - \.\.\/\.\.\/local\/platform-backup\/script$/m);
+  const kz = parseYaml(read('deploy/cloud/backup/kustomization.yaml'));
+  assert.ok(kz.resources.includes('../../local/platform-backup/script'), 'ローカルの本体を取り込んでいない');
   assert.ok(!fs.existsSync(path.join(REPO_ROOT, 'deploy/cloud/backup/backup.sh')), 'backup.sh の写しがある');
   // 本体の S3 の経路の印が描画に入っている（古い本体を取り込んでいない）。
   assert.ok(cm.text.includes('publish_s3'), '描画の本体に S3 の経路が無い');
 });
 t('T-2402-35 バックアップ: 米国市場の時間帯を避け、並行させず、再試行しない', () => {
-  assert.match(cj.text, /schedule: 0 12 \* \* \*/);
-  assert.match(cj.text, /timeZone: Asia\/Tokyo/);
-  assert.match(cj.text, /concurrencyPolicy: Forbid/);
-  assert.match(cj.text, /backoffLimit: 0/);
-  const sd = Number((/startingDeadlineSeconds: (\d+)/.exec(cj.text) || [])[1]);
+  assert.strictEqual(cjSpec.schedule, '0 12 * * *');
+  assert.strictEqual(cjSpec.timeZone, 'Asia/Tokyo');
+  assert.strictEqual(cjSpec.concurrencyPolicy, 'Forbid');
+  assert.strictEqual(jobSpec.backoffLimit, '0');
+  const sd = Number(cjSpec.startingDeadlineSeconds);
   // 12:00 JST の後追いが 22:30 JST（米国市場の始まり）へ食い込まない。
   assert.ok(sd > 0 && 12 * 3600 + sd + 3600 <= 22.5 * 3600, `startingDeadlineSeconds=${sd}`);
 });
@@ -215,33 +381,45 @@ t('T-2402-36 バックアップ: 保持（lifecycle）と Object Lock の日数�
   assert.strictEqual(days('/monthly/'), 365);
   const ret = lock.ObjectLockEnabled === 'Enabled' && lock.Rule.DefaultRetention;
   assert.ok(ret && ret.Mode === 'COMPLIANCE', 'Object Lock が COMPLIANCE でない');
-  assert.ok(ret.Days <= days('/daily/'), 'Object Lock の保持が日次の保持より長い（期限で消せない）');
+  // #2402 のレビュー 🟡4: 保持の期限（lifecycle）が来た日に Object Lock がまだ効いていると削除が拒まれる。
+  // Object Lock は日次の保持より真に短くし、余りを 1 日以上持たせる（古い版は NoncurrentDays の後に消える）。
+  assert.ok(ret.Days < days('/daily/'), 'Object Lock の保持が日次の保持より短くない（期限の日に消せない）');
   for (const r of lc.Rules) assert.ok(r.NoncurrentVersionExpiration, `${r.ID}: 古い版を消さないと容量が積み上がる`);
 });
-const np = find(bds, 'NetworkPolicy', 'platform-backup-egress') || { text: '' };
+const np = find(bds, 'NetworkPolicy', 'platform-backup-egress') || EMPTY;
 t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・443 だけ。受けは無し）', () => {
   assert.ok(np.text, 'NetworkPolicy platform-backup-egress が無い');
-  assert.match(np.text, /policyTypes:\n\s+- Egress/);
-  const ports = [...np.text.matchAll(/port: (\d+)/g)].map((m) => Number(m[1])).sort((a, b) => a - b);
-  assert.deepStrictEqual([...new Set(ports)], [53, 443, 5432]);
+  assert.deepStrictEqual(np.obj.spec.policyTypes, ['Egress']);
+  const ports = new Set();
+  for (const rule of np.obj.spec.egress) for (const p of rule.ports) ports.add(Number(p.port));
+  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 443, 5432]);
 });
 
 // ---------------------------------------------------------------- 警報・heartbeat
-const amCm = find(ods, 'ConfigMap', 'alertmanager-cloud-config') || { text: '' };
+const amCm = find(ods, 'ConfigMap', 'alertmanager-cloud-config') || EMPTY;
 const amTmpl = cmData(amCm, 'alertmanager.yml.tmpl') || '';
 const renderSh = cmData(amCm, 'render.sh') || '';
-const amDep = find(ods, 'Deployment', 'alertmanager') || { text: '' };
+const am = parseYaml(amTmpl) || {};
+const amRoute = am.route || {};
+const amRecv = (name) => (am.receivers || []).find((r) => r.name === name) || {};
+const amSub = (alertname) => (amRoute.routes || []).find((r) => r.matchers === `[alertname = "${alertname}"]`) || {};
+const amDep = find(ods, 'Deployment', 'alertmanager') || EMPTY;
+const amRenderC = containersOf(amDep.obj).find((c) => c.name === 'render-config') || {};
 t('T-2402-40 Alertmanager: 描画に Discord の receiver があり、既定の route がそこへ向く', () => {
-  assert.match(amTmpl, /^  - name: discord\n    discord_configs:\n      - webhook_url: '__DISCORD_WEBHOOK_URL__'/m);
-  assert.match(amTmpl, /^route:\n(?:  .*\n)*?  receiver: discord$/m);
-  assert.ok(!/default-null/.test(amTmpl), '既定の受信先が null のまま');
+  const d = amRecv('discord').discord_configs || [];
+  assert.strictEqual(d.length, 1, 'discord_configs が無い');
+  assert.strictEqual(d[0].webhook_url, '__DISCORD_WEBHOOK_URL__');
+  assert.strictEqual(amRoute.receiver, 'discord');
+  assert.ok(!amTmpl.includes('default-null'), '既定の受信先が null のまま');
 });
 t('T-2402-41 Alertmanager: webhook の URL の値が描画に含まれない（Secret から読む）', () => {
   assert.deepStrictEqual(secretLookingValues(obs), []);
   assert.deepStrictEqual(secretLookingValues(backup), []);
-  assert.ok(!/^kind: Secret$/m.test(obs), '描画に Secret がある');
-  assert.match(amDep.text, /- name: DISCORD_WEBHOOK_URL\n\s+valueFrom:\n\s+secretKeyRef:\n(?:\s+.*\n)*?\s+name: alertmanager-discord/);
-  assert.deepStrictEqual(inlineSecretEnv(obs), []);
+  assert.ok(!ods.some((d) => d.kind === 'Secret'), '描画に Secret がある');
+  const e = envOf(amRenderC, 'DISCORD_WEBHOOK_URL') || {};
+  assert.strictEqual((((e.valueFrom || {}).secretKeyRef) || {}).name, 'alertmanager-discord');
+  assert.strictEqual(e.value, undefined);
+  assert.deepStrictEqual(inlineSecretEnv(ods), []);
 });
 
 // render.sh を砂場で走らせる（amtool はスタブ。本物の amtool の検査は T-2402-47）。
@@ -257,9 +435,11 @@ fs.writeFileSync(stubAmtool, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
 // 🔴 試験用の値（実在の webhook ではない）。
 const FAKE_URL = 'https://discord.com/api/webhooks/1234567890/fake-token_FOR-TEST-ONLY';
 const FAKE_PING = 'https://hc-ping.com/00000000-0000-4000-8000-000000000000';
-function renderWith(url, ping = FAKE_PING, fail = `${FAKE_PING}/fail`) {
+const FAKE_DPING = 'https://hc-ping.com/11111111-1111-4111-8111-111111111111';
+const HB_OK = { 'ping-url': FAKE_PING, 'discord-ping-url': FAKE_DPING, 'discord-fail-url': `${FAKE_DPING}/fail` };
+function renderWith(url, hbOverride = {}) {
   const outDir = fs.mkdtempSync(path.join(sandbox, 'out-'));
-  for (const [k, v] of [['ping-url', ping], ['fail-url', fail]]) {
+  for (const [k, v] of Object.entries({ ...HB_OK, ...hbOverride })) {
     const f = path.join(hbDir, k);
     if (v === null) fs.rmSync(f, { force: true });
     else fs.writeFileSync(f, v + '\n');
@@ -275,7 +455,7 @@ t('T-2402-42 render.sh: 正しい URL なら設定へ書き、ログへ値を出
   assert.strictEqual(r.status, 0, r.logs);
   assert.ok(r.config.includes(`webhook_url: '${FAKE_URL}'`), '設定に URL が入っていない');
   assert.ok(!r.logs.includes('fake-token'), 'ログに URL が出ている');
-  assert.ok(!r.logs.includes('00000000-0000'), 'ログに ping の URL が出ている');
+  assert.ok(!r.logs.includes('00000000-0000') && !r.logs.includes('11111111-1111'), 'ログに ping の URL が出ている');
 });
 for (const [label, url] of [
   ['空', ''],
@@ -291,56 +471,83 @@ for (const [label, url] of [
     if (url) assert.ok(!r.logs.includes(url.slice(8)), 'ログに値が出ている');
   });
 }
-for (const [label, ping, fail] of [
-  ['ping の URL が無い', null, `${FAKE_PING}/fail`],
-  ['fail の URL が /fail で終わらない', FAKE_PING, FAKE_PING],
-  ['ping の URL が https でない', 'http://hc-ping.com/x', 'http://hc-ping.com/x/fail'],
+for (const [label, hb] of [
+  ['ping の URL が無い', { 'ping-url': null }],
+  ['discord-fail の URL が「discord-ping/fail」でない', { 'discord-fail-url': FAKE_DPING }],
+  ['ping の URL が https でない', { 'ping-url': 'http://hc-ping.com/x' }],
+  ['discord-ping の URL が ping と同じ（check を分けていない）', { 'discord-ping-url': FAKE_PING, 'discord-fail-url': `${FAKE_PING}/fail` }],
 ]) {
   t(`T-2402-44 render.sh: heartbeat の ${label}なら起動させない（heartbeat の止まった構成で動かない）`, () => {
-    const r = renderWith(FAKE_URL, ping, fail);
+    const r = renderWith(FAKE_URL, hb);
     assert.notStrictEqual(r.status, 0, r.logs);
+    assert.strictEqual(r.config, '');
   });
 }
-t('T-2402-45 heartbeat: Watchdog を heartbeat の receiver（url_file）へ 5 分ごとに送る', () => {
-  assert.match(amTmpl, /- matchers: \[alertname = "Watchdog"\]\n\s+receiver: heartbeat\n(?:\s+.*\n)*?\s+repeat_interval: 5m/);
-  assert.match(amTmpl, /- name: heartbeat\n\s+webhook_configs:\n\s+- url_file: \/etc\/alertmanager\/heartbeat\/ping-url/);
-  assert.match(amTmpl, /- matchers: \[alertname = "AlertmanagerDiscordFailing"\]\n\s+receiver: heartbeat-fail/);
-  assert.match(amTmpl, /- name: heartbeat-fail\n\s+webhook_configs:\n\s+- url_file: \/etc\/alertmanager\/heartbeat\/fail-url/);
-  // ping の Secret のボリュームは optional でない（無ければ Pod が起きず、ping が止まって見える）。
-  assert.match(amDep.text, /secret:\n\s+secretName: alertmanager-heartbeat\n/);
-  assert.ok(!/secretName: alertmanager-heartbeat\n\s+optional: true/.test(amDep.text), 'heartbeat の Secret が optional');
+t('T-2402-45 heartbeat: Watchdog を check A（url_file）へ 5 分ごとに送る', () => {
+  const w = amSub('Watchdog');
+  assert.strictEqual(w.receiver, 'heartbeat');
+  assert.strictEqual(w.repeat_interval, '5m');
+  assert.strictEqual(((amRecv('heartbeat').webhook_configs || [])[0] || {}).url_file, '/etc/alertmanager/heartbeat/ping-url');
 });
-const promCm = find(ods, 'ConfigMap', 'prometheus-cloud-config') || { text: '' };
+t('T-2402-45 heartbeat: Discord の到達は別の check B で見る（到達の ping と、失敗の /fail）', () => {
+  const ok = amSub('DiscordDeliveryHealthy');
+  assert.strictEqual(ok.receiver, 'discord-heartbeat');
+  assert.strictEqual(ok.repeat_interval, '5m');
+  assert.strictEqual(((amRecv('discord-heartbeat').webhook_configs || [])[0] || {}).url_file, '/etc/alertmanager/heartbeat/discord-ping-url');
+  assert.strictEqual(amSub('AlertmanagerDiscordFailing').receiver, 'discord-heartbeat-fail');
+  assert.strictEqual(((amRecv('discord-heartbeat-fail').webhook_configs || [])[0] || {}).url_file, '/etc/alertmanager/heartbeat/discord-fail-url');
+  // 🔴 check A の ping（Watchdog）で B が戻らない: 失敗の送り先は A の URL ではない。
+  assert.ok(!amTmpl.includes('heartbeat/fail-url'), 'check A の /fail を使っている');
+});
+t('T-2402-45 heartbeat: ping の Secret のボリュームは optional でない（無ければ Pod が起きず、ping が止まって見える）', () => {
+  const v = volumeOf(amDep.obj, 'heartbeat') || {};
+  assert.strictEqual((v.secret || {}).secretName, 'alertmanager-heartbeat');
+  assert.notStrictEqual((v.secret || {}).optional, 'true', 'heartbeat の Secret が optional');
+});
+const promCm = find(ods, 'ConfigMap', 'prometheus-cloud-config') || EMPTY;
 const rules = cmData(promCm, 'platform-rules.yml') || '';
-t('T-2402-45 heartbeat: 常に鳴る警報 Watchdog と、Discord の失敗・AST の規則の不在の警報がある', () => {
-  assert.match(rules, /- alert: Watchdog\n\s+expr: vector\(1\)/);
-  assert.match(rules, /- alert: AlertmanagerDiscordFailing\n\s+expr: .*alertmanager_notifications_failed_total\{integration="discord"\}/);
-  assert.match(rules, /- alert: AstAlertRulesNotLoaded\n\s+expr: absent\(prometheus_rule_group_rules\{rule_group=~".*;ai-stock-trading\\\\\..*"\}\)/);
+const ruleOf = (name) => {
+  for (const g of (parseYaml(rules) || {}).groups || []) for (const r of g.rules || []) if (r.alert === name) return r;
+  return {};
+};
+t('T-2402-45 heartbeat: Watchdog・Discord の到達と失敗・AST の規則の不在の警報がある', () => {
+  assert.strictEqual(ruleOf('Watchdog').expr, 'vector(1)');
+  const failures = 'sum(increase(alertmanager_notifications_failed_total{integration="discord"}[15m]))';
+  assert.strictEqual(ruleOf('DiscordDeliveryHealthy').expr, `${failures} == 0`);
+  assert.strictEqual(ruleOf('AlertmanagerDiscordFailing').expr, `${failures} > 0`);
+  assert.strictEqual(ruleOf('AstAlertRulesNotLoaded').expr, 'absent(prometheus_rule_group_rules{rule_group=~".*;ai-stock-trading\\\\..*"})');
 });
 t('T-2402-46 受け口を増やさない（LoadBalancer・NodePort・hostPort・Ingress が無い）', () => {
-  assert.deepStrictEqual(inboundExposures(obs), []);
-  assert.deepStrictEqual(inboundExposures(backup), []);
+  assert.deepStrictEqual(inboundExposures(ods), []);
+  assert.deepStrictEqual(inboundExposures(bds), []);
 });
+const obsImages = ods.flatMap((d) => containersOf(d.obj).map((c) => String(c.image)));
 t('T-2402-46 Grafana・Loki・Tempo を持ち込まない', () => {
-  assert.ok(!/image: \S*(grafana|loki|tempo)/i.test(obs), 'Grafana・Loki・Tempo のイメージがある');
+  const bad = obsImages.filter((i) => ['grafana', 'loki', 'tempo'].some((w) => i.toLowerCase().includes(w)));
+  assert.deepStrictEqual(bad, [], 'Grafana・Loki・Tempo のイメージがある');
 });
 t('T-2402-46 イメージはローカルの経路 B と同じ digest（片側だけ上げない）', () => {
   const local = read('deploy/local/observability/alertmanager.yaml') + read('deploy/local/observability/prometheus.yaml');
-  const imgs = [...obs.matchAll(/image: (\S+)/g)].map((m) => m[1]);
-  assert.ok(imgs.length >= 4, `イメージが少ない: ${imgs}`);
-  for (const i of imgs) assert.ok(local.includes(i), `経路 B に無いイメージ: ${i}`);
+  assert.ok(obsImages.length >= 4, `イメージが少ない: ${obsImages}`);
+  for (const i of obsImages) assert.ok(i.includes('@sha256:') && local.includes(i), `経路 B に無いイメージ: ${i}`);
 });
-const promDep = find(ods, 'Deployment', 'prometheus') || { text: '' };
+const promDep = find(ods, 'Deployment', 'prometheus') || EMPTY;
+const promC = containersOf(promDep.obj).find((c) => c.name === 'prometheus') || {};
 t('T-2402-47 Prometheus: 保持は 7 日・1GB 以内、メモリの上限は 768Mi 以内（8 GB のノード）', () => {
-  const time = (/--storage\.tsdb\.retention\.time=(\S+?)"?$/m.exec(promDep.text) || [])[1];
-  const size = (/--storage\.tsdb\.retention\.size=(\S+?)"?$/m.exec(promDep.text) || [])[1];
+  const time = argValue(promC.args, 'storage.tsdb.retention.time');
+  const size = argValue(promC.args, 'storage.tsdb.retention.size');
   assert.ok(durationSeconds(time) <= 7 * 86400, `retention.time=${time}`);
   assert.ok(bytesOf(size) <= 1e9, `retention.size=${size}`);
-  const lim = /\n {8}name: prometheus\n(?: {8,}.*\n)*? {8,}limits:\n +cpu: .*\n +memory: (\S+)/.exec(promDep.text);
-  assert.ok(lim && bytesOf(lim[1]) <= 768 * 2 ** 20, `memory limit=${lim && lim[1]}`);
-  assert.match(promDep.text, /--web\.enable-remote-write-receiver/);
+  const mem = ((promC.resources || {}).limits || {}).memory;
+  assert.ok(bytesOf(mem) <= 768 * 2 ** 20, `memory limit=${mem}`);
+  assert.ok((promC.args || []).includes('--web.enable-remote-write-receiver'));
 });
 
+/** 道具が PATH に在ることを確かめる（無ければ試験を失敗にする。skip にしない。#2402 のレビュー 🟡2）。 */
+function need(tool) {
+  const r = spawnSync(tool, ['--version'], { encoding: 'utf8' });
+  assert.ok(!r.error && r.status === 0, `${tool} が PATH に無い（CI の static-checks が導入する。手元では入れてから走らせる）`);
+}
 // AST の PrometheusRule（の形の写し）から spec を取り出し、promtool で読む。
 const AST_FIXTURE = `# コメント
 apiVersion: monitoring.coreos.com/v1
@@ -365,6 +572,7 @@ spec:
 `;
 const extractSh = cmData(promCm, 'extract-ast-rules.sh') || '';
 t('T-2402-48 AST の規則: PrometheusRule の spec を取り出し、promtool check rules を通す', () => {
+  need('promtool');
   const src = fs.mkdtempSync(path.join(sandbox, 'ast-src-'));
   const out = fs.mkdtempSync(path.join(sandbox, 'ast-out-'));
   fs.writeFileSync(path.join(src, 'ai-stock-trading-alerts.yaml'), AST_FIXTURE);
@@ -378,6 +586,7 @@ t('T-2402-48 AST の規則: PrometheusRule の spec を取り出し、promtool c
   assert.ok(!/PrometheusRule|metadata:/.test(got), 'spec の外を持ち込んでいる');
 });
 t('T-2402-48 AST の規則: 読めない規則なら Prometheus を起動させない（exit 1）', () => {
+  need('promtool');
   const src = fs.mkdtempSync(path.join(sandbox, 'ast-src-'));
   const out = fs.mkdtempSync(path.join(sandbox, 'ast-out-'));
   fs.writeFileSync(path.join(src, 'broken.yaml'), AST_FIXTURE.replace('> 0', '> > 0'));
@@ -385,9 +594,11 @@ t('T-2402-48 AST の規則: 読めない規則なら Prometheus を起動させ�
   const r = run('sh', [path.join(sandbox, 'extract.sh')], {
     env: { PATH: process.env.PATH, AST_RULES_SRC: src, AST_RULES_OUT: out, PROMTOOL: 'promtool' },
   });
-  assert.notStrictEqual(r.status, 0);
+  assert.strictEqual(r.status, 1, r.stderr);
+  assert.ok(r.stderr.includes('promtool が読めない'), '落ちた理由が promtool の検査ではない');
 });
 t('T-2402-48 AST の規則: ConfigMap が無い（空）なら警告して起動する（AstAlertRulesNotLoaded が鳴る）', () => {
+  need('promtool');
   const src = fs.mkdtempSync(path.join(sandbox, 'ast-src-'));
   const out = fs.mkdtempSync(path.join(sandbox, 'ast-out-'));
   fs.writeFileSync(path.join(sandbox, 'extract.sh'), extractSh);
@@ -398,6 +609,7 @@ t('T-2402-48 AST の規則: ConfigMap が無い（空）なら警告して起動
   assert.match(r.stderr, /WARNING/);
 });
 t('T-2402-48 プラットフォームの規則と Prometheus の設定を promtool で読める', () => {
+  need('promtool');
   assert.ok(/- alert: /.test(rules), 'プラットフォームの規則が空');
   const f = path.join(sandbox, 'platform-rules.yml');
   fs.writeFileSync(f, rules);
@@ -405,6 +617,7 @@ t('T-2402-48 プラットフォームの規則と Prometheus の設定を promto
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
 });
 t('T-2402-47 描いた Alertmanager の設定を amtool check-config で読める', () => {
+  need('amtool');
   const r0 = renderWith(FAKE_URL);
   const f = path.join(sandbox, 'am-rendered.yml');
   fs.writeFileSync(f, r0.config);
@@ -422,7 +635,7 @@ const RUNBOOK = 'docs/operations/cloud-backup-alerts-heartbeat-runbook.md';
 const rb = fs.existsSync(path.join(REPO_ROOT, RUNBOOK)) ? read(RUNBOOK) : '';
 t('T-2402-60 runbook: heartbeat が途絶えたとき外の監視がオーナーへ知らせる手順がある', () => {
   assert.ok(rb, `${RUNBOOK} が無い`);
-  for (const w of ['Healthchecks.io', 'Period', 'Grace', 'alertmanager-heartbeat', 'ping-url', 'fail-url', '途絶えたとき', 'scale deploy/alertmanager --replicas=0']) {
+  for (const w of ['Healthchecks.io', 'Period', 'Grace', 'alertmanager-heartbeat', 'ping-url', 'discord-ping-url', 'discord-fail-url', 'check B', '途絶えたとき', 'scale deploy/alertmanager --replicas=0']) {
     assert.ok(rb.includes(w), `runbook に「${w}」が無い`);
   }
 });

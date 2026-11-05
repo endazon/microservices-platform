@@ -2,9 +2,12 @@
 # - 既定の受信先は Discord の webhook（`discord`）。🔴 URL は Secret `alertmanager-discord` のキー `webhook-url` から
 #   initContainer が描く（v0.27 の discord_configs は URL のファイル読みを持たない。IADR-0674 決定 3。形は IADR-0571 と同じ）。
 #   **URL はリポジトリにも描画にも置かない。** 描いた設定は Pod の emptyDir にだけ在る。
-# - 常に鳴る警報 Watchdog は `heartbeat`（Healthchecks.io の ping）へ 5 分ごとに送る。Discord の送信の失敗
-#   （AlertmanagerDiscordFailing）は `heartbeat-fail`（同じ check の /fail）へ送る。URL は Secret `alertmanager-heartbeat`
-#   のキー `ping-url` / `fail-url` を url_file で読む（ファイルのまま。設定へ描かない）。
+# - 常に鳴る警報 Watchdog は `heartbeat`（Healthchecks.io の check A の ping）へ 5 分ごとに送る。
+# - ［#2402 のレビュー 🟡3］Discord へ届いているかは**別の check B** で見る。Discord の送信の失敗が無い間だけ鳴る
+#   DiscordDeliveryHealthy を `discord-heartbeat`（B の ping）へ 5 分ごとに送り、失敗（AlertmanagerDiscordFailing）は
+#   `discord-heartbeat-fail`（B の /fail）へ送る。失敗の間は B へ ping が来ないので、B は下がったままになる
+#   （A の ping で B が戻ることは無い）。URL は Secret `alertmanager-heartbeat` のキー `ping-url` / `discord-ping-url` /
+#   `discord-fail-url` を url_file で読む（ファイルのまま。設定へ描かない）。
 # - 🔴 Discord の URL が空・形が違う、heartbeat の URL が無い・形が違うときは**起動しない**（黙って null へ落とさない）。
 #   起動しなければ Watchdog が外へ届かず、外の監視がオーナーへ知らせる。
 # - 束ね（group_by）と抑止（inhibit_rules）は経路 B（deploy/local/observability/alertmanager.yaml）と同じ（試験が突き合わせる）。
@@ -30,9 +33,15 @@ data:
           group_wait: 0s
           group_interval: 1m
           repeat_interval: 5m
-        # Discord へ送れないことは Discord では知らせられない。外の監視の /fail へ送る。
+        # Discord へ届いている間の ping（check B。Period 5 分・Grace 10 分と対）。
+        - matchers: [alertname = "DiscordDeliveryHealthy"]
+          receiver: discord-heartbeat
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 5m
+        # Discord へ送れないことは Discord では知らせられない。check B の /fail へ送る（すぐに下げる）。
         - matchers: [alertname = "AlertmanagerDiscordFailing"]
-          receiver: heartbeat-fail
+          receiver: discord-heartbeat-fail
           group_wait: 0s
           group_interval: 5m
           repeat_interval: 1h
@@ -45,9 +54,13 @@ data:
         webhook_configs:
           - url_file: /etc/alertmanager/heartbeat/ping-url
             send_resolved: false
-      - name: heartbeat-fail
+      - name: discord-heartbeat
         webhook_configs:
-          - url_file: /etc/alertmanager/heartbeat/fail-url
+          - url_file: /etc/alertmanager/heartbeat/discord-ping-url
+            send_resolved: false
+      - name: discord-heartbeat-fail
+        webhook_configs:
+          - url_file: /etc/alertmanager/heartbeat/discord-fail-url
             send_resolved: false
     inhibit_rules:
       - source_matchers: [severity = "critical"]
@@ -55,7 +68,8 @@ data:
         equal: ['alertname', 'job']
   # IADR-0674 決定 3: 受信先の描画。initContainer が実行する。🔴 値をログへ出さない。
   #   Discord の URL が空・不正 → 起動しない（exit 1）
-  #   heartbeat の ping-url / fail-url が無い・不正・fail-url が「ping-url/fail」でない → 起動しない（exit 1）
+  #   heartbeat の ping-url / discord-ping-url / discord-fail-url が無い・不正、discord-fail-url が「discord-ping-url/fail」でない、
+  #   discord-ping-url が ping-url と同じ（同じ check で A と B を混ぜる） → 起動しない（exit 1）
   #   正しい値 → テンプレートへ差し込み、amtool check-config を通す
   render.sh: |
     #!/bin/sh
@@ -73,7 +87,7 @@ data:
       echo "alertmanager-render: ERROR: Discord の webhook の URL が https://discord.com/api/webhooks/<数字>/<トークン> の形でない。起動しない（値は表示しない）。" >&2
       exit 1
     fi
-    for key in ping-url fail-url; do
+    for key in ping-url discord-ping-url discord-fail-url; do
       if [ ! -r "${hb}/${key}" ]; then
         echo "alertmanager-render: ERROR: heartbeat の ${key}（Secret alertmanager-heartbeat）が無い。起動しない。" >&2
         exit 1
@@ -84,13 +98,19 @@ data:
       fi
     done
     ping="$(tr -d ' \t\r\n' < "${hb}/ping-url")"
-    fail="$(tr -d ' \t\r\n' < "${hb}/fail-url")"
-    if [ "${fail}" != "${ping}/fail" ]; then
-      echo "alertmanager-render: ERROR: heartbeat の fail-url が「ping-url/fail」でない。起動しない（値は表示しない）。" >&2
+    dping="$(tr -d ' \t\r\n' < "${hb}/discord-ping-url")"
+    dfail="$(tr -d ' \t\r\n' < "${hb}/discord-fail-url")"
+    if [ "${dfail}" != "${dping}/fail" ]; then
+      echo "alertmanager-render: ERROR: heartbeat の discord-fail-url が「discord-ping-url/fail」でない。起動しない（値は表示しない）。" >&2
+      exit 1
+    fi
+    if [ "${dping}" = "${ping}" ]; then
+      echo "alertmanager-render: ERROR: discord-ping-url が ping-url と同じである（死活と Discord の到達は別の check にする）。起動しない。" >&2
       exit 1
     fi
     ping=""
-    fail=""
+    dping=""
+    dfail=""
     sed "s|__DISCORD_WEBHOOK_URL__|${url}|" "${src}/alertmanager.yml.tmpl" > "${out}/alertmanager.yml"
     url=""
     if ! "${amtool}" check-config "${out}/alertmanager.yml" >/dev/null 2>&1; then
@@ -98,7 +118,7 @@ data:
       echo "alertmanager-render: ERROR: 描いた設定を amtool が読めない。起動しない。" >&2
       exit 1
     fi
-    echo "alertmanager-render: 受信先 discord・heartbeat・heartbeat-fail を有効にした。" >&2
+    echo "alertmanager-render: 受信先 discord・heartbeat・discord-heartbeat・discord-heartbeat-fail を有効にした。" >&2
 ---
 apiVersion: apps/v1
 kind: Deployment

@@ -5,7 +5,7 @@
 #   送った回を読み戻して検算し、最後に COMPLETE を置く（COMPLETE の無い回は完了ではない。IADR-0674 決定 1）。
 # - 時刻: JST 12:00（米国市場の時間帯 JST 22:30〜05:00 を避ける）。ノードは常時起動なので、後追いは 1 時間に限る。
 # - 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle**（bucket-lifecycle.json）が行い、スクリプトは消さない。
-#   バケットは Object Lock（object-lock.json。COMPLIANCE・30 日）で作る。
+#   バケットは Object Lock（object-lock.json。COMPLIANCE・28 日。日次の保持より短くし、期限の日の削除を拒ませない）で作る。
 # - 資格情報: S3 の鍵は Secret platform-backup-s3（キー access-key-id / secret-access-key）を rclone の env で渡す。
 #   Postgres の超利用者のパスワードは Secret postgres のキー password。🔴 値をマニフェスト・引数に書かない。
 # - 宛先（エンドポイント・<リモート>:<バケット>/<接頭辞>）は ConfigMap platform-backup-s3-target（kustomize の外。手順書参照）。

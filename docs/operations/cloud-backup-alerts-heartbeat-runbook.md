@@ -27,11 +27,12 @@ issues: [#2402, #2401]
 | 部品 | 動き | 止まったら |
 | --- | --- | --- |
 | バックアップ（CronJob `platform-backup-postgres`・JST 12:00） | Postgres の全 DB と globals を age で暗号化し、オブジェクトストレージの `daily/<回>/` へ送る。月の最初の完全な回は `monthly/<回>/` にも送る。送った回を読み戻して検算し、最後に `COMPLETE` を置く | Job が失敗として残る（`kubectl -n platform-infra get jobs`）。`COMPLETE` の無い回は完了ではない |
-| 警報（Prometheus → Alertmanager → Discord） | AST の警報と、基盤の警報（collector の停止・AST の規則の不在）を Discord のチャンネルへ送る | Discord への送信の失敗は、外の監視の `/fail` へ送る |
+| 警報（Prometheus → Alertmanager → Discord） | AST の警報と、基盤の警報（collector の停止・AST の規則の不在）を Discord のチャンネルへ送る | Discord へ届いているかは外の監視の **check B** が見る（届いている間だけ ping が来る。失敗は B の `/fail` へ送る） |
 | 死活（常に鳴る警報 `Watchdog` → Healthchecks.io） | Alertmanager が 5 分ごとに外の監視へ ping を送る（クラスタの中から外へ。受け口は開けない） | **外の監視が、ping が途絶えたことをオーナーへ知らせる**（メール・Discord） |
 
 - 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle が行う**（スクリプトは消さない）。
-- バケットは Object Lock（COMPLIANCE・30 日）で作る。保持の期間の内は、資格情報を持つ者でも回を消せない。
+- バケットは Object Lock（COMPLIANCE・28 日）で作る。保持の期間の内は、資格情報を持つ者でも回を消せない。
+  Object Lock は日次の保持（30 日）より短くしてある —— 期限の日に lifecycle の削除が Object Lock に拒まれないように。
 - 費用: オブジェクトストレージの基本料（1 TB の保管と転送を含む）と、外の監視・Discord の無料の枠に収まる。
 
 ## 前提
@@ -117,18 +118,23 @@ issues: [#2402, #2401]
 
 ## 4. 外の監視（Healthchecks.io）と heartbeat
 
-1. Healthchecks.io（無料の枠）にプロジェクトを作り、check を 1 つ作る。
-   - **Period: 5 分、Grace: 5 分**（Alertmanager の Watchdog の送信は 5 分ごと。途絶えてから最大 10 分で知らせる）。
-   - 「Integrations」で、オーナーへ届く宛先を**2 つ以上**つなぐ（メールと Discord。Discord の連携は、警報とは別のチャンネルにする —— 警報の webhook が壊れたときも届くように）。
-2. check の ping の URL を手元のファイルへ写し、Secret `alertmanager-heartbeat`（キー `ping-url` と `fail-url`）を作る:
+1. Healthchecks.io（無料の枠）にプロジェクトを作り、check を **2 つ**作る。
+   - **check A（死活）**: **Period: 5 分、Grace: 5 分**。常に鳴る警報 Watchdog が 5 分ごとに ping する。途絶えてから最大 10 分で知らせる。
+   - **check B（Discord への到達）**: **Period: 5 分、Grace: 10 分**。Discord への送信に失敗が無い間だけ、警報 DiscordDeliveryHealthy が
+     5 分ごとに ping する。失敗が起きると、警報 AlertmanagerDiscordFailing が B の `/fail` を叩いてすぐに下げる。
+     失敗の間は B へ ping が来ないので、**B は下がったまま**である（A の ping では戻らない。B が戻るのは、失敗が 15 分の窓から消えたとき）。
+   - どちらも「Integrations」で、オーナーへ届く宛先を**2 つ以上**つなぐ（メールと Discord。Discord の連携は、警報とは別のチャンネルにする —— 警報の webhook が壊れたときも届くように）。
+2. 2 つの check の ping の URL を手元のファイルへ写し、Secret `alertmanager-heartbeat`（キー `ping-url`・`discord-ping-url`・`discord-fail-url`）を作る:
    ```bash
    umask 077; d="$(mktemp -d)"
-   # エディタで "$d/ping-url" に ping の URL を 1 行だけ書く
-   printf '%s/fail' "$(cat "$d/ping-url")" > "$d/fail-url"
+   # エディタで "$d/ping-url" に check A の ping の URL を、"$d/discord-ping-url" に check B の ping の URL を、それぞれ 1 行だけ書く
+   printf '%s/fail' "$(cat "$d/discord-ping-url")" > "$d/discord-fail-url"
    kubectl -n platform-infra create secret generic alertmanager-heartbeat \
-     --from-file=ping-url="$d/ping-url" --from-file=fail-url="$d/fail-url"
+     --from-file=ping-url="$d/ping-url" --from-file=discord-ping-url="$d/discord-ping-url" \
+     --from-file=discord-fail-url="$d/discord-fail-url"
    rm -f "$d"/*; rmdir "$d"
    ```
+   2 つの URL が同じ（check を分けていない）・`discord-fail-url` が「`discord-ping-url`/fail」でないときは、Alertmanager は起動しない。
    この Secret が無いと Alertmanager の Pod は起動しない（ping が始まらず、外の監視が「一度も来ていない」と見せる）。
 3. AST の警報の規則（ConfigMap `ast-prometheus-rules`。AST の `PrometheusRule` の YAML をそのまま入れる）:
    ```bash
@@ -147,7 +153,7 @@ issues: [#2402, #2401]
      --annotation=summary="試験の警報" --alertmanager.url=http://localhost:9093
    ```
    Discord のチャンネルに届くことを見る。
-2. **heartbeat が届く**: Healthchecks.io の check が「up」で、最後の ping が 5 分以内であることを見る。
+2. **heartbeat が届く**: Healthchecks.io の check A と check B が「up」で、最後の ping が 5 分以内であることを見る。
 3. **heartbeat が途絶えたとき、オーナーへ届く**（止め試験。米国の場の時間外に行う）:
    ```bash
    kubectl -n platform-infra scale deploy/alertmanager --replicas=0
@@ -180,6 +186,6 @@ bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/p
 | 事象 | 見るところ | 対処 |
 | --- | --- | --- |
 | Healthchecks.io から「down」が届いた | `kubectl -n platform-infra get pods`（alertmanager・prometheus）、ノードへの SSH | Pod が落ちていれば `logs` で原因を見る。ノードに届かなければ Hetzner Console でノードを確かめる |
-| Healthchecks.io に「fail」が届いた | Alertmanager のログ（`notify` の失敗）、Discord の webhook | webhook が消された・URL が変わったなら §3 で Secret を作り直す |
+| check B が「down」（`/fail` か、ping の途絶え）になった | Alertmanager のログ（`notify` の失敗）、Discord の webhook | webhook が消された・URL が変わったなら §3 で Secret を作り直す。直れば 15 分ほどで B は「up」へ戻る |
 | `AstAlertRulesNotLoaded` が Discord に出た | ConfigMap `ast-prometheus-rules` | §4 の 3 を行う |
 | バックアップの Job が失敗した | `kubectl -n platform-infra logs job/<名前>` | 「保管先が 1 つもありません」→ §2 の ConfigMap。「検算が合いません」→ 再実行（`COMPLETE` は置かれていない）。「同じ名前の回が既にあります」→ 手動の回が同じ秒に重なった |

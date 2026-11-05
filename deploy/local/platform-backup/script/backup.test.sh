@@ -828,7 +828,10 @@ cmd="${args[0]:-}"
 case "$cmd" in
   lsf)
     d="$(map "${args[1]}")" || exit 1
-    [ -d "$d" ] || exit 0
+    # #2402 のレビュー 🔴2: 無い接頭辞は「directory not found」（終了コード 3）を返し得る（rclone の bucket 型の
+    # バックエンドで実測）。$STATE/s3-list-fail があれば、それ以外の失敗（1）を返す。
+    [ -f "$STATE/s3-list-fail" ] && { echo "stub rclone: list failed" >&2; exit 1; }
+    [ -d "$d" ] || { echo "stub rclone: directory not found" >&2; exit 3; }
     for p in "$d"/*; do [ -e "$p" ] || continue; n="${p##*/}"; [ -d "$p" ] && echo "$n/" || echo "$n"; done
     ;;
   copy)
@@ -863,7 +866,7 @@ S3D() { printf '%s/bkt/ast-poc/postgres/%s/%s' "$R/s3" "$1" "$2"; }
 
 new_s3_env
 run_backup
-assert_eq 'T-2402-01 S3: 正常系は成功で終わる' "$RC" "0"
+assert_eq 'T-2402-01 S3: 正常系は成功で終わる（初回: 回の接頭辞も monthly/ もまだ無く、一覧は 3 を返す）' "$RC" "0"
 D="$(S3D daily 2026-11-01T030000Z)"
 for f in pg-globals.sql.age pg-audit_svc.dump.age pg-postgres.dump.age pg-risk_management_svc.dump.age SHA256SUMS COMPLETE; do
 	assert_file "T-2402-01 S3: daily の回に $f が並ぶ" "$D/$f"
@@ -899,6 +902,15 @@ run_backup
 assert_ne 'T-2402-07 S3: 同じ名前の回が既にあれば失敗で終わる' "$RC" "0"
 assert_eq 'T-2402-07 S3: 既にある回の COMPLETE を書き換えない' "$(cat "$(S3D daily 2026-11-02T030000Z)/COMPLETE")" "$BEFORE"
 assert_missing 'T-2402-07 S3: 既にある回へ送らない' "$(cat "$STUB_LOG")" "/2026-11-02T030000Z/COMPLETE"
+
+# #2402 のレビュー 🔴2: 一覧の失敗（3 以外）は「空」と見なさず、何も送らずに失敗する。
+new_s3_env
+: > "$STATE/s3-list-fail"
+run_backup
+assert_ne 'T-2402-13 S3: 一覧が 3 以外で失敗したら失敗で終わる（空と見なさない）' "$RC" "0"
+assert_missing 'T-2402-13 S3: 一覧に失敗したら送らない' "$(cat "$STUB_LOG")" 'rclone -q copy '
+assert_nofile 'T-2402-13 S3: 一覧に失敗したら COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+rm -f "$STATE/s3-list-fail"
 
 # 送った先の暗号文が壊れた → COMPLETE を置かずに失敗する。
 new_s3_env
