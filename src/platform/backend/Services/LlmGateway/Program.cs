@@ -6,6 +6,7 @@ using LlmGateway.Features.Completions;
 using LlmGateway.Features.Embeddings.Embed;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Pricing;
+using LlmGateway.Domain.Limits;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Infrastructure.ExternalServices;
 using LlmGateway.Domain.Routing;
@@ -57,6 +58,16 @@ builder.Services.AddOptions<LlmBudgetOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<LlmBudgetOptions>, LlmBudgetOptionsValidator>();
 builder.Services.AddSingleton<LlmBudgetMetrics>();
+
+// NFR-18, NFR-21, ADR-0044, IADR-0672 (#2404): 送る前の呼び出しの上限（入力・呼び手ごとの要求数と当日の費用）。
+// 🔴 **既定の段は Report**（判定して報告だけ。送信は止めない）。Enforce への切り替えは設定 `Llm:CallLimits:Mode` で行う。
+// 0 以下の上限・未知の用途のキーは起動時に落とす。
+builder.Services.AddOptions<LlmCallLimitOptions>()
+    .Bind(builder.Configuration.GetSection(LlmCallLimitOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<LlmCallLimitOptions>, LlmCallLimitOptionsValidator>();
+builder.Services.AddSingleton<LlmCallLimitMetrics>();
+builder.Services.AddSingleton<LlmCallLimiter>();
 
 // Meter は 1 本（サービス名と一致）。補完カウンタと利用実績の計器は同じ Meter に載る。
 builder.Services.AddOpenTelemetry()

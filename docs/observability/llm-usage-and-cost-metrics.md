@@ -7,11 +7,11 @@ created: 2026-08-23
 updated: 2026-11-05
 ---
 <!-- trace:
-ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
+ids: [FR-10, FR-11, NFR, NFR-18, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671]
-specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching]
-issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, planning#783]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0672]
+specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2404_llm-gateway-call-limits]
+issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, #2404, planning#783]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -39,6 +39,7 @@ issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #211
 | `llm.usage.synthetic_excluded.total` | Counter | `{completion}` | `llm_usage_synthetic_excluded_total` | **合成監視のため費用へ計上しなかった呼び出し** |
 | `llm.usage.incomplete.total` | Counter | `{completion}` | `llm_usage_incomplete_total` | **逐次応答が最終チャンク（実数）を受け取らずに終わった送信**（0 が正常。下記） |
 | `llm.budget.monthly_limit` | 観測ゲージ | `{currency}` | `llm_budget_monthly_limit` | **用途別の月次予算の上限**（設定 `Llm:Budget:MonthlyLimits`。**既定なし**。設定された用途だけが系列を持つ） |
+| `llm.call_limit.exceeded.total` | Counter | `{completion}` | `llm_call_limit_exceeded_total` | **送る前の上限を超えた呼び出し**（§送る前の上限。`report` は送った・`enforce` は送らなかった） |
 
 🔴 **上限のゲージは金額を設定しない限り系列を持たない。** 金額は所有者が決める値であり、実装は既定を置かない。
 上限アラート `LlmMonthlyBudgetExceeded` は直近 30 日の `llm_cost_total` をこのゲージと用途・通貨で比べるため、
@@ -182,6 +183,29 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 
 月次の読み方は [`../operations/llm-cost-monthly-review-runbook.md`](../operations/llm-cost-monthly-review-runbook.md) が定める。
 
+## 送る前の上限
+
+月次予算のゲージとアラートは**送った後の観測**である。これとは別に、ゲートウェイは**送る前に**次の上限を判定する
+（一括・逐次の両方。設定 `Llm:CallLimits`）。
+
+| 種類（`llm_limit_kind`） | 判定 | 既定 |
+| --- | --- | --- |
+| `max_tokens` | `max_tokens` が 1 以上かつ `MaxOutputTokens` 以下 | 32768 |
+| `prompt_length` | 接頭辞＋本文の文字数が `MaxPromptChars` 以下 | 800000 |
+| `caller_rate` | 呼び手の直近 60 秒の件数（全用途の合計）が `RequestsPerMinute` 未満 | 300 |
+| `purpose_rate` | 呼び手×用途の直近 60 秒の件数が `PurposeRequestsPerMinute` 未満 | 120 |
+| `caller_cost` | 呼び手の当日（UTC）の費用＋その呼び出しの見込み額が `DailyCostLimit` 以下 | **なし**（所有者が設定） |
+| `purpose_cost` | 呼び手×用途の当日の費用＋見込み額が `PurposeDailyCostLimits[用途]` 以下 | **なし**（所有者が設定） |
+
+- 呼び手は**検証済みのトークンのクライアント識別子**（`llm_caller`）、用途は本書の属性と同じ正規化（未知は `other`）で数える。
+- 合成監視の呼び出しも上限には数える（費用の計上から外すこととは別である）。
+- 見込み額は、文字数を入力トークン・`max_tokens` を出力トークンとみなして単価表で換算する。送った後は実額へ置き換え、送れなかった呼び出しは戻す。
+- 呼び手ごとの値は `Llm:CallLimits:Callers:<クライアント識別子>` で上書きする。書かなかった項目は `Default` の値を使う。
+- 🔴 **段**（`Llm:CallLimits:Mode`）: 既定 `Report` は判定して数えるだけで**送信を止めない**。`Enforce` は超えた呼び出しを送らず、
+  `Sent=false`・`FailureKind=limit_exceeded` で返す（`llm_completion_total{llm_result="limit_exceeded"}` にも数える）。
+  **`Enforce` へ切り替える前に、`llm_call_limit_exceeded_total{llm_limit_mode="report"}` が想定外の呼び手で増えていないことを確かめる。**
+- 状態はレプリカごと・プロセス内である（再起動で当日の費用の枠は 0 に戻る）。レプリカを増やすと実効の上限はその倍数になる。
+
 ## 監視観点
 
 | 観点 | 見るもの | 意味 |
@@ -191,6 +215,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 | 用途別の費用増 | 費用の前月比 | 1.0 を大きく超える用途 |
 | モデル構成の変化 | モデル別の費用 | 上位モデルの比率が上がると回数が同じでも費用は増える |
 | 用途の定義漏れ | `llm_purpose="other"` の増加 | 定義していない用途が来ている（ルーティングが既定へ落ちている） |
+| 送る前の上限 | `llm_call_limit_exceeded_total` の増加 | `report` なら「止めていたら止まった」呼び出し。呼び手・種類ごとに、上限が低すぎるのか呼び出しが多すぎるのかを見分ける |
 
 ## 本仕様書が扱わないこと
 

@@ -122,7 +122,9 @@ public sealed class StreamUsageOnAbortTests : IDisposable
             NullLoggerFactory.Instance,
             new LlmCompletionMetrics(meterFactory, new Static<LlmRoutingOptions>(routing)),
             new LlmUsageMetrics(meterFactory, new Static<LlmRoutingOptions>(routing), prices, _time),
-            new LogOccurrenceThrottle(_time));
+            new LogOccurrenceThrottle(_time),
+            // IADR-0672 (#2404): 既定（Report）の上限。本試験の主題ではなく、送信の挙動を変えない。
+            TestCallLimiters.Create(meterFactory, routing, prices, _time));
     }
 
     private static CompletionApiRequest Request()
