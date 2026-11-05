@@ -470,9 +470,14 @@ ok('IADR-0685: 宣言が有効・稼働が無効の client は有効へ戻さな
   const live = liveFrom(REALM);
   const bff = live.clients.find((c) => c.clientId === 'bff');
   bff.enabled = false;
-  const ops = opsOf(REALM, live);
+  const kept = [];
+  const ops = plan(REALM, live, { kept });
   assert.ok(!ops.some((o) => o.op === 'client.update' && o.target === 'bff'), `無効にした client を戻す計画が出た: ${JSON.stringify(kinds(ops))}`);
-  assert.ok(ops.kept.some((k) => k.target === 'client bff' && /戻さない/.test(k.reason)), '戻さなかったことを報告していない');
+  assert.ok(kept.some((k) => k.target === 'client bff' && /戻さない/.test(k.reason)), '戻さなかったことを報告していない');
+  // 報告は出力先へ積む（ops の配列に付けない。filter / slice を通しても落ちない）
+  assert.strictEqual(ops.kept, undefined, 'ops に報告を付けた（配列の操作で落ちる）');
+  const copied = plan(REALM, live, { kept: [] }).filter(() => true).slice();
+  assert.ok(Array.isArray(copied), '前提');
   // ほかの差分で PUT が起きても、本文は稼働の無効を運ぶ（有効へ戻さない）
   bff.description = 'changed-at-runtime';
   const withOther = opsOf(REALM, live).find((o) => o.op === 'client.update' && o.target === 'bff');
@@ -489,12 +494,15 @@ ok('IADR-0685: 宣言が有効・稼働が無効の client は有効へ戻さな
 ok('IADR-0685: 一度在った（記録に在る）seed 利用者が消されていたら作り直さない。明示（RECONCILE_RECREATE_USERS）で許す。新しく宣言した利用者は作る', () => {
   const live = liveFrom(REALM);
   live.users.developer = null; // 記録に在るまま消された
-  const ops = opsOf(REALM, live);
+  const kept = [];
+  const ops = plan(REALM, live, { kept });
   assert.ok(!ops.some((o) => o.op === 'user.create'), `消された利用者を作り直す計画が出た: ${JSON.stringify(kinds(ops))}`);
-  assert.ok(ops.kept.some((k) => k.target === 'user developer' && new RegExp(RECREATE_USERS_ENV).test(k.reason)), '作り直さなかったことと許し方を報告していない');
+  assert.ok(kept.some((k) => k.target === 'user developer' && new RegExp(RECREATE_USERS_ENV).test(k.reason)), '作り直さなかったことと許し方を報告していない');
   const allowed = plan(REALM, live, { recreateUsers: parseRecreateUsers('developer') });
   assert.deepStrictEqual(kinds(allowed), ['user.create'], '明示で許したのに作らない');
-  assert.deepStrictEqual([...parseRecreateUsers(' e2e-user ,bad name,e2e-admin,;rm')], ['e2e-user', 'e2e-admin'], '名前の形の検査が違う');
+  const ignored = [];
+  assert.deepStrictEqual([...parseRecreateUsers(' e2e-user ,bad name,e2e-admin,;rm', ignored)], ['e2e-user', 'e2e-admin'], '名前の形の検査が違う');
+  assert.deepStrictEqual(ignored, ['bad name', ';rm'], '捨てた名前を報告の出力先へ積んでいない');
   const fresh = neverSeen(liveFrom(REALM), 'developer');
   assert.deepStrictEqual(kinds(opsOf(REALM, fresh)), ['user.create'], '新しく宣言した（記録に無い）利用者を作らない');
 });
@@ -872,6 +880,16 @@ okLater('#2026: 当て直しの PUT が失敗したら applyOps は errors を�
   // 再計画では利用者が在るので drift 0 —— 終了コードは errors で 1 にする
   assert.strictEqual(exitCodeFor({ drift: 0, guardBlocked: 0, applyErrors: r.errors.length }), 1);
   assert.strictEqual(exitCodeFor({ drift: 0, guardBlocked: 0, applyErrors: 0 }), 0);
+});
+
+okLater('IADR-0685: reconcileRealm は最後の計画の報告（kept）を返し、apply の周を跨いで積み増さない', async () => {
+  const collect = async () => { const l = liveFrom(REALM); l.clients.find((c) => c.clientId === 'bff').enabled = false; return l; };
+  const kc = fakeAdminApi(() => 204);
+  const log = console.log; console.log = () => {};
+  let r;
+  try { r = await reconcileRealm(kc, REALM, { mode: 'apply', devSecretsAllowed: true, collect }); } finally { console.log = log; }
+  assert.deepStrictEqual(r.ops, []);
+  assert.deepStrictEqual(r.kept.map((k) => k.target), ['client bff'], `報告が違う: ${JSON.stringify(r.kept)}`);
 });
 
 okLater('#2026: reconcileRealm — 作成は通り当て直しの PUT が落ちると、再計画は差分 0 でも applyErrors が残り終了コード 1（黙って緑にしない）', async () => {

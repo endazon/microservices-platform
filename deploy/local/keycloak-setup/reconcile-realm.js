@@ -153,9 +153,14 @@ const SEEDED_USERS_ATTRIBUTE = 'reconcile.seeded-users';
 const RECREATE_USERS_ENV = 'RECONCILE_RECREATE_USERS';
 const seededUsersOf = (liveRealm) => new Set(asStr(((liveRealm && liveRealm.attributes) || {})[SEEDED_USERS_ATTRIBUTE])
   .split(',').map((x) => x.trim()).filter(Boolean));
-/** env の値（カンマ区切りの利用者名）を集合にする。名前は英小文字・数字・`-`・`_`・`.`・`@` だけを受ける（それ以外は無視）。 */
-function parseRecreateUsers(v) {
-  return new Set(asStr(v).split(',').map((x) => x.trim()).filter((x) => /^[a-z0-9._@-]+$/.test(x)));
+/**
+ * env の値（カンマ区切りの利用者名）を集合にする。名前は英小文字・数字・`-`・`_`・`.`・`@` だけを受ける。
+ * 受けなかった名前は `skipped` に積む（呼び出し側が 1 行で報告する。値は利用者名で秘密ではない）。
+ */
+function parseRecreateUsers(v, skipped = []) {
+  const names = asStr(v).split(',').map((x) => x.trim()).filter(Boolean);
+  for (const x of names) if (!/^[a-z0-9._@-]+$/.test(x)) skipped.push(x);
+  return new Set(names.filter((x) => /^[a-z0-9._@-]+$/.test(x)));
 }
 
 // client 表現のうち、トップレベルの PUT で扱わないキー（別端点で当てる／同一性／読み取り専用）。
@@ -286,11 +291,10 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  * 返す操作: { op, target, method, path, body, reason }。`op === 'deferred'` は前提（依存先の実体）が
  * まだ無く、次の周で計画し直すもの。check モードでは drift として数える。
  */
-function plan(desired, live, { recreateUsers = new Set() } = {}) {
+function plan(desired, live, { recreateUsers = new Set(), kept = [] } = {}) {
   const ops = [];
-  // #2431 / IADR-0685: 戻さなかったもの（稼働側の無効化・削除）。列挙されない属性に置く（ops の比較・件数を変えない）。
-  const kept = [];
-  Object.defineProperty(ops, 'kept', { value: kept, enumerable: false });
+  // #2431 / IADR-0685: 戻さなかったもの（稼働側の無効化・削除）は、呼び出し側が渡す出力先 `kept` へ積む（ops には混ぜない。
+  //   ops の比較・件数・drift を変えない）。
   const realmName = desired.realm;
   const R = `/admin/realms/${encodeURIComponent(realmName)}`;
   const add = (o) => ops.push(o);
@@ -947,8 +951,9 @@ async function applyOps(kc, realmName, ops) {
  * ［2026-10-25 / #2026］当てられなかった操作の数（applyErrors）を返す —— 作成の後の手順の失敗は再計画の差分に戻らないことがある。
  */
 async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive, recreateUsers = new Set() }) {
-  const planOpts = { recreateUsers };
-  let ops = plan(desired, await collect(kc, desired), planOpts);
+  let kept = [];
+  const planOf = async () => { kept = []; return plan(desired, await collect(kc, desired), { recreateUsers, kept }); };
+  let ops = await planOf();
   let applied = 0;
   let guardBlocked = 0;
   let applyErrors = 0;
@@ -970,10 +975,10 @@ async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = 
       applied += r.applied;
       for (const e of r.errors) console.error(`    ERROR ${e}`);
       applyErrors += r.errors.length;
-      ops = plan(desired, await collect(kc, desired), planOpts);
+      ops = await planOf();
     }
   }
-  return { ops, applied, guardBlocked, applyErrors };
+  return { ops, kept, applied, guardBlocked, applyErrors };
 }
 
 function readRealmFiles(dir) {
@@ -1033,9 +1038,12 @@ async function main() {
     // #2024 / IADR-0570: 試験アカウントの資格情報を差し込む。差し込めない利用者は作らない（drift にも数えない）。
     const { desired, skipped } = resolveE2eCredentials(declared, process.env);
     for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
-    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, recreateUsers: parseRecreateUsers(process.env[RECREATE_USERS_ENV]) });
+    const ignored = [];
+    const recreateUsers = parseRecreateUsers(process.env[RECREATE_USERS_ENV], ignored);
+    if (ignored.length > 0) console.log(`    skipped   ${RECREATE_USERS_ENV} の形の外の名前 ${ignored.length} 件を無視した（英小文字・数字・. _ @ - だけを受ける）`);
+    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, recreateUsers });
     const ops = r.ops;
-    for (const k of r.ops.kept || []) console.log(`    kept      ${k.target} — ${k.reason}`);
+    for (const k of r.kept) console.log(`    kept      ${k.target} — ${k.reason}`);
     applied += r.applied;
     guardBlocked += r.guardBlocked;
     applyErrors += r.applyErrors;
