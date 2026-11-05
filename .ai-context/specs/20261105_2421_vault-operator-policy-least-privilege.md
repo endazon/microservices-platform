@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 秘匿管理の運用者の policy を、要る path と操作だけに絞る（#2421）
 type: spec
-status: review
+status: in-progress
 related_ids: [NFR-18, IADR-0094, IADR-0683]
 author: claude
 created: 2026-11-05
