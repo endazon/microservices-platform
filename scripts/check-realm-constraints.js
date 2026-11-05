@@ -1704,6 +1704,8 @@ function checkRealmPlatformAudienceText(text, opts) {
 const AST_AUDIENCE = 'ai-stock-trading-api';
 const AST_AUDIENCE_SCOPE = 'ai-stock-trading-api-audience';
 const AST_AUDIENCE_HOLDERS = Object.freeze(['ai-stock-trading-owner', 'bff']);
+// 🔴 前提: PLATFORM_AUDIENCE_MAPPER_KEYS は audience を出す写像のキーの全集合（custom の文字列と client の ID の両方）である。
+//   キーの定義を変えると、ここ（AST の audience の置き場所の検査）も同じだけ緩む。自己試験の陽性対照（検査9 の 2・両方のキー）が見張る。
 function emitsAudience(m, audience) {
   if (!m || m.protocolMapper !== 'oidc-audience-mapper') return false;
   const cfg = mapperConfig(m);
@@ -1761,6 +1763,10 @@ function collectAstAudienceGaps(realm, { realmName = AUTH_POLICY_REALM } = {}) {
     }
   }
   return gaps;
+}
+
+function checkRealmAstAudienceText(text, opts) {
+  return collectAstAudienceGaps(JSON.parse(text), opts);
 }
 
 // --- 検査10: アカウントコンソール（SC-16）の構成（#1894・IADR-0546） ------------------------------
@@ -1932,7 +1938,7 @@ function checkFiles(relPaths) {
       machineGaps: checkRealmMachineJudgementText(text),
       secretGaps: checkRealmDeclaredSecretsText(text),
       // #2418: 取引ユニットの API の audience の範囲も同じ分類で数える。
-      audienceGaps: [...checkRealmPlatformAudienceText(text), ...collectAstAudienceGaps(JSON.parse(text))],
+      audienceGaps: [...checkRealmPlatformAudienceText(text), ...checkRealmAstAudienceText(text)],
       accountConsoleGaps: checkRealmAccountConsoleText(text),
       autoScopeGaps: checkRealmAutoAssignedScopesText(text),
     });
@@ -3349,6 +3355,11 @@ function selfTest() {
     astMut((r) => { r.clientScopes.push({ name: 'platform-api-audience', protocolMappers: [{ name: 'x', protocolMapper: 'oidc-audience-mapper', config: { 'included.custom.audience': AST_AUDIENCE } }] }); })
       .some((g) => g.path === 'clientScopes[platform-api-audience].protocolMappers[x]')
     && astMut((r) => { r.clients[2].protocolMappers = [{ name: 'y', protocolMapper: 'oidc-audience-mapper', config: { 'included.client.audience': AST_AUDIENCE } }]; }).length === 1 });
+  cases.push({ name: '検査9 の 2（陽性対照）: 写像のキーの集合は custom と client の両方を含み、別のスコープのどちらの形でも赤', pass:
+    PLATFORM_AUDIENCE_MAPPER_KEYS.includes('included.custom.audience') && PLATFORM_AUDIENCE_MAPPER_KEYS.includes('included.client.audience')
+    && ['included.custom.audience', 'included.client.audience'].every((k) => astMut((r) => {
+      r.clientScopes.push({ name: 'other', protocolMappers: [{ name: 'z', protocolMapper: 'oidc-audience-mapper', config: { [k]: AST_AUDIENCE } }] });
+    }).some((g) => g.path === 'clientScopes[other].protocolMappers[z]')) });
   cases.push({ name: '🔴 検査9 の 2: 実データの realm が前提を守る（付ける先はちょうど bff と ai-stock-trading-owner）', pass: (() => {
     const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
     if (!fs.existsSync(realmPath)) return true;
@@ -3716,6 +3727,7 @@ module.exports = {
   checkRealmDeclaredSecretsText,
   collectPlatformAudienceGaps,
   collectAstAudienceGaps,
+  checkRealmAstAudienceText,
   AST_AUDIENCE_HOLDERS,
   checkRealmPlatformAudienceText,
   collectAccountConsoleGaps,
