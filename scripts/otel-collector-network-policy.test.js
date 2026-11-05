@@ -121,18 +121,19 @@ function services() {
   const files = ['deploy/local/infra', 'deploy/local/observability', 'deploy/mail-relay', 'deploy/mail-relay/reset-floor']
     .flatMap((d) => fs.readdirSync(path.join(REPO_ROOT, d)).filter((f) => f.endsWith('.yaml')).map((f) => `${d}/${f}`));
   for (const f of files) {
-    for (const c of read(f).split(/^---\n/m)) {
+    // Service は本ファイルの最小の YAML パーサで読む（正規表現で複数行を拾わない）。
+    const text = read(f);
+    for (const c of text.split(/^---\n/m)) {
       if (!/^kind:\s*Service\s*$/m.test(c)) continue;
-      const name = (/^metadata:\n(?:\s+.*\n)*?\s+name: ([\w-]+)/m.exec(c) || [])[1];
-      const ns = (/^\s+namespace: ([\w-]+)/m.exec(c) || [])[1];
-      const app = (/^\s+selector: \{ app: ([\w-]+) \}/m.exec(c) || /^\s+selector:\n\s+app: ([\w-]+)/m.exec(c) || [])[1];
+      const doc = parseYaml(c);
+      const name = doc.metadata && doc.metadata.name;
+      const ns = doc.metadata && doc.metadata.namespace;
+      const app = doc.spec && doc.spec.selector && doc.spec.selector.app;
       if (!name || ns !== NS || !app) continue;
       // targetPort が名前なら、同じファイルの Pod の containerPort（同じ名前）へ引く。
-      const text = read(f);
-      const named = (t) => (/^\d+$/.test(t) ? t : (new RegExp(`containerPort: (\\d+), name: ${t}\\b`).exec(text) || [])[1]);
+      const named = (t) => (/^\d+$/.test(String(t)) ? String(t) : (new RegExp(`containerPort: (\\d+), name: ${t}\\b`).exec(text) || [])[1]);
       const ports = {};
-      for (const m of c.matchAll(/port: (\d+), targetPort: ([\w-]+)/g)) ports[m[1]] = named(m[2]);
-      for (const m of c.matchAll(/^\s+port: (\d+)\n\s+targetPort: ([\w-]+)/gm)) ports[m[1]] = named(m[2]);
+      for (const p of doc.spec.ports || []) ports[String(p.port)] = named(p.targetPort === undefined ? p.port : p.targetPort);
       out.set(name, { app, ports, file: f });
     }
   }

@@ -44,7 +44,8 @@ const PATHISH = /_(FILE|PATH|DIR)$/;
 function violations(rawLine) {
   const line = rawLine.replace(/^\s*(?:\$\s+)?/, '');
   const out = [];
-  for (const m of line.matchAll(/\bexport\s+((?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s*)+)/g)) {
+  // export の句（次の ; & | まで）を 1 回で取り、その中の NAME=値 を順に読む（量指定子を入れ子にしない＝線形）。
+  for (const m of line.matchAll(/\bexport\s+([^;&|]+)/g)) {
     for (const a of m[1].matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/g)) {
       const [name, valueRaw] = [a[1], a[2]];
       if (!SECRETISH.test(name) || PATHISH.test(name)) continue;
