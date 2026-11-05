@@ -4,7 +4,7 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]

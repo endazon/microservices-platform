@@ -3,7 +3,7 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-11-05
+updated: 2026-11-06
 author: claude
 ---
 <!-- trace:

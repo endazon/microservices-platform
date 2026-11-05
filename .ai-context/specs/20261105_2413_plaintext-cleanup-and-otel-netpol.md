@@ -92,7 +92,7 @@ issue: "#2413"
 ## 検証（2026-11-05）
 
 - `bash scripts/backup-restore-drill.sh --self-test`: 39 件が合格した（修正前は 7 件が赤）。
-- `bash scripts/vault-restore-drill.sh --self-test`: 24 件が合格した。
+- `bash scripts/vault-restore-drill.sh --self-test`: 25 件が合格した（AI レビューで段の印の試験を 1 件足した）。
 - `node scripts/runbook-secret-handling.test.js`: 2 件が合格した。
 - `node scripts/otel-collector-network-policy.test.js`: 5 件が合格した。
 - 実 Docker の確かめ: 上の受け入れ基準のとおり。手元のコンテナだけを使い、稼働クラスタには触れていない。

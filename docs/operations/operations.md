@@ -3,7 +3,7 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-11-05
+updated: 2026-11-06
 author: claude
 ---
 <!-- trace:

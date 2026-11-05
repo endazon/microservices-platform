@@ -4,7 +4,7 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
