@@ -3,7 +3,7 @@ title: east-west gRPC 通信仕様書（proto の置き場・versioning・h2c・
 type: api-spec
 status: completed
 created: 2026-09-05
-updated: 2026-11-05
+updated: 2026-11-06
 author: Claude
 ---
 <!-- trace:
