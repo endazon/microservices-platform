@@ -1,0 +1,22 @@
+# NFR-18, IADR-0674 (#2401): MSP の名前空間から基盤を短い名前で引く（chart の既定 global.auth.authority=http://keycloak:8080/realms/platform・
+# global.otel.endpoint=http://otel-collector:4317 のまま使う）。Keycloak の hostname（KC_HOSTNAME）も同じ名前なので、トークンの iss が揃う。
+# 取引ユニットの名前空間の同じ別名は、取引ユニットの側が置く（AST#1525）。
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: microservices-platform
+  labels: { app.kubernetes.io/part-of: platform-infra-alias }
+spec:
+  type: ExternalName
+  externalName: keycloak.platform-infra.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: microservices-platform
+  labels: { app.kubernetes.io/part-of: platform-infra-alias }
+spec:
+  type: ExternalName
+  externalName: otel-collector.platform-infra.svc.cluster.local

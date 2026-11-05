@@ -1,0 +1,80 @@
+# NFR-18, IADR-0674 (#2401): クラウドの単一ノード（取引ユニット AST を動かすだけの MSP の最小構成）の chart の値。
+#
+#   helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
+#     -f deploy/cloud/values-cloud.yaml --set-string global.image.tag=<ビルドした sha>
+#
+# 持ち込むのは LLM ゲートウェイだけ。knowledge ユニットの全サービス・BFF・frontend・認可・MCP・通知・オブジェクトストレージ・
+# Wiki.js・エッジ・メッシュは描かない（Web の画面とニュースの RAG を持ち込まない。#2401）。試験が描画で固定する。
+# 🔴 資格情報の値を書かない。LLM ゲートウェイの API キーの Secret（llm-provider-credentials）は bootstrap-secrets.sh が作る。
+
+global:
+  image:
+    # 手元でビルドしたイメージを SSH でノードへ取り込む（README §イメージ）。レジストリは後の段。
+    registry: cloud-local
+
+namespace:
+  # 名前空間は deploy/cloud/infra/namespaces.yaml が作る（基盤の別名と NetworkPolicy を chart より先に置くため）。
+  create: false
+  istioInjection: false
+
+# メッシュとエッジは持ち込まない（外へ開く口を持たない。到達の制限は NetworkPolicy）。
+mesh:
+  enabled: false
+edge:
+  enabled: false
+
+# NetworkPolicy:
+#   - 入り: 取引ユニットの呼び出し元 → LLM ゲートウェイの REST だけ（fromAst.llmGateway）。
+#   - 出: chart の既定拒否（networkpolicy-egress.yaml）はクラスタの外への許可を描かないので、提供元の API へ出る LLM ゲートウェイには当てない。
+#     代わりに deploy/cloud/infra/networkpolicy.yaml が名前空間の出を既定で拒否し、LLM ゲートウェイの要る宛先だけを許す。
+networkPolicy:
+  enabled: false
+  egress:
+    enabled: false
+  fromAst:
+    llmGateway:
+      enabled: true
+
+# ArgoCD の同期の後の確かめ（BFF を呼ぶ）と、HPA・PDB（単一レプリカ・単一ノード）は持ち込まない。
+drift:
+  postSyncHook:
+    enabled: false
+scaling:
+  enabled: false
+
+services:
+  document: { enabled: false }
+  datasource: { enabled: false }
+  conversion: { enabled: false }
+  ingestion: { enabled: false }
+  retrieval: { enabled: false }
+  aianalysis: { enabled: false }
+  authorization: { enabled: false }
+  wiki: { enabled: false }
+  dashboard: { enabled: false }
+  graph: { enabled: false }
+  notification: { enabled: false }
+  mcp: { enabled: false }
+  feedback: { enabled: false }
+  configuration: { enabled: false }
+  risk-management: { enabled: false }
+  market-monitor: { enabled: false }
+  bff: { enabled: false }
+  llmgateway:
+    enabled: true
+    replicas: 1
+    # 実測（PoC・経路B の稼働）に合わせた要求。上限は既定のまま（512Mi）。
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+frontend:
+  enabled: false
+seaweedfs:
+  enabled: false
+wikijs:
+  enabled: false
+embedding:
+  enabled: false
+syntheticMonitor:
+  enabled: false

@@ -1,0 +1,94 @@
+---
+title: IADR-0674 取引ユニットをクラウドの単一ノードへ移すための MSP の最小構成を deploy/cloud に置く。基盤は変換を持たない kustomize、MSP は LLM ゲートウェイだけ、資格情報は初回に乱数で作り、秘匿管理（OpenBao）は最初の稼働では持ち込まない（#2401）
+type: impl-adr
+status: Accepted
+related_ids: [NFR-18, NFR, ADR-0008, ADR-0124, IADR-0574, IADR-0591, IADR-0605, IADR-0672]
+author: claude
+created: 2026-11-05
+updated: 2026-11-05
+related_specs:
+  - ../specs/20261105_2401_deploy-cloud-minimal.md
+---
+
+# IADR-0674: クラウドの最小構成（deploy/cloud。#2401）
+
+> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
+> 番号は仮である。マージの前に develop を取り込んだ時点の最大＋1 へ改番する（2026-11-05 の採番の取り決め）。
+
+- 状態: Accepted
+- 日付: 2026-11-05
+- 決定者: コーディネーターの指示（2026-11-05。PoC セッションの依頼）・claude（構成の形・秘匿の方式）
+
+## 起点・関連
+
+- 起点 issue: #2401。オーナーの決定（欧州の 8 GB・ニュースの RAG と Web の画面を持ち込まない・インフラ費の上限は月 5,000 円）。
+- 計画: ADR-0008（k3s）・ADR-0124 決定 1（資格情報は対で書く・初期投入は無いときだけ作る）。計画の NFR（秘匿は Vault）との違いは planning#868 の 3 が計画側へ挙げている。
+- 前提: IADR-0574 / IADR-0672（資格情報を宣言の開発用の値で作らない）・IADR-0591（基盤への接続は TLS・サーバ証明書を検証）・IADR-0605（自製イメージは不変のタグ）。
+
+## コンテキスト
+
+- `deploy/local/` と `scripts/k8s-local-up.sh` は手元の k3d / Rancher Desktop 専用で、開発用の値・画面・RAG・観測の一式を前提にする。
+- 取引ユニットが MSP から要るのは、Postgres（取引ユニットの 7 つの DB。実測）・RabbitMQ（取引ユニットのサービスごとのユーザー）・Keycloak の `platform` レルム（取引ユニットの 5 つの機密クライアント）・LLM ゲートウェイだけである。
+- ノードは 4 vCPU・8 GB の 1 台で、取引ユニットの全サービスと OpenD も同じノードに載る。
+
+## 決定
+
+### 決定 1 — 基盤は deploy/cloud/infra に、変換を持たない kustomize で置く
+
+- resources だけを並べ、patches・images・generators を持たない（宣言＝描画。試験が宣言そのものへも同じ判定を当てられる）。
+- ローカルの宣言を patch で流用しない。ローカルの宣言は開発用の字面（初期化の SQL のパスワード・Keycloak の H2 の資格情報・start-dev）を持ち、patch で打ち消す形は打ち消し漏れが描画に残る。
+  - RabbitMQ はローカルの宣言をほぼそのまま写した（字面の資格情報を持たない）。到達の制限だけを取引ユニットのサービスに絞る。
+  - 写した外部のイメージは deploy/local/infra と同じ digest に保つ（試験が突き合わせる。片方だけが古い版に取り残されない）。
+- Postgres の初期化は、利用者名・パスワードを Secret から env で受け、psql の `\getenv` で読む（値を SQL・引数・ConfigMap に書かない）。管理者の利用者名も Secret から読む。データは PVC。
+- Keycloak は本番モード（`start`）。DB は共有 Postgres（`sslmode=verify-full`）。hostname はクラスタの中の名前（`http://keycloak:8080`）だけ（画面を公開しないので、外向きのホストと証明書を持たない）。キャッシュは local（単一ノード）。
+- 到達の制限（NetworkPolicy）を同じ kustomize に置く。platform-infra は入り・出とも既定で拒否し、要る組だけを許す。MSP の名前空間は出を既定で拒否し、LLM ゲートウェイだけに名前解決・Keycloak・collector・クラスタの外の 443 を許す。
+
+### 決定 2 — MSP は chart の LLM ゲートウェイだけ（values-cloud.yaml）
+
+- knowledge ユニットの全サービス・BFF・frontend・認可・MCP・通知・オブジェクトストレージ・Wiki.js・エッジ・メッシュ・HPA/PDB・同期の後の確かめを off にする。
+- 入りは `networkPolicy.fromAst.llmGateway`（取引ユニットの呼び出し元 → REST だけ）。
+- chart の出の既定拒否（`networkpolicy-egress.yaml`）はクラスタの外への許可を描かない（宛先ごとの許可は IADR-0589 の段 2）。提供元の API へ出る LLM ゲートウェイには当てず、決定 1 の NetworkPolicy で絞る。
+- 名前空間は deploy/cloud/infra が作る（基盤の別名と NetworkPolicy を chart より先に置く）。chart は `namespace.create=false`。
+
+### 決定 3 — 資格情報は初回に乱数で作り、在れば触らない
+
+- `deploy/cloud/bootstrap-secrets.sh --live`（利用者が SSH のトンネル越しに実行する）が、DB の管理者・取引ユニットの DB の利用者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー・取引ユニットのサービスごとのユーザー・取引ユニットの 5 つの機密クライアントの secret を作る。
+  - 利用者名にも乱数の接尾辞を付ける（宣言の字面の利用者名を使わない）。
+  - 値は 0700 の一時ディレクトリのファイルからだけ kubectl へ渡し、表示しない。
+  - 在る Secret は触らない（作り直しで稼働中の値と食い違わせない）。作り直しは IADR-0672 の作り直しのスクリプトか手順書。
+- realm は `deploy/cloud/realm-for-cloud.js` が宣言から組む。取引ユニットの 5 つの機密クライアントと組み込みだけを残し、secret を乱数へ差し替え、人の利用者・試験の利用者・SMTP を外す。宣言の開発用の値・環境変数の置換が残れば止める。
+- 証明書はその場で CA を作って発行し、**CA の鍵は保存しない**。作り直しは CA ごと（手順書）。
+- ブローカの既定のユーザーは、無効化の印を最初から立てる（サービスごとのユーザーが揃えば起動のたびに消える。IADR-0577 と同じ仕組み）。
+
+### 決定 4 — 秘匿管理（OpenBao / ESO）は最初の稼働では持ち込まない
+
+- issue は「持ち込むなら本番の init にし、unseal 鍵を PVC に置かない」と求める。その形では、ノードの再起動のたびに人が unseal する必要がある。
+  - 単一ノードで無人の運用（場の時間帯の再起動・更新）と両立しない。止まっている間、取引ユニットは資格情報を読めない。
+  - 8 GB のノードで、OpenBao と ESO の常駐の分（数百 MiB）を取引ユニットから取る。
+- 代わりに、Secret は k3s の保存時の暗号化（`--secrets-encryption`）とデータの領域の LUKS（パスフレーズはノードに置かない）で守る。秘密の値はリポジトリに置かない（暗号化したファイルも置かない。bootstrap が作る）。
+- 計画の NFR（秘匿は Vault）と違う。違いは planning#868 の 3 が計画側へ挙げている（同件を起票しない）。計画の裁定で Vault が要るとなれば、別の段で持ち込む。
+
+### 決定 5 — ノードの準備は手順書にする
+
+- `deploy/cloud/README.md` に、ファイアウォール（SSH だけ・80/443/6443/50000 を開けない）・SSH の鍵認証・LUKS・chrony・更新と再起動の時間帯（JST 07:00〜21:00）・k3s のフラグ（traefik・servicelb を外す・`--secrets-encryption`・API サーバーはループバック）・SSH のトンネル・イメージの取り込みと digest の記録・配備の順序を書く。
+- スクリプトにしないのは、LUKS のパスフレーズとファイアウォールの設定が対話と提供元の画面を要するため。項目は試験が固定する。
+
+## 採らなかった案
+
+- **deploy/local/infra を patch で流用する** — 決定 1 の理由（打ち消し漏れが描画に残る）。
+- **SOPS（age）で暗号化した Secret をリポジトリに置く** — 鍵の管理が 1 つ増え、bootstrap が乱数で作れば置く物が無い。
+- **OpenBao を dev モードで持ち込む** — 管理者のトークンが既知の値になり、決定 3 の趣旨に反する。
+
+## 結果
+
+- 描画（基盤・chart）は、持ち込まない資源・外への口・既定の資格情報・start-dev を持たない（`scripts/deploy-cloud.test.js`。CI）。
+- 宣言そのものへ同じ判定を当てる試験・realm・bootstrap・手順書の試験は `scripts.repo.test.js` が持つ（素の環境で走る）。
+- deploy/local は変えていない。
+
+## 残余
+
+1. 自製のイメージ（LLM ゲートウェイ）は不変のタグで固定し、digest は手順書で記録する。chart で digest を固定する口は持たない（chart の変更が要る）。
+2. 取引ユニットの側の別名（`keycloak` 等）・Secret と CA の写し・接続の設定は AST#1525。
+3. 観測の保存先と警報は MSP#2402（collector は受けて捨てる）。
+4. 再起動の後は LUKS を人が開ける。無人では起きない（手順書）。
+5. 単一ノードには冗長が無い（planning#868 の 4）。

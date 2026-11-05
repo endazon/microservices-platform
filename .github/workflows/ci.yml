@@ -763,6 +763,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/platform-backup.test.js
 
+      # NFR-18, IADR-0674, Issue #2401: クラウドの最小構成の**描画**を固定する —— 持ち込まない資源・外への口
+      # （LoadBalancer・hostPort）・既定の資格情報の字面・Keycloak の start-dev が無いこと、外部のイメージがローカルの基盤と同じ digest、
+      # MSP の描画は LLM ゲートウェイだけ。kubectl kustomize と helm template（どちらもオフライン）を使うので、このジョブに置く。
+      - name: Check cloud minimal manifests (render)
+        if: ${{ !cancelled() }}
+        run: node scripts/deploy-cloud.test.js
+
       # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1・2, IADR-0469, Issue #1287: helm チャートの合成監視
       # （既定オフ）を**実際に helm template で描いて**固定する —— 無効時はバイト等価、有効時は標識と同じ描画、
       # 除外の面が欠ける／AllowLlmEgress が立つ構成は描画で落ちる、ローカルの門（SYNTHETIC=1）・overlay との一致、変異。
