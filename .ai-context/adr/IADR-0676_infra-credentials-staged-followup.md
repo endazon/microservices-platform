@@ -70,6 +70,7 @@ related_specs:
 - ラッパーの作成は `vault write auth/token/create-orphan id=-`（値は stdin）にする。
 - 作り直しのスクリプトの作成・失効（元へ戻すときを含む）も同じ形にする（`auth/token/create-orphan id=-`・`auth/token/revoke token=-`）。
 - 使うトークンは環境変数 `VAULT_TOKEN` で渡す（引数に載せない。従前どおり）。
+- 値は Pod の中の sh へ渡すスクリプトに単一引用符で埋めるので、埋める前に字の範囲（英数字・`.` `_` `-`）を検める。外れたら何も変えずに止め、手順書の手作業へ倒す（値は表示しない）。
 
 ### 決定 3 — Grafana の内蔵の管理者を対象に足す
 

@@ -121,13 +121,19 @@ vault_sh() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -s; }
 #   スクリプトの中の printf は sh の組み込みなので、値はプロセスの引数にならない。使うトークンは環境変数 VAULT_TOKEN。
 #   🔴 値を単一引用符で囲んでスクリプトへ埋めるので、値は 16 進（new_value）か、作り直しの前の Secret の値に限る。
 #      単一引用符を含む値は扱えない（固定のトークンは起動器・本スクリプトが 16 進か開発用の値で作る）。
+# token_safe <値> → 0＝単一引用符で囲んで埋めてよい字だけ（英数字・. _ -）。秘匿管理のトークンは 16 進（new_value）か
+#   hvs. / s. 形・開発用の値で、この字の範囲に収まる。外れたら埋め込まずに止める（値は表示しない）。
+token_safe() { [[ -n "$1" && "$1" =~ ^[A-Za-z0-9._-]+$ ]]; }
+
 # vault_create_root <使うトークン> <作るトークン> —— 永続化のラッパーと同じ作り方（root policy・orphan）
 vault_create_root() {
+  token_safe "$1" && token_safe "$2" || return 1
   printf "printf '%%s' '%s' | VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault write auth/token/create-orphan id=- policies=root no_default_policy=true display_name=local-dev-root >/dev/null\n" \
     "$2" "$1" | vault_sh
 }
 # vault_revoke <使うトークン> <失効させるトークン>
 vault_revoke() {
+  token_safe "$1" && token_safe "$2" || return 1
   printf "printf '%%s' '%s' | VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault write auth/token/revoke token=- >/dev/null\n" \
     "$2" "$1" | vault_sh
 }
@@ -286,6 +292,8 @@ rotate_vault_root_token() {
   begin_target
   old="$(secret_value "$INFRA_NS" vault-dev-token token)"
   [ -n "$old" ] || fail "Secret ${INFRA_NS}/vault-dev-token が読めない"
+  # IADR-0676 (#2407 のレビュー): 値はスクリプトへ単一引用符で埋めて Pod の中の sh へ渡すので、字の範囲を先に検める（何も変えずに止める）。
+  token_safe "$old" || fail "Secret ${INFRA_NS}/vault-dev-token の値に想定外の字がある（英数字・. _ - 以外。値は表示しない）。自動では作り直さない。手順書 secret-rotation-runbook の B-1 に沿って手で作り直す"
   new="$(new_value)"
   oldf="$(save_prev "$old")"
   newf="$(save_prev "$new")"

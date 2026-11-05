@@ -20131,6 +20131,17 @@ esac
       }
     };
 
+    ok('IADR-0676: 作り直し（秘匿管理のトークン）は、Secret の値に想定外の字（単一引用符など）があれば、何も変えずに止まり値を出さない', () => {
+      const odd = ["probe'0676", 'probe 0676', 'probe$0676'];
+      for (const v of odd) {
+        const r = run2399(ROTATE2399, ['--live', 'vault-root-token'], { setup: ({ put }) => { put('secret/platform-infra__vault-dev-token__token', v); put('vault-root', v); put('tokens', `${v}\n`); } });
+        assert.strictEqual(r.status, 1, `${JSON.stringify(v)}: 止まらない\n${r.stderr}`);
+        assert.ok(/想定外の字がある/.test(r.stderr) && /何も変えていない/.test(r.stderr), r.stderr);
+        assert.deepStrictEqual(r.calls, [], `${JSON.stringify(v)}: 何かを変えた: ${r.calls.join(', ')}`);
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+    });
+
     ok('IADR-0676: 作り直したトークンは、秘匿管理の再起動（段 1・段 2）で作り直されず、起動器の再実行でも Secret が新しい値のまま保たれる', () => {
       const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
       assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
