@@ -19770,6 +19770,12 @@ server.listen(0, '127.0.0.1', async () => {
       if (!/Acquire::Retries=\d+/.test(st) || !/Acquire::https?::Timeout=\d+/.test(st)) out.push('apt の取得に再試行と時間切れが無い');
       if (/Dir::Cache::Archives/.test(st)) out.push('apt の取得の置き場をホームの下へ向けている（_apt が書けず unsandboxed で取得する）');
       if (!/sudo apt-get clean/.test(st) || !/cp \/var\/cache\/apt\/archives\/\*\.deb "\$debs"\//.test(st)) out.push('この回に取得した .deb だけをキャッシュの置き場へ写していない');
+      // 取得した .deb が 0 個（イメージに入っていた）なら写さない（cp の glob が展開されずに落ちる）。保存もしない。
+      if (!/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/.test(st)) out.push('取得した .deb が 0 個のときに写すのを飛ばしていない（cp が落ちる）');
+      const toolId = /\bid: ([A-Za-z0-9_-]+)/.exec(st);
+      if (!toolId) out.push('導入の step に id が無い（保存の条件に使う）');
+      if (!/echo "debs=true" >> "\$GITHUB_OUTPUT"/.test(st)) out.push('導入の step が「.deb を置いた」を出力しない');
+      if (saveAt >= 0 && toolId && !new RegExp(`steps\\.${toolId[1]}\\.outputs\\.debs == 'true'`).test(steps[saveAt])) out.push('保存の step が「.deb を置いた回だけ」の条件を持たない（空の置き場を保存する）');
       const stepTimeout = /^\s+timeout-minutes:\s*(\d+)/m.exec(st);
       if (!stepTimeout || Number(stepTimeout[1]) > 15) out.push('導入の step に 15 分以下の上限が無い');
       const jobTimeout = /\n {4}timeout-minutes:\s*(\d+)/.exec(text);
@@ -19781,7 +19787,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(issues2439(wf2439), []);
     });
 
-    ok('#2439 陰性対照: post で保存する形・保存を試験の後へ回す・保存の条件を外す・鍵から版を外す・時間切れを外す・置き場をホームへ向ける・上限を外す・ジョブの上限を上げると赤', () => {
+    ok('#2439 陰性対照: post で保存する形・保存を試験の後へ回す・保存の条件を外す・鍵から版を外す・時間切れを外す・置き場をホームへ向ける・上限を外す・0 個の .deb で写す・空の置き場を保存する・ジョブの上限を上げると赤', () => {
       const head = wf2439.split(/\n(?= {6}- )/)[0];
       const steps = stepsOf2439(wf2439);
       const join = (arr) => [head, ...arr].join('\n');
@@ -19802,6 +19808,8 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(has(join(swap(toolAt, (st) => st.replace(/ -o Acquire::https?::Timeout=\d+/g, ''))), /再試行と時間切れ/));
       assert.ok(has(join(swap(toolAt, (st) => st.replace('pandoc poppler-utils\n', 'pandoc poppler-utils -o Dir::Cache::Archives="$debs"\n'))), /ホームの下へ向けて/));
       assert.ok(has(join(swap(toolAt, (st) => st.replace(/^\s+timeout-minutes:.*\n/m, ''))), /15 分以下の上限/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/, 'if true; then'))), /0 個のとき/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/ && steps\.[A-Za-z0-9_-]+\.outputs\.debs == 'true'/, ''))), /\.deb を置いた回だけ/));
       assert.ok(has(join(steps).replace(/(\n {4}timeout-minutes:\s*)30/, '$145'), /ジョブの上限が 30 分でない/));
     });
   }

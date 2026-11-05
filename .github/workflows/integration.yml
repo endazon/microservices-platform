@@ -87,7 +87,7 @@ jobs:
       # 鍵の末尾の -v<n> は、置く物の作り方（この step の取得の手順・入れるパッケージ）を変えたら手で上げる（古い置き場を使わせない）。
       - name: Conversion tools cache key (runner image)
         id: conversion-tools-key
-        run: echo "key=conversion-tools-debs-${ImageOS:-unknown}-${ImageVersion:-unknown}-pandoc-poppler-utils-v2" >> "$GITHUB_OUTPUT"
+        run: echo "key=conversion-tools-debs-${ImageOS:-unknown}-${ImageVersion:-unknown}-pandoc-poppler-utils-v3" >> "$GITHUB_OUTPUT"
       # 取り出しと保存を分ける。actions/cache は post step で保存するので、試験が赤の回・上限で cancelled の回には保存されず、
       # 取得が止まりやすい時期ほど温まらない（#2440 のレビュー）。保存は導入の直後に置き、試験の成否に依らない。
       - id: conversion-tools-cache
@@ -96,6 +96,7 @@ jobs:
           path: ~/.cache/conversion-tools-debs
           key: ${{ steps.conversion-tools-key.outputs.key }}
       - name: Install conversion tools (pandoc / poppler-utils)
+        id: conversion-tools-install
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -109,14 +110,20 @@ jobs:
             sudo apt-get clean
             sudo apt-get update -qq "${apt_opts[@]}"
             sudo apt-get install -y -qq -f --no-install-recommends "${apt_opts[@]}" pandoc poppler-utils
-            mkdir -p "$debs"
-            cp /var/cache/apt/archives/*.deb "$debs"/
+            # 取得した .deb が 0 個（イメージに入っていた）なら写さず、保存もしない（cp の glob が展開されずに落ちるため）。
+            if compgen -G "/var/cache/apt/archives/*.deb" >/dev/null; then
+              mkdir -p "$debs"
+              cp /var/cache/apt/archives/*.deb "$debs"/
+              echo "debs=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "取得した .deb が無い（イメージに入っていた）。キャッシュに置かない"
+            fi
           fi
           pandoc --version
           pdftotext -v
-      # キャッシュに無かった回だけ、導入の直後に保存する（導入が赤なら走らない＝空の置き場を保存しない）。
+      # キャッシュに無く、この回に .deb を置いた回だけ、導入の直後に保存する（導入が赤なら走らない。空の置き場を保存しない）。
       - name: Save conversion tools cache
-        if: steps.conversion-tools-cache.outputs.cache-hit != 'true'
+        if: steps.conversion-tools-cache.outputs.cache-hit != 'true' && steps.conversion-tools-install.outputs.debs == 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/conversion-tools-debs
