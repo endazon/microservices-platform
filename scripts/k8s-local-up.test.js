@@ -3227,7 +3227,8 @@ ok('ESO manifests: external-secrets.io の apiVersion は v1（v1beta1 残存ゼ
 });
 
 // #310 フォローアップ（apiVersion 移行 fix）: ESO chart 版を pin する（latest 追従禁止）。無指定だと v1beta1 提供を
-// 停止した版を掴んだ瞬間、v1 マニフェストと乖離して壊れる。--version 引数の存在を固定する（再現性の回帰ガード）。
+// 停止した版を掴んだ瞬間、v1 マニフェストと乖離して壊れる。［#2410・IADR-0679］版は pin_version の固定と、その版の tgz を
+// sha256 で確かめる pinned_chart が持つ（--version は使わない）。下の「up-script: ESO chart 版が pin されている」が両方を固定する。
 // --- NFR-18, IADR-0679 (#2410): 外部の chart とマニフェストは、版に加えて中身の sha256 で固定する ----------------------------
 ok('IADR-0679: 既定の cert-manager は上流のマニフェストを取得して sha256 を確かめた写しを当て、合わなければ何も当てずに止まる', () => {
   const r = runUp({});

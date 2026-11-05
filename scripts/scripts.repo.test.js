@@ -19809,7 +19809,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
 
     ok('IADR-0679: 取得と確かめ — sha256 が合えば置き、合わなければ消して止まる。表に無い chart は取り込まない。URL の残る kustomization は当てない', () => {
-      const dir = fs2410.mkdtempSync(path2410.join(os2410.tmpdir(), 'iadr0677-'));
+      const dir = fs2410.mkdtempSync(path2410.join(os2410.tmpdir(), 'iadr0679-'));
       try {
         const src = path2410.join(dir, 'src.yaml');
         fs2410.writeFileSync(src, 'kind: ConfigMap\n');

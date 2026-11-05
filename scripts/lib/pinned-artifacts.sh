@@ -23,6 +23,12 @@ pinned_chart_entry() {
   esac
 }
 
+# pinned_sha256 <ファイル> → sha256（16 進）。GNU の sha256sum、無ければ macOS の shasum -a 256（lib/local-image-tag.sh と同じ。
+#   経路 B は macOS でも走るので、GNU だけの道具に依らない）。
+pinned_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1
+}
+
 # pinned_fetch_verified <URL> <sha256> <出力ファイル> → 取って sha256 を突き合わせる。合わなければ消して 1。
 pinned_fetch_verified() {
   local url="$1" want="$2" out="$3" got
@@ -31,7 +37,7 @@ pinned_fetch_verified() {
     rm -f "$out"
     return 1
   fi
-  got="$(sha256sum "$out" | cut -d' ' -f1)"
+  got="$(pinned_sha256 "$out")"
   if [ "$got" != "$want" ]; then
     echo "ERROR: 外部の成果物の sha256 が固定と違う（何も当てずに止める）: ${url}" >&2
     echo "       固定: ${want}" >&2
@@ -73,8 +79,12 @@ pinned_kustomize_dir() {
       n=$((n + 1))
       name="remote-${n}.yaml"
       pinned_fetch_verified "$url" "$sha" "${dst}/${name}" || return 1
-      # URL の行を、取得したファイルの名前へ差し替える（区切りに | を使う。URL に | は現れない）。
-      sed -i "s|^\([[:space:]]*-[[:space:]]*\)${url}[[:space:]]*\$|\1${name}|" "${dst}/kustomization.yaml"
+      # URL の行を、取得したファイルの名前へ差し替える。URL は文字列として比べる（正規表現として扱わない）。
+      #   sed -i は GNU と BSD（macOS）で形が違うので使わず、awk で一時ファイルへ書いてから置き換える。
+      awk -v url="$url" -v name="$name" '{
+        line = $0; t = line; sub(/^[ \t]*-[ \t]*/, "", t); sub(/[ \t]*$/, "", t)
+        if (t == url && match(line, /^[ \t]*-[ \t]*/)) { print substr(line, 1, RLENGTH) name } else { print line }
+      }' "${dst}/kustomization.yaml" > "${dst}/kustomization.yaml.tmp" && mv "${dst}/kustomization.yaml.tmp" "${dst}/kustomization.yaml" || return 1
     done < "$list"
   fi
   if grep -qE '^[[:space:]]*-[[:space:]]*[a-z][a-z0-9+.-]*://' "${dst}/kustomization.yaml"; then
