@@ -258,3 +258,11 @@ frontend:
 
 # ［IADR-0461 決定 5 / #1499］経路B の MinIO Console SSO（IADR-0093）の上書きはここにあったが撤去した。
 # オブジェクトストレージは SeaweedFS へ差し替え、管理 Console を持たない（ADR-0106 決定 6）。
+
+# NFR-16, NFR-18, IADR-0673（#2403）: 経路B の Wiki.js は DB へ検証つきの TLS で繋ぐ（本番像の既定は opt-in の false）。
+# 起動器は helm の前に CA の ConfigMap platform-infra-ca を MSP の名前空間へ写し、写せなければ止まる（IADR-0591 決定 6）。
+# 切り戻しはこの値を false にする（サーバは段 4b-3 までは平文も受ける）。
+wikijs:
+  db:
+    tls:
+      enabled: true
