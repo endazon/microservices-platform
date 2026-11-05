@@ -1,0 +1,238 @@
+# NFR-18, IADR-0674 (#2401): ブローカ。deploy/local/infra/rabbitmq.yaml を写した（Deployment・TLS・起動時のユーザーの復元は同じ）。
+# 変えたもの: 到達の制限（NetworkPolicy）は networkpolicy.yaml に取引ユニットのサービスだけで置く（MSP のサービスはブローカを使わない）。
+#   既定のユーザーの無効化の印（rabbitmq-default-user）を最初から立てる（サービスごとのユーザーが揃えば、起動のたびに既定のユーザーを消す）。
+#   データ（/var/lib/rabbitmq）を PVC へ置く。ノードやブローカの再起動（更新・障害）の後へ、キュー・exchange・持続（persistent）のメッセージを
+#   再起動の後へ残す。ノード名を固定する（既定はホスト名＝Pod 名で、Pod が替わるたびに別のデータの置き場を作る）。PVC と両立するよう Recreate。
+#   メッセージが残るのは、キューが durable で、送り手が persistent で出したものだけ（Wolverine は送り先の endpoint が Durable のときだけ persistent で出す）。
+# 🔴 イメージの digest は deploy/local/infra/rabbitmq.yaml と同じに保つ（試験が突き合わせる）。
+# IADR-0066 / ADR-0003(MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580): 共有 RabbitMQ。
+#
+# NFR, #1022: ブローカ自身の資格情報は **Secret `rabbitmq`（key=username / password）由来**である。
+# クラウドでは bootstrap-secrets.sh が初回に乱数で作る（在れば触らない）。
+# クラウドでブローカを使うのは取引ユニットのサービスだけ（MSP の LLM ゲートウェイは使わない）。接続の設定は AST の chart が注入する。
+# NFR-18, IADR-0573 / IADR-0577: **サービスごとのユーザー**（users.txt の取引ユニットの行）で名乗る。既定のユーザー（Secret `rabbitmq`）は
+# ブローカの初期化にだけ使う。無効化の印（ConfigMap rabbitmq-default-user）は最初から立てるので、サービスごとのユーザーが揃えば起動のたびに消える。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-data
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 2Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: rabbitmq }
+  template:
+    metadata:
+      labels: { app: rabbitmq }
+    spec:
+      # NFR-16, NFR-18, IADR-0591, IADR-0674: サーバ証明書（Secret rabbitmq-tls。クラウドでは bootstrap-secrets.sh がその場の CA で発行する）を
+      #   ブローカの利用者（uid 100 / gid 101）だけが読める形へ写す（Secret のボリュームは root の所有になる）。
+      initContainers:
+        - name: tls-files
+          image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              cp /tls-src/ca.crt /tls/ca.crt
+              cp /tls-src/tls.crt /tls/tls.crt
+              cp /tls-src/tls.key /tls/tls.key
+              chown 100:101 /tls/ca.crt /tls/tls.crt /tls/tls.key
+              chmod 0644 /tls/ca.crt /tls/tls.crt
+              chmod 0400 /tls/tls.key
+          volumeMounts:
+            - { name: tls-src, mountPath: /tls-src, readOnly: true }
+            - { name: tls, mountPath: /tls }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
+          env:
+            - name: RABBITMQ_NODENAME
+              value: rabbit@localhost
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq
+                  key: username
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq
+                  key: password
+          # NFR-16, IADR-0591: 5671 で TLS を受ける（設定は ConfigMap rabbitmq-tls の 20-tls.conf）。段 1 は 5672（平文）も残す ——
+          #   取引ユニット（AST）の Worker が 5671 へ切り替えるまでの併存である。5672 を閉じるのは全クライアントの切り替えを
+          #   確かめた後の段（IADR-0591 の段の表）。
+          ports:
+            - { containerPort: 5672, name: amqp }
+            - { containerPort: 5671, name: amqps }
+            - { containerPort: 15672, name: management }
+          # NFR-18, IADR-0577, IADR-0674: クラウドではデータを PVC に置く（再起動の後もユーザー・キュー・持続のメッセージが残る）。
+          #   それでも起動の直後にサービスごとのユーザーを Secret `rabbitmq-users` から作り直し（在れば change_password。冪等）、無効化の印があれば既定のユーザーを消す。
+          #   postStart が終わるまで readiness は測られないので、サービスはユーザーが揃ってから届く。スクリプトは失敗しても 0 で終わる
+          #   （ブローカ自体は止めない。揃わなかったことは PID 1 の標準出力の rabbitmq-boot の行が見せる）。
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "/opt/rabbitmq-boot/restore-users.sh"]
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/rabbitmq }
+            - { name: boot, mountPath: /opt/rabbitmq-boot, readOnly: true }
+            - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
+            - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
+            # IADR-0591: conf.d へ 1 ファイルだけ足す（subPath。イメージの 10-defaults.conf を隠さない）。
+            - { name: tls-conf, mountPath: /etc/rabbitmq/conf.d/20-tls.conf, subPath: 20-tls.conf, readOnly: true }
+            - { name: tls, mountPath: /etc/rabbitmq-tls, readOnly: true }
+          readinessProbe:
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: rabbitmq-data }
+        - name: boot
+          configMap: { name: rabbitmq-boot, defaultMode: 0555 }
+        # キー = ユーザー名・値 = パスワード。クラウドでは bootstrap-secrets.sh が作る。無い間は何も復元しない。
+        - name: users
+          secret: { secretName: rabbitmq-users, optional: true, defaultMode: 0400 }
+        # 既定のユーザーの無効化の印（クラウドでは宣言の ConfigMap rabbitmq-default-user が最初から立てる）。
+        - name: default-user-flag
+          configMap: { name: rabbitmq-default-user, optional: true }
+        # IADR-0591: TLS の設定と証明書（Secret は非 optional。無ければ Pod は立たない＝平文だけで黙って立たない）。
+        - name: tls-conf
+          configMap: { name: rabbitmq-tls, defaultMode: 0444 }
+        - name: tls-src
+          secret: { secretName: rabbitmq-tls, defaultMode: 0400 }
+        - name: tls
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+---
+# NFR-16, NFR-18, IADR-0591: TLS の受け口（5671）。
+#   - 版は TLS 1.3 / 1.2 だけ。
+#   - クライアント証明書は求めない（fail_if_no_peer_cert = false）。名乗りはサービスごとのユーザー（IADR-0577）で行う。
+#     verify_peer は「クライアントが証明書を出したときはこの CA で検証する」の意で、クライアントからサーバへの検証とは別である。
+#   - 平文の 5672 は段 1 の併存のために明示して残す（閉じる段で listeners.tcp = none にする）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-tls
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+data:
+  20-tls.conf: |
+    listeners.tcp.default = 5672
+    listeners.ssl.default = 5671
+    ssl_options.cacertfile = /etc/rabbitmq-tls/ca.crt
+    ssl_options.certfile = /etc/rabbitmq-tls/tls.crt
+    ssl_options.keyfile = /etc/rabbitmq-tls/tls.key
+    ssl_options.verify = verify_peer
+    ssl_options.fail_if_no_peer_cert = false
+    ssl_options.versions.1 = tlsv1.3
+    ssl_options.versions.2 = tlsv1.2
+---
+# NFR-18, IADR-0577: 起動の直後の復元（上の postStart）。値は標準入力で rabbitmqctl へ渡し、どこにも出さない。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-boot
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+data:
+  restore-users.sh: |
+    #!/bin/sh
+    # 失敗してもコンテナを止めない（常に 0 で終わる）。記録は PID 1 の標準出力（kubectl logs で読める）へ出す。値は出さない。
+    log() { echo "rabbitmq-boot: $*" > "${RABBITMQ_BOOT_LOG:-/proc/1/fd/1}" 2>/dev/null || true; }
+    USERS_DIR="${RABBITMQ_BOOT_USERS_DIR:-/etc/rabbitmq-users}"
+    FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
+    VHOST="${RABBITMQ_BOOT_VHOST:-/}"
+    tries="${RABBITMQ_BOOT_TRIES:-90}"
+    # 🔴 postStart はサーバの起動と並んで root で走る。サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
+    #   root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。サーバが作った cookie が在るまで
+    #   rabbitmqctl を呼ばず、呼ぶときは cookie の所有者として呼ぶ（su-exec が無ければそのまま）。
+    COOKIE="${RABBITMQ_BOOT_COOKIE:-/var/lib/rabbitmq/.erlang.cookie}"
+    until [ -s "$COOKIE" ]; do
+      tries=$((tries - 1))
+      if [ "$tries" -le 0 ]; then log "サーバの cookie が現れない。ユーザーを復元しない"; exit 0; fi
+      sleep 2
+    done
+    owner="$(stat -c %U "$COOKIE" 2>/dev/null || true)"
+    if [ "$(id -u)" = "0" ] && [ -n "$owner" ] && [ "$owner" != "root" ] && command -v su-exec >/dev/null 2>&1; then
+      rabbitmqctl() { su-exec "$owner" rabbitmqctl "$@"; }
+    fi
+    until rabbitmqctl -q await_startup --timeout 5 >/dev/null 2>&1; do
+      tries=$((tries - 1))
+      if [ "$tries" -le 0 ]; then log "ノードの起動を待てない。ユーザーを復元しない"; exit 0; fi
+      sleep 2
+    done
+    n=0
+    failed=0
+    for f in "$USERS_DIR"/*; do
+      [ -f "$f" ] || continue
+      u="$(basename "$f")"
+      # 🔴 パスワードを標準入力で渡すコマンドは引数を「コマンドとユーザー名」の 2 つだけにする（-q も付けない）。
+      #   rabbitmqctl は引数がちょうど 2 つのときだけ標準入力を開き、それ以外は読み込みが返らずに止まる。
+      if ! rabbitmqctl add_user "$u" < "$f" >/dev/null 2>&1; then
+        rabbitmqctl change_password "$u" < "$f" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      fi
+      rabbitmqctl -q set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      rabbitmqctl -q set_user_tags "$u" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      n=$((n + 1))
+    done
+    log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件）"
+    if [ "$(cat "$FLAG" 2>/dev/null)" = "true" ]; then
+      if [ "$n" -gt 0 ] && [ "$failed" -eq 0 ] && [ -n "${RABBITMQ_DEFAULT_USER:-}" ]; then
+        if rabbitmqctl -q delete_user "$RABBITMQ_DEFAULT_USER" >/dev/null 2>&1; then
+          log "既定のユーザーを消した（無効化の印に従う）"
+        else
+          log "既定のユーザーを消せない（既に無いか、ノードが応答しない）"
+        fi
+      else
+        log "既定のユーザーを残した（サービスごとのユーザーが揃っていない）"
+      fi
+    fi
+    exit 0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+spec:
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: 5672 }
+    # NFR-16, IADR-0591: TLS の受け口。
+    - { name: amqps, port: 5671, targetPort: 5671 }
+    - { name: management, port: 15672, targetPort: 15672 }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rabbitmq-default-user
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+data:
+  # 起動時の復元（restore-users.sh）が読む印。true なら、サービスごとのユーザーが揃ったときに既定のユーザーを消す（IADR-0577 と同じ）。
+  disabled: "true"

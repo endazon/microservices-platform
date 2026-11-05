@@ -34,6 +34,38 @@ if (require.main === module) {
 }
 
 module.exports = ({ ok, assert }) => {
+  // --- NFR-18 / #2416: guard-secrets.js が Anthropic の API キーの形（sk-ant-<種別><2 桁>-…）を止める ------------------------
+  //   既存の `sk-[A-Za-z0-9]{20,}` は `sk-` の直後に `-` を含む形に掛からない。見張り値は実行時に連結で組む
+  //   （本ファイル自体がフックや秘密の走査に掛からないように）。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const HOOK = path.join(__dirname, '..', '.claude', 'hooks', 'guard-secrets.js');
+    const runHook = (file, content) => spawnSync(process.execPath, [HOOK], {
+      input: JSON.stringify({ tool_name: 'Write', tool_input: { file_path: file, content } }), encoding: 'utf8',
+    });
+    const fake = (kind) => ['sk', 'ant', kind].join('-') + '-' + 'Ab9_-'.repeat(18) + 'xAA';
+    ok('NFR-18 / #2416: guard-secrets.js は Anthropic の API キー・OAuth トークンの形をブロックする', () => {
+      for (const kind of ['api03', 'admin01', 'oat01']) {
+        const r = runHook('src/a.ts', `const k = "${fake(kind)}";`);
+        assert.strictEqual(r.status, 2, `${kind} の形を止めない: exit ${r.status}`);
+        assert.match(r.stderr, /Anthropic/);
+      }
+    });
+    ok('NFR-18 / #2416: guard-secrets.js は接頭辞への言及・短い値・語の途中は誤検知しない', () => {
+      for (const content of [
+        `キーの形は ${['sk', 'ant', 'api03'].join('-')}- で始まる`,
+        `x = "${['sk', 'ant', 'api03'].join('-')}-short"`,
+        `task${fake('api03').slice(2)}`,
+      ]) {
+        const r = runHook('src/a.ts', content);
+        assert.strictEqual(r.status, 0, `誤検知した: ${content.slice(0, 40)}…（exit ${r.status}）`);
+      }
+      // 例示・文書は従来どおり警告に緩める（ブロックしない）。
+      assert.strictEqual(runHook('docs/x.md', fake('api03')).status, 0);
+    });
+  }
+
   // --- companion の単体実行: 沈黙の exit 0 を返さない（NFR / #797 / IADR-0208） -------
 
   {
@@ -20074,6 +20106,315 @@ esac
     ok('IADR-0672: 検査・作り直しは scripts/README.md の一覧に載る', () => {
       const readme = fs2399.readFileSync(path2399.join(__dirname, 'README.md'), 'utf8');
       for (const n of ['check-infra-credentials.sh', 'rotate-infra-credentials.sh']) assert.ok(readme.includes(`\`${n}\``), `${n} が README に無い`);
+    });
+  }
+
+  // --- NFR-18, IADR-0674 (#2401): クラウドの最小構成（deploy/cloud）。描画は scripts/deploy-cloud.test.js（kubectl・helm。CI）が固定する。
+  // ここは素の環境で走る分: 宣言そのもの（kustomize は resources だけで変換を持たないので、描画と同じ集合）への同じ判定・realm の組み立て・
+  // Secret の初回の作成（kubectl をスタブにして、openssl・node は本物）・ノードの準備の手順書の項目。
+  {
+    const fs2401 = require('fs');
+    const os2401 = require('os');
+    const path2401 = require('path');
+    const { spawnSync: spawn2401 } = require('child_process');
+    const ROOT2401 = path2401.join(__dirname, '..');
+    const cloud = require('./deploy-cloud.test.js');
+    const { buildCloudRealm, CLOUD_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
+    const realm2401 = JSON.parse(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+    const rawDocs2401 = (dir) => {
+      const k = cloud.docsOf(fs2401.readFileSync(path2401.join(ROOT2401, dir, 'kustomization.yaml'), 'utf8'))[0];
+      // 名前空間の外の宣言のディレクトリ（deploy/local/infra の ../../mail-relay）は、その kustomization の resources を辿る。
+      return k.resources.flatMap((r) => (fs2401.statSync(path2401.join(ROOT2401, dir, r)).isDirectory()
+        ? rawDocs2401(path2401.join(dir, r))
+        : cloud.docsOf(fs2401.readFileSync(path2401.join(ROOT2401, dir, r), 'utf8'))));
+    };
+    // 値は実行時に組む（gitleaks）
+    const secret2401 = (c) => ['probe', '2401', c, 'x'.repeat(32)].join('-');
+
+    ok('IADR-0674: deploy/cloud/infra の kustomization は resources だけを持ち、変換（patches・images・generators 等）を持たない（宣言＝描画）', () => {
+      const k = cloud.docsOf(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/infra/kustomization.yaml'), 'utf8'))[0];
+      assert.deepStrictEqual(Object.keys(k).filter((x) => !['apiVersion', 'kind', 'resources'].includes(x)), []);
+      for (const r of k.resources) assert.ok(!r.includes('..') && !r.includes('/'), `${r}: deploy/cloud/infra の外を読まない`);
+    });
+
+    ok('IADR-0674 AC1〜AC6・AC11・AC12: 基盤の宣言に、持ち込まない資源・外への口・既定の資格情報・start-dev が無く、外部のイメージは deploy/local/infra と同じ digest。MSP の入りを絞り、Postgres は TLS だけ、RabbitMQ は永続', () => {
+      const localDocs = rawDocs2401('deploy/local/infra').filter(Boolean);
+      assert.deepStrictEqual(cloud.infraProblems(rawDocs2401('deploy/cloud/infra'), localDocs), []);
+    });
+
+    ok('IADR-0674 陰性対照: 判定は start-dev・LoadBalancer・hostPort・字面の資格情報・既定の字面・持ち込まない資源・別の digest を検出する', () => {
+      const docs = JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const dep = (n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
+      dep('keycloak').spec.template.spec.containers[0].args = ['start-dev', '--import-realm'];
+      docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak').spec.type = 'LoadBalancer';
+      dep('rabbitmq').spec.template.spec.containers[0].ports.push({ containerPort: 15672, hostPort: 15672 });
+      dep('postgres').spec.template.spec.containers[0].env.push({ name: 'POSTGRES_PASSWORD', value: 'x' });
+      dep('otel-collector').spec.template.spec.containers[0].image = 'otel/opentelemetry-collector-contrib:0.102.0@sha256:' + '0'.repeat(64);
+      docs.push({ kind: 'Deployment', metadata: { name: 'valkey', labels: { app: 'valkey' } }, spec: { template: { spec: { containers: [] } } } });
+      docs.push({ kind: 'ConfigMap', metadata: { name: 'x' }, data: { 'a.sql': "CREATE USER u WITH PASSWORD 'p';", b: cloud.DEV_LITERALS[0] } });
+      const p = cloud.infraProblems(docs, rawDocs2401('deploy/local/infra').filter(Boolean));
+      for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      }
+    });
+
+    ok('IADR-0674 陰性対照（AC6・AC11・AC12）: 入りの既定拒否の欠落・送り元の OR 化・ポートの追加、平文の TCP・弱い認証、RabbitMQ の非永続を検出する', () => {
+      const base = () => JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const np = (docs, n) => docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === n);
+      const dep = (docs, n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
+      const expect = (docs, fn, want) => {
+        const p = fn(docs);
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      };
+      // AC6
+      let d = base();
+      d.splice(d.indexOf(np(d, 'default-deny-ingress')), 1);
+      expect(d, cloud.mspIngressProblems, /入りの既定拒否/);
+      d = base();
+      const from = np(d, 'llmgateway-ingress-from-ast').spec.ingress[0].from;
+      from.push({ podSelector: from[0].podSelector });
+      delete from[0].podSelector;
+      expect(d, cloud.mspIngressProblems, /同じ要素/);
+      d = base();
+      np(d, 'llmgateway-ingress-from-ast').spec.ingress[0].ports.push({ protocol: 'TCP', port: 8081 });
+      expect(d, cloud.mspIngressProblems, /TCP\/8080 だけでない/);
+      d = base();
+      d.push({ kind: 'NetworkPolicy', metadata: { name: 'x', namespace: 'microservices-platform' }, spec: { podSelector: {}, policyTypes: ['Ingress'], ingress: [{}] } });
+      expect(d, cloud.mspIngressProblems, /LLM ゲートウェイ以外への入りの許可/);
+      // AC11
+      d = base();
+      const hba = d.find((x) => x.kind === 'ConfigMap' && x.metadata.name === 'postgres-hba');
+      hba.data['pg_hba.conf'] += 'host all all 0.0.0.0/0 scram-sha-256\nhostssl all all 10.0.0.0/8 trust\n';
+      for (const want of [/TLS でない TCP の行がある（host）/, /scram-sha-256 でない（trust）/]) expect(d, cloud.postgresHbaProblems, want);
+      d = base();
+      const pgc = dep(d, 'postgres').spec.template.spec.containers[0];
+      pgc.args = pgc.args.filter((a) => !String(a).startsWith('hba_file='));
+      expect(d, cloud.postgresHbaProblems, /hba_file を指定していない/);
+      // AC12
+      d = base();
+      const mq = dep(d, 'rabbitmq');
+      mq.spec.template.spec.volumes.find((v) => v.name === 'data').persistentVolumeClaim = undefined;
+      mq.spec.template.spec.volumes.find((v) => v.name === 'data').emptyDir = {};
+      mq.spec.template.spec.containers[0].env = mq.spec.template.spec.containers[0].env.filter((e) => e.name !== 'RABBITMQ_NODENAME');
+      delete mq.spec.strategy;
+      for (const want of [/PVC でない/, /RABBITMQ_NODENAME/, /Recreate でない/]) expect(d, cloud.rabbitmqPersistenceProblems, want);
+    });
+
+    ok('IADR-0674 AC13・AC14（値と chart の口）: values-cloud は LLM ゲートウェイの受け口を TLS にし、gRPC を外し、ルートを読み取り専用にする。chart は併記を止める', () => {
+      const { parseDocuments } = require('./lib/yaml-subset');
+      const v = parseDocuments(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/values-cloud.yaml'), 'utf8'))[0];
+      const gw = v.services.llmgateway;
+      assert.strictEqual(gw.grpcPort, null, 'grpcPort を外していない（h2c は平文でしか立たない）');
+      assert.deepStrictEqual(gw.tls, { secretName: 'llmgateway-tls' });
+      assert.strictEqual(String(gw.readOnlyRootFilesystem), 'true');
+      assert.strictEqual(String(v.networkPolicy.enabled), 'false');
+      const tpl = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/helm/microservices-platform/templates/deployment.yaml'), 'utf8');
+      for (const want of [/tls と grpcPort は併記できません/, /readOnlyRootFilesystem: true/, /scheme: HTTPS/, /https:\/\/\+:%v/, /mountPath: \/tmp/]) assert.match(tpl, want);
+    });
+
+    ok('IADR-0674 陰性対照（AC15）: Keycloak の Service の型の欠落・NodePort、別名の差し替え、エッジの資源（Ingress・Gateway・HTTPRoute）を検出する', () => {
+      const base = () => JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const kcSvc = (docs, ns) => docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak' && d.metadata.namespace === ns);
+      const expect = (docs, want) => {
+        const p = cloud.keycloakExposureProblems(docs, 'infra');
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      };
+      assert.deepStrictEqual(cloud.keycloakExposureProblems(base(), 'infra'), []);
+      let d = base();
+      delete kcSvc(d, 'platform-infra').spec.type;
+      expect(d, /ClusterIP と明示されていない（未指定）/);
+      d = base();
+      kcSvc(d, 'platform-infra').spec.type = 'NodePort';
+      expect(d, /ClusterIP と明示されていない（NodePort）/);
+      d = base();
+      kcSvc(d, 'microservices-platform').spec = { type: 'LoadBalancer', ports: [{ port: 8080 }] };
+      expect(d, /別名（ExternalName）でない/);
+      for (const kind of ['Ingress', 'Gateway', 'HTTPRoute']) {
+        d = base();
+        d.push({ kind, metadata: { name: 'kc', namespace: 'platform-infra' }, spec: { rules: [{ backendRefs: [{ name: 'keycloak', port: 8080 }] }] } });
+        expect(d, new RegExp(`エッジの資源を描いている（${kind}/kc）`));
+      }
+    });
+
+    ok('IADR-0674: クラウドの realm は取引ユニットの 5 つの機密クライアントと組み込みだけを残し、secret を渡した値へ差し替え、人の利用者・SMTP を持ち込まない', () => {
+      const secrets = Object.fromEntries(CLOUD_CLIENTS.map((c) => [c, secret2401(c)]));
+      const out = buildCloudRealm(realm2401, secrets);
+      assert.deepStrictEqual(out.clients.map((c) => c.clientId).sort(), [...CLOUD_CLIENTS, 'account', 'account-console'].sort());
+      for (const c of CLOUD_CLIENTS) assert.strictEqual(out.clients.find((x) => x.clientId === c).secret, secret2401(c));
+      assert.deepStrictEqual(out.users.map((u) => u.username).sort(), CLOUD_CLIENTS.map((c) => `service-account-${c}`).sort());
+      assert.ok(!('smtpServer' in out), 'SMTP を持ち込んだ');
+      const text = JSON.stringify(out);
+      for (const c of realm2401.clients.filter((x) => typeof x.secret === 'string')) assert.ok(!text.includes(JSON.stringify(c.secret)), `宣言の secret（${c.clientId}）が残った`);
+      assert.ok(!/\$\{E2E_/.test(text), '試験の利用者の置換が残った');
+      assert.strictEqual(out.realm, 'platform');
+    });
+
+    ok('IADR-0674: クラウドの realm は、secret が無い・短い・宣言の値と同じなら止める', () => {
+      const base = Object.fromEntries(CLOUD_CLIENTS.map((c) => [c, secret2401(c)]));
+      const declared = realm2401.clients.find((c) => c.clientId === CLOUD_CLIENTS[0]).secret;
+      for (const bad of [{ ...base, [CLOUD_CLIENTS[0]]: undefined }, { ...base, [CLOUD_CLIENTS[0]]: 'short' }, { ...base, [CLOUD_CLIENTS[0]]: declared }]) {
+        assert.throws(() => buildCloudRealm(realm2401, bad));
+      }
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は --live が無ければ何もせずに 3 で終わる', () => {
+      const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/bootstrap-secrets.sh')], { encoding: 'utf8', env: { ...process.env, LIVE: '' } });
+      assert.strictEqual(r.status, 3, r.stderr);
+    });
+
+    // kubectl のスタブ: 名前空間は在る。Secret・ConfigMap は state へファイルとして作る（--from-file のパスから中身を写す）。
+    const KUBECTL2401 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"; printf '%s\n' "$*" >> "$S/argv"
+ns=""; if [ "$1" = "-n" ]; then ns="$2"; shift 2; fi
+case "$1 $2" in
+  "get namespace") exit 0 ;;
+  "get secret"|"get configmap")
+    [ -d "$S/obj/$ns/$2/$3" ] || exit 1
+    case "$*" in
+      *"-o json"*) node -e 'const fs=require("fs"),p=require("path");const d=process.argv[1];const o={};for(const f of fs.readdirSync(d))o[f]=fs.readFileSync(p.join(d,f)).toString("base64");process.stdout.write(JSON.stringify({data:o}))' "$S/obj/$ns/$2/$3" ;;
+    esac
+    exit 0 ;;
+  "create secret"|"create configmap")
+    kind="$2"; [ "$kind" = "secret" ] && name="$4" || name="$3"
+    d="$S/obj/$ns/$kind/$name"; mkdir -p "$d"
+    for a in "$@"; do case "$a" in --from-file=*) kv="@{a#--from-file=}"; cp "@{kv#*=}" "$d/@{kv%%=*}" ;; esac; done
+    echo "CREATE $ns/$kind/$name" >> "$S/calls"; echo "kind: x"; exit 0 ;;
+  "apply -f") cat >/dev/null; exit 0 ;;
+esac
+echo "unhandled: $*" >&2; exit 9
+`.replace(/@\{/g, '$' + '{');
+    const runBootstrap2401 = ({ setup = () => {}, env = {} } = {}) => {
+      const dir = fs2401.mkdtempSync(path2401.join(os2401.tmpdir(), 'iadr0674-'));
+      try {
+        const bin = path2401.join(dir, 'bin');
+        const st = path2401.join(dir, 'state');
+        fs2401.mkdirSync(bin, { recursive: true });
+        fs2401.mkdirSync(path2401.join(st, 'obj'), { recursive: true });
+        fs2401.writeFileSync(path2401.join(bin, 'kubectl'), KUBECTL2401, { mode: 0o755 });
+        for (const f of ['argv', 'calls']) fs2401.writeFileSync(path2401.join(st, f), '');
+        setup({ st, dir });
+        const extra = typeof env === 'function' ? env({ dir }) : env;
+        const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/bootstrap-secrets.sh'), '--live'], {
+          encoding: 'utf8', timeout: 120000, env: { ...process.env, PATH: `${bin}${path2401.delimiter}${process.env.PATH}`, STUB_STATE: st, ANTHROPIC_API_KEY_FILE: '', ...extra },
+        });
+        const objs = {};
+        const objDir = path2401.join(st, 'obj');
+        for (const ns of fs2401.readdirSync(objDir)) for (const kind of fs2401.readdirSync(path2401.join(objDir, ns))) for (const name of fs2401.readdirSync(path2401.join(objDir, ns, kind))) {
+          objs[`${ns}/${kind}/${name}`] = Object.fromEntries(fs2401.readdirSync(path2401.join(objDir, ns, kind, name)).map((k) => [k, fs2401.readFileSync(path2401.join(objDir, ns, kind, name, k), 'utf8')]));
+        }
+        return { ...r, objs, argv: fs2401.readFileSync(path2401.join(st, 'argv'), 'utf8'), calls: fs2401.readFileSync(path2401.join(st, 'calls'), 'utf8').split('\n').filter(Boolean) };
+      } finally {
+        fs2401.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('IADR-0674: bootstrap-secrets.sh は初回にすべての資格情報を乱数で作り、既定の値を使わず、値を引数・出力に出さない', () => {
+      const r = runBootstrap2401();
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      const I = 'platform-infra/secret/';
+      for (const n of ['postgres', 'ast-db', 'keycloak-db', 'keycloak-admin', 'rabbitmq', 'rabbitmq-users', 'keycloak-client-secrets', 'keycloak-realm-import', 'postgres-tls', 'rabbitmq-tls']) {
+        assert.ok(r.objs[I + n], `${n} を作っていない`);
+      }
+      const values = [];
+      for (const n of ['postgres', 'ast-db', 'keycloak-db', 'keycloak-admin', 'rabbitmq']) {
+        const o = r.objs[I + n];
+        assert.ok(/^[0-9a-f]{48}$/.test(o.password), `${n} のパスワードが乱数でない`);
+        assert.ok(/^[a-z]+_[0-9a-f]{6}$/.test(o.username), `${n} の利用者名が乱数の接尾辞を持たない`);
+        assert.ok(!['postgres', 'ai', 'kp', 'admin', 'guest', 'sa', 'password'].includes(o.username), `${n} の利用者名が既定の値`);
+        values.push(o.password);
+      }
+      assert.strictEqual(new Set(values).size, values.length, '同じパスワードを使い回した');
+      const users = r.objs[I + 'rabbitmq-users'];
+      assert.ok(Object.keys(users).length >= 10 && Object.keys(users).every((u) => u.startsWith('ast-')), `取引ユニットのユーザーだけでない: ${Object.keys(users).join(',')}`);
+      const cs = r.objs[I + 'keycloak-client-secrets'];
+      assert.deepStrictEqual(Object.keys(cs).sort(), [...CLOUD_CLIENTS].sort());
+      const imported = JSON.parse(r.objs[I + 'keycloak-realm-import']['platform-realm.json']);
+      for (const c of CLOUD_CLIENTS) assert.strictEqual(imported.clients.find((x) => x.clientId === c).secret, cs[c], `${c} の realm の secret が Secret と違う`);
+      assert.ok(/BEGIN CERTIFICATE/.test(r.objs['platform-infra/configmap/platform-infra-ca']['ca.crt']) && r.objs['microservices-platform/configmap/platform-infra-ca'], 'CA を両方の名前空間へ置いていない');
+      assert.ok(!Object.values(r.objs).some((o) => Object.keys(o).some((k) => /ca\.key/.test(k))), 'CA の鍵を保存した');
+      // LLM ゲートウェイの受け口の証明書: 同じ CA が発行し、MSP の名前空間の Service 名を持つ（取引ユニットが CA と名前で検証できる）。
+      const gw = r.objs['microservices-platform/secret/llmgateway-tls'];
+      assert.ok(gw && /BEGIN CERTIFICATE/.test(gw['tls.crt']) && /PRIVATE KEY/.test(gw['tls.key']), 'LLM ゲートウェイの証明書を作っていない');
+      const vd = fs2401.mkdtempSync(path2401.join(os2401.tmpdir(), 'iadr0674-gw-'));
+      try {
+        fs2401.writeFileSync(path2401.join(vd, 'ca.crt'), r.objs['microservices-platform/configmap/platform-infra-ca']['ca.crt']);
+        fs2401.writeFileSync(path2401.join(vd, 'gw.crt'), gw['tls.crt']);
+        const v = spawn2401('openssl', ['verify', '-CAfile', path2401.join(vd, 'ca.crt'), '-purpose', 'sslserver', path2401.join(vd, 'gw.crt')], { encoding: 'utf8' });
+        assert.strictEqual(v.status, 0, `CA で検証できない: ${v.stdout}${v.stderr}`);
+        const t = spawn2401('openssl', ['x509', '-in', path2401.join(vd, 'gw.crt'), '-noout', '-ext', 'subjectAltName'], { encoding: 'utf8' });
+        assert.match(t.stdout, /DNS:llmgateway-service\.microservices-platform\.svc\.cluster\.local/);
+        assert.match(t.stdout, /DNS:llmgateway-service\.microservices-platform(,|\s|$)/);
+      } finally {
+        fs2401.rmSync(vd, { recursive: true, force: true });
+      }
+      for (const v of [...values, ...Object.values(cs), ...Object.values(users)]) {
+        assert.ok(!r.argv.includes(v), '値が kubectl の引数に出た');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+      assert.strictEqual(r.objs['microservices-platform/secret/llm-provider-credentials']['anthropic-api-key'], '', '鍵のファイルが無いのに鍵を入れた');
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は在る Secret を触らない。LLM の鍵はファイルからだけ読み、値を出さない', () => {
+      const keep = ['probe', '2401', 'keep'].join('-');
+      const key = ['probe', '2401', 'llm', 'key'].join('-');
+      const r = runBootstrap2401({
+        setup: ({ st, dir }) => {
+          const d = path2401.join(st, 'obj/platform-infra/secret/postgres');
+          fs2401.mkdirSync(d, { recursive: true });
+          fs2401.writeFileSync(path2401.join(d, 'password'), keep);
+          fs2401.writeFileSync(path2401.join(dir, 'llm.key'), `${key}\n`, { mode: 0o600 });
+        },
+        env: { ANTHROPIC_API_KEY_FILE: '' },
+      });
+      assert.strictEqual(r.status, 0, r.stderr);
+      assert.strictEqual(r.objs['platform-infra/secret/postgres'].password, keep, '在る Secret を書き換えた');
+      assert.ok(!r.calls.includes('CREATE platform-infra/secret/postgres'), '在る Secret を作り直した');
+      const withKey = runBootstrap2401({
+        setup: ({ dir }) => fs2401.writeFileSync(path2401.join(dir, 'llm.key'), `${key}\n`, { mode: 0o600 }),
+        env: ({ dir }) => ({ ANTHROPIC_API_KEY_FILE: path2401.join(dir, 'llm.key') }),
+      });
+      assert.strictEqual(withKey.status, 0, withKey.stderr);
+      assert.strictEqual(withKey.objs['microservices-platform/secret/llm-provider-credentials']['anthropic-api-key'], key, '鍵のファイルの値（改行を除く）で作っていない');
+      assert.ok(!withKey.argv.includes(key) && !`${withKey.stdout}${withKey.stderr}`.includes(key), '鍵が引数・出力に出た');
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は証明書の組（postgres-tls・rabbitmq-tls・CA）が一部だけ在るなら、作り直さずに止める', () => {
+      const keep = ['probe', '2401', 'cert'].join('-');
+      const r = runBootstrap2401({
+        setup: ({ st }) => {
+          const d = path2401.join(st, 'obj/platform-infra/secret/postgres-tls');
+          fs2401.mkdirSync(d, { recursive: true });
+          fs2401.writeFileSync(path2401.join(d, 'tls.crt'), keep);
+        },
+      });
+      assert.notStrictEqual(r.status, 0, '一部だけ在る組で止まらなかった');
+      assert.match(r.stderr, /一部だけ/);
+      assert.strictEqual(r.objs['platform-infra/secret/postgres-tls']['tls.crt'], keep, '在る証明書を書き換えた');
+      assert.ok(!r.calls.includes('CREATE platform-infra/secret/rabbitmq-tls') && !r.objs['platform-infra/configmap/platform-infra-ca'], '別の CA の組を作った（使用中の証明書と食い違う）');
+    });
+
+    ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {
+      const readme = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/README.md'), 'utf8');
+      for (const want of [/SSH（TCP 22）だけ/, /80・443・6443・50000 は開けない/, /PasswordAuthentication no/, /--disable traefik --disable servicelb/, /--secrets-encryption/,
+        /--bind-address 127\.0\.0\.1/, /ssh -N -L 6443/, /LUKS/, /cryptsetup luksFormat/, /\/var\/lib\/rancher/, /chrony/, /JST 07:00〜21:00/, /Unattended-Upgrade::Automatic-Reboot "false";/, /\/var\/run\/reboot-required/, /systemctl disable k3s/, /systemctl start k3s/, /mountpoint \/var\/lib\/rancher/, /wait --for=condition=Ready pod -l app=keycloak/, /ctr images import/, /digest を記録/, /825 日/, /期限の 30 日前まで/, /openssl x509 -noout -enddate/]) {
+        assert.ok(want.test(readme), `手順書に ${want} が無い`);
+      }
+      // 再起動の扱いと記述が食い違わない: 自動の再起動を有効にする設定が無い（「人が解錠する」と両立しない）。
+      assert.ok(!/Automatic-Reboot\s+"true"/.test(readme) && !/Automatic-Reboot-Time/.test(readme), '手順書が自動の再起動を設定している');
+      // k3s の drop-in: マウント点でなければ起動しない。インストールの後・イメージの節の前に置く（インストーラが enable した後に止める）。
+      const dropIn = readme.match(/\/etc\/systemd\/system\/k3s\.service\.d\/[^\s]+\.conf <<'EOF'\n([\s\S]*?)\nEOF\n/);
+      assert.ok(dropIn, 'k3s.service の drop-in が無い');
+      assert.match(dropIn[1], /^\[Unit\]$/m);
+      assert.match(dropIn[1], /^ConditionPathIsMountPoint=\/var\/lib\/rancher$/m);
+      assert.match(dropIn[1], /^RequiresMountsFor=\/var\/lib\/rancher$/m);
+      const at = (re) => readme.search(re);
+      assert.ok(at(/get\.k3s\.io/) < at(/ConditionPathIsMountPoint/) && at(/ConditionPathIsMountPoint/) < at(/^systemctl disable k3s/m) && at(/^systemctl disable k3s/m) < at(/^## 2\. /m), 'drop-in と disable が k3s のインストールの直後に無い');
+      assert.ok(at(/mountpoint \/var\/lib\/rancher/) < at(/^systemctl start k3s$/m), '解錠の手順でマウントを確かめる前に k3s を起こしている');
+    });
+
+    ok('IADR-0674: ローカルの PoC の宣言（deploy/local）は deploy/cloud を参照しない（クラウドの変更が描画へ混ざらない）', () => {
+      const hits = spawn2401('git', ['grep', '-l', 'deploy/cloud', '--', 'deploy/local', 'scripts/k8s-local-up.sh'], { cwd: ROOT2401, encoding: 'utf8' });
+      assert.strictEqual(hits.stdout.trim(), '', `deploy/local が deploy/cloud を参照している:\n${hits.stdout}`);
     });
   }
 };
