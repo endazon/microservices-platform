@@ -124,6 +124,15 @@ jobs:
       - name: Self-test backup restore drill (docker / kubectl / age stub)
         if: ${{ !cancelled() }}
         run: bash scripts/backup-restore-drill.sh --self-test
+      # NFR-18, IADR-0674: 復号した物を手元に残さないこと（リストア試験のデータ領域は tmpfs・片付けはボリュームごと・失敗と中断の経路でも消す）と、
+      #   秘匿管理のリストア試験（復号物はコンテナの tmpfs へ直に流す）・手順書の秘密の扱い（export・平文のダンプ・引数のトークン）・
+      #   otel-collector の NetworkPolicy（opt-in の段 1。宛先と送り手は collector の設定と宣言から導く）を固定する（既存ジョブへの段の追加・起動条件は不変）。
+      - name: Self-test vault restore drill and secret handling in runbooks (stub)
+        if: ${{ !cancelled() }}
+        run: |
+          bash scripts/vault-restore-drill.sh --self-test
+          node scripts/runbook-secret-handling.test.js
+          node scripts/otel-collector-network-policy.test.js
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #
