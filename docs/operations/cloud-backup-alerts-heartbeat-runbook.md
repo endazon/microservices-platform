@@ -4,7 +4,7 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05]
@@ -146,6 +146,8 @@ issues: [#2402, #2401]
    ```
    読めない規則なら Prometheus は起動しない（`kubectl -n platform-infra logs deploy/prometheus -c load-ast-rules`）。
    ConfigMap が無いときは起動し、警報 `AstAlertRulesNotLoaded` が 15 分後に Discord へ出る。
+   取り込んだ直後に、AST の群が読み込まれたことを確かめる（`rule_group` が `<パス>;ai-stock-trading.<群名>` の形で並ぶこと。0 件なら取り込めていない）:
+   `kubectl -n platform-infra exec deploy/prometheus -- wget -qO- 'http://localhost:9090/api/v1/query?query=prometheus_rule_group_rules' | grep -o '"rule_group":"[^"]*ai-stock-trading\.[^"]*"'`
    この警報の式は、`prometheus_rule_group_rules` の `rule_group` が「`<パス>;<群名>`」の形で、AST の群名がすべて `ai-stock-trading.` で始まることを前提にする。**AST の側で群名を変えるときは、`deploy/cloud/observability/prometheus.yaml` の `AstAlertRulesNotLoaded` の式も直し、取り込んだ後に `rule_group` の実際の値を確かめる**（外れると、常に鳴る誤警報か、読み込めていないのに鳴らない、のどちらかになる）。
 
 ## 5. 試験（初回と、構成を変えたとき）
