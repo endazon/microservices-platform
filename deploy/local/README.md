@@ -195,7 +195,19 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 > dev の context（k3d-* / kind-* / rancher-desktop / docker-desktop）は従来どおり開発用の値で作る。dev ではない context は**段 1 では警告して作り**、
 > `INFRA_CREDENTIALS_ENFORCE=1` を付けると何も作らずに止まる（使い捨ての環境だけ `ALLOW_DEV_INFRA_CREDENTIALS=1` で通す）。
 > 稼働中の値が開発用の値のままかは `bash scripts/check-infra-credentials.sh --live`（読むだけ・値は出さない）で確かめ、
-> 残っていれば `bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>` で作り直す（値は表示しない）。
+> 残っていれば `bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token|grafana-admin>` で作り直す（値は表示しない）。
+>
+> **段階の続き**（[IADR-0676](../../.ai-context/adr/IADR-0676_infra-credentials-staged-followup.md)）:
+> - `OBSERVABILITY=1` は Grafana の内蔵の管理者を Secret `platform-infra/grafana-admin`（`GRAFANA_ADMIN_PASSWORD` の明示 ＞ 既存 ＞ 乱数）で作る。
+>   値は `kubectl -n platform-infra get secret grafana-admin -o jsonpath='{.data.password}' | base64 -d` で読む（break-glass のときだけ）。
+> - DB の初期化（空の PVC の初回）は DB 利用者 `kp` を `APP_DB_PASSWORD` と同じ値（Secret `platform-infra/postgres-init-users`）で作る。
+> - `VAULT=1` は ConfigMap `platform-infra/vault-local-switches` を書く。`INFRA_CREDENTIALS_ENFORCE=1` の実行の後は、秘匿管理は
+>   固定の管理者トークンを一度作った後に作り直さない（Secret を作り直しのスクリプトの外で変えると起動しない）。
+> - `VAULT_NETWORK_POLICY=1` は秘匿管理（8200）へ届く送り手を ESO・bff/datasource・バックアップ・管理ツールのエッジに絞る
+>   NetworkPolicy を当てる（段 1 は opt-in。`=0` で外す）。当てた後は ESO の同期・秘密の一覧の画面・バックアップの回を確かめる。
+> - **dev のクラスタの印**: この実行で k3d のクラスタを作ると、起動器は ConfigMap `kube-system/msp-dev-cluster` を置く。
+>   既存の dev のクラスタには `MARK_DEV_CLUSTER=1 bash scripts/k8s-local-up.sh --live` で 1 度置く（名前が許可集合に在るときだけ）。
+>   `DEV_CLUSTER_MARKER_REQUIRED=1` を付けると、名前と印の両方が揃うときだけ dev とする（印の無い既存のクラスタは dev ではない扱いになる）。
 
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 

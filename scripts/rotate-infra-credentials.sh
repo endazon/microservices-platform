@@ -6,6 +6,7 @@
 #     app-db            DB 利用者 kp（Secret microservices-platform/postgres-app と wikijs-db・Vault msp/postgres-app と msp/wikijs-db。同じ値）
 #     object-storage    オブジェクトストレージ（Secret microservices-platform/object-storage-credentials の secretKey・Vault 同名）
 #     vault-root-token  秘匿管理の固定の管理者トークン（Secret platform-infra/vault-dev-token）
+#     grafana-admin     可観測性の画面（Grafana）の内蔵の管理者（Secret platform-infra/grafana-admin。IADR-0676 / #2407）
 #
 # 順序は docs/operations/secret-rotation-runbook.md B-1 と同じ: 保管先 → ストア側 → 同期 → 消費側の作り直し。
 #   保管先は、Secret を ExternalSecret が持つ（ESO）なら Vault の KV、そうでなければ Secret そのもの。
@@ -28,13 +29,13 @@ ROTATE_WAIT_SECONDS="${ROTATE_WAIT_SECONDS:-300}"
 ROTATE_SYNC_INTERVAL="${ROTATE_SYNC_INTERVAL:-3}"
 
 usage() {
-  echo "使い方: bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>..." >&2
+  echo "使い方: bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token|grafana-admin>..." >&2
   exit 2
 }
 [ "$#" -gt 0 ] || usage
 for t in "$@"; do
   case "$t" in
-    postgres-admin | app-db | object-storage | vault-root-token) ;;
+    postgres-admin | app-db | object-storage | vault-root-token | grafana-admin) ;;
     *) echo "ERROR: 未知の対象: ${t}" >&2; usage ;;
   esac
 done
@@ -81,7 +82,7 @@ undo_all() {
         fi ;;
       token) # token|<失効させる新しいトークンのファイル>|<使うトークンのファイル>
         IFS='|' read -r u_new u_use <<< "$rest"
-        if printf "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault token revoke '%s' >/dev/null\n" "$(cat "$u_use")" "$(cat "$u_new")" | vault_sh; then
+        if vault_revoke "$(cat "$u_use")" "$(cat "$u_new")"; then
           ok_list+=("新しい固定のトークンを失効させた")
         else
           ng_list+=("新しい固定のトークンの失効")
@@ -116,11 +117,32 @@ eso_owned() { kubectl -n "$1" get externalsecret "$2" -o name >/dev/null 2>&1; }
 # vault_sh → 秘匿管理の Pod の中の sh へ stdin のスクリプトを流す（トークンは Pod の env を使う）
 vault_sh() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -s; }
 
+# NFR-18, IADR-0676 (#2407): トークンの作成・失効は、値を Pod の中の vault の引数に載せない（stdin で渡す）。
+#   スクリプトの中の printf は sh の組み込みなので、値はプロセスの引数にならない。使うトークンは環境変数 VAULT_TOKEN。
+# vault_create_root <使うトークン> <作るトークン> —— 永続化のラッパーと同じ作り方（root policy・orphan）
+vault_create_root() {
+  printf "printf '%%s' '%s' | VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault write auth/token/create-orphan id=- policies=root no_default_policy=true display_name=local-dev-root >/dev/null\n" \
+    "$2" "$1" | vault_sh
+}
+# vault_revoke <使うトークン> <失効させるトークン>
+vault_revoke() {
+  printf "printf '%%s' '%s' | VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault write auth/token/revoke token=- >/dev/null\n" \
+    "$2" "$1" | vault_sh
+}
+
 # write_secret <ns> <Secret> <キー> <値> —— Secret のそのキーだけを書く（値は 0600 の一時ファイル経由。引数に載せない）
 write_secret() {
   local f="$TMPD/patch.json"
   ( umask 077; printf '{"data":{"%s":"%s"}}' "$3" "$(printf '%s' "$4" | base64 | tr -d '\n')" > "$f" )
   kubectl -n "$1" patch secret "$2" --type merge --patch-file "$f" >/dev/null || { rm -f "$f"; return 1; }
+  rm -f "$f"
+}
+
+# create_secret <ns> <Secret> <キー> <値> —— 無い Secret を作る（値は 0600 の一時ファイル経由。引数に載せない）
+create_secret() {
+  local f="$TMPD/create.value"
+  ( umask 077; printf '%s' "$4" > "$f" )
+  kubectl -n "$1" create secret generic "$2" --from-file="$3=$f" >/dev/null || { rm -f "$f"; return 1; }
   rm -f "$f"
 }
 
@@ -267,8 +289,7 @@ rotate_vault_root_token() {
   newf="$(save_prev "$new")"
   set_todo "新しい固定のトークンの作成" "Secret の書き込み" "秘匿管理の作り直し" "新しいトークンの確かめ" "古いトークンの失効"
   # ストア側を先に: 今のトークンで新しい固定のトークンを作る（永続化のラッパーと同じ作り方）。
-  printf "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault token create -id='%s' -policy=root -orphan -no-default-policy -display-name=local-dev-root >/dev/null\n" \
-    "$old" "$new" | vault_sh || fail "新しい固定のトークンを作れない"
+  vault_create_root "$old" "$new" || fail "新しい固定のトークンを作れない"
   UNDO+=("token|${newf}|${oldf}")
   note_done "新しい固定のトークンを作った（古いトークンは未失効）"
   echo "    ストア側: 新しい固定のトークンを作った"
@@ -290,15 +311,44 @@ rotate_vault_root_token() {
     || fail "新しいトークンで通らない（Secret を戻すなら手順書の B-1 を見る）"
   note_done "新しいトークンで通ることを確かめた"
   set_todo "古いトークンの失効"
-  printf "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault token revoke '%s' >/dev/null\n" "$new" "$old" | vault_sh \
+  vault_revoke "$new" "$old" \
     || fail "古いトークンを失効させられない（新しいトークンは使える。古いトークンを手で失効させる）"
   echo "    消費側: 秘匿管理を作り直し、新しいトークンで通ることを確かめ、古いトークンを失効させた（ESO の store は Secret を読み直す）"
   finish_target vault-root-token
 }
 
+# NFR-18, IADR-0676 決定 3 (#2407): Grafana の内蔵の管理者。保管先は Secret だけ（ESO が持たない）。ストア側は無い ——
+#   永続化の overlay は起動のたびに Secret の値を DB へ合わせ、永続化しない構成は起動のたびに DB を作る。消費側は Grafana の作り直し。
+rotate_grafana_admin() {
+  echo "==> grafana-admin（可観測性の画面の内蔵の管理者）"
+  local v
+  begin_target
+  kubectl -n "$INFRA_NS" get deploy grafana -o name >/dev/null 2>&1 \
+    || fail "deploy/grafana が無い（OBSERVABILITY=1 の構成でない）"
+  v="$(new_value)"
+  set_todo "保管先（Secret ${INFRA_NS}/grafana-admin）" "Grafana の作り直し"
+  if kubectl -n "$INFRA_NS" get secret grafana-admin -o name >/dev/null 2>&1; then
+    hold "$INFRA_NS" grafana-admin "" password "$v"
+  else
+    create_secret "$INFRA_NS" grafana-admin password "$v" || fail "保管先（Secret ${INFRA_NS}/grafana-admin）を作れない"
+    note_done "Secret ${INFRA_NS}/grafana-admin を作った"
+    echo "    保管先: Secret ${INFRA_NS}/grafana-admin を作った（値は表示しない）"
+  fi
+  # ここから先は Grafana を作り直すので元へ戻さない（Secret の値が正になる）。
+  commit_point
+  set_todo "Grafana の作り直し"
+  kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null || fail "Grafana の作り直しを始められない"
+  note_done "Grafana の作り直しを始めた"
+  kubectl -n "$INFRA_NS" rollout status deploy/grafana --timeout="${ROTATE_WAIT_SECONDS}s" >/dev/null \
+    || fail "Grafana が ${ROTATE_WAIT_SECONDS} 秒のうちに立ち上がらない"
+  echo "    消費側: Grafana を作り直した（起動のときに Secret の値へ合わせる）"
+  finish_target grafana-admin
+}
+
 for t in "$@"; do
   case "$t" in
     postgres-admin) rotate_postgres_admin ;;
+    grafana-admin) rotate_grafana_admin ;;
     app-db) rotate_app_db ;;
     object-storage) rotate_object_storage ;;
     vault-root-token) rotate_vault_root_token ;;

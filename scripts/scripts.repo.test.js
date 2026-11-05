@@ -19763,6 +19763,8 @@ printf '%s\n' "$*" >> "$S/argv"
 if [ "$1" = "-n" ]; then ns="$2"; shift 2; fi
 case "$1 $2" in
   "get secret")
+    # IADR-0676: \`-o name\` は在るか（そのSecret のキーのファイルが 1 つでも在れば在る）
+    if [ "$5" = "name" ]; then ls "$S/secret/@{ns}__$3__"* >/dev/null 2>&1; exit; fi
     f="$S/secret/@{ns}__$3__$(printf '%s' "$5" | sed -E 's/^jsonpath=\{\.data\.(.*)\}$/\1/')"
     [ -f "$f" ] || exit 0; base64 -w0 < "$f"; exit 0 ;;
   "get externalsecret") [ -f "$S/es/@{ns}__$3" ]; exit ;;
@@ -19777,6 +19779,10 @@ case "$1 $2" in
     pf=""; prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && pf="$a"; prev="$a"; done
     node -e 'const fs=require("fs");const [,f,dir,pre]=process.argv;const d=JSON.parse(fs.readFileSync(f,"utf8")).data;for(const[k,v]of Object.entries(d))fs.writeFileSync(dir+"/"+pre+"__"+k,Buffer.from(v,"base64"));' "$pf" "$S/secret" "@{ns}__$3"
     echo "SECRET PATCH @{ns}/$3" >> "$S/calls"; exit 0 ;;
+  "create secret")
+    # IADR-0676: create secret generic <名前> --from-file=<キー>=<ファイル>
+    for a in "$@"; do case "$a" in --from-file=*) kv="@{a#--from-file=}"; cp "@{kv#*=}" "$S/secret/@{ns}__$4__@{kv%%=*}";; esac; done
+    echo "SECRET CREATE @{ns}/$4" >> "$S/calls"; exit 0 ;;
   "annotate externalsecret")
     echo "ESO SYNC @{ns}/$3" >> "$S/calls"
     [ "@{STUB_NO_SYNC:-}" = "1" ] && exit 0
@@ -19806,8 +19812,12 @@ u=""; while [ "$#" -gt 0 ]; do [ "$1" = "-U" ] && u="$2"; shift; done
 `.replace(/@\{/g, '$' + '{');
     const VAULT2399 = String.raw`#!/usr/bin/env bash
 S="$STUB_STATE"; T="$S/tokens"
+printf '%s\n' "$*" >> "$S/pod-argv"
 has() { grep -qxF "$1" "$T" 2>/dev/null; }
 case "$1 $2" in
+  # IADR-0676 (#2407): 作成・失効は値を stdin で受ける（id=- / token=-）
+  "write auth/token/create-orphan") has "$VAULT_TOKEN" || exit 1; case " $* " in *" id=- "*) ;; *) exit 1 ;; esac; v="$(cat)"; [ -n "$v" ] || exit 1; printf '%s\n' "$v" >> "$T"; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
+  "write auth/token/revoke") has "$VAULT_TOKEN" || exit 1; case " $* " in *" token=- "*) ;; *) exit 1 ;; esac; v="$(cat)"; grep -vxF "$v" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
   "token lookup") has "$VAULT_TOKEN" ;;
   "token create") has "$VAULT_TOKEN" || exit 1; for a in "$@"; do case "$a" in -id=*) printf '%s\n' "@{a#-id=}" >> "$T";; esac; done; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
   "token revoke") has "$VAULT_TOKEN" || exit 1; grep -vxF "$3" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
@@ -19827,7 +19837,7 @@ esac
         fs2399.writeFileSync(path2399.join(podBin, 'psql'), PSQL2399, { mode: 0o755 });
         fs2399.writeFileSync(path2399.join(podBin, 'vault'), VAULT2399, { mode: 0o755 });
         fs2399.writeFileSync(path2399.join(podBin, 'hostname'), '#!/bin/sh\necho 10.42.0.9\n', { mode: 0o755 });
-        for (const f of ['argv', 'calls']) fs2399.writeFileSync(path2399.join(st, f), '');
+        for (const f of ['argv', 'calls', 'pod-argv']) fs2399.writeFileSync(path2399.join(st, f), '');
         const put = (rel, v) => fs2399.writeFileSync(path2399.join(st, rel), v);
         // 既定の世界: 全部が開発用の値のまま（Secret・DB 利用者・トークン）。deploy postgres / vault が在り、ESO は無い。
         for (const [k, v] of Object.entries(DEV2399)) put(`secret/${k}`, v);
@@ -19846,7 +19856,7 @@ esac
         const walk = (d) => { for (const e of fs2399.readdirSync(d, { withFileTypes: true })) { const f = path2399.join(d, e.name); if (e.isDirectory()) walk(f); else snap[path2399.relative(st, f).split(path2399.sep).join('/')] = fs2399.readFileSync(f, 'utf8'); } };
         walk(st);
         const read = (rel) => snap[rel] || '';
-        return { ...r, read, argv: read('argv'), calls: read('calls').split('\n').filter(Boolean) };
+        return { ...r, read, argv: read('argv'), podArgv: read('pod-argv'), calls: read('calls').split('\n').filter(Boolean) };
       } finally {
         fs2399.rmSync(dir, { recursive: true, force: true });
       }
@@ -19937,6 +19947,9 @@ esac
       assert.ok(at('VAULT TOKEN CREATE') < at('SECRET PATCH platform-infra/vault-dev-token') && at('SECRET PATCH platform-infra/vault-dev-token') < at('ROLLOUT restart platform-infra/deploy/vault')
         && at('ROLLOUT restart platform-infra/deploy/vault') < at('VAULT TOKEN REVOKE'), `順序が違う:\n${r.calls.join('\n')}`);
       assert.ok(!r.argv.includes(nv) && !`${r.stdout}${r.stderr}`.includes(nv), '新しいトークンが引数・出力に出た');
+      // IADR-0676 (#2407): Pod の中の vault の引数にも、新旧どちらのトークンも載らない（作成・失効は stdin）
+      assert.ok(r.podArgv.length > 0, 'Pod の中の vault が呼ばれていない');
+      assert.ok(!r.podArgv.includes(nv) && !r.podArgv.includes('devroot'), `トークンが Pod の中の vault の引数に出た:\n${r.podArgv.replace(/[0-9a-f]{48}/g, '<v>')}`);
     });
 
     ok('IADR-0672: 作り直し（秘匿管理のトークン）は、ExternalSecret が同じ名前で在っても Secret へ直接書く（Vault の KV へは書かない）', () => {
@@ -20018,6 +20031,136 @@ esac
       assert.notStrictEqual(broken.status, 0, 'ストア側を変えられないのに成功した');
       assert.ok(/ストア側（DB 利用者 kp）を変えられない/.test(broken.stderr), broken.stderr);
       assert.ok(!broken.calls.some((c) => c.startsWith('ROLLOUT')), 'ストア側が失敗したのに消費側を作り直した');
+    });
+
+    // --- NFR-18, IADR-0676 (#2407): 作り直したトークンが、秘匿管理の再起動と起動器の再実行を跨いで保たれる ---
+    // 作り直し（上のスタブの世界）の後の状態を、永続化のラッパー（vault-entrypoint.sh）と起動器の判定（infra_cred_staged_resolve）へ渡す。
+    const WRAPPER2407 = path2399.join(__dirname, '..', 'deploy', 'local', 'vault-persistence', 'vault-entrypoint.sh');
+    const LIB2407 = path2399.join(__dirname, 'lib');
+    // ラッパーが呼ぶ vault のスタブ（トークンの集合は作り直しのスタブと同じ形のファイル）。値は stdin で受ける。
+    const WRAPPER_VAULT2407 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"; T="$S/tokens"
+printf '%s\n' "$*" >> "$S/pod-argv"
+has() { grep -qxF "$1" "$T" 2>/dev/null; }
+case "$1 $2" in
+  "status ") exit 0 ;;
+  "operator init") exit 0 ;;
+  "token lookup") has "$VAULT_TOKEN" ;;
+  "write auth/token/create-orphan") has "$VAULT_TOKEN" || exit 1; v="$(cat)"; printf '%s\n' "$v" >> "$T"; echo "WRAPPER CREATE" >> "$S/calls" ;;
+  "audit list") echo '{"stdout/":{}}' ;;
+  "secrets list") echo '{"secret/":{}}' ;;
+  *) exit 0 ;;
+esac
+`;
+    // restart2407 <状態> <Secret の値> <段 2> → ラッパーの起動（bootstrap_after_start）を、作り直しの後の状態で走らせる
+    const restart2407 = (state, secretToken, { initOnly = '', marker = true } = {}) => {
+      const dir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0676-'));
+      try {
+        const bin = path2399.join(dir, 'bin'); const st = path2399.join(dir, 'state'); const data = path2399.join(dir, 'data');
+        for (const d of [bin, st, data]) fs2399.mkdirSync(d, { recursive: true });
+        fs2399.writeFileSync(path2399.join(bin, 'vault'), WRAPPER_VAULT2407, { mode: 0o755 });
+        // 初期の root トークン（init の出力）は在る。作り直しの世界のトークンの集合へ足す。
+        const initRoot = ['stub', 'init', 'root', '2407'].join('-');
+        fs2399.writeFileSync(path2399.join(st, 'tokens'), `${state.read('tokens')}${initRoot}\n`);
+        for (const f of ['calls', 'pod-argv']) fs2399.writeFileSync(path2399.join(st, f), '');
+        fs2399.writeFileSync(path2399.join(data, '.local-dev-init'), `Unseal Key 1: stub-unseal\n\nInitial Root Token: ${initRoot}\n`, { mode: 0o600 });
+        if (marker) fs2399.writeFileSync(path2399.join(data, '.local-dev-root-token-created'), '');
+        const r = spawn2399('bash', ['-c', 'VAULT_ENTRYPOINT_LIB=1 . "$1"; bootstrap_after_start', '_', WRAPPER2407], {
+          encoding: 'utf8', timeout: 30000,
+          env: { ...process.env, PATH: `${bin}${path2399.delimiter}${process.env.PATH}`, STUB_STATE: st, VAULT_DATA_DIR: data,
+            VAULT_INIT_FILE: path2399.join(data, '.local-dev-init'), VAULT_DEV_ROOT_TOKEN_ID: secretToken, VAULT_ROOT_TOKEN_INIT_ONLY: initOnly,
+            VAULT_WAIT_TRIES: '2', VAULT_WAIT_INTERVAL: '0', VAULT_AUDIT_STDOUT_TRIES: '1', VAULT_AUDIT_STDOUT_INTERVAL: '0' },
+        });
+        const tokens = fs2399.readFileSync(path2399.join(st, 'tokens'), 'utf8').split('\n').filter(Boolean).filter((t) => t !== initRoot);
+        return { ...r, tokens, calls: fs2399.readFileSync(path2399.join(st, 'calls'), 'utf8').split('\n').filter(Boolean),
+          podArgv: fs2399.readFileSync(path2399.join(st, 'pod-argv'), 'utf8') };
+      } finally {
+        fs2399.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('IADR-0676: 作り直したトークンは、秘匿管理の再起動（段 1・段 2）で作り直されず、起動器の再実行でも Secret が新しい値のまま保たれる', () => {
+      const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
+      const nv = rot.read('secret/platform-infra__vault-dev-token__token');
+      assert.ok(/^[0-9a-f]{48}$/.test(nv), 'Secret が新しい値になっていない');
+      for (const initOnly of ['', '1']) {
+        const re = restart2407(rot, nv, { initOnly });
+        assert.strictEqual(re.status, 0, `段 ${initOnly ? 2 : 1} の再起動が失敗した:\n${re.stdout}${re.stderr}`);
+        assert.deepStrictEqual(re.calls, [], `再起動でトークンを作った（段 ${initOnly ? 2 : 1}）`);
+        assert.deepStrictEqual(re.tokens, [nv], '再起動の後のトークンが作り直した値だけでない（古い値が戻った）');
+        assert.ok(!`${re.stdout}${re.stderr}`.includes(nv), '再起動がトークンを出力した');
+      }
+      // 起動器の再実行: 既存の Secret の値を引き継ぐ（IADR-0672 決定 2）。dev の context でも開発用の値へ戻らない。
+      const sdir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0676-s-'));
+      try {
+        fs2399.writeFileSync(path2399.join(sdir, 'platform-infra__vault-dev-token__token'), nv);
+        const r = spawn2399('bash', ['-c', [
+          '. "$LIB/dev-client-secret-guard.sh"; . "$LIB/infra-credentials.sh"',
+          'reader() { local ns=platform-infra; [ "$1" = msp ] && ns=microservices-platform; cat "$SDIR/${ns}__$2__$3" 2>/dev/null || true; }',
+          'unset VAULT_DEV_ROOT_TOKEN PG_PASSWORD APP_DB_PASSWORD WIKIJS_DB_PASSWORD OBJECT_STORAGE_SECRET_KEY',
+          'VAULT=1 infra_cred_staged_resolve t reader k3d-msp-local 2>/dev/null || exit 9',
+          '[ "$VAULT_DEV_ROOT_TOKEN" = "$EXPECT" ] && echo kept || echo changed',
+        ].join('\n')], { encoding: 'utf8', env: { ...process.env, LIB: LIB2407, SDIR: sdir, EXPECT: nv } });
+        assert.strictEqual(r.stdout.trim(), 'kept', `起動器の再実行で Secret の値が変わる:\n${r.stderr}`);
+      } finally {
+        fs2399.rmSync(sdir, { recursive: true, force: true });
+      }
+    });
+
+    ok('IADR-0676: 作り直しの後に Secret が開発用の値へ戻っても、段 2 の再起動は失効させたトークンを作り直さない（段 1 は警告して作る）', () => {
+      const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
+      const nv = rot.read('secret/platform-infra__vault-dev-token__token');
+      const stage2 = restart2407(rot, 'devroot', { initOnly: '1' });
+      assert.notStrictEqual(stage2.status, 0, '段 2 なのに起動した');
+      assert.deepStrictEqual(stage2.tokens, [nv], '段 2 で失効させたトークンが作り直された');
+      assert.ok(/refusing to create it again/.test(stage2.stdout), stage2.stdout);
+      const stage1 = restart2407(rot, 'devroot');
+      assert.strictEqual(stage1.status, 0, `${stage1.stdout}${stage1.stderr}`);
+      assert.ok(/WARN: the fixed root token was already created on this store/.test(stage1.stdout), stage1.stdout);
+      assert.ok(!stage1.podArgv.includes('devroot'), 'ラッパーがトークンを vault の引数に載せた');
+      // 印の無いストア（#2407 より前・初回）は従前どおり作る（段 2 でも）
+      const fresh = restart2407(rot, 'devroot', { initOnly: '1', marker: false });
+      assert.strictEqual(fresh.status, 0, `${fresh.stdout}${fresh.stderr}`);
+      assert.ok(fresh.calls.includes('WRAPPER CREATE'));
+    });
+
+    ok('IADR-0676: 検査は、Grafana が在るとき管理者の Secret が無いか開発用の値なら名指し、乱数の値なら名指さない。Grafana が無ければ見ない', () => {
+      const clean = ({ put }) => {
+        for (const k of Object.keys(DEV2399)) put(`secret/${k}`, `probe-0676-${k.length}`);
+        for (const r of ['postgres', 'kp', 'ai']) put(`pg/${r}`, `probe-0676-${r}`);
+        put('tokens', 'probe-0676-root\n'); put('vault-root', 'probe-0676-root');
+      };
+      const none = run2399(CHECK2399, ['--live'], { setup: clean });
+      assert.strictEqual(none.status, 0, `Grafana が無いのに名指した:\n${none.stdout}`);
+      const absent = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); } });
+      assert.strictEqual(absent.status, 1, absent.stdout);
+      assert.ok(/!! GRAFANA_ADMIN_PASSWORD（Secret platform-infra\/grafana-admin\/password）: 無い/.test(absent.stdout), absent.stdout);
+      const dev = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); h.put('secret/platform-infra__grafana-admin__password', 'admin'); } });
+      assert.strictEqual(dev.status, 1, dev.stdout);
+      assert.ok(/!! GRAFANA_ADMIN_PASSWORD.*開発用の値のまま/.test(dev.stdout), dev.stdout);
+      const good = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); h.put('secret/platform-infra__grafana-admin__password', 'probe-0676-gf'); } });
+      assert.strictEqual(good.status, 0, good.stdout);
+      assert.ok(!`${good.stdout}${good.stderr}`.includes('probe-0676-gf'), '値が出力に出た');
+    });
+
+    ok('IADR-0676: 作り直し（grafana-admin）は、Secret を乱数で書き（無ければ作り）、Grafana を作り直す。値は引数・出力に出ない', () => {
+      const withGf = ({ put }) => put('deploy/platform-infra__grafana', '');
+      const created = run2399(ROTATE2399, ['--live', 'grafana-admin'], { setup: withGf });
+      assert.strictEqual(created.status, 0, `${created.stdout}\n${created.stderr}`);
+      const v = created.read('secret/platform-infra__grafana-admin__password');
+      assert.ok(/^[0-9a-f]{48}$/.test(v), 'Secret が乱数の値で作られていない');
+      assert.ok(created.calls.indexOf('SECRET CREATE platform-infra/grafana-admin') >= 0
+        && created.calls.indexOf('SECRET CREATE platform-infra/grafana-admin') < created.calls.indexOf('ROLLOUT restart platform-infra/deploy/grafana'), created.calls.join('\n'));
+      assert.ok(!created.argv.includes(v) && !`${created.stdout}${created.stderr}`.includes(v), '値が引数・出力に出た');
+      const patched = run2399(ROTATE2399, ['--live', 'grafana-admin'], { setup: (h) => { withGf(h); h.put('secret/platform-infra__grafana-admin__password', 'probe-0676-old'); } });
+      assert.strictEqual(patched.status, 0, patched.stderr);
+      assert.ok(patched.calls.includes('SECRET PATCH platform-infra/grafana-admin'), patched.calls.join('\n'));
+      assert.notStrictEqual(patched.read('secret/platform-infra__grafana-admin__password'), 'probe-0676-old');
+      const noGf = run2399(ROTATE2399, ['--live', 'grafana-admin']);
+      assert.notStrictEqual(noGf.status, 0, 'Grafana が無いのに成功した');
+      assert.ok(/deploy\/grafana が無い/.test(noGf.stderr) && /何も変えていない/.test(noGf.stderr), noGf.stderr);
     });
 
     ok('IADR-0672: 検査・作り直しは scripts/README.md の一覧に載る', () => {

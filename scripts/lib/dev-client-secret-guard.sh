@@ -18,6 +18,7 @@
 #
 # - **入口は kube context の許可集合**: `k3d-*` / `kind-*` / `rancher-desktop` / `docker-desktop` を dev とみなす。
 #   それ以外（**読めない・空を含む**）は dev ではない —— 未知のクラスタで既定が安全側に倒れる。
+#   ［2026-11-05 / #2407・IADR-0676］2 つ目の手掛かりとしてクラスタ側の印を足した（段 2 の DEV_CLUSTER_MARKER_REQUIRED=1 で要求する）。
 # - dev ではない context で、対象のクライアントの値が **空（未設定）か dev の値と同じ**なら止める。
 # - 明示の上書き `ALLOW_DEV_CLIENT_SECRETS=1`（`1` だけ。`true` 等は上書きにならない）で通す。通すときは大きく警告する。
 #
@@ -67,10 +68,62 @@ dev_client_secret_lookup() {
 }
 
 dev_client_secret_context_is_dev() {
+  dev_client_secret_context_name_is_dev "$1" || return 1
+  # NFR-18, IADR-0676 (#2407): 段 2（DEV_CLUSTER_MARKER_REQUIRED=1。`1` だけ）は、クラスタ側の印（dev_cluster_marker_probe が
+  #   入れる DEV_CLUSTER_MARKER）が present のときだけ dev とする。印を読んでいない（空）は absent と同じ（fail-closed）。
+  #   段 1（既定）は名前だけで判定する（従前どおり。入口の dev_cluster_marker_probe が警告する）。
+  if [ "${DEV_CLUSTER_MARKER_REQUIRED:-}" = "1" ] && [ "${DEV_CLUSTER_MARKER:-}" != "present" ]; then
+    return 1
+  fi
+  return 0
+}
+
+# dev_client_secret_context_name_is_dev <context> → 名前が dev の許可集合に在るか（IADR-0517 決定 1。純関数）
+dev_client_secret_context_name_is_dev() {
   case "$1" in
     k3d-?* | kind-?* | rancher-desktop | docker-desktop) return 0 ;;
   esac
   return 1
+}
+
+# ---- NFR-18, IADR-0676 (#2407): dev のクラスタの 2 つ目の手掛かり（クラスタ側の印）--------------------------------------
+# 印は ConfigMap kube-system/msp-dev-cluster（data.cluster-kind=dev）。値は秘密ではない。置く口は起動器だけ
+# （この実行で k3d のクラスタを作ったとき・利用者の明示 MARK_DEV_CLUSTER=1。名前が許可集合に在るときだけ）。
+# 入口（k8s-local-up.sh・Vault の種 bootstrap.sh・realm の追随 reconcile-realm.sh）は、判定の前に dev_cluster_marker_probe を
+# **サブシェルの外で** 1 回呼ぶ（判定 dev_client_secret_context_is_dev は純関数のまま、環境変数で印を受ける）。
+DEV_CLUSTER_MARKER_NS="${DEV_CLUSTER_MARKER_NS:-kube-system}"
+DEV_CLUSTER_MARKER_NAME="${DEV_CLUSTER_MARKER_NAME:-msp-dev-cluster}"
+
+# dev_cluster_marker_state → present / absent（読めない・無い・値が違うは absent）
+dev_cluster_marker_state() {
+  local v
+  v="$(kubectl -n "$DEV_CLUSTER_MARKER_NS" get configmap "$DEV_CLUSTER_MARKER_NAME" -o 'jsonpath={.data.cluster-kind}' 2>/dev/null || true)"
+  if [ "$v" = "dev" ]; then echo present; else echo absent; fi
+}
+
+# dev_cluster_marker_probe <呼び出し元> <context> → DEV_CLUSTER_MARKER を export する。名前が dev で印が無ければ警告する。
+dev_cluster_marker_probe() {
+  local caller="$1" ctx="$2"
+  DEV_CLUSTER_MARKER="$(dev_cluster_marker_state)"
+  export DEV_CLUSTER_MARKER
+  if dev_client_secret_context_name_is_dev "$ctx" && [ "$DEV_CLUSTER_MARKER" != "present" ]; then
+    if [ "${DEV_CLUSTER_MARKER_REQUIRED:-}" = "1" ]; then
+      echo "ERROR: ${caller}: kube context '${ctx}' は名前が dev の許可集合に在るが、クラスタ側の印（ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME}）が無いので dev と見なさない（DEV_CLUSTER_MARKER_REQUIRED=1。IADR-0676）。" >&2
+    else
+      echo "WARNING: ${caller}: kube context '${ctx}' を名前だけで dev と判定している（クラスタ側の印 ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME} が無い）。" >&2
+    fi
+    echo "         dev のクラスタなら印を置く: MARK_DEV_CLUSTER=1 bash scripts/k8s-local-up.sh --live（IADR-0676）。" >&2
+  fi
+  return 0
+}
+
+# dev_cluster_marker_apply <context> → 名前が許可集合に在るときだけ印を置く（1＝名前が dev でない・置けない）
+dev_cluster_marker_apply() {
+  dev_client_secret_context_name_is_dev "$1" || return 1
+  printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: %s\n  namespace: %s\ndata:\n  cluster-kind: dev\n' \
+    "$DEV_CLUSTER_MARKER_NAME" "$DEV_CLUSTER_MARKER_NS" | kubectl apply -f - >/dev/null || return 1
+  DEV_CLUSTER_MARKER=present
+  export DEV_CLUSTER_MARKER
 }
 
 # dev_client_secret_dev_value <client> → realm の宣言の secret（公知の dev の値）。表に無ければ 1。

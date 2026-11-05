@@ -750,3 +750,4 @@
 | [IADR-0670](./IADR-0670_backup-wait-dependencies-before-write.md) | バックアップの回は書き始める前に依存先（Postgres・OpenBao・名前解決）の起動を上限つきで待ち、再試行はしない（PC の復帰の直後の後追いの回。#2394） | Accepted |
 | [IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md) | LLM ゲートウェイは呼び手が分けた接頭辞を user の先頭の text ブロックにし、その末尾に 5 分のキャッシュの区切りを置く。InputTokens はプロンプト全体のまま、キャッシュの書き・読みを「うち」として返し、単価の区分ごとに計上する（#2396） | Accepted |
 | [IADR-0672](./IADR-0672_infra-credentials-staged-fail-closed.md) | 基盤の資格情報の判定を、DB・オブジェクトストレージ・秘匿管理の管理者トークンへ広げる。dev ではない context で開発用の値になるとき、段 1 は報告だけ・段 2 は明示の切り替えで止める。検査と作り直しは利用者が実行するスクリプトにする（#2399） | Accepted |
+| [IADR-0676](./IADR-0676_infra-credentials-staged-followup.md) | 基盤の資格情報の段階の fail-closed を続ける。秘匿管理の固定の管理者トークンは印の後は作り直さない形を段階で入れ、値を stdin で渡す。Grafana の管理者と DB の初期化の kp を対象に足す。dev のクラスタの判定にクラスタ側の印を段階で足す（#2407） | Accepted |

@@ -1,0 +1,41 @@
+# NFR-18, IADR-0676 決定 6 (#2407): 秘匿管理（vault Pod の 8200）へ届いてよい送り手を、使っているものだけに絞る（Ingress だけ。Egress は変えない）。
+# 送り手は走査で引いた（作業仕様書 20261105_2407 §秘匿管理の送り手）:
+#   - ESO のコントローラ（external-secrets 名前空間）          … ExternalSecret の同期
+#   - bff-service（SC-22 の秘密の投入）・datasource-service（参照の解決） … microservices-platform 名前空間
+#   - バックアップの CronJob（platform-infra の app: platform-backup / component: vault） … raft のスナップショット
+#   - 管理ツールのエッジ（kube-system の Traefik・istio-system の istio-ingressgateway） … 画面（OIDC ログイン）
+# 起動器・Vault の種・OIDC の bootstrap は `kubectl exec`（Pod の中）で叩くので、ネットワークの送り手ではない（port-forward も同じ）。
+# 🔴 段 1 は opt-in（k8s-local-up.sh の VAULT_NETWORK_POLICY=1 のときだけ当てる）。送り手の取りこぼしは秘匿管理の停止になるため、
+#    当てた後に ESO の同期・SC-22 の一覧・バックアップの回が通ることを確かめてから既定にする（段 2 は別の PR）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-ingress-known-clients
+  namespace: platform-infra
+  labels: { app: vault }
+spec:
+  podSelector: { matchLabels: { app: vault } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: external-secrets }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: external-secrets }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: microservices-platform }
+          podSelector:
+            matchExpressions:
+              - { key: app, operator: In, values: [bff-service, datasource-service] }
+        - podSelector:
+            matchLabels: { app: platform-backup, app.kubernetes.io/component: vault }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { app.kubernetes.io/name: traefik }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: istio-system }
+          podSelector:
+            matchLabels: { istio: ingressgateway }
+      ports:
+        - { protocol: TCP, port: 8200 }
