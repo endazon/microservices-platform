@@ -3,7 +3,7 @@
 # **age の公開鍵で暗号化して**クラスタ外の 2 か所（hostPath）へ置く CronJob の本体。
 #
 # 🔴 ローカル開発・PoC 環境のもの。本番のバックアップ設計ではない。
-# ［2026-11-05 / #2402・IADR-0675］クラウドの最小構成（deploy/cloud/backup/）も同じ本体を使い、保管先を S3 互換の
+# ［2026-11-05 / #2402・IADR-0675］クラウドの最小構成（バックアップの CronJob）も同じ本体を使い、保管先を S3 互換の
 #   オブジェクトストレージ（BACKUP_S3_DEST）にする（BACKUP_TARGETS=none で hostPath を使わない）。hostPath の既定は変えない。
 #
 # 1 回の実行で 1 種類（BACKUP_KIND=postgres | vault）を扱う:
