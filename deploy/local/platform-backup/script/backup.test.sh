@@ -942,6 +942,31 @@ unset STUB_S3_LIST_FAIL_MATCH
 assert_eq 'T-2402-14 S3: 月次の回の中身を確かめられなければ失敗で終わる' "$RC" "1"
 assert_file 'T-2402-14 S3: そのときも daily は書けている' "$(S3D daily 2026-11-02T030000Z)/COMPLETE"
 assert_nofile 'T-2402-14 S3: そのときは monthly へ書かない' "$(S3D monthly 2026-11-02T030000Z)"
+# 確かめる回の数には上限がある（新しい順に BACKUP_S3_MONTHLY_CHECK_MAX 件。COMPLETE を見つけたら打ち切る）。
+# 上限までに COMPLETE が無く、まだ確かめていない回が残るときは、取得済みとも未取得とも決めずに失敗で返す（daily は書けている）。
+new_s3_env
+for d in 2026-11-01T030000Z 2026-11-02T030000Z 2026-11-03T030000Z; do
+	mkdir -p "$(S3D monthly "$d")"
+	printf 'partial' > "$(S3D monthly "$d")/pg-audit_svc.dump.age"
+done
+export BACKUP_NOW="2026-11-04T030000Z" BACKUP_S3_MONTHLY_CHECK_MAX=2
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-15 S3: 取りこぼしの回が上限を超えて残るときは失敗で終わる' "$RC" "1"
+assert_file 'T-2402-15 S3: そのときも daily は書けている' "$(S3D daily 2026-11-04T030000Z)/COMPLETE"
+assert_nofile 'T-2402-15 S3: そのときは monthly へ書かない' "$(S3D monthly 2026-11-04T030000Z)"
+assert_contains 'T-2402-15 S3: 上限で止めたと告げる' "$OUT" '上限'
+assert_eq 'T-2402-15 S3: 中身を確かめるのは新しい順に上限の 2 件だけ' "$(grep -c 'lsf objstore:bkt/ast-poc/postgres/monthly/2026-11-' "$STUB_LOG")" "2"
+assert_missing 'T-2402-15 S3: いちばん古い回は確かめない（新しい順）' "$(cat "$STUB_LOG")" 'monthly/2026-11-01T030000Z/'
+# 新しい方に完全な回があれば、上限の内で打ち切って書かない。
+printf 'x' > "$(S3D monthly 2026-11-03T030000Z)/COMPLETE"
+export BACKUP_NOW="2026-11-05T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-15 S3: 新しい回に COMPLETE があれば成功で終わる' "$RC" "0"
+assert_eq 'T-2402-15 S3: COMPLETE を見つけた時点で打ち切る（1 件だけ確かめる）' "$(grep -c 'lsf objstore:bkt/ast-poc/postgres/monthly/2026-11-' "$STUB_LOG")" "1"
+assert_nofile 'T-2402-15 S3: 完全な回がある月は monthly へ書かない' "$(S3D monthly 2026-11-05T030000Z)"
+unset BACKUP_S3_MONTHLY_CHECK_MAX
 
 # 送った先の暗号文が壊れた → COMPLETE を置かずに失敗する。
 new_s3_env
@@ -1003,21 +1028,23 @@ for kind in postgres vault; do
 done
 
 # クラウドの CronJob: 最悪の合計（依存先の待ち＋確かめ＋間隔＋ S3 の呼び出しの数 × 1 回の上限＋余裕 300）が時間切れより小さい。
-# 呼び出しは daily（存在の確かめ・送る・読み戻す・COMPLETE）の 4 ＋ monthly の有無の確かめ 1 ＋ monthly の 4 ＝ 9。
+# 呼び出しは daily（存在の確かめ・送る・読み戻す・COMPLETE）の 4 ＋ monthly の一覧 1 ＋ その月の回の中身の確かめ K ＋ monthly の 4 ＝ 9 ＋ K。
+# K は確かめる回の数の上限（BACKUP_S3_MONTHLY_CHECK_MAX。#2406 の再レビュー 🟡: 取りこぼしが溜まっても式が成り立つよう、上限を設ける）。
 CLOUD_CJ="$HERE/../../../cloud/backup/cronjob-postgres.yaml"
 S3_CALL="$(default_of BACKUP_S3_CALL_TIMEOUT)"
+MCHECK="$(default_of BACKUP_S3_MONTHLY_CHECK_MAX)"
 CADL="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
 CBOL="$(sed -n 's/^ *backoffLimit: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
 assert_eq 'T-2402-12 クラウドの CronJob は再試行しない（backoffLimit: 0）' "$CBOL" "0"
-if [[ "$CADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL" =~ ^[0-9]+$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
-	CWORST=$((DEPS_WAIT + PROBE + INTERVAL + 9 * S3_CALL + 300))
+if [[ "$CADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL" =~ ^[0-9]+$ ]] && [[ "$MCHECK" =~ ^[1-9][0-9]*$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
+	CWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + MCHECK) * S3_CALL + 300))
 	if [ "$CWORST" -lt "$CADL" ]; then
 		ok "T-2402-12 クラウド: 最悪の合計 $CWORST 秒が activeDeadlineSeconds $CADL 秒より小さい"
 	else
 		ng 'T-2402-12 クラウド: 最悪の合計が activeDeadlineSeconds より小さい' "worst=$CWORST adl=$CADL"
 	fi
 else
-	ng 'T-2402-12 クラウド: 既定値と activeDeadlineSeconds を読める' "adl=$CADL s3=$S3_CALL"
+	ng 'T-2402-12 クラウド: 既定値（確かめる回の上限を含む）と activeDeadlineSeconds を読める' "adl=$CADL s3=$S3_CALL k=$MCHECK"
 fi
 
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。

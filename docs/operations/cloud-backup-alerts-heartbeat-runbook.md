@@ -193,6 +193,12 @@ bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/p
 1 本が終わってから起こし直す。`-partial` の回（一部の DB が欠けた回）は `COMPLETE` を持つが、月次へは書かれない。
 原因を直してから、完全な回をもう 1 つ取る（その月の月次が未だなら、そこで月次にも書かれる）。
 月次の回が途中で失敗して `COMPLETE` の無い `monthly/<回>/` が残っても、その月は「取得済み」と数えない。次の完全な回（翌日の定時の回か、手動で起こした回）が月次に書かれる。
+確かめるのは、その月の回の新しい順に 2 件まで（`BACKUP_S3_MONTHLY_CHECK_MAX`）。それを超えて取りこぼしが溜まると、月次を決めずに失敗で止まる（下の分岐）。
+上限を超えて溜まったときは、原因を直してから、上限を上げた 1 回だけを手で起こす（CronJob の既定は変えない。この 1 回は確かめの数だけ長くかかる）:
+```bash
+kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres backup-monthly-<日付> --dry-run=client -o yaml \
+  | kubectl set env --local -f - BACKUP_S3_MONTHLY_CHECK_MAX=31 -o yaml | kubectl apply -f -
+```
 
 ## 失敗したときの分岐
 
@@ -201,4 +207,4 @@ bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/p
 | Healthchecks.io から「down」が届いた | `kubectl -n platform-infra get pods`（alertmanager・prometheus）、ノードへの SSH | Pod が落ちていれば `logs` で原因を見る。ノードに届かなければ Hetzner Console でノードを確かめる |
 | check B が「down」（`/fail` か、ping の途絶え）になった | Alertmanager のログ（`notify` の失敗）、Discord の webhook | webhook が消された・URL が変わったなら §3 で Secret を作り直す。直れば 15 分ほどで B は「up」へ戻る |
 | `AstAlertRulesNotLoaded` が Discord に出た | ConfigMap `ast-prometheus-rules` | §4 の 3 を行う |
-| バックアップの Job が失敗した | `kubectl -n platform-infra logs job/<名前>` | 「保管先が 1 つもありません」→ §2 の ConfigMap。「検算が合いません」→ 再実行（`COMPLETE` は置かれていない）。「同じ名前の回が既にあります」→ 手動の回が同じ秒に重なった |
+| バックアップの Job が失敗した | `kubectl -n platform-infra logs job/<名前>` | 「保管先が 1 つもありません」→ §2 の ConfigMap。「検算が合いません」→ 再実行（`COMPLETE` は置かれていない）。「同じ名前の回が既にあります」→ 手動の回が同じ秒に重なった。「monthly の回の確かめが上限に達しました」→ その月の `monthly/` に `COMPLETE` の無い回が溜まっている。送れない原因（鍵・接続・容量）を直し、取りこぼしの回は消さずに（lifecycle が片付ける）、完全な回を 1 つ取る。上限を超えて溜まっている間は定時の回も手動の回も同じところで止まるので、「回を手動でやり直すとき」の、上限を上げた 1 回で取る（daily は毎回書けている） |

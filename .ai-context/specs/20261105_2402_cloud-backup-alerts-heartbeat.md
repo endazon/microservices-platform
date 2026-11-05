@@ -78,3 +78,4 @@ issue: "#2402"
 
 - バックアップの Job の失敗を Prometheus で見る手段（kube-state-metrics 等）は持ち込まない。失敗はオーナーの週次のリストア試験と Job の一覧で見る（IADR-0675 の残余）。
 - `deploy/cloud/` の infra（#2401）との結線（kustomization の resources への追加・Secret の名前の突き合わせ）は、後にマージする側が行う。
+  ［2026-11-06 追記 / #2406］#2401 が先にマージされたので、この PR で済ませた（冒頭の追記と IADR-0675「#2401 との結線」）。

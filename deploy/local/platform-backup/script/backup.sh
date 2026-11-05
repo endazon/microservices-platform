@@ -63,6 +63,9 @@ BACKUP_S3_DEST="${BACKUP_S3_DEST:-}"
 BACKUP_S3_CALL_TIMEOUT="${BACKUP_S3_CALL_TIMEOUT:-240}"
 # 月の最初の完全な回を monthly/ へも書くか（1 = 書く）。
 BACKUP_S3_MONTHLY="${BACKUP_S3_MONTHLY:-1}"
+# 月次の有無を決めるとき、その月の monthly/<回>/ の中身（COMPLETE の有無）を確かめる回の数の上限（新しい順）。
+# 1 回の確かめが rclone の呼び出し 1 回なので、最悪の合計（試験 T-2402-12）に入る。上限で決められなければ失敗で返す。
+BACKUP_S3_MONTHLY_CHECK_MAX="${BACKUP_S3_MONTHLY_CHECK_MAX:-2}"
 # リモート名（英小文字・数字・-・_）＋ : ＋ バケット（S3 の命名規則の 3〜63 文字）＋ 任意の接頭辞（.. を含まない）。
 S3_DEST_RE='^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$'
 
@@ -862,8 +865,11 @@ publish_s3_to() {
 # ［#2406 のレビュー 🟡］月次の回が途中で失敗すると COMPLETE の無い monthly/<回>/ が残る。それを数えるとその月は取り直されない。
 #   **COMPLETE を持つ回だけを「その月は取得済み」と数える**（取りこぼしの回は消さずに残し、翌日の回で取り直す）。
 #   回の中身を確かめられないときは、取得済みとも未取得とも決めずに失敗を返す（同じ月の回を二重に書かない）。
+# ［#2406 の再レビュー 🟡］確かめるのは新しい順に BACKUP_S3_MONTHLY_CHECK_MAX 件まで（COMPLETE を見つけたら打ち切る）。
+#   取りこぼしが溜まっても、呼び出しの数（＝最悪の時間）が上限の内に収まる。上限までに決められず、まだ確かめていない回が
+#   残るときは、取得済みとも未取得とも決めずに失敗で返す（daily は書けている。人が取りこぼしの回を見る）。
 publish_s3() {
-	local run="$1" staging="$2" now="$3" base month existing entry inner
+	local run="$1" staging="$2" now="$3" base month existing entry inner checked=0 candidates
 	base="$BACKUP_S3_DEST/$BACKUP_KIND"
 	publish_s3_to "$base/daily/$run" "$staging" daily || return 2
 	[ "$BACKUP_S3_MONTHLY" = 1 ] || return 0
@@ -873,9 +879,19 @@ publish_s3() {
 		err "monthly の回を確かめられません: $base/monthly"
 		return 1
 	fi
+	if [[ ! "$BACKUP_S3_MONTHLY_CHECK_MAX" =~ ^[1-9][0-9]*$ ]]; then
+		err "BACKUP_S3_MONTHLY_CHECK_MAX は 1 以上の整数です: $BACKUP_S3_MONTHLY_CHECK_MAX"
+		return 1
+	fi
+	# その月の回だけを、新しい順に（回の名前は時刻なので、名前の逆順が新しい順）。
+	candidates="$(sed -n 's#/$##; /^'"$month"'-/p' <<< "$existing" | sort -r)"
 	while IFS= read -r entry; do
-		entry="${entry%/}"
-		case "$entry" in "$month"-*) ;; *) continue ;; esac
+		[ -n "$entry" ] || continue
+		if [ "$checked" -ge "$BACKUP_S3_MONTHLY_CHECK_MAX" ]; then
+			err "monthly の回の確かめが上限（${BACKUP_S3_MONTHLY_CHECK_MAX} 件）に達しました。COMPLETE の無い回が溜まっています: $base/monthly/$month-*（月次を決めずに止めます）"
+			return 1
+		fi
+		checked=$((checked + 1))
 		if ! inner="$(s3_lsf "$base/monthly/$entry/")"; then
 			err "monthly の回の中身を確かめられません: $base/monthly/$entry"
 			return 1
@@ -884,7 +900,7 @@ publish_s3() {
 			return 0
 		fi
 		log "monthly の回 $entry は COMPLETE が無いので数えません（取り直します）"
-	done <<< "$existing"
+	done <<< "$candidates"
 	publish_s3_to "$base/monthly/$run" "$staging" monthly || return 1
 	return 0
 }
