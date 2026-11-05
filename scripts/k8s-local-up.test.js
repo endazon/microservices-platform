@@ -446,6 +446,12 @@ const KUBECTL_STUB = [
   'case "$*" in *"get deploy postgres "*cert-sha256*|*"get deploy rabbitmq "*cert-sha256*) [ "${STUB_INFRA_TLS_STAMPED:-}" = "1" ] && printf "%s" "$(printf "%s" "ZHVtbXk=" | sha256sum | cut -c1-64)"; exit 0;; esac',
   'case "$*" in *"get secret platform-infra-root-ca"*) [ "${STUB_INFRA_CA_ABSENT:-}" = "1" ] || printf "%s\\n" "-----BEGIN CERTIFICATE-----" "c3R1Yg==" "-----END CERTIFICATE-----" | base64 -w0; exit 0;; esac',
   'case "$*" in *"get secret rabbitmq "*"{.data.password}"*) [ -n "${STUB_RABBITMQ_EXISTING:-}" ] && printf "%s" "$STUB_RABBITMQ_EXISTING" | base64; exit 0;; esac',
+  // NFR-18, IADR-0672 (#2399): 段階の対象の既存の Secret。STUB_*_EXISTING を与えたときだけ在るものとして返す（既定は無い）。
+  'case "$*" in "-n platform-infra get secret postgres -o jsonpath={.data.password}") [ -n "${STUB_PG_EXISTING:-}" ] && printf "%s" "$STUB_PG_EXISTING" | base64; exit 0;; esac',
+  'case "$*" in "-n microservices-platform get secret postgres-app -o jsonpath={.data.password}") [ -n "${STUB_APP_DB_EXISTING:-}" ] && printf "%s" "$STUB_APP_DB_EXISTING" | base64; exit 0;; esac',
+  'case "$*" in "-n microservices-platform get secret wikijs-db -o jsonpath={.data.password}") [ -n "${STUB_WIKIJS_DB_EXISTING:-}" ] && printf "%s" "$STUB_WIKIJS_DB_EXISTING" | base64; exit 0;; esac',
+  'case "$*" in "-n microservices-platform get secret object-storage-credentials -o jsonpath={.data.secretKey}") [ -n "${STUB_OBJECT_STORAGE_EXISTING:-}" ] && printf "%s" "$STUB_OBJECT_STORAGE_EXISTING" | base64; exit 0;; esac',
+  'case "$*" in "-n platform-infra get secret vault-dev-token -o jsonpath={.data.token}") [ -n "${STUB_VAULT_TOKEN_EXISTING:-}" ] && printf "%s" "$STUB_VAULT_TOKEN_EXISTING" | base64; exit 0;; esac',
   // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
   //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
   // NFR-18, IADR-0590: AST の名前空間の注入ラベルと Pod の数。STUB_AST_INJECTION / STUB_AST_PODS（個数）を与えたときだけ返す（既定は無い）。
@@ -638,6 +644,13 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } 
     'ALLOW_DEV_INFRA_CREDENTIALS',
     'KEYCLOAK_ADMIN_PASSWORD',
     'RABBITMQ_PASSWORD',
+    // IADR-0672 (#2399): 段階の対象の明示・段の切り替え。漏れていると既定（dev の context で開発用の値）の試験が別の形で走る
+    'INFRA_CREDENTIALS_ENFORCE',
+    'PG_PASSWORD',
+    'APP_DB_PASSWORD',
+    'WIKIJS_DB_PASSWORD',
+    'OBJECT_STORAGE_SECRET_KEY',
+    'VAULT_DEV_ROOT_TOKEN',
     'IMAGE_TAG', // NFR-20, IADR-0605 (#2132): 自製イメージのタグの上書き。下で固定の値を与える（作業ツリーの状態に試験を依らせない）
   ]) {
     delete base[k];
@@ -2899,7 +2912,8 @@ ok('#1793: Secret の値（env）はどの kubectl の引数にも載らず、�
   const statements = src.replace(/\\\n/g, ' ').split('\n').filter((l) => /^\s*apply_(?:eso_merge_base_)?secret\s/.test(l));
   assert.ok(statements.length >= 20, `apply_secret の呼び出しを読めない（${statements.length} 件）`);
   const vars = new Set(['ARGOCD_OIDC_CLIENT_SECRET']);
-  for (const st of statements) for (const m of st.matchAll(/"[A-Za-z0-9._-]+=\$\{([A-Z0-9_]+):-/g)) vars.add(m[1]);
+  // ［IADR-0574 / IADR-0672］判定器が決める値は `${NAME:?}` の形で渡す（既定値を持たない）。同じ母集合に入れる。
+  for (const st of statements) for (const m of st.matchAll(/"[A-Za-z0-9._-]+=\$\{([A-Z0-9_]+):[-?]/g)) vars.add(m[1]);
   assert.ok(vars.has('PG_PASSWORD') && vars.has('SMTP_PASSWORD'), `env を読めない: ${[...vars].join(' ')}`);
   const probe = (v) => ['dummy', 'value', '1793', v.toLowerCase()].join('-');
   const env = Object.fromEntries([...vars].map((v) => [v, probe(v)]));
@@ -7418,6 +7432,126 @@ ok('IADR-0574 陽性対照: CI の integration-stack / cutover-rehearsal は使�
     for (const [, i] of ups) assert.ok(/^\s*ALLOW_DEV_INFRA_CREDENTIALS=1 /.test(src[i - 1]), `${wf}:${i + 1}: 起動器の呼び出しに opt-in が無い（CI が止まる）`);
   }
 });
+// --- NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 基盤の資格情報の判定を段階の対象へ広げる（段 1＝報告・段 2＝強制） ----------
+// 判定は scripts/lib/infra-credentials.sh（IADR-0574 と同じ口）。値は実行時に組む（gitleaks）。
+const custom0672 = (what) => ['probe', '0672', what].join('-');
+const STAGED0672 = {
+  PG_PASSWORD: { dev: 'postgres', secret: 'postgres', key: 'password', stub: 'STUB_PG_EXISTING' },
+  APP_DB_PASSWORD: { dev: 'kp', secret: 'postgres-app', key: 'password', stub: 'STUB_APP_DB_EXISTING' },
+  WIKIJS_DB_PASSWORD: { dev: 'kp', secret: 'wikijs-db', key: 'password', stub: 'STUB_WIKIJS_DB_EXISTING' },
+  OBJECT_STORAGE_SECRET_KEY: { dev: ['objectstorage', 'dev', 'secret'].join('-'), secret: 'object-storage-credentials', key: 'secretKey', stub: 'STUB_OBJECT_STORAGE_EXISTING' },
+};
+// dev ではない context で走らせるときの共通の env（IADR-0572 の守りは上書きで通し、IADR-0574 の 2 つは明示で通す）。
+const NON_DEV_0672 = {
+  STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1', ALLOW_DEV_INFRA_CREDENTIALS: '',
+  KEYCLOAK_ADMIN_PASSWORD: custom0672('kc'), RABBITMQ_PASSWORD: custom0672('mq'),
+};
+const STAGED_NAMES_0672 = 'PG_PASSWORD, APP_DB_PASSWORD, WIKIJS_DB_PASSWORD, OBJECT_STORAGE_SECRET_KEY';
+
+ok('IADR-0672: 判定の真理値表 — 明示 × 既存 × context（dev / 非 dev / 読めない）× 段（報告 / 強制 / true）× opt-in（無し / 1）', () => {
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const cases = [];
+  const dev = 'kp';
+  for (const [ek, ev] of [['none', ''], ['dev', dev], ['custom', custom0672('e')]]) {
+    for (const [xk, xv] of [['none', ''], ['dev', dev], ['custom', custom0672('x')]]) {
+      for (const ctx of ['k3d-testcluster', 'prod-shared', '']) {
+        for (const enforce of ['', '1', 'true']) {
+          for (const opt of ['', '1']) cases.push({ ek, ev, xk, xv, ctx, enforce, opt });
+        }
+      }
+    }
+  }
+  const body = cases.map((c, i) => `INFRA_CREDENTIALS_ENFORCE=${q(c.enforce)}; ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_staged_decide APP_DB_PASSWORD ${q(c.ev)} ${q(c.xv)} ${q(c.ctx)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'))}\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
+  assert.strictEqual(got.length, cases.length);
+  const tally = {};
+  for (const [i, rc, verdict] of got) {
+    const c = cases[Number(i)];
+    let want;
+    if (c.ek === 'custom') want = 'explicit';
+    else if (c.ek === 'none' && c.xk === 'custom') want = 'existing';
+    else if (c.ctx === 'k3d-testcluster') want = 'dev';
+    else if (c.enforce !== '1') want = 'report';
+    else want = c.opt === '1' ? 'override' : 'deny';
+    assert.strictEqual(verdict, want, `${JSON.stringify(c)}: 判定が違う（${verdict}）`);
+    assert.strictEqual(Number(rc), want === 'deny' ? 1 : 0, `${JSON.stringify(c)}: 終了コードが違う`);
+    tally[want] = (tally[want] || 0) + 1;
+  }
+  for (const k of ['explicit', 'existing', 'dev', 'report', 'override', 'deny']) assert.ok(tally[k] > 0, `判定 ${k} が 1 度も現れない`);
+});
+
+ok('IADR-0672: 段階の対象は VAULT=1 のときだけ秘匿管理の管理者トークンを含む', () => {
+  const lib = INFRA_LIB_0573;
+  const run = (vault) => spawnSync('bash', ['-c', `. "$1"; VAULT="$2" infra_cred_staged_names`, 'x', lib, vault], { encoding: 'utf8' }).stdout.trim();
+  assert.strictEqual(run(''), 'PG_PASSWORD APP_DB_PASSWORD WIKIJS_DB_PASSWORD OBJECT_STORAGE_SECRET_KEY');
+  assert.strictEqual(run('1'), 'PG_PASSWORD APP_DB_PASSWORD WIKIJS_DB_PASSWORD OBJECT_STORAGE_SECRET_KEY VAULT_DEV_ROOT_TOKEN');
+});
+
+ok('IADR-0672: dev の context では、指定が無ければ従前と同じ開発用の値で作り、段階の警告を出さない', () => {
+  const r = runUp({});
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  for (const t of Object.values(STAGED0672)) assert.deepStrictEqual(credOf0573(r, t.secret, t.key), [t.dev], `${t.secret}/${t.key}`);
+  assert.ok(!/段階の対象/.test(r.stderr), `dev の context で段階の警告が出た:\n${r.stderr.slice(-600)}`);
+});
+
+ok('IADR-0672: dev ではない context・報告の段（既定）では、従前どおり作るが段階の対象を名指して警告する（値は出さない）', () => {
+  const r = runUp(NON_DEV_0672);
+  assert.strictEqual(r.status, 0, `報告の段で止まった:\n${r.stderr.slice(-800)}`);
+  for (const t of Object.values(STAGED0672)) assert.deepStrictEqual(credOf0573(r, t.secret, t.key), [t.dev], `${t.secret}/${t.key}`);
+  assert.ok(new RegExp(`WARNING: k8s-local-up\\.sh: dev ではない kube context 'prod-shared' で、基盤の資格情報（段階の対象）を開発用の値で作る: ${STAGED_NAMES_0672}`).test(r.stderr),
+    `名指していない:\n${r.stderr.slice(-1200)}`);
+  assert.ok(/check-infra-credentials\.sh --live/.test(r.stderr) && /rotate-infra-credentials\.sh --live/.test(r.stderr), '検査・作り直しの手順を告げていない');
+  assert.ok(/INFRA_CREDENTIALS_ENFORCE=1/.test(r.stderr), '強制の段の切り替えを告げていない');
+});
+
+ok('IADR-0672: dev ではない context・強制の段（INFRA_CREDENTIALS_ENFORCE=1）では、[1/7] の直後・何も書かずに名指して止まる。opt-in で通り、1 以外は強制にならない', () => {
+  const r = runUp({ ...NON_DEV_0672, INFRA_CREDENTIALS_ENFORCE: '1' });
+  assert.notStrictEqual(r.status, 0, '強制の段で止まらなかった');
+  assert.ok(!wroteAnything(r), '書いてから止まった');
+  assert.ok(!r.lines.some((l) => /k8s-local-images|docker build/.test(l)), '[2/7] のビルドへ進んでから止まった');
+  assert.ok(new RegExp(`止める（何も作らない）: ${STAGED_NAMES_0672}`).test(r.stderr), `名指していない:\n${r.stderr.slice(-1200)}`);
+  const over = runUp({ ...NON_DEV_0672, INFRA_CREDENTIALS_ENFORCE: '1', ALLOW_DEV_INFRA_CREDENTIALS: '1' });
+  assert.strictEqual(over.status, 0, over.stderr.slice(-800));
+  assert.ok(/!!! WARNING: k8s-local-up\.sh: ALLOW_DEV_INFRA_CREDENTIALS=1 により/.test(over.stderr), 'opt-in で警告しない');
+  const notOne = runUp({ ...NON_DEV_0672, INFRA_CREDENTIALS_ENFORCE: 'true' });
+  assert.strictEqual(notOne.status, 0, 'INFRA_CREDENTIALS_ENFORCE=true で止めた（1 だけが強制）');
+  // 明示の値（開発用でない）なら強制の段でも進み、警告しない
+  const given = { ...NON_DEV_0672, INFRA_CREDENTIALS_ENFORCE: '1' };
+  for (const name of Object.keys(STAGED0672)) given[name] = custom0672(name);
+  const ok2 = runUp(given);
+  assert.strictEqual(ok2.status, 0, ok2.stderr.slice(-800));
+  for (const [name, t] of Object.entries(STAGED0672)) assert.deepStrictEqual(credOf0573(ok2, t.secret, t.key), [custom0672(name)]);
+  for (const name of Object.keys(STAGED0672)) {
+    assert.ok(!`${ok2.stdout}${ok2.stderr}`.includes(custom0672(name)), `${name} の値が出力に出た`);
+    assert.ok(!ok2.lines.some((l) => l.includes(custom0672(name))), `${name} の値がコマンドの引数に出た`);
+  }
+});
+
+ok('IADR-0672: 既存の Secret が開発用でない値を持てばそれを使う（作り直した値を起動器の再実行で戻さない）。明示は既存に勝つ', () => {
+  const env = { ...NON_DEV_0672, INFRA_CREDENTIALS_ENFORCE: '1' };
+  for (const [name, t] of Object.entries(STAGED0672)) env[t.stub] = custom0672(`${name}-old`);
+  const r = runUp(env);
+  assert.strictEqual(r.status, 0, `既存の値があるのに止まった:\n${r.stderr.slice(-800)}`);
+  for (const [name, t] of Object.entries(STAGED0672)) assert.deepStrictEqual(credOf0573(r, t.secret, t.key), [custom0672(`${name}-old`)], `${t.secret} が既存の値で書かれていない`);
+  assert.ok(r.lines.some((l) => l === 'kubectl -n microservices-platform get secret postgres-app -o jsonpath={.data.password}'), '陽性対照: 既存の Secret を読んでいる');
+  const both = runUp({ ...env, APP_DB_PASSWORD: custom0672('new') });
+  assert.strictEqual(both.status, 0, both.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(both, 'postgres-app', 'password'), [custom0672('new')]);
+  // 既存が開発用の値なら「無い」と同じ（強制の段で止まる）
+  const devExisting = runUp({ ...NON_DEV_0672, INFRA_CREDENTIALS_ENFORCE: '1', ...Object.fromEntries(Object.values(STAGED0672).map((t) => [t.stub, t.dev])) });
+  assert.notStrictEqual(devExisting.status, 0, '既存の開発用の値を黙って使い続けた');
+});
+
+ok('IADR-0672: 起動器の Secret の作成に、段階の対象の公知の既定値の代わりが残っていない', () => {
+  const src = fs.readFileSync(UP_SCRIPT, 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  for (const name of [...Object.keys(STAGED0672), 'VAULT_DEV_ROOT_TOKEN']) {
+    assert.ok(!new RegExp(`\\$\\{${name}:-`).test(src), `${name} の既定値が残っている`);
+  }
+  assert.ok(/^infra_cred_staged_resolve "k8s-local-up\.sh" /m.test(src), '段階の判定を呼んでいない');
+});
+
 
 ok('#1860 監査指摘 2: パスワードを変えたら Valkey → BFF の順に作り直し、変えなければ作り直さない', () => {
   const existingValue = ['dummy', '1860', 'old'].join('-');

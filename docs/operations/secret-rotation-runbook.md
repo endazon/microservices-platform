@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-25
-updated: 2026-10-31
+updated: 2026-11-05
 ---
 <!-- trace:
 ids: [NFR-18, SC-22]
 adrs: [ADR-0132, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126, ADR-0131]
-iadrs: [IADR-0664, IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522]
-specs: [20261031_458_connector-credential-migration, 20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey]
-issues: [#2148, #1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, planning#700, planning#716, AST#1078]
+iadrs: [IADR-0664, IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522, IADR-0672]
+specs: [20261031_458_connector-credential-migration, 20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey, 20261105_2399_infra-credentials-staged-fail-closed]
+issues: [#2148, #1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, #2399, planning#700, planning#716, AST#1078]
 -->
 
 # 運用 Runbook: 秘密情報のローテーション
@@ -94,7 +94,8 @@ issues: [#2148, #1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1
   上書きに同期がすぐ反応するかは確かめていない —— **起動の後に `keycloak-smtp` の同期を促す**（B-0 の `annotate`）。
 - **`excluded[]` の保管先の値は戻らない。** ただし手動の Secret 作成は env の値で Secret を書き直す。env 名は `deploy/local/README.md` の「機密情報」表にある
   （`PG_PASSWORD` / `APP_DB_PASSWORD` / `WIKIJS_DB_PASSWORD` / `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `KEYCLOAK_ADMIN_PASSWORD` / `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY`）。
-  🔴 **渡し忘れると、`postgres` / `rabbitmq` / `keycloak-admin` の Secret が次の同期まで既定値になる。** 起動の後に同期を促す
+  ［2026-11-05］`postgres` / `rabbitmq` / `keycloak-admin` は、渡さなければ既存の Secret の値で書き直す（既定値へは戻らない）。
+  🔴 **既存の Secret が無いか開発用の値のときは、次の同期まで既定値になる**（`rabbitmq` / `keycloak-admin` は止まる）。起動の後に同期を促す
   （[`paired-secret-rotation-runbook.md`](paired-secret-rotation-runbook.md)「起動の後に同期を促す」）。
 - **`deferred[]` は戻らない**（保管先の再投入も宣言の追随も、在る値を書き直さない）。`reset-gate-oidc` の Secret だけは手動作成で既定値になり得るので、上と同じく同期を促す。
 
@@ -161,6 +162,11 @@ kubectl -n <namespace> annotate externalsecret <name> force-sync="$(date +%s)" -
 書き終えたら `unset NEW_VALUE`。**以後 `scripts/k8s-local-up.sh` を再実行するときは、表の env に新しい値を渡すか、起動の後に同期を促す**（[回した値を元へ戻す経路](#回した値を元へ戻す経路)）。
 
 ### B-1. ストアごとの手順
+
+［2026-11-05］**DB 管理者・アプリの DB 利用者・オブジェクトストレージ・秘匿管理の管理者トークンは、スクリプトで作り直せる**:
+`bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>`。
+新しい値は乱数で作り、表示しない。順序は下の表と同じ（保管先 → ストア側 → 同期 → 消費側の作り直し）。
+作り直す前後に、`bash scripts/check-infra-credentials.sh --live`（読むだけ）で開発用の値のままのものが無いかを確かめる。
 
 | 対象（保管先のパス） | ストア側で先に行うこと | 保管先に書くもの | 同期を促す ExternalSecret | 作り直す消費側 | 以後の env |
 | --- | --- | --- | --- | --- | --- |
