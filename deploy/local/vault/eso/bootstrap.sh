@@ -85,6 +85,19 @@ if [ "${#infra_cred_needed[@]}" -gt 0 ]; then
   infra_cred_guard "bootstrap.sh" "${infra_cred_needed[@]}" || exit 1
 fi
 unset infra_cred_needed
+# NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 段階の対象（DB の管理者・DB 利用者・オブジェクトストレージ）の KV も、
+#   **まだ無いものだけ**を明示の値と kube context で判定する（在る KV は触らない。IADR-0485）。dev の context は従前どおり、
+#   dev ではない context は段 1 で警告して作り、INFRA_CREDENTIALS_ENFORCE=1 で止める。🔴 Vault へ何か書く前に判定する。
+infra_cred_staged_needed=()
+vkv_absent_for_staged() { ! vexec "vault kv metadata get secret/$1 >/dev/null 2>&1"; }
+vkv_absent_for_staged msp/postgres && infra_cred_staged_needed+=(PG_PASSWORD)
+vkv_absent_for_staged msp/postgres-app && infra_cred_staged_needed+=(APP_DB_PASSWORD)
+vkv_absent_for_staged msp/wikijs-db && infra_cred_staged_needed+=(WIKIJS_DB_PASSWORD)
+vkv_absent_for_staged msp/object-storage-credentials && infra_cred_staged_needed+=(OBJECT_STORAGE_SECRET_KEY)
+if [ "${#infra_cred_staged_needed[@]}" -gt 0 ]; then
+  infra_cred_staged_guard "bootstrap.sh" "$(dev_client_secret_current_context)" "${infra_cred_staged_needed[@]}" || exit 1
+fi
+unset infra_cred_staged_needed
 
 echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'

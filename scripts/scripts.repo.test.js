@@ -14880,7 +14880,7 @@ exit 0
         const log = path1728.join(dir, 'calls.log');
         fs1728.writeFileSync(log, '');
         const baseEnv = { ...process.env };
-        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$|ALLOW_DEV_INFRA_CREDENTIALS$|KEYCLOAK_ADMIN_PASSWORD$|RABBITMQ_PASSWORD$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
+        for (const k of Object.keys(baseEnv)) if (/^(ANTHROPIC|OPENAI|VOYAGE|SMTP_|WIKIJS_SYNC|ESO_|ALLOW_DEV_CLIENT_SECRETS$|ALLOW_DEV_INFRA_CREDENTIALS$|KEYCLOAK_ADMIN_PASSWORD$|RABBITMQ_PASSWORD$|INFRA_CREDENTIALS_ENFORCE$|PG_PASSWORD$|APP_DB_PASSWORD$|WIKIJS_DB_PASSWORD$|OBJECT_STORAGE_SECRET_KEY$)|_CLIENT_SECRET$/.test(k)) delete baseEnv[k];
         const r = spawn1728('bash', [...bashArgs, script.split(path1728.sep).join('/')], {
           encoding: 'utf8',
           timeout: 60000,
@@ -15369,6 +15369,40 @@ exit 0
       assert.ok(over.calls.includes('VAULT PUT msp/keycloak-admin'), 'opt-in で作っていない');
       const notOne = run1728({ setup: drop, env: { ALLOW_DEV_INFRA_CREDENTIALS: 'true' } });
       assert.notStrictEqual(notOne.status, 0, 'ALLOW_DEV_INFRA_CREDENTIALS=true で通した');
+    });
+
+    // --- NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 段階の対象の KV（DB・オブジェクトストレージ）の判定 ---
+    // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0672 節）。ここは bootstrap.sh の実走で
+    // (1) 無い KV だけを判定へ渡す (2) dev の context は従前どおり (3) 非 dev・報告の段は作って警告 (4) 強制の段は Vault へ何も書かずに止める、を固定する。
+    const STAGED_KV0672 = ['msp/postgres', 'msp/postgres-app', 'msp/wikijs-db', 'msp/object-storage-credentials'];
+    const STAGED_ENV0672 = 'PG_PASSWORD, APP_DB_PASSWORD, WIKIJS_DB_PASSWORD, OBJECT_STORAGE_SECRET_KEY';
+    // dev ではない context の共通の env（IADR-0572 は上書き、IADR-0574 の 2 つは KV が在るので判定へ渡らない）。
+    const NON_DEV_KV0672 = { STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' };
+    ok('IADR-0672: 無い段階の対象の KV は、dev の context では従前どおり開発用の値で作り、段階の警告を出さない', () => {
+      const r = run1728({ setup: dropKv1830(...STAGED_KV0672) });
+      assert.strictEqual(r.status, 0, r.stderr);
+      for (const p of STAGED_KV0672) assert.ok(r.calls.includes(`VAULT PUT ${p}`), `${p} を作っていない`);
+      assert.ok(!/段階の対象/.test(r.stderr), `dev の context で段階の警告が出た:\n${r.stderr}`);
+    });
+    ok('IADR-0672: dev ではない context・報告の段では作るが名指して警告する。強制の段（INFRA_CREDENTIALS_ENFORCE=1）では Vault へ何も書かずに止める', () => {
+      const rep = run1728({ setup: dropKv1830(...STAGED_KV0672), env: NON_DEV_KV0672 });
+      assert.strictEqual(rep.status, 0, `報告の段で止まった:\n${rep.stderr}`);
+      assert.ok(new RegExp(`WARNING: bootstrap\\.sh: dev ではない kube context 'prod-shared' で、基盤の資格情報（段階の対象）を開発用の値で作る: ${STAGED_ENV0672}`).test(rep.stderr),
+        `名指していない:\n${rep.stderr}`);
+      const enf = run1728({ setup: dropKv1830(...STAGED_KV0672), env: { ...NON_DEV_KV0672, INFRA_CREDENTIALS_ENFORCE: '1' } });
+      assert.notStrictEqual(enf.status, 0, '強制の段で止まらなかった');
+      assert.deepStrictEqual(vaultWrites1830(enf), [], `止まる前に Vault へ書いた: ${vaultWrites1830(enf).join(', ')}`);
+      assert.ok(new RegExp(`止める（何も作らない）: ${STAGED_ENV0672}`).test(enf.stderr), `名指していない:\n${enf.stderr}`);
+      // 在る KV は判定へ渡らない（強制の段でも進む）
+      const present = run1728({ env: { ...NON_DEV_KV0672, INFRA_CREDENTIALS_ENFORCE: '1' } });
+      assert.strictEqual(present.status, 0, `KV が在るのに止まった:\n${present.stderr}`);
+      // 明示の値（開発用でない）なら強制の段でも作る。値は出力に出ない
+      const given = { ...NON_DEV_KV0672, INFRA_CREDENTIALS_ENFORCE: '1' };
+      for (const n of STAGED_ENV0672.split(', ')) given[n] = probe0573(`0672-${n}`);
+      const g = run1728({ setup: dropKv1830(...STAGED_KV0672), env: given });
+      assert.strictEqual(g.status, 0, g.stderr);
+      assert.ok(g.putStdin['msp/postgres-app'].includes(probe0573('0672-APP_DB_PASSWORD')), 'postgres-app が与えた値で作られていない');
+      for (const n of STAGED_ENV0672.split(', ')) assert.ok(!`${g.stdout}${g.stderr}`.includes(probe0573(`0672-${n}`)), `${n} の値が出力に出た`);
     });
 
     ok('IADR-0572 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
@@ -19688,6 +19722,209 @@ server.listen(0, '127.0.0.1', async () => {
       const scaled = JSON.parse(JSON.stringify(values));
       scaled.scaling.services.push('ingestion');
       assert.strictEqual(m2271.valuesProblems(scaled, 'values.yaml').length, 1);
+    });
+  }
+
+  // --- NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 基盤の資格情報の検査（読むだけ）と作り直し（利用者が実行する） ---
+  // kubectl を PATH のスタブにし、Pod の中の sh は手元の sh で走らせる（psql・vault・hostname は状態ファイルを読むスタブ）。
+  // 🔴 作り直しの新しい値は乱数なので、走った後の状態から引いて「引数・出力に出ていない」を確かめる。
+  {
+    const fs2399 = require('fs');
+    const os2399 = require('os');
+    const path2399 = require('path');
+    const { spawnSync: spawn2399 } = require('child_process');
+    const CHECK2399 = path2399.join(__dirname, 'check-infra-credentials.sh');
+    const ROTATE2399 = path2399.join(__dirname, 'rotate-infra-credentials.sh');
+    const DEV2399 = {
+      'platform-infra__keycloak-admin__password': 'admin', 'platform-infra__rabbitmq__password': 'guest',
+      'platform-infra__postgres__password': 'postgres', 'microservices-platform__postgres-app__password': 'kp',
+      'microservices-platform__wikijs-db__password': 'kp',
+      'microservices-platform__object-storage-credentials__secretKey': ['objectstorage', 'dev', 'secret'].join('-'),
+      'platform-infra__vault-dev-token__token': 'devroot',
+    };
+    const KUBECTL2399 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"
+printf '%s\n' "$*" >> "$S/argv"
+if [ "$1" = "-n" ]; then ns="$2"; shift 2; fi
+case "$1 $2" in
+  "get secret")
+    f="$S/secret/@{ns}__$3__$(printf '%s' "$5" | sed -E 's/^jsonpath=\{\.data\.(.*)\}$/\1/')"
+    [ -f "$f" ] || exit 0; base64 -w0 < "$f"; exit 0 ;;
+  "get externalsecret") [ -f "$S/es/@{ns}__$3" ]; exit ;;
+  "get deploy") [ -f "$S/deploy/@{ns}__$3" ]; exit ;;
+  "patch secret")
+    pf=""; prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && pf="$a"; prev="$a"; done
+    node -e 'const fs=require("fs");const [,f,dir,pre]=process.argv;const d=JSON.parse(fs.readFileSync(f,"utf8")).data;for(const[k,v]of Object.entries(d))fs.writeFileSync(dir+"/"+pre+"__"+k,Buffer.from(v,"base64"));' "$pf" "$S/secret" "@{ns}__$3"
+    echo "SECRET PATCH @{ns}/$3" >> "$S/calls"; exit 0 ;;
+  "annotate externalsecret")
+    echo "ESO SYNC @{ns}/$3" >> "$S/calls"
+    for k in "$S"/kv/*; do [ -f "$k" ] || continue; b="$(basename "$k")"; case "$b" in "msp__$3__"*) cp "$k" "$S/secret/@{ns}__$3__@{b#msp__$3__}";; esac; done
+    exit 0 ;;
+  "rollout restart"|"rollout status") echo "ROLLOUT $2 @{ns}/$3" >> "$S/calls"; exit 0 ;;
+  "wait --for=condition=Available") echo "WAIT @{ns}" >> "$S/calls"; exit 0 ;;
+  "exec -i")
+    target="$3"
+    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done; shift
+    case "$target $*" in
+      "deploy/postgres sh -s"|"deploy/vault sh -s") PATH="$STUB_POD_BIN:$PATH" VAULT_DEV_ROOT_TOKEN_ID="$(cat "$S/vault-root")" sh -s; exit ;;
+      "deploy/postgres psql "*)
+        sql="$(cat)"; role="$(printf '%s' "$sql" | sed -nE 's/^ALTER ROLE "([^"]+)" WITH PASSWORD .*/\1/p')"
+        val="$(printf '%s' "$sql" | sed -nE "s/^ALTER ROLE \"[^\"]+\" WITH PASSWORD '([^']*)';$/\1/p")"
+        [ -n "$role" ] || exit 1; printf '%s' "$val" > "$S/pg/$role" || exit 1; echo "PG ALTER $role" >> "$S/calls"; exit 0 ;;
+    esac ;;
+esac
+echo "unhandled: $*" >&2; exit 9
+`.replace(/@\{/g, '$' + '{');
+    const PSQL2399 = String.raw`#!/usr/bin/env bash
+u=""; while [ "$#" -gt 0 ]; do [ "$1" = "-U" ] && u="$2"; shift; done
+[ "@{STUB_PG_TRUST:-}" = "1" ] && exit 0
+[ -f "$STUB_STATE/pg/$u" ] && [ "$(cat "$STUB_STATE/pg/$u")" = "$PGPASSWORD" ]
+`.replace(/@\{/g, '$' + '{');
+    const VAULT2399 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"; T="$S/tokens"
+has() { grep -qxF "$1" "$T" 2>/dev/null; }
+case "$1 $2" in
+  "token lookup") has "$VAULT_TOKEN" ;;
+  "token create") has "$VAULT_TOKEN" || exit 1; for a in "$@"; do case "$a" in -id=*) printf '%s\n' "@{a#-id=}" >> "$T";; esac; done; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
+  "token revoke") has "$VAULT_TOKEN" || exit 1; grep -vxF "$3" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
+  "kv patch") has "$VAULT_TOKEN" || exit 1; p="@{3#secret/}"; kv="@{4%%=-}"; cat > "$S/kv/$(printf '%s' "$p" | tr '/' '_' | sed 's/_/__/')__$kv"; echo "VAULT KV PATCH $p $kv" >> "$S/calls" ;;
+  *) exit 1 ;;
+esac
+`.replace(/@\{/g, '$' + '{');
+    const run2399 = (script, args, { setup = () => {}, env = {} } = {}) => {
+      const dir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0672-'));
+      try {
+        const bin = path2399.join(dir, 'bin');
+        const podBin = path2399.join(dir, 'pod-bin');
+        const st = path2399.join(dir, 'state');
+        for (const d of [bin, podBin, ...['secret', 'es', 'deploy', 'pg', 'kv'].map((x) => path2399.join(st, x))]) fs2399.mkdirSync(d, { recursive: true });
+        fs2399.writeFileSync(path2399.join(bin, 'kubectl'), KUBECTL2399, { mode: 0o755 });
+        fs2399.writeFileSync(path2399.join(podBin, 'psql'), PSQL2399, { mode: 0o755 });
+        fs2399.writeFileSync(path2399.join(podBin, 'vault'), VAULT2399, { mode: 0o755 });
+        fs2399.writeFileSync(path2399.join(podBin, 'hostname'), '#!/bin/sh\necho 10.42.0.9\n', { mode: 0o755 });
+        for (const f of ['argv', 'calls']) fs2399.writeFileSync(path2399.join(st, f), '');
+        const put = (rel, v) => fs2399.writeFileSync(path2399.join(st, rel), v);
+        // 既定の世界: 全部が開発用の値のまま（Secret・DB 利用者・トークン）。deploy postgres / vault が在り、ESO は無い。
+        for (const [k, v] of Object.entries(DEV2399)) put(`secret/${k}`, v);
+        for (const [r, v] of [['postgres', 'postgres'], ['kp', 'kp'], ['ai', 'ai']]) put(`pg/${r}`, v);
+        put('tokens', 'devroot\n');
+        put('vault-root', 'devroot');
+        for (const d of ['platform-infra__postgres', 'platform-infra__vault', 'microservices-platform__seaweedfs']) put(`deploy/${d}`, '');
+        setup({ put, st, rm: (rel) => fs2399.rmSync(path2399.join(st, rel), { force: true }) });
+        const r = spawn2399('bash', [script, ...args], {
+          encoding: 'utf8', timeout: 60000,
+          env: { ...process.env, PATH: `${bin}${path2399.delimiter}${process.env.PATH}`, STUB_STATE: st, STUB_POD_BIN: podBin,
+            LIVE: '', ROTATE_SYNC_INTERVAL: '0', ROTATE_WAIT_SECONDS: '3', ...env },
+        });
+        // 状態は片付けの前に写し取る（返した後に読むと、一時ディレクトリはもう無い）。
+        const snap = {};
+        const walk = (d) => { for (const e of fs2399.readdirSync(d, { withFileTypes: true })) { const f = path2399.join(d, e.name); if (e.isDirectory()) walk(f); else snap[path2399.relative(st, f).split(path2399.sep).join('/')] = fs2399.readFileSync(f, 'utf8'); } };
+        walk(st);
+        const read = (rel) => snap[rel] || '';
+        return { ...r, read, argv: read('argv'), calls: read('calls').split('\n').filter(Boolean) };
+      } finally {
+        fs2399.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('IADR-0672: 検査は --live が無ければ何もせずに 3 で終わる。作り直しも同じ', () => {
+      for (const sc of [CHECK2399, ROTATE2399]) {
+        const r = run2399(sc, sc === ROTATE2399 ? ['app-db'] : []);
+        assert.strictEqual(r.status, 3, `${path2399.basename(sc)}: ${r.stderr}`);
+        assert.strictEqual(r.argv, '', `${path2399.basename(sc)}: --live が無いのにクラスタへ当たった`);
+      }
+    });
+
+    ok('IADR-0672: 検査は、開発用の値の Secret とストア側（DB 利用者・トークン）を名指して 1 を返す。値は出さず、何も書かない', () => {
+      const r = run2399(CHECK2399, ['--live']);
+      assert.strictEqual(r.status, 1, `${r.stdout}\n${r.stderr}`);
+      for (const n of ['KEYCLOAK_ADMIN_PASSWORD', 'RABBITMQ_PASSWORD', 'PG_PASSWORD', 'APP_DB_PASSWORD', 'WIKIJS_DB_PASSWORD', 'OBJECT_STORAGE_SECRET_KEY', 'VAULT_DEV_ROOT_TOKEN']) {
+        assert.ok(new RegExp(`!! ${n}（Secret `).test(r.stdout), `${n} を名指していない:\n${r.stdout}`);
+      }
+      for (const role of ['postgres', 'kp', 'ai']) assert.ok(r.stdout.includes(`!! DB 利用者 ${role}: 開発用の値でログインできる`), `DB 利用者 ${role} を名指していない`);
+      assert.ok(r.stdout.includes('!! 秘匿管理の管理者トークン: 開発用の値で通る'), 'トークンを名指していない');
+      assert.deepStrictEqual(r.calls, [], `検査が何かを書いた: ${r.calls.join(', ')}`);
+      assert.ok(!/ patch | apply | annotate | rollout | create /.test(` ${r.argv} `), `書き込みのコマンドを打った:\n${r.argv}`);
+      // 名前と重ならない開発用の値だけで見る（admin・postgres 等は Secret の名前として出力に現れる）。
+      for (const v of [DEV2399['microservices-platform__object-storage-credentials__secretKey'], DEV2399['platform-infra__vault-dev-token__token']]) {
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), `開発用の値（${v.length} 字）が出力に出た`);
+        assert.ok(!r.argv.includes(v), '開発用の値がコマンドの引数に出た');
+      }
+    });
+
+    ok('IADR-0672: 検査は、全部が開発用でない値なら 0。誤った値でもログインできる（認証しない設定）なら確かめられない（2）', () => {
+      const clean = ({ put }) => {
+        for (const k of Object.keys(DEV2399)) put(`secret/${k}`, `probe-0672-${k.length}`);
+        for (const r of ['postgres', 'kp', 'ai']) put(`pg/${r}`, `probe-0672-${r}`);
+        put('tokens', 'probe-0672-root\n');
+        put('vault-root', 'probe-0672-root');
+      };
+      const r = run2399(CHECK2399, ['--live'], { setup: clean });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.ok(/OK: 開発用の値のままのものは見つからない/.test(r.stdout));
+      const trust = run2399(CHECK2399, ['--live'], { setup: clean, env: { STUB_PG_TRUST: '1' } });
+      assert.strictEqual(trust.status, 2, `${trust.stdout}\n${trust.stderr}`);
+      assert.ok(trust.stdout.includes('?? DB 利用者 kp: 確かめられない'), trust.stdout);
+    });
+
+    ok('IADR-0672: 作り直し（ESO なし）は、保管先の Secret → ストア側 → 消費側の順に動き、値は引数・出力に出ない', () => {
+      const r = run2399(ROTATE2399, ['--live', 'app-db', 'postgres-admin', 'object-storage']);
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      const app = r.read('secret/microservices-platform__postgres-app__password');
+      assert.ok(/^[0-9a-f]{48}$/.test(app), 'postgres-app が乱数の値になっていない');
+      assert.strictEqual(r.read('secret/microservices-platform__wikijs-db__password'), app, 'wikijs-db が postgres-app と同じ値でない');
+      assert.strictEqual(r.read('pg/kp'), app, 'DB 利用者 kp のパスワードが Secret と同じ値になっていない');
+      const admin = r.read('secret/platform-infra__postgres__password');
+      assert.strictEqual(r.read('pg/postgres'), admin);
+      assert.ok(/^[0-9a-f]{48}$/.test(r.read('secret/microservices-platform__object-storage-credentials__secretKey')));
+      const at = (c) => r.calls.indexOf(c);
+      assert.ok(at('SECRET PATCH microservices-platform/postgres-app') >= 0 && at('SECRET PATCH microservices-platform/postgres-app') < at('PG ALTER kp')
+        && at('PG ALTER kp') < at('ROLLOUT restart microservices-platform/deploy'), `順序が違う:\n${r.calls.join('\n')}`);
+      assert.ok(at('ROLLOUT restart microservices-platform/deploy/seaweedfs') >= 0
+        && at('ROLLOUT restart microservices-platform/deploy/seaweedfs') < r.calls.lastIndexOf('ROLLOUT restart microservices-platform/deploy'), 'オブジェクトストレージの本体を先に作り直していない');
+      for (const v of [app, admin]) {
+        assert.ok(!r.argv.includes(v), '新しい値が kubectl の引数に出た');
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '新しい値が出力に出た');
+      }
+      // 作り直した後の検査は、Secret・DB 利用者のその 3 つを名指さない
+      assert.notStrictEqual(app, admin, '別の対象が同じ値になった');
+    });
+
+    ok('IADR-0672: 作り直し（ESO あり）は、Vault の KV へ書いて同期を促し、Secret が新しい値になるのを待つ', () => {
+      const eso = ({ put }) => { put('es/microservices-platform__postgres-app', ''); put('es/microservices-platform__wikijs-db', ''); };
+      const r = run2399(ROTATE2399, ['--live', 'app-db'], { setup: eso });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.ok(r.calls.includes('VAULT KV PATCH msp/postgres-app password') && r.calls.includes('VAULT KV PATCH msp/wikijs-db password'), r.calls.join('\n'));
+      assert.ok(!r.calls.some((c) => c.startsWith('SECRET PATCH microservices-platform/postgres-app')), 'ESO の持つ Secret を直接書いた');
+      assert.ok(r.calls.includes('ESO SYNC microservices-platform/postgres-app'), '同期を促していない');
+      const v = r.read('secret/microservices-platform__postgres-app__password');
+      assert.ok(/^[0-9a-f]{48}$/.test(v) && r.read('pg/kp') === v, '同期の後の Secret と DB 利用者が同じ新しい値でない');
+      assert.ok(!r.argv.includes(v), '新しい値が kubectl の引数に出た');
+    });
+
+    ok('IADR-0672: 作り直し（秘匿管理のトークン）は、新しいトークンを作り Secret を書き、作り直して通ることを確かめてから古いトークンを失効させる', () => {
+      const r = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      const nv = r.read('secret/platform-infra__vault-dev-token__token');
+      assert.ok(/^[0-9a-f]{48}$/.test(nv), 'Secret が新しい値になっていない');
+      assert.deepStrictEqual(r.read('tokens').split('\n').filter(Boolean), [nv], '古いトークンが残っているか、新しいトークンが無い');
+      const at = (c) => r.calls.findIndex((x) => x.startsWith(c));
+      assert.ok(at('VAULT TOKEN CREATE') < at('SECRET PATCH platform-infra/vault-dev-token') && at('SECRET PATCH platform-infra/vault-dev-token') < at('ROLLOUT restart platform-infra/deploy/vault')
+        && at('ROLLOUT restart platform-infra/deploy/vault') < at('VAULT TOKEN REVOKE'), `順序が違う:\n${r.calls.join('\n')}`);
+      assert.ok(!r.argv.includes(nv) && !`${r.stdout}${r.stderr}`.includes(nv), '新しいトークンが引数・出力に出た');
+    });
+
+    ok('IADR-0672: 作り直しは、ストア側を変えられなければ止まり、消費側を作り直さない', () => {
+      // スタブは ALTER を書けないと 1 を返す（ここでは状態を壊して失敗させる）
+      const broken = run2399(ROTATE2399, ['--live', 'app-db'], { setup: ({ st }) => fs2399.rmSync(path2399.join(st, 'pg'), { recursive: true }) });
+      assert.notStrictEqual(broken.status, 0, 'ストア側を変えられないのに成功した');
+      assert.ok(/ストア側（DB 利用者 kp）を変えられない/.test(broken.stderr), broken.stderr);
+      assert.ok(!broken.calls.some((c) => c.startsWith('ROLLOUT')), 'ストア側が失敗したのに消費側を作り直した');
+    });
+
+    ok('IADR-0672: 検査・作り直しは scripts/README.md の一覧に載る', () => {
+      const readme = fs2399.readFileSync(path2399.join(__dirname, 'README.md'), 'utf8');
+      for (const n of ['check-infra-credentials.sh', 'rotate-infra-credentials.sh']) assert.ok(readme.includes(`\`${n}\``), `${n} が README に無い`);
     });
   }
 };
