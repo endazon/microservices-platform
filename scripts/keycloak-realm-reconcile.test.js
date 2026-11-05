@@ -35,6 +35,7 @@ const {
   SEED_USER_SELF_SERVICE_ROLES, KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES, isKeycloakAutoAssignedScope,
   resolveE2eCredentials, passwordMeetsPolicy, describeSkipped, renderImport, describe,
   applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
+  SEEDED_USERS_ATTRIBUTE, RECREATE_USERS_ENV, parseRecreateUsers,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 const { generate: generateE2eAccounts, placeholderNames, propertyName } = require('./gen-e2e-accounts.js');
 
@@ -110,6 +111,8 @@ function liveFrom(desired) {
       userClientRoles[u.username] = cr;
     }
   }
+  // #2431 / IADR-0685: 一度調停を通した realm を模す（在る人の seed 利用者は記録済み）。記録の無い形は個別の試験が作る。
+  realm.attributes = { ...(realm.attributes || {}), [SEEDED_USERS_ATTRIBUTE]: Object.keys(users).sort().join(',') };
   return {
     realm, requiredActions: clone(desired.requiredActions), realmRoles, clientScopes, clients, clientRoles,
     roleComposites, groups, users, userClientRoles, serviceAccounts,
@@ -191,10 +194,20 @@ ok('宣言に無い smtpServer のキー（runbook が入れた user / password�
 //    （閉じたはずの申請が開いている＝利用者名が漏れる向き）まで見なくなる。
 //    除外するのは「宣言 true・稼働 false・attributes["reset-gate.state"]===closed」の 1 組だけである。
 
+// #2431 / IADR-0685: 「宣言に在るが、まだ一度も在ったことの無い利用者」（記録に無い）を作る。消された利用者（記録に在る）とは別。
+const neverSeen = (live, name) => {
+  live.users[name] = null;
+  const rest = asList(live.realm.attributes[SEEDED_USERS_ATTRIBUTE]).filter((n) => n !== name);
+  live.realm.attributes = { ...live.realm.attributes, [SEEDED_USERS_ATTRIBUTE]: rest.join(',') };
+  return live;
+};
+const asList = (v) => String(v || '').split(',').filter(Boolean);
 const closedLive = (attrs) => {
   const live = liveFrom(REALM);
   live.realm.resetPasswordAllowed = false;
-  if (attrs !== null) live.realm.attributes = attrs;
+  // #2431: 調停の記録（SEEDED_USERS_ATTRIBUTE）は残し、門の属性だけを差し替える（null は門の属性が無い）。
+  const seededOnly = { [SEEDED_USERS_ATTRIBUTE]: live.realm.attributes[SEEDED_USERS_ATTRIBUTE] };
+  live.realm.attributes = attrs !== null ? { ...seededOnly, ...attrs } : seededOnly;
   return live;
 };
 
@@ -241,7 +254,7 @@ ok('🔴 逆向き（宣言 false・稼働 true）は属性が closed でも dri
   const desired = { ...clone(REALM), resetPasswordAllowed: false };
   const live = liveFrom(REALM);
   live.realm.resetPasswordAllowed = true;
-  live.realm.attributes = { [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED };
+  live.realm.attributes = { ...live.realm.attributes, [GATE_STATE_ATTRIBUTE]: GATE_STATE_CLOSED };
   const ops = opsOf(desired, live);
   assert.deepStrictEqual(kinds(ops), ['realm.update']);
   assert.ok(/resetPasswordAllowed/.test(ops[0].reason));
@@ -452,9 +465,70 @@ ok('グループが無ければ group.create（サブグループは deferred）
   assert.strictEqual(ops[0].path, `/admin/realms/platform/groups/${dept.id}/children`);
 });
 
+// --- NFR-18, IADR-0685 (#2431): 稼働側の無効化と削除を宣言へ戻さない ---
+ok('IADR-0685: 宣言が有効・稼働が無効の client は有効へ戻さない（報告する）。宣言が無効・稼働が有効は従来どおり無効へ合わせる', () => {
+  const live = liveFrom(REALM);
+  const bff = live.clients.find((c) => c.clientId === 'bff');
+  bff.enabled = false;
+  const ops = opsOf(REALM, live);
+  assert.ok(!ops.some((o) => o.op === 'client.update' && o.target === 'bff'), `無効にした client を戻す計画が出た: ${JSON.stringify(kinds(ops))}`);
+  assert.ok(ops.kept.some((k) => k.target === 'client bff' && /戻さない/.test(k.reason)), '戻さなかったことを報告していない');
+  // ほかの差分で PUT が起きても、本文は稼働の無効を運ぶ（有効へ戻さない）
+  bff.description = 'changed-at-runtime';
+  const withOther = opsOf(REALM, live).find((o) => o.op === 'client.update' && o.target === 'bff');
+  assert.ok(withOther && withOther.body.enabled === false, 'ほかの差分の PUT で有効へ戻した');
+  // 逆向き（宣言 false・稼働 true）は宣言へ合わせる（投入器の client。使うときだけ有効にする）
+  const live2 = liveFrom(REALM);
+  const seeder = live2.clients.find((c) => c.clientId === 'abac-seeder');
+  assert.strictEqual(REALM.clients.find((c) => c.clientId === 'abac-seeder').enabled, false, '前提: 投入器は宣言で無効');
+  seeder.enabled = true;
+  const up = opsOf(REALM, live2).find((o) => o.op === 'client.update' && o.target === 'abac-seeder');
+  assert.ok(up && up.body.enabled === false, '宣言が無効・稼働が有効を無効へ合わせない');
+});
+
+ok('IADR-0685: 一度在った（記録に在る）seed 利用者が消されていたら作り直さない。明示（RECONCILE_RECREATE_USERS）で許す。新しく宣言した利用者は作る', () => {
+  const live = liveFrom(REALM);
+  live.users.developer = null; // 記録に在るまま消された
+  const ops = opsOf(REALM, live);
+  assert.ok(!ops.some((o) => o.op === 'user.create'), `消された利用者を作り直す計画が出た: ${JSON.stringify(kinds(ops))}`);
+  assert.ok(ops.kept.some((k) => k.target === 'user developer' && new RegExp(RECREATE_USERS_ENV).test(k.reason)), '作り直さなかったことと許し方を報告していない');
+  const allowed = plan(REALM, live, { recreateUsers: parseRecreateUsers('developer') });
+  assert.deepStrictEqual(kinds(allowed), ['user.create'], '明示で許したのに作らない');
+  assert.deepStrictEqual([...parseRecreateUsers(' e2e-user ,bad name,e2e-admin,;rm')], ['e2e-user', 'e2e-admin'], '名前の形の検査が違う');
+  const fresh = neverSeen(liveFrom(REALM), 'developer');
+  assert.deepStrictEqual(kinds(opsOf(REALM, fresh)), ['user.create'], '新しく宣言した（記録に無い）利用者を作らない');
+});
+
+ok('IADR-0685: 在ると確かめた seed 利用者を realm の属性へ記録する（同じ PUT に載せる・門の属性を消さない）。記録の済んだ realm は drift 0', () => {
+  const live = liveFrom(REALM);
+  live.realm.attributes = { [GATE_STATE_ATTRIBUTE]: 'open' }; // 記録の無い（本件より前の）realm
+  const ops = opsOf(REALM, live);
+  assert.deepStrictEqual(kinds(ops), ['realm.update'], JSON.stringify(kinds(ops)));
+  const humans = REALM.users.filter((u) => !u.serviceAccountClientId).map((u) => u.username).sort();
+  assert.strictEqual(ops[0].body.attributes[SEEDED_USERS_ATTRIBUTE], humans.join(','), '在る利用者を全部記録していない');
+  assert.strictEqual(ops[0].body.attributes[GATE_STATE_ATTRIBUTE], 'open', '門の属性を消した');
+  // 宣言の差分と記録は 1 本の PUT（2 本だと後の本文が前の本文を古い値で上書きする）
+  live.realm.displayName = 'changed';
+  const both = opsOf(REALM, live).filter((o) => o.op === 'realm.update');
+  assert.strictEqual(both.length, 1, 'realm の PUT が 2 本になった');
+  assert.ok(both[0].body.displayName === REALM.displayName && both[0].body.attributes[SEEDED_USERS_ATTRIBUTE], '1 本の PUT に両方が載っていない');
+  assert.deepStrictEqual(opsOf(REALM, liveFrom(REALM)), [], '記録の済んだ realm で差分が出た');
+});
+
+ok('IADR-0685: Job は作り直しの許可を空の既定で持ち、起動器の口は形の外の値を Job へ渡さずに止まる', () => {
+  const job = fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'realm-reconcile-job.yaml'), 'utf8');
+  assert.ok(new RegExp(`- name: ${RECREATE_USERS_ENV}\\n\\s+value: ""\\n`).test(job), 'Job が作り直しの許可を空の既定で持たない');
+  assert.strictEqual((job.match(/^\s+value: ""$/gm) || []).length, 1, '空の value が 2 つ以上ある（起動器の差し替えが別の env に当たる）');
+  const sh = path.join(REPO_ROOT, 'deploy', 'local', 'keycloak-setup', 'reconcile-realm.sh');
+  const { spawnSync } = require('child_process');
+  const r = spawnSync('bash', [sh], { encoding: 'utf8', env: { ...process.env, [RECREATE_USERS_ENV]: 'e2e-user;rm', PATH: `/nonexistent:${process.env.PATH}`, KUBECONFIG: '/nonexistent' } });
+  assert.strictEqual(r.status, 2, `形の外の値で止まらない: ${r.status} ${r.stderr}`);
+  assert.ok(new RegExp(RECREATE_USERS_ENV).test(r.stderr), r.stderr);
+});
+
 ok('seed 利用者が無ければ user.create（資格情報・requiredActions・グループを body に、ロール割当を postSteps に運ぶ）', () => {
   const live = liveFrom(REALM);
-  live.users.developer = null;
+  neverSeen(live, 'developer');
   const ops = opsOf(REALM, live);
   assert.deepStrictEqual(kinds(ops), ['user.create']);
   const dev = REALM.users.find((u) => u.username === 'developer');
@@ -470,7 +544,7 @@ ok('seed 利用者が無ければ user.create（資格情報・requiredActions�
 
 ok('seed 利用者が無くてもロールがまだ無ければ deferred（前提が無い操作は黙って消えない）', () => {
   const live = liveFrom(REALM);
-  live.users.developer = null;
+  neverSeen(live, 'developer');
   live.realmRoles = live.realmRoles.filter((r) => r.name !== 'trading-owner');
   const ops = opsOf(REALM, live);
   assert.ok(ops.some((o) => o.op === 'role.create' && o.target === 'trading-owner'));
