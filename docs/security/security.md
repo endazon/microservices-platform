@@ -551,6 +551,10 @@ Bearer で平文のまま載るため、接続先は https に限る（loopback 
   dev ではない context は**段 1 では名指して警告して作る**。`INFRA_CREDENTIALS_ENFORCE=1`（`1` だけ）で何も作らずに止める（段 2）。
   稼働中の値は `scripts/check-infra-credentials.sh --live`（読むだけ。Secret とストア側〔DB 利用者のログイン・管理者トークン〕を開発用の値と比べ、名前だけを出す）で確かめ、
   `scripts/rotate-infra-credentials.sh --live` で作り直す（値は表示しない）。段 2 の既定化は、作り直しの後に入れる。
+- **基盤の資格情報の段階の続き**（2026-11-05）:
+  - 秘匿管理の永続化のラッパーは、固定の管理者トークンを作った印を保管先の PVC に置く。印の後に Secret の値のトークンが無いとき、段 1 は警告して作り、段 2（起動器の `INFRA_CREDENTIALS_ENFORCE=1`）は作らずに起動を止める。トークンの値は stdin で渡し、プロセスの引数に載せない。
+  - 可観測性の画面の内蔵の管理者は、Secret `grafana-admin`（明示 ＞ 既存 ＞ 乱数）で決める。DB の初期化の DB 利用者 `kp` は、Secret `postgres-init-users` の値で作る（空の PVC の初回だけ）。
+  - dev のクラスタの判定に、クラスタ側の印（ConfigMap `kube-system/msp-dev-cluster`）を足した。段 1 は context の名前だけで判定し、印が無ければ警告する。段 2（`DEV_CLUSTER_MARKER_REQUIRED=1`）は名前と印の両方が揃うときだけ dev とする。
 - **認証基盤の管理面はエッジに出さない**（2026-10-22）: エッジ（経路B の Traefik・Istio のエッジ・chart のエッジ）は、認証基盤の
   `/admin` と管理用の realm（`/realms/master`）を 403 で拒む。利用者が使う realm の経路（ログイン・トークン・アカウントコンソール・
   テーマの資源）はそのまま通す。管理者は port-forward 越しの Admin REST か Pod の中の kcadm.sh で操作する

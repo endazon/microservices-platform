@@ -4,6 +4,7 @@
 #   $STATE/initialized  … `operator init -status` が 0（在る）／2（無い）
 #   $STATE/unsealed     … `status` が 0（在る）／2（無い）
 #   $STATE/token-ok     … `token lookup` が 0（在る）／1（無い）
+#   $STATE/created-token-stdin … `write auth/token/create-orphan id=-` が stdin で受けたトークン（#2407。値は引数に載せない）
 #   $STATE/kv-mounted   … `secrets list` に "secret/" を含める（在る）／含めない（無い）
 #   $STATE/audit-<path> … `audit list` にその path を含める（在る）／含めない（無い）
 #   $STATE/no-stdout-device … `audit list` から stdout/ を外す（既定は在る＝local.hcl の宣言。#1840）
@@ -23,7 +24,7 @@ ng() { FAILED=$((FAILED + 1)); printf '  NG    %s\n        %s\n' "$1" "$2"; }
 assert_eq() { [ "$2" = "$3" ] && ok "$1" || ng "$1" "expected: $3 / actual: $2"; }
 assert_contains() { case "$2" in *"$3"*) ok "$1" ;; *) ng "$1" "expected to contain: $3" ;; esac; }
 assert_missing() { case "$2" in *"$3"*) ng "$1" "expected NOT to contain: $3" ;; *) ok "$1" ;; esac; }
-reset_state() { rm -f "$STATE"/*; : > "$STUB_LOG"; }
+reset_state() { rm -f "$STATE"/* "${VAULT_DATA_DIR:-/nonexistent}/.local-dev-root-token-created"; : > "$STUB_LOG"; }
 
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/vault" <<'STUB'
@@ -41,6 +42,11 @@ case "$1 $2" in
                        [ "$k" = "STUB-UNSEAL-KEY" ] && { : > "$STATE/unsealed"; exit 0; } || exit 1 ;;
   "token lookup")      [ -f "$STATE/token-ok" ] && exit 0 || exit 1 ;;
   "token create")      [ "${VAULT_TOKEN:-}" = "STUB-ROOT-TOKEN" ] && { : > "$STATE/token-ok"; exit 0; } || exit 1 ;;
+  # #2407: 固定のトークンは `write auth/token/create-orphan id=-`（値は stdin）。受けた値を控える。
+  "write auth/token/create-orphan")
+    [ "${VAULT_TOKEN:-}" = "STUB-ROOT-TOKEN" ] || exit 1
+    case " $* " in *" id=- "*) ;; *) exit 1 ;; esac
+    cat > "$STATE/created-token-stdin"; : > "$STATE/token-ok"; exit 0 ;;
   "secrets list")      [ -f "$STATE/kv-mounted" ] && echo '{"secret/":{}}' || echo '{"sys/":{}}'; exit 0 ;;
   "secrets enable")    : > "$STATE/kv-mounted"; exit 0 ;;
   "audit list")
@@ -73,7 +79,10 @@ assert_eq 'T-1479-01 初回: init の出力を 0600 で保存する' "$(stat -c 
 assert_contains 'T-1479-01 初回: 保存した鍵で unseal する（#1793: 鍵は stdin）' "$(cat "$STUB_LOG")" 'write sys/unseal key=-'
 assert_eq 'T-1793-01 初回: unseal 鍵は stdin で渡る（末尾の改行なし）' "$(cat "$STATE/unseal-stdin")" "STUB-UNSEAL-KEY"
 assert_missing 'T-1793-01 初回: unseal 鍵が vault の引数に載らない' "$(cat "$STUB_LOG")" 'STUB-UNSEAL-KEY'
-assert_contains 'T-1479-01 初回: 固定 root トークンを init の root トークンで作る' "$(cat "$STUB_LOG")" 'token create -id=devroot-test -policy=root -orphan'
+assert_contains 'T-1479-01 初回: 固定 root トークンを init の root トークンで作る（#2407: 値は stdin）' "$(cat "$STUB_LOG")" 'write auth/token/create-orphan id=- policies=root no_default_policy=true'
+assert_eq 'T-2407-01 初回: 固定のトークンは stdin で渡る（末尾の改行なし）' "$(cat "$STATE/created-token-stdin" 2>/dev/null)" "devroot-test"
+assert_missing 'T-2407-01 初回: 固定のトークンが vault の引数に載らない' "$(cat "$STUB_LOG")" 'devroot-test'
+[ -f "$VAULT_DATA_DIR/.local-dev-root-token-created" ] && ok 'T-2407-01 初回: 作った印を PVC に置く' || ng 'T-2407-01 初回: 作った印を PVC に置く' '印が無い'
 assert_contains 'T-1479-01 初回: kv-v2 を secret/ に mount する' "$(cat "$STUB_LOG")" 'secrets enable -path=secret kv-v2'
 
 # ---- T-1479-02: 再起動（初期化済み・sealed）: init しない・保存済みの鍵で unseal・トークンと mount は在るので触らない ----
@@ -212,6 +221,50 @@ assert_missing 'T-1866-01 鍵ファイル在り・未初期化: operator init �
 assert_eq 'T-1866-01 鍵ファイル在り・未初期化: 鍵ファイルを書き換えない' "$(sha256sum "$VAULT_INIT_FILE" | cut -d' ' -f1)" "$BEFORE"
 assert_contains 'T-1866-01 鍵ファイル在り・未初期化: 理由を示す' "$OUT" 'refusing to init over existing keys'
 assert_missing 'T-1866-01 鍵ファイル在り・未初期化: 鍵の値をログに出さない' "$OUT" 'STUB-KEEP-KEY'
+
+# ---- T-2407-02: 印の無い初期化済みのストア（#2407 より前のクラスタ）でトークンが在れば、作らずに印を置く ----
+reset_state
+: > "$STATE/initialized"; : > "$STATE/token-ok"; : > "$STATE/kv-mounted"
+printf 'Unseal Key 1: STUB-UNSEAL-KEY\n\nInitial Root Token: STUB-ROOT-TOKEN\n' > "$VAULT_INIT_FILE"
+OUT="$(VAULT_ROOT_TOKEN_INIT_ONLY=1 bootstrap_after_start 2>&1)"; RC=$?
+assert_eq 'T-2407-02 既存のストア・トークン在り（段 2 でも）: 正常終了する' "$RC" "0"
+assert_missing 'T-2407-02 既存のストア・トークン在り: 作らない' "$(cat "$STUB_LOG")" 'create-orphan'
+[ -f "$VAULT_DATA_DIR/.local-dev-root-token-created" ] && ok 'T-2407-02 既存のストア・トークン在り: 印を置く' || ng 'T-2407-02 既存のストア・トークン在り: 印を置く' '印が無い'
+
+# ---- T-2407-03: 印が在り Secret の値のトークンが無い。段 1（既定）は名指して警告し、作る ----
+reset_state
+: > "$STATE/initialized"; : > "$STATE/kv-mounted"; : > "$VAULT_DATA_DIR/.local-dev-root-token-created"
+OUT="$(bootstrap_after_start 2>&1)"; RC=$?
+assert_eq 'T-2407-03 段 1: 正常終了する（報告だけ）' "$RC" "0"
+assert_contains 'T-2407-03 段 1: 名指して警告する' "$OUT" 'WARN: the fixed root token was already created on this store'
+assert_contains 'T-2407-03 段 1: 作る' "$(cat "$STUB_LOG")" 'write auth/token/create-orphan id=-'
+assert_missing 'T-2407-03 段 1: 値をログに出さない' "$OUT" 'devroot-test'
+
+# ---- T-2407-04: 同じ状態で段 2（root-token-init-only=1）は作らずに失敗する ----
+reset_state
+: > "$STATE/initialized"; : > "$STATE/kv-mounted"; : > "$VAULT_DATA_DIR/.local-dev-root-token-created"
+OUT="$(VAULT_ROOT_TOKEN_INIT_ONLY=1 bootstrap_after_start 2>&1)"; RC=$?
+assert_eq 'T-2407-04 段 2: 非ゼロで止める' "$RC" "1"
+assert_missing 'T-2407-04 段 2: 作らない' "$(cat "$STUB_LOG")" 'create-orphan'
+assert_contains 'T-2407-04 段 2: 理由と手順書を示す' "$OUT" 'docs/operations/secret-rotation-runbook.md'
+assert_missing 'T-2407-04 段 2: kv を mount しない（先へ進まない）' "$(cat "$STUB_LOG")" 'secrets enable'
+assert_missing 'T-2407-04 段 2: 値をログに出さない' "$OUT" 'devroot-test'
+# 切り替えは `1` だけ（`true` 等は段 1 のまま）
+reset_state
+: > "$STATE/initialized"; : > "$STATE/kv-mounted"; : > "$VAULT_DATA_DIR/.local-dev-root-token-created"
+VAULT_ROOT_TOKEN_INIT_ONLY=true bootstrap_after_start >/dev/null 2>&1; RC=$?
+assert_eq 'T-2407-04 切り替えは 1 だけを有効にする（true は段 1）' "$RC" "0"
+
+# ---- T-2407-05: 段 2 でも初回（印が無い・未初期化）は作る ----
+reset_state; rm -f "$VAULT_INIT_FILE"
+VAULT_ROOT_TOKEN_INIT_ONLY=1 bootstrap_after_start >/dev/null 2>&1; RC=$?
+assert_eq 'T-2407-05 段 2・初回: 正常終了する' "$RC" "0"
+assert_contains 'T-2407-05 段 2・初回: 作る' "$(cat "$STUB_LOG")" 'write auth/token/create-orphan id=-'
+
+# ---- T-2407-06: Pod は切り替えを ConfigMap から optional に読む（無ければ段 1） ----
+PATCH="$(cat "$ROOT/deploy/local/vault-persistence/deployment-patch.yaml")"
+assert_contains 'T-2407-06 切り替えの env を宣言する' "$PATCH" 'name: VAULT_ROOT_TOKEN_INIT_ONLY'
+assert_contains 'T-2407-06 ConfigMap vault-local-switches の root-token-init-only を読む' "$PATCH" 'configMapKeyRef: { name: vault-local-switches, key: root-token-init-only, optional: true }'
 
 rm -rf "$WORK"
 printf '\n%s passed, %s failed\n' "$PASSED" "$FAILED"

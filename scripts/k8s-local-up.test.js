@@ -452,6 +452,9 @@ const KUBECTL_STUB = [
   'case "$*" in "-n microservices-platform get secret wikijs-db -o jsonpath={.data.password}") [ -n "${STUB_WIKIJS_DB_EXISTING:-}" ] && printf "%s" "$STUB_WIKIJS_DB_EXISTING" | base64; exit 0;; esac',
   'case "$*" in "-n microservices-platform get secret object-storage-credentials -o jsonpath={.data.secretKey}") [ -n "${STUB_OBJECT_STORAGE_EXISTING:-}" ] && printf "%s" "$STUB_OBJECT_STORAGE_EXISTING" | base64; exit 0;; esac',
   'case "$*" in "-n platform-infra get secret vault-dev-token -o jsonpath={.data.token}") [ -n "${STUB_VAULT_TOKEN_EXISTING:-}" ] && printf "%s" "$STUB_VAULT_TOKEN_EXISTING" | base64; exit 0;; esac',
+  // NFR-18, IADR-0676 (#2407): クラスタ側の dev の印（STUB_DEV_MARKER=1 で在る）と Grafana の管理者の既存の Secret（STUB_GRAFANA_ADMIN_EXISTING）。
+  'case "$*" in "-n kube-system get configmap msp-dev-cluster -o jsonpath={.data.cluster-kind}") [ "${STUB_DEV_MARKER:-}" = "1" ] && printf dev; exit 0;; esac',
+  'case "$*" in "-n platform-infra get secret grafana-admin -o jsonpath={.data.password}") [ -n "${STUB_GRAFANA_ADMIN_EXISTING:-}" ] && printf "%s" "$STUB_GRAFANA_ADMIN_EXISTING" | base64; exit 0;; esac',
   // NFR, IADR-0583: Namespace microservices-platform の注入ラベル。STUB_MSP_INJECTION を与えたときだけその値を返す（既定は無い）。
   //   STUB_MSP_INJECTION_FAIL=1 のときは API の失敗（非 0 と stderr）を返す。
   // NFR-18, IADR-0590: AST の名前空間の注入ラベルと Pod の数。STUB_AST_INJECTION / STUB_AST_PODS（個数）を与えたときだけ返す（既定は無い）。
@@ -6635,7 +6638,7 @@ function decideAll(cases) {
     `out="$(dev_client_secret_decide ${q(c.ctx)} ${q(c.override)} ${c.args.map(q).join(' ')})" && rc=0 || rc=$?`,
     `printf '%s\\t%s\\t%s\\n' ${i} "$rc" "$(printf '%s' "$out" | tr '\\n' ' ')"`,
   ].join('\n')).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(DEV_GUARD_LIB)}\ndev_client_secret_load_targets\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. scripts/lib/dev-client-secret-guard.sh\ndev_client_secret_load_targets\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, `判定器が実行できない: ${r.stderr}`);
   return r.stdout.split('\n').filter(Boolean).map((l) => {
     const [i, rc, out] = l.split('\t');
@@ -7335,7 +7338,7 @@ ok('IADR-0574: 判定の真理値表 — 明示（無し / 開発用の値 / 別
     }
   }
   const body = cases.map((c, i) => `ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_decide ${q(c.name)} ${q(c.ev)} ${q(c.xv)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. scripts/lib/infra-credentials.sh\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
   assert.strictEqual(got.length, cases.length);
@@ -7433,7 +7436,7 @@ ok('IADR-0574 陽性対照: CI の integration-stack / cutover-rehearsal は使�
   }
 });
 // --- NFR-18, ADR-0124 決定 1, IADR-0672 (#2399): 基盤の資格情報の判定を段階の対象へ広げる（段 1＝報告・段 2＝強制） ----------
-// 判定は scripts/lib/infra-credentials.sh（IADR-0574 と同じ口）。値は実行時に組む（gitleaks）。
+// 判定は scripts/lib/infra-credentials.sh（IADR-0574 と同じ口）。試験の bash はリポジトリの根を cwd にし、ライブラリを相対パスで読む（CodeQL）。値は実行時に組む（gitleaks）。
 const custom0672 = (what) => ['probe', '0672', what].join('-');
 const STAGED0672 = {
   PG_PASSWORD: { dev: 'postgres', secret: 'postgres', key: 'password', stub: 'STUB_PG_EXISTING' },
@@ -7462,7 +7465,7 @@ ok('IADR-0672: 判定の真理値表 — 明示 × 既存 × context（dev / 非
     }
   }
   const body = cases.map((c, i) => `INFRA_CREDENTIALS_ENFORCE=${q(c.enforce)}; ALLOW_DEV_INFRA_CREDENTIALS=${q(c.opt)}; out="$(infra_cred_staged_decide APP_DB_PASSWORD ${q(c.ev)} ${q(c.xv)} ${q(c.ctx)})" && rc=0 || rc=$?; printf '%s %s %s\\n' ${i} "$rc" "$out"`).join('\n');
-  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. ${q(path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh'))}\n. ${q(INFRA_LIB_0573)}\n${body}`], { encoding: 'utf8' });
+  const r = spawnSync('bash', ['-c', `set -euo pipefail\n. scripts/lib/dev-client-secret-guard.sh\n. scripts/lib/infra-credentials.sh\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
   assert.strictEqual(r.status, 0, r.stderr);
   const got = r.stdout.trim().split('\n').map((l) => l.split(' '));
   assert.strictEqual(got.length, cases.length);
@@ -7550,6 +7553,158 @@ ok('IADR-0672: 起動器の Secret の作成に、段階の対象の公知の既
     assert.ok(!new RegExp(`\\$\\{${name}:-`).test(src), `${name} の既定値が残っている`);
   }
   assert.ok(/^infra_cred_staged_resolve "k8s-local-up\.sh" /m.test(src), '段階の判定を呼んでいない');
+});
+
+// --- NFR-18, IADR-0676 (#2407): 段階の fail-closed の続き（管理者トークンの切り替え・対象の引き直し・dev のクラスタの印） ----------
+const GUARD_LIB_0676 = path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh');
+const custom0676 = (what) => ['probe', '0676', what].join('-');
+
+ok('IADR-0676: dev の判定の真理値表 — 名前（許可集合 / 外）× 印（present / absent / 読んでいない）× 段（既定 / DEV_CLUSTER_MARKER_REQUIRED=1 / true）', () => {
+  const cases = [];
+  for (const ctx of ['k3d-testcluster', 'rancher-desktop', 'prod-shared', '']) {
+    for (const marker of ['present', 'absent', '']) {
+      for (const req of ['', '1', 'true']) cases.push({ ctx, marker, req });
+    }
+  }
+  const body = cases.map((c, i) => `DEV_CLUSTER_MARKER='${c.marker}' DEV_CLUSTER_MARKER_REQUIRED='${c.req}' dev_client_secret_context_is_dev '${c.ctx}' && echo "${i} dev" || echo "${i} no"`).join('\n');
+  const r = spawnSync('bash', ['-c', `. scripts/lib/dev-client-secret-guard.sh\n${body}`], { cwd: REPO_ROOT, encoding: 'utf8', shell: false });
+  assert.strictEqual(r.status, 0, r.stderr);
+  const tally = {};
+  for (const line of r.stdout.trim().split('\n')) {
+    const [i, got] = line.split(' ');
+    const c = cases[Number(i)];
+    const nameDev = c.ctx === 'k3d-testcluster' || c.ctx === 'rancher-desktop';
+    const want = nameDev && (c.req !== '1' || c.marker === 'present') ? 'dev' : 'no';
+    assert.strictEqual(got, want, `${JSON.stringify(c)}: 判定が違う`);
+    tally[`${want}-${c.req === '1' ? 2 : 1}`] = (tally[`${want}-${c.req === '1' ? 2 : 1}`] || 0) + 1;
+  }
+  for (const k of ['dev-1', 'no-1', 'dev-2', 'no-2']) assert.ok(tally[k] > 0, `${k} が 1 度も現れない`);
+});
+
+ok('IADR-0676: この実行で k3d のクラスタを作ったときは印を置く。既存のクラスタは置かずに警告し（段 1）、判定は変えない', () => {
+  const created = runUp({});
+  assert.strictEqual(created.status, 0, created.stderr.slice(-800));
+  assert.ok(/クラスタ側の dev の印を置いた/.test(created.stdout), 'k3d を作ったのに印を置かない');
+  assert.ok(!/名前だけで dev と判定している/.test(created.stderr), '印を置いたのに警告した');
+  const reuse = runUp({ STUB_CLUSTER_EXISTS: '1' });
+  assert.strictEqual(reuse.status, 0, `段 1 で既存のクラスタが止まった:\n${reuse.stderr.slice(-800)}`);
+  assert.ok(!/クラスタ側の dev の印を置いた/.test(reuse.stdout), '利用者の明示なしに既存のクラスタへ印を置いた');
+  assert.ok(/WARNING: k8s-local-up\.sh: kube context 'k3d-testcluster' を名前だけで dev と判定している/.test(reuse.stderr), `印の無いことを告げない:\n${reuse.stderr.slice(-800)}`);
+  assert.ok(/MARK_DEV_CLUSTER=1/.test(reuse.stderr), '印の置き方を告げない');
+  const marked = runUp({ STUB_CLUSTER_EXISTS: '1', STUB_DEV_MARKER: '1' });
+  assert.ok(!/名前だけで dev と判定している/.test(marked.stderr), '印が在るのに警告した');
+});
+
+ok('IADR-0676: MARK_DEV_CLUSTER=1 は名前が許可集合に在るときだけ印を置き、外なら何も書かずに止まる', () => {
+  const ok1 = runUp({ STUB_CLUSTER_EXISTS: '1', MARK_DEV_CLUSTER: '1' });
+  assert.strictEqual(ok1.status, 0, ok1.stderr.slice(-800));
+  assert.ok(/クラスタ側の dev の印を置いた/.test(ok1.stdout), '明示なのに印を置かない');
+  const bad = runUp({ STUB_CLUSTER_EXISTS: '1', MARK_DEV_CLUSTER: '1', STUB_KUBE_CONTEXT: 'prod-shared' });
+  assert.notStrictEqual(bad.status, 0, 'dev ではない名前に印を置こうとして止まらなかった');
+  assert.ok(!wroteAnything(bad), '書いてから止まった');
+  assert.ok(!/クラスタ側の dev の印を置いた/.test(bad.stdout), 'dev ではない名前に印を置いた');
+});
+
+ok('IADR-0676: 段 2（DEV_CLUSTER_MARKER_REQUIRED=1）は、名前が dev でも印が無ければ dev と見なさない（印が在れば従前どおり）', () => {
+  const noMarker = runUp({ STUB_CLUSTER_EXISTS: '1', DEV_CLUSTER_MARKER_REQUIRED: '1' });
+  assert.notStrictEqual(noMarker.status, 0, '印の無い dev 名の context を dev と見なした');
+  assert.ok(!wroteAnything(noMarker), '書いてから止まった');
+  assert.ok(/クラスタ側の印（ConfigMap kube-system\/msp-dev-cluster）が無いので dev と見なさない/.test(noMarker.stderr), noMarker.stderr.slice(-800));
+  const withMarker = runUp({ STUB_CLUSTER_EXISTS: '1', DEV_CLUSTER_MARKER_REQUIRED: '1', STUB_DEV_MARKER: '1' });
+  assert.strictEqual(withMarker.status, 0, withMarker.stderr.slice(-800));
+  const created = runUp({ DEV_CLUSTER_MARKER_REQUIRED: '1' });
+  assert.strictEqual(created.status, 0, `この実行で作ったクラスタ（印を置く）が段 2 で止まった:\n${created.stderr.slice(-800)}`);
+});
+
+ok('IADR-0676: VAULT=1 は秘匿管理の切り替え（vault-local-switches の root-token-init-only）を書く。INFRA_CREDENTIALS_ENFORCE=1 だけが 1', () => {
+  const said = (r) => (r.stdout.match(/秘匿管理の切り替え（ConfigMap vault-local-switches）: root-token-init-only=(\d)/) || [])[1];
+  const def = runUp({ VAULT: '1' });
+  assert.strictEqual(def.status, 0, def.stderr.slice(-800));
+  assert.strictEqual(said(def), '0', '既定が 0 でない');
+  const enf = runUp({ VAULT: '1', INFRA_CREDENTIALS_ENFORCE: '1' });
+  assert.strictEqual(enf.status, 0, enf.stderr.slice(-800));
+  assert.strictEqual(said(enf), '1', '強制の段で 1 でない');
+  assert.strictEqual(said(runUp({ VAULT: '1', INFRA_CREDENTIALS_ENFORCE: 'true' })), '0', '1 以外を強制と読んだ');
+  // 宣言は標準入力で渡す（--from-literal を使わない）。秘匿管理を当てる前に書く（Pod が起動のときに読む）。
+  const src = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
+  assert.ok(/name: vault-local-switches\\n  namespace: %s\\ndata:\\n  root-token-init-only: "%s"\\n' \\\n\s+"\$INFRA_NS" "\$vault_root_token_init_only" \| kubectl apply -f -/.test(src), '切り替えの宣言の形が違う');
+  assert.ok(src.indexOf('vault-local-switches') < src.indexOf('kubectl apply -k "$VAULT_KUSTOMIZE"'), '切り替えを秘匿管理より後に書いた');
+  assert.strictEqual(said(runUp({})), undefined, 'VAULT=1 でないのに書いた');
+});
+
+ok('IADR-0676: 秘匿管理の NetworkPolicy は段 1 で opt-in（VAULT_NETWORK_POLICY=1 で当て、=0 で外し、未指定は何も変えない）', () => {
+  const def = runUp({ VAULT: '1' });
+  assert.strictEqual(def.status, 0, def.stderr.slice(-800));
+  assert.ok(!anyLineHas(def.lines, 'vault-networkpolicy') && !anyLineHas(def.lines, 'networkpolicy vault-ingress-known-clients'), '未指定なのに変えた');
+  const on = runUp({ VAULT: '1', VAULT_NETWORK_POLICY: '1' });
+  assert.strictEqual(on.status, 0, on.stderr.slice(-800));
+  const at = on.lines.findIndex((l) => l === 'kubectl apply -f deploy/local/vault-networkpolicy/networkpolicy.yaml');
+  assert.ok(at > on.lines.findIndex((l) => l.includes('rollout status deploy/vault')), '秘匿管理が立つ前に当てた／当てていない');
+  const off = runUp({ VAULT: '1', VAULT_NETWORK_POLICY: '0' });
+  assert.ok(anyLineHas(off.lines, 'delete networkpolicy vault-ingress-known-clients --ignore-not-found'), '=0 で外さない');
+  assert.notStrictEqual(runUp({ VAULT: '1', VAULT_NETWORK_POLICY: 'true' }).status, 0, '1/0 以外を受けた');
+});
+
+ok('IADR-0676: 秘匿管理の NetworkPolicy は 8200 を、ESO・bff/datasource・バックアップ・管理ツールのエッジだけへ開け、Egress を絞らない', () => {
+  const np = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/vault-networkpolicy/networkpolicy.yaml'), 'utf8');
+  assert.ok(/podSelector: \{ matchLabels: \{ app: vault \} \}/.test(np) && /policyTypes: \[Ingress\]/.test(np), '対象・種類が違う');
+  for (const want of ['kubernetes.io/metadata.name: external-secrets', 'app.kubernetes.io/name: external-secrets', 'values: [bff-service, datasource-service]',
+    'app: platform-backup, app.kubernetes.io/component: vault', 'app.kubernetes.io/name: traefik', 'istio: ingressgateway', '{ protocol: TCP, port: 8200 }']) {
+    assert.ok(np.includes(want), `送り手 ${want} が無い`);
+  }
+  // 送り手の取りこぼし: リポジトリの中で秘匿管理の Service を宛先に書くもの（マニフェスト・values・スクリプト・製品のコードの既定値）は、
+  //   上のどれかである。網は 3 つの字面 —— 短縮形を含む Service の名前＋8200（vault:8200 / vault.platform-infra[.svc[.cluster.local]]:8200）と
+  //   number: 8200 —— を deploy/・scripts/・src/（試験・文書を除く）で引く。ほかの書き方（環境変数で宛先を与える・別名の Service・取引ユニットの
+  //   リポジトリ）は捕まえない（段 2 の前に別の軸で引き直す。IADR-0676 決定 6）。
+  const refs = spawnSync('git', ['-C', REPO_ROOT, 'grep', '-l', '-E', '(^|[^a-z0-9-])vault(\\.platform-infra)?(\\.svc(\\.cluster\\.local)?)?:8200|number: 8200',
+    '--', 'deploy/', 'scripts/', 'src/', ':!*.test.*', ':!*Tests*', ':!*.md'], { encoding: 'utf8', shell: false }).stdout.trim().split('\n').filter(Boolean);
+  const known = {
+    'deploy/local/values-local.yaml': 'bff / datasource', 'deploy/local/platform-backup/vault/cronjob.yaml': 'バックアップ',
+    'deploy/local/platform-backup/script/backup.sh': 'バックアップ（CronJob の Pod の中で走る）', 'deploy/local/edge/admin-ingress-infra.yaml': 'エッジ（Traefik）',
+    'deploy/local/edge-istio/virtualservice-admin.yaml': 'エッジ（Istio）', 'deploy/local/vault/clustersecretstore.yaml': 'ESO',
+    'deploy/local/vault/eso/clustersecretstore-k8s.yaml': 'ESO', 'deploy/local/vault-persistence/local.hcl': '秘匿管理自身の待受',
+    'src/platform/backend/Bff/Platform.Bff/Foundation/Secrets/VaultKvClient.cs': 'bff（注記の例）',
+    'src/knowledge/backend/Services/DataSourceService/Infrastructure/Secrets/VaultConnectorSecretOptions.cs': 'datasource（注記の例）',
+  };
+  assert.ok(refs.length >= 8, `陽性対照: 送り手を拾えていない（${refs.length}）`);
+  for (const f of refs) assert.ok(Object.prototype.hasOwnProperty.call(known, f) || f.startsWith('deploy/cloud/'), `秘匿管理の新しい送り手 ${f} が NetworkPolicy の表に無い`);
+});
+
+ok('IADR-0676: DB の初期化の kp の値（postgres-init-users）は APP_DB_PASSWORD と同じ値で置く。値は引数に出ない', () => {
+  const def = runUp({});
+  assert.deepStrictEqual(credOf0573(def, 'postgres-init-users', 'kp-password'), ['kp'], 'dev の context の既定が従前の値でない');
+  const given = runUp({ APP_DB_PASSWORD: custom0676('app') });
+  assert.strictEqual(given.status, 0, given.stderr.slice(-800));
+  assert.deepStrictEqual(credOf0573(given, 'postgres-init-users', 'kp-password'), [custom0676('app')]);
+  assert.deepStrictEqual(credOf0573(given, 'postgres-app', 'password'), [custom0676('app')], '消費側と同じ値でない');
+  assert.ok(!given.lines.some((l) => l.includes(custom0676('app'))), '値がコマンドの引数に出た');
+  const existing = runUp({ STUB_APP_DB_EXISTING: custom0676('old') });
+  assert.deepStrictEqual(credOf0573(existing, 'postgres-init-users', 'kp-password'), [custom0676('old')], '既存の値を引き継がない');
+});
+
+ok('IADR-0676: OBSERVABILITY=1 は Grafana の管理者（grafana-admin）を 明示 ＞ 既存 ＞ 乱数 で置き、開発用の値を持たない。値は出ない', () => {
+  const def = runUp({ OBSERVABILITY: '1' });
+  assert.strictEqual(def.status, 0, def.stderr.slice(-800));
+  const v = credOf0573(def, 'grafana-admin', 'password');
+  assert.strictEqual(v.length, 1, 'grafana-admin が 1 度だけ作られない');
+  assert.ok(/^[0-9a-f]{48}$/.test(v[0]), '既定が乱数でない');
+  assert.ok(!def.lines.some((l) => l.includes(v[0])) && !`${def.stdout}${def.stderr}`.includes(v[0]), '値が引数・出力に出た');
+  assert.deepStrictEqual(credOf0573(runUp({ OBSERVABILITY: '1', STUB_GRAFANA_ADMIN_EXISTING: custom0676('old') }), 'grafana-admin', 'password'), [custom0676('old')], '既存の値を引き継がない');
+  assert.deepStrictEqual(credOf0573(runUp({ OBSERVABILITY: '1', STUB_GRAFANA_ADMIN_EXISTING: custom0676('old'), GRAFANA_ADMIN_PASSWORD: custom0676('new') }), 'grafana-admin', 'password'), [custom0676('new')], '明示が既存に勝たない');
+  assert.notStrictEqual(runUp({ OBSERVABILITY: '1', GRAFANA_ADMIN_PASSWORD: 'a b' }).status, 0, '空白を含む値を通した');
+  assert.ok(!anyLineHas(runUp({}).lines, 'grafana-admin'), 'OBSERVABILITY=1 でないのに作った');
+});
+
+ok('IADR-0676: マニフェスト — DB の初期化は kp を Secret の値で作り、Grafana は管理者の値を optional に読み、永続化は起動のたびに stdin で合わせる', () => {
+  const pg = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/postgres.yaml'), 'utf8');
+  assert.ok(!/CREATE USER kp WITH PASSWORD 'kp'/.test(pg), 'kp を固定の値で作っている');
+  assert.ok(/\\getenv kp_password KP_INIT_PASSWORD/.test(pg) && /CREATE USER kp WITH PASSWORD :'kp_password';/.test(pg), 'kp を env の値で作っていない');
+  assert.ok(/name: KP_INIT_PASSWORD\n\s+valueFrom:\n\s+secretKeyRef:\n\s+name: postgres-init-users\n\s+key: kp-password\n\s+optional: true/.test(pg), 'postgres-init-users を optional に読んでいない');
+  const gf = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/observability/grafana.yaml'), 'utf8');
+  assert.ok(/name: GF_SECURITY_ADMIN_PASSWORD\n\s+valueFrom:\n\s+secretKeyRef: \{ name: grafana-admin, key: password, optional: true \}/.test(gf), 'Grafana が管理者の値を optional に読まない');
+  const persist = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/observability-persistence/kustomization.yaml'), 'utf8');
+  assert.ok(/printf '%s' "\$GF_SECURITY_ADMIN_PASSWORD" \| grafana cli/.test(persist) && /reset-admin-password --password-from-stdin/.test(persist), '永続化が stdin で合わせない');
+  assert.ok(/exec \/run\.sh/.test(persist), '製品の入口へ戻らない');
 });
 
 
