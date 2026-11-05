@@ -831,6 +831,8 @@ case "$cmd" in
     # #2402 のレビュー 🔴2: 無い接頭辞は「directory not found」（終了コード 3）を返し得る（rclone の bucket 型の
     # バックエンドで実測）。$STATE/s3-list-fail があれば、それ以外の失敗（1）を返す。
     [ -f "$STATE/s3-list-fail" ] && { echo "stub rclone: list failed" >&2; exit 1; }
+    # 特定の接頭辞の一覧だけを失敗させる（STUB_S3_LIST_FAIL_MATCH を含む引数のとき 1）。
+    [ -n "${STUB_S3_LIST_FAIL_MATCH:-}" ] && [[ "${args[1]}" == *"$STUB_S3_LIST_FAIL_MATCH"* ]] && { echo "stub rclone: list failed" >&2; exit 1; }
     [ -d "$d" ] || { echo "stub rclone: directory not found" >&2; exit 3; }
     for p in "$d"/*; do [ -e "$p" ] || continue; n="${p##*/}"; [ -d "$p" ] && echo "$n/" || echo "$n"; done
     ;;
@@ -911,6 +913,35 @@ assert_ne 'T-2402-13 S3: 一覧が 3 以外で失敗したら失敗で終わる�
 assert_missing 'T-2402-13 S3: 一覧に失敗したら送らない' "$(cat "$STUB_LOG")" 'rclone -q copy '
 assert_nofile 'T-2402-13 S3: 一覧に失敗したら COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
 rm -f "$STATE/s3-list-fail"
+
+# #2406 のレビュー 🟡: 月次の回が途中で失敗すると、COMPLETE の無い monthly/<回>/ が残る。それを「その月は取得済み」と
+# 数えると、その月の月次が取り直されない。**COMPLETE を持つ回だけを数え**、取りこぼしの回が残っていても翌日に取り直す。
+new_s3_env
+mkdir -p "$(S3D monthly 2026-11-01T030000Z)"
+printf 'partial' > "$(S3D monthly 2026-11-01T030000Z)/pg-audit_svc.dump.age"
+export BACKUP_NOW="2026-11-02T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-14 S3: 月次の取りこぼしの回（COMPLETE が無い）が残っていても成功で終わる' "$RC" "0"
+assert_file 'T-2402-14 S3: 取りこぼしの回は数えず、翌日の完全な回を monthly に書き直す' "$(S3D monthly 2026-11-02T030000Z)/COMPLETE"
+assert_nofile 'T-2402-14 S3: 取りこぼしの回は触らない（消さない・COMPLETE を足さない）' "$(S3D monthly 2026-11-01T030000Z)/COMPLETE"
+# COMPLETE を持つ回が同じ月にあれば、書かない（T-2402-02 と同じ）。
+export BACKUP_NOW="2026-11-03T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-14 S3: 完全な月次の回がある月の次の回も成功で終わる' "$RC" "0"
+assert_nofile 'T-2402-14 S3: 完全な月次の回がある月は monthly へ書かない' "$(S3D monthly 2026-11-03T030000Z)"
+# 取りこぼしの回の中身を確かめられないときは、取得済みとも未取得とも決めずに失敗を返す（daily は書けている）。
+new_s3_env
+mkdir -p "$(S3D monthly 2026-11-01T030000Z)"
+printf 'partial' > "$(S3D monthly 2026-11-01T030000Z)/pg-audit_svc.dump.age"
+export BACKUP_NOW="2026-11-02T030000Z"
+export STUB_S3_LIST_FAIL_MATCH="monthly/2026-11-01T030000Z"
+run_backup
+unset STUB_S3_LIST_FAIL_MATCH
+assert_eq 'T-2402-14 S3: 月次の回の中身を確かめられなければ失敗で終わる' "$RC" "1"
+assert_file 'T-2402-14 S3: そのときも daily は書けている' "$(S3D daily 2026-11-02T030000Z)/COMPLETE"
+assert_nofile 'T-2402-14 S3: そのときは monthly へ書かない' "$(S3D monthly 2026-11-02T030000Z)"
 
 # 送った先の暗号文が壊れた → COMPLETE を置かずに失敗する。
 new_s3_env

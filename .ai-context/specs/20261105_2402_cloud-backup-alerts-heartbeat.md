@@ -5,7 +5,7 @@ status: done
 related_ids: [NFR-21, NFR-03, NFR-05, ADR-0002, ADR-0006, ADR-0008, IADR-0471, IADR-0548, IADR-0571, IADR-0669, IADR-0670, IADR-0675]
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 issue: "#2402"
 ---
 
@@ -14,6 +14,10 @@ issue: "#2402"
 > 本仕様書は、実装に着手する前に作成した（着手 2026-11-05。develop `b05b19b9`）。
 > クラウドの最小構成そのもの（`deploy/cloud/` の infra・`values-cloud.yaml`）は #2401 が並行して作る。
 > 本件は `deploy/cloud/backup/` と `deploy/cloud/observability/` だけを新設し、#2401 のファイルに触れない（結線は後にマージする側が行う）。
+> ［2026-11-06 追記 / #2406］#2401 が先にマージされた（#2409）ので、**この PR で結線まで済ませた**。そのため #2401 のファイルにも触れている:
+> `deploy/cloud/kustomization.yaml`（新設。infra・backup・observability を束ね、collector の patch を当てる）・`deploy/cloud/observability/patches/otel-collector.yaml`（remote write と 8888）・
+> `deploy/cloud/infra/keycloak.yaml`（startupProbe と livenessProbe。#2409 のレビューの 🟢）・`deploy/cloud/README.md`（適用の対象と §1-5）と、その試験（`deploy-cloud.test.js`・`scripts.repo.test.js`）。
+> `deploy/cloud/infra` の kustomization（resources だけ）と `values-cloud.yaml` は変えていない。詳細は IADR-0675「#2401 との結線」。
 
 ## 事象（issue の記録）
 

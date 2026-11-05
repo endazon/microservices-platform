@@ -857,10 +857,13 @@ publish_s3_to() {
 	return 0
 }
 
-# daily へ書き、完全な回で、その月の回がまだ monthly に無ければ monthly へも書く。
+# daily へ書き、完全な回で、その月の**完了した**回がまだ monthly に無ければ monthly へも書く。
 # 戻り値: 0 = すべて書けた / 1 = daily は書けたが monthly で失敗 / 2 = daily に書けなかった。
+# ［#2406 のレビュー 🟡］月次の回が途中で失敗すると COMPLETE の無い monthly/<回>/ が残る。それを数えるとその月は取り直されない。
+#   **COMPLETE を持つ回だけを「その月は取得済み」と数える**（取りこぼしの回は消さずに残し、翌日の回で取り直す）。
+#   回の中身を確かめられないときは、取得済みとも未取得とも決めずに失敗を返す（同じ月の回を二重に書かない）。
 publish_s3() {
-	local run="$1" staging="$2" now="$3" base month existing
+	local run="$1" staging="$2" now="$3" base month existing entry inner
 	base="$BACKUP_S3_DEST/$BACKUP_KIND"
 	publish_s3_to "$base/daily/$run" "$staging" daily || return 2
 	[ "$BACKUP_S3_MONTHLY" = 1 ] || return 0
@@ -870,9 +873,18 @@ publish_s3() {
 		err "monthly の回を確かめられません: $base/monthly"
 		return 1
 	fi
-	if grep -q "^$month-" <<< "$existing"; then
-		return 0
-	fi
+	while IFS= read -r entry; do
+		entry="${entry%/}"
+		case "$entry" in "$month"-*) ;; *) continue ;; esac
+		if ! inner="$(s3_lsf "$base/monthly/$entry/")"; then
+			err "monthly の回の中身を確かめられません: $base/monthly/$entry"
+			return 1
+		fi
+		if grep -qx 'COMPLETE' <<< "$inner"; then
+			return 0
+		fi
+		log "monthly の回 $entry は COMPLETE が無いので数えません（取り直します）"
+	done <<< "$existing"
 	publish_s3_to "$base/monthly/$run" "$staging" monthly || return 1
 	return 0
 }

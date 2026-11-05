@@ -186,12 +186,13 @@ bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/p
 
 ### 回を手動でやり直すとき（中途半端な回の扱い）
 
-失敗した回のオブジェクト（`COMPLETE` の無い `daily/<回>/`）は**消さない**。Object Lock の期間の内は消せないうえ、
+失敗した回のオブジェクト（`COMPLETE` の無い `daily/<回>/`・`monthly/<回>/`）は**消さない**。Object Lock の期間の内は消せないうえ、
 `COMPLETE` が無いので、リストア試験もほかの回も完了と見なさない。lifecycle が期限で片付ける。
 原因を直したら `kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres backup-retry-<日付>` で新しい回を起こす。
 回の名前は起動の秒で決まるので、前の回とは重ならない。「同じ名前の回が既にあります」と出たら、同じ秒に 2 本起こしている。
 1 本が終わってから起こし直す。`-partial` の回（一部の DB が欠けた回）は `COMPLETE` を持つが、月次へは書かれない。
 原因を直してから、完全な回をもう 1 つ取る（その月の月次が未だなら、そこで月次にも書かれる）。
+月次の回が途中で失敗して `COMPLETE` の無い `monthly/<回>/` が残っても、その月は「取得済み」と数えない。次の完全な回（翌日の定時の回か、手動で起こした回）が月次に書かれる。
 
 ## 失敗したときの分岐
 
