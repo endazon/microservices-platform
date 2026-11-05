@@ -169,7 +169,9 @@ function docs(yaml) {
       return { kind: obj.kind, name: (obj.metadata || {}).name, obj, text };
     });
 }
-const find = (ds, kind, name) => ds.find((d) => d.kind === kind && d.name === name);
+/** 種類・名前・名前空間で文書を引く（既定は platform-infra。別の名前空間に同じ名前の別名の Service がある。#2401 の aliases）。 */
+const find = (ds, kind, name, ns = 'platform-infra') =>
+  ds.find((d) => d.kind === kind && d.name === name && ((d.obj.metadata || {}).namespace || ns) === ns);
 
 /** ConfigMap の data のキーの中身（文字列の比較だけ。正規表現を組み立てない）。 */
 function cmData(doc, key) {
@@ -541,6 +543,109 @@ t('T-2402-47 Prometheus: 保持は 7 日・1GB 以内、メモリの上限は 76
   const mem = ((promC.resources || {}).limits || {}).memory;
   assert.ok(bytesOf(mem) <= 768 * 2 ** 20, `memory limit=${mem}`);
   assert.ok((promC.args || []).includes('--web.enable-remote-write-receiver'));
+});
+
+// ---------------------------------------------------------------- クラウドの最小構成（#2401）との結線
+// 🔴 #2401 の実物（deploy/cloud/infra・bootstrap-secrets.sh）の名前と突き合わせる。片側だけ変えると、ここで赤になる。
+const bootstrap = fs.existsSync(path.join(REPO_ROOT, 'deploy/cloud/bootstrap-secrets.sh')) ? read('deploy/cloud/bootstrap-secrets.sh') : '';
+let all = '';
+t('T-2402-50 結線: deploy/cloud の kustomization が infra・backup・observability を束ねて描画できる', () => {
+  const kz = parseYaml(read('deploy/cloud/kustomization.yaml'));
+  for (const r of ['infra', 'backup', 'observability']) assert.ok((kz.resources || []).includes(r), `resources に ${r} が無い`);
+  all = render('deploy/cloud');
+});
+const ads = docs(all);
+let infraDs = [];
+t('T-2402-50 結線: #2401 の deploy/cloud/infra を描画できる（突き合わせの相手）', () => {
+  infraDs = docs(render('deploy/cloud/infra'));
+});
+const pgDep = find(infraDs, 'Deployment', 'postgres') || EMPTY;
+const pgC = containersOf(pgDep.obj).find((c) => c.name === 'postgres') || {};
+t('T-2402-37 TLS: バックアップは Postgres へ verify-full で繋ぎ、CA は #2401 の ConfigMap platform-infra-ca の ca.crt だけを読む', () => {
+  assert.strictEqual((envOf(backupC, 'PGSSLMODE') || {}).value, 'verify-full');
+  const root = (envOf(backupC, 'PGSSLROOTCERT') || {}).value;
+  const mount = (backupC.volumeMounts || []).find((m) => m.name === 'platform-infra-ca') || {};
+  assert.strictEqual(root, `${mount.mountPath}/ca.crt`, 'PGSSLROOTCERT がマウントした CA を指していない');
+  assert.strictEqual(mount.readOnly, 'true');
+  const v = volumeOf(cj.obj, 'platform-infra-ca') || {};
+  assert.strictEqual((v.configMap || {}).name, 'platform-infra-ca');
+  assert.deepStrictEqual(((v.configMap || {}).items || []).map((i) => i.key), ['ca.crt']);
+  assert.notStrictEqual((v.configMap || {}).optional, 'true', 'CA が optional（無ければ検証なしへ倒れる構成を許す）');
+  // #2401 が作る CA の置き場所と名前を突き合わせる。
+  assert.ok(bootstrap.includes('create configmap platform-infra-ca --from-file=ca.crt='), '#2401 が ConfigMap platform-infra-ca（ca.crt）を作っていない');
+});
+t('T-2402-37 TLS: 名前の照合に使うホスト（PGHOST）は Postgres の Service 名で、#2401 の証明書の SAN に入っている', () => {
+  const host = (envOf(backupC, 'PGHOST') || {}).value;
+  assert.ok(find(infraDs, 'Service', host), `Service ${host} が #2401 に無い`);
+  assert.ok(bootstrap.includes('subjectAltName=DNS:%s,'), '#2401 の証明書の SAN が Service の短い名前を含まない');
+  assert.ok((pgC.args || []).includes('ssl=on'), '#2401 の Postgres が TLS でない');
+});
+t('T-2402-37 資格情報: 超利用者の名前とパスワードは #2401 の Secret postgres の username / password から読む', () => {
+  for (const [envName, key] of [['PGUSER', 'username'], ['PGPASSWORD', 'password']]) {
+    const ref = (((envOf(backupC, envName) || {}).valueFrom || {}).secretKeyRef) || {};
+    assert.deepStrictEqual([ref.name, ref.key], ['postgres', key], envName);
+    const pgRef = (((envOf(pgC, envName === 'PGUSER' ? 'POSTGRES_USER' : 'POSTGRES_PASSWORD') || {}).valueFrom || {}).secretKeyRef) || {};
+    assert.deepStrictEqual([pgRef.name, pgRef.key], ['postgres', key], `#2401 の Postgres の ${key} と違う`);
+  }
+  assert.strictEqual((envOf(backupC, 'PGUSER') || {}).value, undefined, 'PGUSER を直書きしている');
+});
+const ingressFrom = (ds, name) => {
+  const p = find(ds, 'NetworkPolicy', name) || EMPTY;
+  return { p, rules: ((p.obj.spec || {}).ingress) || [] };
+};
+t('T-2402-39 入りの許可: Postgres はバックアップの Pod から 5432 だけを受ける（#2401 の postgres-ingress-clients の外）', () => {
+  const { p, rules } = ingressFrom(bds, 'postgres-ingress-backup');
+  assert.ok(p.text, 'NetworkPolicy postgres-ingress-backup が無い');
+  assert.deepStrictEqual(p.obj.spec.podSelector, { matchLabels: { app: 'postgres' } });
+  assert.strictEqual(rules.length, 1);
+  assert.deepStrictEqual(rules[0].from, [{ podSelector: { matchLabels: { app: 'platform-backup' } } }]);
+  assert.deepStrictEqual(rules[0].ports.map((x) => x.port), ['5432']);
+  assert.ok((find(infraDs, 'Deployment', 'postgres') || EMPTY).text.includes('app: postgres'), '#2401 の Postgres のラベルが違う');
+});
+t('T-2402-39 入りの許可: otel-collector は Prometheus から 8888 だけを受ける', () => {
+  const { p, rules } = ingressFrom(ods, 'otel-collector-ingress-prometheus');
+  assert.ok(p.text, 'NetworkPolicy otel-collector-ingress-prometheus が無い');
+  assert.deepStrictEqual(p.obj.spec.podSelector, { matchLabels: { app: 'otel-collector' } });
+  assert.strictEqual(rules.length, 1);
+  assert.deepStrictEqual(rules[0].from, [{ podSelector: { matchLabels: { app: 'prometheus' } } }]);
+  assert.deepStrictEqual(rules[0].ports.map((x) => x.port), ['8888']);
+});
+const otelCmAll = find(ads, 'ConfigMap', 'otel-collector-config') || EMPTY;
+const otelCmBase = find(infraDs, 'ConfigMap', 'otel-collector-config') || EMPTY;
+const otelAll = parseYaml(cmData(otelCmAll, 'config.yaml') || '') || {};
+const otelBase = parseYaml(cmData(otelCmBase, 'config.yaml') || '') || {};
+t('T-2402-51 otel: 結線の描画では、メトリクスだけを Prometheus へ remote write する', () => {
+  assert.strictEqual(((otelAll.exporters || {}).prometheusremotewrite || {}).endpoint, 'http://prometheus:9090/api/v1/write');
+  assert.strictEqual(((otelAll.service || {}).pipelines || {}).metrics.exporters, '[prometheusremotewrite]');
+  for (const p of ['traces', 'logs']) {
+    assert.strictEqual(otelAll.service.pipelines[p].exporters, otelBase.service.pipelines[p].exporters, `${p} を変えている`);
+  }
+});
+t('T-2402-51 otel: 足すのは remote write だけで、ほかは #2401 の設定と同じ（片側だけの変更を止める）', () => {
+  const strip = (c) => {
+    const x = JSON.parse(JSON.stringify(c));
+    if (x.exporters) delete x.exporters.prometheusremotewrite;
+    if (x.service && x.service.pipelines && x.service.pipelines.metrics) delete x.service.pipelines.metrics.exporters;
+    return x;
+  };
+  assert.ok(otelBase.receivers, '#2401 の otel の設定を読めない');
+  assert.deepStrictEqual(strip(otelAll), strip(otelBase));
+});
+t('T-2402-51 otel: Service が 8888（自己テレメトリ）を出し、Prometheus の収集先と合う', () => {
+  const svc = find(ads, 'Service', 'otel-collector') || EMPTY;
+  assert.ok(((svc.obj.spec || {}).ports || []).some((x) => x.port === '8888' && x.targetPort === '8888'), 'Service に 8888 が無い');
+  const base = find(infraDs, 'Service', 'otel-collector') || EMPTY;
+  for (const p of (base.obj.spec || {}).ports || []) {
+    assert.ok(svc.obj.spec.ports.some((x) => x.port === p.port), `#2401 の ${p.name} を落としている`);
+  }
+  const prom = parseYaml(cmData(find(ods, 'ConfigMap', 'prometheus-cloud-config') || EMPTY, 'prometheus.yml') || '') || {};
+  const job = (prom.scrape_configs || []).find((j) => j.job_name === 'otel-collector') || {};
+  assert.strictEqual((((job.static_configs || [])[0] || {}).targets), "['otel-collector:8888']");
+});
+t('T-2402-51 結線: 受け口を増やさず、Secret を描かない', () => {
+  assert.deepStrictEqual(inboundExposures(ads), []);
+  assert.ok(!ads.some((d) => d.kind === 'Secret'), '描画に Secret がある');
+  assert.deepStrictEqual(secretLookingValues(all), []);
 });
 
 /** 道具が PATH に在ることを確かめる（無ければ試験を失敗にする。skip にしない。#2402 のレビュー 🟡2）。 */

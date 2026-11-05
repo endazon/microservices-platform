@@ -87,8 +87,10 @@ issues: [#2402, #2401]
      --from-literal=endpoint=https://fsn1.your-objectstorage.com \
      --from-literal=dest=objstore:<バケット>/ast-poc
    ```
-2. age の公開鍵（ConfigMap `platform-backup-age-recipients`）はローカルと同じ手順で作る（[platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の準備）。秘密鍵はクラスタに置かない。
-3. バックアップのイメージ（レジストリへ置かない。手元でビルドしてノードへ取り込む）:
+2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、超利用者の Secret `postgres`（`username` / `password`）は、
+   クラウドの最小構成の `bootstrap-secrets.sh` が作る。手で作らない。
+3. age の公開鍵（ConfigMap `platform-backup-age-recipients`）はローカルと同じ手順で作る（[platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の準備）。秘密鍵はクラスタに置かない。
+4. バックアップのイメージ（レジストリへ置かない。手元でビルドしてノードへ取り込む）:
    ```bash
    T=microservices-platform/platform-backup-cloud:pg16.15-age1.3.2-r1-rclone1.75.2-r0
    docker build --platform linux/amd64 -t "$T" deploy/cloud/backup/image
@@ -96,7 +98,7 @@ issues: [#2402, #2401]
    ssh <ノード> "sudo k3s ctr images ls | grep platform-backup-cloud"   # digest を記録する
    ```
    CronJob は `imagePullPolicy: Never` である。取り込んでいなければ Pod は起動しない（外のレジストリから同じ名前を取らない）。
-4. 初回の手動の回で、書けることを確かめる:
+5. 初回の手動の回で、書けることを確かめる:
    ```bash
    kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres backup-first
    kubectl -n platform-infra logs -f job/backup-first    # 「書きました: objstore:…/postgres/daily/<回>」と「完了」

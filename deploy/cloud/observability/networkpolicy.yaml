@@ -1,6 +1,7 @@
 # NFR-21, NFR-18, IADR-0675 (#2402): 警報の Pod の通信を絞る。受け口は増やさない（クラスタの外からは何も届かない）。
 # - Alertmanager: 受けは Prometheus からの :9093 だけ。外へは名前解決と HTTPS（Discord・Healthchecks.io）だけ。
 # - Prometheus: 受けは otel-collector からの remote write（:9090）だけ。外へは制限しない（クラスタ内を収集する）。
+# - otel-collector: Prometheus からの :8888（自己テレメトリの収集）を足す。
 # 🔴 HTTPS はクラスタの外（私設のアドレス帯を除く）だけへ出す。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -50,3 +51,22 @@ spec:
             matchLabels: { app: otel-collector }
       ports:
         - { protocol: TCP, port: 9090 }
+---
+# NFR-21, IADR-0675 (#2402): otel-collector の自己テレメトリ（:8888）を Prometheus から収集する入りの**別宣言**。
+# 🔴 #2401 の otel-collector-ingress-clients（4317 / 4318）を書き換えない（加算的）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-ingress-prometheus
+  namespace: platform-infra
+  labels: { app: otel-collector }
+spec:
+  podSelector:
+    matchLabels: { app: otel-collector }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: prometheus }
+      ports:
+        - { protocol: TCP, port: 8888 }

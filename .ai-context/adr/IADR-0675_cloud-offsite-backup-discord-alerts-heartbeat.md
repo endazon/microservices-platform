@@ -104,6 +104,22 @@ CI と同じ版のバイナリを手元で起動して、警報の式の前提�
      （＝警報が鳴り、check B へ ping が届く）。`reason` が複数本あるので、式は `sum` で束ねたまま変えない。
    - Alertmanager を収集できないときは式が空になり、警報が鳴らず、B が下がる。これは意図どおりで、黙らない。
 
+## #2401 との結線（2026-11-05）
+
+#2401 の実物（`deploy/cloud/infra`・`bootstrap-secrets.sh`）に合わせて、#2402 の側を次のように揃えた。名前は試験 T-2402-37・39・50・51 で突き合わせる。
+
+1. **全体の kustomization:** `deploy/cloud/kustomization.yaml` を置き、`infra`・`backup`・`observability` を束ねる。`infra` は単独でも描画できる形のまま残す。
+2. **Postgres の資格情報:** 超利用者は乱数の名前で作られる。`PGUSER` と `PGPASSWORD` は、Secret `postgres` のキー `username` と `password` から読む（Postgres 本体と同じ参照）。
+3. **TLS:** Postgres は `hostssl` しか受けない。そのため `PGSSLMODE=verify-full` とし、`PGSSLROOTCERT` に ConfigMap `platform-infra-ca` の `ca.crt` だけをマウントする（非 optional）。
+   - 名前の照合に使う `PGHOST` は Service `postgres` である。この名前は #2401 の証明書の SAN（`DNS:postgres,…`）に入っている。
+   - 形は #2405（ローカル）と同じだが、CA の置き場所が違う。#2401 の Secret `postgres-tls` は `ca.crt` を持たないので、ConfigMap から読む。
+4. **入りの許可:** #2401 は platform-infra を default-deny にしている。その上に、次の 2 つの別宣言を足した（NetworkPolicy は加算的なので、#2401 の宣言は書き換えない）。
+   - `postgres-ingress-backup`: バックアップの Pod から Postgres の 5432 だけを許す。
+   - `otel-collector-ingress-prometheus`: Prometheus から otel-collector の 8888 だけを許す。
+5. **otel-collector:** #2401 の設定は `debug` の exporter だけである。そこで kustomize の patch（`observability/patches/otel-collector.yaml`）で、メトリクスの経路に `prometheusremotewrite`（`http://prometheus:9090/api/v1/write`）を足し、Service に 8888 の口を足した。
+   - traces と logs は変えない。
+   - ConfigMap の設定は 1 つの文字列なので、patch は全体を置き換える。T-2402-51 が、remote write の他は #2401 の設定と同じであることを木で突き合わせる。
+
 ## 却下した代替案
 
 - **Alertmanager を v0.28 へ上げて Discord の URL をファイルで読む**: 経路 B と版が分かれ、digest の固定を 2 つ持つ。描画の形には先例（IADR-0571）がある。

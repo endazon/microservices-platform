@@ -1,0 +1,57 @@
+# NFR-21, IADR-0675 (#2402): クラウドの最小構成の otel-collector（#2401 の deploy/cloud/infra/otel-collector.yaml）へ、
+# **メトリクスの Prometheus への remote write だけ**を足す patch。deploy/cloud/kustomization.yaml が当てる。
+# - 足すのは exporters.prometheusremotewrite と、metrics の経路の exporters だけである。traces・logs は #2401 のまま（debug）。
+# - ConfigMap の設定は 1 つの文字列なので、patch は config.yaml を丸ごと置き換える。🔴 #2401 の側を変えたら、ここも同じに直す
+#   （scripts/cloud-ops.test.js T-2402-51 が、remote write の他は #2401 の設定と同じであることを突き合わせる）。
+# - Service へ自己テレメトリの :8888 を足す（Prometheus の収集先 otel-collector:8888。#2401 の Service は 4317 / 4318 だけ）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: platform-infra
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch:
+        timeout: 5s
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 128
+    exporters:
+      debug:
+        verbosity: basic
+      prometheusremotewrite:
+        endpoint: http://prometheus:9090/api/v1/write
+    service:
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: platform-infra
+spec:
+  ports:
+    - { name: self-metrics, port: 8888, targetPort: 8888 }
