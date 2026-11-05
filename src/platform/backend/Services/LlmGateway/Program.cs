@@ -84,7 +84,7 @@ builder.Services.AddOptions<LlmRoutingOptions>()
     .Bind(builder.Configuration.GetSection(LlmRoutingOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, ClaudeApiKeyStartupValidator>();
-// NFR-18, FR-11, ADR-0044, IADR-0674 (#2411): 経路の設定（用途のモデルの割当・上流の宛先・単価表）の起動時検査。
+// NFR-18, FR-11, ADR-0044, IADR-0677 (#2411): 経路の設定（用途のモデルの割当・上流の宛先・単価表）の起動時検査。
 // 🔴 **既定（段 1）は警告だけ**（下の起動後のブロックが 1 件 1 行で出す）。`Llm:RouteValidation:Mode=Fail`（段 2）で誤りがあれば起動を止める。
 builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, LlmRouteStartupValidator>();
 builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
@@ -185,7 +185,7 @@ app.Services.GetRequiredService<LlmBudgetMetrics>();
     }
 }
 
-// NFR-18, IADR-0674 (#2411): 段 1（Warn）で経路の設定の誤りを起動時に 1 件 1 行の Warning で出す（段 2 は上の検証が起動を止める）。
+// NFR-18, IADR-0677 (#2411): 段 1（Warn）で経路の設定の誤りを起動時に 1 件 1 行の Warning で出す（段 2 は上の検証が起動を止める）。
 {
     if (LlmRouteConfigurationCheck.TryReadMode(app.Configuration, out var routeMode) && routeMode == LlmRouteValidationMode.Warn)
     {
@@ -198,7 +198,7 @@ app.Services.GetRequiredService<LlmBudgetMetrics>();
         var routeLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LlmGateway.Startup");
         foreach (var finding in findings)
             routeLogger.LogWarning(
-                "LLM の経路の設定に誤りがある（kind={Kind}）: {Finding} 段 2（{ModeKey}=Fail）では起動を止める（#2411 / IADR-0674）。",
+                "LLM の経路の設定に誤りがある（kind={Kind}）: {Finding} 段 2（{ModeKey}=Fail）では起動を止める（#2411 / IADR-0677）。",
                 finding.Kind, finding.Message, LlmRouteConfigurationCheck.ModeConfigKey);
     }
 }

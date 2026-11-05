@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Infrastructure.ExternalServices;
 
-// NFR-18, FR-11, ADR-0010, ADR-0044, IADR-0674 (#2411): 経路の設定の起動時検査。
+// NFR-18, FR-11, ADR-0010, ADR-0044, IADR-0677 (#2411): 経路の設定の起動時検査。
 //
 // 用途のモデルの割当・上流の宛先・単価表の誤りは、従前は**最初の呼び出しまで表に出なかった**
 // （未知のモデルは黙って既定のモデルへ落ち、空の宛先は呼び出しの例外になり、単価の欠落は金額の計上から黙って抜ける）。

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// NFR-18, FR-11, ADR-0010, ADR-0044, IADR-0674 (#2411): 経路の設定（用途のモデルの割当・上流の宛先・単価表）の起動時検査を、
+// NFR-18, FR-11, ADR-0010, ADR-0044, IADR-0677 (#2411): 経路の設定（用途のモデルの割当・上流の宛先・単価表）の起動時検査を、
 // 本物のホスト（Program.cs の配線）で固定する。
 //
 // 🔴 **段 1（既定 Warn）は起動を止めない。段 2（Fail）は誤りがあれば起動を止める。**

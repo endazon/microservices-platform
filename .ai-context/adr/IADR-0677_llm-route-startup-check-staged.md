@@ -1,5 +1,5 @@
 ---
-title: IADR-0674 LLM ゲートウェイは起動時に経路の設定（未知のモデル・空の宛先・単価の欠落）を 1 か所で引き、段 1 は Warning、段 2（Llm:RouteValidation:Mode=Fail）で起動を止める（#2411）
+title: IADR-0677 LLM ゲートウェイは起動時に経路の設定（未知のモデル・空の宛先・単価の欠落）を 1 か所で引き、段 1 は Warning、段 2（Llm:RouteValidation:Mode=Fail）で起動を止める（#2411）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, FR-11, FR-10, ADR-0010, ADR-0044, IADR-0641, IADR-0466, IADR-0531]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2411_llm-route-startup-check.md
 ---
 
-# IADR-0674: LLM ゲートウェイの経路の設定の起動時検査（#2411）
+# IADR-0677: LLM ゲートウェイの経路の設定の起動時検査（#2411）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

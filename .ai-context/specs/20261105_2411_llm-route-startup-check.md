@@ -2,7 +2,7 @@
 title: 作業仕様書 — LLM ゲートウェイの経路の設定（モデルの割当・上流の宛先・単価表）を起動時に検査する（段 1 は警告・段 2 で起動を止める。#2411）
 type: spec
 status: done
-related_ids: [NFR-18, FR-11, FR-10, ADR-0010, ADR-0044, IADR-0641, IADR-0674]
+related_ids: [NFR-18, FR-11, FR-10, ADR-0010, ADR-0044, IADR-0641, IADR-0677]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05
@@ -20,7 +20,7 @@ issue: "#2411"
 - `SelfHostedProvider`・`CopilotProvider`・`SelfHostedEmbeddingProvider` は、宛先が空だと呼び出しの時点で例外を投げる（起動は通る）。
 - `ModelPricingOptionsValidator` は区間の重なりと負値を見るが、使うモデルに単価があるかは見ない。
 
-## 方針（IADR-0674）
+## 方針（IADR-0677）
 
 - 誤りの 3 種（未知のモデル・空の宛先・単価の欠落）を純粋な関数 1 つで引く。
 - 段 1（既定）は起動時の Warning、段 2（`Llm:RouteValidation:Mode=Fail`）は起動を止める。

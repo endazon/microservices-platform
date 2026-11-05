@@ -7,7 +7,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace LlmGateway.Tests.Infrastructure.ExternalServices;
 
-// NFR-18, FR-11, ADR-0044, IADR-0674 (#2411): 経路の設定の起動時検査（純粋な関数と段の検証器）。
+// NFR-18, FR-11, ADR-0044, IADR-0677 (#2411): 経路の設定の起動時検査（純粋な関数と段の検証器）。
 [Trait("TestKind", "Unit")]
 public class LlmRouteConfigurationCheckTests
 {
