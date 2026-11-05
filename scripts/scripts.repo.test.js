@@ -8917,6 +8917,9 @@ ${r.stderr}`);
           // #2024 / IADR-0570: 試験アカウントの資格情報の**生成器**（乱数の KV の JSON を標準出力へ書く。判定を返さない）。
           // 標準出力が端末だと exit 2 で止まる。検査器として spawn される母集合に入れてはならない（試験は keycloak-realm-reconcile.test.js）。
           'gen-e2e-accounts.js',
+          // #2412 / IADR-0674: ブローカの権限の生成物（permissions.txt）の**生成器**。既定の照合は `gen-knowledge-graph.js --check` と同じ
+          // 生成器の付属で、`--write` でファイルを書く。照合と試験は rabbitmq-permissions.test.js と CI の専用ステップが走らせる。母集合に数えない。
+          'gen-rabbitmq-permissions.js',
           'measure-abac-combinations.js',
           // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、
