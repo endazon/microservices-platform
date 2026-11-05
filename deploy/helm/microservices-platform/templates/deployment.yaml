@@ -18,6 +18,30 @@
 {{- $dbTls := and $svc.database $.Values.global.db.tls $.Values.global.db.tls.enabled }}
 {{- $mqTls := and $svc.messaging $.Values.global.messaging.tls $.Values.global.messaging.tls.enabled }}
 {{- $infraCaMount := or $dbTls $mqTls }}
+{{- /* NFR-16, NFR-18, IADR-0674 (#2409): メッシュの無い配備（deploy/cloud）でサービスの受け口を TLS にする（opt-in。既定は描かない）。
+       services.<名>.tls.secretName の Secret（tls.crt・tls.key）を /etc/msp-service-tls へ置き、Kestrel を https の 1 つの受け口にする
+       （ASPNETCORE_URLS が基盤のイメージの ASPNETCORE_HTTP_PORTS に代わる）。probe は HTTPS。平文の受け口は残さない。
+       gRPC の h2c の受け口（grpcPort）は http でしか立たない（GrpcListenerExtensions）ので、併記は描画で止める。 */}}
+{{- $svcTls := $svc.tls | default dict }}
+{{- if and $svcTls (not $svcTls.secretName) }}
+{{- fail (printf "services.%s.tls は secretName（tls.crt・tls.key を持つ Secret）を与えてください（IADR-0674）" $name) }}
+{{- end }}
+{{- $tlsListen := and $svcTls.secretName $svc.port }}
+{{- if and $svcTls.secretName (not $svc.port) }}
+{{- fail (printf "services.%s.tls は port を持つサービスにだけ書けます（IADR-0674）" $name) }}
+{{- end }}
+{{- if and $tlsListen $svc.grpcPort }}
+{{- fail (printf "services.%s.tls と grpcPort は併記できません（h2c の受け口は http でしか立たない。TLS にするなら grpcPort を外す。IADR-0674）" $name) }}
+{{- end }}
+{{- /* NFR-18, IADR-0674 (#2409): ルートのファイルシステムを読み取り専用にする（opt-in）。書き込みは /tmp の emptyDir だけ。 */}}
+{{- $roRoot := $svc.readOnlyRootFilesystem }}
+{{- if $tlsListen }}
+{{- range $e := concat ($svc.extraEnv | default list) ($svc.extraEnvAppend | default list) }}
+{{- if has (upper ($e.name | toString)) (list "ASPNETCORE_URLS" "ASPNETCORE_HTTP_PORTS" "ASPNETCORE_HTTPS_PORTS" "KESTREL__CERTIFICATES__DEFAULT__PATH" "KESTREL__CERTIFICATES__DEFAULT__KEYPATH") }}
+{{- fail (printf "services.%s.tls と extraEnv / extraEnvAppend の %s は併記できません（受け口は tls が決める。IADR-0674）" $name $e.name) }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- /* FR-16, ADR-0024, IADR-0645 (#2117): MCP の宣言的公開構成（mcp-publication-config.yaml）をマウントする条件。
        $svc.enabled を重ねないのは、この range が `if $svc.enabled` の内側にあり、無効なら Deployment ごと描かれないから
        （ConfigMap 側の `and $svc.enabled $svc.mcpPublication` と食い違って、無い ConfigMap をマウントする形は起きない）。 */}}
@@ -105,6 +129,9 @@ spec:
           image: "{{ $.Values.global.image.registry }}/{{ $svc.image }}:{{ include "msp.selfBuiltImageTag" (dict "root" $ "tag" $svc.tag "what" (printf "services.%s" $name)) }}"
           imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
           {{- include "msp.containerSecurityContext.restricted" . | nindent 10 }}
+          {{- if $roRoot }}
+            readOnlyRootFilesystem: true
+          {{- end }}
           {{- if $svc.port }}
           ports:
             - containerPort: {{ $svc.port }}
@@ -118,6 +145,14 @@ spec:
           env:
             - name: Otlp__Endpoint
               value: {{ $.Values.global.otel.endpoint }}
+          {{- if $tlsListen }}
+            - name: ASPNETCORE_URLS
+              value: {{ printf "https://+:%v" $svc.port | quote }}
+            - name: Kestrel__Certificates__Default__Path
+              value: /etc/msp-service-tls/tls.crt
+            - name: Kestrel__Certificates__Default__KeyPath
+              value: /etc/msp-service-tls/tls.key
+          {{- end }}
           {{- /* NFR, IADR-0539 (#1927): GC の設定（global.dotnetGc。本番の既定）。services.<名>.dotnetGc が鍵ごとに上書きし、
                  空文字の鍵は描かない（そのサービスだけ .NET の既定へ戻す）。同じ名前を extraEnv / extraEnvAppend に置けば描画で落とす
                  —— 同名の env が 2 つ並ぶと、どちらが効くかが字面から読めなくなる。 */}}
@@ -545,18 +580,24 @@ spec:
             httpGet:
               path: /health/live
               port: {{ $svc.port }}
+              {{- if $tlsListen }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet:
               path: /health/ready
               port: {{ $svc.port }}
+              {{- if $tlsListen }}
+              scheme: HTTPS
+              {{- end }}
             initialDelaySeconds: 15
             periodSeconds: 15
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
-          {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication }}
+          {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot }}
           volumeMounts:
             {{- if $pipelineMount }}
             - name: pipeline-config
@@ -578,8 +619,17 @@ spec:
               mountPath: /etc/platform-infra-ca
               readOnly: true
             {{- end }}
+            {{- if $tlsListen }}
+            - name: service-tls
+              mountPath: /etc/msp-service-tls
+              readOnly: true
+            {{- end }}
+            {{- if $roRoot }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
           {{- end }}
-      {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication }}
+      {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot }}
       volumes:
         {{- if $pipelineMount }}
         - name: pipeline-config
@@ -609,6 +659,21 @@ spec:
             items:
               - key: {{ $.Values.global.infraCa.caKey }}
                 path: {{ $.Values.global.infraCa.caKey }}
+        {{- end }}
+        {{- if $tlsListen }}
+        # NFR-16, IADR-0674: 受け口のサーバ証明書（tls.crt・tls.key だけを写す）。非 root の利用者が読めるよう 0444。
+        - name: service-tls
+          secret:
+            secretName: {{ $svcTls.secretName }}
+            defaultMode: 0444
+            items:
+              - { key: tls.crt, path: tls.crt }
+              - { key: tls.key, path: tls.key }
+        {{- end }}
+        {{- if $roRoot }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
         {{- end }}
       {{- end }}
 {{- end }}
