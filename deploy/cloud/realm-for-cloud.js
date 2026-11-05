@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * NFR-18, IADR-0673 (#2401): クラウドの最小構成（deploy/cloud）の Keycloak へ取り込む realm を、宣言
+ * NFR-18, IADR-0674 (#2401): クラウドの最小構成（deploy/cloud）の Keycloak へ取り込む realm を、宣言
  * （deploy/keycloak/microservices-platform-realm.json）から組む。**宣言の開発用の値を 1 つも持ち込まない。**
  *
  *   - クライアントは、取引ユニット（AST）が使う機密クライアント（CLOUD_CLIENTS）と Keycloak の組み込み（account 系）だけを残す。

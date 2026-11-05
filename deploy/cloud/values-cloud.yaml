@@ -23,17 +23,13 @@ mesh:
 edge:
   enabled: false
 
-# NetworkPolicy:
-#   - 入り: 取引ユニットの呼び出し元 → LLM ゲートウェイの REST だけ（fromAst.llmGateway）。
-#   - 出: chart の既定拒否（networkpolicy-egress.yaml）はクラスタの外への許可を描かないので、提供元の API へ出る LLM ゲートウェイには当てない。
-#     代わりに deploy/cloud/infra/networkpolicy.yaml が名前空間の出を既定で拒否し、LLM ゲートウェイの要る宛先だけを許す。
+# NetworkPolicy は chart では描かない（入り・出とも deploy/cloud/infra/networkpolicy.yaml が持つ）。
+#   - chart の取引ユニットからの入り（fromAst）は networkPolicy.enabled の内側にあり、有効にすると chart の出の既定拒否
+#     （クラスタの外への許可を描かない）も外せない。提供元の API へ出る LLM ゲートウェイには、それを当てられない。
 networkPolicy:
   enabled: false
   egress:
     enabled: false
-  fromAst:
-    llmGateway:
-      enabled: true
 
 # ArgoCD の同期の後の確かめ（BFF を呼ぶ）と、HPA・PDB（単一レプリカ・単一ノード）は持ち込まない。
 drift:
@@ -67,6 +63,13 @@ services:
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
+    # NFR-16, IADR-0674: メッシュが無いので、受け口をアプリで TLS にする（基盤の CA が発行した証明書。bootstrap-secrets.sh が作る）。
+    # 取引ユニットは REST（/complete）だけを使う。gRPC の h2c の受け口は http でしか立たないので外す（平文の受け口を残さない）。
+    grpcPort: null
+    tls:
+      secretName: llmgateway-tls
+    # NFR-18, IADR-0674: ルートのファイルシステムを読み取り専用にする（書き込みは /tmp の emptyDir だけ）。
+    readOnlyRootFilesystem: true
 
 frontend:
   enabled: false

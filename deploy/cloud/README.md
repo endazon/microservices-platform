@@ -10,7 +10,7 @@
 | Keycloak（本番モード `start`・realm `platform`） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
 | OpenTelemetry の collector（受けて捨てる） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
-| 到達の制限（入り・出の既定拒否と要る組だけの許可） | `infra/networkpolicy.yaml`・chart の `networkPolicy.fromAst.llmGateway` |
+| 到達の制限（入り・出の既定拒否と要る組だけの許可） | `infra/networkpolicy.yaml`（MSP の名前空間の入り・出も。chart は NetworkPolicy を描かない） |
 
 置かないもの: valkey・qdrant・mailpit・mail-relay・knowledge ユニット・BFF・frontend・認可・MCP・通知・オブジェクトストレージ・
 Wiki.js・エッジ・メッシュ・秘匿管理（OpenBao）・観測の保存先。描画に現れないことは `scripts/deploy-cloud.test.js` が固定する。
@@ -114,9 +114,11 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   人の利用者・試験の利用者・SMTP を外して組む（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
 - Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
   ユーザーはサービスごとのユーザーが揃うと消える）。
-- 証明書: `bootstrap-secrets.sh` がその場で CA を作り、Postgres・RabbitMQ のサーバ証明書を発行する。**CA の鍵は保存しない。**
-  作り直すときは `postgres-tls`・`rabbitmq-tls`・`platform-infra-ca` を消してから `bootstrap-secrets.sh` を流し、
-  Postgres・RabbitMQ・Keycloak と取引ユニットの消費側を作り直す。
+- 証明書: `bootstrap-secrets.sh` がその場で CA を作り、Postgres・RabbitMQ・LLM ゲートウェイ（取引ユニットからの https の受け口）の
+  サーバ証明書を発行する。**CA の鍵は保存しない。**
+  作り直すときは組（`platform-infra` の `postgres-tls`・`rabbitmq-tls`・ConfigMap `platform-infra-ca`、`microservices-platform` の
+  `llmgateway-tls`・ConfigMap `platform-infra-ca`）を消してから `bootstrap-secrets.sh` を流し、Postgres・RabbitMQ・Keycloak・
+  LLM ゲートウェイと取引ユニットの消費側を作り直す。**組が一部だけ在るときは、bootstrap は作り直さずに止まる**（在る証明書と別の CA にしない）。
 - **LLM の鍵**: 鍵を 1 行で書いた 0600 のファイルを `ANTHROPIC_API_KEY_FILE` に渡す。後から入れるときは
   `kubectl -n microservices-platform delete secret llm-provider-credentials` の後に同じように流し、
   `kubectl -n microservices-platform rollout restart deploy/llmgateway-service` で作り直す。

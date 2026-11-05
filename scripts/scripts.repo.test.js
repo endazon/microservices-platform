@@ -20074,7 +20074,7 @@ esac
       for (const r of k.resources) assert.ok(!r.includes('..') && !r.includes('/'), `${r}: deploy/cloud/infra の外を読まない`);
     });
 
-    ok('IADR-0674 AC1〜AC5: 基盤の宣言に、持ち込まない資源・外への口・既定の資格情報・start-dev が無く、外部のイメージは deploy/local/infra と同じ digest', () => {
+    ok('IADR-0674 AC1〜AC6・AC11・AC12: 基盤の宣言に、持ち込まない資源・外への口・既定の資格情報・start-dev が無く、外部のイメージは deploy/local/infra と同じ digest。MSP の入りを絞り、Postgres は TLS だけ、RabbitMQ は永続', () => {
       const localDocs = rawDocs2401('deploy/local/infra').filter(Boolean);
       assert.deepStrictEqual(cloud.infraProblems(rawDocs2401('deploy/cloud/infra'), localDocs), []);
     });
@@ -20092,6 +20092,84 @@ esac
       const p = cloud.infraProblems(docs, rawDocs2401('deploy/local/infra').filter(Boolean));
       for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
         assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      }
+    });
+
+    ok('IADR-0674 陰性対照（AC6・AC11・AC12）: 入りの既定拒否の欠落・送り元の OR 化・ポートの追加、平文の TCP・弱い認証、RabbitMQ の非永続を検出する', () => {
+      const base = () => JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const np = (docs, n) => docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === n);
+      const dep = (docs, n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
+      const expect = (docs, fn, want) => {
+        const p = fn(docs);
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      };
+      // AC6
+      let d = base();
+      d.splice(d.indexOf(np(d, 'default-deny-ingress')), 1);
+      expect(d, cloud.mspIngressProblems, /入りの既定拒否/);
+      d = base();
+      const from = np(d, 'llmgateway-ingress-from-ast').spec.ingress[0].from;
+      from.push({ podSelector: from[0].podSelector });
+      delete from[0].podSelector;
+      expect(d, cloud.mspIngressProblems, /同じ要素/);
+      d = base();
+      np(d, 'llmgateway-ingress-from-ast').spec.ingress[0].ports.push({ protocol: 'TCP', port: 8081 });
+      expect(d, cloud.mspIngressProblems, /TCP\/8080 だけでない/);
+      d = base();
+      d.push({ kind: 'NetworkPolicy', metadata: { name: 'x', namespace: 'microservices-platform' }, spec: { podSelector: {}, policyTypes: ['Ingress'], ingress: [{}] } });
+      expect(d, cloud.mspIngressProblems, /LLM ゲートウェイ以外への入りの許可/);
+      // AC11
+      d = base();
+      const hba = d.find((x) => x.kind === 'ConfigMap' && x.metadata.name === 'postgres-hba');
+      hba.data['pg_hba.conf'] += 'host all all 0.0.0.0/0 scram-sha-256\nhostssl all all 10.0.0.0/8 trust\n';
+      for (const want of [/TLS でない TCP の行がある（host）/, /scram-sha-256 でない（trust）/]) expect(d, cloud.postgresHbaProblems, want);
+      d = base();
+      const pgc = dep(d, 'postgres').spec.template.spec.containers[0];
+      pgc.args = pgc.args.filter((a) => !String(a).startsWith('hba_file='));
+      expect(d, cloud.postgresHbaProblems, /hba_file を指定していない/);
+      // AC12
+      d = base();
+      const mq = dep(d, 'rabbitmq');
+      mq.spec.template.spec.volumes.find((v) => v.name === 'data').persistentVolumeClaim = undefined;
+      mq.spec.template.spec.volumes.find((v) => v.name === 'data').emptyDir = {};
+      mq.spec.template.spec.containers[0].env = mq.spec.template.spec.containers[0].env.filter((e) => e.name !== 'RABBITMQ_NODENAME');
+      delete mq.spec.strategy;
+      for (const want of [/PVC でない/, /RABBITMQ_NODENAME/, /Recreate でない/]) expect(d, cloud.rabbitmqPersistenceProblems, want);
+    });
+
+    ok('IADR-0674 AC13・AC14（値と chart の口）: values-cloud は LLM ゲートウェイの受け口を TLS にし、gRPC を外し、ルートを読み取り専用にする。chart は併記を止める', () => {
+      const { parseDocuments } = require('./lib/yaml-subset');
+      const v = parseDocuments(fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/values-cloud.yaml'), 'utf8'))[0];
+      const gw = v.services.llmgateway;
+      assert.strictEqual(gw.grpcPort, null, 'grpcPort を外していない（h2c は平文でしか立たない）');
+      assert.deepStrictEqual(gw.tls, { secretName: 'llmgateway-tls' });
+      assert.strictEqual(String(gw.readOnlyRootFilesystem), 'true');
+      assert.strictEqual(String(v.networkPolicy.enabled), 'false');
+      const tpl = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/helm/microservices-platform/templates/deployment.yaml'), 'utf8');
+      for (const want of [/tls と grpcPort は併記できません/, /readOnlyRootFilesystem: true/, /scheme: HTTPS/, /https:\/\/\+:%v/, /mountPath: \/tmp/]) assert.match(tpl, want);
+    });
+
+    ok('IADR-0674 陰性対照（AC15）: Keycloak の Service の型の欠落・NodePort、別名の差し替え、エッジの資源（Ingress・Gateway・HTTPRoute）を検出する', () => {
+      const base = () => JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
+      const kcSvc = (docs, ns) => docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak' && d.metadata.namespace === ns);
+      const expect = (docs, want) => {
+        const p = cloud.keycloakExposureProblems(docs, 'infra');
+        assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+      };
+      assert.deepStrictEqual(cloud.keycloakExposureProblems(base(), 'infra'), []);
+      let d = base();
+      delete kcSvc(d, 'platform-infra').spec.type;
+      expect(d, /ClusterIP と明示されていない（未指定）/);
+      d = base();
+      kcSvc(d, 'platform-infra').spec.type = 'NodePort';
+      expect(d, /ClusterIP と明示されていない（NodePort）/);
+      d = base();
+      kcSvc(d, 'microservices-platform').spec = { type: 'LoadBalancer', ports: [{ port: 8080 }] };
+      expect(d, /別名（ExternalName）でない/);
+      for (const kind of ['Ingress', 'Gateway', 'HTTPRoute']) {
+        d = base();
+        d.push({ kind, metadata: { name: 'kc', namespace: 'platform-infra' }, spec: { rules: [{ backendRefs: [{ name: 'keycloak', port: 8080 }] }] } });
+        expect(d, new RegExp(`エッジの資源を描いている（${kind}/kc）`));
       }
     });
 
@@ -20191,6 +20269,21 @@ echo "unhandled: $*" >&2; exit 9
       for (const c of CLOUD_CLIENTS) assert.strictEqual(imported.clients.find((x) => x.clientId === c).secret, cs[c], `${c} の realm の secret が Secret と違う`);
       assert.ok(/BEGIN CERTIFICATE/.test(r.objs['platform-infra/configmap/platform-infra-ca']['ca.crt']) && r.objs['microservices-platform/configmap/platform-infra-ca'], 'CA を両方の名前空間へ置いていない');
       assert.ok(!Object.values(r.objs).some((o) => Object.keys(o).some((k) => /ca\.key/.test(k))), 'CA の鍵を保存した');
+      // LLM ゲートウェイの受け口の証明書: 同じ CA が発行し、MSP の名前空間の Service 名を持つ（取引ユニットが CA と名前で検証できる）。
+      const gw = r.objs['microservices-platform/secret/llmgateway-tls'];
+      assert.ok(gw && /BEGIN CERTIFICATE/.test(gw['tls.crt']) && /PRIVATE KEY/.test(gw['tls.key']), 'LLM ゲートウェイの証明書を作っていない');
+      const vd = fs2401.mkdtempSync(path2401.join(os2401.tmpdir(), 'iadr0674-gw-'));
+      try {
+        fs2401.writeFileSync(path2401.join(vd, 'ca.crt'), r.objs['microservices-platform/configmap/platform-infra-ca']['ca.crt']);
+        fs2401.writeFileSync(path2401.join(vd, 'gw.crt'), gw['tls.crt']);
+        const v = spawn2401('openssl', ['verify', '-CAfile', path2401.join(vd, 'ca.crt'), '-purpose', 'sslserver', path2401.join(vd, 'gw.crt')], { encoding: 'utf8' });
+        assert.strictEqual(v.status, 0, `CA で検証できない: ${v.stdout}${v.stderr}`);
+        const t = spawn2401('openssl', ['x509', '-in', path2401.join(vd, 'gw.crt'), '-noout', '-ext', 'subjectAltName'], { encoding: 'utf8' });
+        assert.match(t.stdout, /DNS:llmgateway-service\.microservices-platform\.svc\.cluster\.local/);
+        assert.match(t.stdout, /DNS:llmgateway-service\.microservices-platform(,|\s|$)/);
+      } finally {
+        fs2401.rmSync(vd, { recursive: true, force: true });
+      }
       for (const v of [...values, ...Object.values(cs), ...Object.values(users)]) {
         assert.ok(!r.argv.includes(v), '値が kubectl の引数に出た');
         assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
@@ -20220,6 +20313,21 @@ echo "unhandled: $*" >&2; exit 9
       assert.strictEqual(withKey.status, 0, withKey.stderr);
       assert.strictEqual(withKey.objs['microservices-platform/secret/llm-provider-credentials']['anthropic-api-key'], key, '鍵のファイルの値（改行を除く）で作っていない');
       assert.ok(!withKey.argv.includes(key) && !`${withKey.stdout}${withKey.stderr}`.includes(key), '鍵が引数・出力に出た');
+    });
+
+    ok('IADR-0674: bootstrap-secrets.sh は証明書の組（postgres-tls・rabbitmq-tls・CA）が一部だけ在るなら、作り直さずに止める', () => {
+      const keep = ['probe', '2401', 'cert'].join('-');
+      const r = runBootstrap2401({
+        setup: ({ st }) => {
+          const d = path2401.join(st, 'obj/platform-infra/secret/postgres-tls');
+          fs2401.mkdirSync(d, { recursive: true });
+          fs2401.writeFileSync(path2401.join(d, 'tls.crt'), keep);
+        },
+      });
+      assert.notStrictEqual(r.status, 0, '一部だけ在る組で止まらなかった');
+      assert.match(r.stderr, /一部だけ/);
+      assert.strictEqual(r.objs['platform-infra/secret/postgres-tls']['tls.crt'], keep, '在る証明書を書き換えた');
+      assert.ok(!r.calls.includes('CREATE platform-infra/secret/rabbitmq-tls') && !r.objs['platform-infra/configmap/platform-infra-ca'], '別の CA の組を作った（使用中の証明書と食い違う）');
     });
 
     ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {

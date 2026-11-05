@@ -7,7 +7,9 @@
 #   - Keycloak ← 取引ユニットの名前空間・MSP の LLM ゲートウェイ（トークンの発行・鍵の取得）。collector ← 取引ユニット・MSP。
 # microservices-platform（MSP は LLM ゲートウェイだけ）:
 #   - 出は既定で拒否する。LLM ゲートウェイだけに、名前解決・Keycloak・collector・クラスタの外の 443（提供元の API）を許す。
-#   - 入りは chart の networkPolicy.fromAst.llmGateway（取引ユニットの呼び出し元 → 8080）が絞る（values-cloud.yaml）。
+#   - 入りも既定で拒否する。LLM ゲートウェイへは、取引ユニットの呼び出し元（報告書・取引判断）の 8080（REST）だけを許す。
+#     chart の fromAst の規則は networkPolicy.enabled の内側にあり、それを有効にすると chart の出の既定拒否も外せない
+#     （values-cloud.yaml は chart の NetworkPolicy を描かない）ので、入りもここで持つ。送り元と行き先は chart の fromAst.llmGateway と同じ。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -123,6 +125,35 @@ spec:
       ports:
         - { protocol: TCP, port: 4317 }
         - { protocol: TCP, port: 4318 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: microservices-platform
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# 送り元は「取引ユニットの名前空間 かつ 呼び出し元の Pod」（同じ from の要素に置く＝AND。分けると OR になり名前空間全体へ開く）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llmgateway-ingress-from-ast
+  namespace: microservices-platform
+spec:
+  podSelector: { matchLabels: { app: llmgateway-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [report-service, trade-decision-service]
+      ports:
+        - { protocol: TCP, port: 8080 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

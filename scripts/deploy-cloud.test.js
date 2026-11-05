@@ -13,7 +13,14 @@
  *       SQL に字面のパスワードが無い）。
  *   AC4 Keycloak の起動の引数に start-dev が無い（start で動く）。
  *   AC5 外部のイメージは deploy/local/infra と同じ digest（写した宣言が古い版に取り残されない）。
- *   AC6 MSP の描画は LLM ゲートウェイの Deployment だけで、取引ユニットからの入りの NetworkPolicy を持つ。
+ *   AC6 MSP の描画は LLM ゲートウェイの Deployment だけで、NetworkPolicy を描かない。MSP の名前空間の入りは既定で拒否し、
+ *       LLM ゲートウェイへは取引ユニットの呼び出し元（名前空間 かつ Pod。AND）の 8080 だけを許す（deploy/cloud/infra が持つ）。
+ *   AC13 LLM ゲートウェイの受け口は TLS だけ（ASPNETCORE_URLS が https・証明書は Secret llmgateway-tls・probe は HTTPS・gRPC の h2c の受け口が無い）。
+ *   AC14 LLM ゲートウェイはルートのファイルシステムを読み取り専用にし、書き込みは /tmp の emptyDir だけ。
+ *   AC15 Keycloak（管理の面を持つ）はクラスタの中だけ: 基盤の Service は ClusterIP と明示し、別名は ExternalName だけ。
+ *       描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）が 1 つも無い。
+ *   AC11 Postgres は TCP を TLS（hostssl）でだけ受ける（pg_hba に host・hostnossl・trust・password・md5 が無い）。
+ *   AC12 RabbitMQ はデータ（/var/lib/rabbitmq）を PVC に置き、ノード名を固定し、Recreate で替わる（再起動でキュー・メッセージを失わない）。
  *
  * kubectl / helm が無ければ失敗にする（fail-closed。CI の static-checks は両方を持つ。check-deploy-manifests と同じ）。
  * 判定の関数は export し、scripts/scripts.repo.test.js が宣言そのもの（kustomize は resources だけで変換を持たない）にも当てる。
@@ -57,6 +64,26 @@ const containersOf = (d) => {
   return s ? [...(s.initContainers || []), ...(s.containers || [])] : [];
 };
 
+/** エッジ（クラスタの外からの入口）の資源の kind。クラウドの最小構成は 1 つも描かない（外への口は SSH だけ）。 */
+const EDGE_KINDS = ['Ingress', 'IngressClass', 'Gateway', 'HTTPRoute', 'GRPCRoute', 'TLSRoute', 'TCPRoute', 'UDPRoute', 'VirtualService', 'IngressRoute', 'IngressRouteTCP', 'IngressRouteUDP'];
+
+/** AC15: Keycloak はクラスタの中だけ。エッジの資源が無い・Keycloak の Service は ClusterIP（別名は ExternalName で基盤の Service を指すだけ）。 */
+function keycloakExposureProblems(docs, where) {
+  const out = [];
+  for (const d of docs.filter((x) => EDGE_KINDS.includes(x.kind))) out.push(`${where}: エッジの資源を描いている（${d.kind}/${d.metadata && d.metadata.name}）`);
+  for (const d of docs.filter((x) => x.kind === 'Service' && x.metadata && x.metadata.name === 'keycloak')) {
+    const type = String((d.spec && d.spec.type) || '');
+    const ns = d.metadata.namespace;
+    if (ns === 'platform-infra') {
+      if (type !== 'ClusterIP') out.push(`${where}: Keycloak の Service が ClusterIP と明示されていない（${type || '未指定'}）`);
+    } else if (!(type === 'ExternalName' && d.spec.externalName === 'keycloak.platform-infra.svc.cluster.local')) {
+      out.push(`${where}: ${ns} の keycloak が基盤の Service への別名（ExternalName）でない（${type || '未指定'}）`);
+    }
+    if (d.spec && (d.spec.externalIPs || d.spec.loadBalancerIP)) out.push(`${where}: Keycloak の Service が外の IP を持つ`);
+  }
+  return out;
+}
+
 /** AC1・AC2・AC3 の共通の判定。問題の一覧（空なら合格）を返す。 */
 function commonProblems(docs, where) {
   const out = [];
@@ -84,10 +111,90 @@ function commonProblems(docs, where) {
     }
   }
   for (const lit of DEV_LITERALS) if (text.includes(lit)) out.push(`${where}: 既定の資格情報の字面（${lit.length} 字）が描画にある`);
+  out.push(...keycloakExposureProblems(docs, where));
   return out;
 }
 
-/** 基盤の描画の判定（AC1〜AC5）。 */
+const MSP_NS = 'microservices-platform';
+const AST_NS = 'ai-stock-trading';
+const LLM_GATEWAY_PORT = 8080;
+const LLM_GATEWAY_CALLERS = ['report-service', 'trade-decision-service'];
+
+/** AC6: MSP の名前空間の入りの既定拒否と、取引ユニットの呼び出し元 → LLM ゲートウェイ（8080）だけの許可。 */
+function mspIngressProblems(docs) {
+  const out = [];
+  const np = docs.filter((d) => d.kind === 'NetworkPolicy' && d.metadata && d.metadata.namespace === MSP_NS);
+  const types = (d) => (d.spec.policyTypes || []).map(String);
+  const deny = np.some((d) => JSON.stringify(d.spec.podSelector || {}) === '{}' && types(d).includes('Ingress') && !(d.spec.ingress || []).length);
+  if (!deny) out.push(`infra: ${MSP_NS} の入りの既定拒否（podSelector が空・Ingress・規則なし）が無い`);
+  const ingressAllows = np.filter((d) => types(d).includes('Ingress') && (d.spec.ingress || []).length);
+  const gw = ingressAllows.filter((d) => JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'llmgateway-service' } }));
+  if (gw.length !== 1) out.push(`infra: LLM ゲートウェイへの入りの許可がちょうど 1 枚でない（${gw.length}）`);
+  for (const d of ingressAllows.filter((x) => !gw.includes(x))) out.push(`infra: ${MSP_NS} に LLM ゲートウェイ以外への入りの許可がある（${d.metadata.name}）`);
+  for (const d of gw) {
+    for (const rule of d.spec.ingress) {
+      for (const f of rule.from || []) {
+        const nsOk = f.namespaceSelector && JSON.stringify(f.namespaceSelector) === JSON.stringify({ matchLabels: { 'kubernetes.io/metadata.name': AST_NS } });
+        const exprs = (f.podSelector && f.podSelector.matchExpressions) || [];
+        const podsOk = exprs.length === 1 && exprs[0].key === 'app' && exprs[0].operator === 'In'
+          && JSON.stringify([...exprs[0].values].map(String).sort()) === JSON.stringify([...LLM_GATEWAY_CALLERS].sort());
+        if (!nsOk || !podsOk) out.push(`infra: ${d.metadata.name} の送り元が「取引ユニットの名前空間 かつ 呼び出し元の Pod」（同じ要素）でない`);
+      }
+      if (!(rule.from || []).length) out.push(`infra: ${d.metadata.name} が送り元を絞っていない`);
+      const ports = (rule.ports || []).map((x) => `${x.protocol || 'TCP'}/${x.port}`);
+      if (JSON.stringify(ports) !== JSON.stringify([`TCP/${LLM_GATEWAY_PORT}`])) out.push(`infra: ${d.metadata.name} のポートが TCP/${LLM_GATEWAY_PORT} だけでない（${ports.join(', ')}）`);
+    }
+  }
+  return out;
+}
+
+/** AC11: Postgres は pg_hba で TCP を hostssl だけで受け、弱い認証を持たない。 */
+function postgresHbaProblems(docs) {
+  const out = [];
+  const pg = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'postgres');
+  if (!pg) return out;
+  const spec = pg.spec.template.spec;
+  const c = spec.containers.find((x) => x.name === 'postgres') || spec.containers[0];
+  const args = (c.args || []).map(String);
+  const hbaArg = args.find((a) => a.startsWith('hba_file='));
+  if (!hbaArg) return ['infra: Postgres が hba_file を指定していない（イメージの既定の pg_hba は平文の TCP も受ける）'];
+  const hbaPath = hbaArg.slice('hba_file='.length);
+  const mount = (c.volumeMounts || []).find((m) => hbaPath.startsWith(`${String(m.mountPath).replace(/\/$/, '')}/`));
+  const vol = mount && (spec.volumes || []).find((v) => v.name === mount.name);
+  const cmName = vol && vol.configMap && vol.configMap.name;
+  const cm = cmName && docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === cmName);
+  const key = hbaPath.split('/').pop();
+  const text = cm && cm.data && cm.data[key];
+  if (!text) return [`infra: hba_file（${hbaPath}）を運ぶ ConfigMap が無い`];
+  const lines = String(text).split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
+  if (!lines.some((l) => /^hostssl\s/.test(l))) out.push('infra: pg_hba に hostssl の行が無い');
+  for (const l of lines) {
+    const f = l.split(/\s+/);
+    if (!['local', 'hostssl'].includes(f[0])) out.push(`infra: pg_hba に TLS でない TCP の行がある（${f[0]}）`);
+    if (f[f.length - 1] !== 'scram-sha-256') out.push(`infra: pg_hba の認証が scram-sha-256 でない（${f[f.length - 1]}）`);
+  }
+  return out;
+}
+
+/** AC12: RabbitMQ はデータを PVC に置き、ノード名を固定し、Recreate で替わる。 */
+function rabbitmqPersistenceProblems(docs) {
+  const out = [];
+  const mq = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'rabbitmq');
+  if (!mq) return out;
+  const spec = mq.spec.template.spec;
+  const c = spec.containers.find((x) => x.name === 'rabbitmq') || spec.containers[0];
+  const mount = (c.volumeMounts || []).find((m) => String(m.mountPath).replace(/\/$/, '') === '/var/lib/rabbitmq');
+  const vol = mount && (spec.volumes || []).find((v) => v.name === mount.name);
+  const claim = vol && vol.persistentVolumeClaim && vol.persistentVolumeClaim.claimName;
+  if (!claim) out.push('infra: RabbitMQ の /var/lib/rabbitmq が PVC でない（再起動でキュー・メッセージを失う）');
+  else if (!docs.some((d) => d.kind === 'PersistentVolumeClaim' && d.metadata.name === claim)) out.push(`infra: RabbitMQ の PVC ${claim} が宣言に無い`);
+  const nodename = (c.env || []).find((e) => e.name === 'RABBITMQ_NODENAME');
+  if (!nodename || !nodename.value) out.push('infra: RabbitMQ のノード名（RABBITMQ_NODENAME）が固定されていない（Pod が替わるとデータの置き場が替わる）');
+  if (!(mq.spec.strategy && mq.spec.strategy.type === 'Recreate')) out.push('infra: RabbitMQ の Deployment が Recreate でない（ReadWriteOnce の PVC と両立しない）');
+  return out;
+}
+
+/** 基盤の描画の判定（AC1〜AC6・AC11・AC12・AC15）。 */
 function infraProblems(docs, localDocs) {
   const out = commonProblems(docs, 'infra');
   const kc = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'keycloak');
@@ -100,6 +207,7 @@ function infraProblems(docs, localDocs) {
   for (const want of ['postgres', 'rabbitmq', 'keycloak', 'otel-collector']) {
     if (!docs.some((d) => d.kind === 'Deployment' && d.metadata.name === want)) out.push(`infra: ${want} の Deployment が無い`);
   }
+  out.push(...mspIngressProblems(docs), ...postgresHbaProblems(docs), ...rabbitmqPersistenceProblems(docs));
   if (localDocs) {
     const imagesOf = (ds) => {
       const m = new Map();
@@ -115,17 +223,44 @@ function infraProblems(docs, localDocs) {
   return out;
 }
 
-/** MSP の chart の描画の判定（AC1〜AC3・AC6）。 */
+/** MSP の chart の描画の判定（AC1〜AC3・AC6 の chart の側）。 */
 function chartProblems(docs) {
   const out = commonProblems(docs, 'chart');
   const deps = docs.filter((d) => ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob'].includes(d.kind));
   const names = deps.map((d) => d.metadata.name).sort();
   if (JSON.stringify(names) !== JSON.stringify(['llmgateway-service'])) out.push(`chart: ワークロードが LLM ゲートウェイだけでない（${names.join(', ')}）`);
-  const np = docs.filter((d) => d.kind === 'NetworkPolicy');
-  if (!np.some((d) => JSON.stringify(d.spec || {}).includes('ai-stock-trading') && JSON.stringify(d.spec.podSelector || {}).includes('llmgateway-service'))) {
-    out.push('chart: 取引ユニットから LLM ゲートウェイへの入りの NetworkPolicy が無い');
-  }
+  // AC6: 入り・出の NetworkPolicy は deploy/cloud/infra が持つ（mspIngressProblems）。chart が描くと 2 か所に分かれる。
+  for (const d of docs.filter((x) => x.kind === 'NetworkPolicy')) out.push(`chart: NetworkPolicy を描いている（${d.metadata.name}。入り・出は deploy/cloud/infra が持つ）`);
   if (docs.some((d) => d.kind === 'Namespace')) out.push('chart: Namespace を描いている（deploy/cloud/infra/namespaces.yaml が作る）');
+  out.push(...gatewayListenerProblems(docs));
+  return out;
+}
+
+/** AC13・AC14: LLM ゲートウェイの受け口は TLS だけで、ルートのファイルシステムは読み取り専用。 */
+function gatewayListenerProblems(docs) {
+  const out = [];
+  const dep = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'llmgateway-service');
+  if (!dep) return ['chart: LLM ゲートウェイの Deployment が無い'];
+  const spec = dep.spec.template.spec;
+  const c = spec.containers[0];
+  const env = Object.fromEntries((c.env || []).map((e) => [e.name, e.value]));
+  if (!/^https:\/\/\+:8080$/.test(String(env.ASPNETCORE_URLS || ''))) out.push(`chart: LLM ゲートウェイの受け口が https だけでない（ASPNETCORE_URLS=${env.ASPNETCORE_URLS}）`);
+  for (const k of ['Kestrel__Certificates__Default__Path', 'Kestrel__Certificates__Default__KeyPath']) if (!String(env[k] || '').startsWith('/etc/msp-service-tls/')) out.push(`chart: ${k} が受け口の証明書を指さない`);
+  if ('Grpc__Port' in env || (c.ports || []).some((p) => p.name === 'grpc')) out.push('chart: LLM ゲートウェイに gRPC の h2c（平文）の受け口がある');
+  for (const pr of ['livenessProbe', 'readinessProbe']) if (!(c[pr] && c[pr].httpGet && c[pr].httpGet.scheme === 'HTTPS')) out.push(`chart: ${pr} が HTTPS でない`);
+  const tlsMount = (c.volumeMounts || []).find((m) => m.mountPath === '/etc/msp-service-tls');
+  const tlsVol = tlsMount && (spec.volumes || []).find((v) => v.name === tlsMount.name);
+  if (!(tlsVol && tlsVol.secret && tlsVol.secret.secretName === 'llmgateway-tls')) out.push('chart: 受け口の証明書が Secret llmgateway-tls から来ない');
+  const svc = docs.find((d) => d.kind === 'Service' && d.metadata.name === 'llmgateway-service');
+  if (svc && (svc.spec.ports || []).some((p) => p.name === 'grpc' || p.appProtocol === 'grpc')) out.push('chart: LLM ゲートウェイの Service が gRPC のポートを持つ');
+  if (!(c.securityContext && String(c.securityContext.readOnlyRootFilesystem) === 'true')) out.push('chart: LLM ゲートウェイの readOnlyRootFilesystem が true でない');
+  const tmp = (c.volumeMounts || []).find((m) => m.mountPath === '/tmp');
+  const tmpVol = tmp && (spec.volumes || []).find((v) => v.name === tmp.name);
+  if (!(tmpVol && tmpVol.emptyDir)) out.push('chart: LLM ゲートウェイの /tmp が emptyDir でない');
+  for (const m of c.volumeMounts || []) {
+    const v = (spec.volumes || []).find((x) => x.name === m.name);
+    if (v && !v.emptyDir && String(m.readOnly) !== 'true') out.push(`chart: LLM ゲートウェイの ${m.mountPath} が読み取り専用でない（書き込みは emptyDir だけ）`);
+  }
   return out;
 }
 
@@ -140,7 +275,7 @@ function renderChart(extra = []) {
     '--set-string', `global.image.tag=${IMAGE_TAG}`, ...extra]));
 }
 
-module.exports = { commonProblems, infraProblems, chartProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+module.exports = { commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -153,15 +288,25 @@ if (require.main === module) {
       console.log(`  NG  ${name}\n${e.message}`);
     }
   };
-  ok('AC1〜AC5: 基盤の描画に持ち込まない資源・外への口・既定の資格情報・start-dev が無く、外部のイメージは deploy/local/infra と同じ digest', () => {
+  ok('AC1〜AC6・AC11・AC12・AC15: 基盤の描画に持ち込まない資源・外への口・既定の資格情報・start-dev が無く、外部のイメージは deploy/local/infra と同じ digest。MSP の入りを絞り、Postgres は TLS だけ、RabbitMQ は永続', () => {
     assert.deepStrictEqual(infraProblems(renderInfra(), renderLocalInfra()), []);
   });
-  ok('AC1〜AC3・AC6: MSP の描画は LLM ゲートウェイだけで、取引ユニットからの入りを絞り、外への口・既定の資格情報が無い', () => {
+  ok('AC1〜AC3・AC6・AC13〜AC15: MSP の描画は LLM ゲートウェイだけで、NetworkPolicy を描かず、外への口・既定の資格情報が無く、受け口は TLS だけ・ルートは読み取り専用', () => {
     assert.deepStrictEqual(chartProblems(renderChart()), []);
   });
   ok('陰性対照: 既定の values（クラウドの値なし）の描画は判定に落ちる（判定が空回りしていない）', () => {
     const docs = docsOf(run('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', '--set-string', `global.image.tag=${IMAGE_TAG}`]));
     assert.ok(chartProblems(docs).some((p) => /持ち込まない資源/.test(p)), '既定の描画で持ち込まない資源を検出しない');
+  });
+  ok('陰性対照（AC13・AC14）: TLS・読み取り専用を外した描画は判定に落ち、tls と grpcPort の併記は描画で止まる', () => {
+    const plain = chartProblems(renderChart(['--set', 'services.llmgateway.tls=null', '--set', 'services.llmgateway.readOnlyRootFilesystem=false']));
+    for (const want of [/https だけでない/, /livenessProbe が HTTPS でない/, /readOnlyRootFilesystem が true でない/, /\/tmp が emptyDir でない/]) {
+      assert.ok(plain.some((p) => want.test(p)), `${want} を検出しない:\n${plain.join('\n')}`);
+    }
+    const r = spawnSync('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', '-f', 'deploy/cloud/values-cloud.yaml',
+      '--set-string', `global.image.tag=${IMAGE_TAG}`, '--set', 'services.llmgateway.grpcPort=8081'], { cwd: REPO_ROOT, encoding: 'utf8' });
+    assert.notStrictEqual(r.status, 0, 'tls と grpcPort の併記が描画で止まらない');
+    assert.match(r.stderr, /tls と grpcPort は併記できません/);
   });
   ok('陰性対照: 基盤の描画へ start-dev・LoadBalancer・字面のパスワードを足すと判定に落ちる', () => {
     const docs = JSON.parse(JSON.stringify(renderInfra()));

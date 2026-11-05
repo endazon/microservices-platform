@@ -39,6 +39,10 @@ related_specs:
 - ローカルの宣言を patch で流用しない。ローカルの宣言は開発用の字面（初期化の SQL のパスワード・Keycloak の H2 の資格情報・start-dev）を持ち、patch で打ち消す形は打ち消し漏れが描画に残る。
   - RabbitMQ はローカルの宣言をほぼそのまま写した（字面の資格情報を持たない）。到達の制限だけを取引ユニットのサービスに絞る。
   - 写した外部のイメージは deploy/local/infra と同じ digest に保つ（試験が突き合わせる。片方だけが古い版に取り残されない）。
+  - RabbitMQ はローカルと違い、データ（`/var/lib/rabbitmq`）を PVC（2Gi）に置き、ノード名を固定し（`RABBITMQ_NODENAME`。既定はホスト名＝Pod 名で、Pod が替わるたびに別の置き場を作る）、Recreate で替える。
+    クラウドは無人で再起動するので、キュー・exchange・持続のメッセージを再起動の後へ残す。キューは Wolverine の既定で durable（`RabbitMqQueue.IsDurable` の既定は true）。
+    メッセージの持続は送り手の endpoint による —— Wolverine.RabbitMQ 6.24.5 の `RabbitMqSender` は `Persistent` を自分の `_isDurable` から設定する（アセンブリの IL で確かめた）。
+  - Postgres の pg_hba は、TCP を `hostssl` だけで受ける（`host`・`hostnossl` を書かない。認証は scram-sha-256 だけ）。クラウドには平文で繋ぐ利用者がいない。ソケット（`local`）は初期化と `pg_isready` が使う。
 - Postgres の初期化は、利用者名・パスワードを Secret から env で受け、psql の `\getenv` で読む（値を SQL・引数・ConfigMap に書かない）。管理者の利用者名も Secret から読む。データは PVC。
 - Keycloak は本番モード（`start`）。DB は共有 Postgres（`sslmode=verify-full`）。hostname はクラスタの中の名前（`http://keycloak:8080`）だけ（画面を公開しないので、外向きのホストと証明書を持たない）。キャッシュは local（単一ノード）。
 - 到達の制限（NetworkPolicy）を同じ kustomize に置く。platform-infra は入り・出とも既定で拒否し、要る組だけを許す。MSP の名前空間は出を既定で拒否し、LLM ゲートウェイだけに名前解決・Keycloak・collector・クラスタの外の 443 を許す。
@@ -46,9 +50,28 @@ related_specs:
 ### 決定 2 — MSP は chart の LLM ゲートウェイだけ（values-cloud.yaml）
 
 - knowledge ユニットの全サービス・BFF・frontend・認可・MCP・通知・オブジェクトストレージ・Wiki.js・エッジ・メッシュ・HPA/PDB・同期の後の確かめを off にする。
-- 入りは `networkPolicy.fromAst.llmGateway`（取引ユニットの呼び出し元 → REST だけ）。
+- chart の NetworkPolicy は描かない（`networkPolicy.enabled=false`・`egress.enabled=false`）。chart の取引ユニットからの入り（`fromAst`）は `networkPolicy.enabled` の内側にあり、
+  それを有効にすると chart の出の既定拒否も外せない（`networkpolicy-egress.yaml` が `enabled=true` と `egress.enabled=false` の組を描画で止める）。
+- MSP の名前空間の入りは deploy/cloud/infra が既定で拒否し、LLM ゲートウェイへは取引ユニットの呼び出し元（報告書・取引判断。名前空間 かつ Pod）の 8080 だけを許す。
+  送り元と行き先は chart の `fromAst.llmGateway` と同じ。入り・出とも 1 か所（`deploy/cloud/infra/networkpolicy.yaml`）に置き、宣言そのものを試験で固定する（helm を介さずに確かめられる）。
 - chart の出の既定拒否（`networkpolicy-egress.yaml`）はクラスタの外への許可を描かない（宛先ごとの許可は IADR-0589 の段 2）。提供元の API へ出る LLM ゲートウェイには当てず、決定 1 の NetworkPolicy で絞る。
 - 名前空間は deploy/cloud/infra が作る（基盤の別名と NetworkPolicy を chart より先に置く）。chart は `namespace.create=false`。
+
+### 決定 2a — LLM ゲートウェイの受け口はアプリで TLS にする（メッシュを入れない）
+
+- メッシュの無い単一ノードでは、取引ユニット → LLM ゲートウェイの通信（サービスのトークン・プロンプト・応答）が平文になる。2 案を比べた。
+  - (a) アプリで TLS にする: Kestrel の受け口を https の 1 つにし、基盤の CA（bootstrap が作る）が発行した証明書を Secret `llmgateway-tls` で渡す。
+  - (b) 単一ノードでもメッシュ（Istio）を入れる: 制御面と各 Pod のサイドカーの常駐（制御面だけで数百 MiB、サイドカーが Pod ごとに数十 MiB）を 8 GB のノードで取引ユニットから取る。
+    PoC の経路B の構成（IADR-0317）と運用の手間もクラウドへ持ち込む。費用の上限（月 5,000 円）の中でノードを大きくする余地は無い。
+- **(a) を採る。** CA の配り方（ConfigMap `platform-infra-ca` を名前空間へ写す。IADR-0591・IADR-0673）がそのまま使え、取引ユニットは CA と名前の両方で検証できる。
+- chart に opt-in の口を足す（既定の描画は変わらない）: `services.<名>.tls.secretName` で `ASPNETCORE_URLS=https://+:<port>` と Kestrel の既定の証明書（PEM）を描き、probe を HTTPS にする。
+  平文の受け口は残さない。gRPC の h2c の受け口は http でしか立たない（`GrpcListenerExtensions`）ので、`tls` と `grpcPort` の併記は描画で止める。
+  取引ユニットは REST（`/complete`）だけを使うので、クラウドでは `grpcPort` を外す。
+
+### 決定 2b — LLM ゲートウェイのルートのファイルシステムを読み取り専用にする
+
+- `services.<名>.readOnlyRootFilesystem: true`（opt-in）でコンテナの `readOnlyRootFilesystem` を描き、書き込みの要る `/tmp`（ランタイムの診断の口など）は emptyDir（64Mi）で与える。
+  ほかのマウント（証明書・CA・パイプラインの構成）は読み取り専用。LLM ゲートウェイはファイルへ書かない（実装を走査した）。
 
 ### 決定 3 — 資格情報は初回に乱数で作り、在れば触らない
 
@@ -82,6 +105,9 @@ related_specs:
 ## 結果
 
 - 描画（基盤・chart）は、持ち込まない資源・外への口・既定の資格情報・start-dev を持たない（`scripts/deploy-cloud.test.js`。CI）。
+- 基盤の描画は、MSP の入りの既定拒否と LLM ゲートウェイへの許可（AC6）・Postgres の hostssl だけ（AC11）・RabbitMQ の永続（AC12）を持つ。chart は NetworkPolicy を描かない。
+- chart の描画は、LLM ゲートウェイの受け口が TLS だけ（AC13）で、ルートのファイルシステムが読み取り専用（AC14）。描画は CI で確かめる（手元に helm が無い）。
+- Keycloak（管理の面を持つ）はクラスタの中だけに置く。基盤の Service は ClusterIP と明示し、描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）を持たない（AC15）。
 - 宣言そのものへ同じ判定を当てる試験・realm・bootstrap・手順書の試験は `scripts.repo.test.js` が持つ（素の環境で走る）。
 - deploy/local は変えていない。
 
@@ -92,3 +118,7 @@ related_specs:
 3. 観測の保存先と警報は MSP#2402（collector は受けて捨てる）。
 4. 再起動の後は LUKS を人が開ける。無人では起きない（手順書）。
 5. 単一ノードには冗長が無い（planning#868 の 4）。
+6. ブローカの再起動の後に残るのは、送り手が持続で出したメッセージだけ。取引ユニットで持続で出すのは注文の実行のサービスだけ（送り先の exchange を Durable にしている）で、ほかの送り手（承認を出す側など）は非持続で出す。送り手の側の設定は取引ユニットの所有（MSP の宣言では変えられない）。
+7. RabbitMQ の平文の 5672 は、ローカルの段 1 と同じくブローカでは開けたまま。届く範囲は NetworkPolicy が 5671（TLS）だけに絞る。
+8. 取引ユニットの側は、LLM ゲートウェイの接続先を https にし、CA（ConfigMap `platform-infra-ca`）で検証する必要がある（AST#1525）。揃うまで取引ユニットからの呼び出しは繋がらない（平文へは倒さない）。
+9. LLM ゲートウェイ → Keycloak（トークンの検証の鍵の取得）は、クラスタの中の http のまま。届く範囲は NetworkPolicy が絞る。

@@ -78,7 +78,9 @@ metadata:
   name: keycloak
   namespace: platform-infra
   labels: { app: keycloak }
+# NFR-18, IADR-0674: 管理の面を持つので、クラスタの中だけ（ClusterIP）に置き、エッジ（Ingress・Gateway・NodePort・LoadBalancer）へ出さない。
 spec:
+  type: ClusterIP
   selector: { app: keycloak }
   ports:
     - port: 8080

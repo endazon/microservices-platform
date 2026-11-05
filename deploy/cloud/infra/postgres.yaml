@@ -31,6 +31,21 @@ data:
       CREATE DATABASE keycloak OWNER :"kc_user";
     EOSQL
 ---
+# 接続の受け入れ（pg_hba）。TCP は TLS（hostssl）だけを受け、平文の TCP（host・hostnossl）は書かない。
+# クラウドには平文で繋ぐ利用者がいない（取引ユニット・Keycloak・バックアップとも TLS）。ソケット（local）は初期化と pg_isready が使う。
+# 認証はどれも scram-sha-256（trust・password・md5 は書かない）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-hba
+  namespace: platform-infra
+  labels: { app: postgres }
+data:
+  pg_hba.conf: |
+    local   all  all                scram-sha-256
+    hostssl all  all  0.0.0.0/0     scram-sha-256
+    hostssl all  all  ::/0          scram-sha-256
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -89,6 +104,8 @@ spec:
             - ssl_key_file=/etc/postgres-tls/tls.key
             - -c
             - ssl_min_protocol_version=TLSv1.2
+            - -c
+            - hba_file=/etc/postgres-hba/pg_hba.conf
           env:
             - name: POSTGRES_USER
               valueFrom: { secretKeyRef: { name: postgres, key: username } }
@@ -112,6 +129,7 @@ spec:
             - { name: data, mountPath: /var/lib/postgresql/data }
             - { name: init, mountPath: /docker-entrypoint-initdb.d }
             - { name: tls, mountPath: /etc/postgres-tls, readOnly: true }
+            - { name: hba, mountPath: /etc/postgres-hba, readOnly: true }
           readinessProbe:
             exec:
               command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\""]
@@ -125,6 +143,8 @@ spec:
           persistentVolumeClaim: { claimName: postgres-data }
         - name: init
           configMap: { name: postgres-init, defaultMode: 0755 }
+        - name: hba
+          configMap: { name: postgres-hba, defaultMode: 0444 }
         - name: tls-src
           secret: { secretName: postgres-tls, defaultMode: 0400 }
         - name: tls

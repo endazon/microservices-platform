@@ -1,6 +1,9 @@
 # NFR-18, IADR-0674 (#2401): ブローカ。deploy/local/infra/rabbitmq.yaml を写した（Deployment・TLS・起動時のユーザーの復元は同じ）。
 # 変えたもの: 到達の制限（NetworkPolicy）は networkpolicy.yaml に取引ユニットのサービスだけで置く（MSP のサービスはブローカを使わない）。
 #   既定のユーザーの無効化の印（rabbitmq-default-user）を最初から立てる（サービスごとのユーザーが揃えば、起動のたびに既定のユーザーを消す）。
+#   データ（/var/lib/rabbitmq）を PVC へ置く。クラウドは無人で再起動するので、キュー・exchange・持続（persistent）のメッセージを
+#   再起動の後へ残す。ノード名を固定する（既定はホスト名＝Pod 名で、Pod が替わるたびに別のデータの置き場を作る）。PVC と両立するよう Recreate。
+#   メッセージが残るのは、キューが durable で、送り手が persistent で出したものだけ（Wolverine は送り先の endpoint が Durable のときだけ persistent で出す）。
 # 🔴 イメージの digest は deploy/local/infra/rabbitmq.yaml と同じに保つ（試験が突き合わせる）。
 # IADR-0066 / ADR-0003(MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580): 共有 RabbitMQ（dev）。
 #
@@ -10,6 +13,17 @@
 # 未注入は起動失敗）。AST サービスは AST chart が注入する（submodule 所有）。
 # NFR-18, IADR-0573 / IADR-0577: どちらも**サービスごとのユーザー**（users.txt）で名乗る。既定のユーザー（Secret `rabbitmq`）は
 # ブローカの初期化にだけ使い、全サービスの切り替えを確かめた後は deploy/local/rabbitmq-setup/disable-default-user.sh が消す。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbitmq-data
+  namespace: platform-infra
+  labels: { app: rabbitmq }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 2Gi }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +32,7 @@ metadata:
   labels: { app: rabbitmq }
 spec:
   replicas: 1
+  strategy: { type: Recreate }
   selector:
     matchLabels: { app: rabbitmq }
   template:
@@ -50,6 +65,8 @@ spec:
         - name: rabbitmq
           image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
           env:
+            - name: RABBITMQ_NODENAME
+              value: rabbit@localhost
             - name: RABBITMQ_DEFAULT_USER
               valueFrom:
                 secretKeyRef:
@@ -76,6 +93,7 @@ spec:
               exec:
                 command: ["/bin/sh", "/opt/rabbitmq-boot/restore-users.sh"]
           volumeMounts:
+            - { name: data, mountPath: /var/lib/rabbitmq }
             - { name: boot, mountPath: /opt/rabbitmq-boot, readOnly: true }
             - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
             - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
@@ -92,6 +110,8 @@ spec:
             requests: { cpu: 100m, memory: 256Mi }
             limits: { cpu: "1", memory: 1Gi }
       volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: rabbitmq-data }
         - name: boot
           configMap: { name: rabbitmq-boot, defaultMode: 0555 }
         # キー = ユーザー名・値 = パスワード。ESO=1 は ExternalSecret、それ以外は起動器が作る。無い間は何も復元しない。

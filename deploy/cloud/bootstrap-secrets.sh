@@ -13,7 +13,7 @@
 #     postgres-tls / rabbitmq-tls（この場で作る CA が発行するサーバ証明書）・ConfigMap platform-infra-ca（CA の証明書）
 #   microservices-platform:
 #     llm-provider-credentials（ANTHROPIC_API_KEY_FILE を与えたときの鍵。与えなければ空で作り、LLM ゲートウェイは起動しない）・
-#     ConfigMap platform-infra-ca（同じ CA の証明書）
+#     llmgateway-tls（同じ CA が発行する LLM ゲートウェイの受け口の証明書）・ConfigMap platform-infra-ca（同じ CA の証明書）
 #
 # 🔴 値は表示しない。値は 0700 の一時ディレクトリのファイル（終了時に消す）からだけ kubectl へ渡し、どのプロセスの引数にも載せない。
 # 🔴 CA の鍵は保存しない（証明書を発行したら捨てる）。サーバ証明書を作り直すときは CA ごと作り直す（README §証明書）。
@@ -119,23 +119,36 @@ mk_realm_import() {
 once "$INFRA_NS" keycloak-realm-import mk_realm_import
 
 echo "==> 3. データストア・ブローカのサーバ証明書（この場で作る CA。CA の鍵は保存しない）"
-if exists "$INFRA_NS" secret postgres-tls && exists "$INFRA_NS" secret rabbitmq-tls && exists "$INFRA_NS" configmap platform-infra-ca; then
-  echo "    在る: Secret postgres-tls / rabbitmq-tls・ConfigMap platform-infra-ca（触らない）"
+# 組（3 つのサーバ証明書と CA）は同じ CA で揃っていなければならない。一部だけ在るときに作り直すと、在る側（使用中の証明書）と
+# 新しい CA が食い違う。作り直さずに止め、手順書の証明書の項（組を消してから流す）へ回す。
+tls_have=0
+for o in "$INFRA_NS secret postgres-tls" "$INFRA_NS secret rabbitmq-tls" "$MSP_NS secret llmgateway-tls" "$INFRA_NS configmap platform-infra-ca"; do
+  # shellcheck disable=SC2086
+  exists $o && tls_have=$((tls_have + 1))
+done
+if [ "$tls_have" -eq 4 ]; then
+  echo "    在る: Secret postgres-tls / rabbitmq-tls / ${MSP_NS}/llmgateway-tls・ConfigMap platform-infra-ca（触らない）"
+elif [ "$tls_have" -gt 0 ]; then
+  echo "ERROR: 証明書の組（Secret postgres-tls / rabbitmq-tls / ${MSP_NS}/llmgateway-tls・ConfigMap platform-infra-ca）が一部だけ在る（${tls_have}/4）。作り直さずに止める（手順書の証明書の項: 組を消してから流す）" >&2
+  exit 1
 else
   ( umask 077
     openssl req -x509 -newkey rsa:3072 -nodes -days "$CERT_DAYS" -subj "/CN=platform-infra-cloud-ca" \
       -keyout "$TMPD/ca.key" -out "$TMPD/ca.crt" >/dev/null 2>&1
-    for svc in postgres rabbitmq; do
+    # LLM ゲートウェイの受け口（取引ユニットから https。メッシュが無いのでアプリで TLS にする）も同じ CA で発行する。
+    for pair in "postgres:$INFRA_NS" "rabbitmq:$INFRA_NS" "llmgateway-service:$MSP_NS"; do
+      svc="${pair%%:*}"; ns="${pair#*:}"
       openssl req -newkey rsa:3072 -nodes -subj "/CN=${svc}" -keyout "$TMPD/${svc}.key" -out "$TMPD/${svc}.csr" >/dev/null 2>&1
       printf 'subjectAltName=DNS:%s,DNS:%s.%s,DNS:%s.%s.svc,DNS:%s.%s.svc.cluster.local\nextendedKeyUsage=serverAuth\n' \
-        "$svc" "$svc" "$INFRA_NS" "$svc" "$INFRA_NS" "$svc" "$INFRA_NS" > "$TMPD/${svc}.ext"
+        "$svc" "$svc" "$ns" "$svc" "$ns" "$svc" "$ns" > "$TMPD/${svc}.ext"
       openssl x509 -req -in "$TMPD/${svc}.csr" -CA "$TMPD/ca.crt" -CAkey "$TMPD/ca.key" -CAcreateserial -days "$CERT_DAYS" \
         -extfile "$TMPD/${svc}.ext" -out "$TMPD/${svc}.crt" >/dev/null 2>&1
     done
     rm -f "$TMPD/ca.key" )
-  [ -s "$TMPD/ca.crt" ] && [ -s "$TMPD/postgres.crt" ] && [ -s "$TMPD/rabbitmq.crt" ] || { echo "ERROR: 証明書を作れない（openssl を確かめる）" >&2; exit 1; }
+  [ -s "$TMPD/ca.crt" ] && [ -s "$TMPD/postgres.crt" ] && [ -s "$TMPD/rabbitmq.crt" ] && [ -s "$TMPD/llmgateway-service.crt" ] || { echo "ERROR: 証明書を作れない（openssl を確かめる）" >&2; exit 1; }
   put "$INFRA_NS" postgres-tls "tls.crt=$TMPD/postgres.crt" "tls.key=$TMPD/postgres.key"
   put "$INFRA_NS" rabbitmq-tls "ca.crt=$TMPD/ca.crt" "tls.crt=$TMPD/rabbitmq.crt" "tls.key=$TMPD/rabbitmq.key"
+  put "$MSP_NS" llmgateway-tls "tls.crt=$TMPD/llmgateway-service.crt" "tls.key=$TMPD/llmgateway-service.key"
   for ns in "$INFRA_NS" "$MSP_NS"; do
     kubectl -n "$ns" create configmap platform-infra-ca --from-file=ca.crt="$TMPD/ca.crt" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     echo "    作った: ConfigMap ${ns}/platform-infra-ca（公開してよい CA の証明書）"
