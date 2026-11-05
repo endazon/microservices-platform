@@ -11,6 +11,20 @@
 # 🔴 版を上げるときは、pin-version.sh の版・置き場のイメージの tag@digest・下の表（または remote-resources.sha256）を対で改める
 #    （scripts/scripts.repo.test.js が突き合わせる）。sha256 は取得元から 2 回取って一致することを確かめてから書く。
 
+# pinned_work_init → 作業ディレクトリ PINNED_WORK を決める。既定は mktemp -d（終了のときに消す）。
+#   PINNED_ARTIFACTS_DIR を与えたときはそこを使い、消さない（試験が起動器の出すコマンドを決定的に比べるため。中身は毎回取り直して確かめる）。
+#   🔴 呼び出し側の EXIT trap を 1 つにするため、ここで trap を張る（呼び出し側は自分の EXIT trap を持たない）。
+pinned_work_init() {
+  if [ -n "${PINNED_ARTIFACTS_DIR:-}" ]; then
+    PINNED_WORK="$PINNED_ARTIFACTS_DIR"
+    mkdir -p "$PINNED_WORK" || exit 1
+  else
+    PINNED_WORK="$(mktemp -d)" || exit 1
+    # shellcheck disable=SC2064  # 値をこの時点で固定する
+    trap "rm -rf '$PINNED_WORK'" EXIT
+  fi
+}
+
 # pinned_chart_entry <chart> <版> → 「<URL> <sha256>」。表に無ければ 1（固定の無い chart は取り込まない）。
 pinned_chart_entry() {
   case "$1@$2" in

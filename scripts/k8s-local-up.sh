@@ -105,8 +105,7 @@ pin_version ARGOCD_VERSION v3.5.4 deploy/argocd/install/kustomization.yaml
 #   取得したものは一時ディレクトリに置き、終了のときに消す。sha256 が合わなければ何も当てずに止まる。
 # shellcheck source=scripts/lib/pinned-artifacts.sh
 . "$(dirname "$0")/lib/pinned-artifacts.sh" || exit 3
-PINNED_WORK="$(mktemp -d)"
-trap 'rm -rf "$PINNED_WORK"' EXIT
+pinned_work_init
 # Reloader のイメージは values（tag@digest）が持つ。従前の RELOADER_IMAGE_TAG（tag だけで上書き）は固定を外すので受けない。
 if [ -n "${RELOADER_IMAGE_TAG:-}" ]; then
   echo "ERROR: RELOADER_IMAGE_TAG は廃止した（IADR-0547）。Reloader のイメージは deploy/local/reloader/values.yaml が tag@digest で持つ。" >&2

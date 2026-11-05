@@ -116,6 +116,9 @@ if (SHARD === null && SHARD_COUNT > 1) {
 }
 
 const REPO_ROOT = path.resolve(__dirname, '..');
+// NFR-18, IADR-0679 (#2410): runUp が起動器へ渡す取得物の作業ディレクトリ（プロセスごと。終了のときに消す）。
+const PINNED_DIR_2410 = path.join(os.tmpdir(), `k8s-up-pinned-${process.pid}`);
+process.on('exit', () => { try { fs.rmSync(PINNED_DIR_2410, { recursive: true, force: true }); } catch { /* 片付けだけ */ } });
 
 // NFR, #2291: 🔴 **試験はリポジトリの作業ツリーへ書かない。** 並列の別シャードの試験が作業ツリーの状態を読む
 //   （#2132 の IMAGE_TAG は `git status --porcelain` で -dirty- を決める）ので、一瞬だけ置くファイルでも結果を反転させる
@@ -613,6 +616,9 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } 
   const modelFile = path.join(workdir, 'helm-controller-model.awk');
   fs.writeFileSync(modelFile, HELM_CONTROLLER_MODEL);
 
+  // NFR-18, IADR-0679 (#2410): 取得物の作業ディレクトリを固定する（起動器の出すコマンドを実行どうしで比べる試験がある）。
+  //   試験のプロセスごとに 1 つ（シャードどうしで混ざらない）。中身は起動器が毎回取り直して確かめる。
+  extraEnv = { PINNED_ARTIFACTS_DIR: PINNED_DIR_2410, ...extraEnv };
   const origPath = process.env.PATH || process.env.Path || '';
   // 実行環境に opt-in ゲート/override が漏れていても既定＝全 OFF を再現できるよう、
   // ハーネスが制御する env を基底から一旦除去してから extraEnv を適用する（決定性の担保）。

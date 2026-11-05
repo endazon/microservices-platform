@@ -84,8 +84,7 @@ echo "==> [3/5] istio-ingressgateway を立てる"
 # NFR-18, IADR-0679 (#2410): chart の tgz を取り、sha256 を確かめてからそのパスで入れる（helm repo を経由しない）。
 # shellcheck source=scripts/lib/pinned-artifacts.sh
 . scripts/lib/pinned-artifacts.sh || exit 3
-PINNED_WORK="$(mktemp -d)"
-trap 'rm -rf "$PINNED_WORK"' EXIT
+pinned_work_init
 gateway_chart="$(pinned_chart gateway "$ISTIO_VERSION" "$PINNED_WORK")" || exit 1
 helm upgrade --install istio-ingressgateway "$gateway_chart" \
   -n istio-system \
