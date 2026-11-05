@@ -206,7 +206,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 - 🔴 **段**（`Llm:CallLimits:Mode`）: 既定 `Report` は判定して数えるだけで**送信を止めない**。`Enforce` は超えた呼び出しを送らず、
   `Sent=false`・`FailureKind=limit_exceeded` で返す（`llm_completion_total{llm_result="limit_exceeded"}` にも数える）。
   **`Enforce` へ切り替える前に、`llm_call_limit_exceeded_total{llm_limit_mode="report"}` が想定外の呼び手で増えていないことを確かめる。**
-- 状態はレプリカごと・プロセス内である（再起動で当日の費用の枠は 0 に戻る）。レプリカを増やすと実効の上限はその倍数になる。
+- 状態はレプリカごと・プロセス内である（再起動で当日の費用の枠は 0 に戻る）。HPA の既定では 2〜4 レプリカで動くので、実効の上限は設定値のレプリカ数倍になる。
 
 ## 監視観点
 

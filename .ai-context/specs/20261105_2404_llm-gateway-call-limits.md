@@ -20,7 +20,7 @@ issue: "#2404"
 - `max_tokens` は既定値（4096）だけを持ち、上限を持たない。gRPC は負数だけを拒み、REST は検証しない。
 - プロンプト（`Prompt` と `CacheablePrefix`）の長さは検査しない。輸送の受信上限の既定値だけが効く。
 - 門（`ServiceCaller`）は realm ロール `platform-service` を見る。**呼び手（サービスアカウント）ごとの量の区別は無い**。
-- llmgateway のレプリカは 1（`deploy/helm/microservices-platform/values.yaml` の `llmgateway.replicas`）。
+- ［2026-11-06 是正］llmgateway は HPA の対象で、2〜4 レプリカで動く（`deploy/helm/microservices-platform/values.yaml` の `scaling.services`・`scaling.hpa`）。静的な `llmgateway.replicas: 1` は HPA が所有するので使われない（当初はこれを読み誤った）。
 
 ## 方針（IADR-0678）
 
@@ -62,5 +62,5 @@ issue: "#2404"
 ## 対象外
 
 - 呼び手 × 用途の許可表（認可の変更）。BFF での利用者単位の上限。
-- 複数レプリカでの状態の共有（現在 1 レプリカ。残余に記録する）。
+- 複数レプリカでの状態の共有（HPA で 2〜4 レプリカ。残余に記録する）。
 - 段 2 への切り替え（稼働の設定の変更。所有者が報告を見てから行う）。
