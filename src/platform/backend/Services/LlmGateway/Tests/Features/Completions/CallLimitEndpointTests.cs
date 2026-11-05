@@ -208,4 +208,20 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
         ShouldBeSent(await PostAsync(client, maxTokens: 100));
         ShouldBeSent(await PostAsync(client, maxTokens: 100));
     }
+
+    [Fact]
+    public async Task Enforceでは呼び手と用途の当日の費用の上限を見込み額を含めて判定し_他の用途は別の枠になる()
+    {
+        // caller_cost の試験と対にする。用途 default の上限だけを置く（見込み 20 USD > 10 USD）。
+        using var app = With(
+            ("Llm:CallLimits:Mode", "Enforce"),
+            ("Llm:CallLimits:MaxOutputTokens", "2000000"),
+            ("Llm:CallLimits:Callers:retrieval-service:PurposeDailyCostLimits:default", "10"));
+        var client = As(app, "service-account-retrieval-service");
+
+        ShouldBeLimited(await PostAsync(client, maxTokens: 1_000_000, purpose: "default"), "purpose_cost");
+        // 同じ見込みでも、上限を置いていない用途は止めない（用途ごとの枠である）。
+        ShouldBeSent(await PostAsync(client, maxTokens: 1_000_000, purpose: "rag-answer"));
+        ShouldBeSent(await PostAsync(client, maxTokens: 100, purpose: "default"));
+    }
 }
