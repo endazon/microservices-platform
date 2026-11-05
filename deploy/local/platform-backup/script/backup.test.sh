@@ -807,6 +807,262 @@ for kind in postgres vault; do
 	fi
 done
 
+# ---- #2402・IADR-0675: S3 互換のオブジェクトストレージの保管先（クラウドの最小構成） ----
+# rclone のスタブは、リモート `objstore:` を $STUB_S3_ROOT の下のディレクトリとして扱う（オブジェクトストレージのモック）。
+# 改名もロックも持たない（本物のオブジェクトストレージと同じく、書いた名前のまま置くだけ）。
+# 失敗の注入: $STATE/s3-upload-fail（送れない）/ $STATE/s3-corrupt-upload（送った先の暗号文を 1 つ書き換える）。
+cat > "$WORK/bin/rclone" <<'STUB'
+#!/usr/bin/env bash
+echo "rclone $*" >> "$STUB_LOG"
+map() {
+  case "$1" in
+    objstore:*) printf '%s/%s' "$STUB_S3_ROOT" "${1#objstore:}" ;;
+    *:*) echo "stub rclone: 未知のリモート: $1" >&2; return 1 ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+is_remote() { case "$1" in objstore:*) return 0 ;; esac; return 1; }
+args=()
+for a in "$@"; do case "$a" in -*) ;; *) args+=("$a") ;; esac; done
+cmd="${args[0]:-}"
+case "$cmd" in
+  lsf)
+    d="$(map "${args[1]}")" || exit 1
+    # #2402 のレビュー 🔴2: 無い接頭辞は「directory not found」（終了コード 3）を返し得る（rclone の bucket 型の
+    # バックエンドで実測）。$STATE/s3-list-fail があれば、それ以外の失敗（1）を返す。
+    [ -f "$STATE/s3-list-fail" ] && { echo "stub rclone: list failed" >&2; exit 1; }
+    # 特定の接頭辞の一覧だけを失敗させる（STUB_S3_LIST_FAIL_MATCH を含む引数のとき 1）。
+    [ -n "${STUB_S3_LIST_FAIL_MATCH:-}" ] && [[ "${args[1]}" == *"$STUB_S3_LIST_FAIL_MATCH"* ]] && { echo "stub rclone: list failed" >&2; exit 1; }
+    [ -d "$d" ] || { echo "stub rclone: directory not found" >&2; exit 3; }
+    for p in "$d"/*; do [ -e "$p" ] || continue; n="${p##*/}"; [ -d "$p" ] && echo "$n/" || echo "$n"; done
+    ;;
+  copy)
+    src="$(map "${args[1]}")" || exit 1; dst="$(map "${args[2]}")" || exit 1
+    if is_remote "${args[2]}" && [ -f "$STATE/s3-upload-fail" ]; then echo "stub rclone: upload failed" >&2; exit 1; fi
+    mkdir -p "$dst" && cp "$src"/* "$dst"/ || exit 1
+    if is_remote "${args[2]}" && [ -f "$STATE/s3-corrupt-upload" ]; then
+      for f in "$dst"/*.age; do [ -f "$f" ] && { printf 'X' >> "$f"; break; }; done
+    fi
+    ;;
+  copyto)
+    src="$(map "${args[1]}")" || exit 1; dst="$(map "${args[2]}")" || exit 1
+    if is_remote "${args[2]}" && [ -f "$STATE/s3-upload-fail" ]; then exit 1; fi
+    mkdir -p "$(dirname "$dst")" && cp "$src" "$dst" || exit 1
+    ;;
+  *) echo "stub rclone: 未対応の操作: $cmd" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$WORK/bin/rclone"
+S3_SECRET="stub-s3-secret-DO-NOT-LEAK"
+new_s3_env() {
+	new_env
+	export STUB_S3_ROOT="$R/s3"
+	mkdir -p "$STUB_S3_ROOT/bkt"
+	export BACKUP_TARGETS=none
+	export BACKUP_S3_DEST="objstore:bkt/ast-poc"
+	export RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$S3_SECRET"
+	export RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="stub-s3-key-id"
+	export BACKUP_NOW="2026-11-01T030000Z"
+}
+S3D() { printf '%s/bkt/ast-poc/postgres/%s/%s' "$R/s3" "$1" "$2"; }
+
+new_s3_env
+run_backup
+assert_eq 'T-2402-01 S3: 正常系は成功で終わる（初回: 回の接頭辞も monthly/ もまだ無く、一覧は 3 を返す）' "$RC" "0"
+D="$(S3D daily 2026-11-01T030000Z)"
+for f in pg-globals.sql.age pg-audit_svc.dump.age pg-postgres.dump.age pg-risk_management_svc.dump.age SHA256SUMS COMPLETE; do
+	assert_file "T-2402-01 S3: daily の回に $f が並ぶ" "$D/$f"
+done
+assert_eq 'T-2402-01 S3: DB ダンプは age を通っている（暗号化した成果物だけを送る）' "$(cat "$D/pg-audit_svc.dump.age" 2>/dev/null)" 'AGE[PGDMP-audit_svc]'
+assert_eq 'T-2402-01 S3: 送った回の SHA256SUMS が検算できる' "$(cd "$D" 2>/dev/null && sha256sum -c SHA256SUMS >/dev/null 2>&1; echo $?)" "0"
+assert_eq 'T-2402-01 S3: COMPLETE は SHA256SUMS の sha256 である' "$(cat "$D/COMPLETE" 2>/dev/null)" "$(sha256sum < "$D/SHA256SUMS" 2>/dev/null | cut -d ' ' -f 1)"
+assert_contains 'T-2402-01 S3: 送った回を読み戻して検算する' "$(cat "$STUB_LOG")" "copy objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z $R/staging/.verify-daily-"
+assert_contains 'T-2402-01 S3: 書き終えたと告げる' "$OUT" '書きました: objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z'
+assert_eq 'T-2402-01 S3: staging（読み戻しの作業場所を含む）に何も残らない' "$(ls -A "$R/staging")" ""
+assert_file 'T-2402-02 S3: 月の最初の完全な回は monthly にも書く（COMPLETE がある）' "$(S3D monthly 2026-11-01T030000Z)/COMPLETE"
+assert_eq 'T-2402-02 S3: monthly の回は daily と同じ中身' "$(cat "$(S3D monthly 2026-11-01T030000Z)/COMPLETE" 2>/dev/null)" "$(cat "$D/COMPLETE" 2>/dev/null)"
+assert_missing 'T-2402-03 S3: 資格情報がどのコマンドの引数にも出ない' "$(cat "$STUB_LOG")" "$S3_SECRET"
+assert_missing 'T-2402-03 S3: 資格情報がログに出ない' "$OUT" "$S3_SECRET"
+assert_missing 'T-2402-03 S3: パスワードがどのコマンドの引数にも出ない' "$(cat "$STUB_LOG")" "$SECRET_PW"
+assert_nofile 'T-2402-04 S3: BACKUP_TARGETS=none なら hostPath に書かない' "$R/c/postgres"
+assert_nofile 'T-2402-04 S3: BACKUP_TARGETS=none なら「none」という保管先を作らない' "none"
+assert_missing 'T-2402-04 S3: 保持の削除を呼ばない（lifecycle に任せる）' "$(cat "$STUB_LOG")" 'rclone delete'
+assert_missing 'T-2402-04 S3: purge を呼ばない' "$(cat "$STUB_LOG")" 'rclone purge'
+
+# 同じ月の 2 回目は monthly へ書かない。
+export BACKUP_NOW="2026-11-02T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-02 S3: 同じ月の 2 回目も成功で終わる' "$RC" "0"
+assert_file 'T-2402-02 S3: 2 回目は daily に書く' "$(S3D daily 2026-11-02T030000Z)/COMPLETE"
+assert_nofile 'T-2402-02 S3: 同じ月の 2 回目は monthly へ書かない' "$(S3D monthly 2026-11-02T030000Z)"
+
+# 同じ名前の回が既にある → 書かずに失敗し、既にある回を壊さない。
+BEFORE="$(cat "$(S3D daily 2026-11-02T030000Z)/COMPLETE")"
+: > "$STUB_LOG"
+run_backup
+assert_ne 'T-2402-07 S3: 同じ名前の回が既にあれば失敗で終わる' "$RC" "0"
+assert_eq 'T-2402-07 S3: 既にある回の COMPLETE を書き換えない' "$(cat "$(S3D daily 2026-11-02T030000Z)/COMPLETE")" "$BEFORE"
+assert_missing 'T-2402-07 S3: 既にある回へ送らない' "$(cat "$STUB_LOG")" "/2026-11-02T030000Z/COMPLETE"
+
+# #2402 のレビュー 🔴2: 一覧の失敗（3 以外）は「空」と見なさず、何も送らずに失敗する。
+new_s3_env
+: > "$STATE/s3-list-fail"
+run_backup
+assert_ne 'T-2402-13 S3: 一覧が 3 以外で失敗したら失敗で終わる（空と見なさない）' "$RC" "0"
+assert_missing 'T-2402-13 S3: 一覧に失敗したら送らない' "$(cat "$STUB_LOG")" 'rclone -q copy '
+assert_nofile 'T-2402-13 S3: 一覧に失敗したら COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+rm -f "$STATE/s3-list-fail"
+
+# #2406 のレビュー 🟡: 月次の回が途中で失敗すると、COMPLETE の無い monthly/<回>/ が残る。それを「その月は取得済み」と
+# 数えると、その月の月次が取り直されない。**COMPLETE を持つ回だけを数え**、取りこぼしの回が残っていても翌日に取り直す。
+new_s3_env
+mkdir -p "$(S3D monthly 2026-11-01T030000Z)"
+printf 'partial' > "$(S3D monthly 2026-11-01T030000Z)/pg-audit_svc.dump.age"
+export BACKUP_NOW="2026-11-02T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-14 S3: 月次の取りこぼしの回（COMPLETE が無い）が残っていても成功で終わる' "$RC" "0"
+assert_file 'T-2402-14 S3: 取りこぼしの回は数えず、翌日の完全な回を monthly に書き直す' "$(S3D monthly 2026-11-02T030000Z)/COMPLETE"
+assert_nofile 'T-2402-14 S3: 取りこぼしの回は触らない（消さない・COMPLETE を足さない）' "$(S3D monthly 2026-11-01T030000Z)/COMPLETE"
+# COMPLETE を持つ回が同じ月にあれば、書かない（T-2402-02 と同じ）。
+export BACKUP_NOW="2026-11-03T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-14 S3: 完全な月次の回がある月の次の回も成功で終わる' "$RC" "0"
+assert_nofile 'T-2402-14 S3: 完全な月次の回がある月は monthly へ書かない' "$(S3D monthly 2026-11-03T030000Z)"
+# 取りこぼしの回の中身を確かめられないときは、取得済みとも未取得とも決めずに失敗を返す（daily は書けている）。
+new_s3_env
+mkdir -p "$(S3D monthly 2026-11-01T030000Z)"
+printf 'partial' > "$(S3D monthly 2026-11-01T030000Z)/pg-audit_svc.dump.age"
+export BACKUP_NOW="2026-11-02T030000Z"
+export STUB_S3_LIST_FAIL_MATCH="monthly/2026-11-01T030000Z"
+run_backup
+unset STUB_S3_LIST_FAIL_MATCH
+assert_eq 'T-2402-14 S3: 月次の回の中身を確かめられなければ失敗で終わる' "$RC" "1"
+assert_file 'T-2402-14 S3: そのときも daily は書けている' "$(S3D daily 2026-11-02T030000Z)/COMPLETE"
+assert_nofile 'T-2402-14 S3: そのときは monthly へ書かない' "$(S3D monthly 2026-11-02T030000Z)"
+# 確かめる回の数には上限がある（新しい順に BACKUP_S3_MONTHLY_CHECK_MAX 件。COMPLETE を見つけたら打ち切る）。
+# 上限までに COMPLETE が無く、まだ確かめていない回が残るときは、取得済みとも未取得とも決めずに失敗で返す（daily は書けている）。
+new_s3_env
+for d in 2026-11-01T030000Z 2026-11-02T030000Z 2026-11-03T030000Z; do
+	mkdir -p "$(S3D monthly "$d")"
+	printf 'partial' > "$(S3D monthly "$d")/pg-audit_svc.dump.age"
+done
+export BACKUP_NOW="2026-11-04T030000Z" BACKUP_S3_MONTHLY_CHECK_MAX=2
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-15 S3: 取りこぼしの回が上限を超えて残るときは失敗で終わる' "$RC" "1"
+assert_file 'T-2402-15 S3: そのときも daily は書けている' "$(S3D daily 2026-11-04T030000Z)/COMPLETE"
+assert_nofile 'T-2402-15 S3: そのときは monthly へ書かない' "$(S3D monthly 2026-11-04T030000Z)"
+assert_contains 'T-2402-15 S3: 上限で止めたと告げる' "$OUT" '上限'
+assert_eq 'T-2402-15 S3: 中身を確かめるのは新しい順に上限の 2 件だけ' "$(grep -c 'lsf objstore:bkt/ast-poc/postgres/monthly/2026-11-' "$STUB_LOG")" "2"
+assert_missing 'T-2402-15 S3: いちばん古い回は確かめない（新しい順）' "$(cat "$STUB_LOG")" 'monthly/2026-11-01T030000Z/'
+# 新しい方に完全な回があれば、上限の内で打ち切って書かない。
+printf 'x' > "$(S3D monthly 2026-11-03T030000Z)/COMPLETE"
+export BACKUP_NOW="2026-11-05T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-15 S3: 新しい回に COMPLETE があれば成功で終わる' "$RC" "0"
+assert_eq 'T-2402-15 S3: COMPLETE を見つけた時点で打ち切る（1 件だけ確かめる）' "$(grep -c 'lsf objstore:bkt/ast-poc/postgres/monthly/2026-11-' "$STUB_LOG")" "1"
+assert_nofile 'T-2402-15 S3: 完全な回がある月は monthly へ書かない' "$(S3D monthly 2026-11-05T030000Z)"
+unset BACKUP_S3_MONTHLY_CHECK_MAX
+
+# 送った先の暗号文が壊れた → COMPLETE を置かずに失敗する。
+new_s3_env
+: > "$STATE/s3-corrupt-upload"
+run_backup
+assert_ne 'T-2402-05 S3: 送った回の検算が合わなければ失敗で終わる' "$RC" "0"
+assert_nofile 'T-2402-05 S3: 検算が合わない回に COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+assert_nofile 'T-2402-05 S3: 検算が合わない回を monthly へ書かない' "$(S3D monthly 2026-11-01T030000Z)/COMPLETE"
+assert_missing 'T-2402-05 S3: 「書きました」を出さない' "$OUT" '書きました'
+assert_eq 'T-2402-05 S3: staging に何も残らない' "$(ls -A "$R/staging")" ""
+
+# 送れない → 失敗し、COMPLETE を置かない。
+new_s3_env
+: > "$STATE/s3-upload-fail"
+run_backup
+assert_ne 'T-2402-06 S3: 送れなければ失敗で終わる' "$RC" "0"
+assert_nofile 'T-2402-06 S3: 送れなかった回に COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+assert_contains 'T-2402-06 S3: 理由をログに出す' "$OUT" 'オブジェクトストレージへ書けませんでした'
+
+# 保管先が 1 つも無い・宛先の形が不正 → 何もダンプせずに失敗する。
+new_s3_env
+unset BACKUP_S3_DEST
+run_backup
+assert_ne 'T-2402-08 保管先が 1 つも無い（none かつ S3 なし）: 失敗で終わる' "$RC" "0"
+assert_missing 'T-2402-08 保管先が 1 つも無い: pg_dump を呼ばない' "$(cat "$STUB_LOG")" 'pg_dump'
+for bad in 'objstore:' 'objstore:bkt/../x' 'objstore:bkt/a b' '/local/path' 'objstore:B'; do
+	new_s3_env
+	export BACKUP_S3_DEST="$bad"
+	run_backup
+	assert_ne "T-2402-08 S3 の宛先の形が不正（$bad）: 失敗で終わる" "$RC" "0"
+	assert_missing "T-2402-08 S3 の宛先の形が不正（$bad）: pg_dump を呼ばない" "$(cat "$STUB_LOG")" 'pg_dump'
+done
+
+# 一部失敗の回は daily にだけ書き、monthly へは書かない。
+new_s3_env
+: > "$STATE/dump-fail-audit_svc"
+run_backup
+assert_ne 'T-2402-10 S3: 一部失敗の回は失敗で終わる' "$RC" "0"
+assert_file 'T-2402-10 S3: 一部失敗の回は daily に -partial として書く' "$(S3D daily 2026-11-01T030000Z-partial)/COMPLETE"
+assert_nofile 'T-2402-10 S3: 一部失敗の回は monthly へ書かない' "$(S3D monthly 2026-11-01T030000Z-partial)"
+
+# hostPath と S3 の両方: 両方に書く（ローカルへ S3 を足す形も壊れない）。
+new_s3_env
+export BACKUP_TARGETS="$R/c $R/e"
+run_backup
+assert_eq 'T-2402-11 hostPath と S3 の両方: 成功で終わる' "$RC" "0"
+assert_file 'T-2402-11 hostPath と S3 の両方: C に書く' "$R/c/postgres/2026-11-01T030000Z/SHA256SUMS"
+assert_file 'T-2402-11 hostPath と S3 の両方: S3 に書く' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+unset BACKUP_S3_DEST RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID STUB_S3_ROOT
+
+# ローカルの既定（hostPath）は変わらない: 既定の保管先は 2 本のまま、S3 の宛先が無ければ rclone を呼ばない。
+assert_eq 'T-2402-09 hostPath の既定の保管先は変わらない' "$(sed -n 's/^BACKUP_TARGETS="\${BACKUP_TARGETS:-\(.*\)}"$/\1/p' "$HERE/backup.sh")" '/backup/c /backup/e'
+new_env
+run_backup
+assert_eq 'T-2402-09 S3 の宛先が無い hostPath の回は成功で終わる' "$RC" "0"
+assert_missing 'T-2402-09 S3 の宛先が無い hostPath の回は rclone を呼ばない' "$(cat "$STUB_LOG")" 'rclone'
+for kind in postgres vault; do
+	assert_missing "T-2402-09 ローカルの $kind の CronJob は S3 の宛先を持たない" "$(cat "$HERE/../$kind/cronjob.yaml")" 'BACKUP_S3_DEST'
+done
+
+# クラウドの CronJob: 最悪の合計（依存先の待ち＋確かめ＋間隔＋ S3 の呼び出しの数 × 1 回の上限＋余裕 300）が時間切れより小さい。
+# 呼び出しは daily（存在の確かめ・送る・読み戻す・COMPLETE）の 4 ＋ monthly の一覧 1 ＋ その月の回の中身の確かめ K ＋ monthly の 4 ＝ 9 ＋ K。
+# K は確かめる回の数の上限（BACKUP_S3_MONTHLY_CHECK_MAX。#2406 の再レビュー 🟡: 取りこぼしが溜まっても式が成り立つよう、上限を設ける）。
+CLOUD_CJ="$HERE/../../../cloud/backup/cronjob-postgres.yaml"
+S3_CALL="$(default_of BACKUP_S3_CALL_TIMEOUT)"
+MCHECK="$(default_of BACKUP_S3_MONTHLY_CHECK_MAX)"
+CADL="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
+CBOL="$(sed -n 's/^ *backoffLimit: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
+assert_eq 'T-2402-12 クラウドの CronJob は再試行しない（backoffLimit: 0）' "$CBOL" "0"
+if [[ "$CADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL" =~ ^[0-9]+$ ]] && [[ "$MCHECK" =~ ^[1-9][0-9]*$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
+	CWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + MCHECK) * S3_CALL + 300))
+	if [ "$CWORST" -lt "$CADL" ]; then
+		ok "T-2402-12 クラウド: 最悪の合計 $CWORST 秒が activeDeadlineSeconds $CADL 秒より小さい"
+	else
+		ng 'T-2402-12 クラウド: 最悪の合計が activeDeadlineSeconds より小さい' "worst=$CWORST adl=$CADL"
+	fi
+else
+	ng 'T-2402-12 クラウド: 既定値（確かめる回の上限を含む）と activeDeadlineSeconds を読める' "adl=$CADL s3=$S3_CALL k=$MCHECK"
+fi
+
+# runbook の「上限を上げた 1 回」: 同じパイプで上げる activeDeadlineSeconds が、その K での最悪の合計（T-2402-12 と同じ式）より大きい。
+# 手順の値を変えたら、ここが式で突き合わせる（#2406 の再レビュー 🟡）。
+RUNBOOK_MD="$HERE/../../../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md"
+RK="$(sed -n 's/.*BACKUP_S3_MONTHLY_CHECK_MAX=\([0-9][0-9]*\).*/\1/p' "$RUNBOOK_MD" 2>/dev/null | head -n 1)"
+RADL="$(sed -n 's/.*"activeDeadlineSeconds":\([0-9][0-9]*\).*/\1/p' "$RUNBOOK_MD" 2>/dev/null | head -n 1)"
+if [[ "$RK" =~ ^[0-9]+$ ]] && [[ "$RADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
+	RWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + RK) * S3_CALL + 300))
+	if [ "$RWORST" -lt "$RADL" ]; then
+		ok "T-2402-16 runbook: 上限を上げた 1 回（K=$RK）の最悪の合計 $RWORST 秒が、同じ手順で上げる activeDeadlineSeconds $RADL 秒より小さい"
+	else
+		ng 'T-2402-16 runbook: 上限を上げた 1 回の最悪の合計が、その Job の activeDeadlineSeconds より小さい' "k=$RK worst=$RWORST adl=$RADL"
+	fi
+else
+	ng 'T-2402-16 runbook: 上限を上げた 1 回の K と activeDeadlineSeconds を手順から読める' "k=$RK adl=$RADL"
+fi
+
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。
 printf '\nbackup.test.sh: %d passed, %d failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]
