@@ -1,0 +1,86 @@
+# NFR-18, IADR-0674: otel-collector（platform-infra の `app: otel-collector`）へ届いてよい相手と、collector が出てよい先。
+#
+# 届いてよい相手（ingress）:
+#   - OTLP gRPC 4317 … microservices-platform と ai-stock-trading の名前空間の Pod（helm の global.otel.endpoint / 取引ユニットの otlpEndpoint）
+#   - 自己テレメトリ 8888 … Prometheus（`app: prometheus`。唯一の scrape 対象。#546）
+#   - Vault の audit 9514 … Vault（`app: vault`。vault-entrypoint.sh の VAULT_AUDIT_SOCKET_ADDRESS）
+#   OTLP HTTP 4318 はどこからも許さない（送り手が居ない）。
+# 出てよい先（egress）:
+#   - 名前解決 … kube-system の kube-dns の 53（UDP / TCP）
+#   - 転送構成（deploy/local/observability/otel-collector-forward.yaml）の送り先 … prometheus 9090・tempo 4317・loki 3100
+#   - 取りに行く先（既定構成・転送構成の両方） … mail-relay 9154・reset-floor 8080
+# 一致（送り手・送り先と、collector の設定・送り手の宣言）は scripts/otel-collector-network-policy.test.js が突き合わせる。
+# 🔴 送り先・送り手を足すときは、ここと試験の両方を同じ変更でそろえる（足さないと黙って届かなくなる）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-ingress
+  namespace: platform-infra
+  labels: { app: otel-collector }
+spec:
+  podSelector:
+    matchLabels: { app: otel-collector }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: microservices-platform }
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ai-stock-trading }
+      ports:
+        - { protocol: TCP, port: 4317 }
+    - from:
+        - podSelector:
+            matchLabels: { app: prometheus }
+      ports:
+        - { protocol: TCP, port: 8888 }
+    - from:
+        - podSelector:
+            matchLabels: { app: vault }
+      ports:
+        - { protocol: TCP, port: 9514 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-egress
+  namespace: platform-infra
+  labels: { app: otel-collector }
+spec:
+  podSelector:
+    matchLabels: { app: otel-collector }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels: { app: prometheus }
+      ports:
+        - { protocol: TCP, port: 9090 }
+    - to:
+        - podSelector:
+            matchLabels: { app: tempo }
+      ports:
+        - { protocol: TCP, port: 4317 }
+    - to:
+        - podSelector:
+            matchLabels: { app: loki }
+      ports:
+        - { protocol: TCP, port: 3100 }
+    - to:
+        - podSelector:
+            matchLabels: { app: mail-relay }
+      ports:
+        - { protocol: TCP, port: 9154 }
+    - to:
+        - podSelector:
+            matchLabels: { app: reset-floor }
+      ports:
+        - { protocol: TCP, port: 8080 }
