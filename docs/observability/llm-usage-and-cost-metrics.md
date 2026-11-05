@@ -7,11 +7,11 @@ created: 2026-08-23
 updated: 2026-11-05
 ---
 <!-- trace:
-ids: [FR-10, FR-11, NFR, NFR-21, UC-05, SC-10]
+ids: [FR-10, FR-11, NFR, NFR-18, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671]
-specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching]
-issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, planning#783]
+iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677]
+specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check]
+issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, #2411, planning#783]
 -->
 
 # 可観測性仕様書: LLM 利用実績（トークン消費量と金額換算）
@@ -120,6 +120,13 @@ Prometheus 側の名前は、単位 `{currency}` が注記として落ち、ゲ�
 
 **3 が要点である。** 0 を積むと、**期限切れが「費用の減少」に化けて**費用増加の検知をすり抜ける。
 **金額が過小であることは金額そのものからは読めない** —— 読めるのは 2 のカウンタだけである。
+
+**起動時にも単価の欠落を引く。** ゲートウェイは起動時に、有効な外部エンドポイント（Claude・Copilot）の各モデルに
+起動時点で有効な単価があるかを調べる。同じ検査で、用途の割当・フォールバック・既定のモデルが宣言済みのモデルか、
+有効なエンドポイント（埋め込みを含む）の上流の宛先が http(s) の絶対 URL かも調べる。
+
+- 段 1（既定。`Llm:RouteValidation:Mode` 未設定または `Warn`）: 誤り 1 件ごとに起動時の Warning を 1 行出す（`LlmGateway.Startup`・`kind=unknown_model|destination|missing_price`）。起動は止めない。
+- 段 2（`Fail`）: 誤りがあれば起動を止める。**切り替える前に、段 1 の Warning が 0 件であることを稼働のログで確かめる。**
 
 ## 🔴 逐次応答が途中で終わったときの扱い
 
