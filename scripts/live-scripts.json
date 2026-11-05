@@ -50,6 +50,7 @@
     { "path": "backup-restore-drill.sh", "reason": "稼働クラスタへは自前の --live のときだけ読み取り専用の psql で触れる。--live-counts は使い捨てのコンテナ（--network none）だけ、--self-test はスタブだけ。拒否の経路は同スクリプトの T-1560-39 / T-1560-41 が固定する" }
   ],
   "offline": [
+    { "path": "vault-restore-drill.sh", "reason": "NFR-18, IADR-0674: 秘匿管理のリストア試験。当たるのは手元のコンテナの CLI で起こした使い捨ての OpenBao（--network none）だけで、127.0.0.1 はそのコンテナの中の待受である。kubectl を呼ばず、稼働クラスタへは当たらない。--self-test はスタブだけ" },
     { "path": "compose-up.sh", "reason": "引数をそのまま docker compose へ渡す dev の compose 起動ヘルパ。k8s の稼働クラスタにも稼働サービスにも当たらない（対象は手元の compose スタックで、副作用はサブコマンドが明示する）。どのワークフローも呼ばない" },
     { "path": "check-collector-self-telemetry.js", "reason": "collector の待受が loopback でないことを見る静的検査。localhost は正規表現に現れるだけ" },
     { "path": "lib/disposable-stack.js", "reason": "live の書き込みの向け先が使い捨てのスタックかの判定器（#2031 / IADR-0630）。kubectl は config current-context でローカルの kubeconfig を読むだけで、クラスタへは当たらない" },
