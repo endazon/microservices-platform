@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Domain.Authorization;
 
-// NFR-18, NFR-09, FR-11, ADR-0084 決定 1, IADR-0679 (#2417): 補完の呼び手ごとの許可表（`Llm:CallerPolicy`）。
+// NFR-18, NFR-09, FR-11, ADR-0084 決定 1, IADR-0684 (#2417): 補完の呼び手ごとの許可表（`Llm:CallerPolicy`）。
 //
 // 門（ServiceCaller）は realm ロール `platform-service` を見るだけで、呼び手を区別しない。
 // ここでは**呼び手（検証済みトークンのクライアント識別子）ごとに、使ってよい用途と、モデルの明示の指定を許すか**を決める。

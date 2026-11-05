@@ -131,7 +131,7 @@ builder.Services.AddSingleton<LogOccurrenceThrottle>();
 // **両方がこれを呼ぶ**（［2026-10-15 / #1902］逐次の REST /complete/stream は撤去した） —— 越境判定・フォールバック鎖・計器の計上を輸送ごとに分けない。
 builder.Services.AddSingleton<CompletionUseCase>();
 
-// NFR-18, NFR-09, ADR-0084 決定 1, IADR-0679 (#2417): 補完の呼び手ごとの許可表（用途・モデルの明示の指定）。
+// NFR-18, NFR-09, ADR-0084 決定 1, IADR-0684 (#2417): 補完の呼び手ごとの許可表（用途・モデルの明示の指定）。
 // 🔴 **既定の段は Report**（判定して報告だけ）。`Llm:CallerPolicy:Mode=Enforce` で、許可表に無い呼び出しを REST 403 / gRPC PERMISSION_DENIED で拒む。
 builder.Services.AddOptions<LlmCallerPolicyOptions>()
     .Bind(builder.Configuration.GetSection(LlmCallerPolicyOptions.SectionName))

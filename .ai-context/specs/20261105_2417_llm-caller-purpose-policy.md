@@ -2,7 +2,7 @@
 title: 作業仕様書 — LLM ゲートウェイの補完で、呼び手ごとの用途とモデルの指定を許可表で判定する（段 1 は報告・段 2 で拒む。#2417）
 type: spec
 status: done
-related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, IADR-0424, IADR-0679]
+related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, IADR-0424, IADR-0684]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05
@@ -18,7 +18,7 @@ issue: "#2417"
 - 補完の門は `ServiceCaller`（`RequireRole("platform-service")`）だけである（`Complete/Endpoint.cs`・`GrpcService.cs`）。
 - realm で `platform-service` を持つサービスアカウントは 13 個あり（`deploy/keycloak/microservices-platform-realm.json`）、補完を呼ばないものも含む。
 
-## 方針（IADR-0679）
+## 方針（IADR-0684）
 
 - 許可表 `Llm:CallerPolicy`。判定器 `LlmCallerPolicy` を REST と gRPC の両面から呼ぶ。段 1（既定）は報告、段 2 は 403 / PERMISSION_DENIED。
 

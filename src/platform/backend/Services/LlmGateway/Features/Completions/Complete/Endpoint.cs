@@ -22,7 +22,7 @@ public static class CompleteEndpoint
             HttpContext http,
             CancellationToken ct) =>
         {
-            // NFR-18, IADR-0679 (#2417): 呼び手ごとの許可表（段 2 のときだけ拒む）。判定器へ入る前に見る。
+            // NFR-18, IADR-0684 (#2417): 呼び手ごとの許可表（段 2 のときだけ拒む）。判定器へ入る前に見る。
             if (!callerPolicy.Evaluate(MachinePrincipal.ClientIdOf(http.User), req.Purpose, req.Model).Allowed)
                 return Results.Problem(
                     statusCode: StatusCodes.Status403Forbidden,

@@ -15,7 +15,7 @@ using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace LlmGateway.Tests.Features.Authorization;
 
-// NFR-18, NFR-09, FR-11, ADR-0084 決定 1, IADR-0679 (#2417): 呼び手ごとの用途とモデルの指定の許可表を、
+// NFR-18, NFR-09, FR-11, ADR-0084 決定 1, IADR-0684 (#2417): 呼び手ごとの用途とモデルの指定の許可表を、
 // 本物のホスト（REST と gRPC の両方の面）で固定する。
 //
 // 🔴 **段 1（既定 Report）は止めない。段 2（Enforce）は許可表に無い呼び出しを REST 403 / gRPC PERMISSION_DENIED で拒む。**

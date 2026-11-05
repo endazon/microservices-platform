@@ -75,7 +75,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase, LlmCalle
         return LlmGrpcMapping.ToDto(request);
     }
 
-    // NFR-18, IADR-0679 (#2417): 呼び手ごとの許可表（REST と同じ判定器）。段 2 のときだけ PERMISSION_DENIED。
+    // NFR-18, IADR-0684 (#2417): 呼び手ごとの許可表（REST と同じ判定器）。段 2 のときだけ PERMISSION_DENIED。
     private void EnsureCallerAllowed(Platform.Shared.Contracts.Dtos.CompletionApiRequest dto, ServerCallContext context)
     {
         var decision = callerPolicy.Evaluate(

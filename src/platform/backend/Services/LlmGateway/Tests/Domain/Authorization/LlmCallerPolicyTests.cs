@@ -9,7 +9,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace LlmGateway.Tests.Domain.Authorization;
 
-// NFR-18, IADR-0679 (#2417): 呼び手ごとの許可表の判定器の単体試験。
+// NFR-18, IADR-0684 (#2417): 呼び手ごとの許可表の判定器の単体試験。
 [Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Unit")]
 public sealed class LlmCallerPolicyTests : IDisposable

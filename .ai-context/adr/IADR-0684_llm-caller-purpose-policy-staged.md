@@ -1,5 +1,5 @@
 ---
-title: IADR-0679 LLM ゲートウェイの補完は、呼び手ごとの許可表（用途・モデルの明示の指定）を REST と gRPC の両面で 1 つの判定器が見る。段 1 は報告、段 2 は 403 / PERMISSION_DENIED（#2417）
+title: IADR-0684 LLM ゲートウェイの補完は、呼び手ごとの許可表（用途・モデルの明示の指定）を REST と gRPC の両面で 1 つの判定器が見る。段 1 は報告、段 2 は 403 / PERMISSION_DENIED（#2417）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, ADR-0010, IADR-0379, IADR-0424]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2417_llm-caller-purpose-policy.md
 ---
 
-# IADR-0679: LLM ゲートウェイの補完の呼び手ごとの許可表（#2417）
+# IADR-0684: LLM ゲートウェイの補完の呼び手ごとの許可表（#2417）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
