@@ -2,7 +2,7 @@
 title: 作業仕様書 — 秘匿管理の運用者の policy を、要る path と操作だけに絞る（#2421）
 type: spec
 status: review
-related_ids: [NFR-18, IADR-0094, IADR-0681]
+related_ids: [NFR-18, IADR-0094, IADR-0683]
 author: claude
 created: 2026-11-05
 updated: 2026-11-05
@@ -11,7 +11,7 @@ issue: "#2421"
 
 # 作業仕様書 — 秘匿管理の運用者の policy（#2421）
 
-> 着手 2026-11-05（develop `170f1efb`）。判断の記録は **IADR-0681**（新規。番号は仮）。稼働中のクラスタへは当てない（利用者が `deploy/local/vault/oidc/bootstrap.sh` を再実行して当てる）。
+> 着手 2026-11-05（develop `170f1efb`）。判断の記録は **IADR-0683**（新規。番号は仮）。稼働中のクラスタへは当てない（利用者が `deploy/local/vault/oidc/bootstrap.sh` を再実行して当てる）。
 
 ## 起点
 

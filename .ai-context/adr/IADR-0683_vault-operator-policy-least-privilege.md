@@ -1,5 +1,5 @@
 ---
-title: IADR-0681 秘匿管理の運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える（#2421）
+title: IADR-0683 秘匿管理の運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える（#2421）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, IADR-0094]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261105_2421_vault-operator-policy-least-privilege.md
 ---
 
-# IADR-0681: 秘匿管理の運用者の policy を絞る（#2421）
+# IADR-0683: 秘匿管理の運用者の policy を絞る（#2421）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

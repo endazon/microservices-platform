@@ -19760,8 +19760,8 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR-18, IADR-0681 (#2421): 秘匿管理の運用者の policy は、要る path と操作だけ ---
-  ok('IADR-0681: 運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える', () => {
+  // --- NFR-18, IADR-0683 (#2421): 秘匿管理の運用者の policy は、要る path と操作だけ ---
+  ok('IADR-0683: 運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える', () => {
     const fs2421 = require('fs');
     const path2421 = require('path');
     const hcl = fs2421.readFileSync(path2421.join(__dirname, '..', 'deploy/local/vault/oidc/policies/operator.hcl'), 'utf8')
