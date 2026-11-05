@@ -749,3 +749,4 @@
 | [IADR-0669](./IADR-0669_backup-publish-lock-and-post-rename-verify.md) | バックアップの回は保管先ごと・種類ごとのロック（mkdir の原子性）の中で書き、incoming を回ごとに一意にし、改名の後に保管先の回でもう一度検算してから「書きました」を出す（#2389） | Accepted |
 | [IADR-0670](./IADR-0670_backup-wait-dependencies-before-write.md) | バックアップの回は書き始める前に依存先（Postgres・OpenBao・名前解決）の起動を上限つきで待ち、再試行はしない（PC の復帰の直後の後追いの回。#2394） | Accepted |
 | [IADR-0671](./IADR-0671_llm-gateway-prompt-cache-prefix-and-billing.md) | LLM ゲートウェイは呼び手が分けた接頭辞を user の先頭の text ブロックにし、その末尾に 5 分のキャッシュの区切りを置く。InputTokens はプロンプト全体のまま、キャッシュの書き・読みを「うち」として返し、単価の区分ごとに計上する（#2396） | Accepted |
+| [IADR-0672](./IADR-0672_cloud-offsite-backup-discord-alerts-heartbeat.md) | クラウドの最小構成は、バックアップを S3 互換のオブジェクトストレージ（Object Lock・lifecycle）へ書き、警報を Discord へ送り、常に鳴る警報をクラスタの中から外の監視へ heartbeat として送る（#2402） | Accepted |

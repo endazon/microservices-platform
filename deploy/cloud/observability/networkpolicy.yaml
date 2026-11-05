@@ -1,0 +1,52 @@
+# NFR-21, NFR-18, IADR-0672 (#2402): 警報の Pod の通信を絞る。受け口は増やさない（クラスタの外からは何も届かない）。
+# - Alertmanager: 受けは Prometheus からの :9093 だけ。外へは名前解決と HTTPS（Discord・Healthchecks.io）だけ。
+# - Prometheus: 受けは otel-collector からの remote write（:9090）だけ。外へは制限しない（クラスタ内を収集する）。
+# 🔴 HTTPS はクラスタの外（私設のアドレス帯を除く）だけへ出す。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-cloud
+  namespace: platform-infra
+  labels: { app: alertmanager }
+spec:
+  podSelector:
+    matchLabels: { app: alertmanager }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: prometheus }
+      ports:
+        - { protocol: TCP, port: 9093 }
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-cloud
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  podSelector:
+    matchLabels: { app: prometheus }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: otel-collector }
+      ports:
+        - { protocol: TCP, port: 9090 }

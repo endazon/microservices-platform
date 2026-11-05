@@ -1,0 +1,185 @@
+---
+title: 運用 Runbook — クラウドの最小構成のバックアップ（オブジェクトストレージ）・警報（Discord）・外からの死活監視（heartbeat）
+type: runbook
+status: draft
+author: claude
+created: 2026-11-05
+updated: 2026-11-05
+---
+<!-- trace:
+ids: [NFR-21, NFR-03, NFR-05]
+adrs: [ADR-0002, ADR-0006, ADR-0008]
+iadrs: [IADR-0672, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
+specs: [20261105_2402_cloud-backup-alerts-heartbeat]
+issues: [#2402, #2401]
+-->
+
+# 運用 Runbook: クラウドのバックアップ・警報・heartbeat
+
+> **運用仕様書（[`operations.md`](operations.md)）の「バックアップ」と「監視・アラート」の下位にあたる手順書である。**
+> 対象はクラウドの最小構成（単一ノードの k3s・`deploy/cloud/`）の `deploy/cloud/backup/` と `deploy/cloud/observability/`。
+> ローカルの PoC（hostPath の 2 か所）の手順は [platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) のままである。
+>
+> **状態を `draft` に留めている理由**: クラウドのノードで §5 の止め試験と §6 のリストア試験をまだ記録していない。
+
+## 何が起きるか
+
+| 部品 | 動き | 止まったら |
+| --- | --- | --- |
+| バックアップ（CronJob `platform-backup-postgres`・JST 12:00） | Postgres の全 DB と globals を age で暗号化し、オブジェクトストレージの `daily/<回>/` へ送る。月の最初の完全な回は `monthly/<回>/` にも送る。送った回を読み戻して検算し、最後に `COMPLETE` を置く | Job が失敗として残る（`kubectl -n platform-infra get jobs`）。`COMPLETE` の無い回は完了ではない |
+| 警報（Prometheus → Alertmanager → Discord） | AST の警報と、基盤の警報（collector の停止・AST の規則の不在）を Discord のチャンネルへ送る | Discord への送信の失敗は、外の監視の `/fail` へ送る |
+| 死活（常に鳴る警報 `Watchdog` → Healthchecks.io） | Alertmanager が 5 分ごとに外の監視へ ping を送る（クラスタの中から外へ。受け口は開けない） | **外の監視が、ping が途絶えたことをオーナーへ知らせる**（メール・Discord） |
+
+- 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle が行う**（スクリプトは消さない）。
+- バケットは Object Lock（COMPLIANCE・30 日）で作る。保持の期間の内は、資格情報を持つ者でも回を消せない。
+- 費用: オブジェクトストレージの基本料（1 TB の保管と転送を含む）と、外の監視・Discord の無料の枠に収まる。
+
+## 前提
+
+| 項目 | 内容 |
+| --- | --- |
+| 必要な権限 | クラウドのノードへの SSH（kubectl は SSH のトンネル越し）、Hetzner Console、Discord のサーバーの「ウェブフックの管理」、Healthchecks.io のアカウント |
+| 必要なツール | `kubectl`、`docker`（イメージのビルド）、`rclone` か `aws` CLI（バケットの設定とリストア試験）、`age`（リストア試験） |
+| 所要時間の目安 | 初回の準備 60 分、止め試験 20 分、リストア試験 30 分 |
+
+🔴 **秘密の値（S3 の鍵・webhook の URL・ping の URL）をコマンドの引数・シェルの履歴・リポジトリに書かない。**
+下の手順はどれも、値を**手元のファイル**（`umask 077` で作り、使ったら消す）から読ませる。
+
+## 1. オブジェクトストレージ（バケット・Object Lock・lifecycle）
+
+1. Hetzner Console で、**バックアップ専用のプロジェクト**を作る（資格情報が届く範囲をこのバケットだけに閉じる）。
+2. そのプロジェクトで S3 の資格情報を作る。表示された鍵は手元のファイルへ写す（`~/.secrets/backup-s3.env`。`chmod 600`）:
+   ```text
+   AWS_ACCESS_KEY_ID=...
+   AWS_SECRET_ACCESS_KEY=...
+   ```
+3. バケットを **Object Lock を有効にして**作る（Object Lock は作成時にしか有効にできない）。リージョンはノードと同じにする。
+4. 既定の保持と lifecycle を当てる（`deploy/cloud/backup/` の JSON。接頭辞 `ast-poc/` は下の `dest` と揃える）:
+   ```bash
+   set -a; . ~/.secrets/backup-s3.env; set +a
+   EP=https://fsn1.your-objectstorage.com   # リージョンのエンドポイント
+   aws --endpoint-url "$EP" s3api put-object-lock-configuration --bucket <バケット> \
+     --object-lock-configuration file://deploy/cloud/backup/object-lock.json
+   aws --endpoint-url "$EP" s3api put-bucket-lifecycle-configuration --bucket <バケット> \
+     --lifecycle-configuration file://deploy/cloud/backup/bucket-lifecycle.json
+   ```
+5. **確かめる**（消せないこと）: 試しの小さなオブジェクトを置き、版を指定して消せないこと（`AccessDenied`）を見る。
+   ```bash
+   aws --endpoint-url "$EP" s3api put-object --bucket <バケット> --key lock-check.txt --body /etc/hostname
+   aws --endpoint-url "$EP" s3api list-object-versions --bucket <バケット> --prefix lock-check.txt
+   aws --endpoint-url "$EP" s3api delete-object --bucket <バケット> --key lock-check.txt --version-id <上の VersionId>   # 拒否されること
+   ```
+   拒否されないなら、Object Lock が効いていない。バケットを作り直す（効かないプロバイダなら、その旨を issue に記録する）。
+
+## 2. クラスタへの投入（Secret・ConfigMap・イメージ）
+
+1. S3 の鍵（Secret `platform-backup-s3`）と宛先（ConfigMap `platform-backup-s3-target`）:
+   ```bash
+   umask 077; d="$(mktemp -d)"
+   . ~/.secrets/backup-s3.env
+   printf '%s' "$AWS_ACCESS_KEY_ID" > "$d/access-key-id"
+   printf '%s' "$AWS_SECRET_ACCESS_KEY" > "$d/secret-access-key"
+   kubectl -n platform-infra create secret generic platform-backup-s3 \
+     --from-file=access-key-id="$d/access-key-id" --from-file=secret-access-key="$d/secret-access-key"
+   rm -f "$d"/*; rmdir "$d"
+   kubectl -n platform-infra create configmap platform-backup-s3-target \
+     --from-literal=endpoint=https://fsn1.your-objectstorage.com \
+     --from-literal=dest=objstore:<バケット>/ast-poc
+   ```
+2. age の公開鍵（ConfigMap `platform-backup-age-recipients`）はローカルと同じ手順で作る（[platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の準備）。秘密鍵はクラスタに置かない。
+3. バックアップのイメージ（レジストリへ置かない。手元でビルドしてノードへ取り込む）:
+   ```bash
+   T=microservices-platform/platform-backup-cloud:pg16.15-age1.3.2-r1-rclone1.75.2-r0
+   docker build --platform linux/amd64 -t "$T" deploy/cloud/backup/image
+   docker save "$T" | ssh <ノード> 'sudo k3s ctr images import -'
+   ssh <ノード> "sudo k3s ctr images ls | grep platform-backup-cloud"   # digest を記録する
+   ```
+   CronJob は `imagePullPolicy: Never` である。取り込んでいなければ Pod は起動しない（外のレジストリから同じ名前を取らない）。
+4. 初回の手動の回で、書けることを確かめる:
+   ```bash
+   kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres backup-first
+   kubectl -n platform-infra logs -f job/backup-first    # 「書きました: objstore:…/postgres/daily/<回>」と「完了」
+   ```
+   送信が拒否される（Object Lock のバケットが要求の検算の見出しを求める等）なら、ログを付けて issue に記録する。
+
+## 3. Discord の受信先
+
+1. Discord のサーバーで、警報のチャンネルの「連携サービス → ウェブフック」を作り、URL を手元のファイルへ写す。
+2. Secret `alertmanager-discord`（キー `webhook-url`）:
+   ```bash
+   umask 077; f="$(mktemp)"
+   # エディタで "$f" に URL を 1 行だけ書く（引数・履歴に出さない）
+   kubectl -n platform-infra create secret generic alertmanager-discord --from-file=webhook-url="$f"
+   rm -f "$f"
+   ```
+3. Alertmanager は起動時に 1 度だけ描画する。差し替えたら `kubectl -n platform-infra rollout restart deploy/alertmanager`。
+   URL が空・形が違うと Alertmanager は起動しない（`Init:Error`。ログは `kubectl -n platform-infra logs deploy/alertmanager -c render-config`。値は表示しない）。
+
+## 4. 外の監視（Healthchecks.io）と heartbeat
+
+1. Healthchecks.io（無料の枠）にプロジェクトを作り、check を 1 つ作る。
+   - **Period: 5 分、Grace: 5 分**（Alertmanager の Watchdog の送信は 5 分ごと。途絶えてから最大 10 分で知らせる）。
+   - 「Integrations」で、オーナーへ届く宛先を**2 つ以上**つなぐ（メールと Discord。Discord の連携は、警報とは別のチャンネルにする —— 警報の webhook が壊れたときも届くように）。
+2. check の ping の URL を手元のファイルへ写し、Secret `alertmanager-heartbeat`（キー `ping-url` と `fail-url`）を作る:
+   ```bash
+   umask 077; d="$(mktemp -d)"
+   # エディタで "$d/ping-url" に ping の URL を 1 行だけ書く
+   printf '%s/fail' "$(cat "$d/ping-url")" > "$d/fail-url"
+   kubectl -n platform-infra create secret generic alertmanager-heartbeat \
+     --from-file=ping-url="$d/ping-url" --from-file=fail-url="$d/fail-url"
+   rm -f "$d"/*; rmdir "$d"
+   ```
+   この Secret が無いと Alertmanager の Pod は起動しない（ping が始まらず、外の監視が「一度も来ていない」と見せる）。
+3. AST の警報の規則（ConfigMap `ast-prometheus-rules`。AST の `PrometheusRule` の YAML をそのまま入れる）:
+   ```bash
+   kubectl -n platform-infra create configmap ast-prometheus-rules \
+     --from-file=<AST の作業ツリー>/deploy/observability/alerts/ai-stock-trading-alerts.yaml
+   kubectl -n platform-infra rollout restart deploy/prometheus
+   ```
+   読めない規則なら Prometheus は起動しない（`kubectl -n platform-infra logs deploy/prometheus -c load-ast-rules`）。
+   ConfigMap が無いときは起動し、警報 `AstAlertRulesNotLoaded` が 15 分後に Discord へ出る。
+
+## 5. 試験（初回と、構成を変えたとき）
+
+1. **Discord へ届く**: 試しの警報を流す（クラスタの中から。受け口は開けない）:
+   ```bash
+   kubectl -n platform-infra exec deploy/alertmanager -- amtool alert add RunbookTest severity=warning \
+     --annotation=summary="試験の警報" --alertmanager.url=http://localhost:9093
+   ```
+   Discord のチャンネルに届くことを見る。
+2. **heartbeat が届く**: Healthchecks.io の check が「up」で、最後の ping が 5 分以内であることを見る。
+3. **heartbeat が途絶えたとき、オーナーへ届く**（止め試験。米国の場の時間外に行う）:
+   ```bash
+   kubectl -n platform-infra scale deploy/alertmanager --replicas=0
+   # 10 分以内に Healthchecks.io から「down」の知らせが、つないだ宛先（メール・Discord）へ届くことを見る
+   kubectl -n platform-infra scale deploy/alertmanager --replicas=1
+   # 次の ping で「up」へ戻ることを見る
+   ```
+   ノードごと止まった・外への通信が切れた・Prometheus が止まったときも、同じく ping が止まって知らせが届く。
+4. 結果（日時・届いた宛先・かかった時間）を運用の記録に残す。
+
+## 6. リストア試験（オブジェクトストレージの回から）
+
+手元の PC で行う（秘密鍵はクラスタに置かない）。資格情報は rclone の env で渡す（引数に載せない）:
+
+```bash
+set -a; . ~/.secrets/backup-s3.env; set +a
+export RCLONE_CONFIG_OBJSTORE_TYPE=s3 RCLONE_CONFIG_OBJSTORE_PROVIDER=Other \
+  RCLONE_CONFIG_OBJSTORE_ENDPOINT=https://fsn1.your-objectstorage.com \
+  RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
+rclone lsf objstore:<バケット>/ast-poc/postgres/daily/          # 回の一覧
+bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/postgres/daily/<回> \
+  --identity <age の秘密鍵ファイル> --live-counts <稼働側の行数の TSV>
+```
+
+- `COMPLETE` の無い回・`COMPLETE` が `SHA256SUMS` と合わない回は、書きかけとして戻さない（失敗で終わる）。
+- 稼働側の行数は、ノードで読み取り専用の psql を流して TSV にする（手順は [platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の「リストア試験」と同じ）。
+
+## 失敗したときの分岐
+
+| 事象 | 見るところ | 対処 |
+| --- | --- | --- |
+| Healthchecks.io から「down」が届いた | `kubectl -n platform-infra get pods`（alertmanager・prometheus）、ノードへの SSH | Pod が落ちていれば `logs` で原因を見る。ノードに届かなければ Hetzner Console でノードを確かめる |
+| Healthchecks.io に「fail」が届いた | Alertmanager のログ（`notify` の失敗）、Discord の webhook | webhook が消された・URL が変わったなら §3 で Secret を作り直す |
+| `AstAlertRulesNotLoaded` が Discord に出た | ConfigMap `ast-prometheus-rules` | §4 の 3 を行う |
+| バックアップの Job が失敗した | `kubectl -n platform-infra logs job/<名前>` | 「保管先が 1 つもありません」→ §2 の ConfigMap。「検算が合いません」→ 再実行（`COMPLETE` は置かれていない）。「同じ名前の回が既にあります」→ 手動の回が同じ秒に重なった |

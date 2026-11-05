@@ -1,0 +1,195 @@
+# NFR-21, NFR-03, ADR-0006, IADR-0672 (#2402): クラウドの最小構成の Prometheus（platform-infra）。
+# - 8 GB のノード向けに絞る: 保持 7 日・1GB、メモリの上限 768Mi、データは emptyDir（2Gi。再起動で消えるのは受け入れる）。
+# - 収集: 自分・Alertmanager・otel-collector の自己テレメトリ（:8888）。アプリのメトリクスは otel-collector の remote write で受ける。
+# - 規則: 下の platform-rules.yml（heartbeat・Discord の失敗・AST の規則の不在・collector の停止）と、AST の PrometheusRule。
+#   🔴 AST の PrometheusRule は ConfigMap `ast-prometheus-rules`（kustomize の外。AST の YAML をそのまま入れる）を
+#   initContainer が `spec` だけ取り出し、promtool check rules を通してから読む（Prometheus Operator を持ち込まない）。
+#   読めない規則があれば起動しない（Watchdog が止まり、外の監視が知らせる）。ConfigMap が無ければ起動し、
+#   警報 AstAlertRulesNotLoaded が Discord へ出る。ConfigMap を差し替えたら作り直す（rollout restart）。
+# - イメージは経路 B（deploy/local/observability/prometheus.yaml）と同じ digest（試験 T-2402-46）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-cloud-config
+  namespace: platform-infra
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 30s
+      evaluation_interval: 30s
+    rule_files:
+      - /etc/prometheus/config/platform-rules.yml
+      - /etc/prometheus/ast-rules/*.yml
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: ['alertmanager:9093']
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ['localhost:9090']
+      - job_name: alertmanager
+        static_configs:
+          - targets: ['alertmanager:9093']
+      - job_name: otel-collector
+        static_configs:
+          - targets: ['otel-collector:8888']
+  platform-rules.yml: |
+    groups:
+      # IADR-0672 決定 4: 外の監視（Healthchecks.io）への heartbeat。
+      - name: cloud-heartbeat
+        rules:
+          # 常に鳴る。Alertmanager が heartbeat の receiver へ 5 分ごとに送る。止まったら、Prometheus・Alertmanager・
+          #    ノード・外への通信のどれかが止まっている（外の監視がオーナーへ知らせる）。消さない・silence しない。
+          - alert: Watchdog
+            expr: vector(1)
+            labels: { severity: none }
+            annotations:
+              summary: "常に鳴る警報（外の監視への heartbeat）"
+              description: "これが外の監視へ届かなくなったら、警報の経路そのものが止まっている。"
+          # Discord へ送れないことを、Discord ではなく外の監視（同じ check の /fail）へ知らせる。
+          - alert: AlertmanagerDiscordFailing
+            expr: increase(alertmanager_notifications_failed_total{integration="discord"}[15m]) > 0
+            labels: { severity: critical }
+            annotations:
+              summary: "Discord への通知が失敗している"
+              description: "直近 15 分に Discord への送信が失敗した。webhook の URL（Secret alertmanager-discord）か Discord 側を確かめる。"
+          # AST の規則（ConfigMap ast-prometheus-rules）が 1 つも読まれていない。読まれていないと AST の警報は永久に鳴らない。
+          - alert: AstAlertRulesNotLoaded
+            expr: absent(prometheus_rule_group_rules{rule_group=~".*;ai-stock-trading\\..*"})
+            for: 15m
+            labels: { severity: warning }
+            annotations:
+              summary: "AST の警報の規則が読まれていない"
+              description: "ConfigMap ast-prometheus-rules が無いか、AST の規則の群が 1 つも無い。手順は cloud の runbook。"
+      - name: cloud-availability
+        rules:
+          - alert: OtelCollectorDown
+            expr: up{job="otel-collector"} == 0
+            for: 2m
+            labels: { severity: critical }
+            annotations:
+              summary: "OTel Collector 到達不可（可観測性パイプライン断）"
+              description: "otel-collector の scrape が 2 分間失敗。AST のメトリクスが届いていない可能性。"
+  # AST の PrometheusRule から spec（= Prometheus の規則ファイルの形）だけを取り出す。initContainer が実行する。
+  #   ConfigMap が空・無い → 警告を出して起動する（AstAlertRulesNotLoaded が鳴る）
+  #   PrometheusRule でない・spec が無い・promtool が読めない → 起動しない（exit 1）
+  extract-ast-rules.sh: |
+    #!/bin/sh
+    set -eu
+    src="${AST_RULES_SRC:?}"
+    out="${AST_RULES_OUT:?}"
+    promtool="${PROMTOOL:?}"
+    n=0
+    for f in "$src"/*.yaml "$src"/*.yml; do
+      [ -f "$f" ] || continue
+      base="$(basename "$f")"
+      base="${base%.*}"
+      case "$base" in
+        *[!A-Za-z0-9._-]*) echo "ast-rules: ERROR: ファイル名が想定外である: $base" >&2; exit 1 ;;
+      esac
+      if ! grep -q '^kind: PrometheusRule[[:space:]]*$' "$f"; then
+        echo "ast-rules: ERROR: $base は PrometheusRule ではない。起動しない。" >&2
+        exit 1
+      fi
+      awk '
+        /^---[[:space:]]*$/ { inspec = 0; next }
+        /^spec:[[:space:]]*$/ { inspec = 1; next }
+        inspec && /^[^[:space:]#]/ { inspec = 0 }
+        inspec { sub(/^  /, ""); print }
+      ' "$f" > "$out/$base.yml"
+      if ! grep -q '^groups:' "$out/$base.yml"; then
+        echo "ast-rules: ERROR: $base に spec.groups が無い。起動しない。" >&2
+        exit 1
+      fi
+      if ! "$promtool" check rules "$out/$base.yml" >&2; then
+        echo "ast-rules: ERROR: $base の規則を promtool が読めない。起動しない。" >&2
+        exit 1
+      fi
+      n=$((n + 1))
+    done
+    if [ "$n" -eq 0 ]; then
+      echo "ast-rules: WARNING: AST の規則（ConfigMap ast-prometheus-rules）が無い。AstAlertRulesNotLoaded が鳴る。" >&2
+    else
+      echo "ast-rules: AST の規則を ${n} ファイル読んだ。" >&2
+    fi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: prometheus }
+  template:
+    metadata:
+      labels: { app: prometheus }
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: load-ast-rules
+          image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
+          command: ["/bin/sh", "/etc/prometheus/config/extract-ast-rules.sh"]
+          env:
+            - { name: AST_RULES_SRC, value: /ast-src }
+            - { name: AST_RULES_OUT, value: /etc/prometheus/ast-rules }
+            - { name: PROMTOOL, value: /bin/promtool }
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus/config, readOnly: true }
+            - { name: ast-src, mountPath: /ast-src, readOnly: true }
+            - { name: ast-rules, mountPath: /etc/prometheus/ast-rules }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
+          args:
+            - "--config.file=/etc/prometheus/config/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus"
+            - "--web.enable-remote-write-receiver"
+            - "--storage.tsdb.retention.time=7d"
+            - "--storage.tsdb.retention.size=1GB"
+          ports:
+            - { containerPort: 9090, name: http }
+          readinessProbe:
+            httpGet: { path: /-/ready, port: 9090 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - { name: config, mountPath: /etc/prometheus/config, readOnly: true }
+            - { name: ast-rules, mountPath: /etc/prometheus/ast-rules, readOnly: true }
+            - { name: data, mountPath: /prometheus }
+          resources:
+            requests: { cpu: 50m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 768Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-cloud-config
+        # AST の PrometheusRule（kustomize の外。手順書参照）。無くても起動する（AstAlertRulesNotLoaded が鳴る）。
+        - name: ast-src
+          configMap:
+            name: ast-prometheus-rules
+            optional: true
+        - name: ast-rules
+          emptyDir: {}
+        # size(1GB) < sizeLimit(2Gi) で、保持の削除が先に働く（溢れて退かされない）。
+        - name: data
+          emptyDir:
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  selector: { app: prometheus }
+  ports:
+    - { name: http, port: 9090, targetPort: 9090 }

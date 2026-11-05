@@ -1,0 +1,181 @@
+# NFR-21, NFR-03, ADR-0006, IADR-0672 (#2402): クラウドの最小構成の Alertmanager（platform-infra）。
+# - 既定の受信先は Discord の webhook（`discord`）。🔴 URL は Secret `alertmanager-discord` のキー `webhook-url` から
+#   initContainer が描く（v0.27 の discord_configs は URL のファイル読みを持たない。IADR-0672 決定 3。形は IADR-0571 と同じ）。
+#   **URL はリポジトリにも描画にも置かない。** 描いた設定は Pod の emptyDir にだけ在る。
+# - 常に鳴る警報 Watchdog は `heartbeat`（Healthchecks.io の ping）へ 5 分ごとに送る。Discord の送信の失敗
+#   （AlertmanagerDiscordFailing）は `heartbeat-fail`（同じ check の /fail）へ送る。URL は Secret `alertmanager-heartbeat`
+#   のキー `ping-url` / `fail-url` を url_file で読む（ファイルのまま。設定へ描かない）。
+# - 🔴 Discord の URL が空・形が違う、heartbeat の URL が無い・形が違うときは**起動しない**（黙って null へ落とさない）。
+#   起動しなければ Watchdog が外へ届かず、外の監視がオーナーへ知らせる。
+# - 束ね（group_by）と抑止（inhibit_rules）は経路 B（deploy/local/observability/alertmanager.yaml）と同じ（試験が突き合わせる）。
+# - 手順（Secret の投入・試験の警報・heartbeat の止め試験）は docs/operations/cloud-backup-alerts-heartbeat-runbook.md。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-cloud-config
+  namespace: platform-infra
+data:
+  # `__DISCORD_WEBHOOK_URL__` を render.sh が置き換える。
+  alertmanager.yml.tmpl: |
+    route:
+      group_by: ['alertname', 'job']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: discord
+      routes:
+        # 外の監視への heartbeat。5 分ごとに送る（Healthchecks.io の Period 5 分・Grace 5 分と対）。
+        - matchers: [alertname = "Watchdog"]
+          receiver: heartbeat
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 5m
+        # Discord へ送れないことは Discord では知らせられない。外の監視の /fail へ送る。
+        - matchers: [alertname = "AlertmanagerDiscordFailing"]
+          receiver: heartbeat-fail
+          group_wait: 0s
+          group_interval: 5m
+          repeat_interval: 1h
+    receivers:
+      - name: discord
+        discord_configs:
+          - webhook_url: '__DISCORD_WEBHOOK_URL__'
+            send_resolved: true
+      - name: heartbeat
+        webhook_configs:
+          - url_file: /etc/alertmanager/heartbeat/ping-url
+            send_resolved: false
+      - name: heartbeat-fail
+        webhook_configs:
+          - url_file: /etc/alertmanager/heartbeat/fail-url
+            send_resolved: false
+    inhibit_rules:
+      - source_matchers: [severity = "critical"]
+        target_matchers: [severity = "warning"]
+        equal: ['alertname', 'job']
+  # IADR-0672 決定 3: 受信先の描画。initContainer が実行する。🔴 値をログへ出さない。
+  #   Discord の URL が空・不正 → 起動しない（exit 1）
+  #   heartbeat の ping-url / fail-url が無い・不正・fail-url が「ping-url/fail」でない → 起動しない（exit 1）
+  #   正しい値 → テンプレートへ差し込み、amtool check-config を通す
+  render.sh: |
+    #!/bin/sh
+    set -eu
+    src="${RENDER_SRC:?}"
+    out="${RENDER_OUT:?}"
+    amtool="${AMTOOL:?}"
+    hb="${HEARTBEAT_DIR:?}"
+    url="$(printf '%s' "${DISCORD_WEBHOOK_URL:-}" | tr -d ' \t\r\n')"
+    if [ -z "${url}" ]; then
+      echo "alertmanager-render: ERROR: Discord の webhook の URL（Secret alertmanager-discord の webhook-url）が空である。起動しない（heartbeat が止まり、外の監視が知らせる）。" >&2
+      exit 1
+    fi
+    if ! printf '%s' "${url}" | grep -Eq '^https://(discord\.com|discordapp\.com)/api/webhooks/[0-9]+/[A-Za-z0-9_-]+$'; then
+      echo "alertmanager-render: ERROR: Discord の webhook の URL が https://discord.com/api/webhooks/<数字>/<トークン> の形でない。起動しない（値は表示しない）。" >&2
+      exit 1
+    fi
+    for key in ping-url fail-url; do
+      if [ ! -r "${hb}/${key}" ]; then
+        echo "alertmanager-render: ERROR: heartbeat の ${key}（Secret alertmanager-heartbeat）が無い。起動しない。" >&2
+        exit 1
+      fi
+      if ! tr -d ' \t\r\n' < "${hb}/${key}" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]+)?/[A-Za-z0-9._~/-]+$'; then
+        echo "alertmanager-render: ERROR: heartbeat の ${key} が https の URL の形でない。起動しない（値は表示しない）。" >&2
+        exit 1
+      fi
+    done
+    ping="$(tr -d ' \t\r\n' < "${hb}/ping-url")"
+    fail="$(tr -d ' \t\r\n' < "${hb}/fail-url")"
+    if [ "${fail}" != "${ping}/fail" ]; then
+      echo "alertmanager-render: ERROR: heartbeat の fail-url が「ping-url/fail」でない。起動しない（値は表示しない）。" >&2
+      exit 1
+    fi
+    ping=""
+    fail=""
+    sed "s|__DISCORD_WEBHOOK_URL__|${url}|" "${src}/alertmanager.yml.tmpl" > "${out}/alertmanager.yml"
+    url=""
+    if ! "${amtool}" check-config "${out}/alertmanager.yml" >/dev/null 2>&1; then
+      rm -f "${out}/alertmanager.yml"
+      echo "alertmanager-render: ERROR: 描いた設定を amtool が読めない。起動しない。" >&2
+      exit 1
+    fi
+    echo "alertmanager-render: 受信先 discord・heartbeat・heartbeat-fail を有効にした。" >&2
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager
+  namespace: platform-infra
+  labels: { app: alertmanager }
+  # 受信先は Pod 起動時に 1 度だけ描画される。Secret を差し替えたら作り直す
+  # （`kubectl -n platform-infra rollout restart deploy/alertmanager`）。
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: alertmanager }
+  template:
+    metadata:
+      labels: { app: alertmanager }
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: render-config
+          image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+          command: ["/bin/sh", "/config-src/render.sh"]
+          env:
+            - { name: RENDER_SRC, value: /config-src }
+            - { name: RENDER_OUT, value: /etc/alertmanager }
+            - { name: AMTOOL, value: /bin/amtool }
+            - { name: HEARTBEAT_DIR, value: /etc/alertmanager/heartbeat }
+            # optional: true —— 無いときは空として render.sh が明示の文言で止める（CreateContainerConfigError より読みやすい）。
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom: { secretKeyRef: { name: alertmanager-discord, key: webhook-url, optional: true } }
+          volumeMounts:
+            - { name: config-src, mountPath: /config-src, readOnly: true }
+            - { name: config, mountPath: /etc/alertmanager }
+            - { name: heartbeat, mountPath: /etc/alertmanager/heartbeat, readOnly: true }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: alertmanager
+          image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
+          args:
+            - "--config.file=/etc/alertmanager/alertmanager.yml"
+            - "--storage.path=/alertmanager"
+          ports:
+            - { containerPort: 9093, name: http }
+          volumeMounts:
+            - { name: config, mountPath: /etc/alertmanager, readOnly: true }
+            - { name: heartbeat, mountPath: /etc/alertmanager/heartbeat, readOnly: true }
+            - { name: data, mountPath: /alertmanager }
+          readinessProbe:
+            httpGet: { path: /-/ready, port: 9093 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 256Mi }
+      volumes:
+        - name: config-src
+          configMap:
+            name: alertmanager-cloud-config
+        - name: config
+          emptyDir: {}
+        # 🔴 optional にしない。無ければ Pod が起きず、Watchdog が外へ届かない（外の監視が知らせる）。
+        - name: heartbeat
+          secret:
+            secretName: alertmanager-heartbeat
+        # 通知の抑止状態（silences・notification log）。再起動で消えるのは受け入れる。
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager
+  namespace: platform-infra
+  labels: { app: alertmanager }
+spec:
+  selector: { app: alertmanager }
+  ports:
+    - { name: http, port: 9093, targetPort: 9093 }

@@ -807,6 +807,176 @@ for kind in postgres vault; do
 	fi
 done
 
+# ---- #2402・IADR-0672: S3 互換のオブジェクトストレージの保管先（クラウドの最小構成） ----
+# rclone のスタブは、リモート `objstore:` を $STUB_S3_ROOT の下のディレクトリとして扱う（オブジェクトストレージのモック）。
+# 改名もロックも持たない（本物のオブジェクトストレージと同じく、書いた名前のまま置くだけ）。
+# 失敗の注入: $STATE/s3-upload-fail（送れない）/ $STATE/s3-corrupt-upload（送った先の暗号文を 1 つ書き換える）。
+cat > "$WORK/bin/rclone" <<'STUB'
+#!/usr/bin/env bash
+echo "rclone $*" >> "$STUB_LOG"
+map() {
+  case "$1" in
+    objstore:*) printf '%s/%s' "$STUB_S3_ROOT" "${1#objstore:}" ;;
+    *:*) echo "stub rclone: 未知のリモート: $1" >&2; return 1 ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+is_remote() { case "$1" in objstore:*) return 0 ;; esac; return 1; }
+args=()
+for a in "$@"; do case "$a" in -*) ;; *) args+=("$a") ;; esac; done
+cmd="${args[0]:-}"
+case "$cmd" in
+  lsf)
+    d="$(map "${args[1]}")" || exit 1
+    [ -d "$d" ] || exit 0
+    for p in "$d"/*; do [ -e "$p" ] || continue; n="${p##*/}"; [ -d "$p" ] && echo "$n/" || echo "$n"; done
+    ;;
+  copy)
+    src="$(map "${args[1]}")" || exit 1; dst="$(map "${args[2]}")" || exit 1
+    if is_remote "${args[2]}" && [ -f "$STATE/s3-upload-fail" ]; then echo "stub rclone: upload failed" >&2; exit 1; fi
+    mkdir -p "$dst" && cp "$src"/* "$dst"/ || exit 1
+    if is_remote "${args[2]}" && [ -f "$STATE/s3-corrupt-upload" ]; then
+      for f in "$dst"/*.age; do [ -f "$f" ] && { printf 'X' >> "$f"; break; }; done
+    fi
+    ;;
+  copyto)
+    src="$(map "${args[1]}")" || exit 1; dst="$(map "${args[2]}")" || exit 1
+    if is_remote "${args[2]}" && [ -f "$STATE/s3-upload-fail" ]; then exit 1; fi
+    mkdir -p "$(dirname "$dst")" && cp "$src" "$dst" || exit 1
+    ;;
+  *) echo "stub rclone: 未対応の操作: $cmd" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$WORK/bin/rclone"
+S3_SECRET="stub-s3-secret-DO-NOT-LEAK"
+new_s3_env() {
+	new_env
+	export STUB_S3_ROOT="$R/s3"
+	mkdir -p "$STUB_S3_ROOT/bkt"
+	export BACKUP_TARGETS=none
+	export BACKUP_S3_DEST="objstore:bkt/ast-poc"
+	export RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$S3_SECRET"
+	export RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="stub-s3-key-id"
+	export BACKUP_NOW="2026-11-01T030000Z"
+}
+S3D() { printf '%s/bkt/ast-poc/postgres/%s/%s' "$R/s3" "$1" "$2"; }
+
+new_s3_env
+run_backup
+assert_eq 'T-2402-01 S3: 正常系は成功で終わる' "$RC" "0"
+D="$(S3D daily 2026-11-01T030000Z)"
+for f in pg-globals.sql.age pg-audit_svc.dump.age pg-postgres.dump.age pg-risk_management_svc.dump.age SHA256SUMS COMPLETE; do
+	assert_file "T-2402-01 S3: daily の回に $f が並ぶ" "$D/$f"
+done
+assert_eq 'T-2402-01 S3: DB ダンプは age を通っている（暗号化した成果物だけを送る）' "$(cat "$D/pg-audit_svc.dump.age" 2>/dev/null)" 'AGE[PGDMP-audit_svc]'
+assert_eq 'T-2402-01 S3: 送った回の SHA256SUMS が検算できる' "$(cd "$D" 2>/dev/null && sha256sum -c SHA256SUMS >/dev/null 2>&1; echo $?)" "0"
+assert_eq 'T-2402-01 S3: COMPLETE は SHA256SUMS の sha256 である' "$(cat "$D/COMPLETE" 2>/dev/null)" "$(sha256sum < "$D/SHA256SUMS" 2>/dev/null | cut -d ' ' -f 1)"
+assert_contains 'T-2402-01 S3: 送った回を読み戻して検算する' "$(cat "$STUB_LOG")" "copy objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z $R/staging/.verify-daily-"
+assert_contains 'T-2402-01 S3: 書き終えたと告げる' "$OUT" '書きました: objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z'
+assert_eq 'T-2402-01 S3: staging（読み戻しの作業場所を含む）に何も残らない' "$(ls -A "$R/staging")" ""
+assert_file 'T-2402-02 S3: 月の最初の完全な回は monthly にも書く（COMPLETE がある）' "$(S3D monthly 2026-11-01T030000Z)/COMPLETE"
+assert_eq 'T-2402-02 S3: monthly の回は daily と同じ中身' "$(cat "$(S3D monthly 2026-11-01T030000Z)/COMPLETE" 2>/dev/null)" "$(cat "$D/COMPLETE" 2>/dev/null)"
+assert_missing 'T-2402-03 S3: 資格情報がどのコマンドの引数にも出ない' "$(cat "$STUB_LOG")" "$S3_SECRET"
+assert_missing 'T-2402-03 S3: 資格情報がログに出ない' "$OUT" "$S3_SECRET"
+assert_missing 'T-2402-03 S3: パスワードがどのコマンドの引数にも出ない' "$(cat "$STUB_LOG")" "$SECRET_PW"
+assert_nofile 'T-2402-04 S3: BACKUP_TARGETS=none なら hostPath に書かない' "$R/c/postgres"
+assert_nofile 'T-2402-04 S3: BACKUP_TARGETS=none なら「none」という保管先を作らない' "none"
+assert_missing 'T-2402-04 S3: 保持の削除を呼ばない（lifecycle に任せる）' "$(cat "$STUB_LOG")" 'rclone delete'
+assert_missing 'T-2402-04 S3: purge を呼ばない' "$(cat "$STUB_LOG")" 'rclone purge'
+
+# 同じ月の 2 回目は monthly へ書かない。
+export BACKUP_NOW="2026-11-02T030000Z"
+: > "$STUB_LOG"
+run_backup
+assert_eq 'T-2402-02 S3: 同じ月の 2 回目も成功で終わる' "$RC" "0"
+assert_file 'T-2402-02 S3: 2 回目は daily に書く' "$(S3D daily 2026-11-02T030000Z)/COMPLETE"
+assert_nofile 'T-2402-02 S3: 同じ月の 2 回目は monthly へ書かない' "$(S3D monthly 2026-11-02T030000Z)"
+
+# 同じ名前の回が既にある → 書かずに失敗し、既にある回を壊さない。
+BEFORE="$(cat "$(S3D daily 2026-11-02T030000Z)/COMPLETE")"
+: > "$STUB_LOG"
+run_backup
+assert_ne 'T-2402-07 S3: 同じ名前の回が既にあれば失敗で終わる' "$RC" "0"
+assert_eq 'T-2402-07 S3: 既にある回の COMPLETE を書き換えない' "$(cat "$(S3D daily 2026-11-02T030000Z)/COMPLETE")" "$BEFORE"
+assert_missing 'T-2402-07 S3: 既にある回へ送らない' "$(cat "$STUB_LOG")" "/2026-11-02T030000Z/COMPLETE"
+
+# 送った先の暗号文が壊れた → COMPLETE を置かずに失敗する。
+new_s3_env
+: > "$STATE/s3-corrupt-upload"
+run_backup
+assert_ne 'T-2402-05 S3: 送った回の検算が合わなければ失敗で終わる' "$RC" "0"
+assert_nofile 'T-2402-05 S3: 検算が合わない回に COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+assert_nofile 'T-2402-05 S3: 検算が合わない回を monthly へ書かない' "$(S3D monthly 2026-11-01T030000Z)/COMPLETE"
+assert_missing 'T-2402-05 S3: 「書きました」を出さない' "$OUT" '書きました'
+assert_eq 'T-2402-05 S3: staging に何も残らない' "$(ls -A "$R/staging")" ""
+
+# 送れない → 失敗し、COMPLETE を置かない。
+new_s3_env
+: > "$STATE/s3-upload-fail"
+run_backup
+assert_ne 'T-2402-06 S3: 送れなければ失敗で終わる' "$RC" "0"
+assert_nofile 'T-2402-06 S3: 送れなかった回に COMPLETE を置かない' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+assert_contains 'T-2402-06 S3: 理由をログに出す' "$OUT" 'オブジェクトストレージへ書けませんでした'
+
+# 保管先が 1 つも無い・宛先の形が不正 → 何もダンプせずに失敗する。
+new_s3_env
+unset BACKUP_S3_DEST
+run_backup
+assert_ne 'T-2402-08 保管先が 1 つも無い（none かつ S3 なし）: 失敗で終わる' "$RC" "0"
+assert_missing 'T-2402-08 保管先が 1 つも無い: pg_dump を呼ばない' "$(cat "$STUB_LOG")" 'pg_dump'
+for bad in 'objstore:' 'objstore:bkt/../x' 'objstore:bkt/a b' '/local/path' 'objstore:B'; do
+	new_s3_env
+	export BACKUP_S3_DEST="$bad"
+	run_backup
+	assert_ne "T-2402-08 S3 の宛先の形が不正（$bad）: 失敗で終わる" "$RC" "0"
+	assert_missing "T-2402-08 S3 の宛先の形が不正（$bad）: pg_dump を呼ばない" "$(cat "$STUB_LOG")" 'pg_dump'
+done
+
+# 一部失敗の回は daily にだけ書き、monthly へは書かない。
+new_s3_env
+: > "$STATE/dump-fail-audit_svc"
+run_backup
+assert_ne 'T-2402-10 S3: 一部失敗の回は失敗で終わる' "$RC" "0"
+assert_file 'T-2402-10 S3: 一部失敗の回は daily に -partial として書く' "$(S3D daily 2026-11-01T030000Z-partial)/COMPLETE"
+assert_nofile 'T-2402-10 S3: 一部失敗の回は monthly へ書かない' "$(S3D monthly 2026-11-01T030000Z-partial)"
+
+# hostPath と S3 の両方: 両方に書く（ローカルへ S3 を足す形も壊れない）。
+new_s3_env
+export BACKUP_TARGETS="$R/c $R/e"
+run_backup
+assert_eq 'T-2402-11 hostPath と S3 の両方: 成功で終わる' "$RC" "0"
+assert_file 'T-2402-11 hostPath と S3 の両方: C に書く' "$R/c/postgres/2026-11-01T030000Z/SHA256SUMS"
+assert_file 'T-2402-11 hostPath と S3 の両方: S3 に書く' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+unset BACKUP_S3_DEST RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID STUB_S3_ROOT
+
+# ローカルの既定（hostPath）は変わらない: 既定の保管先は 2 本のまま、S3 の宛先が無ければ rclone を呼ばない。
+assert_eq 'T-2402-09 hostPath の既定の保管先は変わらない' "$(sed -n 's/^BACKUP_TARGETS="\${BACKUP_TARGETS:-\(.*\)}"$/\1/p' "$HERE/backup.sh")" '/backup/c /backup/e'
+new_env
+run_backup
+assert_eq 'T-2402-09 S3 の宛先が無い hostPath の回は成功で終わる' "$RC" "0"
+assert_missing 'T-2402-09 S3 の宛先が無い hostPath の回は rclone を呼ばない' "$(cat "$STUB_LOG")" 'rclone'
+for kind in postgres vault; do
+	assert_missing "T-2402-09 ローカルの $kind の CronJob は S3 の宛先を持たない" "$(cat "$HERE/../$kind/cronjob.yaml")" 'BACKUP_S3_DEST'
+done
+
+# クラウドの CronJob: 最悪の合計（依存先の待ち＋確かめ＋間隔＋ S3 の呼び出しの数 × 1 回の上限＋余裕 300）が時間切れより小さい。
+# 呼び出しは daily（存在の確かめ・送る・読み戻す・COMPLETE）の 4 ＋ monthly の有無の確かめ 1 ＋ monthly の 4 ＝ 9。
+CLOUD_CJ="$HERE/../../../cloud/backup/cronjob-postgres.yaml"
+S3_CALL="$(default_of BACKUP_S3_CALL_TIMEOUT)"
+CADL="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
+CBOL="$(sed -n 's/^ *backoffLimit: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
+assert_eq 'T-2402-12 クラウドの CronJob は再試行しない（backoffLimit: 0）' "$CBOL" "0"
+if [[ "$CADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL" =~ ^[0-9]+$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
+	CWORST=$((DEPS_WAIT + PROBE + INTERVAL + 9 * S3_CALL + 300))
+	if [ "$CWORST" -lt "$CADL" ]; then
+		ok "T-2402-12 クラウド: 最悪の合計 $CWORST 秒が activeDeadlineSeconds $CADL 秒より小さい"
+	else
+		ng 'T-2402-12 クラウド: 最悪の合計が activeDeadlineSeconds より小さい' "worst=$CWORST adl=$CADL"
+	fi
+else
+	ng 'T-2402-12 クラウド: 既定値と activeDeadlineSeconds を読める' "adl=$CADL s3=$S3_CALL"
+fi
+
 # 作業場（mktemp の下）は再帰削除しない。CI のランナーは使い捨てで、手元では一時領域の掃除に任せる。
 printf '\nbackup.test.sh: %d passed, %d failed\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ]

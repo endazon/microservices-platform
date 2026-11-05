@@ -1,0 +1,13 @@
+# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0672 (#2402): クラウドの最小構成の日次バックアップ（Postgres → S3 互換のオブジェクトストレージ）。
+# 本体スクリプトはローカルと同じもの（deploy/local/platform-backup/script を取り込む。二重に持たない）。
+# 🔴 クラウドの最小構成（deploy/cloud/ の infra。#2401）の kustomization の resources へ、このディレクトリを足して使う。
+#    単独で当てても動く（Postgres の Service `postgres` と Secret `postgres` が platform-infra に在ること）。
+# 手順（バケット・Object Lock・lifecycle・Secret・イメージの取り込み・リストア試験）は
+# docs/operations/cloud-backup-alerts-heartbeat-runbook.md。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../local/platform-backup/script
+  - cronjob-postgres.yaml
+  - networkpolicy.yaml
