@@ -78,7 +78,7 @@ IADR-0574 §残余 1 と、その作業仕様書 §残余で「今回の範囲�
 ## 方針（IADR-0672）
 
 1. 判定は `scripts/lib/infra-credentials.sh` に足す。IADR-0574 の 2 つと同じ口に置き、複写しない。
-   - 新しい対象を「段階の対象」（`INFRA_CRED_STAGED_TARGETS`）とする。
+   - 新しい対象を「段階の対象」とする（関数 `infra_cred_staged_names`（対象の名前）・`infra_cred_staged_dev_value`（開発用の値）・`infra_cred_staged_secret_of`（Secret の在処））。
    - 選び方は IADR-0574 と同じ **明示 ＞ 既存の値（開発用でない）**。
    - どちらも無いときの扱いは、kube context と段で変わる（下表）。
 
@@ -100,6 +100,8 @@ IADR-0574 §残余 1 と、その作業仕様書 §残余で「今回の範囲�
    - 対象は `postgres-admin`・`app-db`・`object-storage`・`vault-root-token`。
    - 新しい値は乱数で作り、表示しない。値はファイル（0600）か stdin でだけ渡し、どのプロセスの引数にも載せない。
    - 順序は手順書（secret-rotation-runbook の B-1）と同じ: 保管先 → ストア側 → 同期 → 消費側の作り直し。
+   - ［2026-11-05 / PR #2400 のレビュー］`vault-root-token` の保管先は Secret だけにし、ExternalSecret の有無を見ずに直接書く。新しいトークンを作った後の失敗は、どこまで変えたか（新しいトークンは作成済み・Secret の状態・古いトークンは未失効）を事実どおりに告げる。
+   - ［同］Vault の種は、KV の有無を「在る」「無い」（404 相当）「確かめられない」（接続・認可の失敗）に分ける。確かめられなければ判定へ進まずに止める。
 
 ## 受け入れ基準と試験の写像
 

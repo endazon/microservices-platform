@@ -14755,7 +14755,13 @@ if [ "$verb" = "exec" ]; then
   case "$cmd" in
     *"vault kv metadata get secret/"*)
       p="\${cmd#*vault kv metadata get secret/}"; p="\${p%% *}"
-      [ -e "$(kvf "$p")" ] && exit 0 || exit 2 ;;
+      # IADR-0672: 確かめられない世界（接続・認可の失敗）。state の metadata-error に挙げたパスは 403 相当を返す。
+      if [ -e "$S/metadata-error" ] && grep -qxF "$p" "$S/metadata-error"; then
+        case "$cmd" in *"2>&1"*) echo "Error making API request. Code: 403. Errors: * permission denied";; esac; exit 2
+      fi
+      [ -e "$(kvf "$p")" ] && exit 0
+      # 本物の CLI は無いとき「No value found at …」を stderr へ出して 2 を返す（Pod の sh が 2>&1 を付ければ標準出力へ来る）。
+      case "$cmd" in *"2>&1"*) echo "No value found at secret/metadata/$p";; esac; exit 2 ;;
     *"vault kv get -field="*)
       f="\${cmd#*-field=}"; f="\${f%% *}"; p="\${cmd#*secret/}"; p="\${p%% *}"
       [ -e "$(kvf "$p")" ] || exit 2
@@ -15403,6 +15409,15 @@ exit 0
       assert.strictEqual(g.status, 0, g.stderr);
       assert.ok(g.putStdin['msp/postgres-app'].includes(probe0573('0672-APP_DB_PASSWORD')), 'postgres-app が与えた値で作られていない');
       for (const n of STAGED_ENV0672.split(', ')) assert.ok(!`${g.stdout}${g.stderr}`.includes(probe0573(`0672-${n}`)), `${n} の値が出力に出た`);
+    });
+
+    ok('IADR-0672: 段階の対象の KV が在るかを確かめられない（接続・認可の失敗）ときは、「無い」と見なさずに Vault へ何も書かずに止め、パスを名指す', () => {
+      const r = run1728({ setup: ({ state }) => fs1728.writeFileSync(path1728.join(state, 'metadata-error'), 'msp/postgres-app\n'),
+        env: { STUB_KUBE_CONTEXT: 'prod-shared', ALLOW_DEV_CLIENT_SECRETS: '1' } });
+      assert.notStrictEqual(r.status, 0, '確かめられないのに進んだ');
+      assert.deepStrictEqual(vaultWrites1830(r), [], `止まる前に Vault へ書いた: ${vaultWrites1830(r).join(', ')}`);
+      assert.ok(/secret\/msp\/postgres-app が在るかを確かめられない/.test(r.stderr), `理由を告げていない:\n${r.stderr}`);
+      assert.ok(!/止める（何も作らない）: .*APP_DB_PASSWORD/.test(r.stderr), '確かめられないものを「無い」として判定へ渡した');
     });
 
     ok('IADR-0572 変異: 宣言に Vault の置き場の決まっていない SA クライアントが現れたら、dev の context でも Vault へ何も書かずに止まる（入れ漏れを通さない）', () => {
@@ -19753,6 +19768,7 @@ case "$1 $2" in
   "get externalsecret") [ -f "$S/es/@{ns}__$3" ]; exit ;;
   "get deploy") [ -f "$S/deploy/@{ns}__$3" ]; exit ;;
   "patch secret")
+    [ "@{STUB_PATCH_FAIL:-}" = "1" ] && { echo "stub: patch failed" >&2; exit 1; }
     pf=""; prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && pf="$a"; prev="$a"; done
     node -e 'const fs=require("fs");const [,f,dir,pre]=process.argv;const d=JSON.parse(fs.readFileSync(f,"utf8")).data;for(const[k,v]of Object.entries(d))fs.writeFileSync(dir+"/"+pre+"__"+k,Buffer.from(v,"base64"));' "$pf" "$S/secret" "@{ns}__$3"
     echo "SECRET PATCH @{ns}/$3" >> "$S/calls"; exit 0 ;;
@@ -19760,7 +19776,9 @@ case "$1 $2" in
     echo "ESO SYNC @{ns}/$3" >> "$S/calls"
     for k in "$S"/kv/*; do [ -f "$k" ] || continue; b="$(basename "$k")"; case "$b" in "msp__$3__"*) cp "$k" "$S/secret/@{ns}__$3__@{b#msp__$3__}";; esac; done
     exit 0 ;;
-  "rollout restart"|"rollout status") echo "ROLLOUT $2 @{ns}/$3" >> "$S/calls"; exit 0 ;;
+  "rollout restart"|"rollout status")
+    [ "$2" = "status" ] && [ -n "@{STUB_ROLLOUT_FAIL:-}" ] && [ "$3" = "deploy/@{STUB_ROLLOUT_FAIL}" ] && exit 1
+    echo "ROLLOUT $2 @{ns}/$3" >> "$S/calls"; exit 0 ;;
   "wait --for=condition=Available") echo "WAIT @{ns}" >> "$S/calls"; exit 0 ;;
   "exec -i")
     target="$3"
@@ -19912,6 +19930,26 @@ esac
       assert.ok(at('VAULT TOKEN CREATE') < at('SECRET PATCH platform-infra/vault-dev-token') && at('SECRET PATCH platform-infra/vault-dev-token') < at('ROLLOUT restart platform-infra/deploy/vault')
         && at('ROLLOUT restart platform-infra/deploy/vault') < at('VAULT TOKEN REVOKE'), `順序が違う:\n${r.calls.join('\n')}`);
       assert.ok(!r.argv.includes(nv) && !`${r.stdout}${r.stderr}`.includes(nv), '新しいトークンが引数・出力に出た');
+    });
+
+    ok('IADR-0672: 作り直し（秘匿管理のトークン）は、ExternalSecret が同じ名前で在っても Secret へ直接書く（Vault の KV へは書かない）', () => {
+      const r = run2399(ROTATE2399, ['--live', 'vault-root-token'], { setup: ({ put }) => put('es/platform-infra__vault-dev-token', '') });
+      assert.strictEqual(r.status, 0, `${r.stdout}\n${r.stderr}`);
+      assert.ok(r.calls.includes('SECRET PATCH platform-infra/vault-dev-token'), `Secret へ直接書いていない:\n${r.calls.join('\n')}`);
+      assert.ok(!r.calls.some((c) => c.startsWith('VAULT KV PATCH')), 'Vault の KV へ書きにいった');
+    });
+
+    ok('IADR-0672: 作り直し（秘匿管理のトークン）が新しいトークンを作った後に失敗したら、どの経路でも事実どおりに告げ、古いトークンを失効させない', () => {
+      const patch = run2399(ROTATE2399, ['--live', 'vault-root-token'], { env: { STUB_PATCH_FAIL: '1' } });
+      assert.notStrictEqual(patch.status, 0, 'Secret を書けないのに成功した');
+      assert.ok(/新しいトークンは作成済み/.test(patch.stderr) && /古いトークンは失効させていない/.test(patch.stderr), patch.stderr);
+      assert.ok(!/ストア側は変えていない/.test(patch.stderr), `事実と違うことを告げた:\n${patch.stderr}`);
+      assert.ok(!patch.calls.some((c) => c.startsWith('ROLLOUT') || c === 'VAULT TOKEN REVOKE'), '失敗の後に先へ進んだ');
+      assert.strictEqual(patch.read('tokens').split('\n').filter(Boolean).length, 2, '古いトークンが残っていない');
+      const restart = run2399(ROTATE2399, ['--live', 'vault-root-token'], { env: { STUB_ROLLOUT_FAIL: 'vault' } });
+      assert.notStrictEqual(restart.status, 0, '秘匿管理が立ち上がらないのに成功した');
+      assert.ok(/新しいトークンは作成済み/.test(restart.stderr) && /Secret は新しいトークン/.test(restart.stderr) && /古いトークンは失効させていない/.test(restart.stderr), restart.stderr);
+      assert.ok(!restart.calls.includes('VAULT TOKEN REVOKE'), '立ち上がらないのに古いトークンを失効させた');
     });
 
     ok('IADR-0672: 作り直しは、ストア側を変えられなければ止まり、消費側を作り直さない', () => {

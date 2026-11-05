@@ -56,25 +56,31 @@ eso_owned() { kubectl -n "$1" get externalsecret "$2" -o name >/dev/null 2>&1; }
 # vault_sh → 秘匿管理の Pod の中の sh へ stdin のスクリプトを流す（トークンは Pod の env を使う）
 vault_sh() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -s; }
 
+# write_secret <ns> <Secret> <キー> <値> —— Secret のそのキーだけを書く（値は 0600 の一時ファイル経由。引数に載せない）。
+#   失敗は終了コードで返す（何を変えたかは呼び出し側が告げる）。
+write_secret() {
+  local f="$TMPD/patch.json"
+  ( umask 077; printf '{"data":{"%s":"%s"}}' "$3" "$(printf '%s' "$4" | base64 | tr -d '\n')" > "$f" )
+  kubectl -n "$1" patch secret "$2" --type merge --patch-file "$f" >/dev/null || { rm -f "$f"; return 1; }
+  rm -f "$f"
+}
+
 # hold <ns> <Secret> <Vault の KV のパス> <キー> <値> —— 保管先へ書く（ESO なら KV・そうでなければ Secret）
+#   ストア側より前に呼ぶ（失敗の文言「ストア側は変えていない」はこの順序に依る）。
 hold() {
-  local ns="$1" secret="$2" kv="$3" key="$4" value="$5" f
+  local ns="$1" secret="$2" kv="$3" key="$4" value="$5"
   if eso_owned "$ns" "$secret"; then
     printf 'printf %%s %s | VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault kv patch secret/%s %s=- >/dev/null\n' \
       "'$value'" "$kv" "$key" | vault_sh || fail "保管先（Vault の ${kv}）へ書けない。ストア側は変えていない"
     echo "    保管先: Vault secret/${kv} の ${key} を書いた（値は表示しない）"
   else
-    f="$TMPD/patch.json"
-    ( umask 077; printf '{"data":{"%s":"%s"}}' "$key" "$(printf '%s' "$value" | base64 | tr -d '\n')" > "$f" )
-    kubectl -n "$ns" patch secret "$secret" --type merge --patch-file "$f" >/dev/null \
-      || fail "保管先（Secret ${ns}/${secret}）へ書けない。ストア側は変えていない"
-    rm -f "$f"
+    write_secret "$ns" "$secret" "$key" "$value" || fail "保管先（Secret ${ns}/${secret}）へ書けない。ストア側は変えていない"
     echo "    保管先: Secret ${ns}/${secret} の ${key} を書いた（値は表示しない）"
   fi
 }
 
-# sync <ns> <Secret> <キー> <値> —— ESO なら同期を促し、Secret が新しい値になるまで待つ（値は比べるだけ）
-sync() {
+# sync_secret <ns> <Secret> <キー> <値> —— ESO なら同期を促し、Secret が新しい値になるまで待つ（値は比べるだけ）
+sync_secret() {
   local ns="$1" secret="$2" key="$3" value="$4" waited=0
   eso_owned "$ns" "$secret" || return 0
   kubectl -n "$ns" annotate externalsecret "$secret" force-sync="$(date +%s)" --overwrite >/dev/null
@@ -107,7 +113,7 @@ rotate_postgres_admin() {
   v="$(new_value)"
   hold "$INFRA_NS" postgres msp/postgres password "$v"
   pg_alter postgres "$v"
-  sync "$INFRA_NS" postgres password "$v"
+  sync_secret "$INFRA_NS" postgres password "$v"
   echo "    消費側: 無い（DB の初期化とバックアップの Job が、次に読むときに新しい値を使う）"
 }
 
@@ -118,8 +124,8 @@ rotate_app_db() {
   hold "$MSP_NS" postgres-app msp/postgres-app password "$v"
   hold "$MSP_NS" wikijs-db msp/wikijs-db password "$v"
   pg_alter kp "$v"
-  sync "$MSP_NS" postgres-app password "$v"
-  sync "$MSP_NS" wikijs-db password "$v"
+  sync_secret "$MSP_NS" postgres-app password "$v"
+  sync_secret "$MSP_NS" wikijs-db password "$v"
   restart_msp
 }
 
@@ -128,7 +134,7 @@ rotate_object_storage() {
   local v
   v="$(new_value)"
   hold "$MSP_NS" object-storage-credentials msp/object-storage-credentials secretKey "$v"
-  sync "$MSP_NS" object-storage-credentials secretKey "$v"
+  sync_secret "$MSP_NS" object-storage-credentials secretKey "$v"
   echo "    ストア側: 無い（起動時の環境変数で決まる）。本体を先に作り直す"
   kubectl -n "$MSP_NS" rollout restart deploy/seaweedfs >/dev/null
   kubectl -n "$MSP_NS" rollout status deploy/seaweedfs --timeout="${ROTATE_WAIT_SECONDS}s" >/dev/null \
@@ -146,14 +152,20 @@ rotate_vault_root_token() {
   printf "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault token create -id='%s' -policy=root -orphan -no-default-policy -display-name=local-dev-root >/dev/null\n" \
     "$old" "$new" | vault_sh || fail "新しいトークンを作れない（何も変えていない）"
   echo "    ストア側: 新しい固定のトークンを作った"
-  hold "$INFRA_NS" vault-dev-token "" token "$new"
-  kubectl -n "$INFRA_NS" rollout restart deploy/vault >/dev/null
+  # 保管先は Secret だけ（IADR-0672 決定 5）。vault-dev-token は秘匿管理そのものの鍵なので ESO が持たない（ESO の store がこの Secret を読む）。
+  #   eso_owned は見ない —— 同じ名前の ExternalSecret が在っても Vault の KV へは書かない（書き先の KV が無い）。
+  # 🔴 ここから先の失敗は、新しいトークンを作った後である。どこまで変えたかを事実どおりに告げる。
+  write_secret "$INFRA_NS" vault-dev-token token "$new" \
+    || fail "Secret ${INFRA_NS}/vault-dev-token へ書けない。新しいトークンは作成済み（Secret は古いトークンのまま）。古いトークンは失効させていない（秘匿管理は古いトークンで動き続ける。再実行すると別の新しいトークンを作る）"
+  echo "    保管先: Secret ${INFRA_NS}/vault-dev-token の token を書いた（値は表示しない）"
+  kubectl -n "$INFRA_NS" rollout restart deploy/vault >/dev/null \
+    || fail "秘匿管理を作り直せない。新しいトークンは作成済みで、Secret は新しいトークン。古いトークンは失効させていない"
   kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout="${ROTATE_WAIT_SECONDS}s" >/dev/null \
-    || fail "秘匿管理が ${ROTATE_WAIT_SECONDS} 秒のうちに立ち上がらない（古いトークンは失効させていない）"
+    || fail "秘匿管理が ${ROTATE_WAIT_SECONDS} 秒のうちに立ち上がらない。新しいトークンは作成済みで、Secret は新しいトークン。古いトークンは失効させていない"
   printf "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault token lookup >/dev/null\n" "$new" | vault_sh \
-    || fail "新しいトークンで通らない（古いトークンは失効させていない。Secret を戻すなら手順書の B-1 を見る）"
+    || fail "新しいトークンで通らない。新しいトークンは作成済みで、Secret は新しいトークン。古いトークンは失効させていない（Secret を戻すなら手順書の B-1 を見る）"
   printf "VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='%s' vault token revoke '%s' >/dev/null\n" "$new" "$old" | vault_sh \
-    || fail "古いトークンを失効させられない（新しいトークンは使える。手で失効させる）"
+    || fail "古いトークンを失効させられない。新しいトークンは作成済みで使える（Secret も新しいトークン）。古いトークンを手で失効させる"
   echo "    消費側: 秘匿管理を作り直し、新しいトークンで通ることを確かめ、古いトークンを失効させた（ESO の store は Secret を読み直す）"
 }
 

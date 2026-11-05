@@ -54,7 +54,7 @@ related_specs:
 
 ### 決定 1 — 判定は IADR-0574 の口に足す（段階の対象）
 
-- `scripts/lib/infra-credentials.sh` に `INFRA_CRED_STAGED_TARGETS`（上の 5 つ）を足す。判定は `infra_cred_staged_decide`（純関数）。
+- `scripts/lib/infra-credentials.sh` に上の 5 つを足す（関数 `infra_cred_staged_names`（対象の名前）・`infra_cred_staged_dev_value`（開発用の値）・`infra_cred_staged_secret_of`（Secret の在処））。判定は `infra_cred_staged_decide`（純関数）。
 - 選び方は **明示 ＞ 既存の値**（どちらも開発用の値と同じなら「無い」と同じ）。どちらも無いとき:
 
   | context | 段 | 判定 |
@@ -79,6 +79,7 @@ related_specs:
 
 - `bootstrap.sh` は、Vault へ何か書く前に、まだ無い KV（`msp/postgres`・`msp/postgres-app`・`msp/wikijs-db`・`msp/object-storage-credentials`）に対応する env だけを、明示の値と context で判定する（`infra_cred_staged_guard`）。
 - 在る KV は触らない（IADR-0485）。
+- ［2026-11-05 / PR #2400 のレビュー］KV の有無は「在る」「無い」（CLI の No value found＝404 相当）「確かめられない」（接続・認可の失敗など）に分ける。確かめられないものを「無い」と見なさず、判定へ進まずに止めてパスを名指す。
 
 ### 決定 4 — 検査は読むだけのスクリプトにする
 
@@ -109,6 +110,8 @@ related_specs:
   | `app-db` | `ALTER ROLE kp` | 2 つの Secret（`postgres-app`・`wikijs-db`）へ同じ値を書き、`microservices-platform` の Deployment を作り直す |
   | `object-storage` | 無し（起動時の環境変数で決まる） | 本体を先に作り直し、次に `microservices-platform` の Deployment を作り直す |
   | `vault-root-token` | 今のトークンで新しい固定のトークンを作る | Secret を書き、秘匿管理を作り直し、新しいトークンで通ることを確かめてから古いトークンを失効させる |
+
+- ［2026-11-05 / PR #2400 のレビュー］`vault-root-token` の保管先は **Secret へ直接書く**（ExternalSecret の有無を見ない。秘匿管理そのものの鍵で、ESO の store がこの Secret を読む側である）。新しいトークンを作った後の失敗は、どの経路でも、新しいトークンは作成済み・Secret の状態・古いトークンは未失効を事実どおりに告げる。
 
 ### 決定 6 — 段 2 は別の PR
 
