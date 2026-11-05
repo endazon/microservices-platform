@@ -84,10 +84,14 @@ jobs:
       # NFR (#2439): apt の取得が時に 8〜13 分止まり、試験の最長（約 20.5 分）と重なってジョブの上限 30 分に達した。
       # .deb をランナーのイメージの名前と版の鍵でキャッシュし、在れば取得せずに入れる。無ければ時間切れと再試行の付いた apt で
       # 取得して同じ置き場へ置く。導入の step の上限で、止まりがジョブの上限を食い潰さないようにする（ジョブの上限は変えない）。
+      # 鍵の末尾の -v<n> は、置く物の作り方（この step の取得の手順・入れるパッケージ）を変えたら手で上げる（古い置き場を使わせない）。
       - name: Conversion tools cache key (runner image)
         id: conversion-tools-key
-        run: echo "key=conversion-tools-debs-${ImageOS:-unknown}-${ImageVersion:-unknown}-pandoc-poppler-utils-v1" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        run: echo "key=conversion-tools-debs-${ImageOS:-unknown}-${ImageVersion:-unknown}-pandoc-poppler-utils-v2" >> "$GITHUB_OUTPUT"
+      # 取り出しと保存を分ける。actions/cache は post step で保存するので、試験が赤の回・上限で cancelled の回には保存されず、
+      # 取得が止まりやすい時期ほど温まらない（#2440 のレビュー）。保存は導入の直後に置き、試験の成否に依らない。
+      - id: conversion-tools-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/conversion-tools-debs
           key: ${{ steps.conversion-tools-key.outputs.key }}
@@ -100,15 +104,23 @@ jobs:
             echo "変換ツールをキャッシュの .deb から入れた（取得なし）"
           else
             apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+            # 取得は apt の既定の置き場（/var/cache/apt/archives。_apt の sandbox で取得できる）で行い、この回に取った .deb だけを写す。
+            # 置き場をホームの下へ向けると _apt が書けず「unsandboxed as root」で取得する（#2440 の 1 回目の実走で出た）ので向けない。
+            sudo apt-get clean
             sudo apt-get update -qq "${apt_opts[@]}"
-            mkdir -p "$debs/partial"
-            sudo apt-get install -y -qq -f --no-install-recommends "${apt_opts[@]}" -o Dir::Cache::Archives="$debs" pandoc poppler-utils
-            # 次の回のキャッシュに置く物だけを残す（apt の lock と partial は置かない。actions/cache が読めるよう所有者を戻す）。
-            sudo rm -rf "$debs/partial" "$debs/lock"
-            sudo chown -R "$(id -u):$(id -g)" "$debs"
+            sudo apt-get install -y -qq -f --no-install-recommends "${apt_opts[@]}" pandoc poppler-utils
+            mkdir -p "$debs"
+            cp /var/cache/apt/archives/*.deb "$debs"/
           fi
           pandoc --version
           pdftotext -v
+      # キャッシュに無かった回だけ、導入の直後に保存する（導入が赤なら走らない＝空の置き場を保存しない）。
+      - name: Save conversion tools cache
+        if: steps.conversion-tools-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/conversion-tools-debs
+          key: ${{ steps.conversion-tools-key.outputs.key }}
       # 自動起票が本当に動くかを実測するための入口（IADR-0232 残余リスク）。
       # 自動起票は失敗時にしか走らないため、平時は常に skip で緑になる ——
       # 意図的に失敗させない限り「壊れていること」に永久に気付けない。

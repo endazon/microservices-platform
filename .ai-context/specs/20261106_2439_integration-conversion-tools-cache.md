@@ -55,6 +55,14 @@ issue: "#2439"
    - ランナーは ubuntu-26.04 で、pandoc 3.7・poppler 26.01 が入る。本番イメージは noble で、pandoc 3.1.3・poppler 24.02 である。
    - 注記を事実に直す。版を揃えるかは本件の外（残すもの）。
 
+［2026-11-06 追記 / #2440 のレビュー］
+- 取り出し（`actions/cache/restore`）と保存（`actions/cache/save`）を分けた。`actions/cache` は post step で保存するので、試験が赤の回・上限で cancelled の回には保存されず、取得が止まりやすい時期ほど温まらない。
+  - 保存は導入の直後に置き、キャッシュに無かった回だけ走らせる（`if: steps.<取り出し>.outputs.cache-hit != 'true'`）。
+  - 導入が赤なら保存も走らない（空の置き場を保存しない）。試験の成否には依らない。
+- 取得の置き場をホームの下へ向ける形（`Dir::Cache::Archives`）をやめた。1 回目の実走（run 42094791875）で「W: Download is performed unsandboxed as root」が出た（`_apt` がホームの下に書けない）。
+  - apt の既定の置き場で sandbox のまま取得する。その前に `apt-get clean` で空にし、この回に取得した `.deb` だけをキャッシュの置き場へ写す。
+- 置く物の作り方を変えたので、鍵の末尾を `-v2` に上げた（`-v<n>` は作り方を変えたら手で上げる、と step の注記に書いた）。
+
 ## 母集合（規則 9）
 
 `git grep -n -E 'apt-get (update|install)' -- .github/workflows` で、ワークフローの apt の取得を引いた。
