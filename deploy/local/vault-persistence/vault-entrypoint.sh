@@ -10,6 +10,8 @@
 #   3. unseal（保存した鍵）
 #   4. 固定 root トークン（Secret vault-dev-token の値＝VAULT_DEV_ROOT_TOKEN_ID）が無ければ root policy で作る
 #      —— bootstrap.sh / ESO store（token 認証版）/ OIDC bootstrap は従来どおり同じトークンで動く
+#      NFR-18, IADR-0676 (#2407): 作った・在ると確かめたら PVC に印を置く。印の後に無いトークンは、段 1 は警告して作り、
+#      段 2（VAULT_ROOT_TOKEN_INIT_ONLY=1。ConfigMap vault-local-switches から読む）は作らずに止める。値は stdin で渡す。
 #   5. 標準出力の audit device が在ることを確かめる（local.hcl で宣言する。無ければ起動を失敗させる）
 #   6. `secret/` に kv-v2 が無ければ mount する（dev モードが自動でしていたこと）
 #   7. collector への audit device を足す（裏で再試行。下の「audit device」を参照）
@@ -38,6 +40,9 @@ VAULT_RAFT_DIR="${VAULT_RAFT_DIR:-$VAULT_DATA_DIR/raft}"
 # 追加の設定ファイルを置く場所（Pod の emptyDir）。collector への audit device の宣言をここへ書いて読み直させる。
 VAULT_AUDIT_CONFIG_DIR="${VAULT_AUDIT_CONFIG_DIR:-/vault/audit.d}"
 VAULT_MIGRATION_RUNBOOK="docs/operations/secret-store-openbao-migration-runbook.md"
+# NFR-18, IADR-0676 (#2407): 固定 root トークンを一度作った（在ると確かめた）印。値は持たない。
+VAULT_ROOT_TOKEN_MARKER="${VAULT_ROOT_TOKEN_MARKER:-$VAULT_DATA_DIR/.local-dev-root-token-created}"
+VAULT_ROTATION_RUNBOOK="docs/operations/secret-rotation-runbook.md"
 
 # ---- audit device（NFR-18, ADR-0124 決定 2, IADR-0486 / #1683。OpenBao での形は IADR-0525 / #1840）----
 # 🔴 **2 つ並べる。** 有効な audit device の**少なくとも 1 つ**が書けなければ要求を拒む。
@@ -138,20 +143,36 @@ ensure_unsealed() {
 	log "unsealed"
 }
 
-# 固定 root トークン（dev 既定）が無ければ、init の root トークンで作る。
+# 固定 root トークン（Secret の値）が無ければ、init の root トークンで作る。
+# NFR-18, IADR-0676 (#2407): 作ったか在ると確かめたら印を置く。印が在るのに無い（作った後に Secret の値が変わった）ときは、
+#   段 1（既定）は名指して警告して作り、段 2（VAULT_ROOT_TOKEN_INIT_ONLY=1。`1` だけ）は作らずに止める。
+#   作り直し（scripts/rotate-infra-credentials.sh vault-root-token）は、作ったトークンを Secret に入れてから再起動するので、
+#   ここでは在ると確かめるだけになる（段 2 でも通る）。
+# 🔴 トークンの値を vault の引数に載せない（`ps`・`/proc/*/cmdline`）。`write auth/token/create-orphan id=-` で stdin から渡す。
 ensure_fixed_root_token() {
 	fixed="${VAULT_DEV_ROOT_TOKEN_ID:?VAULT_DEV_ROOT_TOKEN_ID is required}"
 	if VAULT_TOKEN="$fixed" vault token lookup >/dev/null 2>&1; then
 		log "fixed root token present"
+		: > "$VAULT_ROOT_TOKEN_MARKER" 2>/dev/null || true
 		return 0
+	fi
+	if [ -e "$VAULT_ROOT_TOKEN_MARKER" ]; then
+		if [ "${VAULT_ROOT_TOKEN_INIT_ONLY:-}" = "1" ]; then
+			log "ERROR: the fixed root token was already created on this store, but the token in Secret vault-dev-token is not valid"
+			log "ERROR: refusing to create it again (root-token-init-only=1). restore the Secret or rotate with the runbook: $VAULT_ROTATION_RUNBOOK"
+			return 1
+		fi
+		log "WARN: the fixed root token was already created on this store, but the token in Secret vault-dev-token is not valid; creating it again (stage 1)"
+		log "WARN: rotate the token with scripts/rotate-infra-credentials.sh; INFRA_CREDENTIALS_ENFORCE=1 makes the next start refuse this ($VAULT_ROTATION_RUNBOOK)"
 	fi
 	root="$(init_field 'Initial Root Token')"
 	if [ -z "$root" ]; then
 		log "ERROR: initial root token not found in $VAULT_INIT_FILE"
 		return 1
 	fi
-	VAULT_TOKEN="$root" vault token create -id="$fixed" -policy=root -orphan -no-default-policy \
-		-display-name=local-dev-root >/dev/null || return 1
+	printf '%s' "$fixed" | VAULT_TOKEN="$root" vault write auth/token/create-orphan id=- policies=root no_default_policy=true \
+		display_name=local-dev-root >/dev/null || return 1
+	: > "$VAULT_ROOT_TOKEN_MARKER" 2>/dev/null || true
 	log "fixed root token created"
 }
 

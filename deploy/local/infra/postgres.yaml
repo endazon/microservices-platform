@@ -11,7 +11,11 @@ data:
   01-create-databases.sh: |
     #!/bin/bash
     set -e
+    # NFR-18, IADR-0676 決定 4 (#2407): DB 利用者 kp の値は Secret postgres-init-users（kp-password。起動器が APP_DB_PASSWORD と
+    #   同じ値で置く）から env で受ける。無ければ従前の値（段 1）。値は psql の \getenv で読み、どのプロセスの引数にも載せない。
+    export KP_INIT_PASSWORD="${KP_INIT_PASSWORD:-kp}"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
+      \getenv kp_password KP_INIT_PASSWORD
       -- MSP（knowledge/platform）専有 DB。owner=kp（appsettings.json 既定と一致）。
       CREATE DATABASE document_svc;
       CREATE DATABASE datasource_svc;
@@ -33,7 +37,7 @@ data:
       -- compose 側の deploy/create-multiple-dbs.sh と対で追随させる。
       CREATE DATABASE mcp_svc;
       CREATE DATABASE wikijs;
-      CREATE USER kp WITH PASSWORD 'kp';
+      CREATE USER kp WITH PASSWORD :'kp_password';
       ALTER DATABASE document_svc OWNER TO kp;
       ALTER DATABASE datasource_svc OWNER TO kp;
       ALTER DATABASE conversion_svc OWNER TO kp;
@@ -121,6 +125,13 @@ spec:
                 secretKeyRef:
                   name: postgres
                   key: password
+            # NFR-18, IADR-0676 決定 4 (#2407): 初期化（空の PVC の初回）が DB 利用者 kp を作る値。optional（無ければ従前の値）。
+            - name: KP_INIT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-init-users
+                  key: kp-password
+                  optional: true
           ports:
             - containerPort: 5432
           volumeMounts:

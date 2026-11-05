@@ -753,3 +753,4 @@
 | [IADR-0673](./IADR-0673_platform-infra-tls-stage-4b2-other-clients.md) | 基盤との通信を TLS にする 段 4b-2 の MSP の分。compose の取引ユニットの 3 サービス・Keycloak の DB・Wiki.js・バックアップの CronJob も CA と名前を検証して繋ぐ（helm の Wiki.js は値で opt-in。AST の chart は AST リポジトリ。#2403） | Accepted |
 | [IADR-0674](./IADR-0674_deploy-cloud-minimal.md) | 取引ユニットをクラウドの単一ノードへ移すための MSP の最小構成を deploy/cloud に置く。基盤は変換を持たない kustomize、MSP は LLM ゲートウェイだけ、資格情報は初回に乱数で作り、秘匿管理（OpenBao）は最初の稼働では持ち込まない（#2401） | Accepted |
 | [IADR-0675](./IADR-0675_cloud-offsite-backup-discord-alerts-heartbeat.md) | クラウドの最小構成は、バックアップを S3 互換のオブジェクトストレージ（Object Lock・lifecycle）へ書き、警報を Discord へ送り、常に鳴る警報をクラスタの中から外の監視へ heartbeat として送る（#2402） | Accepted |
+| [IADR-0676](./IADR-0676_infra-credentials-staged-followup.md) | 基盤の資格情報の段階の fail-closed を続ける。秘匿管理の固定の管理者トークンは印の後は作り直さない形を段階で入れ、値を stdin で渡す。Grafana の管理者と DB の初期化の kp を対象に足す。dev のクラスタの判定にクラスタ側の印を段階で足す（#2407） | Accepted |
