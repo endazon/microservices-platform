@@ -81,10 +81,14 @@ if [ "$freed" != "1" ]; then
 fi
 
 echo "==> [3/5] istio-ingressgateway を立てる"
-helm repo add istio https://istio-release.storage.googleapis.com/charts >/dev/null 2>&1 || true
-helm repo update istio >/dev/null
-helm upgrade --install istio-ingressgateway istio/gateway \
-  -n istio-system --version "$ISTIO_VERSION" \
+# NFR-18, IADR-0679 (#2410): chart の tgz を取り、sha256 を確かめてからそのパスで入れる（helm repo を経由しない）。
+# shellcheck source=scripts/lib/pinned-artifacts.sh
+. scripts/lib/pinned-artifacts.sh || exit 3
+PINNED_WORK="$(mktemp -d)"
+trap 'rm -rf "$PINNED_WORK"' EXIT
+gateway_chart="$(pinned_chart gateway "$ISTIO_VERSION" "$PINNED_WORK")" || exit 1
+helm upgrade --install istio-ingressgateway "$gateway_chart" \
+  -n istio-system \
   -f deploy/istio/ingressgateway-values-local.yaml --wait --timeout 5m
 
 echo "==> [4/5] Gateway / VirtualService と CoreDNS の転送先を当てる"
