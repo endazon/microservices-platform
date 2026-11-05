@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-16, NFR-18, ADR-0005, ADR-0023, ADR-0047, IADR-0206, IADR-0573, IADR-0577, IADR-0589, IADR-0590]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービス間通信を mTLS で徹底する）
@@ -95,3 +95,8 @@ related_specs:
 - **決定 2 への追加**: 起動器は基盤を当てた後（`stamp_infra_tls_restart`）、postgres・rabbitmq の Pod の雛形へサーバ証明書の指紋（注釈 `platform-infra.tls/cert-sha256`）を刻む。指紋が変わっていれば（未記録を含む）作り直し、同じなら何もしない。証明書の中身は引数にもログにも出さない。Secret を読めなければ刻まずに WARN で告げる。
 - **結果への追記**: 更新を読ませるには、更新（期限の 30 日前）の後・期限（1 年）までに一度は起動器を再実行する必要がある。再実行が無いまま期限を迎えると、検証つきの接続が失敗する。Reloader による自動の作り直しは ESO=1 の経路にしか無いので、段 1 では採らない。新しく立てるクラスタでは、注釈を刻むことで postgres・rabbitmq の作り直しが 1 回増える。
 - **決定 5 の裏付け**: `UsePlatformRabbitMq` が素の `UseRabbitMq(Uri)` と違うのは「受け入れてよい誤り」だけであることを試験で固定した。接続先・ポート・仮想ホスト・資格情報・TLS の有効と名前・版は同じで、amqps と amqp の両方で確かめた。
+
+## ［2026-11-05 追記 / #2403］段 4b-2 の MSP の分
+
+- 段の表の 4b-2 のうち MSP リポジトリにある部分（compose の取引ユニットの 3 サービス・compose の Keycloak の DB・Wiki.js・バックアップの CronJob）は [IADR-0673](./IADR-0673_platform-infra-tls-stage-4b2-other-clients.md) で切り替えた。helm の Wiki.js は値で opt-in（経路B は有効）。
+- 4b-2 の残りは AST の chart の接続と AST の Wolverine の名前の照合（AST リポジトリ）。4b-3 の前提は変わらない。

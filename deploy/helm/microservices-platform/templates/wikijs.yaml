@@ -2,6 +2,12 @@
 # ABAC は WikiService ゲートウェイが前段で強制する。Wiki.js への直接到達は既定で塞ぐ（Ingress 既定 disabled）。
 {{- if .Values.wikijs.enabled }}
 {{- $w := .Values.wikijs }}
+{{- /* NFR-16, IADR-0673: DB の TLS（opt-in）。CA は global.infraCa（deployment.yaml の .NET サービスと同じ ConfigMap・キー）。 */}}
+{{- $dbTls := and $w.db.tls $w.db.tls.enabled }}
+{{- $ca := .Values.global.infraCa | default dict }}
+{{- if and $dbTls (or (not $ca.configMap) (not $ca.caKey)) }}
+{{- fail "wikijs.db.tls.enabled には global.infraCa.configMap / caKey が要ります（CA の無いまま検証つきの接続を描かない）" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -55,6 +61,14 @@ spec:
                 secretKeyRef:
                   name: {{ $w.db.existingSecret }}
                   key: {{ $w.db.passwordKey }}
+            {{- if $dbTls }}
+            # NFR-16, NFR-18, IADR-0673（#2403）: Wiki.js 2.5 は DB_SSL=true で ssl: { rejectUnauthorized: true } を pg へ渡し、
+            # 名前は DB_HOST で照合する。CA は Node の既定の信頼ストアへ足す（置き換えない）。
+            - name: DB_SSL
+              value: "true"
+            - name: NODE_EXTRA_CA_CERTS
+              value: "/etc/platform-infra-ca/{{ $ca.caKey }}"
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
@@ -67,18 +81,36 @@ spec:
               port: {{ $w.port }}
             initialDelaySeconds: 20
             periodSeconds: 15
-          {{- if $w.persistence.enabled }}
+          {{- if or $w.persistence.enabled $dbTls }}
           volumeMounts:
+            {{- if $w.persistence.enabled }}
             - name: wiki-data
               mountPath: /wiki/data
+            {{- end }}
+            {{- if $dbTls }}
+            - name: platform-infra-ca
+              mountPath: /etc/platform-infra-ca
+              readOnly: true
+            {{- end }}
           {{- end }}
           resources:
             {{- toYaml $w.resources | nindent 12 }}
-      {{- if $w.persistence.enabled }}
+      {{- if or $w.persistence.enabled $dbTls }}
       volumes:
+        {{- if $w.persistence.enabled }}
         - name: wiki-data
           persistentVolumeClaim:
             claimName: wiki-js-data
+        {{- end }}
+        {{- if $dbTls }}
+        # IADR-0673: 基盤の CA（公開の証明書だけ）。非 optional（無ければ Pod は立たない＝検証なしへ倒れない）。
+        - name: platform-infra-ca
+          configMap:
+            name: {{ $ca.configMap }}
+            items:
+              - key: {{ $ca.caKey }}
+                path: {{ $ca.caKey }}
+        {{- end }}
       {{- end }}
 ---
 apiVersion: v1
