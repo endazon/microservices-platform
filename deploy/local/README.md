@@ -386,6 +386,10 @@ ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-user
 `node scripts/gen-rabbitmq-permissions.js` がコードから作る生成物）との差分と、ブローカに在るものに届くかを読む（何も書かない）。
 届くことを確かめてから `RABBITMQ_PERMISSIONS=narrow bash deploy/local/rabbitmq-setup/reconcile-users.sh` で当てる（段 2。届かないものがあれば何も変えずに止まる）。
 戻すときは `RABBITMQ_PERMISSIONS=vhost` で回し直す。再起動の直後の作り直しも、最後に当てた段に従う（ConfigMap `platform-infra/rabbitmq-permissions`）。
+合わせが途中で止まると段は `applying` のまま残り、再起動の直後の作り直しは vhost 全体（通信を止めない側）になる。合わせを回し直して確定させる。
+🔴 段 2 でも、既定の exchange（`amq.default`）への書き込みは許す（Wolverine がリスナーの停止のときに未処理のメッセージをキューへ戻す経路で、外すと
+メッセージが欠ける）。このため、キューの名前を知っていれば他のサービスのキューへ直接入れる経路は残る。取引ユニットの発注の承認は、発行元の印を
+発注執行が確かめる作業（AST#1538）で補う。外せるかは段 2 の後に検討する。
 ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |

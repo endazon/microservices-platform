@@ -107,8 +107,14 @@ ok('隔て: 他のサービスのキューには当たらず、発行しない e
     const row = committed.get(a.user);
     for (const b of G.derived) {
       if (a === b) continue;
-      const foreign = `${b.queuePrefix}${b.subscribe[0] ? b.subscribe[0].split('.').pop() : 'Probe'}`;
-      for (const k of ['configure', 'write', 'read']) assert.ok(!rx(row[k]).test(foreign), `${a.user} の ${k} が ${b.user} のキュー ${foreign} に当たる`);
+      // 他のサービスの受信キュー（購読の全件。AST はデッドレターの `_error` も）と、購読の無いサービスの前置の探り。
+      const foreign = [`${b.queuePrefix}Probe`, ...b.subscribe.flatMap((t) => {
+        const q = `${b.queuePrefix}${b.unit === 'ai-stock-trading' ? t.split('.').pop() : t}`;
+        return b.deadLetterQueues ? [q, `${q}_error`] : [q];
+      })];
+      for (const q of foreign) {
+        for (const k of ['configure', 'write', 'read']) assert.ok(!rx(row[k]).test(q), `${a.user} の ${k} が ${b.user} のキュー ${q} に当たる`);
+      }
       for (const ex of b.publish) {
         if (!a.publish.includes(ex)) assert.ok(!rx(row.write).test(ex), `${a.user} が発行しない ${ex} へ書ける`);
       }
@@ -182,7 +188,7 @@ const KUBECTL = [
   '  *"rabbitmqctl -q list_exchanges --no-table-headers name"*) cat "$H/exchanges"; exit 0;;',
   '  *"rabbitmqctl -q list_bindings --no-table-headers "*) cat "$H/bindings"; exit 0;;',
   '  *"rabbitmqctl -q list_user_permissions --no-table-headers "*) u="${*: -1}"; awk -v u="$u" \'$1 == u { print "/\\t" $2 "\\t" $3 "\\t" $4 }\' "$H/perms"; exit 0;;',
-  '  *"rabbitmqctl -q set_permissions "*) shift 9; echo "SET $3 $4 $5 $6" >> "$H/log"; exit 0;;',
+  '  *"rabbitmqctl -q set_permissions "*) shift 9; [ "$3" = "${STUB_FAIL_USER:-}" ] && exit 1; echo "SET $3 $4 $5 $6" >> "$H/log"; exit 0;;',
   '  *"rabbitmqctl add_user "*|*"rabbitmqctl change_password "*|*"rabbitmqctl authenticate_user "*) cat >/dev/null; exit 0;;',
   '  *"create configmap"*) echo "CM $*" >> "$H/log"; exit 0;;',
   '  *"apply -f -"*) cat >/dev/null; exit 0;;',
@@ -226,7 +232,9 @@ ok('合わせ（段 1・既定）: 権限は vhost 全体のまま。段を Conf
   const r = reconcile(ON_BROKER);
   assert.strictEqual(r.status, 0, r.out);
   assert.deepStrictEqual(r.sets, ['SET msp-a .* .* .*', 'SET msp-b .* .* .*']);
-  assert.ok(r.cms.length === 1 && /--from-literal=scope=vhost/.test(r.cms[0]) && /--from-file=permissions\.txt=/.test(r.cms[0]), r.cms.join('\n'));
+  // 段の記録は 2 回: 当てる前に applying、当て終えて確定の段（途中で止まれば applying が残る）。
+  assert.strictEqual(r.cms.length, 2, r.cms.join('\n'));
+  assert.ok(/--from-literal=scope=applying/.test(r.cms[0]) && /--from-literal=scope=vhost/.test(r.cms[1]) && /--from-file=permissions\.txt=/.test(r.cms[1]), r.cms.join('\n'));
   assert.ok(/--permissions-report/.test(r.out) && /権限 vhost/.test(r.out), r.out);
 });
 
@@ -237,7 +245,15 @@ ok('合わせ（段 2・narrow）: 生成物の行を当て、段を ConfigMap �
     'SET msp-a ^(a-service\\..*|amq\\.default)$ ^(a-service\\..*|amq\\.default|EvA)$ ^(a-service\\..*)$',
     'SET msp-b ^(b-service\\..*|EvA)$ ^(b-service\\..*)$ ^(b-service\\..*|EvA)$',
   ]);
-  assert.ok(/--from-literal=scope=narrow/.test(r.cms[0] || ''), r.cms.join('\n'));
+  assert.deepStrictEqual(r.cms.map((c) => /scope=(\w+)/.exec(c)[1]), ['applying', 'narrow'], r.cms.join('\n'));
+});
+
+ok('合わせ: 途中で失敗したら段を確定させない（applying が残り、起動の直後の復元は vhost 全体で作り直す）', () => {
+  for (const scope of ['narrow', 'vhost']) {
+    const r = reconcile({ ...ON_BROKER, env: { RABBITMQ_PERMISSIONS: scope, STUB_FAIL_USER: 'msp-b' } });
+    assert.notStrictEqual(r.status, 0, r.out);
+    assert.deepStrictEqual(r.cms.map((c) => /scope=(\w+)/.exec(c)[1]), ['applying'], `${scope}: 確定の段を書いた:\n${r.cms.join('\n')}`);
+  }
 });
 
 ok('合わせ（段 2）: 行の欠けたユーザーが 1 人でも居れば、何も変えずに止まる', () => {
@@ -327,7 +343,7 @@ function boot({ scope = null, perms = null }) {
 }
 
 ok('起動の直後の復元: ConfigMap が無い・vhost なら vhost 全体、narrow なら生成物の行。行の無いユーザーへ vhost 全体を付けない', () => {
-  for (const scope of [null, 'vhost']) {
+  for (const scope of [null, 'vhost', 'applying']) {
     const r = boot({ scope, perms: PERMS_FIXTURE });
     assert.deepStrictEqual(r.sets, ['-q set_permissions -p / msp-a .* .* .*', '-q set_permissions -p / msp-b .* .* .*'], `scope=${scope}`);
   }

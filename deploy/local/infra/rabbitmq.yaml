@@ -147,7 +147,8 @@ data:
     FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
     VHOST="${RABBITMQ_BOOT_VHOST:-/}"
     # NFR-18, IADR-0681: 権限の段（reconcile-users.sh が最後に当てた段と permissions.txt。ConfigMap rabbitmq-permissions）。
-    #   無い・vhost なら vhost 全体（段 1）。narrow なら permissions.txt の行を当て、行の無いユーザーは作らない（vhost 全体へ倒さない）。
+    #   無い・vhost・applying（合わせが途中で止まった）なら vhost 全体（段 1。通信を止めない側）。narrow なら permissions.txt の行を当て、
+    #   行の無いユーザーには権限を付けない（vhost 全体へ倒さない）。
     PERMS_DIR="${RABBITMQ_BOOT_PERMISSIONS_DIR:-/etc/rabbitmq-permissions}"
     scope="$(cat "$PERMS_DIR/scope" 2>/dev/null || true)"
     [ "$scope" = "narrow" ] || scope=vhost

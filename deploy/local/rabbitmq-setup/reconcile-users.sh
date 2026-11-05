@@ -13,6 +13,7 @@
 #                          当てる前に、ブローカに在るものが絞った権限で届くかを確かめ、届かないものがあれば何も変えずに止める
 #                          （RABBITMQ_PERMISSIONS_ALLOW_GAPS=1 で押し切れる）。戻すときは RABBITMQ_PERMISSIONS=vhost で回し直す。
 #   どちらの段で当てたかと permissions.txt は ConfigMap rabbitmq-permissions に写し、ブローカの起動の直後の復元が同じ段で作り直す。
+#   写すのは 2 回（当てる前に applying、当て終えて確定の段）。途中で止まると applying が残り、復元は vhost 全体で作り直す。
 #
 # 前提: Secret `rabbitmq-users`（platform-infra）が在る。ESO=1 は externalsecret-rabbitmq-users.yaml が Vault の 2 つの KV から同期し
 # （bootstrap.sh が無いときだけ乱数で種を入れる）、ESO を使わない経路は k8s-local-up.sh が既存の値＞乱数で作る（IADR-0577）。
@@ -167,6 +168,19 @@ if [ "$MODE" = "apply" ] && [ "$SCOPE" = "narrow" ]; then
   fi
 fi
 
+# NFR-18, IADR-0681: 段の記録（ConfigMap。値は持たない）。当てる前に「applying」と書き、全ユーザーを当て終えてから確定の段へ書き換える。
+#   途中で失敗・中断すると applying が残り、ブローカの起動の直後の復元は広い側（vhost 全体）で作り直す ——
+#   絞る途中で止まっても、広げる途中で止まっても、再起動の後は通信を止めない側に倒れる（段 2 は合わせを回し直して確定させる）。
+record_scope() {
+  if [ -f "$PERMS_FILE" ]; then
+    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$1" --from-file=permissions.txt="$PERMS_FILE" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  else
+    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$1" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  fi
+}
+[ "$MODE" = "apply" ] && record_scope applying
+
 n=0
 fail=""
 # NFR, #2200: pipefail の下で「… | grep -q」は使わない（grep が一致で読むのをやめ、書き手が SIGPIPE で落ちて判定が反転する）。
@@ -205,14 +219,10 @@ if [ -n "$fail" ]; then
   [ "$MODE" = "check" ] && echo "       合わせる: bash deploy/local/rabbitmq-setup/reconcile-users.sh" >&2
   exit 1
 fi
-# NFR-18, IADR-0681: 当てた段と絞った権限を、ブローカの起動の直後の復元へ渡す（ConfigMap。値は持たない）。
+# NFR-18, IADR-0681: 全ユーザーを当て終えたので、段を確定させる（復元はこの段で作り直す）。
 if [ "$MODE" = "apply" ]; then
-  if [ -f "$PERMS_FILE" ]; then
-    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope="$SCOPE" --from-file=permissions.txt="$PERMS_FILE" \
-      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  else
-    kubectl -n "$INFRA_NS" create configmap "$PERMS_CM" --from-literal=scope=vhost --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-  fi
+  if [ "$SCOPE" = "narrow" ] && [ ! -f "$PERMS_FILE" ]; then echo "ERROR: 生成物が無い（段を確定できない）" >&2; exit 1; fi
+  record_scope "$SCOPE"
   if [ "$SCOPE" = "vhost" ]; then
     echo "    権限は段 1（vhost 全体）。段 2 への切り替えの点検: bash deploy/local/rabbitmq-setup/reconcile-users.sh --permissions-report"
   fi
