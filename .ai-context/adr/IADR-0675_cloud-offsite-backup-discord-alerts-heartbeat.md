@@ -81,6 +81,29 @@ related_specs:
      すぐに「up」へ戻り、失敗が続いているのに知らせが 1 度で止まる。Healthchecks.io の無料の枠で check を 1 つ足すだけで済む。
    - ping の URL も Secret から読む（Alertmanager の `webhook_configs` の `url_file`）。
 
+## 実測（2026-11-05 / #2406 の再レビュー）
+
+CI と同じ版のバイナリを手元で起動して、警報の式の前提を確かめた。
+
+1. **`AstAlertRulesNotLoaded` の `rule_group` の形**（Prometheus v2.52.0）:
+   - `prometheus_rule_group_rules` の `rule_group` は `<規則ファイルの絶対パス>;<群名>` の形である。
+     例: `…/ast-rules/ai-stock-trading-alerts.yml;ai-stock-trading.trade-cycle`。
+   - AST の実ファイル（`deploy/observability/alerts/ai-stock-trading-alerts.yaml`）から initContainer の script で取り出した群名は、
+     `ai-stock-trading.order-execution`・`ai-stock-trading.stop-loss`・`ai-stock-trading.trade-cycle` の 3 つで、
+     どれも `ai-stock-trading.` で始まる。
+   - 自分を収集する設定（`job_name: prometheus`）の下で、AST の規則がある場合とない場合の評価を見た。
+     ある場合、`absent(prometheus_rule_group_rules{rule_group=~".*;ai-stock-trading\\..*"})` は空で、群は 3 つ数えられる。
+     ない場合、同じ式は 1 になり、警報は pending になる。式は直さない。
+   - 🔴 この警報は、Prometheus が自分を収集していることを前提にする（`/metrics` に出ていても、収集しなければ TSDB に系列が無く、
+     規則があっても鳴る）。設定は `job_name: prometheus` で自分を収集している。
+2. **`DiscordDeliveryHealthy` の前提「失敗のカウンタが起動時に 0 で現れる」**（Alertmanager v0.27.0）:
+   - Discord の受信先を置いて起動すると、`/metrics` に `alertmanager_notifications_failed_total{integration="discord",reason=…}` が
+     `clientError`・`contextCanceled`・`contextDeadlineExceeded`・`other`・`serverError` の 5 本、どれも 0 で現れた
+     （`alertmanager_notifications_total{integration="discord"}` も 0）。
+   - Prometheus v2.52.0 でこの Alertmanager を収集すると、`sum(increase(…{integration="discord"}[15m])) == 0` は 15 秒で値を持った
+     （＝警報が鳴り、check B へ ping が届く）。`reason` が複数本あるので、式は `sum` で束ねたまま変えない。
+   - Alertmanager を収集できないときは式が空になり、警報が鳴らず、B が下がる。これは意図どおりで、黙らない。
+
 ## 却下した代替案
 
 - **Alertmanager を v0.28 へ上げて Discord の URL をファイルで読む**: 経路 B と版が分かれ、digest の固定を 2 つ持つ。描画の形には先例（IADR-0571）がある。
