@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — realm の調停が、稼働側で無効にしたクライアントと消した seed 利用者を宣言へ戻さないようにする（#2431）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR-18, IADR-0369, IADR-0570, IADR-0685]
 author: claude
 created: 2026-11-06

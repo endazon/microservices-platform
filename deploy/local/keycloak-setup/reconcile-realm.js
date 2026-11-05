@@ -1040,7 +1040,8 @@ async function main() {
     for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
     const ignored = [];
     const recreateUsers = parseRecreateUsers(process.env[RECREATE_USERS_ENV], ignored);
-    if (ignored.length > 0) console.log(`    skipped   ${RECREATE_USERS_ENV} の形の外の名前 ${ignored.length} 件を無視した（英小文字・数字・. _ @ - だけを受ける）`);
+    // 名前は利用者名で秘密ではない。何を無視したかが分かるよう、JSON の文字列で出す（制御文字も見える形にする）。
+    if (ignored.length > 0) console.log(`    skipped   ${RECREATE_USERS_ENV} の形の外の名前を無視した: ${ignored.map((x) => JSON.stringify(x)).join(', ')}（英小文字・数字・. _ @ - だけを受ける）`);
     const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, recreateUsers });
     const ops = r.ops;
     for (const k of r.kept) console.log(`    kept      ${k.target} — ${k.reason}`);

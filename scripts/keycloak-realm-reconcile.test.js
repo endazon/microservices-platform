@@ -194,6 +194,7 @@ ok('宣言に無い smtpServer のキー（runbook が入れた user / password�
 //    （閉じたはずの申請が開いている＝利用者名が漏れる向き）まで見なくなる。
 //    除外するのは「宣言 true・稼働 false・attributes["reset-gate.state"]===closed」の 1 組だけである。
 
+const asList = (v) => String(v || '').split(',').filter(Boolean);
 // #2431 / IADR-0685: 「宣言に在るが、まだ一度も在ったことの無い利用者」（記録に無い）を作る。消された利用者（記録に在る）とは別。
 const neverSeen = (live, name) => {
   live.users[name] = null;
@@ -201,7 +202,6 @@ const neverSeen = (live, name) => {
   live.realm.attributes = { ...live.realm.attributes, [SEEDED_USERS_ATTRIBUTE]: rest.join(',') };
   return live;
 };
-const asList = (v) => String(v || '').split(',').filter(Boolean);
 const closedLive = (attrs) => {
   const live = liveFrom(REALM);
   live.realm.resetPasswordAllowed = false;
