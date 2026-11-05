@@ -56,7 +56,8 @@ public sealed class LlmCallLimiter(
         string? caller, string purpose, string? model, int promptChars, int maxTokens)
     {
         var o = options.CurrentValue;
-        var who = string.IsNullOrWhiteSpace(caller) ? UnknownCaller : caller.Trim();
+        // AI レビュー #2408: 呼び手は小文字へ揃える（Callers の照合は大小を区別しないので、枠の鍵と計器の綴りも揃える）。
+        var who = string.IsNullOrWhiteSpace(caller) ? UnknownCaller : caller.Trim().ToLowerInvariant();
         var normalizedPurpose = LlmMetricValues.NormalizePurpose(routing.CurrentValue, purpose);
         var limits = EffectiveCallerLimits.For(o, who);
         var now = clock.GetUtcNow();
@@ -72,8 +73,9 @@ public sealed class LlmCallLimiter(
         decimal? estimate = null;
         if (limits.HasCostLimit)
         {
-            var e = prices.Estimate(model, Math.Max(0, promptChars), Math.Max(0, maxTokens), now);
-            estimate = e.IsPriced ? e.Cost : 0m;
+            estimate = CostOf(o, model, Math.Max(0, promptChars), Math.Max(0, maxTokens), now, default, out var unpriced);
+            if (unpriced)
+                metrics.RecordUnpricedEstimate(who, normalizedPurpose);
         }
 
         var enforce = o.Mode == LlmCallLimitMode.Enforce;
@@ -124,8 +126,7 @@ public sealed class LlmCallLimiter(
     {
         if (admission.ReservedCost is not { } reserved) return;
         var now = clock.GetUtcNow();
-        var e = prices.Estimate(model, inputTokens, outputTokens, now, cache);
-        var actual = e.IsPriced ? e.Cost : 0m;
+        var actual = CostOf(options.CurrentValue, model, inputTokens, outputTokens, now, cache, out _);
         Adjust(admission, reserved, actual, DateOnly.FromDateTime(now.UtcDateTime));
     }
 
@@ -134,6 +135,19 @@ public sealed class LlmCallLimiter(
     {
         if (admission.ReservedCost is not { } reserved) return;
         Adjust(admission, reserved, 0m, DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime));
+    }
+
+    // IADR-0678 決定 2（AI レビュー #2408）: 単価表に無いモデルは 0 にせず、表に無いモデル用の計上単価で数える。
+    private decimal CostOf(
+        LlmCallLimitOptions o, string? model, long inputTokens, long outputTokens, DateTimeOffset at,
+        PromptCacheTokens cache, out bool unpriced)
+    {
+        var e = prices.Estimate(model, inputTokens, outputTokens, at, cache);
+        unpriced = !e.IsPriced;
+        if (e.IsPriced) return e.Cost;
+        const decimal PerMillion = 1_000_000m;
+        return inputTokens * o.UnknownModelPrice.InputPerMillionTokens / PerMillion
+             + outputTokens * o.UnknownModelPrice.OutputPerMillionTokens / PerMillion;
     }
 
     private void Adjust(LlmCallAdmission admission, decimal reserved, decimal actual, DateOnly today)
@@ -179,6 +193,8 @@ public sealed class LlmCallLimiter(
         b.Total = Math.Max(0m, b.Total + amount);
     }
 
+    // purpose は**正規化の後の値**（既知の用途・default・other の閉じた集合）を受ける。抑止の鍵も同じ値で作るので、任意の値で鍵は増えない。
+    // ログへ載せる値は呼び手・用途とも Sanitize を通す（NFR-28。ログ行の偽造を防ぐ）。
     private void LogExceeded(string kind, string mode, string caller, string purpose)
     {
         if (!logThrottle.ShouldLog($"call-limit|{kind}|{caller}|{purpose}", out var suppressed))
@@ -186,7 +202,7 @@ public sealed class LlmCallLimiter(
         logger.LogWarning(
             "LLM call limit exceeded: kind={LimitKind} mode={LimitMode} caller={Caller} purpose={Purpose} "
             + "suppressedSinceLast={Suppressed} (sent={Sent}; the same kind, caller and purpose is logged at most once per {Interval})",
-            kind, mode, LlmRouter.Sanitize(caller), purpose, suppressed, mode == ModeReport, LogOccurrenceThrottle.SummaryInterval);
+            kind, mode, LlmRouter.Sanitize(caller), LlmRouter.Sanitize(purpose), suppressed, mode == ModeReport, LogOccurrenceThrottle.SummaryInterval);
     }
 }
 

@@ -14,12 +14,14 @@ public sealed class LlmCallLimitMetrics
 {
     public const string MeterName = LlmCompletionMetrics.MeterName;
     public const string ExceededCounterName = "llm.call_limit.exceeded.total";
+    public const string UnpricedEstimateCounterName = "llm.call_limit.unpriced_estimate.total";
 
     public const string KindTag = "llm.limit.kind";
     public const string ModeTag = "llm.limit.mode";
     public const string CallerTag = "llm.caller";
 
     private readonly Counter<long> _exceeded;
+    private readonly Counter<long> _unpricedEstimate;
 
     public LlmCallLimitMetrics(IMeterFactory meterFactory)
     {
@@ -28,7 +30,17 @@ public sealed class LlmCallLimitMetrics
             ExceededCounterName, unit: "{completion}",
             description: "送る前の上限（max_tokens・プロンプト長・呼び手と呼び手×用途の要求数と当日の費用）を超えた呼び出しの件数。"
                        + "llm.limit.mode=report は送った（段 1）、enforce は送らなかった（段 2）。");
+        _unpricedEstimate = meter.CreateCounter<long>(
+            UnpricedEstimateCounterName, unit: "{completion}",
+            description: "費用の上限の判定で、単価表に無いモデルを『表に無いモデル用の計上単価』で見積もった件数（0 が正常。単価表の登録漏れの検出）。");
     }
+
+    public void RecordUnpricedEstimate(string caller, string normalizedPurpose)
+        => _unpricedEstimate.Add(1, new TagList
+        {
+            { CallerTag, caller },
+            { LlmCompletionMetrics.PurposeTag, normalizedPurpose },
+        });
 
     public void RecordExceeded(string kind, string mode, string caller, string normalizedPurpose)
         => _exceeded.Add(1, new TagList

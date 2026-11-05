@@ -40,6 +40,7 @@ issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #211
 | `llm.usage.incomplete.total` | Counter | `{completion}` | `llm_usage_incomplete_total` | **逐次応答が最終チャンク（実数）を受け取らずに終わった送信**（0 が正常。下記） |
 | `llm.budget.monthly_limit` | 観測ゲージ | `{currency}` | `llm_budget_monthly_limit` | **用途別の月次予算の上限**（設定 `Llm:Budget:MonthlyLimits`。**既定なし**。設定された用途だけが系列を持つ） |
 | `llm.call_limit.exceeded.total` | Counter | `{completion}` | `llm_call_limit_exceeded_total` | **送る前の上限を超えた呼び出し**（§送る前の上限。`report` は送った・`enforce` は送らなかった） |
+| `llm.call_limit.unpriced_estimate.total` | Counter | `{completion}` | `llm_call_limit_unpriced_estimate_total` | **費用の上限の判定で、単価表に無いモデルを表に無いモデル用の単価で見積もった件数**（0 が正常） |
 
 🔴 **上限のゲージは金額を設定しない限り系列を持たない。** 金額は所有者が決める値であり、実装は既定を置かない。
 上限アラート `LlmMonthlyBudgetExceeded` は直近 30 日の `llm_cost_total` をこのゲージと用途・通貨で比べるため、
@@ -200,6 +201,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 - 呼び手は**検証済みのトークンのクライアント識別子**（`llm_caller`）、用途は本書の属性と同じ正規化（未知は `other`）で数える。
 - 合成監視の呼び出しも上限には数える（費用の計上から外すこととは別である）。
 - 見込み額は、文字数を入力トークン・`max_tokens` を出力トークンとみなして単価表で換算する。送った後は実額へ置き換え、送れなかった呼び出しは戻す。
+- 🔴 単価表に無いモデルは 0 にせず、`Llm:CallLimits:UnknownModelPrice`（既定 入力 10・出力 50 / 百万トークン）で数える。0 にすると、単価の無いモデルで費用の上限が効かなくなる。
 - 呼び手ごとの値は `Llm:CallLimits:Callers:<クライアント識別子>` で上書きする。書かなかった項目は `Default` の値を使う。
 - 🔴 **段**（`Llm:CallLimits:Mode`）: 既定 `Report` は判定して数えるだけで**送信を止めない**。`Enforce` は超えた呼び出しを送らず、
   `Sent=false`・`FailureKind=limit_exceeded` で返す（`llm_completion_total{llm_result="limit_exceeded"}` にも数える）。

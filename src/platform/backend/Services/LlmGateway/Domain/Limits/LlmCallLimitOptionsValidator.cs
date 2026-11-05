@@ -25,6 +25,9 @@ public sealed class LlmCallLimitOptionsValidator(IOptionsMonitor<LlmRoutingOptio
         if (options.MaxPromptChars <= 0)
             errors.Add($"{Section}:MaxPromptChars は正の値でなければなりません（{options.MaxPromptChars}）。");
 
+        if (options.UnknownModelPrice.InputPerMillionTokens <= 0m || options.UnknownModelPrice.OutputPerMillionTokens <= 0m)
+            errors.Add($"{Section}:UnknownModelPrice の単価は正の値でなければなりません（0 にすると単価の無いモデルで費用の上限が効かない）。");
+
         ValidateCaller($"{Section}:Default", options.Default, errors);
         foreach (var (caller, limits) in options.Callers)
         {

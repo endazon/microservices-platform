@@ -26,8 +26,19 @@ public sealed class LlmCallLimitOptions
         PurposeRequestsPerMinute = 120,
     };
 
+    // AI レビュー #2408: 単価表に無いモデルの見込み額・実額に使う計上単価（単価表の通貨・百万トークンあたり）。
+    // 🔴 **0 にしない**（0 だと単価の無いモデルで費用の上限が黙って効かない）。既定は入力 10・出力 50
+    // （AST の「表に無いモデルの計上単価」の既定と同じ値。多めに見積もる側へ倒す。IADR-0678 決定 2）。
+    public LlmUnknownModelPrice UnknownModelPrice { get; set; } = new();
+
     // 呼び手（トークンのクライアント識別子）→ 上書き。**書かなかった項目は Default の値を使う**。
     public Dictionary<string, LlmCallerLimits> Callers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class LlmUnknownModelPrice
+{
+    public decimal InputPerMillionTokens { get; set; } = 10m;
+    public decimal OutputPerMillionTokens { get; set; } = 50m;
 }
 
 public enum LlmCallLimitMode

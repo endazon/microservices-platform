@@ -46,6 +46,7 @@ issue: "#2404"
 - [x] 合成監視の標識が付いた呼び出しも数える。
 - [x] UTC の日付が変わると費用の枠は 0 に戻る。60 秒経つと要求数の枠は空く。
 - [x] 不正な設定（0 以下の上限・未知の用途のキー）は起動時に落とす。
+- [x] ［2026-11-05 追記 / AI レビュー］単価表に無いモデルは、表に無いモデル用の計上単価で見込み・実額を数え、件数を計器に数える。種類ごとに計器が 1 ずつ増える。gRPC の 2 つの rpc も呼び手をトークンから決める。上流の失敗・取り消しで見込みを戻す（`LlmCallLimiterTests`・`GrpcCallLimitTests`）。後者 2 つは配線を外すと赤になることを確かめた。
 - [x] 既定の構成（`appsettings.json`）では `Mode=Report` で、既存の試験はすべて緑のまま（送信の挙動は変わらない）。
 
 試験: `Tests/Domain/Limits/LlmCallLimiterTests.cs`（判定器の単体）、`Tests/Domain/Limits/LlmCallLimitOptionsValidatorTests.cs`、`Tests/Features/Completions/CallLimitEndpointTests.cs`（REST・gRPC の面を通す）。
