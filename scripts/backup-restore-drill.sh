@@ -11,7 +11,10 @@
 #   3. globals と各 DB を、age で復号しながらパイプで流し込む（平文をディスクへ書かない）
 #   4. 戻した各 DB の全テーブルの行数を取り、稼働 DB（--live。**読み取り専用トランザクション**）か、
 #      与えた TSV（--live-counts）と突き合わせる
-#   5. 使い捨てのコンテナを消す（失敗しても消す）
+#   5. 使い捨てのコンテナを消す（失敗しても・止められても消す。名前の無いボリュームごと）
+#
+# 🔴 NFR-18, IADR-0674: 戻した DB は平文である。使い捨ての Postgres のデータ領域は tmpfs（メモリ）に置き、ディスクへ書かない。
+#    イメージは VOLUME を宣言しているので、tmpfs が無いと名前の無いボリュームに平文が残る。片付けは `rm -f -v` でボリュームも消す。
 #
 # 判定:
 #   - 稼働側にあって戻した側に無いテーブル …… 失敗
@@ -84,9 +87,10 @@ DRILL_NAME=""
 DRILL_WORK=""
 # 使い捨てのコンテナと作業ファイル（行数の TSV だけ。平文のダンプは置かない）を片付ける。
 # 🔴 再帰削除をしない —— 作ったファイルを名前で消してから rmdir する。
+# 🔴 NFR-18, IADR-0674: `-v` で名前の無いボリュームも消す（データ領域は tmpfs だが、イメージの他の VOLUME や別のイメージに備える）。
 drill_cleanup() {
 	if [ -n "$DRILL_NAME" ] && [ -n "$DRILL_CLI" ]; then
-		"$DRILL_CLI" rm -f "$DRILL_NAME" >/dev/null 2>&1 || true
+		"$DRILL_CLI" rm -f -v "$DRILL_NAME" >/dev/null 2>&1 || true
 	fi
 	if [ -n "$DRILL_WORK" ] && [ -d "$DRILL_WORK" ]; then
 		rm -f -- "$DRILL_WORK/restored.tsv" "$DRILL_WORK/live.tsv" "$DRILL_WORK/ledger.txt" "$DRILL_WORK/globals.err"
@@ -149,6 +153,10 @@ main() {
 	DRILL_NAME="platform-backup-drill-$$"
 	DRILL_WORK="$(mktemp -d)"
 	trap drill_cleanup EXIT
+	# NFR-18, IADR-0674: 止められた（Ctrl-C・SIGTERM・端末の切断）ときも EXIT の片付けへ進める（シグナルで落ちると EXIT の trap が走らない）。
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	trap 'exit 129' HUP
 	local cli="$DRILL_CLI" name="$DRILL_NAME" work="$DRILL_WORK"
 	local restored="$work/restored.tsv" livef="$work/live.tsv" ledgerf="$work/ledger.txt"
 	: > "$restored"; : > "$livef"; : > "$ledgerf"
@@ -156,9 +164,11 @@ main() {
 
 	# 2. 使い捨ての Postgres（ネットワーク無し・ポートを開けない・パスワード不要＝外から届かない）
 	log "使い捨ての Postgres を起こします（$image・--network none）"
-	# #2391: `--rm` を付けない。containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（drill_cleanup の rm -f）が
+	# #2391: `--rm` を付けない。containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（drill_cleanup の rm -f -v）が
 	#    成功・失敗の両方で持つ。
-	if ! "$cli" run -d --network none --name "$name" -e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
+	# NFR-18, IADR-0674: データ領域（PGDATA）は tmpfs。戻した平文をディスク（名前の無いボリューム）へ書かない。大きさはメモリが上限になる。
+	if ! "$cli" run -d --network none --name "$name" --tmpfs /var/lib/postgresql/data -e PGDATA=/var/lib/postgresql/data \
+		-e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
 		err "コンテナを起こせません（$cli）"; return 1
 	fi
 	local i=0
@@ -263,9 +273,9 @@ self_test() {
 #!/usr/bin/env bash
 echo "docker $*" >> "$STUB_LOG"
 case "$*" in
-  run\ *) echo "stub-container-id"; exit 0 ;;
+  run\ *) [ -f "$STUB_STATE/run-fail" ] && exit 125; echo "stub-container-id"; exit 0 ;;
   rm\ *) exit 0 ;;
-  *pg_isready*) exit 0 ;;
+  *pg_isready*) [ -f "$STUB_STATE/hang" ] && { : > "$STUB_STATE/hanging"; sleep 3; }; exit 0 ;;
   *createdb*) exit 0 ;;
   *pg_restore*) cat > /dev/null; [ -f "$STUB_STATE/restore-fail" ] && exit 1; exit 0 ;;
   *psql*-c*) db=""; prev=""; for a in "$@"; do [ "$prev" = "-d" ] && db="$a"; prev="$a"; done; cat "$STUB_STATE/restored-$db.tsv" 2>/dev/null; exit 0 ;;
@@ -309,7 +319,7 @@ STUB
 	eq 'T-1560-37 --live: 戻して突き合わせ、合格する（台帳が増えただけ）' "$RC" "0"
 	LOG="$(cat "$log_file")"
 	has 'T-1560-37 使い捨てのコンテナはネットワーク無しで起こす' "$LOG" 'run -d --network none'
-	# #2391: containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（rm -f）が持つので、run に --rm を付けない。
+	# #2391: containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（rm -f -v）が持つので、run に --rm を付けない。
 	lacks 'T-2391-01 使い捨てのコンテナを --rm 付きで起こさない（nerdctl が -d と --rm の併用を拒む）' "$(grep ' run ' "$log_file")" '--rm'
 	lacks 'T-1560-37 使い捨てのコンテナはポートを開けない' "$LOG" ' -p '
 	has 'T-1560-37 稼働側は読み取り専用トランザクションで数える' "$LOG" 'PGOPTIONS=-c default_transaction_read_only=on psql'
@@ -319,7 +329,11 @@ STUB
 	has 'T-1560-37 秘密鍵はパスで age -d -i に渡す' "$LOG" "age -d -i $w/identity.txt"
 	lacks 'T-1560-37 秘密鍵の中身が出力に出ない' "$OUT" "$secret"
 	lacks 'T-1560-37 秘密鍵の中身がどのコマンドの引数にも出ない' "$LOG" "$secret"
-	has 'T-1560-37 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f platform-backup-drill-'
+	has 'T-1560-37 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f -v platform-backup-drill-'
+	# NFR-18, IADR-0674: 戻した DB（平文）をディスクへ残さない。データ領域はメモリ（tmpfs）に置き、名前の無いボリュームも消す。
+	has 'T-NFR18-01 使い捨ての Postgres のデータ領域を tmpfs に置く' "$(grep ' run ' "$log_file")" '--tmpfs /var/lib/postgresql/data'
+	has 'T-NFR18-01 データ領域の場所をイメージの既定に任せない（PGDATA を tmpfs に固定する）' "$(grep ' run ' "$log_file")" '-e PGDATA=/var/lib/postgresql/data'
+	lacks 'T-NFR18-02 片付けはボリュームを残す rm -f（-v なし）を使わない' "$LOG" 'docker rm -f platform-backup-drill-'
 	has 'T-1560-37 globals を先に流し込む' "$LOG" 'psql -q -X -h 127.0.0.1 -U postgres -d postgres'
 
 	: > "$log_file"
@@ -327,7 +341,29 @@ STUB
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc)"; RC=$?
 	rm -f "$w/state/restore-fail"
 	eq 'T-1560-38 戻せなければ失敗' "$RC" "1"
-	has 'T-1560-38 失敗しても使い捨てのコンテナを消す' "$(cat "$log_file")" 'docker rm -f platform-backup-drill-'
+	has 'T-1560-38 失敗しても使い捨てのコンテナを消す（ボリュームごと）' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
+
+	# NFR-18, IADR-0674: コンテナを起こせなかった（途中まで作られ得る）・止められた（SIGTERM）経路でも、ボリュームごと消す。
+	: > "$log_file"
+	: > "$w/state/run-fail"
+	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc)"; RC=$?
+	rm -f "$w/state/run-fail"
+	eq 'T-NFR18-03 コンテナを起こせなければ失敗' "$RC" "1"
+	has 'T-NFR18-03 起こせなくても名前で消す（ボリュームごと）' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
+
+	: > "$log_file"
+	: > "$w/state/hang"; rm -f "$w/state/hanging"
+	PATH="$w/bin:$PATH" KUBECONFIG="$w/no-such-kubeconfig" STUB_LOG="$log_file" STUB_STATE="$w/state" \
+		CONTAINER_CLI=docker KUBECTL=kubectl DRILL_WAIT_TRIES=2 DRILL_WAIT_INTERVAL=0 \
+		bash "$0" --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc >/dev/null 2>&1 &
+	local pid=$! n=0
+	until [ -f "$w/state/hanging" ] || [ "$n" -ge 50 ]; do sleep 0.1; n=$((n + 1)); done
+	kill -TERM "$pid" 2>/dev/null
+	wait "$pid"; RC=$?
+	rm -f "$w/state/hang" "$w/state/hanging"
+	lacks 'T-NFR18-04 止められた（SIGTERM）ら合格にしない' "$RC" "0"
+	has 'T-NFR18-04 止められても使い捨てのコンテナをボリュームごと消す' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
+	lacks 'T-NFR18-04 止められたら流し込みへ進まない' "$(cat "$log_file")" 'pg_restore'
 
 	printf 'audit_svc|public.audit_log|7\nreport_svc|public.report|3\n' > "$w/live.tsv"
 	: > "$log_file"
