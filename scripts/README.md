@@ -225,6 +225,9 @@ node scripts/resident-memory.test.js                # 常駐メモリを下げ�
 node scripts/helm-private-notes-sync-authz.test.js # Obsidian 同期のエッジ公開（既定オフ）の AuthorizationPolicy を実際に描いて固定（無効時は描かない・route / NetworkPolicy と同じ値・呼び出し元の一覧への評価・変異。#1606・要 helm）
 node scripts/helm-backchannel-authz.test.js       # バックチャネルログアウトだけを平文で通す DENY の ports を実際に描いて固定（BFF の受信ポート＝ports・旧形と拒否の範囲が同じ・Istio の警告条件に当たらない・変異。#1885・要 helm）
 node scripts/helm-ast-kb-ingress.test.js           # 取引ユニットの名前空間 → KB の読み手・書き手・LLM ゲートウェイの NetworkPolicy（既定は閉）を実際に描いて固定（既定は描かない・形・k8s の評価規則で呼び出し元の一覧へ当てる・描画で止まる条件・変異。#1756・#1811・要 helm）
+node scripts/deploy-cloud.test.js                  # クラウドの最小構成（deploy/cloud/infra と values-cloud）を実際に描いて固定（#2401・要 kubectl・helm）
+node scripts/deploy-cloud-postgres.test.js         # クラウドの Postgres を空のボリュームから実物のイメージで起動して固定（#2401・要 docker）
+node scripts/cloud-ops.test.js                     # クラウドのバックアップ・警報・heartbeat の描画と設定を固定（#2402・要 kubectl・promtool 2.52・amtool 0.27。無ければ失敗にする）
 node deploy/mail-relay/mail-queue-exporter.js --self-test  # 近接 MTA のキュー exporter の純粋関数の自己試験（#1245 PR-B / ADR-0078 決定 3・IADR-0421）
 ```
 

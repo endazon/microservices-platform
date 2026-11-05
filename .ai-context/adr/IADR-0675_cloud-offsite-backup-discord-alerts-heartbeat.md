@@ -120,6 +120,12 @@ CI と同じ版のバイナリを手元で起動して、警報の式の前提�
    - traces と logs は変えない。
    - ConfigMap の設定は 1 つの文字列なので、patch は全体を置き換える。T-2402-51 が、remote write の他は #2401 の設定と同じであることを木で突き合わせる。
 
+［2026-11-06 追記 / #2402］#2401 のマージ（#2409）の後に取り込んで、次も揃えた。
+
+6. **適用の対象:** 手順書（`deploy/cloud/README.md` §3）の適用を `deploy/cloud`（最上位）にした。`infra` だけでは patch・バックアップ・観測が入らない。
+7. **Keycloak のプローブ:** startupProbe（`/health/started`。最長 10 分）と livenessProbe（`/health/live`、9000）を足し、本 IADR の範囲に含めた（#2409 のレビューの 🟢）。
+   単一ノードの無人の運用で、起動の後のハングを作り直す。起動の間（realm の取り込み）は startupProbe が liveness を止める。描画の試験が固定する。
+
 ## 却下した代替案
 
 - **Alertmanager を v0.28 へ上げて Discord の URL をファイルで読む**: 経路 B と版が分かれ、digest の固定を 2 つ持つ。描画の形には先例（IADR-0571）がある。
@@ -134,4 +140,4 @@ CI と同じ版のバイナリを手元で起動して、警報の式の前提�
   - バックアップの Job の失敗を Prometheus は見ない（kube-state-metrics を持ち込まない）。週次のリストア試験と Job の一覧で見る。
   - Healthchecks.io そのものが止まると、知らせは届かない（外の監視を 2 重にはしない）。
   - Object Lock が使えないプロバイダでは、資格情報を持つ者が回を消せる（runbook の確かめの手順で検出する）。
-  - `deploy/cloud/` の infra（#2401）との結線は、後にマージする側が行う。
+  - ［2026-11-06 追記 / #2402］`deploy/cloud/` の infra（#2401）との結線は、この PR で済ませた（上の「#2401 との結線」）。
