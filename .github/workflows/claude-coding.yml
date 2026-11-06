@@ -86,7 +86,7 @@ jobs:
       # 検証(build/test)を @claude セッション内で実走するための SDK 準備。
       # 技術スタックに合わせて書き換える（既定は C#/.NET 10。ci.example.yml と揃える。
       # 他スタックは actions/setup-node / actions/setup-python 等に置き換える）。
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
 

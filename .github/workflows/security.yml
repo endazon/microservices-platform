@@ -101,7 +101,7 @@ jobs:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
           restore-keys: nuget-${{ runner.os }}-
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
       # ソリューションを自動発見して走査する（ルート単一 .sln/.slnx でも、ユニット第一構成

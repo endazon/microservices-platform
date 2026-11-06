@@ -72,7 +72,7 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
-      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         if: github.event_name != 'pull_request' && matrix.language == 'csharp'
         with:
           dotnet-version: "10.0.403" # #2266: 厳密な版（"10.0.x" は配布元の 409 で導入できない）。全箇所で同じ値であることを scripts.repo.test.js が見る
