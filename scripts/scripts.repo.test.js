@@ -19729,6 +19729,91 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR (#2439): 回収実行の変換ツールの導入（apt の取得）が時に 8〜13 分止まり、ジョブの上限 30 分に達した ----------------
+  // .deb をランナーのイメージの名前と版で鍵を付けてキャッシュし、在れば取得せずに dpkg -i で入れる。無ければ時間切れと
+  // 再試行の付いた apt で取得し（既定の置き場＝_apt の sandbox で取る）、この回の .deb を写す。取り出しと保存を分け、保存は
+  // 導入の直後（試験の成否・cancelled に依らない）。導入の step に上限を付け、ジョブの上限は変えない（根拠は仕様書）。
+  {
+    const REPO_2439 = path.join(__dirname, '..');
+    const wf2439 = fs.readFileSync(path.join(REPO_2439, '.github/workflows/integration.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const stepsOf2439 = (text) => text.split(/\n(?= {6}- )/).slice(1);
+    const DEBS_2439 = '~/.cache/conversion-tools-debs';
+    const issues2439 = (text) => {
+      const out = [];
+      const steps = stepsOf2439(text);
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st));
+      const testAt = steps.findIndex((st) => /dotnet test /.test(st));
+      const withPath = (re) => steps.findIndex((st) => re.test(st) && st.includes(`path: ${DEBS_2439}`));
+      const restoreAt = withPath(/uses: actions\/cache\/restore@[0-9a-f]{40}/);
+      const saveAt = withPath(/uses: actions\/cache\/save@[0-9a-f]{40}/);
+      if (toolAt < 0) return ['導入の step が無い'];
+      if (withPath(/uses: actions\/cache@/) >= 0) out.push('変換ツールの .deb を actions/cache（post で保存）で置いている（赤・cancelled の回に保存されない）');
+      if (restoreAt < 0) out.push('変換ツールの .deb の取り出し（actions/cache/restore）の step が無い');
+      if (saveAt < 0) out.push('変換ツールの .deb の保存（actions/cache/save）の step が無い');
+      if (restoreAt >= 0 && restoreAt > toolAt) out.push('取り出しの step が導入の step より後にある');
+      if (saveAt >= 0) {
+        if (saveAt !== toolAt + 1) out.push('保存の step が導入の直後に無い（試験の成否・cancelled に依る）');
+        if (testAt >= 0 && saveAt > testAt) out.push('保存の step が試験より後にある');
+        const restoreId = restoreAt >= 0 && /\bid: ([A-Za-z0-9_-]+)/.exec(steps[restoreAt]);
+        if (!restoreId || !new RegExp(`if: steps\\.${restoreId[1]}\\.outputs\\.cache-hit != 'true'`).test(steps[saveAt])) out.push('保存の step が「キャッシュに無かった回だけ」の条件を持たない');
+        if (/always\(\)/.test(steps[saveAt])) out.push('保存の step が always() を持つ（導入が赤の回に空の置き場を保存する）');
+      }
+      const keyOf = (i) => (i >= 0 ? /key: \$\{\{ steps\.([A-Za-z0-9_-]+)\.outputs\.key \}\}/.exec(steps[i]) : null);
+      const keyRef = keyOf(restoreAt);
+      if (restoreAt >= 0 && saveAt >= 0 && (!keyRef || !keyOf(saveAt) || keyRef[1] !== keyOf(saveAt)[1])) out.push('取り出しと保存の鍵が同じ step の出力でない');
+      const keyStep = keyRef && steps.find((st) => new RegExp(`\\bid: ${keyRef[1]}\\b`).test(st));
+      if (!keyStep) out.push('キャッシュの鍵を作る step が無い');
+      else if (!/\$\{?ImageOS\b/.test(keyStep) || !/\$\{?ImageVersion\b/.test(keyStep)) out.push('キャッシュの鍵がランナーのイメージの名前と版を含まない');
+      const st = steps[toolAt];
+      if (!st.includes('"$HOME/.cache/conversion-tools-debs"')) out.push('導入の step がキャッシュの置き場を使わない');
+      if (!/sudo dpkg -i "\$debs"\/\*\.deb/.test(st)) out.push('キャッシュの .deb を dpkg -i で入れていない');
+      if (!/Acquire::Retries=\d+/.test(st) || !/Acquire::https?::Timeout=\d+/.test(st)) out.push('apt の取得に再試行と時間切れが無い');
+      if (/Dir::Cache::Archives/.test(st)) out.push('apt の取得の置き場をホームの下へ向けている（_apt が書けず unsandboxed で取得する）');
+      if (!/sudo apt-get clean/.test(st) || !/cp \/var\/cache\/apt\/archives\/\*\.deb "\$debs"\//.test(st)) out.push('この回に取得した .deb だけをキャッシュの置き場へ写していない');
+      // 取得した .deb が 0 個（イメージに入っていた）なら写さない（cp の glob が展開されずに落ちる）。保存もしない。
+      if (!/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/.test(st)) out.push('取得した .deb が 0 個のときに写すのを飛ばしていない（cp が落ちる）');
+      const toolId = /\bid: ([A-Za-z0-9_-]+)/.exec(st);
+      if (!toolId) out.push('導入の step に id が無い（保存の条件に使う）');
+      if (!/echo "debs=true" >> "\$GITHUB_OUTPUT"/.test(st)) out.push('導入の step が「.deb を置いた」を出力しない');
+      if (saveAt >= 0 && toolId && !new RegExp(`steps\\.${toolId[1]}\\.outputs\\.debs == 'true'`).test(steps[saveAt])) out.push('保存の step が「.deb を置いた回だけ」の条件を持たない（空の置き場を保存する）');
+      const stepTimeout = /^\s+timeout-minutes:\s*(\d+)/m.exec(st);
+      if (!stepTimeout || Number(stepTimeout[1]) > 15) out.push('導入の step に 15 分以下の上限が無い');
+      const jobTimeout = /\n {4}timeout-minutes:\s*(\d+)/.exec(text);
+      if (!jobTimeout || Number(jobTimeout[1]) !== 30) out.push('ジョブの上限が 30 分でない（上げるだけの直しをしない。根拠は仕様書）');
+      return out;
+    };
+
+    ok('#2439: 回収実行は変換ツールの .deb をイメージの版の鍵で取り出し・導入の直後に保存し、無いときは sandbox の apt で時間切れと再試行を付けて取り、導入に上限を付ける', () => {
+      assert.deepStrictEqual(issues2439(wf2439), []);
+    });
+
+    ok('#2439 陰性対照: post で保存する形・保存を試験の後へ回す・保存の条件を外す・鍵から版を外す・時間切れを外す・置き場をホームへ向ける・上限を外す・0 個の .deb で写す・空の置き場を保存する・ジョブの上限を上げると赤', () => {
+      const head = wf2439.split(/\n(?= {6}- )/)[0];
+      const steps = stepsOf2439(wf2439);
+      const join = (arr) => [head, ...arr].join('\n');
+      const at = (re) => steps.findIndex((st) => re.test(st));
+      const restoreAt = at(/actions\/cache\/restore@/);
+      const saveAt = at(/actions\/cache\/save@/);
+      const toolAt = at(/apt-get install[^\n]*\bpandoc\b/);
+      const testAt = at(/dotnet test /);
+      assert.ok(restoreAt >= 0 && saveAt >= 0 && toolAt >= 0 && testAt >= 0, '陽性の前提（取り出し・保存・導入・試験の step）が無い');
+      const has = (text, re) => issues2439(text).some((e) => re.test(e));
+      const swap = (i, f) => steps.map((st, j) => (j === i ? f(st) : st));
+      assert.ok(has(join(swap(restoreAt, (st) => st.replace('actions/cache/restore@', 'actions/cache@')).filter((_, j) => j !== saveAt)), /post で保存/));
+      const moved = steps.filter((_, j) => j !== saveAt);
+      moved.splice(moved.findIndex((st) => /dotnet test /.test(st)) + 1, 0, steps[saveAt]);
+      assert.ok(has(join(moved), /導入の直後に無い/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/^\s+if:.*\n/m, ''))), /キャッシュに無かった回だけ/));
+      assert.ok(has(join(steps.map((st) => st.replace(/\$\{?ImageVersion[:}A-Za-z-]*\}?/g, 'x'))), /イメージの名前と版/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/ -o Acquire::https?::Timeout=\d+/g, ''))), /再試行と時間切れ/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace('pandoc poppler-utils\n', 'pandoc poppler-utils -o Dir::Cache::Archives="$debs"\n'))), /ホームの下へ向けて/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/^\s+timeout-minutes:.*\n/m, ''))), /15 分以下の上限/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/, 'if true; then'))), /0 個のとき/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/ && steps\.[A-Za-z0-9_-]+\.outputs\.debs == 'true'/, ''))), /\.deb を置いた回だけ/));
+      assert.ok(has(join(steps).replace(/(\n {4}timeout-minutes:\s*)30/, '$145'), /ジョブの上限が 30 分でない/));
+    });
+  }
+
   // --- NFR / #2039 / IADR-0661: 視覚回帰の Docker イメージの版 ------------------------------------------------------
   {
     const REPO_2039 = path.join(__dirname, '..');
@@ -19892,6 +19977,8 @@ printf '%s\n' "$*" >> "$S/argv"
 if [ "$1" = "-n" ]; then ns="$2"; shift 2; fi
 case "$1 $2" in
   "get secret")
+    # IADR-0676: \`-o name\` は在るか（そのSecret のキーのファイルが 1 つでも在れば在る）
+    if [ "$5" = "name" ]; then ls "$S/secret/@{ns}__$3__"* >/dev/null 2>&1; exit; fi
     f="$S/secret/@{ns}__$3__$(printf '%s' "$5" | sed -E 's/^jsonpath=\{\.data\.(.*)\}$/\1/')"
     [ -f "$f" ] || exit 0; base64 -w0 < "$f"; exit 0 ;;
   "get externalsecret") [ -f "$S/es/@{ns}__$3" ]; exit ;;
@@ -19906,6 +19993,10 @@ case "$1 $2" in
     pf=""; prev=""; for a in "$@"; do [ "$prev" = "--patch-file" ] && pf="$a"; prev="$a"; done
     node -e 'const fs=require("fs");const [,f,dir,pre]=process.argv;const d=JSON.parse(fs.readFileSync(f,"utf8")).data;for(const[k,v]of Object.entries(d))fs.writeFileSync(dir+"/"+pre+"__"+k,Buffer.from(v,"base64"));' "$pf" "$S/secret" "@{ns}__$3"
     echo "SECRET PATCH @{ns}/$3" >> "$S/calls"; exit 0 ;;
+  "create secret")
+    # IADR-0676: create secret generic <名前> --from-file=<キー>=<ファイル>
+    for a in "$@"; do case "$a" in --from-file=*) kv="@{a#--from-file=}"; cp "@{kv#*=}" "$S/secret/@{ns}__$4__@{kv%%=*}";; esac; done
+    echo "SECRET CREATE @{ns}/$4" >> "$S/calls"; exit 0 ;;
   "annotate externalsecret")
     echo "ESO SYNC @{ns}/$3" >> "$S/calls"
     [ "@{STUB_NO_SYNC:-}" = "1" ] && exit 0
@@ -19935,8 +20026,12 @@ u=""; while [ "$#" -gt 0 ]; do [ "$1" = "-U" ] && u="$2"; shift; done
 `.replace(/@\{/g, '$' + '{');
     const VAULT2399 = String.raw`#!/usr/bin/env bash
 S="$STUB_STATE"; T="$S/tokens"
+printf '%s\n' "$*" >> "$S/pod-argv"
 has() { grep -qxF "$1" "$T" 2>/dev/null; }
 case "$1 $2" in
+  # IADR-0676 (#2407): 作成・失効は値を stdin で受ける（id=- / token=-）
+  "write auth/token/create-orphan") has "$VAULT_TOKEN" || exit 1; case " $* " in *" id=- "*) ;; *) exit 1 ;; esac; v="$(cat)"; [ -n "$v" ] || exit 1; printf '%s\n' "$v" >> "$T"; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
+  "write auth/token/revoke") has "$VAULT_TOKEN" || exit 1; case " $* " in *" token=- "*) ;; *) exit 1 ;; esac; v="$(cat)"; grep -vxF "$v" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
   "token lookup") has "$VAULT_TOKEN" ;;
   "token create") has "$VAULT_TOKEN" || exit 1; for a in "$@"; do case "$a" in -id=*) printf '%s\n' "@{a#-id=}" >> "$T";; esac; done; echo "VAULT TOKEN CREATE" >> "$S/calls" ;;
   "token revoke") has "$VAULT_TOKEN" || exit 1; grep -vxF "$3" "$T" > "$T.n"; mv "$T.n" "$T"; echo "VAULT TOKEN REVOKE" >> "$S/calls" ;;
@@ -19956,7 +20051,7 @@ esac
         fs2399.writeFileSync(path2399.join(podBin, 'psql'), PSQL2399, { mode: 0o755 });
         fs2399.writeFileSync(path2399.join(podBin, 'vault'), VAULT2399, { mode: 0o755 });
         fs2399.writeFileSync(path2399.join(podBin, 'hostname'), '#!/bin/sh\necho 10.42.0.9\n', { mode: 0o755 });
-        for (const f of ['argv', 'calls']) fs2399.writeFileSync(path2399.join(st, f), '');
+        for (const f of ['argv', 'calls', 'pod-argv']) fs2399.writeFileSync(path2399.join(st, f), '');
         const put = (rel, v) => fs2399.writeFileSync(path2399.join(st, rel), v);
         // 既定の世界: 全部が開発用の値のまま（Secret・DB 利用者・トークン）。deploy postgres / vault が在り、ESO は無い。
         for (const [k, v] of Object.entries(DEV2399)) put(`secret/${k}`, v);
@@ -19975,7 +20070,7 @@ esac
         const walk = (d) => { for (const e of fs2399.readdirSync(d, { withFileTypes: true })) { const f = path2399.join(d, e.name); if (e.isDirectory()) walk(f); else snap[path2399.relative(st, f).split(path2399.sep).join('/')] = fs2399.readFileSync(f, 'utf8'); } };
         walk(st);
         const read = (rel) => snap[rel] || '';
-        return { ...r, read, argv: read('argv'), calls: read('calls').split('\n').filter(Boolean) };
+        return { ...r, read, argv: read('argv'), podArgv: read('pod-argv'), calls: read('calls').split('\n').filter(Boolean) };
       } finally {
         fs2399.rmSync(dir, { recursive: true, force: true });
       }
@@ -20066,6 +20161,9 @@ esac
       assert.ok(at('VAULT TOKEN CREATE') < at('SECRET PATCH platform-infra/vault-dev-token') && at('SECRET PATCH platform-infra/vault-dev-token') < at('ROLLOUT restart platform-infra/deploy/vault')
         && at('ROLLOUT restart platform-infra/deploy/vault') < at('VAULT TOKEN REVOKE'), `順序が違う:\n${r.calls.join('\n')}`);
       assert.ok(!r.argv.includes(nv) && !`${r.stdout}${r.stderr}`.includes(nv), '新しいトークンが引数・出力に出た');
+      // IADR-0676 (#2407): Pod の中の vault の引数にも、新旧どちらのトークンも載らない（作成・失効は stdin）
+      assert.ok(r.podArgv.length > 0, 'Pod の中の vault が呼ばれていない');
+      assert.ok(!r.podArgv.includes(nv) && !r.podArgv.includes('devroot'), `トークンが Pod の中の vault の引数に出た:\n${r.podArgv.replace(/[0-9a-f]{48}/g, '<v>')}`);
     });
 
     ok('IADR-0672: 作り直し（秘匿管理のトークン）は、ExternalSecret が同じ名前で在っても Secret へ直接書く（Vault の KV へは書かない）', () => {
@@ -20149,6 +20247,147 @@ esac
       assert.ok(!broken.calls.some((c) => c.startsWith('ROLLOUT')), 'ストア側が失敗したのに消費側を作り直した');
     });
 
+    // --- NFR-18, IADR-0676 (#2407): 作り直したトークンが、秘匿管理の再起動と起動器の再実行を跨いで保たれる ---
+    // 作り直し（上のスタブの世界）の後の状態を、永続化のラッパー（vault-entrypoint.sh）と起動器の判定（infra_cred_staged_resolve）へ渡す。
+    const WRAPPER2407 = path2399.join(__dirname, '..', 'deploy', 'local', 'vault-persistence', 'vault-entrypoint.sh');
+    const LIB2407 = path2399.join(__dirname, 'lib');
+    // ラッパーが呼ぶ vault のスタブ（トークンの集合は作り直しのスタブと同じ形のファイル）。値は stdin で受ける。
+    const WRAPPER_VAULT2407 = String.raw`#!/usr/bin/env bash
+S="$STUB_STATE"; T="$S/tokens"
+printf '%s\n' "$*" >> "$S/pod-argv"
+has() { grep -qxF "$1" "$T" 2>/dev/null; }
+case "$1 $2" in
+  "status ") exit 0 ;;
+  "operator init") exit 0 ;;
+  "token lookup") has "$VAULT_TOKEN" ;;
+  "write auth/token/create-orphan") has "$VAULT_TOKEN" || exit 1; v="$(cat)"; printf '%s\n' "$v" >> "$T"; echo "WRAPPER CREATE" >> "$S/calls" ;;
+  "audit list") echo '{"stdout/":{}}' ;;
+  "secrets list") echo '{"secret/":{}}' ;;
+  *) exit 0 ;;
+esac
+`;
+    // restart2407 <状態> <Secret の値> <段 2> → ラッパーの起動（bootstrap_after_start）を、作り直しの後の状態で走らせる
+    const restart2407 = (state, secretToken, { initOnly = '', marker = true } = {}) => {
+      const dir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0676-'));
+      try {
+        const bin = path2399.join(dir, 'bin'); const st = path2399.join(dir, 'state'); const data = path2399.join(dir, 'data');
+        for (const d of [bin, st, data]) fs2399.mkdirSync(d, { recursive: true });
+        fs2399.writeFileSync(path2399.join(bin, 'vault'), WRAPPER_VAULT2407, { mode: 0o755 });
+        // 初期の root トークン（init の出力）は在る。作り直しの世界のトークンの集合へ足す。
+        const initRoot = ['stub', 'init', 'root', '2407'].join('-');
+        fs2399.writeFileSync(path2399.join(st, 'tokens'), `${state.read('tokens')}${initRoot}\n`);
+        for (const f of ['calls', 'pod-argv']) fs2399.writeFileSync(path2399.join(st, f), '');
+        fs2399.writeFileSync(path2399.join(data, '.local-dev-init'), `Unseal Key 1: stub-unseal\n\nInitial Root Token: ${initRoot}\n`, { mode: 0o600 });
+        if (marker) fs2399.writeFileSync(path2399.join(data, '.local-dev-root-token-created'), '');
+        const r = spawn2399('bash', ['-c', 'VAULT_ENTRYPOINT_LIB=1 . "$1"; bootstrap_after_start', '_', WRAPPER2407], {
+          encoding: 'utf8', timeout: 30000,
+          env: { ...process.env, PATH: `${bin}${path2399.delimiter}${process.env.PATH}`, STUB_STATE: st, VAULT_DATA_DIR: data,
+            VAULT_INIT_FILE: path2399.join(data, '.local-dev-init'), VAULT_DEV_ROOT_TOKEN_ID: secretToken, VAULT_ROOT_TOKEN_INIT_ONLY: initOnly,
+            VAULT_WAIT_TRIES: '2', VAULT_WAIT_INTERVAL: '0', VAULT_AUDIT_STDOUT_TRIES: '1', VAULT_AUDIT_STDOUT_INTERVAL: '0' },
+        });
+        const tokens = fs2399.readFileSync(path2399.join(st, 'tokens'), 'utf8').split('\n').filter(Boolean).filter((t) => t !== initRoot);
+        return { ...r, tokens, calls: fs2399.readFileSync(path2399.join(st, 'calls'), 'utf8').split('\n').filter(Boolean),
+          podArgv: fs2399.readFileSync(path2399.join(st, 'pod-argv'), 'utf8') };
+      } finally {
+        fs2399.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('IADR-0676: 作り直し（秘匿管理のトークン）は、Secret の値に想定外の字（単一引用符など）があれば、何も変えずに止まり値を出さない', () => {
+      const odd = ["probe'0676", 'probe 0676', 'probe$0676'];
+      for (const v of odd) {
+        const r = run2399(ROTATE2399, ['--live', 'vault-root-token'], { setup: ({ put }) => { put('secret/platform-infra__vault-dev-token__token', v); put('vault-root', v); put('tokens', `${v}\n`); } });
+        assert.strictEqual(r.status, 1, `${JSON.stringify(v)}: 止まらない\n${r.stderr}`);
+        assert.ok(/想定外の字がある/.test(r.stderr) && /何も変えていない/.test(r.stderr), r.stderr);
+        assert.deepStrictEqual(r.calls, [], `${JSON.stringify(v)}: 何かを変えた: ${r.calls.join(', ')}`);
+        assert.ok(!`${r.stdout}${r.stderr}`.includes(v), '値が出力に出た');
+      }
+    });
+
+    ok('IADR-0676: 作り直したトークンは、秘匿管理の再起動（段 1・段 2）で作り直されず、起動器の再実行でも Secret が新しい値のまま保たれる', () => {
+      const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
+      const nv = rot.read('secret/platform-infra__vault-dev-token__token');
+      assert.ok(/^[0-9a-f]{48}$/.test(nv), 'Secret が新しい値になっていない');
+      for (const initOnly of ['', '1']) {
+        const re = restart2407(rot, nv, { initOnly });
+        assert.strictEqual(re.status, 0, `段 ${initOnly ? 2 : 1} の再起動が失敗した:\n${re.stdout}${re.stderr}`);
+        assert.deepStrictEqual(re.calls, [], `再起動でトークンを作った（段 ${initOnly ? 2 : 1}）`);
+        assert.deepStrictEqual(re.tokens, [nv], '再起動の後のトークンが作り直した値だけでない（古い値が戻った）');
+        assert.ok(!`${re.stdout}${re.stderr}`.includes(nv), '再起動がトークンを出力した');
+      }
+      // 起動器の再実行: 既存の Secret の値を引き継ぐ（IADR-0672 決定 2）。dev の context でも開発用の値へ戻らない。
+      const sdir = fs2399.mkdtempSync(path2399.join(os2399.tmpdir(), 'iadr0676-s-'));
+      try {
+        fs2399.writeFileSync(path2399.join(sdir, 'platform-infra__vault-dev-token__token'), nv);
+        const r = spawn2399('bash', ['-c', [
+          '. "$LIB/dev-client-secret-guard.sh"; . "$LIB/infra-credentials.sh"',
+          'reader() { local ns=platform-infra; [ "$1" = msp ] && ns=microservices-platform; cat "$SDIR/${ns}__$2__$3" 2>/dev/null || true; }',
+          'unset VAULT_DEV_ROOT_TOKEN PG_PASSWORD APP_DB_PASSWORD WIKIJS_DB_PASSWORD OBJECT_STORAGE_SECRET_KEY',
+          'VAULT=1 infra_cred_staged_resolve t reader k3d-msp-local 2>/dev/null || exit 9',
+          '[ "$VAULT_DEV_ROOT_TOKEN" = "$EXPECT" ] && echo kept || echo changed',
+        ].join('\n')], { encoding: 'utf8', env: { ...process.env, LIB: LIB2407, SDIR: sdir, EXPECT: nv } });
+        assert.strictEqual(r.stdout.trim(), 'kept', `起動器の再実行で Secret の値が変わる:\n${r.stderr}`);
+      } finally {
+        fs2399.rmSync(sdir, { recursive: true, force: true });
+      }
+    });
+
+    ok('IADR-0676: 作り直しの後に Secret が開発用の値へ戻っても、段 2 の再起動は失効させたトークンを作り直さない（段 1 は警告して作る）', () => {
+      const rot = run2399(ROTATE2399, ['--live', 'vault-root-token']);
+      assert.strictEqual(rot.status, 0, `${rot.stdout}\n${rot.stderr}`);
+      const nv = rot.read('secret/platform-infra__vault-dev-token__token');
+      const stage2 = restart2407(rot, 'devroot', { initOnly: '1' });
+      assert.notStrictEqual(stage2.status, 0, '段 2 なのに起動した');
+      assert.deepStrictEqual(stage2.tokens, [nv], '段 2 で失効させたトークンが作り直された');
+      assert.ok(/refusing to create it again/.test(stage2.stdout), stage2.stdout);
+      const stage1 = restart2407(rot, 'devroot');
+      assert.strictEqual(stage1.status, 0, `${stage1.stdout}${stage1.stderr}`);
+      assert.ok(/WARN: the fixed root token was already created on this store/.test(stage1.stdout), stage1.stdout);
+      assert.ok(!stage1.podArgv.includes('devroot'), 'ラッパーがトークンを vault の引数に載せた');
+      // 印の無いストア（#2407 より前・初回）は従前どおり作る（段 2 でも）
+      const fresh = restart2407(rot, 'devroot', { initOnly: '1', marker: false });
+      assert.strictEqual(fresh.status, 0, `${fresh.stdout}${fresh.stderr}`);
+      assert.ok(fresh.calls.includes('WRAPPER CREATE'));
+    });
+
+    ok('IADR-0676: 検査は、Grafana が在るとき管理者の Secret が無いか開発用の値なら名指し、乱数の値なら名指さない。Grafana が無ければ見ない', () => {
+      const clean = ({ put }) => {
+        for (const k of Object.keys(DEV2399)) put(`secret/${k}`, `probe-0676-${k.length}`);
+        for (const r of ['postgres', 'kp', 'ai']) put(`pg/${r}`, `probe-0676-${r}`);
+        put('tokens', 'probe-0676-root\n'); put('vault-root', 'probe-0676-root');
+      };
+      const none = run2399(CHECK2399, ['--live'], { setup: clean });
+      assert.strictEqual(none.status, 0, `Grafana が無いのに名指した:\n${none.stdout}`);
+      const absent = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); } });
+      assert.strictEqual(absent.status, 1, absent.stdout);
+      assert.ok(/!! GRAFANA_ADMIN_PASSWORD（Secret platform-infra\/grafana-admin\/password）: 無い/.test(absent.stdout), absent.stdout);
+      const dev = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); h.put('secret/platform-infra__grafana-admin__password', 'admin'); } });
+      assert.strictEqual(dev.status, 1, dev.stdout);
+      assert.ok(/!! GRAFANA_ADMIN_PASSWORD.*開発用の値のまま/.test(dev.stdout), dev.stdout);
+      const good = run2399(CHECK2399, ['--live'], { setup: (h) => { clean(h); h.put('deploy/platform-infra__grafana', ''); h.put('secret/platform-infra__grafana-admin__password', 'probe-0676-gf'); } });
+      assert.strictEqual(good.status, 0, good.stdout);
+      assert.ok(!`${good.stdout}${good.stderr}`.includes('probe-0676-gf'), '値が出力に出た');
+    });
+
+    ok('IADR-0676: 作り直し（grafana-admin）は、Secret を乱数で書き（無ければ作り）、Grafana を作り直す。値は引数・出力に出ない', () => {
+      const withGf = ({ put }) => put('deploy/platform-infra__grafana', '');
+      const created = run2399(ROTATE2399, ['--live', 'grafana-admin'], { setup: withGf });
+      assert.strictEqual(created.status, 0, `${created.stdout}\n${created.stderr}`);
+      const v = created.read('secret/platform-infra__grafana-admin__password');
+      assert.ok(/^[0-9a-f]{48}$/.test(v), 'Secret が乱数の値で作られていない');
+      assert.ok(created.calls.indexOf('SECRET CREATE platform-infra/grafana-admin') >= 0
+        && created.calls.indexOf('SECRET CREATE platform-infra/grafana-admin') < created.calls.indexOf('ROLLOUT restart platform-infra/deploy/grafana'), created.calls.join('\n'));
+      assert.ok(!created.argv.includes(v) && !`${created.stdout}${created.stderr}`.includes(v), '値が引数・出力に出た');
+      const patched = run2399(ROTATE2399, ['--live', 'grafana-admin'], { setup: (h) => { withGf(h); h.put('secret/platform-infra__grafana-admin__password', 'probe-0676-old'); } });
+      assert.strictEqual(patched.status, 0, patched.stderr);
+      assert.ok(patched.calls.includes('SECRET PATCH platform-infra/grafana-admin'), patched.calls.join('\n'));
+      assert.notStrictEqual(patched.read('secret/platform-infra__grafana-admin__password'), 'probe-0676-old');
+      const noGf = run2399(ROTATE2399, ['--live', 'grafana-admin']);
+      assert.notStrictEqual(noGf.status, 0, 'Grafana が無いのに成功した');
+      assert.ok(/deploy\/grafana が無い/.test(noGf.stderr) && /何も変えていない/.test(noGf.stderr), noGf.stderr);
+    });
+
     ok('IADR-0672: 検査・作り直しは scripts/README.md の一覧に載る', () => {
       const readme = fs2399.readFileSync(path2399.join(__dirname, 'README.md'), 'utf8');
       for (const n of ['check-infra-credentials.sh', 'rotate-infra-credentials.sh']) assert.ok(readme.includes(`\`${n}\``), `${n} が README に無い`);
@@ -20192,6 +20431,8 @@ esac
       const docs = JSON.parse(JSON.stringify(rawDocs2401('deploy/cloud/infra')));
       const dep = (n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
       dep('keycloak').spec.template.spec.containers[0].args = ['start-dev', '--import-realm'];
+      delete dep('keycloak').spec.template.spec.containers[0].livenessProbe;
+      delete dep('keycloak').spec.template.spec.containers[0].startupProbe;
       docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak').spec.type = 'LoadBalancer';
       dep('rabbitmq').spec.template.spec.containers[0].ports.push({ containerPort: 15672, hostPort: 15672 });
       dep('postgres').spec.template.spec.containers[0].env.push({ name: 'POSTGRES_PASSWORD', value: 'x' });
@@ -20199,7 +20440,7 @@ esac
       docs.push({ kind: 'Deployment', metadata: { name: 'valkey', labels: { app: 'valkey' } }, spec: { template: { spec: { containers: [] } } } });
       docs.push({ kind: 'ConfigMap', metadata: { name: 'x' }, data: { 'a.sql': "CREATE USER u WITH PASSWORD 'p';", b: cloud.DEV_LITERALS[0] } });
       const p = cloud.infraProblems(docs, rawDocs2401('deploy/local/infra').filter(Boolean));
-      for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
+      for (const want of [/start-dev/, /LoadBalancer/, /hostPort/, /livenessProbe が \/health\/live/, /startupProbe が \/health\/started/, /POSTGRES_PASSWORD が字面/, /digest が deploy\/local\/infra と違う/, /持ち込まない資源（valkey）/, /字面のパスワード/, /既定の資格情報の字面/]) {
         assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
       }
     });
@@ -20461,6 +20702,88 @@ echo "unhandled: $*" >&2; exit 9
     ok('IADR-0674: ローカルの PoC の宣言（deploy/local）は deploy/cloud を参照しない（クラウドの変更が描画へ混ざらない）', () => {
       const hits = spawn2401('git', ['grep', '-l', 'deploy/cloud', '--', 'deploy/local', 'scripts/k8s-local-up.sh'], { cwd: ROOT2401, encoding: 'utf8' });
       assert.strictEqual(hits.stdout.trim(), '', `deploy/local が deploy/cloud を参照している:\n${hits.stdout}`);
+    });
+  }
+
+  // --- NFR (#2436): pipefail の下の「… | grep -q」を戻さない（#2200・#2202 に続く同型の 3 回目）。
+  // grep -q は一致で読むのをやめて終わり、まだ書いている書き手（bash の printf は 1 行ごとに write する）が SIGPIPE で落ちる。
+  // pipefail はそれをパイプラインの失敗にするので、判定が反転する。#2200 は「自分で pipefail を立てるファイル」を見たが、
+  // source した先から受け継ぐ形（backup.test.sh が backup.sh を source する）を見落とした。ここでは受け継ぎも見る。
+  {
+    const fs2436 = require('fs');
+    const path2436 = require('path');
+    const { spawnSync: spawn2436 } = require('child_process');
+    const ROOT2436 = path2436.join(__dirname, '..');
+    const PIPEFAIL_RE = /^\s*set\s+(?:-[A-Za-z]*o\s+pipefail|-o\s+pipefail|.*\s-o\s+pipefail)\b/;
+    const SOURCE_RE = /^\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:\.|source)\s+("?)([^"\s;]+)\1/;
+    const GREP_Q_RE = /\|\s*grep\s+(?:-[A-Za-z]*q[A-Za-z]*|--quiet)\b/;
+    const isComment = (l) => /^\s*#/.test(l);
+    // Pod の中の sh -c へ渡す文字列（vexec '…'）は、その sh が pipefail を立てないので対象外。
+    const insidePodShell = (l) => /\bvexec\s+'[^']*\|\s*grep/.test(l);
+    // source のパスを、そのファイルの置き場所から読む（$HERE・$DIR・$SCRIPT_DIR・$(dirname …) の形）。
+    const resolveSource = (file, raw) => {
+      const dir = path2436.dirname(file);
+      const rel = raw.replace(/^\$\{?(?:HERE|DIR|SCRIPT_DIR|SCRIPTS_DIR|ROOT_DIR)\}?\//, '').replace(/^"\$\(dirname\s+"?\$\{?(?:0|BASH_SOURCE\[0\])\}?"?\)"\//, '');
+      if (/\$/.test(rel)) return null;
+      return path2436.normalize(path2436.join(dir, rel));
+    };
+    /**
+     * files: [{ path, text }]（path はリポジトリの根からの相対）。pipefail の下の「| grep -q」を [path:行] で返す。
+     */
+    const findGrepQUnderPipefail = (files) => {
+      const byPath = new Map(files.map((f) => [path2436.normalize(f.path), f.text]));
+      const isSh = (text) => !/^#!\s*\/bin\/sh\b/.test(text);
+      const setsPipefail = (text) => text.split('\n').some((l) => !isComment(l) && PIPEFAIL_RE.test(l));
+      // pipefail を立てるファイルから source される lib は、ファイル全体を pipefail の下とみなす。
+      const libUnderPipefail = new Set();
+      for (const [p, text] of byPath) {
+        if (!setsPipefail(text)) continue;
+        for (const l of text.split('\n')) {
+          const m = !isComment(l) && SOURCE_RE.exec(l);
+          const target = m && resolveSource(p, m[2]);
+          if (target && byPath.has(target)) libUnderPipefail.add(target);
+        }
+      }
+      const out = [];
+      for (const [p, text] of byPath) {
+        if (!isSh(text)) continue;
+        let under = libUnderPipefail.has(p);
+        text.split('\n').forEach((l, i) => {
+          if (isComment(l)) return;
+          if (PIPEFAIL_RE.test(l)) under = true;
+          const m = SOURCE_RE.exec(l);
+          if (m) {
+            const target = resolveSource(p, m[2]);
+            if (target && byPath.has(target) && setsPipefail(byPath.get(target))) under = true;
+          }
+          if (under && GREP_Q_RE.test(l) && !insidePodShell(l)) out.push(`${p}:${i + 1}`);
+        });
+      }
+      return out.sort();
+    };
+    const trackedSh = () => {
+      const r = spawn2436('git', ['ls-files', '--', 'deploy', 'scripts'], { cwd: ROOT2436, encoding: 'utf8' });
+      return r.stdout.split('\n').filter((p) => /\.(sh|bash)$/.test(p))
+        .map((p) => ({ path: p, text: fs2436.readFileSync(path2436.join(ROOT2436, p), 'utf8') }));
+    };
+
+    ok('#2436: 追跡下の deploy と scripts の bash の .sh に、pipefail の下（自分で立てる・source で受け継ぐ）の「… | grep -q」が無い', () => {
+      assert.deepStrictEqual(findGrepQUnderPipefail(trackedSh()), []);
+    });
+
+    ok('#2436 陰性対照: 自分で立てる形・source で受け継ぐ形・lib の形を見つけ、#!/bin/sh・vexec の文字列・pipefail の無いファイルを見つけない', () => {
+      const files = [
+        { path: 'd/lib.sh', text: '#!/usr/bin/env bash\nset -u\nset -o pipefail\nf() { :; }\n' },
+        { path: 'd/self.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "$x" | grep -qx y\n' },
+        { path: 'd/inherit.test.sh', text: '#!/usr/bin/env bash\nset -u\nprintf "%s\\n" "$x" | grep -q a\nBACKUP_LIB=1 . "$HERE/lib.sh"\nhas() { printf "%s\\n" "$D" | grep -qx -- "$1"; }\n' },
+        { path: 'd/caller.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\n. "$HERE/sourced-lib.sh"\n' },
+        { path: 'd/sourced-lib.sh', text: '# lib\nis_x() { printf "%s" "$1" | grep -Fxq -- z; }\n' },
+        { path: 'd/posix.sh', text: '#!/bin/sh\nset -e\nvault list | grep -q a\n' },
+        { path: 'd/pod.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\nvexec \'vault auth list | grep -q "k/" || vault auth enable k\'\n' },
+        { path: 'd/plain.sh', text: '#!/usr/bin/env bash\nset -u\nprintf "%s" "$x" | grep -q a\n' },
+        { path: 'd/herestring.sh', text: '#!/usr/bin/env bash\nset -euo pipefail\ngrep -qx -- y <<< "$x"\n# printf x | grep -q y\n' },
+      ];
+      assert.deepStrictEqual(findGrepQUnderPipefail(files), ['d/inherit.test.sh:5', 'd/self.sh:3', 'd/sourced-lib.sh:2']);
     });
   }
 };
