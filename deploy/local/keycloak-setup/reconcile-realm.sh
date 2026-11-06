@@ -62,6 +62,10 @@ esac
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$HERE/../../../scripts/lib/dev-client-secret-guard.sh"
 KC_CONTEXT="$(dev_client_secret_current_context)"
+# NFR-18, IADR-0676 (#2407): クラスタ側の dev の印（段 2 の DEV_CLUSTER_MARKER_REQUIRED=1 が使う）。起動器の値を引き継ぐ。
+if [ -z "${DEV_CLUSTER_MARKER:-}" ]; then
+  dev_cluster_marker_probe "reconcile-realm.sh" "$KC_CONTEXT"
+fi
 if dev_client_secret_create_allowed "$KC_CONTEXT" "${ALLOW_DEV_CLIENT_SECRETS:-}"; then
   DEV_SECRETS="allow"
   if ! dev_client_secret_context_is_dev "$KC_CONTEXT"; then

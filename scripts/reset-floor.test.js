@@ -186,6 +186,8 @@ ok('7. 上流は Keycloak の Service と同じ名前・同じポートである
 // 8 の器: istio-edge-up.sh を記録スタブ（kubectl / helm）の下で走らせ、発行されたコマンド列を返す。
 // 🔴 クラスタへは一切触れない（PATH 上の kubectl / helm を差し替える。待受も立てない）。
 // `kubectl -n kube-system get svc traefik` だけを非 0 にして「明け渡し済み」を即座に作り、待ちを発生させない。
+const PINNED_DIR_RF = path.join(os.tmpdir(), `edge-up-pinned-${process.pid}`);
+process.on('exit', () => { try { fs.rmSync(PINNED_DIR_RF, { recursive: true, force: true }); } catch { /* 片付けだけ */ } });
 const runEdgeUp = (extraEnv) => {
   const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'reset-floor-edge-up-'));
   const binDir = path.join(workdir, 'bin');
@@ -199,6 +201,15 @@ const runEdgeUp = (extraEnv) => {
   };
   stub('kubectl', ['case "$*" in *"get svc traefik"*) exit 1;; esac']);
   stub('helm', []);
+  // NFR-18, IADR-0679 (#2410): chart の取得（curl）と sha256 の確かめをスタブにする（ネットワークへ出ない）。
+  //   curl は「stub-artifact <URL>」を書き、sha256sum はその URL の固定の sha256（lib/pinned-artifacts.sh）を返す。
+  fs.writeFileSync(path.join(binDir, 'curl'), ['#!/usr/bin/env bash', 'echo "curl $*" >> "$STUB_LOG"', 'out=""; url=""; prev=""',
+    'for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; case "$a" in http*) url="$a";; esac; prev="$a"; done',
+    '[ -n "$out" ] || exit 2', 'printf "stub-artifact %s\\n" "$url" > "$out"', ''].join('\n'), { mode: 0o755 });
+  fs.writeFileSync(path.join(binDir, 'sha256sum'), ['#!/usr/bin/env bash', 'f="${1:-}"',
+    'url="$(sed -n "s/^stub-artifact //p" "$f")"',
+    `sha="$(grep -F -- "$url" ${JSON.stringify(path.join(REPO_ROOT, 'scripts', 'lib', 'pinned-artifacts.sh'))} | grep -oE "[0-9a-f]{64}" | head -1)"`,
+    'printf "%s  %s\\n" "${sha:-unknown}" "$f"', ''].join('\n'), { mode: 0o755 });
   const base = { ...process.env };
   delete base.RESET_FLOOR; // 実行環境に漏れていても「未設定」を再現する
   delete base.ISTIO_MTLS_MODE;
@@ -206,7 +217,8 @@ const runEdgeUp = (extraEnv) => {
   const r = spawnSync('bash', [path.join('scripts', 'istio-edge-up.sh')], {
     cwd: REPO_ROOT,
     // NFR, #1550: istio-edge-up.sh は明示の指定が無ければ何もせずに終わる。スタブの下なので LIVE=1 を与える。
-    env: { ...base, PATH: binDir + path.delimiter + origPath, STUB_LOG: logFile, LIVE: '1', ...extraEnv },
+    // IADR-0679: 取得物の作業ディレクトリを固定する（発行コマンドを実行どうしで比べる）。
+    env: { ...base, PATH: binDir + path.delimiter + origPath, STUB_LOG: logFile, LIVE: '1', PINNED_ARTIFACTS_DIR: PINNED_DIR_RF, ...extraEnv },
     encoding: 'utf8',
   });
   const lines = fs.readFileSync(logFile, 'utf8').split('\n').filter((l) => l.length > 0);

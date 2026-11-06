@@ -123,6 +123,23 @@ Loki・Tempo は製品単体で認証を掛けられず、運用の口（`/flush
 - Grafana の Explore（`{job="vault-audit"}` を含む）はそのまま使える（datasource が読み取りのトークンを送る）。
 - compose（経路 A）には前段も到達の制限も無い（0 段）。datasource のヘッダの宣言は compose にも同じ形で置いてあり、値は空になる。
 
+## otel-collector の到達の制限（NFR-18・IADR-0682・opt-in の段 1）
+
+collector（`app: otel-collector`）へ届いてよい相手と、collector が出てよい先を NetworkPolicy で絞る。**既定の経路 B には入れない**（opt-in）。
+
+```sh
+kubectl apply -k deploy/local/otel-collector-netpol    # 当てる
+kubectl delete -k deploy/local/otel-collector-netpol   # 戻す
+```
+
+| 向き | 許す相手 |
+| --- | --- |
+| 届く（ingress） | 基盤・取引ユニットの名前空間の Pod から OTLP gRPC 4317、Prometheus から自己テレメトリ 8888、Vault から audit 9514（4318 はどこからも許さない） |
+| 出る（egress） | kube-dns 53（UDP / TCP）、Prometheus 9090・Tempo 4317・Loki 3100（転送構成の送り先）、mail-relay 9154・reset-floor 8080（取りに行く先） |
+
+- 宛先・送り手は collector の設定と送り手の宣言から導いて `scripts/otel-collector-network-policy.test.js` が突き合わせる。collector の送り先を足すときは、manifest と同じ変更で足す。
+- 当てた後は、`up{job="otel-collector"}`・Loki / Tempo への書き込み・`up{job="mail-relay"}` / `up{job="reset-floor"}` が続いていることを確かめる。
+
 ## 切り戻し
 
 `kubectl delete -k deploy/local/observability` で撤去し、`kubectl apply -k deploy/local/infra` ＋ collector

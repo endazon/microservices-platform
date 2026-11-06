@@ -752,4 +752,14 @@
 | [IADR-0672](./IADR-0672_infra-credentials-staged-fail-closed.md) | 基盤の資格情報の判定を、DB・オブジェクトストレージ・秘匿管理の管理者トークンへ広げる。dev ではない context で開発用の値になるとき、段 1 は報告だけ・段 2 は明示の切り替えで止める。検査と作り直しは利用者が実行するスクリプトにする（#2399） | Accepted |
 | [IADR-0673](./IADR-0673_platform-infra-tls-stage-4b2-other-clients.md) | 基盤との通信を TLS にする 段 4b-2 の MSP の分。compose の取引ユニットの 3 サービス・Keycloak の DB・Wiki.js・バックアップの CronJob も CA と名前を検証して繋ぐ（helm の Wiki.js は値で opt-in。AST の chart は AST リポジトリ。#2403） | Accepted |
 | [IADR-0674](./IADR-0674_deploy-cloud-minimal.md) | 取引ユニットをクラウドの単一ノードへ移すための MSP の最小構成を deploy/cloud に置く。基盤は変換を持たない kustomize、MSP は LLM ゲートウェイだけ、資格情報は初回に乱数で作り、秘匿管理（OpenBao）は最初の稼働では持ち込まない（#2401） | Accepted |
+| [IADR-0675](./IADR-0675_cloud-offsite-backup-discord-alerts-heartbeat.md) | クラウドの最小構成は、バックアップを S3 互換のオブジェクトストレージ（Object Lock・lifecycle）へ書き、警報を Discord へ送り、常に鳴る警報をクラスタの中から外の監視へ heartbeat として送る（#2402） | Accepted |
+| [IADR-0676](./IADR-0676_infra-credentials-staged-followup.md) | 基盤の資格情報の段階の fail-closed を続ける。秘匿管理の固定の管理者トークンは印の後は作り直さない形を段階で入れ、値を stdin で渡す。Grafana の管理者と DB の初期化の kp を対象に足す。dev のクラスタの判定にクラスタ側の印を段階で足す（#2407） | Accepted |
+| [IADR-0677](./IADR-0677_llm-route-startup-check-staged.md) | LLM ゲートウェイは起動時に経路の設定（未知のモデル・空の宛先・単価の欠落）を 1 か所で引き、段 1 は Warning、段 2（Llm:RouteValidation:Mode=Fail）で起動を止める（#2411） | Accepted |
+| [IADR-0678](./IADR-0678_llm-gateway-pre-send-call-limits.md) | LLM ゲートウェイは送る前に、入力の上限と、呼び手ごと・呼び手×用途ごとの要求数と当日の費用（見込み額を含む）を 1 か所で判定する。段 1 は報告だけ、段 2 は設定の切り替えで Sent=false にする（#2404） | Accepted |
+| [IADR-0679](./IADR-0679_pin-external-artifacts-sha256.md) | 起動器が取り込む外部の helm chart と URL のマニフェストを、版に加えて内容の sha256 で固定する（#2410） | Accepted |
+| [IADR-0680](./IADR-0680_ast-api-audience-scope.md) | 取引ユニットの API の audience（ai-stock-trading-api）を専用のクライアントスコープで載せ、付ける先を bff と ai-stock-trading-owner に限る（#2418） | Accepted |
+| [IADR-0681](./IADR-0681_rabbitmq-narrow-permissions-staged.md) | ブローカのサービスごとのユーザーの権限は、コード（Wolverine の配線）から導いたキューと exchange の名前の正規表現へ絞る。段 1 は報告だけ、段 2 で明示して当てる（#2412） | Accepted |
+| [IADR-0682](./IADR-0682_plaintext-cleanup-and-otel-collector-netpol.md) | 復号した物と秘密は手元のディスク・シェルの環境・コマンドの引数に残さない（リストア試験は tmpfs と trap、手順書は read -rs・age へのパイプ）。otel-collector の到達は opt-in の NetworkPolicy で絞る（#2413） | Accepted |
+| [IADR-0683](./IADR-0683_vault-operator-policy-least-privilege.md) | 秘匿管理の運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える（#2421） | Accepted |
+| [IADR-0684](./IADR-0684_llm-caller-purpose-policy-staged.md) | LLM ゲートウェイの補完は、呼び手ごとの許可表（用途・モデルの明示の指定）を REST と gRPC の両面で 1 つの判定器が見る。段 1 は報告、段 2 は 403 / PERMISSION_DENIED（#2417） | Accepted |
 | [IADR-0685](./IADR-0685_reconcile-keep-runtime-disable-delete.md) | realm の調停は、稼働側で無効にしたクライアントを有効へ戻さず、一度在った seed 利用者が消されていても作り直さない（#2431） | Accepted |

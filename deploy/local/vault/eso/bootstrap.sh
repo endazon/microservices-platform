@@ -53,6 +53,11 @@ client_secret_kv_present() {
     *) vexec "vault kv metadata get secret/$1 >/dev/null 2>&1" ;;
   esac
 }
+# NFR-18, IADR-0676 (#2407): クラスタ側の dev の印を判定の前に 1 回読む（段 2 の DEV_CLUSTER_MARKER_REQUIRED=1 が使う）。
+#   起動器から呼ばれたときは起動器が読んだ値（DEV_CLUSTER_MARKER）を引き継ぐ。単独で呼ばれたときだけ読む。
+if [ -z "${DEV_CLUSTER_MARKER:-}" ]; then
+  dev_cluster_marker_probe "bootstrap.sh" "$(dev_client_secret_current_context)"
+fi
 dev_client_secret_load_targets || exit 1
 dev_secret_args=()
 for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
