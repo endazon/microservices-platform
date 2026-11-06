@@ -174,8 +174,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   クライアントだけを残し、人の利用者・試験の利用者・SMTP を外す（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
 - Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
   ユーザーはサービスごとのユーザーが揃うと消える）。
-- 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）・
-  `gen-rsa <cloud/パス> <キー> <ビット数>`（PKCS#1 の PEM。2048 以上）。
+- 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）。
 - 外から持ち込む資格情報（LLM の鍵・バックアップの保管先・Discord・heartbeat）を OpenBao から写す形は、別の段で入れる。
 
 ## 5. 確かめ方（クラスタに触れない）

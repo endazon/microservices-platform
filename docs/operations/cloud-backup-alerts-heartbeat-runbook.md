@@ -9,9 +9,9 @@ updated: 2026-11-06
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
-specs: [20261105_2402_cloud-backup-alerts-heartbeat]
-issues: [#2402, #2401]
+iadrs: [IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
+specs: [20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
+issues: [#2471, #2402, #2401]
 -->
 
 # 運用 Runbook: クラウドのバックアップ・警報・heartbeat

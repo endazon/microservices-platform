@@ -34,7 +34,7 @@ related_specs:
 - 実測（作業仕様書 §実測。手元の使い捨ての OpenBao 2.7.1 で確かめた）:
   1. OpenBao 2.x の root の作り直し（`generate-root`）は**認証が要る**。認証の要らない旧の口は既定で閉じている（変更履歴: 認証なしの取り消しの問題）。
   2. `bao write sys/unseal -` は標準入力で unseal できる。`bao kv put … -`・`bao kv patch … key=-` は値を標準入力で受ける。
-  3. PKI の `keys/generate/exported` は RSA の鍵を PKCS#1 の PEM で返すが、2048 ビット未満を拒む。
+  3. PKI の `keys/generate/exported` は RSA の鍵を PKCS#1 の PEM で返すが、2048 ビット未満を拒む（決定 7）。
   4. OpenBao のイメージは busybox を持ち、openssl の実行ファイルを持たない。
   5. moomoo の公開の資料は OpenD の RSA の鍵を 1024 ビットと書く（2048 に触れない）。
 
@@ -51,9 +51,9 @@ related_specs:
 ### 決定 2 — root は configure の 1 回だけ使って失効させる。作り直しはオーナー用の AppRole と unseal の鍵で行う
 
 - `configure.sh` は初回の root を標準入力で受け、設定の最後に `token revoke -self` で失効させる（利用者の裁定）。
-- 🔴 **実測 1 により、root を失効させた後に作り直すには、別の認証が要る。** オーナー用の AppRole `cloud-operator` を作る。
+- 🔴 **実測 1 により、root を失効させた後に作り直すには、別の認証が要る。** オーナー用の AppRole `cloud-operator` を作る（この形は利用者の裁定 2026-11-06。オーナーが持つファイルは init と operator の 2 つ）。
   - 入れるのはループバックからだけ（`token_bound_cidrs`・`secret_id_bound_cidrs` = `127.0.0.1/32`。オーナーは `kubectl exec` で Pod の中から使う）。トークンは 15 分。
-  - 権限（policy `cloud-operator`）は、値の作成と足し込み（`cloud/` の KV の作成・読み取り・patch。消さない）・`gen-rsa` の一時の鍵・root の作り直し（`sys/generate-root-token/*`）だけ。
+  - 権限（policy `cloud-operator`）は、値の作成と足し込み（`cloud/` の KV の作成・読み取り・patch。消さない）・root の作り直し（`sys/generate-root-token/*`）だけ。
     policy・認証・マウントは変えられない。
   - 資格（role_id・secret_id）は、決定 1 と同じく Pod の中から手元の `age -R` へ流し、暗号化したファイルとしてだけ持つ（2 か所に保管）。
 - root が要る操作（policy の当て直し・オーナー用の資格の作り直し）は `root-token.sh` が行う。オーナー用の資格で入り、unseal の鍵を加えて root を作り、
@@ -87,7 +87,7 @@ related_specs:
 - **止まらないもの**: ESO が既に写した Secret は k8s に残る（保存時の暗号化と LUKS の下。`deletionPolicy: Retain`）。Postgres・RabbitMQ・Keycloak・
   LLM ゲートウェイと取引ユニットは unseal を待たずに起動できる。
 - 🔴 **ADR-0080 §結果 の「再起動の後の解錠の順（LUKS → k3s → unseal → ESO の同期）が済むまで、DB・ブローカ・Keycloak も資格情報を得られない」とずれる**
-  （利用者の裁定: ずれを受け入れて本 IADR に書く。計画への環流は統括が起票する）。計画へ渡す文案:
+  （利用者の裁定: ずれを受け入れて本 IADR に書く）。計画への環流は planning#873（下の文案で起票した）。
 
   > ADR-0080 §結果 の「再起動の後の解錠の順（LUKS → k3s → unseal → ESO の同期）が済むまで、DB・ブローカ・Keycloak も資格情報を得られない。
   > 取引ユニットだけでなく基盤の最小構成も、unseal を待つ」は、実装（MSP の IADR-0689）と合わない。ESO は OpenBao の値を k8s の Secret へ写し、
@@ -113,19 +113,19 @@ related_specs:
 | `cloud/ast/*` | 取引ユニットだけの値（キーは取引ユニットが決める） | `ast-eso`（`ai-stock-trading/ast-eso-reader`） |
 | `cloud/msp/*` | MSP の名前空間だけの値（PR ②） | `msp-eso`（`microservices-platform/eso-openbao`） |
 
-- MSP が持つもの: ESO の本体・基盤の側の `SecretStore openbao`・OpenBao の role と policy・`cloud/shared/*`・`seed-secrets.sh`・`gen`・`gen-rsa`・`put-external-secret.sh`（PR ②）。
+- MSP が持つもの: ESO の本体・基盤の側の `SecretStore openbao`・OpenBao の role と policy・`cloud/shared/*`・`seed-secrets.sh`・`gen`・`put-external-secret.sh`（PR ②）。
 - 取引ユニットが持つもの: 取引ユニットの名前空間の SecretStore・ServiceAccount `ast-eso-reader`・ExternalSecret・手順書。
 
-### 決定 7 — クラスタの中で作る値は OpenBao の Pod の中で作る（`seed-secrets.sh`・`gen`・`gen-rsa`）
+### 決定 7 — クラスタの中で作る値は OpenBao の Pod の中で作る（`seed-secrets.sh`・`gen`）
 
 - 7 種（IADR-0674 決定 3 の範囲。機密クライアントは 3 つに減らした〔決定 9〕）を、Pod の中の `/dev/urandom` から作り、`bao kv put … -` の標準入力で書く。
   値は Pod の外へ出ない。在れば触らない。利用者名も乱数の接尾辞を付ける（IADR-0674 決定 3 の性質を保つ）。
 - `gen <cloud/パス> <キー> <バイト数>`: 指定のバイト数（16〜1024）の乱数を**標準の base64**（パディングつき・1 行）で書く。在るキーは上書きしない（取引ユニットの HMAC の鍵が使う。取引ユニットは 32 バイト未満を拒む）。
-- `gen-rsa <cloud/パス> <キー> <ビット数>`: PKI `keygen/` で RSA の鍵を作り（PKCS#1 の PEM）、写した後に PKI から消す。ビット数は 2048・3072・4096（実測 3）。
-- 🔴 **OpenD の RSA の鍵（`cloud/ast/moomoo-rsa` の `opend_rsa.pem`）**: 公開の資料は 1024 ビットと書く（実測 5）。2048 ビットで OpenD が動くかは**未確認**。
-  - 2048 で動くと確かめられれば `gen-rsa` を使う（値は Pod の外へ出ない）。
-  - 1024 が要るなら、OpenBao の中では作れない（実測 3・4）。代わりの案: オーナーが手元で `openssl genrsa -traditional 1024` の出力を `put-external-secret.sh`（PR ②）へ**直にパイプで流す**（鍵はディスクに書かない。手元のプロセスのメモリを通る）。
-  - どちらにするかは取引ユニットの側が OpenD で確かめて決める。
+- 🔴 **OpenD の RSA の鍵（`cloud/ast/moomoo-rsa` の `opend_rsa.pem`。区分 2）は 1024 ビットとし、OpenBao の中では作らない。**
+  - 根拠（取引ユニットの側が確かめた）: 手元の PoC は 1024 ビットで、2048 で動いた証拠は無い。取引ユニットの手順書、MSP の BFF の `GeneratedRsaKeySizeBits = 1024`、IADR-0456 決定 3（鍵長 1024 は OpenD の要件）、公開の資料（実測 5）が同じ値を指す。
+  - OpenBao の PKI は 2048 ビット未満を作らず、OpenBao のイメージは openssl を持たない（実測 3・4）。そのため OpenBao の中では作れない。
+  - **形**: オーナーが手元で `openssl genrsa -traditional 1024` の出力を `put-external-secret.sh cloud/ast/moomoo-rsa opend_rsa.pem` へ**直にパイプで流す**（鍵はディスクに書かない。手元のプロセスのメモリを通る）。`put-external-secret.sh` は PR ② が入れる。
+  - PKI で RSA の鍵を作る口（当初の `gen-rsa`）は、使う相手が無いので置かない（`keygen/` のマウントと policy の権限も置かない）。
 
 ### 決定 8 — `bootstrap-secrets.sh` を消し、参照と供給元の突き合わせを `secret-inventory.js` に置く
 
@@ -158,5 +158,5 @@ related_specs:
 2. OpenBao の出の NetworkPolicy は、API サーバーの宛先の IP を名指せないため、ポート（443・6443）だけで絞る。
 3. OpenBao の受け口は平文（決定 3）。ノードの中の通信路を読める者は ESO のトークンと値を読める（その者はノードの root であり、k8s の Secret も読める）。
 4. ESO の名前空間（`external-secrets`）に NetworkPolicy を置いていない（chart の既定のまま）。
-5. OpenD の RSA の鍵の長さ（決定 7）は未確認。
+5. OpenD の RSA の鍵（決定 7）は、オーナーの手元のプロセスのメモリを通る（OpenBao の中で作れないため）。ディスクには書かない。
 6. 外から持ち込む 4 つ（LLM の鍵・バックアップの保管先・Discord・heartbeat）は PR ② まで「供給元なし」（`secret-inventory.js`）。移行の門は満たさない。

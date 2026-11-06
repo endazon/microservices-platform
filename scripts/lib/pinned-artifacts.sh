@@ -37,6 +37,29 @@ pinned_chart_entry() {
   esac
 }
 
+# pinned_tool_entry <道具> <版> → 「<URL> <sha256>」。試験と CI が入れる外部の実行ファイルの配布物（IADR-0689）。表に無ければ 1。
+#   openbao: 宣言のイメージ（openbao/openbao:2.7.1）と同じ版の公式の配布物。sha256 は公式の checksums.txt と突き合わせた値。
+pinned_tool_entry() {
+  case "$1@$2" in
+    openbao@2.7.1) printf '%s %s' 'https://github.com/openbao/openbao/releases/download/v2.7.1/openbao_2.7.1_linux_amd64.tar.gz' '0e2f1ce10d124e03112b50dd2fbec6b78003783253bc3a91587938f39d1e2243' ;;
+    *) return 1 ;;
+  esac
+}
+
+# pinned_tool <道具> <版> <作業ディレクトリ> → 確かめた配布物のパスを標準出力へ書く（失敗は 1）。
+pinned_tool() {
+  local tool="$1" version="$2" dir="$3" entry url sha out
+  if ! entry="$(pinned_tool_entry "$tool" "$version")"; then
+    echo "ERROR: 道具 ${tool} ${version} の sha256 の固定が無い（scripts/lib/pinned-artifacts.sh。IADR-0689）" >&2
+    return 1
+  fi
+  url="${entry% *}"
+  sha="${entry#* }"
+  out="${dir}/${tool}-${version}.tar.gz"
+  pinned_fetch_verified "$url" "$sha" "$out" || return 1
+  printf '%s' "$out"
+}
+
 # pinned_sha256 <ファイル> → sha256（16 進）。GNU の sha256sum、無ければ macOS の shasum -a 256（lib/local-image-tag.sh と同じ。
 #   経路 B は macOS でも走るので、GNU だけの道具に依らない）。
 pinned_sha256() {

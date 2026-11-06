@@ -33,7 +33,7 @@ issue: "#2471"
 | 7 | PR を 2 本に分ける。① OpenBao・ESO・7 種・TLS（本書）、② 外から持ち込む 4 つ・段 2 の強制。IADR-0689 は ① に置く | 統括 |
 | 8 | 機密クライアントは 3 つ（`-svc`・`-llm-caller`・`-owner`）に減らす。`kb-writer`・`kb-reader` は AST がクラウドで使わない | AST（a2808）の確認 |
 | 9 | `gen` は標準の base64 で、指定のバイト数の乱数を出す（AST は 32 バイト未満を拒む）。自己試験で固定する | AST |
-| 10 | `moomoo-rsa`（`cloud/ast/moomoo-rsa` の `opend_rsa.pem`。PKCS#1）は区分 2。Pod の中で作る口（`gen-rsa`）を推奨。作れないときの代わりを IADR に書く | AST |
+| 10 | `moomoo-rsa`（`cloud/ast/moomoo-rsa` の `opend_rsa.pem`。PKCS#1）は区分 2。［2026-11-06 追記］1024 ビット（AST の確認）。OpenBao の中では作れないので、オーナーが手元で作って `put-external-secret.sh` へ直に流す（PR ②）。`gen-rsa` は置かない | AST |
 
 ## 実測（着手前。本書を書く前に確かめた）
 
@@ -43,7 +43,7 @@ issue: "#2471"
 | 2 | → root を失効させた後に作り直すには、別の認証（権限を絞ったもの）が要る。`sys/generate-root-token/*` だけを持つ token と unseal の鍵で root を作り直せる | 同上（作り直し → `policies=["root"]` → 失効） |
 | 3 | `bao write sys/unseal -` は標準入力の JSON（`{"key":…}`）で unseal できる。`bao operator unseal -` は `-` を鍵の字面として扱い、引数なしは端末を要する | 同上 |
 | 4 | `bao kv put -mount=… <path> -` は標準入力の JSON を書き、`bao kv patch … key=-` は 1 つの値を標準入力で受ける。在らないパスへの patch は 404 | 同上 |
-| 5 | PKI の `keys/generate/exported`（rsa）は PKCS#1 の PEM（`-----BEGIN RSA PRIVATE KEY-----`）を返す。**2048 未満は拒む**（`RSA keys < 2048 bits are unsafe and not supported`） | 同上 |
+| 5 | PKI の `keys/generate/exported`（rsa）は PKCS#1 の PEM（PKCS#1 の RSA の秘密鍵の形）を返す。**2048 未満は拒む**（`RSA keys < 2048 bits are unsafe and not supported`） | 同上 |
 | 6 | OpenBao のイメージ（宣言と同じ digest。amd64）は busybox（`sh`・`head`・`od`・`base64`・`tr`）を持ち、**openssl の実行ファイルを持たない** | レジストリの層を取得して一覧した |
 | 7 | moomoo の公開の資料は、OpenD の RSA の鍵を「1024 ビット」「512・1024 を選べる」と書き、2048 に触れない | `openapi.moomoo.com` の Protocol Introduction |
 | 8 | ESO 2.8.0（固定の chart）は `VaultDynamicSecret`（v1alpha1）の生成器と、`ExternalSecret`（v1）の `target.template.templateFrom` を持つ | 固定の chart（sha256 を確かめた）の CRD |
@@ -68,7 +68,7 @@ issue: "#2471"
 | `microservices-platform/llm-provider-credentials` | 1（外から持ち込む） | ② | `cloud/msp/llm-provider-credentials` |
 | `platform-infra/platform-backup-s3`・`alertmanager-discord`・`alertmanager-heartbeat` | 1 | ② | `cloud/platform/…` |
 
-- AST の側で要る秘密（a2808 の一覧）のうち、区分 2 は DB・ブローカ・3 つの client の secret（`cloud/shared/*`。①が作る）と HMAC の鍵・`moomoo-rsa`（`cloud/ast/*`。AST の手順書が ① の `gen`・`gen-rsa` を呼ぶ）。
+- AST の側で要る秘密（a2808 の一覧）のうち、区分 2 は DB・ブローカ・3 つの client の secret（`cloud/shared/*`。①が作る）と HMAC の鍵・`moomoo-rsa`（`cloud/ast/*`。HMAC の鍵は AST の手順書が ① の `gen` を呼ぶ。`moomoo-rsa` は 1024 ビットで OpenBao の中では作れないので、PR ② の `put-external-secret.sh` へ手元から直に流す）。
 - 除外: Pod の中の emptyDir・ConfigMap（設定）・PVC。値を持たない。
 
 ## 方式
@@ -81,7 +81,7 @@ issue: "#2471"
    - `init.sh`: `operator init`（1 分割・閾値 1）の出力をそのまま手元の `age -R` へ流し、暗号化したファイルだけを作る。
    - `unseal.sh`: 復号した鍵を `bao write sys/unseal -` の標準入力へ流す。
    - `configure.sh`: 初回の root を標準入力で受け、KV（`cloud/`）・PKI（`pki_cloud`。CA の鍵は外へ出さない）・kubernetes 認証と 3 つの role・policy・オーナー用の AppRole（`cloud-operator`。ループバックからだけ）を作り、AppRole の資格を手元の `age -R` へ流し、**最後に root を失効させる**。
-   - `seed-secrets.sh`: オーナー用の資格（AppRole）で入り、7 種を **Pod の中で**乱数から作る（在れば触らない）。`gen <path> <key> <bytes>`（標準の base64）と `gen-rsa <path> <key> <bits>`（PKI で作り、作った鍵は PKI から消す。2048 以上）の口を持つ。
+   - `seed-secrets.sh`: オーナー用の資格（AppRole）で入り、7 種を **Pod の中で**乱数から作る（在れば触らない）。`gen <path> <key> <bytes>`（標準の base64）の口を持つ。
    - `root-token.sh`（作り直し）: オーナー用の資格と unseal の鍵で root を作り直し、渡された 1 つの操作の後に失効させる。
 3. `deploy/cloud/realm-for-cloud.js`: 機密クライアントを 3 つにする。ESO の template の雛形を出す `--template` を足す（secret の代わりに印を置く）。雛形と値から組んだ結果が `buildCloudRealm` と一致することを試験で固定する。
 4. `deploy/cloud/bootstrap-secrets.sh`: Secret を作る部分を外す（**名前は残さず消す**。手順書の旧の行が誤って流されないため）。代わりに `deploy/cloud/secret-inventory.js`（ADR-0080 フォローアップ 4 の突き合わせ）が、描画の参照する Secret の全件を、ExternalSecret の行き先と区分に照らし、供給元の無いものがあれば止まる（② の 4 つは ② で埋めるまで「未供給」として出る）。
@@ -97,7 +97,7 @@ issue: "#2471"
 - AC-2: OpenBao は dev モードでなく、宣言と同じ digest で、受け口に入れるのは ESO の controller だけ（NetworkPolicy。試験）。
 - AC-3: スクリプトは秘密の値を引数・環境変数・ディスクに置かない。unseal の鍵・初回の root・オーナー用の資格は、age で暗号化したファイルとしてだけ手元に残る（実物の OpenBao での試験。引数の記録に値が無いこと）。
 - AC-4: configure の後に初回の root は失効している。作り直した root も、操作の後に失効する（同上）。
-- AC-5: `seed-secrets.sh` は 7 種を作り、2 回目は何も変えない。`gen` は指定のバイト数の乱数を標準の base64 で書き、在るキーは上書きしない。`gen-rsa` は PKCS#1 の PEM を書き、PKI に鍵を残さない（同上）。
+- AC-5: `seed-secrets.sh` は 7 種を作り、2 回目は何も変えない。`gen` は指定のバイト数の乱数を標準の base64 で書き、在るキーは上書きしない（同上）。
 - AC-6: policy の境界: 基盤の側は `cloud/ast/*` を読めない。AST の側は `cloud/platform/*` を読めず、`cloud/shared/*` は名指しの 4 つだけを読める（同上）。
 - AC-7: クラウドの realm に、クライアントスコープ `ai-stock-trading-api-audience`（owner の既定のスコープ）と realm ロール `trading-bot`（owner のサービスアカウントだけ）が残る。機密クライアントは 3 つ（試験）。
 - AC-8: IADR-0689 が、unseal の鍵・root トークン・OpenBao 自身の受け口・再起動のときに止まるもの・ノードのメモリ・`gen-rsa` の代わりの案を決める。IADR-0674 に覆したことを追記する。
@@ -111,4 +111,4 @@ issue: "#2471"
 ## 残余
 
 1. Pod から API サーバー（ループバック）へ届くかは、条件 5 で確かめる（実測 10）。届かなければ k3s の起動のフラグを改める別の作業になる。
-2. OpenD の RSA の鍵の長さ: 公開の資料は 1024 と書く（実測 7）。OpenBao は 2048 未満を作れない（実測 5）。2048 で OpenD が動くかは**未確認**。
+2. OpenD の RSA の鍵: 1024 ビットとし、OpenBao の中では作らない（実測 5・7。取引ユニットの側の確認 2026-11-06）。オーナーが手元で作って `put-external-secret.sh` へ直に流す（PR ②）。`gen-rsa` の口は置かない。

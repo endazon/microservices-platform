@@ -36,6 +36,8 @@ issues: [#2471, #2401]
 | `<init>.age` | unseal の鍵（1 分割・閾値 1）と初回の root（configure の後は失効している） | §1 |
 | `<operator>.age` | オーナー用の資格（AppRole。Pod の中のループバックからだけ入れる） | §3 |
 
+- 🔴 **オーナー用の資格（`cloud-operator`）では、`cloud/` の全部の値を読める**（値を作る・足すときに在るかを確かめるため）。漏れれば全部の値が読まれる。unseal の鍵と同じ扱いで保管する。漏れた疑いがあれば §6 の `rotate-operator` で作り直す。
+
 - **どちらも、別々の 2 か所に保管する**（場所はリポジトリに書かない）。片方を失っても、もう片方から戻せる。
 - `<init>.age` を両方とも失うと、封印を開けられない。データを捨てて初期化からやり直す（§7）。
 
@@ -91,11 +93,9 @@ bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --
   ```sh
   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <識別子のファイル> \
     gen cloud/ast/<名前> <キー> <バイト数>          # 指定のバイト数の乱数を標準の base64 で書く。在るキーは上書きしない
-  bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <識別子のファイル> \
-    gen-rsa cloud/ast/<名前> <キー> <ビット数>      # RSA の秘密鍵（PKCS#1 の PEM）。2048・3072・4096
   ```
 
-- `gen-rsa` は 2048 ビット未満を作れない（OpenBao が拒む）。それより短い鍵が要る相手には使えない。
+- OpenD の RSA の鍵（1024 ビット）は OpenBao の中では作れない（OpenBao は 2048 ビット未満を作らない）。オーナーが手元で作り、外から持ち込む値と同じ口で直に入れる（別の段で入れる手順）。
 
 ## 5. 突き合わせ（移行の門の条件 3）
 

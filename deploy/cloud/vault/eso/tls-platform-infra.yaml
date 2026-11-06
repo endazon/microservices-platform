@@ -2,6 +2,8 @@
 #   ESO の VaultDynamicSecret が pki_cloud/issue/<role> を呼び、証明書と鍵を Secret に写す。鍵は OpenBao の中で作られ、
 #   PKI は発行した証明書を保存しない（role の no_store。configure.sh）。CA の証明書（公開してよい）は configure.sh が ConfigMap platform-infra-ca に置く。
 #   SAN は従来（IADR-0674 決定 3）と同じ（短い名前・名前空間つき・.svc・.svc.cluster.local）。
+#   postgres-tls は tls.crt・tls.key だけを持つ（従来どおり）。Postgres はクライアントの証明書を検めないので CA を読まない。
+#   rabbitmq-tls は ca.crt も持つ（RabbitMQ の ssl_options.cacertfile が読む。従来どおり）。CA の公開の配り先は ConfigMap platform-infra-ca。
 apiVersion: generators.external-secrets.io/v1alpha1
 kind: VaultDynamicSecret
 metadata:
@@ -21,7 +23,11 @@ spec:
       kubernetes:
         mountPath: kubernetes
         role: platform-infra-eso
-        serviceAccountRef: { name: eso-openbao }
+        # NFR-18, IADR-0585: 受ける側の role は audience=vault を要求する（configure.sh）。名乗る側も明示する。
+        serviceAccountRef:
+          name: eso-openbao
+          audiences:
+            - vault
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
@@ -67,7 +73,11 @@ spec:
       kubernetes:
         mountPath: kubernetes
         role: platform-infra-eso
-        serviceAccountRef: { name: eso-openbao }
+        # NFR-18, IADR-0585: 受ける側の role は audience=vault を要求する（configure.sh）。名乗る側も明示する。
+        serviceAccountRef:
+          name: eso-openbao
+          audiences:
+            - vault
 ---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret

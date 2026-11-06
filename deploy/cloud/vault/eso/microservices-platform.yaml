@@ -25,4 +25,8 @@ spec:
         kubernetes:
           mountPath: kubernetes
           role: msp-eso
-          serviceAccountRef: { name: eso-openbao }
+          # NFR-18, IADR-0585: 受ける側の role は audience=vault を要求する（configure.sh）。名乗る側も明示する。
+          serviceAccountRef:
+            name: eso-openbao
+            audiences:
+              - vault

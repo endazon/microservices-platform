@@ -78,7 +78,8 @@ case "$CMD" in
   rotate-operator)
     # shellcheck disable=SC2016
     OP='
-for a in $(r list -format=json auth/approle/role/cloud-operator/secret-id 2>/dev/null | tr -d "[]\", "); do
+# 一覧は JSON の配列（無ければ「{}」）。accessor の形のものだけを拾う。
+for a in $(r list -format=json auth/approle/role/cloud-operator/secret-id 2>/dev/null | tr -d "[]\", " | grep -E "^[0-9a-f-]{36}$" || true); do
   printf "{\"secret_id_accessor\":\"%s\"}" "$a" | r write auth/approle/role/cloud-operator/secret-id-accessor/destroy - >/dev/null
 done
 rid="$(r read -field=role_id auth/approle/role/cloud-operator/role-id)"

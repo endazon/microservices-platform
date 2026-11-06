@@ -6,9 +6,6 @@
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … gen <cloud/パス> <キー> <バイト数>
 #       → 指定のバイト数の乱数を**標準の base64**（パディングつき・1 行）で書く。キーが在れば止まる（上書きしない）。
 #         例（取引ユニットの手順書）: gen cloud/ast/ast-secrets order-approval-signing-key 32
-#   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … gen-rsa <cloud/パス> <キー> <ビット数>
-#       → RSA の秘密鍵を PKCS#1 の PEM（-----BEGIN RSA PRIVATE KEY-----）で書く。鍵は OpenBao の PKI（keygen/）で作り、
-#         写した後に PKI から消す。ビット数は 2048・3072・4096（OpenBao は 2048 未満を作らない。IADR-0689 決定 7）。
 #
 # 作る 7 種（ADR-0080 決定 1 の区分 2。パスとキーは IADR-0689 決定 6）:
 #   cloud/platform/postgres・keycloak-db・keycloak-admin・rabbitmq  … username（乱数の接尾辞）・password
@@ -37,8 +34,8 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --operator-file) OPERATOR_FILE="${2:-}"; shift 2 ;;
     --identity) IDENTITY="${2:-}"; shift 2 ;;
-    gen | gen-rsa) CMD="$1"; shift; ARGS=("$@"); break ;;
-    *) echo "ERROR: 未知の引数: $1（受け付けるのは --live・--operator-file・--identity と、gen・gen-rsa）" >&2; exit 2 ;;
+    gen) CMD="$1"; shift; ARGS=("$@"); break ;;
+    *) echo "ERROR: 未知の引数: $1（受け付けるのは --live・--operator-file・--identity と、gen）" >&2; exit 2 ;;
   esac
 done
 
@@ -56,12 +53,6 @@ case "$CMD" in
     seed_key_ok "${ARGS[1]}" || { echo "ERROR: キーは英数字と . _ - だけ: ${ARGS[1]}" >&2; exit 2; }
     [[ "${ARGS[2]}" =~ ^[0-9]+$ ]] && [ "${ARGS[2]}" -ge 16 ] && [ "${ARGS[2]}" -le 1024 ] \
       || { echo "ERROR: バイト数は 16〜1024: ${ARGS[2]}" >&2; exit 2; }
-    ;;
-  gen-rsa)
-    [ "${#ARGS[@]}" -eq 3 ] || { echo "ERROR: gen-rsa <cloud/パス> <キー> <ビット数>" >&2; exit 2; }
-    seed_path_ok "${ARGS[0]}" || { echo "ERROR: パスは cloud/{ast,shared,platform,msp}/<英小文字・数字・->: ${ARGS[0]}" >&2; exit 2; }
-    seed_key_ok "${ARGS[1]}" || { echo "ERROR: キーは英数字と . _ - だけ: ${ARGS[1]}" >&2; exit 2; }
-    case "${ARGS[2]}" in 2048 | 3072 | 4096) ;; *) echo "ERROR: ビット数は 2048・3072・4096（OpenBao は 2048 未満を作らない）: ${ARGS[2]}" >&2; exit 2 ;; esac
     ;;
 esac
 ob_readable "$OPERATOR_FILE" "configure.sh が書いたオーナー用の資格のファイル（--operator-file）"
@@ -127,26 +118,6 @@ echo "    書いた: cloud/$p の $k（$n バイトの乱数・標準の base64�
 '
     POD_GEN="${POD_GEN/__REL__/$REL}"; POD_GEN="${POD_GEN/__KEY__/$KEY}"; POD_GEN="${POD_GEN/__BYTES__/$BYTES}"
     ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${POD_FN}${POD_GEN}"
-    ;;
-  gen-rsa)
-    REL="${ARGS[0]#cloud/}" KEY="${ARGS[1]}" BITS="${ARGS[2]}"
-    # shellcheck disable=SC2016
-    POD_RSA='
-p="__REL__"; k="__KEY__"; n="__BITS__"
-if have "$p" && b kv get -mount=cloud -field="$k" "$p" >/dev/null 2>&1; then
-  echo "ERROR: cloud/$p の $k は在る。上書きしない" >&2; exit 5
-fi
-purge() { for id in $(b list -format=json keygen/keys 2>/dev/null | tr -d "[]\", "); do b delete "keygen/key/$id" >/dev/null 2>&1 || true; done; }
-trap "purge; done_revoke" EXIT
-pem="$(b write -field=private_key keygen/keys/generate/exported key_type=rsa key_bits="$n")"
-case "$pem" in "-----BEGIN RSA PRIVATE KEY-----"*) ;; *) echo "ERROR: PKCS#1 の PEM を得られない" >&2; exit 1 ;; esac
-if have "$p"; then op=patch; else op=put; fi
-printf "%s\n" "$pem" | b kv "$op" -mount=cloud "$p" "$k=-" >/dev/null
-unset pem
-echo "    書いた: cloud/$p の $k（RSA $n ビット・PKCS#1 の PEM。PKI からは消した。値は表示しない）"
-'
-    POD_RSA="${POD_RSA/__REL__/$REL}"; POD_RSA="${POD_RSA/__KEY__/$KEY}"; POD_RSA="${POD_RSA/__BITS__/$BITS}"
-    ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${POD_FN}${POD_RSA}"
     ;;
 esac
 echo "OK: ${CMD} を終えた（値は表示しない）"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-05, NFR-18, IADR-0689: クラウドの秘匿管理の手順（init・unseal・configure・seed・gen・gen-rsa・root-token）を、
+# NFR-05, NFR-18, IADR-0689: クラウドの秘匿管理の手順（init・unseal・configure・seed・gen・root-token）を、
 # **実物の OpenBao**（宣言と同じ版の配布物）で通して固定する。稼働のクラスタには触れない。
 #
 #   bash deploy/cloud/vault/openbao-scripts.test.sh            # PATH の bao（か BAO_BIN）を使う
@@ -36,7 +36,15 @@ for _ in $(seq 1 50); do rc=0; BAO_ADDR="$TEST_BAO_ADDR" "$BAO" status >/dev/nul
 [ "$up" = 1 ] || { echo "✗ OpenBao が起動しない" >&2; cat "$W/server.log" >&2; exit 1; }
 
 # kubectl のスタブ（引数を全部記録する。値が引数に載れば、後の確かめで見つかる）
-ln -s "$BAO" "$W/bin/bao"
+# Pod の中の bao。試験は BAO_FAIL_ON（引数の部分文字列）で 1 回だけ失敗を差し込める（途中で落ちる経路の確かめ）。
+cat > "$W/bin/bao" <<EOF
+#!/usr/bin/env bash
+if [ -n "\${BAO_FAIL_ON:-}" ] && [[ " \$* " == *"\$BAO_FAIL_ON"* ]] && [ ! -e "$W/fail.done" ]; then
+  : > "$W/fail.done"; echo "injected failure: \$BAO_FAIL_ON" >&2; exit 1
+fi
+exec "$BAO" "\$@"
+EOF
+chmod +x "$W/bin/bao"
 cat > "$W/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$KLOG"
@@ -74,9 +82,8 @@ bash "$HERE/init.sh" --recipients "$W/recipients.txt" --out "$W/x.age" >/dev/nul
 run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen cloud/../x k 32 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen は cloud/ の外のパスを拒む"
 run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen cloud/ast/a 'k;x' 32 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen はキーの形の外を拒む"
 run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen cloud/ast/a k 8 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen は 16 バイト未満を拒む"
-run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen-rsa cloud/ast/a k 1024 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen-rsa は 2048 未満を拒む"
 set -e
-ok "明示の指定（--live）が無ければ何もせず、引数の形の外（cloud/ の外・キーの字・バイト数・ビット数）を拒む"
+ok "明示の指定（--live）が無ければ何もせず、引数の形の外（cloud/ の外・キーの字・バイト数）を拒む"
 
 # --- init ---
 run init.sh --recipients "$W/recipients.txt" --out "$W/init.age" >/dev/null
@@ -95,13 +102,24 @@ ok "unseal: 復号した鍵を標準入力で渡して開ける"
 export OPENBAO_KUBERNETES_HOST="https://127.0.0.1:1"
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=test-k8s-ca -keyout "$W/k8s-ca.key" -out "$W/k8s-ca.crt" >/dev/null 2>&1
 export OPENBAO_KUBERNETES_CA_FILE="$W/k8s-ca.crt"
+ROOT0="$(dec "$W/init.age" root_token)"
+# 途中で落ちる経路: root は残り、資格は出ず、そのまま流し直せる（済んだものは作り直さない）
+for at in "auth enable kubernetes" "-field=secret_id"; do
+  rm -f "$W/fail.done"
+  set +e; BAO_FAIL_ON="$at" run configure.sh --init-file "$W/init.age" --identity "$W/id.txt" --recipients "$W/recipients.txt" --operator-out "$W/operator.age" >"$W/conf.log" 2>&1; rc=$?; [ -n "${DEBUG_TEST:-}" ] && cat "$W/conf.log" >&2; set -e
+  [ -e "$W/fail.done" ] || ng "陽性対照: 失敗を差し込めていない（$at）"
+  [ "$rc" -ne 0 ] || ng "途中で落ちたのに configure が成功を返した（$at）"
+  [ ! -e "$W/operator.age" ] || ng "途中で落ちたのに資格のファイルが残った（$at）"
+  BAO_TOKEN="$ROOT0" B token lookup >/dev/null 2>&1 || ng "途中で落ちたのに初回の root を失効させた（回復できない。$at）"
+done
+ok "configure: 途中で落ちても初回の root を残し、資格のファイルを残さない（マウントの後・AppRole の後のどちらでも）"
+rm -f "$W/fail.done"
 run configure.sh --init-file "$W/init.age" --identity "$W/id.txt" --recipients "$W/recipients.txt" --operator-out "$W/operator.age" >/dev/null
 [ "$(stat -c %a "$W/operator.age")" = 600 ] || ng "オーナー用の資格のファイルが 0600 でない"
-ROOT0="$(dec "$W/init.age" root_token)"
 set +e; BAO_TOKEN="$ROOT0" B token lookup >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -ne 0 ] || ng "初回の root が失効していない"
 for ns in platform-infra microservices-platform; do grep -q 'BEGIN CERTIFICATE' "$CM_DIR/$ns.crt" || ng "CA の ConfigMap（$ns）が無い"; done
-ok "configure: 初回の root は失効し、オーナー用の資格は age のファイル（0600）にだけ在り、CA の証明書を ConfigMap に置く"
+ok "configure: 流し直しで最後まで進み、初回の root は失効し、オーナー用の資格は age のファイル（0600）にだけ在り、CA の証明書を ConfigMap に置く"
 
 # 試験の側で、オーナー用の資格と unseal の鍵から root を作り直す（root-token.sh と同じ道筋の独立な確かめ）
 login() { printf '{"role_id":"%s","secret_id":"%s"}' "$(dec "$W/operator.age" role_id)" "$(dec "$W/operator.age" secret_id)" | B write -field=token auth/approle/login -; }
@@ -145,13 +163,7 @@ set +e; run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.
 [ "$rc" -ne 0 ] && [ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=order-approval-signing-key ast/ast-secrets)" = "$v" ] || ng "在るキーへの gen が止まらない（上書きした）"
 ok "gen: 指定のバイト数の乱数を標準の base64 で書き、在るパスでは patch（ほかのキーを残す）、在るキーは上書きしない"
 
-# --- gen-rsa ---
-run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" gen-rsa cloud/ast/moomoo-rsa opend_rsa.pem 2048 >/dev/null
-pem="$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=opend_rsa.pem ast/moomoo-rsa)"
-case "$pem" in "-----BEGIN RSA PRIVATE KEY-----"*"-----END RSA PRIVATE KEY-----"*) ;; *) ng "gen-rsa が PKCS#1 の PEM でない" ;; esac
 R1="$(mkroot)"
-[ "$(BAO_TOKEN="$R1" B list -format=json keygen/keys 2>/dev/null || echo '[]')" = "[]" ] || [ -z "$(BAO_TOKEN="$R1" B list keygen/keys 2>/dev/null)" ] || ng "gen-rsa の鍵が PKI に残っている"
-ok "gen-rsa: RSA 2048 の PKCS#1 の PEM を書き、PKI に鍵を残さない"
 
 # --- policy の境界（試験の側で作り直した root で、各 policy のトークンの能力を引く） ---
 cap() { BAO_TOKEN="$R1" B token capabilities "$1" "$2"; }
