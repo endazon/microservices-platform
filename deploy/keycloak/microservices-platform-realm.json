@@ -619,6 +619,28 @@
       ]
     },
     {
+      "name": "ai-stock-trading-api-audience",
+      "description": "NFR-09・IADR-0680 (#2418): 取引ユニット（AST）の API の audience（ai-stock-trading-api）を access token の aud へ載せる。platform-api とは分ける（流用しない）。付ける先は bff と ai-stock-trading-owner だけ（scripts/check-realm-constraints.js の検査9 の 2 が固定する）。",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "false",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "ai-stock-trading-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "ai-stock-trading-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "name": "basic",
       "description": "Keycloak 25 以降の組み込み basic スコープ（アクセストークンの sub と auth_time）。realm import で clientScopes を明示すると組み込みスコープが生成されず、利用者のアクセストークンから sub が落ちるため定義する（#1859 で実測）",
       "protocol": "openid-connect",
@@ -734,7 +756,8 @@
         "email",
         "roles",
         "abac-attributes",
-        "platform-api-audience"
+        "platform-api-audience",
+        "ai-stock-trading-api-audience"
       ]
     },
     {
@@ -1093,7 +1116,8 @@
       "webOrigins": [],
       "defaultClientScopes": [
         "roles",
-        "platform-api-audience"
+        "platform-api-audience",
+        "ai-stock-trading-api-audience"
       ]
     },
     {

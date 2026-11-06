@@ -35,7 +35,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         Pb.CompleteRequest request, ServerCallContext context)
     {
         var dto = ToDtoOrThrow(request);
-        var result = await useCase.ExecuteAsync(dto, IsSynthetic(context), context.CancellationToken);
+        var result = await useCase.ExecuteAsync(dto, IsSynthetic(context), context.CancellationToken, Caller(context));
         return LlmGrpcMapping.ToProto(result);
     }
 
@@ -53,7 +53,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         ServerCallContext context)
     {
         var dto = ToDtoOrThrow(request);
-        await foreach (var ev in useCase.StreamAsync(dto, IsSynthetic(context), context.CancellationToken))
+        await foreach (var ev in useCase.StreamAsync(dto, IsSynthetic(context), context.CancellationToken, Caller(context)))
             await responseStream.WriteAsync(LlmGrpcMapping.ToProto(ev), context.CancellationToken);
     }
 
@@ -77,4 +77,8 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
     // **判定は既存の単一情報源をそのまま呼ぶ**（定義を 2 つにしない）。
     private static bool IsSynthetic(ServerCallContext context) =>
         SyntheticTraffic.IsSyntheticInternalRequest(context.GetHttpContext().Request);
+
+    // NFR-18, IADR-0678 決定 3 (#2404): 上限を数える呼び手（検証済みのトークンの主体。REST と同じ関数）。
+    private static string? Caller(ServerCallContext context) =>
+        MachinePrincipal.ClientIdOf(context.GetHttpContext().User);
 }

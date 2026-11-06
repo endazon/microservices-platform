@@ -121,8 +121,9 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 KCADM=http://localhost:8080; R=platform
 T=$(curl -s $KCADM/realms/master/protocol/openid-connect/token -d grant_type=password \
   -d client_id=admin-cli -d username=admin \
-  -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)" | jq -r .access_token)
-WSEC=$(curl -s -H "Authorization: Bearer $T" "$KCADM/admin/realms/$R/clients?clientId=wiki-js" | jq -r '.[0].secret')
+  --data-urlencode password@<(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d) | jq -r .access_token)
+# 管理者のパスワードとトークンはコマンドの引数に載せない（プロセス置換のファイルから読む）
+WSEC=$(curl -s -H @<(printf 'Authorization: Bearer %s\n' "$T") "$KCADM/admin/realms/$R/clients?clientId=wiki-js" | jq -r '.[0].secret')
 
 # IADR-0243 / #780: ブラウザが開く URL はエッジ host、Wiki.js pod が叩く URL は in-cluster（上表の注記）
 KC_BROWSER=https://keycloak.localhost/realms/platform
