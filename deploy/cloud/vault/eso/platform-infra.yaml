@@ -160,3 +160,54 @@ spec:
               - { key: platform-realm.json, templateAs: Values }
   dataFrom:
     - extract: { key: shared/ast-client-secrets }
+---
+# ［2026-11-07 / IADR-0689 決定 11］バックアップの保管先の鍵（access-key-id・secret-access-key）。
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: platform-backup-s3
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: platform-backup-s3
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  # 外から持ち込む値（ADR-0080 決定 1 の区分 1）。オーナーが put-external-secret.sh で書く。キーは Secret のキーと 1 対 1（在るキーを全部写す）。
+  dataFrom:
+    - extract: { key: platform/platform-backup-s3 }
+---
+# ［2026-11-07 / IADR-0689 決定 11］警報の Discord の webhook（webhook-url）。
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: alertmanager-discord
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: alertmanager-discord
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  # 外から持ち込む値（ADR-0080 決定 1 の区分 1）。オーナーが put-external-secret.sh で書く。キーは Secret のキーと 1 対 1（在るキーを全部写す）。
+  dataFrom:
+    - extract: { key: platform/alertmanager-discord }
+---
+# ［2026-11-07 / IADR-0689 決定 11］外の監視の ping の URL（ping-url・discord-ping-url・discord-fail-url）。
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: alertmanager-heartbeat
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: alertmanager-heartbeat
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  # 外から持ち込む値（ADR-0080 決定 1 の区分 1）。オーナーが put-external-secret.sh で書く。キーは Secret のキーと 1 対 1（在るキーを全部写す）。
+  dataFrom:
+    - extract: { key: platform/alertmanager-heartbeat }

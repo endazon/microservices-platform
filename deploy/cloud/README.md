@@ -175,7 +175,20 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
   ユーザーはサービスごとのユーザーが揃うと消える）。
 - 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）。
-- 外から持ち込む資格情報（LLM の鍵・バックアップの保管先・Discord・heartbeat）を OpenBao から写す形は、別の段で入れる。
+- 外から持ち込む値（LLM の鍵・バックアップの保管先・Discord・heartbeat・取引ユニットの外部の資格）は、オーナーが
+  `vault/put-external-secret.sh` で標準入力から OpenBao の `cloud/{msp,platform,ast}/*` に書き、ESO が写す
+  （[手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md)の「外から持ち込む値」。在るキーは `--overwrite` が無ければ止まる）。
+
+### 段 2 の切り替え（クラウドでは強制）
+
+| 切り替え | 値 | 置き場 |
+| --- | --- | --- |
+| ブローカの権限 | narrow（生成物 `infra/rabbitmq-permissions.yaml` の行だけ。行の無いユーザーには権限を付けない） | `infra/rabbitmq.yaml` の起動の直後の復元 |
+| LLM ゲートウェイの経路の設定の検査 | `Llm__RouteValidation__Mode=Fail`（不足があれば起動しない） | `values-cloud.yaml` |
+| LLM ゲートウェイの呼び手ごとの許可表 | `Llm__CallerPolicy__Mode=Enforce`（表の外は 403） | 同上 |
+| LLM ゲートウェイの入力・要求数・費用の上限 | `Llm__CallLimits__Mode=Enforce`（超えたら送らない） | 同上 |
+
+- 既定の描画とローカル（`values-local.yaml`・`deploy/local`）は段 1 のまま（`scripts/deploy-cloud.test.js` が固定する）。
 
 ## 5. 確かめ方（クラスタに触れない）
 

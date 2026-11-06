@@ -7,6 +7,10 @@ path "cloud/data/platform/rabbitmq"       { capabilities = ["read"] }
 path "cloud/data/shared/ast-db"             { capabilities = ["read"] }
 path "cloud/data/shared/ast-rabbitmq-users" { capabilities = ["read"] }
 path "cloud/data/shared/ast-client-secrets" { capabilities = ["read"] }
+# ［2026-11-07 / IADR-0689 決定 11］外から持ち込む値（オーナーが put-external-secret.sh で書く）。
+path "cloud/data/platform/platform-backup-s3"     { capabilities = ["read"] }
+path "cloud/data/platform/alertmanager-discord"   { capabilities = ["read"] }
+path "cloud/data/platform/alertmanager-heartbeat" { capabilities = ["read"] }
 # TLS の鍵（IADR-0689 決定 4）。発行だけ（role の外の名前は PKI の role が拒む）。
 path "pki_cloud/issue/postgres" { capabilities = ["update"] }
 path "pki_cloud/issue/rabbitmq" { capabilities = ["update"] }

@@ -64,3 +64,46 @@ b() { BAO_TOKEN="$T" bao "$@"; }
 done_revoke() { BAO_TOKEN="$T" bao token revoke -self >/dev/null 2>&1 || true; }
 trap done_revoke EXIT
 '
+
+# Pod の中の関数: パスとキーの有無を、OpenBao が「無い」と明示したときだけ「無い」と読む（IADR-0689 決定 11。2026-11-07）。
+# 🔴 権限・通信・封印などで読めないときは unknown を返す。呼び手は unknown なら書かずに止める（無いと読むと、kv put がパスの
+#    既存のキーを全部置き換える）。字面は OpenBao 2.7.1 の CLI で確かめた:
+#    パスが無い → 「No value found at cloud/metadata/<パス>」（終了 2）・キーが無い → 「Field "<キー>" not present in …」（終了 1）。
+#    値は読まない（kv get の標準出力は捨て、エラーの出力だけを見る）。
+# shellcheck disable=SC2016
+OB_POD_KV_STATE='
+path_state() {
+  _e="$(b kv metadata get -mount=cloud "$1" 2>&1 >/dev/null)" && { echo present; return 0; }
+  case "$_e" in "No value found at cloud/metadata/$1"*) echo absent ;; *) echo unknown ;; esac
+}
+key_state() {
+  _e="$(b kv get -mount=cloud -field="$2" "$1" 2>&1 >/dev/null)" && { echo present; return 0; }
+  case "$_e" in *"Field \"$2\" not present in"*) echo absent ;; *) echo unknown ;; esac
+}
+'
+
+# Pod の中の関数: 開けた（sealed=false）だけでなく、書き込みを受ける状態（active。`bao status` の "is_self": true）になるまで待つ
+# （IADR-0689 決定 1。2026-11-07）。OpenBao 2.7 の raft は、開けた直後にまず読み取りだけを受ける standby に入り、
+# リーダーの選出と active への切り替えが済むまでは書き込みを「local node not active but active cluster node not found」で拒む。
+# この間も読み取り（token lookup など）は通るので、開けた直後の書き込み（root の失効など）だけが落ちる。
+#   戻り値: 0 = active・1 = 待ち切っても active にならない・2 = 封印中か届かない（待たずに返す）。
+#   待つ上限は OB_ACTIVE_WAIT_S 秒（既定 60。整数だけを受ける。手順の文字列へ埋め込むため、形を確かめる）。
+OB_ACTIVE_WAIT_S="${OB_ACTIVE_WAIT_S:-60}"
+case "$OB_ACTIVE_WAIT_S" in
+  '' | *[!0-9]*) echo "ERROR: OB_ACTIVE_WAIT_S は待つ秒数（正の整数）を与える" >&2; exit 2 ;;
+esac
+[ "$OB_ACTIVE_WAIT_S" -ge 1 ] || { echo "ERROR: OB_ACTIVE_WAIT_S は 1 以上" >&2; exit 2; }
+# shellcheck disable=SC2016
+OB_POD_WAIT_ACTIVE='
+wait_active() {
+  _n=0
+  while :; do
+    _st="$(bao status -format=json 2>/dev/null || true)"
+    case "$_st" in *"\"sealed\": false"*) ;; *) return 2 ;; esac
+    case "$_st" in *"\"is_self\": true"*) return 0 ;; esac
+    _n=$((_n + 1))
+    [ "$_n" -lt '"$OB_ACTIVE_WAIT_S"' ] || return 1
+    sleep 1
+  done
+}
+'

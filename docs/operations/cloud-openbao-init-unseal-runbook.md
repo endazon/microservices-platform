@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
 iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525]
-specs: [20261106_2471_cloud-openbao-eso]
+specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso]
 issues: [#2471, #2401]
 -->
 
@@ -60,6 +60,9 @@ bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <識�
 kubectl -n openbao get pods                    # Ready 1/1 になる
 ```
 
+- `unseal.sh` は、開けた後に書き込みを受ける状態（active）になるまで待ってから OK を出す（上限 60 秒）。開けた直後は読み取りだけが通り、
+  書き込み（configure・seed・put）が拒まれる間がある。60 秒で active にならなければ 1 で止まる。OpenBao のログを確かめてから流し直す。
+
 ### 再起動のときに止まるもの
 
 - 解錠の順は **LUKS → k3s → unseal → ESO の同期**である。unseal はノードの再起動と、OpenBao の Pod の作り直しのたびに要る。
@@ -105,7 +108,31 @@ bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --
     gen cloud/ast/<名前> <キー> <バイト数>          # 指定のバイト数の乱数を標準の base64 で書く。在るキーは上書きしない
   ```
 
-- OpenD の RSA の鍵（1024 ビット）は OpenBao の中では作れない（OpenBao は 2048 ビット未満を作らない）。オーナーが手元で作り、外から持ち込む値と同じ口で直に入れる（別の段で入れる手順）。
+- OpenD の RSA の鍵（1024 ビット）は OpenBao の中では作れない（OpenBao は 2048 ビット未満を作らない）。オーナーが手元で作り、下の「外から持ち込む値」の口で直に入れる。
+
+### 外から持ち込む値（`put-external-secret.sh`）
+
+外から持ち込む値（LLM の鍵・バックアップの保管先・警報の宛先・取引ユニットの外部の資格）は、オーナーが手元で読み、**標準入力からだけ**流して書く。
+値は引数・環境変数・ファイルに置かない（`read -rs` で読み、パイプで渡し、`unset` する）。値の例はここに書かない。
+
+```sh
+P="bash deploy/cloud/vault/put-external-secret.sh --live --operator-file <operator>.age --identity <識別子のファイル>"
+read -rs v; printf '%s' "$v" | $P cloud/<領域>/<名前> <キー>; unset v          # 1 つのキーを書く
+openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       # OpenD の RSA の鍵（手元のメモリだけを通る）
+```
+
+- 書けるのは `cloud/ast`・`cloud/platform`・`cloud/msp` の下だけ（`cloud/shared` は §4 の `seed-secrets.sh` が作る）。
+- **キーが在れば止まる**（終了コード 5。何も変えない）。作り直すときだけ `--overwrite` を付ける（同じパスのほかのキーは残す）。
+- 終了コード: 0 書いた・1 失敗（パスやキーの有無を読めないときも、書かずに 1）・2 引数の誤りか値が空・3 `--live` が無い・5 キーが在る。
+- 書いた後は ESO が 1 時間以内に写す。すぐに写すときは `kubectl -n <名前空間> annotate externalsecret <名前> force-sync="$(date +%s)" --overwrite`。
+
+| 値 | パス | キー | 写す先（名前空間 / Secret） |
+| --- | --- | --- | --- |
+| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key`（埋め込みを使うなら `voyage-api-key` も） | `microservices-platform` / `llm-provider-credentials` |
+| バックアップの保管先の鍵 | `cloud/platform/platform-backup-s3` | `access-key-id`・`secret-access-key` | `platform-infra` / `platform-backup-s3` |
+| 警報の Discord の webhook | `cloud/platform/alertmanager-discord` | `webhook-url` | `platform-infra` / `alertmanager-discord` |
+| 外の監視の ping の URL | `cloud/platform/alertmanager-heartbeat` | `ping-url`・`discord-ping-url`・`discord-fail-url` | `platform-infra` / `alertmanager-heartbeat` |
+| 取引ユニットの外部の値 | `cloud/ast/moomoo-credentials`・`cloud/ast/moomoo-rsa`・`cloud/ast/ast-owner-totp`・`cloud/ast/ast-secrets` | 取引ユニットの手順書が決める | `ai-stock-trading`（取引ユニットの側の ExternalSecret） |
 
 ## 5. 突き合わせ（移行の門の条件 3）
 
@@ -115,7 +142,7 @@ node deploy/cloud/secret-inventory.js --strict
 
 - 宣言が参照する Secret の全件を、供給元（OpenBao から写す ExternalSecret）と区分（外から持ち込むもの・クラスタの中で作るもの・TLS の鍵）に照らす。
   1 つでも供給元が無ければ止まる。表に無い名前の Secret が増えたときも止まる（区分を決めてから足す）。
-- 外から持ち込む資格情報（LLM の鍵・バックアップの保管先・Discord・heartbeat）は、OpenBao から写す形が入るまで「供給元なし」と出る。
+- 外から持ち込む値も OpenBao から写すので、`--strict` は全件に供給元があるときに通る。
 
 ## 6. root が要る操作（root を作り直し、操作の後に失効させる）
 

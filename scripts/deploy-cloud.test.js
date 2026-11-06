@@ -336,7 +336,34 @@ function cloudRealmAudienceProblems(realm) {
   return out;
 }
 
-module.exports = { vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+/**
+ * NFR-18, IADR-0689 決定 12: クラウドの段 2 の切り替え（ブローカの権限 narrow・LLM ゲートウェイの 3 つ）。
+ *   - LLM ゲートウェイ: Llm__RouteValidation__Mode=Fail・Llm__CallerPolicy__Mode=Enforce・Llm__CallLimits__Mode=Enforce。
+ *   - ブローカ: 起動の直後の復元が vhost 全体（'.*' 3 つ）を当てず、生成物 rabbitmq-permissions の行だけを当てる。表は非 optional。
+ */
+const STAGE2_LLM_ENV = Object.freeze({ Llm__RouteValidation__Mode: 'Fail', Llm__CallerPolicy__Mode: 'Enforce', Llm__CallLimits__Mode: 'Enforce' });
+function llmGatewayEnv(docs) {
+  const d = docs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name));
+  const c = d ? (d.spec.template.spec.containers || [])[0] || {} : {};
+  return Object.fromEntries((c.env || []).filter((e) => typeof e.value === 'string').map((e) => [e.name, e.value]));
+}
+function stage2Problems(chartDocs, infraDocs) {
+  const out = [];
+  const env = llmGatewayEnv(chartDocs);
+  for (const [k, v] of Object.entries(STAGE2_LLM_ENV)) if (env[k] !== v) out.push(`LLM ゲートウェイの ${k} が ${v} でない（${env[k]}）`);
+  const boot = infraDocs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'rabbitmq-boot');
+  const script = boot ? String(boot.data['restore-users.sh']) : '';
+  if (/set_permissions[^\n]*'\.\*' '\.\*' '\.\*'/.test(script)) out.push('ブローカの復元が vhost 全体の権限（段 1）を当てる');
+  if (!/\$PERMS_DIR\/permissions\.txt/.test(script)) out.push('ブローカの復元が絞った権限の表を読まない');
+  const dep = infraDocs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'rabbitmq');
+  const vol = dep ? (dep.spec.template.spec.volumes || []).find((v) => v.configMap && v.configMap.name === 'rabbitmq-permissions') : null;
+  if (!vol) out.push('ブローカが ConfigMap rabbitmq-permissions をマウントしない');
+  else if (String(vol.configMap.optional) === 'true') out.push('絞った権限の表が optional（無ければ権限なしで黙って立つ）');
+  if (!infraDocs.some((d) => d.kind === 'ConfigMap' && d.metadata.name === 'rabbitmq-permissions')) out.push('ConfigMap rabbitmq-permissions を描かない');
+  return out;
+}
+
+module.exports = { stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -398,6 +425,32 @@ if (require.main === module) {
     const d = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/vault/vault-dev.yaml'), 'utf8')).find((x) => x.kind === 'Deployment');
     return d.spec.template.spec.containers[0].image;
   };
+  ok('IADR-0689 決定 12: クラウドの描画は段 2（ブローカの narrow・LLM ゲートウェイの Fail / Enforce / Enforce）。既定とローカルの描画は段 1 のまま', () => {
+    assert.deepStrictEqual(stage2Problems(renderChart(), renderInfra()), []);
+    // Deployment の描画だけを読む（ほかの資源には、この試験の YAML の読み手が扱わない書き方がある）。
+    const deployments = (extra) => docsOf(run('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', ...extra, '-s', 'templates/deployment.yaml', '--set-string', `global.image.tag=${IMAGE_TAG}`]));
+    const base = llmGatewayEnv(deployments([]));
+    const local = llmGatewayEnv(deployments(['-f', 'deploy/local/values-local.yaml']));
+    assert.ok(Object.keys(base).length > 0 && Object.keys(local).length > 0, '陽性対照: 既定・ローカルの LLM ゲートウェイの env を読めていない');
+    for (const k of Object.keys(STAGE2_LLM_ENV)) {
+      assert.strictEqual(base[k], undefined, `既定の描画に ${k} がある（段 1 を変えた）`);
+      assert.strictEqual(local[k], undefined, `ローカルの描画に ${k} がある（段 1 を変えた）`);
+    }
+    // 生成物の表は、ローカルの permissions.txt の取引ユニットの行と同じ
+    const gen = require('./gen-rabbitmq-permissions.js');
+    const want = gen.renderCloud([...gen.readPermissions().values()], gen.readUsers());
+    assert.strictEqual(fs.readFileSync(path.join(REPO_ROOT, gen.CLOUD_PERMS_REL), 'utf8'), want, 'rabbitmq-permissions.yaml が生成物と違う（gen-rabbitmq-permissions.js --write）');
+  });
+  ok('IADR-0689 決定 12 陰性対照: 段 1 の権限・表の欠落・optional・LLM の段 1 を検出する', () => {
+    const infra = JSON.parse(JSON.stringify(renderInfra()));
+    const boot = infra.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'rabbitmq-boot');
+    boot.data['restore-users.sh'] = "rabbitmqctl -q set_permissions -p / u '.*' '.*' '.*'";
+    infra.find((d) => d.kind === 'Deployment' && d.metadata.name === 'rabbitmq').spec.template.spec.volumes
+      .find((v) => v.configMap && v.configMap.name === 'rabbitmq-permissions').configMap.optional = true;
+    const chart = renderChart(['--set', 'services.llmgateway.extraEnvAppend=null']);
+    const p = stage2Problems(chart, infra);
+    for (const want of [/vhost 全体の権限/, /表を読まない/, /optional/, /RouteValidation__Mode/, /CallerPolicy__Mode/, /CallLimits__Mode/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
   ok('IADR-0689: 秘匿管理の描画 — OpenBao は dev モードでなく、ローカルと同じ digest、raft・値を記録しない監査。受け口に入れるのは ESO の controller だけ。Secret・ClusterSecretStore を描かない', () => {
     assert.deepStrictEqual(vaultProblems(renderVault(), renderEso(), localVaultImage()), []);
   });

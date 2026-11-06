@@ -70,6 +70,15 @@ services:
       secretName: llmgateway-tls
     # NFR-18, IADR-0674: ルートのファイルシステムを読み取り専用にする（書き込みは /tmp の emptyDir だけ）。
     readOnlyRootFilesystem: true
+    # NFR-18, IADR-0689 決定 12（2026-11-07）: クラウドでは LLM ゲートウェイの段 2 を強制にする（移行の門の条件。段 1 は報告だけ）。
+    #   既定の描画とローカル（values-local）は段 1 のまま（試験が固定する）。
+    #   - 経路の設定の不足は起動で止める（IADR-0677）
+    #   - 呼び手ごとの許可表に無い用途・モデルは 403（IADR-0684。取引ユニットの呼び手は既定の表に在る）
+    #   - 入力の上限と要求数・当日の費用の上限を超えたら送らない（IADR-0678。上限は既定の値）
+    extraEnvAppend:
+      - { name: Llm__RouteValidation__Mode, value: "Fail" }
+      - { name: Llm__CallerPolicy__Mode, value: "Enforce" }
+      - { name: Llm__CallLimits__Mode, value: "Enforce" }
 
 frontend:
   enabled: false

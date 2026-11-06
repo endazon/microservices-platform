@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-05
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
 iadrs: [IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
-specs: [20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
+specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
 issues: [#2471, #2402, #2401]
 -->
 
@@ -74,15 +74,13 @@ issues: [#2471, #2402, #2401]
 
 ## 2. クラスタへの投入（Secret・ConfigMap・イメージ）
 
-1. S3 の鍵（Secret `platform-backup-s3`）と宛先（ConfigMap `platform-backup-s3-target`）:
+1. S3 の鍵と宛先。鍵は秘匿管理（OpenBao）の `cloud/platform/platform-backup-s3` に書き、ESO が Secret `platform-backup-s3` に写す
+   （手で Secret を作らない。手順の前提は[秘匿管理の手順書](cloud-openbao-init-unseal-runbook.md)の「外から持ち込む値」）。
+   宛先（ConfigMap `platform-backup-s3-target`）は秘密ではないので、そのまま作る:
    ```bash
-   umask 077; d="$(mktemp -d)"
-   . ~/.secrets/backup-s3.env
-   printf '%s' "$AWS_ACCESS_KEY_ID" > "$d/access-key-id"
-   printf '%s' "$AWS_SECRET_ACCESS_KEY" > "$d/secret-access-key"
-   kubectl -n platform-infra create secret generic platform-backup-s3 \
-     --from-file=access-key-id="$d/access-key-id" --from-file=secret-access-key="$d/secret-access-key"
-   rm -f "$d"/*; rmdir "$d"
+   P="bash deploy/cloud/vault/put-external-secret.sh --live --operator-file <operator>.age --identity <識別子のファイル>"
+   read -rs v; printf '%s' "$v" | $P cloud/platform/platform-backup-s3 access-key-id; unset v       # アクセスキーの ID
+   read -rs v; printf '%s' "$v" | $P cloud/platform/platform-backup-s3 secret-access-key; unset v   # シークレットキー
    kubectl -n platform-infra create configmap platform-backup-s3-target \
      --from-literal=endpoint=https://fsn1.your-objectstorage.com \
      --from-literal=dest=objstore:<バケット>/ast-poc
@@ -108,14 +106,12 @@ issues: [#2471, #2402, #2401]
 ## 3. Discord の受信先
 
 1. Discord のサーバーで、警報のチャンネルの「連携サービス → ウェブフック」を作り、URL を手元のファイルへ写す。
-2. Secret `alertmanager-discord`（キー `webhook-url`）:
+2. Secret `alertmanager-discord`（キー `webhook-url`）は、秘匿管理の `cloud/platform/alertmanager-discord` に書き、ESO が写す:
    ```bash
-   umask 077; f="$(mktemp)"
-   # エディタで "$f" に URL を 1 行だけ書く（引数・履歴に出さない）
-   kubectl -n platform-infra create secret generic alertmanager-discord --from-file=webhook-url="$f"
-   rm -f "$f"
+   P="bash deploy/cloud/vault/put-external-secret.sh --live --operator-file <operator>.age --identity <識別子のファイル>"
+   read -rs v; printf '%s' "$v" | $P cloud/platform/alertmanager-discord webhook-url; unset v   # URL を 1 行（引数・履歴に出さない）
    ```
-3. Alertmanager は起動時に 1 度だけ描画する。差し替えたら `kubectl -n platform-infra rollout restart deploy/alertmanager`。
+3. Alertmanager は起動時に 1 度だけ描画する。差し替えたら（`--overwrite` で書き直し、ESO が写した後に）`kubectl -n platform-infra rollout restart deploy/alertmanager`。
    URL が空・形が違うと Alertmanager は起動しない（`Init:Error`。ログは `kubectl -n platform-infra logs deploy/alertmanager -c render-config`。値は表示しない）。
 
 ## 4. 外の監視（Healthchecks.io）と heartbeat
@@ -126,15 +122,13 @@ issues: [#2471, #2402, #2401]
      5 分ごとに ping する。失敗が起きると、警報 AlertmanagerDiscordFailing が B の `/fail` を叩いてすぐに下げる。
      失敗の間は B へ ping が来ないので、**B は下がったまま**である（A の ping では戻らない。B が戻るのは、失敗が 15 分の窓から消えたとき）。
    - どちらも「Integrations」で、オーナーへ届く宛先を**2 つ以上**つなぐ（メールと Discord。Discord の連携は、警報とは別のチャンネルにする —— 警報の webhook が壊れたときも届くように）。
-2. 2 つの check の ping の URL を手元のファイルへ写し、Secret `alertmanager-heartbeat`（キー `ping-url`・`discord-ping-url`・`discord-fail-url`）を作る:
+2. 2 つの check の ping の URL を、秘匿管理の `cloud/platform/alertmanager-heartbeat`（キー `ping-url`・`discord-ping-url`・`discord-fail-url`）に書く。
+   ESO が Secret `alertmanager-heartbeat` に写す:
    ```bash
-   umask 077; d="$(mktemp -d)"
-   # エディタで "$d/ping-url" に check A の ping の URL を、"$d/discord-ping-url" に check B の ping の URL を、それぞれ 1 行だけ書く
-   printf '%s/fail' "$(cat "$d/discord-ping-url")" > "$d/discord-fail-url"
-   kubectl -n platform-infra create secret generic alertmanager-heartbeat \
-     --from-file=ping-url="$d/ping-url" --from-file=discord-ping-url="$d/discord-ping-url" \
-     --from-file=discord-fail-url="$d/discord-fail-url"
-   rm -f "$d"/*; rmdir "$d"
+   P="bash deploy/cloud/vault/put-external-secret.sh --live --operator-file <operator>.age --identity <識別子のファイル>"
+   read -rs a; printf '%s' "$a" | $P cloud/platform/alertmanager-heartbeat ping-url; unset a          # check A の ping の URL
+   read -rs b; printf '%s' "$b" | $P cloud/platform/alertmanager-heartbeat discord-ping-url
+   printf '%s/fail' "$b" | $P cloud/platform/alertmanager-heartbeat discord-fail-url; unset b          # check B の URL の後ろに /fail
    ```
    2 つの URL が同じ（check を分けていない）・`discord-fail-url` が「`discord-ping-url`/fail」でないときは、Alertmanager は起動しない。
    この Secret が無いと Alertmanager の Pod は起動しない（ping が始まらず、外の監視が「一度も来ていない」と見せる）。

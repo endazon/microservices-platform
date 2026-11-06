@@ -9,6 +9,7 @@ resources:
   - namespaces.yaml
   - postgres.yaml
   - rabbitmq.yaml
+  - rabbitmq-permissions.yaml
   - keycloak.yaml
   - otel-collector.yaml
   - aliases.yaml

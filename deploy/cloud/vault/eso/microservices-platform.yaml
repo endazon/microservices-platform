@@ -30,3 +30,20 @@ spec:
             name: eso-openbao
             audiences:
               - vault
+---
+# ［2026-11-07 / IADR-0689 決定 11］LLM ゲートウェイの提供元の鍵（anthropic-api-key。voyage-api-key は任意）。
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: llm-provider-credentials
+  namespace: microservices-platform
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: llm-provider-credentials
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  # 外から持ち込む値（ADR-0080 決定 1 の区分 1）。オーナーが put-external-secret.sh で書く。キーは Secret のキーと 1 対 1（在るキーを全部写す）。
+  dataFrom:
+    - extract: { key: msp/llm-provider-credentials }

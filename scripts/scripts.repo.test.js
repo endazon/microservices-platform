@@ -20598,15 +20598,17 @@ esac
       assert.strictEqual(hits.stdout.trim(), '', `旧の手順を参照している:\n${hits.stdout}`);
     });
 
-    ok('IADR-0689 決定 8: secret-inventory.js — 宣言が参照する Secret の全件に区分があり、区分 2・3 はすべて OpenBao から写す（区分 1 は ② まで未供給）', () => {
+    ok('IADR-0689 決定 8・決定 11: secret-inventory.js — 宣言が参照する Secret の全件に区分があり、区分 1〜3 はすべて OpenBao から写す（--strict でも通る）', () => {
       const inv = require('../deploy/cloud/secret-inventory.js');
       const rows = inv.inventory();
       assert.ok(rows.length >= 14, `陽性対照: 参照を拾えていない（${rows.length}）`);
       assert.deepStrictEqual(inv.problems(rows), [], inv.problems(rows).join('\n'));
       for (const r of rows.filter((x) => x.category === 2 || x.category === 3)) assert.ok(r.supplier, `${r.ref} に供給元が無い`);
       for (const r of rows.filter((x) => x.category === 3)) assert.match(r.supplier, /PKI/, `${r.ref}（TLS の鍵）が PKI で発行されていない`);
-      assert.deepStrictEqual(rows.filter((x) => !x.supplier).map((x) => x.ref).sort(),
-        ['microservices-platform/llm-provider-credentials', 'platform-infra/alertmanager-discord', 'platform-infra/alertmanager-heartbeat', 'platform-infra/platform-backup-s3']);
+      // ［2026-11-07 / IADR-0689 決定 11］区分 1（外から持ち込む値）も OpenBao から写す。--strict（移行の判定）でも全件に供給元がある。
+      assert.deepStrictEqual(rows.filter((x) => !x.supplier).map((x) => x.ref), []);
+      assert.deepStrictEqual(inv.problems(rows, { strict: true }), []);
+      for (const r of rows.filter((x) => x.category === 1)) assert.match(r.supplier, /KV/, `${r.ref}（外から持ち込む値）が KV から写されていない`);
       // 陰性対照: 区分の無い参照・供給元の無い区分 2 を止める
       assert.strictEqual(inv.problems([{ ref: 'x/new', category: undefined, supplier: undefined }]).length, 1);
       assert.strictEqual(inv.problems([{ ref: 'x/db', category: 2, supplier: undefined }]).length, 1);
@@ -20641,7 +20643,7 @@ esac
     });
 
     ok('IADR-0689: 秘匿管理の手順（deploy/cloud/vault/*.sh）は --live が無ければ何もせずに 3 で終わり、秘密を引数・環境変数に置く形を持たない', () => {
-      for (const f of ['init.sh', 'unseal.sh', 'configure.sh', 'seed-secrets.sh', 'root-token.sh']) {
+      for (const f of ['init.sh', 'unseal.sh', 'configure.sh', 'seed-secrets.sh', 'root-token.sh', 'put-external-secret.sh']) {
         const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/vault', f), '--init-file', '/dev/null', '--identity', '/dev/null', '--operator-file', '/dev/null', '--recipients', '/dev/null'], { encoding: 'utf8', env: { ...process.env, LIVE: '' } });
         assert.ok([2, 3].includes(r.status), `${f}: ${r.status} ${r.stderr}`);
         const src = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/vault', f), 'utf8');
