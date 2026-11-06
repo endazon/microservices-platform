@@ -35,6 +35,7 @@
  * 使い方:
  *   node scripts/check-advisory-ids.js
  *   node scripts/check-advisory-ids.js --self-test
+ *   ADVISORY_IDS_ROOT=<dir> node scripts/check-advisory-ids.js   # 試験用（走査の根を差し替える）
  */
 const fs = require('fs');
 const path = require('path');
@@ -54,7 +55,10 @@ if (worktreeStateModule) {
   ({ MODE, warnIfResultMayDifferFromCi } = require(worktreeStateModule));
 }
 
-const REPO_ROOT = path.resolve(__dirname, '..');
+// 試験だけが一時のリポジトリへ向ける（作業ツリーを書き換えずに CLI の経路を確かめるため）。
+const REPO_ROOT = process.env.ADVISORY_IDS_ROOT
+  ? path.resolve(process.env.ADVISORY_IDS_ROOT)
+  : path.resolve(__dirname, '..');
 
 /**
  * 公開の第三者 advisory（依存パッケージの既知脆弱性。dependabot・依存の CVE の文脈で引いたもの）。

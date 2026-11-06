@@ -4659,20 +4659,52 @@ ${r.stderr}`);
       assert.deepStrictEqual(aid.findViolations(aid.ALLOWLIST[2].split('-').slice(0, 3).join('-')), []);
     });
 
-    // 🔴 **実データが clean なので、検出力は変異でしか示せない。**
-    // 追跡下のファイルへ架空の識別子を 1 行足して、CLI が exit 1 を返し**ファイル名と行番号を名指しする**ことを見る。
-    ok('check-advisory-ids: 追跡下のファイルへ架空の識別子を足すと exit 1 で名指しする', () => {
-      const target = pathAid.join(__dirname, '..', 'docs', 'README.md');
-      const orig = fsAid.readFileSync(target);
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。** ただし**作業ツリーは書き換えない**
+    // （強制終了されると架空の識別子が追跡下に残るため）。一時ディレクトリに git init したリポジトリを相手にする。
+    const osAid = require('os');
+    const withTempRepo = (fn, { init = true } = {}) => {
+      const dir = fsAid.mkdtempSync(pathAid.join(osAid.tmpdir(), 'advisory-ids-repo-'));
       try {
-        fsAid.writeFileSync(target, Buffer.concat([orig, Buffer.from(`\n${fakeFull}\n`)]));
-        const r = runAid([]);
-        assert.notStrictEqual(r.status, 0, '架空の識別子を足したのに exit 0 だった');
-        assert.match(r.stderr, /docs\/README\.md:\d+/, 'ファイル名と行番号を名指ししていない');
+        if (init) spawnAid('git', ['init', '-q'], { cwd: dir, encoding: 'utf8' });
+        return fn(dir);
       } finally {
-        fsAid.writeFileSync(target, orig);
+        fsAid.rmSync(dir, { recursive: true, force: true });
       }
-      assert.strictEqual(runAid([]).status, 0, '復元後も落ちたままである');
+    };
+    // 一時ディレクトリの外側の git リポジトリを拾わないよう、探索の上限を親で止める。
+    const isolatedEnv = (dir) => ({
+      ...process.env,
+      ADVISORY_IDS_ROOT: dir,
+      GIT_CEILING_DIRECTORIES: pathAid.dirname(dir),
+    });
+
+    ok('check-advisory-ids: 一時のリポジトリで、追跡下の架空の識別子を名指しし、未追跡は見ない', () => {
+      withTempRepo((dir) => {
+        fsAid.writeFileSync(pathAid.join(dir, 'ok.md'), `${aid.ALLOWLIST[1]}\n`);
+        fsAid.writeFileSync(pathAid.join(dir, 'ng.sh'), `# x\n# ${fakeFull}\n`);
+        fsAid.writeFileSync(pathAid.join(dir, 'untracked.md'), `${fakeFull}\n`);
+        spawnAid('git', ['add', 'ok.md', 'ng.sh'], { cwd: dir, encoding: 'utf8' });
+        const r = aid.scan(dir, aid.trackedFiles(dir));
+        assert.deepStrictEqual(r.violations.map((v) => [v.rel, v.line, v.id]), [['ng.sh', 2, fakeFull]]);
+        assert.strictEqual(r.scanned, 2);
+      });
+    });
+
+    ok('check-advisory-ids: CLI は git ls-files が失敗すると exit 1（一時の非 git ディレクトリ）', () => {
+      withTempRepo((dir) => {
+        fsAid.writeFileSync(pathAid.join(dir, 'a.md'), `${fakeFull}\n`);
+        const r = runAid([], { env: isolatedEnv(dir) });
+        assert.strictEqual(r.status, 1, `exit 1 ではなかった:\n${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /git ls-files/, '列挙の失敗を名指ししていない');
+      }, { init: false });
+    });
+
+    ok('check-advisory-ids: CLI は 0 件の走査なら exit 1（追跡下が空の一時のリポジトリ）', () => {
+      withTempRepo((dir) => {
+        const r = runAid([], { env: isolatedEnv(dir) });
+        assert.strictEqual(r.status, 1, `exit 1 ではなかった:\n${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /走査件数が 0 件/, '0 件走査の門で止まっていない');
+      });
     });
   }
 
