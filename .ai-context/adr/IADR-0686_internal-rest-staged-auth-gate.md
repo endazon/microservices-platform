@@ -12,7 +12,7 @@ related_specs:
 
 # IADR-0686: 内部の REST の群の段階つきの認証の門（#2430）
 
-> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。番号は仮（マージ直前に develop の最大＋1 へ改める）。
+> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
 - 日付: 2026-11-06
