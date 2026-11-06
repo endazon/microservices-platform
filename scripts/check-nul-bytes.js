@@ -38,6 +38,7 @@
  * 使い方:
  *   node scripts/check-nul-bytes.js
  *   node scripts/check-nul-bytes.js --self-test
+ *   NUL_BYTES_ROOT=<dir> node scripts/check-nul-bytes.js   # 試験用（走査の根を差し替える。#2482）
  */
 const fs = require('fs');
 const path = require('path');
@@ -58,7 +59,11 @@ if (worktreeStateModule) {
   ({ MODE, warnIfResultMayDifferFromCi } = require(worktreeStateModule));
 }
 
-const REPO_ROOT = path.resolve(__dirname, '..');
+// 試験だけが一時のリポジトリへ向ける（作業ツリーを書き換えずに CLI の経路を確かめるため。#2482。
+// check-advisory-ids.js の ADVISORY_IDS_ROOT と同じ形）。
+const REPO_ROOT = process.env.NUL_BYTES_ROOT
+  ? path.resolve(process.env.NUL_BYTES_ROOT)
+  : path.resolve(__dirname, '..');
 
 /**
  * 正当に NUL を含み得るバイナリの拡張子。**現時点では空である**（拡張子での一括除外は無い）。

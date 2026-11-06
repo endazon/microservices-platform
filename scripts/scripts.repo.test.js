@@ -4561,22 +4561,36 @@ ${r.stdout}
 ${r.stderr}`);
     });
 
-    // 🔴 **実データが clean なので、検出力は変異でしか示せない。**
-    // 追跡下のファイルへ 1 バイト入れて、CLI が exit 1 を返し**ファイル名と行番号を名指しする**ことを見る。
-    ok('check-nul-bytes: 追跡下のファイルへ NUL を 1 バイト入れると exit 1 で名指しする', () => {
-      const target = pathNul.join(__dirname, '..', 'docs', 'README.md');
-      const orig = fsNul.readFileSync(target);
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。** ただし**本物の作業ツリーは書き換えない**
+    // （#2482。追跡下のファイルを書き換えて finally で戻す形は、強制終了で NUL が残る）。
+    // 一時ディレクトリに git init したリポジトリを相手にし、CLI の根を NUL_BYTES_ROOT で差し替える
+    // （#2480 の check-advisory-ids の試験と同じ形）。走査件数の門（MIN_SCANNED）を越えるだけのファイルを置く。
+    ok('check-nul-bytes: 追跡下のファイルへ NUL を 1 バイト入れると exit 1 で名指しする（一時のリポジトリ）', () => {
+      const nul = require('./check-nul-bytes.js');
+      const dir = fsNul.mkdtempSync(pathNul.join(osNul.tmpdir(), 'nul-cli-repo-'));
+      // 一時ディレクトリの外側の git リポジトリを拾わないよう、探索の上限を親で止める。
+      const env = { ...process.env, NUL_BYTES_ROOT: dir, GIT_CEILING_DIRECTORIES: pathNul.dirname(dir) };
+      const git = (...args) => {
+        const r = spawnNul('git', args, { cwd: dir, encoding: 'utf8', env });
+        assert.strictEqual(r.status, 0, `git ${args.join(' ')} が失敗した: ${r.stderr}`);
+      };
       try {
-        fsNul.writeFileSync(target, Buffer.concat([orig, Buffer.from([0x00])]));
-        const r = runNul([]);
+        git('init', '-q');
+        fsNul.mkdirSync(pathNul.join(dir, 'docs'));
+        for (let i = 0; i < nul.MIN_SCANNED; i += 1) fsNul.writeFileSync(pathNul.join(dir, 'docs', `f${i}.md`), `# ${i}\n`);
+        const target = pathNul.join(dir, 'docs', 'README.md');
+        fsNul.writeFileSync(target, '# 見出し\n本文\n');
+        git('add', '.');
+        // 対照: きれいなら緑。
+        assert.strictEqual(runNul([], { env }).status, 0, 'NUL を入れる前から落ちている');
+        fsNul.writeFileSync(target, Buffer.concat([fsNul.readFileSync(target), Buffer.from([0x00])]));
+        const r = runNul([], { env });
         assert.notStrictEqual(r.status, 0, 'NUL を入れたのに exit 0 だった');
         assert.match(r.stderr, /docs\/README\.md/, 'ファイル名を名指ししていない');
         assert.match(r.stderr, /行目 \/ バイトオフセット/, '位置を出していない');
       } finally {
-        fsNul.writeFileSync(target, orig);
+        fsNul.rmSync(dir, { recursive: true, force: true });
       }
-      // 戻したら緑に戻ること（対照）。
-      assert.strictEqual(runNul([]).status, 0, '復元後も落ちたままである');
     });
 
     // 🔴 **検査器が「自分が検出したいもの」で壊れないこと。**
