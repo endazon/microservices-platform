@@ -11,7 +11,7 @@ issue: "#2421"
 
 # 作業仕様書 — 秘匿管理の運用者の policy（#2421）
 
-> 着手 2026-11-05（develop `170f1efb`）。判断の記録は **IADR-0683**（新規。番号は仮）。稼働中のクラスタへは当てない（利用者が `deploy/local/vault/oidc/bootstrap.sh` を再実行して当てる）。
+> 着手 2026-11-05（develop `170f1efb`）。判断の記録は **IADR-0683**（新規）。稼働中のクラスタへは当てない（利用者が `deploy/local/vault/oidc/bootstrap.sh` を再実行して当てる）。
 
 ## 起点
 
