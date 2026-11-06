@@ -767,3 +767,4 @@
 | [IADR-0687](./IADR-0687_bff-user-rate-limits-staged.md) | BFF の LLM を伴う口に、利用者ごと・群ごとの直近 60 秒の要求数の上限（段 1 は報告、段 2 は 429）を共有の端点フィルタで掛ける（#2432） | Accepted |
 | [IADR-0688](./IADR-0688_reconcile-surplus-roles-as-drift.md) | realm の調停は、サービスアカウントの宣言より多いロールを余剰として数える（check は drift・apply は段 1 で報告だけ） | Accepted |
 | [IADR-0689](./IADR-0689_cloud-openbao-eso-in-cluster-credentials.md) | クラウドの最小構成に秘匿管理（OpenBao・ESO）を持ち込み、クラスタの中の資格情報と TLS の鍵を OpenBao から供給する（unseal の鍵と資格は age で手元に・root は使うたびに作り直して失効） | Accepted |
+| [IADR-0690](./IADR-0690_private-advisory-id-scrub-and-allowlist-check.md) | 公開のファイルから非公開の指摘の識別子を除き（凍結記録も本文を置換する例外）、advisory の識別子は公開の第三者の allowlist だけを許す検査器で再混入を止める | Accepted |
