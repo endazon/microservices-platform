@@ -1,4 +1,4 @@
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤のサーバ証明書（段 1 は postgres と rabbitmq）。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤のサーバ証明書（段 1 は postgres と rabbitmq）。
 #
 # dnsNames はクライアントが引く名前をすべて列挙する。クライアントは ExternalName の素の名前（postgres / rabbitmq。
 # deploy/local/aliases）で繋ぐので、TLS の名前の照合もその名前で行われる。FQDN の 3 形も並べる（名前空間を跨いで

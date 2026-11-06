@@ -1,17 +1,17 @@
 ---
-title: 作業仕様書 — 基盤のサーバ証明書の更新を作り直しで読ませる（IADR-0591 の後続。GHSA-j4qv-2w99-xg5p）
+title: 作業仕様書 — 基盤のサーバ証明書の更新を作り直しで読ませる（IADR-0591 の後続。非公開の指摘（MSP））
 type: spec
 status: in-progress
 related_ids: [NFR-16, NFR-18, ADR-0023, IADR-0591]
 author: claude
 created: 2026-10-23
-updated: 2026-11-05
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — 基盤のサーバ証明書の更新を作り直しで読ませる（GHSA-j4qv-2w99-xg5p）
+# 作業仕様書 — 基盤のサーバ証明書の更新を作り直しで読ませる（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-23）。判断の記録は IADR-0591 の日付つき追記に置く。参照は GHSA の ID だけとする。
 
@@ -46,3 +46,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 - 稼働のクラスタでは、初めて当てる再実行で 1 回作り直される（AST の接続も一度切れる）。以後は証明書が変わったときだけ作り直す。
 
 ［2026-11-05 追記 / #2403］未チェックの「統合スタック（`ISTIO=1`）を PR のブランチで流し、門が緑」は、段 4b-2 の PR のブランチで流した run 42023613547（workflow_dispatch・`ISTIO=1`）で満たした。段 1 の門（基盤の TLS・メッシュの mTLS・外向き通信ほか）を含め、すべての門が緑だった。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

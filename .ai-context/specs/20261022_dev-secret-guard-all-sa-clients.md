@@ -1,17 +1,17 @@
 ---
-title: 作業仕様書 — dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（GHSA-rh44-px44-p48q）
+title: 作業仕様書 — dev の値の守りの対象を、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0124, IADR-0572, IADR-0517, IADR-0518, IADR-0485]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密・初期投入は無いときだけ作る・本番の秘密を realm の宣言から外す）
-issue: "GHSA-rh44-px44-p48q"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げる（GHSA-rh44-px44-p48q）
+# 作業仕様書 — dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げる（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0572**（新規）に置く。
 > 多層防御の強化として、既定を fail-closed へ寄せる一連の変更（4 本の PR）の 1 本目である。参照は GHSA の ID だけとする。
@@ -81,3 +81,5 @@ PR 本文に順序つきで書く。要点: dev ではない kube context の Po
 
 - AST の realm（submodule 同梱時）は取り込み元の差し替えの対象外（従来どおり。後追いと検知は全 realm に掛かる）。
 - 判定は context の名前だけを見る（IADR-0517 残余 3。変えない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

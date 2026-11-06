@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
 iadrs: [IADR-0682, IADR-0675, IADR-0670, IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
-specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261105_2402_cloud-backup-alerts-heartbeat, 20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261105_2402_cloud-backup-alerts-heartbeat, 20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
 issues: [#2413, #2402, #2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 

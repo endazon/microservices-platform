@@ -2,7 +2,7 @@
 'use strict';
 /*
  * vault-k8s-auth-audience.test.js
- * NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）:
+ * NFR-18, IADR-0585（Refs 非公開の指摘（MSP））:
  * **秘匿管理（OpenBao / Vault）の kubernetes 認証で、受ける側（role）と名乗る側（トークン）の対象者（audience）が揃っていることを固定する。**
  *
  * 固定するもの:

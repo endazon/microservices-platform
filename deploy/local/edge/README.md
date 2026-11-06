@@ -92,7 +92,7 @@ kubectl apply -k deploy/local/edge
 
 ### 管理ツールへの入り方（既定は port-forward。IADR-0586）
 
-管理ツールの集約入口（50000）には、**既定で経路を置かない**（多層防御の強化。GHSA-j4qv-2w99-xg5p）。
+管理ツールの集約入口（50000）には、**既定で経路を置かない**（多層防御の強化。非公開の指摘（MSP））。
 `LOCALEDGE=1` の起動器（`k8s-local-up.sh`・`istio-edge-up.sh`・`istio-edge-down.sh`）は、`ADMIN_EDGE=1` が無ければ
 6 host の経路を**消す**（以前の実行で置いた経路も、再実行で閉じる）。入口（50000 の listener）とポートの公開は残る。
 

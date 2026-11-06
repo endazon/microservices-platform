@@ -571,7 +571,7 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } 
   // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
   // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
   // 投入器の呼び出しは記録スタブで足りる。
-  // ［IADR-0572 / GHSA-rh44-px44-p48q］dev の値の守りの対象を realm の宣言から導出する口
+  // ［IADR-0572 / 非公開の指摘（MSP）］dev の値の守りの対象を realm の宣言から導出する口
   // （scripts/lib/dev-client-secret-targets.js）は本物の node へ渡す（導出の結果で起動器の振る舞いが決まるため）。
   // #2024 / IADR-0570: [3/7] の取り込み元の差し込み（`reconcile-realm.js --render-import`）も本物の node で走らせる
   //   （取り込み元の中身を試験が見る。Keycloak へは接続しない純粋な変換である）。
@@ -1650,7 +1650,7 @@ ok('LOCALEDGE=1 ADMIN_EDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', ()
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/edge/argocd-ingress.yaml'), 'ns 有なのに argocd-ingress が apply されない');
 });
 
-// --- NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口（admin(50000)）は既定で経路を置かない ----------------
+// --- NFR-18, IADR-0586 (非公開の指摘（MSP）): 管理ツールの集約入口（admin(50000)）は既定で経路を置かない ----------------
 // 6 host（grafana / headlamp / vault / qdrant / wiki / argocd）の経路は ADMIN_EDGE=1（明示の opt-in）のときだけ置き、
 // それ以外では消す（以前の実行で置いた経路も再実行で閉じる）。入口（50000 の listener）は残る。実測は check-stack-ready.js の G4c。
 const ADMIN_TRAEFIK_FILES_0586 = ['admin-ingress-infra.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
@@ -1967,7 +1967,7 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
   assert.ok(!lines.some((l) => l.startsWith('kubectl') && l.includes('cert-manager/releases/download/')), 'cert-manager の URL を直接 apply した（digest の固定を経ない）');
 });
 
-// NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）のサーバ証明書は**既定で**発行し、
+// NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（platform-infra）のサーバ証明書は**既定で**発行し、
 // 基盤の apply より前に Ready を待ち、CA を MSP・AST の名前空間へ helm より前に写す。
 ok('IADR-0591: 既定で cert-manager → infra-tls → 証明書 Ready → 基盤の apply → CA の写し（MSP・AST）→ helm の順に進む', () => {
   const r = runUp({});
@@ -2292,7 +2292,7 @@ ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloa
   );
 });
 
-// NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: ESO=1 で BFF の共有シークレット（AST の OpenD 認証サイドカー宛て）を同期する。
+// NFR, AST/IADR-0566（Refs 非公開の指摘（AST））: ESO=1 で BFF の共有シークレット（AST の OpenD 認証サイドカー宛て）を同期する。
 // 既定（ESO 未設定）では apply しない（ESO の CRD が無い）。手動の Secret も作らない（optional で、無ければ BFF は上流を呼ばない）。
 ok('ESO=1 (AST/IADR-0566): opend-auth-caller-secret の ExternalSecret を apply する・既定では apply しない', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
@@ -2304,7 +2304,7 @@ ok('ESO=1 (AST/IADR-0566): opend-auth-caller-secret の ExternalSecret を apply
     'opend-auth-caller-secret を手動 apply している（二重所有）');
 });
 
-// NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ESO=1 でブローカのユーザーの写しを同期し、宣言の全ユーザーを合わせる。
+// NFR, IADR-0573（Refs 非公開の指摘（AST））: ESO=1 でブローカのユーザーの写しを同期し、宣言の全ユーザーを合わせる。
 //   既定（ESO 未設定）では何もしない。値が揃わなければ止まる。パスワードはコマンドの引数に載せない（標準入力）。
 ok('ESO=1 (IADR-0573): rabbitmq-users を apply し、宣言の全ユーザーを標準入力のパスワードで合わせる', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
@@ -2390,7 +2390,7 @@ ok('既定 (#1012): postgres-app を手動 apply する（ESO 未設定）', () 
   );
 });
 
-// NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: 基盤の 7 サービスのブローカの資格情報は
+// NFR-18, IADR-0577（Refs 非公開の指摘（MSP）。旧 #1022 の rabbitmq-app）: 基盤の 7 サービスのブローカの資格情報は
 // サービスごと（Secret msp-rabbitmq-users・キー = ユーザー名）。postgres-app と同じく「ESO=1 は ExternalSecret だけ・
 // それ以外は起動器だけ」の対にする（#1012 / #1022 が踏んだ「手動を止めたのに供給元を置かない」の再発防止。IADR-0286 追記）。
 // 全サービス共通の 1 組（rabbitmq-app）は、どちらの経路でも作らない。
@@ -4140,7 +4140,7 @@ ok('#780: Keycloak の Ingress は同 namespace の edge-tls を使い、後段�
     '後段が keycloak:8080 でない');
 });
 
-// --- NFR-18, IADR-0575 (GHSA-rh44-px44-p48q): エッジは Keycloak の管理面（/admin・/realms/master）を出さない ----------------------
+// --- NFR-18, IADR-0575 (非公開の指摘（MSP）): エッジは Keycloak の管理面（/admin・/realms/master）を出さない ----------------------
 // 宣言を読んで経路の選ばれ方を模型で再現し、(1) 管理面はエッジで拒む (2) 利用者が使う realm の経路（ログイン・トークン・
 // アカウントコンソール・テーマの資源・discovery）は従来どおり Keycloak へ届く、を Traefik / Istio の両エッジで固定する。
 // 実測は scripts/check-stack-ready.js の G4b（エッジ越しの curl。CI の integration-stack）。
@@ -4965,7 +4965,7 @@ ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で�
   assert.ok(uninstallAt < restoreAt, '切り戻しで Traefik の復旧が Gateway の撤去より先にある（同上）');
 });
 
-// --- NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口の宣言（静的）-----------------------------------------
+// --- NFR-18, IADR-0586 (非公開の指摘（MSP）): 管理ツールの集約入口の宣言（静的）-----------------------------------------
 // 宣言を読み、Envoy の host の選び方（完全一致 ＞ 接尾辞のワイルドカード）の模型で、既定（拒否だけ）と opt-in（拒否 ＋ 6 host）の
 // 両方で各 host がどこへ行くかを固定する。
 /** Envoy の virtual host の選び方の模型（完全一致が先、次に最長の `*.` 接尾辞）。勝った VirtualService の名前を返す。 */
@@ -5480,7 +5480,7 @@ ok('#1710: 明示が勝つ（現行 STRICT でも ISTIO_MTLS_MODE=PERMISSIVE な
   assert.strictEqual(mtlsOf(failOk), 'STRICT');
 });
 
-// NFR-18, IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: 初回の既定は STRICT（従前は PERMISSIVE）。LOCALEDGE=1 の初回は入口を移すまで
+// NFR-18, IADR-0590（Refs 非公開の指摘（MSP））: 初回の既定は STRICT（従前は PERMISSIVE）。LOCALEDGE=1 の初回は入口を移すまで
 //   [6/7] で PERMISSIVE を宣言し、istio-edge-up.sh [5/5] が STRICT へ上げる（IADR-0377 決定 2 の段取りはそのまま）。
 const DEFAULT_STRICT_INFO = /INFO: mesh\.mtlsMode は既定の STRICT を宣言します/;
 ok('#1710 / IADR-0590: 初回（リリースが無い）＋ 未指定 → 既定の STRICT（LOCALEDGE=1 は入口を移した後で上げる）。メッシュ未宣言のリリースも同じ', () => {
@@ -5613,7 +5613,7 @@ const touchedCluster = (r) => r.lines.some((l) => l.startsWith('docker build ') 
   || l.startsWith('kubectl label namespace') || l.startsWith('helm upgrade --install istio'));
 const NO_MESH_VALUES = 'mesh:\n  enabled: false\nnamespace:\n  create: false\n';
 
-// NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission のラベル（チャートの namespace.yaml と同じ規則）。
+// NFR, IADR-0583（Refs 非公開の指摘（MSP））: Pod Security Admission のラベル（チャートの namespace.yaml と同じ規則）。
 const PSA_LABEL_RE = /^kubectl label namespace microservices-platform pod-security\.kubernetes\.io\//;
 ok('IADR-0583: 既定（注入なし）は enforce=baseline・warn / audit=restricted を [5/7] の Namespace 作成の後・helm の前に貼る', () => {
   const lines = DEFAULT.lines.filter((l) => PSA_LABEL_RE.test(l));
@@ -6685,7 +6685,7 @@ for (const major of ['4', '3']) {
 // reconcile-realm.sh が共有）。ここでは (1) 真理値表を関数そのもので (2) 起動器の実走で「書き込みの前に止まる」を
 // (3) CI の 2 本（integration-stack / cutover-rehearsal）の context が許可集合に入る（陽性対照）を (4) 後追い Job へ判定が渡る、を固定する。
 const DEV_GUARD_LIB = path.join(REPO_ROOT, 'scripts', 'lib', 'dev-client-secret-guard.sh');
-// ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する。試験は判定器とは別に、宣言から独立に数える
+// ［IADR-0572 / 非公開の指摘（MSP）］対象は realm の宣言から導出する。試験は判定器とは別に、宣言から独立に数える
 // （サービスアカウントを持つ・機密・宣言が secret を持つ）。当初の 3 つは必ず含む（陽性対照）。
 const REALM_1830 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy', 'keycloak', 'microservices-platform-realm.json'), 'utf8'));
 const deriveGuarded1830 = (realm) => realm.clients
@@ -6876,7 +6876,7 @@ ok('#1830: 3 本の呼び出し元は同じ判定器を source し、自前の�
   }
 });
 
-// --- NFR-18, ADR-0124 決定 1, IADR-0572 (GHSA-rh44-px44-p48q): 対象を realm の宣言から導出する ---------------------------------------
+// --- NFR-18, ADR-0124 決定 1, IADR-0572 (非公開の指摘（MSP）): 対象を realm の宣言から導出する ---------------------------------------
 /** 判定器を source し、与えた realm（省略時は既定の宣言）から対象を読んで、続く bash を走らせる。 */
 function guardWith(realmFile, script, env = {}) {
   const r = spawnSync('bash', ['-c', `set -euo pipefail\n. "$1"\ndev_client_secret_load_targets \${2:+"$2"}\n${script}`, 'guard-0570', DEV_GUARD_LIB, realmFile || ''], {
@@ -6942,7 +6942,7 @@ ok('IADR-0572 変異: 宣言へ SA を持つ機密クライアントを足すと
   }
 });
 
-// --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）の client secret を稼働の Secret に置く ---------------------------
+// --- NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体（abac-seeder）の client secret を稼働の Secret に置く ---------------------------
 ok('IADR-0576: 起動器は ESO の有無によらず Secret platform-infra/abac-seeder-oidc を作る（既定は宣言の値・env を与えればその値）', () => {
   assert.strictEqual(DEFAULT.status, 0);
   assert.deepStrictEqual(secretOf(DEFAULT, 'abac-seeder-oidc'), [devValueOf('abac-seeder')], '既定（dev の context）で宣言の値の Secret が無い');
@@ -7389,7 +7389,7 @@ ok('#1839: 旧 Redis（認証なし）を消し、Valkey の起動を待つ（ES
   assert.ok(applyAt >= 0 && deleteAt > applyAt, `順序が違う: apply=${applyAt} delete=${deleteAt}`);
 });
 
-// --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報を公知の既定値で作らない（fail-closed） ----------
+// --- NFR-18, ADR-0124 決定 1, IADR-0574 (非公開の指摘（MSP）): 基盤の資格情報を公知の既定値で作らない（fail-closed） ----------
 // 判定は scripts/lib/infra-credentials.sh（k8s-local-up.sh・bootstrap.sh が共有）。値は実行時に組む（gitleaks）。
 const credOf0573 = (r, secret, key) => r.secrets.filter((l) => l.startsWith(`${secret} ${key}=`)).map((l) => l.slice(`${secret} ${key}=`.length));
 const custom0573 = (what) => ['probe', '0573', what].join('-');

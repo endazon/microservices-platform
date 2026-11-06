@@ -5,15 +5,15 @@ status: Accepted
 related_ids: [NFR-18, ADR-0005, ADR-0021, IADR-0026, IADR-0307, IADR-0317, IADR-0377, IADR-0487, IADR-0488, IADR-0583, IADR-0589]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービスメッシュ。サービス間通信を mTLS で徹底する）
   - planning:projects/microservices-platform/07_adr/ADR-0021（エッジ＝Istio Ingress Gateway。入口の境界で平文を許す緩和は不要）
 related_specs:
-  - ../specs/20261023_j4qv_mesh-mtls-strict-default.md
+  - ../specs/20261023_mesh-mtls-strict-default.md
 ---
 
-# IADR-0590: 経路B のメッシュの mTLS の既定を STRICT にする（GHSA-j4qv-2w99-xg5p）
+# IADR-0590: 経路B のメッシュの mTLS の既定を STRICT にする（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化。既定を fail-closed にする）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。既定を fail-closed にする）。
 - 計画: **ADR-0005**（サービス間通信を mTLS で徹底する）・**ADR-0021**（入口はメッシュの Envoy。入口の境界のための PERMISSIVE 化は不要）。要求 **NFR-18**（同じ GHSA の他の変更と同じ起点）。
 - 前提: [IADR-0026](./IADR-0026_mesh-mtls-supersedes-network-isolation.md)（STRICT mTLS を第一防御とする）・[IADR-0307](./IADR-0307_istio-optin-and-staged-mtls.md) 決定 4（経路B の既定は PERMISSIVE。本 IADR が改める）・[IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)（入口を Envoy へ移す）・[IADR-0377](./IADR-0377_mesh-mtls-single-writer-and-drift-gate.md) 決定 2（STRICT は入口を移した後）・決定 3（経路B の既定は PERMISSIVE のまま。本 IADR が改める）・決定 4（AST↔MSP の扱い）・[IADR-0487](./IADR-0487_mesh-mtls-mode-inherit-on-rerun-fail-closed.md)（未指定の再実行は現行を引き継ぐ）・[IADR-0488](./IADR-0488_istio-tristate-inherit-mesh-enabled-on-rerun.md)（`ISTIO` の引き継ぎ）。同じ GHSA の段: [IADR-0583](./IADR-0583_pod-security-context-and-admission.md)・[IADR-0589](./IADR-0589_egress-default-deny-network-policy.md)。
 
@@ -89,3 +89,5 @@ PERMISSIVE の理由は 2 つだった。(1) 入口がメッシュ外の Traefik
   1. AST の配備スクリプトが `mesh.sidecarInjection.enabled` を再実行で引き継げるようにする（AST リポジトリ側。今は値の受け口が無く、手で与えた値が次の配備で外れる）。
   2. 稼働の PoC を STRICT へ上げるのは 1 の後。手順は `deploy/istio/README.md`「STRICT の前提」。
   3. 基盤インフラ（platform-infra）側の通信の暗号化は別の段（本 IADR の範囲外）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

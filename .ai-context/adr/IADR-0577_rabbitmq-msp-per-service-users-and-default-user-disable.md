@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, ADR-0027, ADR-0124, IADR-0573, IADR-0574, IADR-0291, IADR-0286, IADR-0485]
 author: claude
 created: 2026-10-22
-updated: 2026-11-05
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027 （メッセージングは Wolverine ＋ RabbitMQ）
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密）
@@ -14,7 +14,7 @@ related_specs:
   - ../specs/20261022_ast-pin-29a4d9dd.md
 ---
 
-# IADR-0577: 基盤のサービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q）
+# IADR-0577: 基盤のサービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（非公開の指摘（AST） / 非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -24,7 +24,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-pvmh-cvmf-pvcp（ブローカのサービスごとの資格情報）/ GHSA-rh44-px44-p48q（既定のユーザーの無効化）（多層防御の強化。全サービスで共有する資格情報を残さない・最小権限）。
+- 起点: 非公開の指摘（AST）（ブローカのサービスごとの資格情報）/ 非公開の指摘（MSP）（既定のユーザーの無効化）（多層防御の強化。全サービスで共有する資格情報を残さない・最小権限）。
 - 計画: **ADR-0027**（メッセージング）・**ADR-0124 決定 1**（対になる秘密）。要求 **NFR-18**。いずれとも矛盾しない
   （ブローカの製品・トポロジは変えない。KV `msp/rabbitmq-users` は IADR-0573 のまま SC-22 の画面の対象外）。
 - 前提: [IADR-0573](./IADR-0573_rabbitmq-per-service-users-and-ingress-policy.md)（サービスごとのユーザー・決定 4 の移行の段。本 IADR は段 3）・
@@ -132,3 +132,5 @@ related_specs:
   取引ユニットの起動器の「管理外の同名 Secret」の検査が名指して止まる（`ast-secrets` と同じ扱い。消して ESO に作り直させる）。
 - 固定: `scripts/k8s-local-up.test.js`（ESO なしで作る・値がブローカ側と一致・helm の前・ESO=1 では作らない）と
   `scripts/scripts.repo.test.js`（名前・接頭辞・KV が取引ユニットの chart の既定と一致。submodule を取得した checkout で突き合わせる）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

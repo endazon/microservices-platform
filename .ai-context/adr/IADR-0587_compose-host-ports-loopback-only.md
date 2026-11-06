@@ -5,15 +5,15 @@ status: Accepted
 related_ids: [NFR-09, NFR-18, ADR-0005, ADR-0112, IADR-0017, IADR-0026, IADR-0032, IADR-0403, IADR-0586]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md（多層防御の前提）
   - planning:projects/microservices-platform/07_adr/ADR-0112_infrastructure-admin-endpoint-criterion.md（管理用の口の到達の制限）
 related_specs:
-  - ../specs/20261022_j4qv_compose-loopback-bind.md
+  - ../specs/20261022_compose-loopback-bind.md
 ---
 
-# IADR-0587: compose がホストへ出す口はループバックに限る（GHSA-j4qv-2w99-xg5p）
+# IADR-0587: compose がホストへ出す口はループバックに限る（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化。最小の公開面）。IADR-0586 の残余 2（経路 A の公開ポートは対象外）を本決定で扱う。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。最小の公開面）。IADR-0586 の残余 2（経路 A の公開ポートは対象外）を本決定で扱う。
 - 計画: **ADR-0005**（サービス間の第一防御は mesh。ネットワーク分離は多層防御）・**ADR-0112**（管理用の口は到達を制限する。本決定は経路 A でその到達の範囲を同じホストへ狭める）。要求 **NFR-09**・**NFR-18**。矛盾しない（公開するポートの集合は変えず、待ち受けるアドレスだけを狭める）。
 - 前提: [IADR-0017](./IADR-0017_internal-service-auth-network-isolation.md) / [IADR-0026](./IADR-0026_mesh-mtls-supersedes-network-isolation.md)（内部サービスは `expose` のみ）・[IADR-0032](./IADR-0032_wikijs-dev-exposure-opt-in.md)（Wiki.js の dev 公開）・[IADR-0403](./IADR-0403_security-interim-posture-resolution.md) 決定 6（host 公開してよい縁の分類）。
 
@@ -53,3 +53,5 @@ related_specs:
 
 1. submodule の取引ユニット（`src/ai-stock-trading`）の `docker-compose.yml` にも IP を省いた口がある。MSP からは変えない（取引ユニットのリポジトリで扱う）。
 2. 既存の Deployment の試験（`NetworkIsolationTests`）は口の有無と番号を字面で見ており、本決定の書式でもそのまま通る。ループバックの固定は本検査器が持つ（試験側は変えない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

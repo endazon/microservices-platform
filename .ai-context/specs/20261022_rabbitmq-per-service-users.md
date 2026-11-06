@@ -1,11 +1,11 @@
 ---
-title: 共有ブローカにサービスごとのユーザーと権限を作り（Vault の乱数・ESO・冪等な合わせ）、ブローカへの到達をブローカを使うサービスの Pod だけに絞る（移行の段 1・Refs GHSA-pvmh-cvmf-pvcp）
+title: 共有ブローカにサービスごとのユーザーと権限を作り（Vault の乱数・ESO・冪等な合わせ）、ブローカへの到達をブローカを使うサービスの Pod だけに絞る（移行の段 1・Refs 非公開の指摘（AST））
 type: spec
 status: done
 related_ids: [NFR-18, IADR-0573, IADR-0096, IADR-0099, IADR-0494, IADR-0522]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-18）
 ---
@@ -16,10 +16,10 @@ plan_refs:
 
 ## 起点
 
-- Refs GHSA-pvmh-cvmf-pvcp（オーナー裁定 2026-10-22: 許可範囲は「ブローカを使う AST と MSP のサービス全部」、順序は MSP → AST、vhost は 1 つ、
+- Refs 非公開の指摘（AST）（オーナー裁定 2026-10-22: 許可範囲は「ブローカを使う AST と MSP のサービス全部」、順序は MSP → AST、vhost は 1 つ、
   移行の期間は既存の接続を壊さない）。非機能 `NFR-18`（シークレット管理）。
 - IADR: **IADR-0573**（方式・段の分け方）。
-- 二重に実装しないもの: 既定のユーザーの Secret（`rabbitmq`）を既定値で作らない fail-closed 化（GHSA-rh44 の作業。MSP#2051 の後続）。
+- 二重に実装しないもの: 既定のユーザーの Secret（`rabbitmq`）を既定値で作らない fail-closed 化（非公開の指摘（MSP）の作業。MSP#2051 の後続）。
 
 ## 範囲（段 1）
 
@@ -40,7 +40,7 @@ plan_refs:
 | # | 箇所 | 扱い |
 | --- | --- | --- |
 | 1 | `deploy/local/infra/rabbitmq.yaml` | NetworkPolicy を足す（Deployment・Service は変えない） |
-| 2 | `scripts/k8s-local-up.sh` の `apply_secret ... rabbitmq` / `rabbitmq-app` | **触らない**（既定のユーザーの Secret。GHSA-rh44 の担当） |
+| 2 | `scripts/k8s-local-up.sh` の `apply_secret ... rabbitmq` / `rabbitmq-app` | **触らない**（既定のユーザーの Secret。非公開の指摘（MSP）の担当） |
 | 3 | `deploy/helm/microservices-platform`（`global.messaging`） | 触らない（段 3） |
 | 4 | `deploy/local/vault/eso/externalsecret-rabbitmq*.yaml`（既存 2 本） | 触らない（既定のユーザーの写し） |
 | 5 | `.github/workflows/cutover-rehearsal.yml` の `rabbitmqctl list_queues` | 影響なし（`kubectl exec` は Pod 網を通らない） |
@@ -72,3 +72,5 @@ plan_refs:
 2. `bash deploy/local/rabbitmq-setup/reconcile-users.sh --check` が 18 件を示す。
 3. 既存の接続は既定のユーザーのまま動き続ける（切り替えは AST の PR〔段 2〕と基盤の段 3）。NetworkPolicy は既存の全クライアントを許す列挙である。
 4. 強制の確認: ラベルの無い使い捨ての Pod から `nc -z -w 3 rabbitmq.platform-infra 5672` が時間切れになる（許された側のラベルを付けた Pod は作らない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

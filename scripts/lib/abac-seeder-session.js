@@ -1,5 +1,5 @@
 'use strict';
-// NFR-18, ADR-0124 決定 1, IADR-0576 (GHSA-rh44-px44-p48q):
+// NFR-18, ADR-0124 決定 1, IADR-0576 (非公開の指摘（MSP）):
 // **投入器の主体 `abac-seeder` は既定で無効**（realm の宣言が `enabled: false`）。投入器・運用スクリプトは、実行の間だけ
 // 有効にし、終わったら無効へ戻す。資格情報は実行時に、明示（env）か稼働の Secret（OpenBao → ESO、ESO が無ければ起動器が作る
 // `platform-infra/abac-seeder-oidc`）から読む。**realm の宣言の値（公知の dev の値）へは落ちない。**

@@ -1,17 +1,17 @@
 ---
-title: 作業仕様書 — 投入器の主体 abac-seeder を既定で無効にし、投入器・運用スクリプトは実行の間だけ有効にして、資格情報を稼働の Secret から読む（GHSA-rh44-px44-p48q）
+title: 作業仕様書 — 投入器の主体 abac-seeder を既定で無効にし、投入器・運用スクリプトは実行の間だけ有効にして、資格情報を稼働の Secret から読む（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0124, IADR-0576, IADR-0572, IADR-0485, IADR-0294, IADR-0133, IADR-0503]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密は相手と対で書く。初期投入は無いときだけ作る）
-issue: "GHSA-rh44-px44-p48q"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — 投入器の主体を既定で無効にする（GHSA-rh44-px44-p48q）
+# 作業仕様書 — 投入器の主体を既定で無効にする（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0576**（新規）に置く。
 > 多層防御の強化（最小権限・常時有効な管理主体を残さない）の 4 本目。参照は GHSA の ID だけとする。
@@ -82,3 +82,5 @@ PR 本文に順序つきで書く。要点: 配備の前に Vault の KV `msp/ab
 - 同時に 2 本のスクリプトが動くと、先に終わった方が無効へ戻し、後の方のトークンの取り直しが失敗し得る（運用で 1 本ずつ走らせる。後の方は失敗として止まる＝安全側）。
 - 戻し損ね（強制終了）の窓は、次の起動の realm の後追いまで、または手で閉じるまで。
 - Secret の読み先は kubectl の現在の context に依存する（ずれれば認証失敗で止まる＝安全側）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

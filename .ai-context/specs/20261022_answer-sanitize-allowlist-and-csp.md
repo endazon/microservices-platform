@@ -1,22 +1,22 @@
 ---
-title: 作業仕様書 — AI 回答・Wiki 本文の sanitize を allowlist へ絞り、SPA の配信に CSP を置く（GHSA-5h4q-4m2j-rjhm の 1 本目）
+title: 作業仕様書 — AI 回答・Wiki 本文の sanitize を allowlist へ絞り、SPA の配信に CSP を置く（非公開の指摘（MSP）の 1 本目）
 type: spec
 status: done
 related_ids: [NFR, ADR-0021, ADR-0031, IADR-0579, IADR-0362, IADR-0365, IADR-0134]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md （SPA の静的配信は Caddy）
   - planning:projects/microservices-platform/07_adr/ADR-0031 （フロントエンドの技術スタック）
-issue: "GHSA-5h4q-4m2j-rjhm"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — AI 回答・Wiki 本文の sanitize の allowlist 化と、SPA 配信の CSP
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0579**（新規）に置く。
 > 多層防御の強化（許可を allowlist で閉じる・既定を最小権限にする）。参照は GHSA の ID だけとする。
-> GHSA-5h4q-4m2j-rjhm の対応は 2 本に分ける（コーディネーター指示 2026-10-22）。本書は **1 本目**（描画の sanitize ＋ CSP）。
+> 非公開の指摘（MSP）の対応は 2 本に分ける（コーディネーター指示 2026-10-22）。本書は **1 本目**（描画の sanitize ＋ CSP）。
 > 2 本目（RAG のプロンプトの信頼境界）は別の作業仕様書・別の PR で扱う。
 
 ## 起点となる計画書（トレーサビリティ）
@@ -72,3 +72,5 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 - 配備は閉場後。frontend のイメージを差し替えるだけ（値の変更・Secret の追加は無い）。
 - 配備後の確認: 画面を開き、応答の `Content-Security-Policy` ヘッダが Caddyfile の値であること、ブラウザの開発者ツールに
   CSP の違反が出ないこと、AI チャットの回答と Wiki の本文が従前どおり描かれることを確かめる。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

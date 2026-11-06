@@ -1,17 +1,17 @@
 ---
-title: 作業仕様書 — BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を置く（GHSA-j4qv-2w99-xg5p）
+title: 作業仕様書 — BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を置く（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [SC-22, NFR-18, ADR-0095, IADR-0588, IADR-0433, IADR-0456, IADR-0583]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md（決定 3: BFF が Vault へ書く。ESO は読み取り専用の同期を維持する）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る（GHSA-j4qv-2w99-xg5p）
+# 作業仕様書 — BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0588**（新規）に置く。
 > 多層防御の強化（最小権限）。参照は GHSA の ID だけとする。
@@ -93,3 +93,5 @@ envtest の kube-apiserver v1.35.0（etcd つき・RBAC 有効）に、ESO 2.8.0
 
 1. `deploy/argocd/appproject.yaml` の許可種別は、Role / RoleBinding / ServiceAccount と同じく ValidatingAdmissionPolicy も持たない。本番像の既定（`externalSecretSync.enabled=false`）では描かれないので現状は影響しない。本番で有効にするときは Role 等と合わせて許可種別を足す。
 2. `externalSecretSync.enabled` を false にしたまま `deploy/local` の Role だけを当てた構成では policy が無い（起動器は `values-local.yaml` で true を渡すので、手順どおりなら起きない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

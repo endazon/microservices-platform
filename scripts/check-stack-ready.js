@@ -41,12 +41,12 @@
  *   **デプロイ済みの `KC_HOSTNAME` ＋ `/realms/<realm>` と文字列として完全一致**すること
  *   （[IADR-0243] の受け入れ基準を CI で固定する）。realm 名は `deploy/keycloak/*-realm.json` から
  *   **走査して**得る（列挙を書かない）。
- * - **G4b エッジは管理面を出さない**（[IADR-0575] / GHSA-rh44-px44-p48q）: エッジ host の `/admin/`・`/admin/master/console/`・
+ * - **G4b エッジは管理面を出さない**（[IADR-0575] / 非公開の指摘（MSP））: エッジ host の `/admin/`・`/admin/master/console/`・
  *   `/realms/master/.well-known/openid-configuration` が **403 か 404**（拒否）で、利用者の realm の経路
  *   （`/realms/<realm>/account/`・ログイン画面）は **2xx か 3xx**（届く）であること。経路は G4 と同じく走査した realm から組む。
  *   🔴 **拒否の宣言（Traefik の中間処理・Istio の先頭の route）は、読めないと黙って無効になり得る**ので、宣言の静的検査では足りず、
  *   エッジ越しに実測する。測れない（curl の失敗）は緑にしない。
- * - **G4c 管理ツールの集約入口は既定で閉じている**（[IADR-0586] / GHSA-j4qv-2w99-xg5p）: admin(50000) へ管理ツールの host で
+ * - **G4c 管理ツールの集約入口は既定で閉じている**（[IADR-0586] / 非公開の指摘（MSP））: admin(50000) へ管理ツールの host で
  *   届けた要求が **403 か 404**（拒否・経路なし）であること。host は宣言（`deploy/local/edge-istio/virtualservice-admin.yaml`）から
  *   走査する。503（経路は在るが後段が居ない）・2xx / 3xx は「経路が置かれている」として落とす。測れない（curl の失敗）は緑にしない。
  *   `ADMIN_EDGE=1`（明示の opt-in で経路を置いたクラスタ）を宣言したときだけ notice で飛ばす。

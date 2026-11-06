@@ -5,17 +5,17 @@ status: done
 related_ids: [NFR, IADR-0581, IADR-0578]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
-issue: "GHSA-552h-47r7-6v6p"
+updated: 2026-11-07
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — Actions の SHA 固定と Dependabot（GHSA-552h-47r7-6v6p の 2 本目）
+# 作業仕様書 — Actions の SHA 固定と Dependabot（非公開の指摘（MSP）の 2 本目）
 
 > 本仕様書は実装着手前に作成した（2026-10-22）。1 本目（ワークフローの信頼の絞り込み＋入力の扱い）は IADR-0578、3 本目（イメージのスキャン・CodeQL の JS/TS）は別の作業仕様書で扱う。
 
 ## 起点
 
-- GHSA-552h-47r7-6v6p（多層防御の強化。サプライチェーンの固定と依存の更新）。
+- 非公開の指摘（MSP）（多層防御の強化。サプライチェーンの固定と依存の更新）。
 - 計画: NFR（統制・セキュリティ）。
 
 ## 方式
@@ -41,3 +41,5 @@ issue: "GHSA-552h-47r7-6v6p"
 | AC3 | Dependabot が github-actions / nuget / npm を対象にする | `scripts.repo.test.js`「dependabot.yml は…」 |
 | AC4 | 起動条件・job 名・必須チェックが変わらない | `git diff` が `uses:` の行・dependabot.yml・検査器・試験だけ |
 | AC5 | CI の全ジョブが固定後の SHA で緑 | この PR の CI |
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

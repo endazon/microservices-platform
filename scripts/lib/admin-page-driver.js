@@ -185,7 +185,7 @@ function watchedDepth(depths, queues) {
 
 // --- 実行（I/O） --------------------------------------------------------------
 
-// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）は既定で無効。実行の間だけ有効にし、どの終わり方でも
+// NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体（abac-seeder）は既定で無効。実行の間だけ有効にし、どの終わり方でも
 // （正常・失敗・例外）この実行が有効にしたものを無効へ戻す。中断（SIGINT）は下の handler が戻してから終わる。
 async function run(profile, argv) {
   const seeder = require('./abac-seeder-session.js');

@@ -85,7 +85,7 @@ case "${VAULT_BFF_WRITER:-}" in
     ;;
   *) echo "ERROR: VAULT_BFF_WRITER は 1（BFF の書き込みの役を入れる）か 0・未指定（入れない）のどちらかです: '${VAULT_BFF_WRITER}'" >&2; exit 1 ;;
 esac
-# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): ADMIN_EDGE は管理ツールの集約入口（admin(50000)）に経路を置くかの明示の opt-in。
+# NFR-18, IADR-0586 (非公開の指摘（MSP）): ADMIN_EDGE は管理ツールの集約入口（admin(50000)）に経路を置くかの明示の opt-in。
 #   1＝置く / 0・未指定＝置かない（既定。以前の実行で置いた経路も消す）。読むのは LOCALEDGE=1 の段と istio-edge-up.sh。
 #   0 / 1 以外は RESET_FLOOR と同じく最初に落とす。
 # shellcheck source=scripts/lib/admin-edge.sh
@@ -304,7 +304,7 @@ fi
 #   止まる前に Keycloak が dev の値で 2 つを作っていた。
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$ROOT/scripts/lib/dev-client-secret-guard.sh"
-# ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
+# ［2026-10-22 / 非公開の指摘（MSP） / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
 #   手で並べず宣言から導出する（dev_client_secret_load_targets）。env の名前は判定器が持つ（dev_client_secret_env_name）。
 #   [3/7] の取り込み元は同じ集合を env の値へ差し替えるので、dev ではない context では全部に env が要る。
 # NFR-18, IADR-0676 (#2407): **dev のクラスタの 2 つ目の手掛かり（クラスタ側の印 ConfigMap kube-system/msp-dev-cluster）。**
@@ -336,7 +336,7 @@ done
 dev_client_secret_guard "k8s-local-up.sh" "${dev_secret_args[@]}" || exit 1
 unset dev_secret_args dev_secret_client dev_secret_env
 
-# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を
+# NFR-18, ADR-0124 決定 1, IADR-0574 (非公開の指摘（MSP）): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を
 #   公知の開発用の値で作らない（fail-closed）。** 判定は scripts/lib/infra-credentials.sh の 1 本（bootstrap.sh と共有）。
 #   選び方: 明示（KEYCLOAK_ADMIN_PASSWORD / RABBITMQ_PASSWORD）＞ 既存の Secret（platform-infra の keycloak-admin / rabbitmq）の値
 #   ＞ 止める。開発用の値と同じものは指定が無いのと同じ扱い。使い捨ての開発環境だけ ALLOW_DEV_INFRA_CREDENTIALS=1 で開発用の値を許す。
@@ -395,7 +395,7 @@ fi
 #   mesh.enabled: false が当たって、メッシュで動いているクラスタの宣言（PeerAuthentication・AuthorizationPolicy・注入）を
 #   再実行のたびに**黙って**外していた（#1713）。ISTIO_MTLS_MODE を付けない再実行が STRICT を PERMISSIVE へ戻したのと同じ型（#1710）。
 #   選び方はどちらも 明示（env）＞ 現行（helm get values msp の mesh.*）＞ 初回の既定（ISTIO はメッシュ無し・mTLS は STRICT）。
-#   ［2026-10-23 / IADR-0590（Refs GHSA-j4qv-2w99-xg5p）］mTLS の初回の既定は PERMISSIVE から STRICT へ変えた（下の [6/7] の注記）。
+#   ［2026-10-23 / IADR-0590（Refs 非公開の指摘（MSP））］mTLS の初回の既定は PERMISSIVE から STRICT へ変えた（下の [6/7] の注記）。
 #   - ISTIO 未指定 × メッシュ宣言あり → ISTIO=1 として以降を進める（明示と同じ段: コントロールプレーン・注入・LOCALEDGE なら Istio の入口）。
 #     ISTIO_MTLS_MODE も未指定なら同じ読みからモードを引き継ぐ。外すのは ISTIO=0 の明示だけである。
 #   - ISTIO=0 はメッシュの判定のためには読まない（従来の「ISTIO 無し」と同じ経路。既定のバイト等価はこちらへ移した）。
@@ -610,7 +610,7 @@ apply_eso_merge_base_secret "$INFRA_NS" keycloak-smtp \
 # **同じ既定**にする。ズレると Keycloak の token 端点が invalid_client を返す（wikijs-oidc と同じ罠）。
 apply_eso_merge_base_secret "$INFRA_NS" reset-gate-oidc \
   "client-secret=${RESET_GATE_CLIENT_SECRET:-reset-gate-dev-secret-change-me}"
-# NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
+# NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
 #   読み手はホストの投入器（seed-*.js）と運用スクリプト（republish・archive）で、実行時にこの Secret を読む（realm の宣言の値へは落ちない）。
 #   ESO の有無によらず作る（ESO=1 では externalsecret-abac-seeder-oidc.yaml が Merge で Vault の値を重ねる。reset-gate-oidc と同じ形）。
 #   ［IADR-0616 / #2195］ESO=1 で既に在れば上書きしない（apply_eso_merge_base_secret）。
@@ -724,7 +724,7 @@ if [ -n "${BACKUP_AGE_RECIPIENTS_FILE:-}" ]; then
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
-# IADR-0206 (#779) → IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: cert-manager の導入。従来は LOCALEDGE=1 の段だけが呼んだが、
+# IADR-0206 (#779) → IADR-0591（Refs 非公開の指摘（MSP））: cert-manager の導入。従来は LOCALEDGE=1 の段だけが呼んだが、
 #   基盤（platform-infra）のサーバ証明書が既定で要るようになったので [4/7] の先頭でも呼ぶ（2 回目以降は何もしない）。
 # --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
 # 順序が要る: CRD が Established になる前に Certificate を apply すると "no matches for kind Certificate" で落ちる。
@@ -745,7 +745,7 @@ install_cert_manager() {
   CERT_MANAGER_READY=1
 }
 
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤のサーバ証明書（postgres-tls / rabbitmq-tls）を発行する。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤のサーバ証明書（postgres-tls / rabbitmq-tls）を発行する。
 #   postgres / rabbitmq の Pod は証明書の Secret を非 optional でマウントするので、基盤の apply より**前**に Ready を待つ。
 #   失敗したら止める（平文だけの基盤を黙って立てない）。
 INFRA_CA_CONFIGMAP="platform-infra-ca"
@@ -894,7 +894,7 @@ fi
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
-# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod Security Admission の水準（チャートの namespace.yaml と同じ規則）。
+# NFR, IADR-0583（Refs 非公開の指摘（MSP））: Pod Security Admission の水準（チャートの namespace.yaml と同じ規則）。
 #   経路B は values-local.yaml が namespace.create=false のため、チャートは Namespace のラベルを貼らない。ここで貼る。
 #   warn / audit は restricted。enforce は baseline —— ただし ISTIO=1 では外す（注入される istio-init が NET_ADMIN / NET_RAW を
 #   要し、baseline を満たさない）。注入ラベルが残っている Namespace も同じ扱いにする（ISTIO=0 の再実行は注入ラベルを
@@ -911,7 +911,7 @@ if [ "${ISTIO:-}" = "1" ] || [ "$msp_injection" = "enabled" ] || [ "$msp_injecti
 else
   kubectl label namespace "$MSP_NS" pod-security.kubernetes.io/enforce=baseline pod-security.kubernetes.io/warn=restricted pod-security.kubernetes.io/audit=restricted --overwrite
 fi
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤の CA を、基盤へ繋ぐクライアントの名前空間へ写す（helm の [6/7] より前）。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤の CA を、基盤へ繋ぐクライアントの名前空間へ写す（helm の [6/7] より前）。
 #   AST の名前空間にも置く（取引ユニットの chart が TLS へ切り替える段で読む。置くだけで、AST の接続は変えない）。
 publish_infra_ca "$MSP_NS"
 publish_infra_ca "$AST_NS"
@@ -1013,7 +1013,7 @@ if [ "${ESO:-}" != "1" ]; then
   # これが無いと各サービスは起動時に落ちる（注入漏れが既定資格情報で成功へ倒れない）。
   # dev 既定は init スクリプトが作る `kp`（deploy/local/infra/postgres.yaml）。env で上書きする。
   apply_secret "$MSP_NS" postgres-app "password=${APP_DB_PASSWORD:?}"  # IADR-0672
-  # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q。旧 #1022 の rabbitmq-app）: ブローカのサービスごとのユーザー。
+  # NFR-18, IADR-0577（Refs 非公開の指摘（MSP）。旧 #1022 の rabbitmq-app）: ブローカのサービスごとのユーザー。
   #   ESO を使わない経路でも共通の 1 組へ戻さない —— ブローカ側の写し（platform-infra/rabbitmq-users）と消費側
   #   （microservices-platform/msp-rabbitmq-users）を、既存の値＞乱数で作り、ブローカへ合わせてから helm へ進む
   #   （helm の deployment.yaml が各サービスのキーを **非 optional** な secretKeyRef で読む。無ければ起動しない）。
@@ -1049,7 +1049,7 @@ fi
 # 🔴 **[6/7] より前に置く。** アプリチャートは PeerAuthentication / DestinationRule を
 #   レンダリングするので、CRD が無いまま helm upgrade すると apply がその時点で失敗する。
 #
-# 🔴 **初回の既定は STRICT である**（NFR-18, ADR-0005, IADR-0590。Refs GHSA-j4qv-2w99-xg5p）。緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ。
+# 🔴 **初回の既定は STRICT である**（NFR-18, ADR-0005, IADR-0590。Refs 非公開の指摘（MSP））。緩めるのは ISTIO_MTLS_MODE=PERMISSIVE の明示だけ。
 #   ［2026-10-23］従前（IADR-0307 決定 4 / IADR-0377 決定 3）は初回を PERMISSIVE で入り、STRICT は明示の opt-in だった。
 #   ［2026-10-01 / #1710］ISTIO_MTLS_MODE を付けない**再実行**は現行の mesh.mtlsMode を引き継ぐ（[2/7] の前の判定。IADR-0487）。
 #   STRICT が効くのは**メッシュの Pod が受ける側**だけである（PeerAuthentication は受信の規則）。platform-infra（postgres /
@@ -1461,7 +1461,7 @@ if [ "${ESO:-}" = "1" ]; then
   # #1107: BFF セッションの client secret。手動 apply は上の `ESO != 1` ブロックでスキップされるので、
   # **これが唯一の供給元**である（欠けると bff-service Pod が起動しない）。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-bff-oidc.yaml
-  # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: BFF が AST の OpenD 認証サイドカーへ名乗る共有シークレット。
+  # NFR, AST/IADR-0566（Refs 非公開の指摘（AST））: BFF が AST の OpenD 認証サイドカーへ名乗る共有シークレット。
   # 値は Vault ai-stock-trading/opend-auth（AST の chart と同じキー）。無ければ Secret が作られず、BFF は起動したまま上流を呼ばない。
   kubectl apply -f deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml
   # #1101: SC-17 の Keycloak Admin REST 反映に使う client secret。手動 apply は上の `ESO != 1`
@@ -1506,7 +1506,7 @@ if [ "${ESO:-}" = "1" ]; then
   # （所有・再作成しない）。値は seed=step3 と完全一致のため Pod 再起動や PVC 初期化済み DB の不整合は起きない。常時供給。
   kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
-  # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーのパスワード（ブローカ側の写し）。
+  # NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのサービスごとのユーザーのパスワード（ブローカ側の写し）。
   #   読み手は下の reconcile-users.sh だけ（同期を待ってからユーザーと権限を合わせる）。種は bootstrap.sh が乱数で入れる。常時 apply。
   kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq-users.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
@@ -1667,7 +1667,7 @@ if [ "${ESO:-}" = "1" ]; then
   #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
   #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く
   #    bootstrap が CLI で読むため rollout 不要。
-  # NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカにサービスごとのユーザーと権限を作る・合わせる（冪等。移行の段 1）。
+  # NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカにサービスごとのユーザーと権限を作る・合わせる（冪等。移行の段 1）。
   #   既定のユーザーと、それを使う既存の接続には触れない（各サービスの切り替えは消費側の段。既定のユーザーの無効化はその後）。
   #   🔴 合わせられなければ止める（後の段で消費側が切り替えた瞬間に接続できなくなるのを、ここで先に見せる）。
   echo "    ブローカのサービスごとのユーザーを合わせる（deploy/local/rabbitmq-setup/users.txt・IADR-0573）"
@@ -1918,7 +1918,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
     kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
     kubectl -n kube-system rollout restart deploy/coredns
     kubectl -n kube-system rollout status deploy/coredns --timeout=120s
-    # NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路（admin(50000)）は ADMIN_EDGE=1 のときだけ置き、それ以外では消す。
+    # NFR-18, IADR-0586 (非公開の指摘（MSP）): 管理ツールの経路（admin(50000)）は ADMIN_EDGE=1 のときだけ置き、それ以外では消す。
     #   argocd 用の Ingress は従来どおり argocd namespace が在るときだけ扱う（ns 不在時に失敗させない fail-safe）。
     admin_edge_traefik
   fi
@@ -1982,7 +1982,7 @@ if [ "${ISTIO:-}" = "1" ] && [ "${LOCALEDGE:-}" != "1" ]; then
   echo "      ブラウザのエッジ経路が要るなら LOCALEDGE=1 を併用してください（ADR-0021 / #782）。" >&2
 fi
 
-# NFR-18, ADR-0005, IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: STRICT の間、サイドカーの無い呼び出し元からメッシュの Pod への
+# NFR-18, ADR-0005, IADR-0590（Refs 非公開の指摘（MSP））: STRICT の間、サイドカーの無い呼び出し元からメッシュの Pod への
 #   平文は受け手のサイドカーが切る。経路B で MSP を呼ぶメッシュ外の名前空間は AST（別リポジトリの chart が配備する）である。
 #   AST の Pod が居て、その名前空間に注入ラベルが無いなら告げる（止めない —— 緩める判断は ISTIO_MTLS_MODE=PERMISSIVE の明示で行う）。
 #   AST をメッシュへ入れる手順は deploy/istio/README.md「STRICT の前提」。
@@ -2178,7 +2178,7 @@ if [ "${PERSIST:-1}" != "0" ]; then
   fi
 fi
 
-# NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: 移行の段 3 の最後 —— ブローカの既定のユーザーを無効化する。
+# NFR-18, IADR-0577（Refs 非公開の指摘（MSP））: 移行の段 3 の最後 —— ブローカの既定のユーザーを無効化する。
 #   消すのは、宣言の全ユーザーが認証でき、かつ既定のユーザーの接続が 1 本も無いときだけ（disable-default-user.sh が確かめる）。
 #   🔴 確かめられないときは消さずに WARN で通す（切り替わっていないサービスの接続を、起動器が切らない）。
 echo "==> ブローカの既定のユーザーを無効化する（全サービスの切り替えを確かめてから / IADR-0577）"

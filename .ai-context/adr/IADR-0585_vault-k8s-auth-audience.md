@@ -5,15 +5,15 @@ status: Accepted
 related_ids: [NFR-18, ADR-0095, ADR-0132, IADR-0096, IADR-0433, IADR-0495, IADR-0548, IADR-0523]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0132 （秘匿管理は OpenBao）
   - planning:projects/microservices-platform/07_adr/ADR-0095 （SC-22 の秘密情報の投入面）
 related_specs:
-  - ../specs/20261022_ghsa-j4qv_vault-k8s-auth-audience.md
+  - ../specs/20261022_vault-k8s-auth-audience.md
 ---
 
-# IADR-0585: 秘匿管理の kubernetes 認証の対象者（GHSA-j4qv-2w99-xg5p）
+# IADR-0585: 秘匿管理の kubernetes 認証の対象者（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化・最小権限）。本 IADR はその 5 点目（発行者・対象者の検証）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化・最小権限）。本 IADR はその 5 点目（発行者・対象者の検証）。
 - 計画: **ADR-0132**（秘匿管理は OpenBao）・**ADR-0095**（SC-22 の投入面）。矛盾しない（製品・供給の仕組みは変えない）。
 - 前提: IADR-0096（ESO の k8s auth）・IADR-0433（BFF の role）・IADR-0495（datasource の role）・IADR-0548（バックアップの role）。
   アプリの JWT の対象者は IADR-0523 が既に検証している（本 IADR の射程外）。
@@ -97,3 +97,5 @@ related_specs:
 
 - `node scripts/vault-k8s-auth-audience.test.js`（7 本・変異つき。5b は配備の 2 段の口）・`node scripts/platform-backup.test.js`・.NET の 2 本
   （`SecretItemVaultPolicyTests`・`ConnectorSecretVaultPolicyTests`）。新しい試験は deploy/ と src/ の変更を外すと赤になる。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

@@ -1,22 +1,22 @@
 ---
-title: 作業仕様書 — GraphService の提案・クラスタ要約のプロンプトに信頼境界を置き、BFF の全応答にセキュリティヘッダを付ける（GHSA-5h4q-4m2j-rjhm の 3 本目）
+title: 作業仕様書 — GraphService の提案・クラスタ要約のプロンプトに信頼境界を置き、BFF の全応答にセキュリティヘッダを付ける（非公開の指摘（MSP）の 3 本目）
 type: spec
 status: done
 related_ids: [NFR, FR-17, FR-18, ADR-0032, ADR-0033, ADR-0035, ADR-0051, IADR-0582, IADR-0580, IADR-0579]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0051_ai-suggestion-abac-boundary.md （AI 提案の ABAC 境界）
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md （クラスタ要約）
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md （BFF セッション・同一オリジン）
-issue: "GHSA-5h4q-4m2j-rjhm"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — GraphService のプロンプトの信頼境界と BFF の応答ヘッダ
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0582**（新規）に置く。
-> 多層防御の強化。参照は GHSA の ID だけとする。GHSA-5h4q-4m2j-rjhm の対応の **3 本目**で、
+> 多層防御の強化。参照は GHSA の ID だけとする。非公開の指摘（MSP）の対応の **3 本目**で、
 > IADR-0579（描画の sanitize と CSP）・IADR-0580（ask / analyze のプロンプト）が「射程外」とした 2 点を扱う。
 
 ## 起点となる計画書（トレーサビリティ）
@@ -61,3 +61,5 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 - 配備は閉場後。GraphService・AiAnalysisService・BFF のイメージを差し替えるだけ（値・Secret の変更は無い）。
 - 配備後の確認: 画面のログイン → ログアウト → 再ログインが通ること。AI チャットの回答、図画像の表示（SC-07）、取引ユニットの CAPTCHA の画像が従前どおり出ること。
   `curl -sI https://<ホスト>/bff/auth/me` の応答に 4 つのヘッダが付くこと。AI 提案の生成とクラスタ要約が従前どおり動くこと。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

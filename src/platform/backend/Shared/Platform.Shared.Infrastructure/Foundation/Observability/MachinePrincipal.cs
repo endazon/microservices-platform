@@ -29,7 +29,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Observability;
 //   腕 B: 利用者名が**無く**、クライアント識別のクレームがある
 //         —— `profile` スコープを持たない機械クライアントは `preferred_username` を発行しない。
 //
-// 🔴 ［GHSA-94cm-55g9-2967・[[IADR-0606]]］**腕 A を接頭辞だけで判定しない。** 利用者名は realm の
+// 🔴 ［非公開の指摘（MSP）・[[IADR-0606]]］**腕 A を接頭辞だけで判定しない。** 利用者名は realm の
 //   利用者管理で付ける名前であり、IdP が発行元のクライアントとして書く `azp` とは出どころが違う。
 //   利用者名とクライアント識別のクレームの**両方が同じサービスアカウントを指す**ときだけ無人と読む
 //   （多層防御。realm の宣言の側は `check-realm-constraints.js` 検査 7 が人の利用者名の接頭辞を禁じている）。

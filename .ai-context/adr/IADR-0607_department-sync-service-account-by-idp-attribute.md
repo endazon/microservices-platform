@@ -5,21 +5,21 @@ status: Accepted
 related_ids: [NFR-09, FR-05, FR-09, SC-17, SC-12, ADR-0032, ADR-0115, ADR-0116, IADR-0606, IADR-0473, IADR-0420, IADR-0516]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-09）
   - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md
 related_specs:
-  - ../specs/20261023_ghsa-94cm_department-sync-service-account-and-arm-b.md
+  - ../specs/20261023_department-sync-service-account-and-arm-b.md
 ---
 
-# IADR-0607: 部門の同期のサービスアカウント判定を IdP の属性に寄せ、腕 B の前提は既存の検査で守る（GHSA-94cm-55g9-2967 の追補）
+# IADR-0607: 部門の同期のサービスアカウント判定を IdP の属性に寄せ、腕 B の前提は既存の検査で守る（非公開の指摘（MSP）の追補）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
 - 日付: 2026-10-23
-- 決定者: claude（GHSA-94cm-55g9-2967 の追補。多層防御の強化）
+- 決定者: claude（非公開の指摘（MSP）の追補。多層防御の強化）
 
 ## 起点・関連
 
@@ -28,7 +28,7 @@ related_specs:
   [IADR-0473](./IADR-0473_department-attribute-follows-department-group.md)（部門の同期）、
   [IADR-0420](./IADR-0420_unit-subject-identification-and-project-missing-metric.md)、
   [IADR-0516](./IADR-0516_sc12-keycloak-service-account-provisioning.md)（SC-12 の MCP クライアントの作成）。
-- 作業仕様書: [20261023_ghsa-94cm_department-sync-service-account-and-arm-b](../specs/20261023_ghsa-94cm_department-sync-service-account-and-arm-b.md)。
+- 作業仕様書: [20261023_department-sync-service-account-and-arm-b](../specs/20261023_department-sync-service-account-and-arm-b.md)。
 
 ## コンテキストと課題
 
@@ -92,3 +92,5 @@ IdP が `serviceAccountClientId` を返さない形で列挙を読んだ場合�
   2. MCP の実行で個人資料を落とす判定（DocumentService / GraphService / RetrievalService の `IsServiceAccount`）は利用者名の接頭辞のままである。
      こちらは真のとき資料を減らす側（厳しい側）に働くので本 IADR の射程に含めない。
   3. 腕 B の前提は宣言と SC-12 の作成時に守られる。稼働中の realm で管理コンソールから足したクライアントは宣言の外であり、運用の注意書き（SC-17 画面仕様書）に留まる（IADR-0606 と同じ）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの集約入口（admin entrypoint 50000）の経路は**既定で置かない**。
+# NFR-18, IADR-0586 (非公開の指摘（MSP）): 管理ツールの集約入口（admin entrypoint 50000）の経路は**既定で置かない**。
 #   ADMIN_EDGE=1 を明示したときだけ、grafana / headlamp / vault / qdrant / wiki / argocd の 6 host の経路を置く。
 #   未指定・0 では経路を消す（以前の実行で置いた経路も消す＝再実行で閉じる）。入口（50000 の listener）自体は残る:
 #     - Traefik … 該当する router が無いので 404。

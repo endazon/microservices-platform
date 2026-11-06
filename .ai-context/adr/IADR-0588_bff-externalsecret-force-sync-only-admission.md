@@ -5,14 +5,14 @@ status: Accepted
 related_ids: [SC-22, NFR-18, ADR-0095, IADR-0433, IADR-0456, IADR-0583]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095_secret-input-face-is-the-product-screen.md（決定 3: ESO は読み取り専用の同期を維持する）
 related_specs:
-  - ../specs/20261022_j4qv_bff-externalsecret-admission-policy.md
+  - ../specs/20261022_bff-externalsecret-admission-policy.md
 ---
 
-# IADR-0588: BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る（GHSA-j4qv-2w99-xg5p）
+# IADR-0588: BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,7 +22,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化。最小権限）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。最小権限）。
 - 計画: **ADR-0095** 決定 3（BFF が Vault へ書く。ESO は読み取り専用の同期を維持する）。画面 **SC-22**・要求 **NFR-18**。同期の主体と依頼の形は変えないので矛盾しない。
 - 前提: [IADR-0456](./IADR-0456_sc22-property-kinds-force-sync-reloader-and-seed-if-absent.md) 決定 4（書き込み後に ExternalSecret へ force-sync の注釈を merge-patch する。RBAC は get / patch を `resourceNames` で items[] に限る）・[IADR-0433](./IADR-0433_bff-vault-write-scoped-to-sc22-items.md) 決定 4（BFF 専用の SA）・[IADR-0583](./IADR-0583_pod-security-context-and-admission.md)（同じ GHSA の Pod 側）。
 
@@ -61,3 +61,5 @@ BFF は SC-22 の書き込みの後、ESO の同期を待たずに反映させ�
 
 1. `deploy/argocd/appproject.yaml` の許可種別は Role / RoleBinding / ServiceAccount と同じく ValidatingAdmissionPolicy も持たない。本番像の既定（`externalSecretSync.enabled=false`）では描かれない。本番で有効にするときは合わせて足す。
 2. `externalSecretSync.enabled=false` のまま `deploy/local` の Role だけを当てた構成では policy が無い（起動器は true を渡すので手順どおりなら起きない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

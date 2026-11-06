@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-bff-externalsecret-admission.test.js
- * SC-22, NFR-18, IADR-0456 決定 4, IADR-0588（Refs GHSA-j4qv-2w99-xg5p）:
+ * SC-22, NFR-18, IADR-0456 決定 4, IADR-0588（Refs 非公開の指摘（MSP））:
  * **BFF の SA が ExternalSecret に対して持つ更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を、
  * 実際に `helm template` で描いて固定する。**
  *

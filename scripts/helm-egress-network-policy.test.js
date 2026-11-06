@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-egress-network-policy.test.js
- * NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）:
+ * NFR-18, IADR-0589（Refs 非公開の指摘（MSP））:
  * **外向き通信（egress）の既定拒否と許可の一覧を、実際に `helm template` で描いて固定する。**
  *
  * 🔴 NetworkPolicy は許可の和であり、Pod は「Egress を持つポリシーに 1 枚でも選ばれたとき」だけ隔離される。字面の 1 か所の崩れ
@@ -45,7 +45,7 @@ const INFRA_NS = 'platform-infra';
 const PROBE = 'egress-probe';
 
 /**
- * 段 2（作業仕様書 20261022_j4qv_egress-default-deny §段の分け方）。values-local で既定拒否をまだ当てない Pod。
+ * 段 2（作業仕様書 20261022_egress-default-deny §段の分け方）。values-local で既定拒否をまだ当てない Pod。
  * 🔴 段 2 で workloads へ移したら、ここから外す（両方に在ると下の分類の試験が落ちる）。
  */
 const STAGE2 = ['bff-service', 'llmgateway-service', 'datasource-service', 'wiki-js', 'config-drift-postsync'];

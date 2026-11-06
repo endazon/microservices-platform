@@ -5,17 +5,17 @@ status: Accepted
 related_ids: [NFR-16, NFR-18, ADR-0005, ADR-0023, ADR-0047, IADR-0206, IADR-0573, IADR-0577, IADR-0589, IADR-0590]
 author: claude
 created: 2026-10-23
-updated: 2026-11-05
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービス間通信を mTLS で徹底する）
   - planning:projects/microservices-platform/07_adr/ADR-0023（証明書の配布層は cert-manager。CA 固有の設定は ClusterIssuer に閉じる）
   - planning:projects/microservices-platform/07_adr/ADR-0047（経路B の selfsigned CA）
 related_specs:
-  - ../specs/20261023_j4qv_infra-tls-stage1.md
+  - ../specs/20261023_infra-tls-stage1.md
 ---
 
-# IADR-0591: 基盤との通信を TLS にする 段 1（GHSA-j4qv-2w99-xg5p）
+# IADR-0591: 基盤との通信を TLS にする 段 1（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -25,7 +25,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化）。
 - 計画: **NFR-16**（恒久はサービス間 mTLS・外部通信 TLS）・**ADR-0005**（通信の暗号化の徹底）・**ADR-0023**（証明書の配布層は cert-manager。CA 固有の設定は ClusterIssuer に閉じる）・**ADR-0047**（経路B の selfsigned CA）。要求 **NFR-18**（同じ GHSA の他の変更と同じ起点）。
 - 前提: [IADR-0206](./IADR-0206_local-edge-tls-cert-manager.md)（cert-manager・selfSigned → CA の 2 段）・[IADR-0573](./IADR-0573_rabbitmq-per-service-users-and-ingress-policy.md) / [IADR-0577](./IADR-0577_rabbitmq-msp-per-service-users-and-default-user-disable.md)（ブローカの到達の制限・サービスごとのユーザー）・[IADR-0589](./IADR-0589_egress-default-deny-network-policy.md)（egress の既定拒否）・[IADR-0590](./IADR-0590_mesh-mtls-strict-by-default.md)（メッシュの mTLS は MSP の名前空間の受信にだけ効く。基盤への送信は auto-mTLS の対象外。同 IADR の結果 3 が本 IADR の範囲）。
 
@@ -91,7 +91,7 @@ related_specs:
 
 ## ［2026-10-23 追記 / #2094 の後続］証明書の更新の読み込みと、共通ヘルパの同等性
 
-- 起点: #2094 の AI レビューの 🟡（postgres・rabbitmq はサーバ証明書を起動時にしか読まないので、cert-manager の更新が読まれない）。作業仕様書は `../specs/20261023_j4qv_infra-tls-cert-reload.md`。
+- 起点: #2094 の AI レビューの 🟡（postgres・rabbitmq はサーバ証明書を起動時にしか読まないので、cert-manager の更新が読まれない）。作業仕様書は `../specs/20261023_infra-tls-cert-reload.md`。
 - **決定 2 への追加**: 起動器は基盤を当てた後（`stamp_infra_tls_restart`）、postgres・rabbitmq の Pod の雛形へサーバ証明書の指紋（注釈 `platform-infra.tls/cert-sha256`）を刻む。指紋が変わっていれば（未記録を含む）作り直し、同じなら何もしない。証明書の中身は引数にもログにも出さない。Secret を読めなければ刻まずに WARN で告げる。
 - **結果への追記**: 更新を読ませるには、更新（期限の 30 日前）の後・期限（1 年）までに一度は起動器を再実行する必要がある。再実行が無いまま期限を迎えると、検証つきの接続が失敗する。Reloader による自動の作り直しは ESO=1 の経路にしか無いので、段 1 では採らない。新しく立てるクラスタでは、注釈を刻むことで postgres・rabbitmq の作り直しが 1 回増える。
 - **決定 5 の裏付け**: `UsePlatformRabbitMq` が素の `UseRabbitMq(Uri)` と違うのは「受け入れてよい誤り」だけであることを試験で固定した。接続先・ポート・仮想ホスト・資格情報・TLS の有効と名前・版は同じで、amqps と amqp の両方で確かめた。
@@ -100,3 +100,5 @@ related_specs:
 
 - 段の表の 4b-2 のうち MSP リポジトリにある部分（compose の取引ユニットの 3 サービス・compose の Keycloak の DB・Wiki.js・バックアップの CronJob）は [IADR-0673](./IADR-0673_platform-infra-tls-stage-4b2-other-clients.md) で切り替えた。helm の Wiki.js は値で opt-in（経路B は有効）。
 - 4b-2 の残りは AST の chart の接続と AST の Wolverine の名前の照合（AST リポジトリ）。4b-3 の前提は変わらない。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

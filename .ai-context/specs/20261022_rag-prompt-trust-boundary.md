@@ -1,22 +1,22 @@
 ---
-title: 作業仕様書 — RAG の ask / analyze のプロンプトに信頼境界を置く（GHSA-5h4q-4m2j-rjhm の 2 本目）
+title: 作業仕様書 — RAG の ask / analyze のプロンプトに信頼境界を置く（非公開の指摘（MSP）の 2 本目）
 type: spec
 status: done
 related_ids: [NFR, FR-04, FR-07, UC-01, UC-02, ADR-0010, IADR-0580]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements （FR-04 出典付き回答・FR-07 分析・比較・抽出）
   - planning:projects/microservices-platform/07_adr/ADR-0010 （LLM ゲートウェイ）
-issue: "GHSA-5h4q-4m2j-rjhm"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — RAG のプロンプトの信頼境界
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0580**（新規）に置く。
 > 多層防御の強化（指示とデータを区別する）。参照は GHSA の ID だけとする。
-> GHSA-5h4q-4m2j-rjhm の対応の **2 本目**（1 本目は描画の sanitize と CSP。IADR-0579）。
+> 非公開の指摘（MSP）の対応の **2 本目**（1 本目は描画の sanitize と CSP。IADR-0579）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -58,3 +58,5 @@ issue: "GHSA-5h4q-4m2j-rjhm"
 
 - 配備は閉場後。AiAnalysisService のイメージを差し替えるだけ（値・Secret の変更は無い）。
 - 配備後の確認: AI チャットで質問し、出典番号つきの回答が従前どおり返ること。分析画面で分析・比較・抽出を 1 回ずつ実行し、回答が返ること。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

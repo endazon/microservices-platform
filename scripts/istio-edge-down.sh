@@ -24,7 +24,7 @@ set -euo pipefail
 . "$(dirname "$0")/lib/live-opt-in.sh" || exit 3   # 判定器が読めなければ守れない —— 黙って続けず止める
 live_opt_in_scan "$@"; set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
 live_opt_in_require "istio-edge-down.sh"
-# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): Traefik へ戻すときも管理ツールの経路は ADMIN_EDGE=1 のときだけ置く。副作用より前に検める。
+# NFR-18, IADR-0586 (非公開の指摘（MSP）): Traefik へ戻すときも管理ツールの経路は ADMIN_EDGE=1 のときだけ置く。副作用より前に検める。
 # shellcheck source=scripts/lib/admin-edge.sh
 . "$(dirname "$0")/lib/admin-edge.sh" || exit 3
 admin_edge_validate || exit 1

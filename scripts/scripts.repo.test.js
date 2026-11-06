@@ -4619,6 +4619,95 @@ ${r.stderr}`);
     });
   }
 
+  // --- check-advisory-ids: advisory の識別子は公開の第三者 allowlist だけ（#2479 / IADR-0690） ---------
+  //
+  // NFR（#2479）: 本検査は allowlist だけの形である（非公開の識別子を検査器にも試験にも書かない）。
+  // 🔴 **陰性対照の架空の識別子は、ここで組み立てる**（同じ文字の繰り返しで、実在しない形が明らかなもの）。
+  // 字面で書くと、実ツリーの検査を自分で赤にする。規則は取引ユニットの同名の検査器とそろえる。
+  {
+    const { spawnSync: spawnAid } = require('child_process');
+    const pathAid = require('path');
+    const fsAid = require('fs');
+    const aidScript = pathAid.join(__dirname, 'check-advisory-ids.js');
+    const runAid = (args, opts) =>
+      spawnAid(process.execPath, [aidScript, ...args], { encoding: 'utf8', ...opts });
+    const aid = require('./check-advisory-ids.js');
+    const fakeHead = 'w'.repeat(4);
+    const fakeFull = ['GHSA', fakeHead, fakeHead, fakeHead].join('-');
+
+    ok('check-advisory-ids --self-test が通る', () => {
+      const r = runAid(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-advisory-ids が実データ（追跡下すべて）で違反 0 件', () => {
+      const r = runAid([]);
+      assert.strictEqual(r.status, 0, `allowlist に無い advisory の識別子がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-advisory-ids: allowlist は公開の第三者 12 件ちょうど', () => {
+      assert.strictEqual(aid.ALLOWLIST.length, 12);
+      assert.strictEqual(new Set(aid.ALLOWLIST).size, 12);
+    });
+
+    ok('check-advisory-ids: 陰性対照 — 先頭の区画が allowlist と同じで 2 区画目が違う 2 区画の形を検出する', () => {
+      const head = aid.ALLOWLIST[2].split('-')[1];
+      const fakeTwo = ['GHSA', head, fakeHead].join('-');
+      const v = aid.findViolations(`# Refs ${fakeTwo}: 説明`);
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].id, fakeTwo);
+      assert.deepStrictEqual(aid.findViolations(aid.ALLOWLIST[2].split('-').slice(0, 3).join('-')), []);
+    });
+
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。** ただし**作業ツリーは書き換えない**
+    // （強制終了されると架空の識別子が追跡下に残るため）。一時ディレクトリに git init したリポジトリを相手にする。
+    const osAid = require('os');
+    const withTempRepo = (fn, { init = true } = {}) => {
+      const dir = fsAid.mkdtempSync(pathAid.join(osAid.tmpdir(), 'advisory-ids-repo-'));
+      try {
+        if (init) spawnAid('git', ['init', '-q'], { cwd: dir, encoding: 'utf8' });
+        return fn(dir);
+      } finally {
+        fsAid.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    // 一時ディレクトリの外側の git リポジトリを拾わないよう、探索の上限を親で止める。
+    const isolatedEnv = (dir) => ({
+      ...process.env,
+      ADVISORY_IDS_ROOT: dir,
+      GIT_CEILING_DIRECTORIES: pathAid.dirname(dir),
+    });
+
+    ok('check-advisory-ids: 一時のリポジトリで、追跡下の架空の識別子を名指しし、未追跡は見ない', () => {
+      withTempRepo((dir) => {
+        fsAid.writeFileSync(pathAid.join(dir, 'ok.md'), `${aid.ALLOWLIST[1]}\n`);
+        fsAid.writeFileSync(pathAid.join(dir, 'ng.sh'), `# x\n# ${fakeFull}\n`);
+        fsAid.writeFileSync(pathAid.join(dir, 'untracked.md'), `${fakeFull}\n`);
+        spawnAid('git', ['add', 'ok.md', 'ng.sh'], { cwd: dir, encoding: 'utf8' });
+        const r = aid.scan(dir, aid.trackedFiles(dir));
+        assert.deepStrictEqual(r.violations.map((v) => [v.rel, v.line, v.id]), [['ng.sh', 2, fakeFull]]);
+        assert.strictEqual(r.scanned, 2);
+      });
+    });
+
+    ok('check-advisory-ids: CLI は git ls-files が失敗すると exit 1（一時の非 git ディレクトリ）', () => {
+      withTempRepo((dir) => {
+        fsAid.writeFileSync(pathAid.join(dir, 'a.md'), `${fakeFull}\n`);
+        const r = runAid([], { env: isolatedEnv(dir) });
+        assert.strictEqual(r.status, 1, `exit 1 ではなかった:\n${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /git ls-files/, '列挙の失敗を名指ししていない');
+      }, { init: false });
+    });
+
+    ok('check-advisory-ids: CLI は 0 件の走査なら exit 1（追跡下が空の一時のリポジトリ）', () => {
+      withTempRepo((dir) => {
+        const r = runAid([], { env: isolatedEnv(dir) });
+        assert.strictEqual(r.status, 1, `exit 1 ではなかった:\n${r.stdout}\n${r.stderr}`);
+        assert.match(r.stderr, /走査件数が 0 件/, '0 件走査の門で止まっていない');
+      });
+    });
+  }
+
   // --- check-test-name-references: 注記が指す試験名の実在（#1312） ----------------
   //
   // NFR（#1312）: 「この帰結は <X>Tests が固定する」と書いてあるのに、その名前のクラスが無い。
@@ -8762,6 +8851,8 @@ ${r.stderr}`);
     // ★ #956 で check-nul-bytes.js を追加（git ls-files を母集合にするためクラス B）。
     // ★ #1195 で check-scaffolding-frames.js を追加（同上。追跡下の .gitkeep だけを見るため）。
     const TRACKED_CHECKERS = [
+      // #2479: advisory の識別子の allowlist 検査。git ls-files で母集合を引くのでクラス B である。
+      'check-advisory-ids.js',
       'check-cross-repo-refs.js',
       'check-nul-bytes.js',
       'check-plan-id-qualification.js',
@@ -8772,7 +8863,7 @@ ${r.stderr}`);
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=3 / B=5 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=6 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -8797,7 +8888,7 @@ ${r.stderr}`);
       assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
     });
 
-    ok('#683: 該当 7 本すべてが実際に警告を出し、終了コードを変えない', () => {
+    ok('#683: 該当 9 本すべてが実際に警告を出し、終了コードを変えない', () => {
       const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
       const run = (f) =>
         spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
@@ -9185,7 +9276,11 @@ ${r.stderr}`);
         //    🔴 **「同型の事故が 2 回」ではなく、IADR-0595・IADR-0640 の残余（「複数レプリカにする前に解消する」）と #2271 の棚卸し（2026-10-30・
         //    2026-10-31 の承認）の名指しに基づく新設である。** 窓は今は閉じているが、閉じていることを機械が見ていなかった。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-image-digests.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 67, `検査器の母集合が 67 本から変わった（${scripts.length} 件）`);
+        // ★ #2479 / IADR-0690 で `check-advisory-ids.js`（追跡下の本文の advisory の識別子は公開の第三者 allowlist にあるものだけを許す）を
+        //    新設したため 67 → 68（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく利用者の裁定（2026-11-06。
+        //    再混入を防ぐ検査器を allowlist だけの形で足す）の名指しに基づく新設である。** git ls-files で母集合を引くため
+        //    TRACKED_CHECKERS に載る（`check-nul-bytes.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 68, `検査器の母集合が 68 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -14982,7 +15077,7 @@ exit 0
       assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/llm-provider-credentials']);
     });
 
-    // NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのユーザーの種は乱数で、無いときだけ入れる。値は標準入力で渡す。
+    // NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのユーザーの種は乱数で、無いときだけ入れる。値は標準入力で渡す。
     ok('IADR-0573: ブローカのユーザーの KV が無ければ、宣言の全ユーザーに互いに違う乱数を標準入力で入れる', () => {
       const r = run1728({ setup: ({ state }) => {
         fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq-users'));
@@ -15297,7 +15392,7 @@ exit 0
     const vaultWrites1830 = (r) => r.calls.filter((c) => c.startsWith('VAULT '));
     const probe1830 = (c) => ['probe', '1830', c].join('-');
 
-    // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
+    // ［IADR-0572 / 非公開の指摘（MSP）］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
     // app-secrets は kb-reader-auth-client-* を欠く（PoC の状態）ので、dev ではない context ではそのクライアントも名指される。
     const { envNameOf: envNameOf0570 } = require('./lib/dev-client-secret-targets.js');
     const READER_FILLED0570 = ({ kv }) => kv('ai-stock-trading/app-secrets', { ...AUTH, 'kb-reader-auth-client-id': 'ai-stock-trading-kb-reader',
@@ -15377,7 +15472,7 @@ exit 0
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
     });
 
-    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
+    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (非公開の指摘（MSP）): 基盤の資格情報の KV を公知の既定値で作らない ---
     // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0574 節）。ここは bootstrap.sh の実走で
     // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
     const probe0573 = (c) => ['probe', '0573', c].join('-');
@@ -16485,7 +16580,7 @@ server.listen(0, '127.0.0.1', async () => {
     const docs1762 = ['d0', 'd1', 'd2', 'd3', 'd4'];
     const paging1762 = ['--canary', '1', '--page-size', '2', '--max-dlq-growth', '0'];
 
-    // --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）は既定で無効。運用スクリプトは実行の間だけ有効にし、
+    // --- NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体（abac-seeder）は既定で無効。運用スクリプトは実行の間だけ有効にし、
     //     資格情報は稼働の Secret（OpenBao → ESO）から読む（realm の宣言の値へは落ちない＝secret を回した後も動く） ----------
     ok('IADR-0576: 投入器の資格情報は 明示 ＞ 稼働の Secret の順で、どちらも無ければ realm の宣言の値へ落ちずに例外', () => {
       const sess = require('./lib/abac-seeder-session.js');
@@ -19041,7 +19136,7 @@ server.listen(0, '127.0.0.1', async () => {
   }
 
 
-  // --- NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーと到達の制限の一致 ---------------
+  // --- NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのサービスごとのユーザーと到達の制限の一致 ---------------
   //   単一情報源 deploy/local/rabbitmq-setup/users.txt を、(1) MSP の chart の messaging: true のサービス、(2) AST の chart の
   //   Worker 全件（submodule が無ければ check-unit-service-ownership.js の既知の一覧）、(3) rabbitmq.yaml の NetworkPolicy の列挙、
   //   (4) bootstrap.sh・reconcile-users.sh・ExternalSecret が読む KV と突き合わせる。
@@ -19106,7 +19201,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
     });
 
-    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS の 3 経路（経路B・helm・compose）の整合。
+    // NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（DB・ブローカ）への TLS の 3 経路（経路B・helm・compose）の整合。
     ok('IADR-0591: compose のブローカの TLS 設定（deploy/rabbitmq/20-tls.conf）は経路B の ConfigMap rabbitmq-tls と同じ内容', () => {
       const y = readR('deploy/local/infra/rabbitmq.yaml');
       const m = /\n {2}20-tls\.conf: \|\n((?: {4}.*\n)+)/.exec(y);
@@ -19242,7 +19337,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0578: ワークフローの多層防御（入力の展開と AI 実装の起動者） ---------
+  // --- NFR, 非公開の指摘（MSP） / IADR-0578: ワークフローの多層防御（入力の展開と AI 実装の起動者） ---------
   //
   //   1. 全ワークフローの run の本文に、外から与えられる値（github.event.* / inputs.* / github.head_ref /
   //      github.ref / github.ref_name）の式を直接展開しない。値は env で渡す。
@@ -19276,7 +19371,7 @@ server.listen(0, '127.0.0.1', async () => {
     };
     const untrustedInRun = (yml) => runLines(yml).filter((r) => UNTRUSTED.test(r.text));
 
-    ok('GHSA-552h: run の本文に外から与えられる値の式を直接展開しない（全ワークフロー）', () => {
+    ok('CI 堅牢化: run の本文に外から与えられる値の式を直接展開しない（全ワークフロー）', () => {
       const files = fs.readdirSync(WF).filter((f) => f.endsWith('.yml'));
       assert.ok(files.length >= 10, `ワークフローを読めていない: ${files.length}`);
       let scanned = 0;
@@ -19290,7 +19385,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(bad, [], `env で渡すこと:\n${bad.join('\n')}`);
     });
 
-    ok('GHSA-552h: 変異試験 —— 1 行形・ブロック形の run へ式を戻すと検出し、env と with は対象外', () => {
+    ok('CI 堅牢化: 変異試験 —— 1 行形・ブロック形の run へ式を戻すと検出し、env と with は対象外', () => {
       const one = 'jobs:\n  a:\n    steps:\n      - name: x\n        run: node a.js --tag "${{ inputs.tag || github.ref }}"\n';
       assert.strictEqual(untrustedInRun(one).length, 1, '1 行形を検出しない');
       const blk = 'jobs:\n  a:\n    steps:\n      - run: |\n          echo ok\n          echo "${{ github.event.pull_request.title }}"\n      - name: y\n        with:\n          tag_name: ${{ inputs.tag }}\n';
@@ -19333,13 +19428,13 @@ server.listen(0, '127.0.0.1', async () => {
       return out;
     };
 
-    ok('GHSA-552h: claude-coding.yml は句ごとに本文の書き手を OWNER / MEMBER / COLLABORATOR に絞る', () => {
+    ok('CI 堅牢化: claude-coding.yml は句ごとに本文の書き手を OWNER / MEMBER / COLLABORATOR に絞る', () => {
       const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
       assert.strictEqual(codingClauses(yml).length, 4, '句の数が 4 でない（読み取りの穴の疑い）');
       assert.deepStrictEqual(codingViolations(yml), []);
     });
 
-    ok('GHSA-552h: 変異試験 —— 1 句から書き手の判定を外す・判定の対象を取り違えると落ちる', () => {
+    ok('CI 堅牢化: 変異試験 —— 1 句から書き手の判定を外す・判定の対象を取り違えると落ちる', () => {
       const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
       const drop = yml.replace(` && ${TRUSTED}github.event.review.author_association)`, '');
       assert.notStrictEqual(drop, yml, '変異させる箇所が見つからない');
@@ -19349,7 +19444,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(codingViolations(swap), ['issues: 本文の書き手の判定が無い']);
     });
 
-    ok('GHSA-552h: claude-coding.yml の許可ツールは最小化した形を保つ（find / awk / 広い node を持たない）', () => {
+    ok('CI 堅牢化: claude-coding.yml の許可ツールは最小化した形を保つ（find / awk / 広い node を持たない）', () => {
       const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
       const m = /--allowedTools "([^"]+)"/.exec(yml);
       assert.ok(m, '許可ツール一覧を読めない');
@@ -19360,10 +19455,10 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(!tools.some((t) => /^Bash\((?:bash|sh|python3?|npx|curl|wget)(?::\*)?\)$/.test(t)), '汎用の実行系が許可されている');
     });
 
-    ok('GHSA-552h: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
+    ok('CI 堅牢化: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
       const os = require('os');
       const { parityWarnings } = require('./check-ai-workflow-config.js');
-      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-parity-'));
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-ci-hardening-parity-'));
       try {
         const sp = path.join(work, 'settings.json');
         const perFile = [{ file: 'claude-coding.yml', tools: ['Read', 'Bash(node scripts/:*)'] }];
@@ -19382,7 +19477,7 @@ server.listen(0, '127.0.0.1', async () => {
     // --- gen-changelog.js: git は引数の配列で呼び、参照名の形を確かめる ---
     const { isSafeRef, filterSafeTags } = require('./gen-changelog.js');
 
-    ok('GHSA-552h: gen-changelog の参照名の判定（陽性 / 陰性の対）', () => {
+    ok('CI 堅牢化: gen-changelog の参照名の判定（陽性 / 陰性の対）', () => {
       for (const r of ['v1.2.3', 'obsidian-plugin-v0.2.0', 'release/2026-10', 'HEAD']) assert.ok(isSafeRef(r), `受け付けるはず: ${r}`);
       for (const r of ['', '-x', 'v1 2', 'a..b', 'v1;x', 'v1$x', 'v1`x', 'v1|x', 'v1"x', 'v1(x)', '.v1', 'x'.repeat(201), undefined]) {
         assert.ok(!isSafeRef(r), `外すはず: ${JSON.stringify(r)}`);
@@ -19396,16 +19491,16 @@ server.listen(0, '127.0.0.1', async () => {
       assert.match(warned, /受け付けない形のタグ/);
     });
 
-    ok('GHSA-552h: gen-changelog は child_process をシェル経由で呼ばない（静的）', () => {
+    ok('CI 堅牢化: gen-changelog は child_process をシェル経由で呼ばない（静的）', () => {
       const src = fs.readFileSync(path.join(__dirname, 'gen-changelog.js'), 'utf8').replace(/^\s*(\/\/|\*).*$/gm, '');
       assert.ok(!/\bexecSync\b|\bexec\(|shell:\s*true/.test(src), 'シェルを介す呼び出しが在る');
       assert.ok(/execFileSync\('git', \[/.test(src), 'git を引数の配列で呼んでいない');
     });
 
-    ok('GHSA-552h: gen-changelog の実走 —— 受け付けない形のタグを外し、他のタグの節は出す（一時リポジトリ）', () => {
+    ok('CI 堅牢化: gen-changelog の実走 —— 受け付けない形のタグを外し、他のタグの節は出す（一時リポジトリ）', () => {
       const os = require('os');
       const { spawnSync } = require('child_process');
-      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-'));
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-ci-hardening-'));
       const g = (...a) => {
         const r = spawnSync('git', a, { cwd: work, encoding: 'utf8' });
         assert.strictEqual(r.status, 0, `git ${a.join(' ')}: ${r.stderr}`);
@@ -19429,7 +19524,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0581: Actions の SHA 固定と依存の自動更新 ----------------
+  // --- NFR, 非公開の指摘（MSP） / IADR-0581: Actions の SHA 固定と依存の自動更新 ----------------
   //   1. 全ワークフローの外部の `uses:` は 40 桁の commit SHA で固定し、同じ行に版の注記（`# vX…`）を置く。
   //   2. dependabot.yml は github-actions / nuget / npm を更新の対象にする。
   {
@@ -19445,7 +19540,7 @@ server.listen(0, '127.0.0.1', async () => {
       return [`${i + 1}: ${l.trim()}`];
     });
 
-    ok('GHSA-552h: 外部の uses: は全ワークフローで commit SHA に固定し、版の注記を同じ行に置く', () => {
+    ok('CI 堅牢化: 外部の uses: は全ワークフローで commit SHA に固定し、版の注記を同じ行に置く', () => {
       let n = 0;
       const bad = [];
       for (const f of fs.readdirSync(WF).filter((x) => x.endsWith('.yml'))) {
@@ -19457,7 +19552,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(bad, [], `SHA 固定＋版の注記にすること:\n${bad.join('\n')}`);
     });
 
-    ok('GHSA-552h: 変異試験 —— タグ指定・注記なし・短い SHA を検出し、ローカル参照は対象外', () => {
+    ok('CI 堅牢化: 変異試験 —— タグ指定・注記なし・短い SHA を検出し、ローカル参照は対象外', () => {
       const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
       assert.strictEqual(unpinned('      - uses: actions/checkout@v7\n').length, 1, 'タグ指定を検出しない');
       assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha}\n`).length, 1, '注記なしを検出しない');
@@ -19465,7 +19560,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha} # v7.0.1\n        uses: ./.github/workflows/x.yml\n`).length, 0, '正しい形・ローカル参照を誤検出する');
     });
 
-    ok('GHSA-552h: dependabot.yml は github-actions / nuget / npm を更新の対象にする', () => {
+    ok('CI 堅牢化: dependabot.yml は github-actions / nuget / npm を更新の対象にする', () => {
       const y = fs.readFileSync(path.join(__dirname, '..', '.github/dependabot.yml'), 'utf8');
       const eco = [...y.matchAll(/^\s*- package-ecosystem:\s*"([^"]+)"\s*\n\s*directory:\s*"([^"]+)"/gm)].map((m) => `${m[1]}:${m[2]}`);
       for (const e of ['github-actions:/', 'nuget:/src', 'npm:/src']) assert.ok(eco.includes(e), `${e} が無い: ${eco.join(', ')}`);
@@ -19474,7 +19569,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0584: イメージの走査と CodeQL の JavaScript / TypeScript ----------
+  // --- NFR, 非公開の指摘（MSP） / IADR-0584: イメージの走査と CodeQL の JavaScript / TypeScript ----------
   {
     const fs = require('fs');
     const path = require('path');
@@ -19501,7 +19596,7 @@ server.listen(0, '127.0.0.1', async () => {
       return out;
     };
 
-    ok('GHSA-552h: images.yml は建てたイメージを Trivy で走査し、当面は報告だけで落とさない', () => {
+    ok('CI 堅牢化: images.yml は建てたイメージを Trivy で走査し、当面は報告だけで落とさない', () => {
       const yml = read('images.yml');
       assert.deepStrictEqual(trivyViolations(yml), []);
       const build = yml.slice(yml.indexOf('\n  build:\n'), yml.indexOf('\n  build-local:\n'));
@@ -19509,13 +19604,13 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(build.indexOf('Build image') < build.indexOf('Scan image'), '建てる前に走査している');
     });
 
-    ok('GHSA-552h: 変異試験 —— Trivy を落とす形にする・continue-on-error を外すと検出する', () => {
+    ok('CI 堅牢化: 変異試験 —— Trivy を落とす形にする・continue-on-error を外すと検出する', () => {
       const yml = read('images.yml');
       assert.deepStrictEqual(trivyViolations(yml.replace('exit-code: "0"', 'exit-code: "1"')), ['exit-code が 0 でない（落とす形）']);
       assert.deepStrictEqual(trivyViolations(yml.replace(/\n\s*continue-on-error: true(?=\n\s*uses: aquasecurity)/, '')), ['continue-on-error が無い']);
     });
 
-    ok('GHSA-552h: codeql.yml は csharp と javascript-typescript を解析し、JS/TS はビルドしない', () => {
+    ok('CI 堅牢化: codeql.yml は csharp と javascript-typescript を解析し、JS/TS はビルドしない', () => {
       const yml = read('codeql.yml');
       assert.match(yml, /language: \["csharp", "javascript-typescript"\]/);
       assert.match(yml, /build-mode: \$\{\{ \(github\.event_name == 'pull_request' \|\| matrix\.language != 'csharp'\) && 'none' \|\| 'manual' \}\}/);

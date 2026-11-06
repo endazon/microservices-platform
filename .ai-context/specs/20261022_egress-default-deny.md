@@ -1,19 +1,19 @@
 ---
-title: 作業仕様書 — 外向き通信（egress）を既定で拒否し、要る宛先だけを許す（段 1。GHSA-j4qv-2w99-xg5p）
+title: 作業仕様書 — 外向き通信（egress）を既定で拒否し、要る宛先だけを許す（段 1。非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0005, ADR-0008, IADR-0589, IADR-0026, IADR-0461, IADR-0513, IADR-0520, IADR-0522, IADR-0573, IADR-0583]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md（§非LLM 外部送信の統制 §基本原則: egress は既定拒否・許可先を allowlist で管理する）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービスメッシュ）
   - planning:projects/microservices-platform/07_adr/ADR-0008（k3s 実行基盤）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — 外向き通信（egress）の既定拒否（段 1。GHSA-j4qv-2w99-xg5p）
+# 作業仕様書 — 外向き通信（egress）の既定拒否（段 1。非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0589**（新規）に置く。
 > 多層防御の強化（最小権限）。参照は GHSA の ID だけとする。
@@ -122,3 +122,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 - 配備は閉場後（基盤との通信の経路に規則が入る。取引の時間帯に MSP のサービスが再起動・接続し直すことを避ける）。
 - 手順は PR 本文に書く（追加の値・資格情報は無い。起動器の再実行か同じ values での `helm upgrade`。`egress-probe` で確かめる）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

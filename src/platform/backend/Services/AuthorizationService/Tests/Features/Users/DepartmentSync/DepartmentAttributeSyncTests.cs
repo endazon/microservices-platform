@@ -99,7 +99,7 @@ public class DepartmentAttributeSyncTests
         realm.Clears.Should().Equal(["u-none"], "消すのは部門グループ 0 個で属性を持つ人間の利用者だけ");
     }
 
-    // ［2026-10-23 / [[IADR-0607]]・GHSA-94cm-55g9-2967］🔴 サービスアカウントの名前の形（`service-account-` の接頭辞）を持つ
+    // ［2026-10-23 / [[IADR-0607]]・非公開の指摘（MSP）］🔴 サービスアカウントの名前の形（`service-account-` の接頭辞）を持つ
     // **人の利用者**は同期の対象に残る —— 部門グループに属さず属性を持てば消える。正規のサービスアカウント
     // （IdP が `serviceAccountClientId` を返す利用者）は従前どおり消さない（陽性対照）。
     [Theory]

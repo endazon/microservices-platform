@@ -95,7 +95,7 @@ public class DepartmentAttributeReconciliationTests
         findings.Single(f => f.UserId == "u-plain").Verdict.Should().Be(DepartmentAttributeVerdict.InSync);
     }
 
-    // ［2026-10-23 / [[IADR-0607]]・GHSA-94cm-55g9-2967］🔴 サービスアカウントかどうかは IdP が返す属性
+    // ［2026-10-23 / [[IADR-0607]]・非公開の指摘（MSP）］🔴 サービスアカウントかどうかは IdP が返す属性
     // （`ServiceAccountClientId`）だけで決める。利用者名の形では決めない（接頭辞の形の人は同期の対象に残す）。
     [Theory]
     [InlineData("service-account-abac-seeder", "abac-seeder", true)]

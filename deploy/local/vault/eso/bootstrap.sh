@@ -23,7 +23,7 @@ vexec() { kubectl -n "$INFRA_NS" exec -i deploy/vault -- sh -c \
 #   対象は **KV（AST の app-secrets はそのキー）がまだ無いもの**だけ —— 在るものは下の vkv_create_if_absent / vkv_patch_if_missing が
 #   触らない（IADR-0485）ので、env が未設定でも dev の値は入らない。
 #   🔴 Vault へ何か書く前に判定する（止まるときは何も書かない）。
-#   ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
+#   ［2026-10-22 / 非公開の指摘（MSP） / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ
 #   広げた（手で並べず宣言から導出する）。置き場は client_secret_kv_of が持つ。**置き場の決まっていないクライアントが宣言に
 #   現れたら止める**（新しいクライアントの入れ漏れを黙って通さない。置き場を足すか、Vault に種を置かないなら空を返す）。
 #   🔴 **非対称に注意**: 判定器・取り込み元・後追い・検知は宣言へクライアントを足せば触らずに対象へ入るが、この表だけは
@@ -76,7 +76,7 @@ if [ "${#dev_secret_args[@]}" -gt 0 ]; then
 fi
 unset dev_secret_args dev_secret_client dev_secret_env dev_secret_loc
 
-# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）の KV を
+# NFR-18, ADR-0124 決定 1, IADR-0574 (非公開の指摘（MSP）): **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）の KV を
 #   公知の開発用の値で作らない。** 判定は scripts/lib/infra-credentials.sh の 1 本（k8s-local-up.sh と共有）。
 #   対象は **KV がまだ無いもの**だけ（在る KV は下の vkv_create_if_absent が触らない。IADR-0485）。k8s-local-up.sh から呼ぶときは、
 #   起動器が [1/7] の直後で決めた値（明示か既存の Secret の値）を env で受け取る。🔴 Vault へ何か書く前に判定する。
@@ -131,7 +131,7 @@ echo "==> kubernetes 認証を有効化（未有効時のみ・冪等）"
 vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || vault auth enable kubernetes'
 
 echo "==> auth/kubernetes/config（in-cluster local mode: Vault 自身の SA を reviewer に使う）"
-# NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 下の role はすべて audience=vault を持つ（対象者を秘匿管理に限ったトークンだけを受ける）。
+# NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: 下の role はすべて audience=vault を持つ（対象者を秘匿管理に限ったトークンだけを受ける）。
 #   名乗る側（ESO の store の serviceAccountRef.audiences・BFF / datasource の projected token・バックアップの CronJob）は同じ値を渡す。
 #   🔴 配備の順序: 名乗る側を先に出し、role の audience を後から付ける（k8s-local-up.sh は [6/7] の helm の後にここを呼ぶ）。
 #      role に audience が無い間は、OpenBao が TokenReview にトークン自身の audience を渡すので、新しいトークンでもログインできる。
@@ -367,7 +367,7 @@ vkv_create_if_absent msp/reset-gate-oidc client-secret "${RESET_GATE_CLIENT_SECR
 vkv_create_if_absent msp/synthetic-monitor-oidc client-secret "${SYNTHETIC_MONITOR_CLIENT_SECRET:-synthetic-monitor-dev-secret-change-me}"
 # NFR-02, ADR-0079 決定 1・2, IADR-0654 (#2335): SLO 評価用（60 分・LLM を呼ぶ）の合成プローブの client secret（realm の synthetic-monitor-slo と揃える）。
 vkv_create_if_absent msp/synthetic-monitor-slo-oidc client-secret "${SYNTHETIC_MONITOR_SLO_CLIENT_SECRET:-synthetic-monitor-slo-dev-secret-change-me}"
-# NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
+# NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体（abac-seeder。既定で無効・実行の間だけ有効）の client secret。
 # 投入器（seed-*.js）と運用スクリプト（republish・archive）は、実行時に ESO の同期先 Secret platform-infra/abac-seeder-oidc から読む
 # （realm の宣言の値へは落ちない）。**既定は realm の宣言の値**（dev のクラスタの初回。dev ではない context で env を与えなければ、
 # 冒頭の判定が止める）。env は作るときだけ効く（#1682）。
@@ -423,7 +423,7 @@ else
   vkv_patch_nonempty msp/keycloak-smtp password "${SMTP_PASSWORD:-}"
 fi
 
-# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーのパスワード。**乱数で、無いときだけ**入れる
+# NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのサービスごとのユーザーのパスワード。**乱数で、無いときだけ**入れる
 #   （開発用の既定値を持たない。在る値は触らない＝回すのは同じ KV を書き換えてから reconcile-users.sh）。
 #   ユーザーの集合と KV の割り当ては deploy/local/rabbitmq-setup/users.txt（単一情報源）から読む。
 #   値は標準入力で渡す（vault のコマンドの引数に載せない）。表示しない。
@@ -452,7 +452,7 @@ unset rmq_kv rmq_args rmq_user rmq_users_file
 # （ズレると client_credentials が invalid_client になる）。画面から書ける 12 件は空文字（未設定＝各連携が no-op）。
 # 🔴 ai-stock-trading/moomoo / moomoo-rsa は seed しない（未設定のあいだ OpenD は Secret 不在で待機する＝fail-closed）。
 # 値の一致（キー集合＝items[] の書ける 12 ＋ notWritable 10、auth は realm と同値）は SecretItemBootstrapSeedTests が固定する。
-# NFR-18, IADR-0572 (GHSA-rh44-px44-p48q): AST の機密クライアントの secret も、env（名前は判定器の dev_client_secret_env_name。
+# NFR-18, IADR-0572 (非公開の指摘（MSP）): AST の機密クライアントの secret も、env（名前は判定器の dev_client_secret_env_name。
 # 例 AI_STOCK_TRADING_SVC_CLIENT_SECRET）を与えたときはその値で入れる。冒頭の判定は「無いキーを env 未設定（dev の値）で作る」を
 # dev ではない context で止めるので、env を与えて通したときに dev の値が残らないよう、ここで env の値へ揃える。
 # <mode>: created ＝この実行で KV を作った（seed の値を env で上書きする）/ present ＝在る KV（無いキーにだけ足す。在る値は触らない）。

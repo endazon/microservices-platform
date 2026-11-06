@@ -5,14 +5,14 @@ status: Accepted
 related_ids: [NFR-18, ADR-0124, IADR-0572, IADR-0485, IADR-0294, IADR-0133, IADR-0503]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密）
 related_specs:
   - ../specs/20261022_abac-seeder-disabled-by-default.md
 ---
 
-# IADR-0576: 投入器の主体を既定で無効にし、実行の間だけ有効にする（GHSA-rh44-px44-p48q）
+# IADR-0576: 投入器の主体を既定で無効にし、実行の間だけ有効にする（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,7 +22,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-rh44-px44-p48q（多層防御の強化。常時有効な管理主体を残さない）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。常時有効な管理主体を残さない）。
 - 計画: **ADR-0124 決定 1**。要求 **NFR-18**。
 - 前提: [IADR-0572](./IADR-0572_dev-secret-guard-all-service-account-clients.md)（守りの対象の導出。投入器の置き場）・[IADR-0485](./IADR-0485_paired-secrets-create-only-declarations.md)・[IADR-0294](./IADR-0294_mfa-enforcement-and-audit-events.md)（投入器は client_credentials）・[IADR-0133](./IADR-0133_abac-dev-seed.md)・[IADR-0503](./IADR-0503_republish-document-updated-admin-endpoint-and-driver.md)（再発行の駆動器）。
 
@@ -54,3 +54,5 @@ related_specs:
 1. 強制終了で戻し損ねた場合、次の起動の後追いか手で閉じるまで有効のまま残る。
 2. 同時実行の排他は持たない（運用で 1 本ずつ）。
 3. Secret の読み先は kubectl の現在の context に依存する。ずれていれば認証に失敗して止まる（安全側）。実行前に context を確かめる。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

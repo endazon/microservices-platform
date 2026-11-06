@@ -1,22 +1,22 @@
 ---
-title: 作業仕様書 — チャートの Pod のセキュリティ設定と Pod Security Admission（GHSA-j4qv-2w99-xg5p の 1 本目）
+title: 作業仕様書 — チャートの Pod のセキュリティ設定と Pod Security Admission（非公開の指摘（MSP）の 1 本目）
 type: spec
 status: done
 related_ids: [NFR, ADR-0005, ADR-0007, ADR-0008, ADR-0021, IADR-0583]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0008 （k3s 実行基盤）
   - planning:projects/microservices-platform/07_adr/ADR-0005 （サービスメッシュ）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — Pod のセキュリティ設定
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0583**（新規）に置く。
 > 多層防御の強化・最小権限。参照は GHSA の ID だけとする。
-> GHSA-j4qv-2w99-xg5p の対応の **1 本目**（Pod のセキュリティ設定）。残りは別の PR で行う。
+> 非公開の指摘（MSP）の対応の **1 本目**（Pod のセキュリティ設定）。残りは別の PR で行う。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -80,3 +80,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 ［2026-10-22 追記 / レビュー指摘］ドリフト検出の Job の `runAsGroup` を curl イメージの主グループ（101）に合わせた（B8）。
 ISTIO=1 の経路は統合スタックの run で通過を確かめた（IADR-0583 §検証）。TEI の待受（80 番）は IADR-0583 §残る制約へ。
 起動器の注入ラベルの読み取りの失敗を「ラベルなし」と区別し、enforce を貼らない側に倒した（B9）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

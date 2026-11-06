@@ -5,14 +5,14 @@ status: Accepted
 related_ids: [NFR-11, NFR-18, ADR-0021, IADR-0091, IADR-0220, IADR-0317, IADR-0575]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md（エッジ）
 related_specs:
-  - ../specs/20261022_j4qv_admin-edge-default-closed.md
+  - ../specs/20261022_admin-edge-default-closed.md
 ---
 
-# IADR-0586: 管理ツールの集約入口の経路は既定で置かない（GHSA-j4qv-2w99-xg5p）
+# IADR-0586: 管理ツールの集約入口の経路は既定で置かない（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,7 +22,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化。最小の公開面・既定は fail-closed）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。最小の公開面・既定は fail-closed）。
 - 計画: **ADR-0021**（エッジ）。要求 **NFR-11**・**NFR-18**。
 - 前提: [IADR-0091](./IADR-0091_local-edge-aggregation-traefik.md)（管理ツールを 50000 へ集約）・[IADR-0220](./IADR-0220_admin-entrypoint-tls-and-http-redirect.md)（50000 の TLS 終端）・[IADR-0317](./IADR-0317_istio-ingressgateway-edge-and-strict-mtls.md)（Istio の入口）・[IADR-0575](./IADR-0575_edge-block-keycloak-admin-surface.md)（エッジでの拒否の形）。
 
@@ -55,3 +55,5 @@ related_specs:
 
 1. opt-in で開けた入口は認証を持たないツールを含む。ホストの公開範囲（k3d は loopback 固定、Rancher Desktop は内蔵 LB の設定）に依存する。
 2. `deploy/docker-compose.yml`（経路A）の公開ポートは本決定の対象外（エッジの入口ではない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

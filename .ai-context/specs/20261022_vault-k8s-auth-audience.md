@@ -1,22 +1,22 @@
 ---
-title: 作業仕様書 — 秘匿管理の kubernetes 認証の対象者（audience）の検証（GHSA-j4qv-2w99-xg5p の 5 点目）
+title: 作業仕様書 — 秘匿管理の kubernetes 認証の対象者（audience）の検証（非公開の指摘（MSP）の 5 点目）
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0095, ADR-0132, IADR-0585, IADR-0096, IADR-0433, IADR-0495, IADR-0548]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0132 （秘匿管理は OpenBao）
   - planning:projects/microservices-platform/07_adr/ADR-0095 （SC-22 の秘密情報の投入面）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — 秘匿管理の kubernetes 認証の対象者（audience）
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0585**（新規）に置く。
 > 多層防御の強化・最小権限。参照は GHSA の ID だけとする。
-> GHSA-j4qv-2w99-xg5p の対応の **5 点目**（発行者・対象者の検証）。
+> 非公開の指摘（MSP）の対応の **5 点目**（発行者・対象者の検証）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -106,3 +106,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 - .NET: `Platform.Bff.Tests`（Vault・SC-22 の 187 本。全体は Docker の要る Valkey の 5 本を除き緑）・`DataSourceService.Tests`（463 本）。
   `dotnet format --verify-no-changes`（変更したファイル）。
 - 新しい試験は、deploy/ と src/ の変更を外した作業ツリーで赤になることを確かめた。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

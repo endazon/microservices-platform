@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 秘匿管理の kubernetes 認証の role の書き込みを、配備の 2 段に分けるための口。
+# NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: 秘匿管理の kubernetes 認証の role の書き込みを、配備の 2 段に分けるための口。
 # `source` して使う。呼び出し元は deploy/local/vault/eso/bootstrap.sh と deploy/local/platform-backup/vault/bootstrap.sh。
 #
 #   vault_role_write_cmd '<vault write auth/kubernetes/role/<r> … audience=vault …>'

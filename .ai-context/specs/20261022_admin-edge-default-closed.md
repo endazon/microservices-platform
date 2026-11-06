@@ -1,17 +1,17 @@
 ---
-title: 作業仕様書 — 管理ツールの集約入口（admin 50000）の経路を既定で置かず、明示の opt-in（ADMIN_EDGE=1）でだけ置く（GHSA-j4qv-2w99-xg5p）
+title: 作業仕様書 — 管理ツールの集約入口（admin 50000）の経路を既定で置かず、明示の opt-in（ADMIN_EDGE=1）でだけ置く（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-11, NFR-18, ADR-0021, IADR-0586, IADR-0091, IADR-0220, IADR-0317, IADR-0575]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md（エッジ）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — 管理ツールの集約入口の経路を既定で置かない（GHSA-j4qv-2w99-xg5p）
+# 作業仕様書 — 管理ツールの集約入口の経路を既定で置かない（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0586**（新規）に置く。
 > 多層防御の強化（最小の公開面・既定は fail-closed）の 6 点目。参照は GHSA の ID だけとする。
@@ -81,3 +81,5 @@ PR 本文に順序つきで書く。要点: 50000 の URL を使っている管�
 
 - opt-in で開けた入口は認証を持たないツールを含む（ホストの公開範囲に依存）。
 - 経路A（docker-compose）の公開ポートは対象外。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-pod-security.test.js
- * NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）:
+ * NFR, IADR-0583（Refs 非公開の指摘（MSP））:
  * **チャートの Pod とコンテナのセキュリティ設定を、実際に `helm template` で描いて固定する。**
  *
  * 固定するもの:

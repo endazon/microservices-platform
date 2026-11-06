@@ -173,7 +173,7 @@ public static class WolverineExtensions
     // 発行側と購読側が同じ値を導くことが要点であり、値そのものに意味は無い。
     public static string PlatformExchangeName<TEvent>() => typeof(TEvent).Name;
 
-    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの接続（RabbitMq:ConnectionString）。各サービスは
+    // NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: ブローカへの接続（RabbitMq:ConnectionString）。各サービスは
     // `UseRabbitMq(new Uri(...))` ではなくこれを使う。
     //
     // 🔴 **RabbitMQ.Client は amqps の URI を受けると、サーバ証明書の名前の不一致を既定で受け入れる**

@@ -35,7 +35,7 @@ case "$RESET_FLOOR" in
   *) echo "ERROR: RESET_FLOOR は 0（床を外す）か 1（床を入れる。既定）のどちらかです: '${RESET_FLOOR}'" >&2; exit 1 ;;
 esac
 
-# NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 管理ツールの経路（msp-admin-edge・50000）は ADMIN_EDGE=1 のときだけ置く。
+# NFR-18, IADR-0586 (非公開の指摘（MSP）): 管理ツールの経路（msp-admin-edge・50000）は ADMIN_EDGE=1 のときだけ置く。
 #   0 / 1 / 未指定 以外は入口に触る前に落とす（RESET_FLOOR と同じ理由）。
 # shellcheck source=scripts/lib/admin-edge.sh
 . "$(dirname "$0")/lib/admin-edge.sh" || exit 3

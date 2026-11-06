@@ -2,7 +2,7 @@ using Knowledge.Contracts.Llm;
 
 namespace AiAnalysisService.Domain;
 
-// FR-04, UC-01 / NFR・IADR-0580（Refs GHSA-5h4q-4m2j-rjhm）: 自然文の質問への回答のプロンプト。
+// FR-04, UC-01 / NFR・IADR-0580（Refs 非公開の指摘（MSP））: 自然文の質問への回答のプロンプト。
 // 参照文書と質問は PromptTrustBoundary の囲みに入れ、指示は囲みの外に置く。
 public static class AskPromptBuilder
 {

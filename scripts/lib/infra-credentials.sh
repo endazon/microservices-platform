@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q):
+# NFR-18, ADR-0124 決定 1, IADR-0574 (非公開の指摘（MSP）):
 # **基盤の資格情報（Keycloak の管理者・RabbitMQ のブローカ）を公知の開発用の値で作らない**判定の唯一の口（fail-closed）。
 # `source` して使う。呼び出し元は scripts/k8s-local-up.sh（[1/7] の直後・Secret を 1 つも書く前）と
 # deploy/local/vault/eso/bootstrap.sh（Vault の種。まだ無い KV だけ）の 2 本。**判定をここ以外へ複写しない。**

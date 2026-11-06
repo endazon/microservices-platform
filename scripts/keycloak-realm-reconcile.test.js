@@ -1251,7 +1251,7 @@ ok('#2024: 後追い Job は Secret e2e-accounts を envFrom（optional）で読
   }
   // ---------------------------------------------------------------- #1830 / IADR-0517: dev の値の管理用クライアント
   const done1830 = (name) => { passed++; process.stdout.write(`  ok  ${name}\n`); };
-  // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は宣言から導出する（サービスアカウントを持つ機密クライアントで宣言が secret を持つもの）。
+  // ［IADR-0572 / 非公開の指摘（MSP）］対象は宣言から導出する（サービスアカウントを持つ機密クライアントで宣言が secret を持つもの）。
   const DEV_SECRET_GUARDED_CLIENTS = devSecretGuardedClients(REALM);
   const devOf = (id) => REALM.clients.find((c) => c.clientId === id).secret;
   {

@@ -50,7 +50,7 @@ public sealed class SuggestionPrompt
     // 語彙と順位は Knowledge.Contracts の ConfidentialityLevels が単一情報源であり、ここで再定義しない。
     public string Confidentiality { get; }
 
-    // NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
+    // NFR / IADR-0582（Refs 非公開の指摘（MSP））: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
     // 封ごとに 1 つ作る（同じ封の Render は同じ本文を返す）。
     private readonly string _boundary;
 

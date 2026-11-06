@@ -1,4 +1,4 @@
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）のサーバ証明書。**既定で当てる**（opt-in にしない）。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（platform-infra）のサーバ証明書。**既定で当てる**（opt-in にしない）。
 # k8s-local-up.sh の [4/7] が「cert-manager 導入 → CRD Established 待ち → 本 overlay を apply → 証明書 Ready 待ち →
 # deploy/local/infra(-persistence) を apply」の順で当てる（postgres / rabbitmq の Pod は証明書の Secret をマウントするので、
 # 先に Secret が要る）。

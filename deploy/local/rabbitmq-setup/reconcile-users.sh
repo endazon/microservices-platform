@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカ（platform-infra の RabbitMQ）に、サービスごとのユーザーと権限を
+# NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカ（platform-infra の RabbitMQ）に、サービスごとのユーザーと権限を
 # 宣言（users.txt）どおりに作る・合わせる。**冪等**（何度回しても同じ状態になる）。
 #
 #   bash deploy/local/rabbitmq-setup/reconcile-users.sh            # 作る・合わせる

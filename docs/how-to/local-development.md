@@ -3,14 +3,14 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-22
+updated: 2026-11-07
 author: claude
 ---
 <!-- trace:
 ids: [NFR-18, FR-13, FR-14, UC-07]
 adrs: [ADR-0131, ADR-0032, ADR-0048, ADR-0106]
 iadrs: [IADR-0587, IADR-0524, IADR-0522, IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056, IADR-0228, IADR-0273, IADR-0331, IADR-0429, IADR-0461, IADR-0581]
-specs: [20261022_j4qv_compose-loopback-bind, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs, 20261022_actions-sha-pin-and-dependabot]
+specs: [20261022_compose-loopback-bind, 20261009_1859_keycloak-26-upgrade, 20261009_1839_session-store-valkey, 20260831_issue-1092_planning-submodule-residual-refs, 20260911_issue-1393_remove-platform-spa-public-client, 20260925_1499_object-storage-seaweedfs, 20261022_actions-sha-pin-and-dependabot]
 issues: [#1859, #1839, #1092, #1393, #1499, planning#750]
 -->
 

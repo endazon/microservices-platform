@@ -599,7 +599,7 @@ function checkVaultSnapshotAuth({ cj, docs, policy, bootstrap, script }) {
     if (`${m.mountPath}/${tokVol.saToken.path}` !== jwtFile) errors.push(`SA トークンのパス（${m.mountPath}/${tokVol.saToken.path}）が BACKUP_VAULT_SA_JWT_FILE（${jwtFile}）と違う`);
     if (!m.readOnly) errors.push('SA トークンが読み取り専用でマウントされていない');
     if (!(Number(tokVol.saToken.expirationSeconds) > 0 && Number(tokVol.saToken.expirationSeconds) <= 3600)) errors.push('SA トークンの期限が 1 時間以内でない');
-    // NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 対象者（audience）は秘匿管理（vault）。role も同じ値を要求する（下の want）。
+    // NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: 対象者（audience）は秘匿管理（vault）。role も同じ値を要求する（下の want）。
     if (tokVol.saToken.audience !== 'vault') errors.push(`SA トークンの audience が vault でない（${tokVol.saToken.audience}）`);
   }
   // root トークン（Secret vault-dev-token）を渡さない。

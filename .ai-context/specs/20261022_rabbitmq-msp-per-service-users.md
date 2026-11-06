@@ -1,15 +1,15 @@
 ---
-title: 作業仕様書 — 基盤の 7 サービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（IADR-0573 の段 3・GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q）
+title: 作業仕様書 — 基盤の 7 サービスをブローカのサービスごとのユーザーへ切り替え、既定のユーザーを無効化する（IADR-0573 の段 3・非公開の指摘（AST） / 非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0027, ADR-0124, IADR-0577, IADR-0573, IADR-0574, IADR-0291, IADR-0286, IADR-0485]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027 （メッセージングは Wolverine ＋ RabbitMQ）
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1
-issue: "GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q"
+issue: "非公開の指摘（AST） / 非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — 基盤のサービスをブローカのサービスごとのユーザーへ切り替える（段 3）
@@ -70,3 +70,5 @@ issue: "GHSA-pvmh-cvmf-pvcp / GHSA-rh44-px44-p48q"
 PR 本文に順序つきで書く。要点: KV `msp/rabbitmq-users` に基盤の 7 ユーザーが在ること → ExternalSecret `msp-rabbitmq-users` の同期 →
 reconcile-users.sh で合わせる → chart を配備（7 サービスが切り替わる）→ 取引ユニットが段 2 以降の版であることを確かめる →
 ブローカの manifest を配備（再起動を伴う）→ disable-default-user.sh。配備は閉場後。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

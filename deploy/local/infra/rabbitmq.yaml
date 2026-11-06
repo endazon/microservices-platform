@@ -20,7 +20,7 @@ spec:
     metadata:
       labels: { app: rabbitmq }
     spec:
-      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: サーバ証明書（cert-manager の Secret rabbitmq-tls。deploy/local/infra-tls）を
+      # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: サーバ証明書（cert-manager の Secret rabbitmq-tls。deploy/local/infra-tls）を
       #   ブローカの利用者（uid 100 / gid 101）だけが読める形へ写す（Secret のボリュームは root の所有になる）。
       initContainers:
         - name: tls-files
@@ -63,7 +63,7 @@ spec:
             - { containerPort: 5672, name: amqp }
             - { containerPort: 5671, name: amqps }
             - { containerPort: 15672, name: management }
-          # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: ブローカは永続化していない（再起動のたびに空から立つ）。
+          # NFR-18, IADR-0577（Refs 非公開の指摘（MSP））: ブローカは永続化していない（再起動のたびに空から立つ）。
           #   起動の直後にサービスごとのユーザーを Secret `rabbitmq-users` から作り直し、無効化の印があれば既定のユーザーを消す。
           #   postStart が終わるまで readiness は測られないので、サービスはユーザーが揃ってから届く。スクリプトは失敗しても 0 で終わる
           #   （ブローカ自体は止めない。揃わなかったことは起動器の reconcile-users.sh と --check が見せる）。
@@ -108,7 +108,7 @@ spec:
         - name: tls
           emptyDir: { medium: Memory, sizeLimit: 1Mi }
 ---
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: TLS の受け口（5671）。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: TLS の受け口（5671）。
 #   - 版は TLS 1.3 / 1.2 だけ。
 #   - クライアント証明書は求めない（fail_if_no_peer_cert = false）。名乗りはサービスごとのユーザー（IADR-0577）で行う。
 #     verify_peer は「クライアントが証明書を出したときはこの CA で検証する」の意で、クライアントからサーバへの検証とは別である。
@@ -220,7 +220,7 @@ spec:
     - { name: amqps, port: 5671, targetPort: 5671 }
     - { name: management, port: 15672, targetPort: 15672 }
 ---
-# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: 到達の制限（ingress だけ）。届いてよいのは、ブローカを使うサービスの Pod だけ:
+# NFR, IADR-0573（Refs 非公開の指摘（AST））: 到達の制限（ingress だけ）。届いてよいのは、ブローカを使うサービスの Pod だけ:
 #   - microservices-platform の 7 サービス（helm の messaging: true。app: <name>-service）
 #   - ai-stock-trading の 11 サービス（AST の chart の Worker 全件。全 Worker が RabbitMq__ConnectionString を持つ）
 # 列挙の単一情報源は deploy/local/rabbitmq-setup/users.txt（ユーザーと同じ表）。一致は scripts/scripts.repo.test.js が突き合わせる。
