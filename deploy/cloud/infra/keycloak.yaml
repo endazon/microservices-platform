@@ -1,10 +1,10 @@
 # NFR-18, IADR-0674 (#2401): 認可サーバ（Keycloak）を**本番モード（start）**で動かす。deploy/local/infra/keycloak.yaml との違い:
 #   - start-dev ではなく start。DB は共有 Postgres（TLS・サーバ証明書を検証する）。利用者名・パスワードは Secret keycloak-db から読む。
-#   - 管理者は Secret keycloak-admin から読む（bootstrap-secrets.sh が乱数で作る）。
+#   - 管理者は Secret keycloak-admin から読む（OpenBao の中で乱数で作り、ESO が写す。IADR-0689）。
 #   - hostname はクラスタの中の名前だけ（画面を公開しないので、外向きのホストと証明書を持たない）。HTTP はクラスタの中だけで受ける
 #     （Service は ClusterIP。外への口は描かない。到達は networkpolicy.yaml が絞る）。
-#   - realm の取り込み元は Secret keycloak-realm-import（bootstrap-secrets.sh が deploy/cloud/realm-for-cloud.js で宣言から組む。
-#     取引ユニットの 5 つの機密クライアントの secret は乱数・人の利用者は持ち込まない）。
+#   - realm の取り込み元は Secret keycloak-realm-import（ESO が組む。雛形は deploy/cloud/realm-for-cloud.js --template が宣言から作り、
+#     取引ユニットの 3 つの機密クライアントの secret だけを OpenBao から差し込む。人の利用者は持ち込まない。IADR-0689）。
 #   - キャッシュは単一ノードの local（クラスタの探索をしない）。ヒープは 8 GB のノードに収まるよう、メモリの上限の半分まで。
 #   - テーマは持ち込まない（画面を公開しない）。
 apiVersion: apps/v1

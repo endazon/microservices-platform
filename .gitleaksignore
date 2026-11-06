@@ -54,3 +54,8 @@ db7c148ec4268631fecd54456d11d0f69dc19c0b:.ai-context/specs/20261021_2024_e2e-acc
 # generic-api-key は鍵と見分けられない（同じ行に 2 件）。後続のコミットで実行時に組み立てる形へ改めた。ここに残すのは履歴の 1 コミットぶんだけである。
 # squash merge の後の develop のコミットは、ツリーに値が無いので同じ検知は出ない（#2054 の注記の形とは違い、develop 用の行は要らない）。
 aed18a698ce735fe20afcc56b754b41c0d842905:scripts/scripts.repo.test.js:generic-api-key:19978
+
+# #2471 / IADR-0689: クラウドの秘匿管理の値を作る口（seed-secrets.sh）の説明行に、旧 gen-rsa が書き出す形として PKCS#1 の PEM の
+# 見出しの字面を書いていた。鍵ではない（見出しの字面だけで、本文も値も無い）。private-key は見出しの字面を鍵と見分けられない。
+# 後続のコミットで gen-rsa の口ごと消した（head に字面は無い）。ここに残すのは履歴の 1 コミットぶんだけである。
+aa1344400c3758b63a8d215ef1c213428963abca:deploy/cloud/vault/seed-secrets.sh:private-key:10

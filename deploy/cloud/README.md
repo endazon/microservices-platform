@@ -1,7 +1,7 @@
 # deploy/cloud — 取引ユニットを動かすための MSP の最小構成（クラウドの単一ノード）
 
 取引ユニット（AST）をクラウドの単一ノード（k3s。Hetzner の 8 GB 帯）で動かすために、MSP から要るものだけを置く
-（[IADR-0674](../../.ai-context/adr/IADR-0674_deploy-cloud-minimal.md)）。
+（[IADR-0674](../../.ai-context/adr/IADR-0674_deploy-cloud-minimal.md)。秘匿管理は [IADR-0689](../../.ai-context/adr/IADR-0689_cloud-openbao-eso-in-cluster-credentials.md)）。
 
 | 置くもの | 宣言 |
 | --- | --- |
@@ -10,13 +10,16 @@
 | Keycloak（本番モード `start`・realm `platform`） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
 | OpenTelemetry の collector（受けて捨てる） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
+| 秘匿管理（OpenBao。本番の init・raft）と、OpenBao から Secret へ写す ESO | `vault/`（`vault/eso/`・`vault/*.sh`） |
 | 到達の制限（入り・出の既定拒否と要る組だけの許可） | `infra/networkpolicy.yaml`（MSP の名前空間の入り・出も。chart は NetworkPolicy を描かない） |
 
 置かないもの: valkey・qdrant・mailpit・mail-relay・knowledge ユニット・BFF・frontend・認可・MCP・通知・オブジェクトストレージ・
-Wiki.js・エッジ・メッシュ・秘匿管理（OpenBao）・観測の保存先。描画に現れないことは `scripts/deploy-cloud.test.js` が固定する。
+Wiki.js・エッジ・メッシュ・観測の保存先。描画に現れないことは `scripts/deploy-cloud.test.js` が固定する。
 
-🔴 **リポジトリの既定の資格情報を 1 つも使わない。** Secret は描画に含めず、`bootstrap-secrets.sh` が初回に乱数で作る
-（値は表示しない）。秘密の値はリポジトリに置かない。
+🔴 **リポジトリの既定の資格情報を 1 つも使わない。** Secret は描画に含めない。資格情報と TLS の鍵は **OpenBao の中で作り**、
+ESO が Secret へ写す（k8s の Secret に作ってから移す形は採らない）。秘密の値はリポジトリにもノードにも平文で置かない。
+unseal の鍵とオーナー用の資格は、オーナーが age で暗号化したファイルとして手元の 2 か所に持つ
+（[手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md)）。
 
 ## 1. ノードの準備（一度だけ）
 
@@ -123,9 +126,27 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 
 ## 3. 配備の順序
 
+手順の詳細（鍵の受け渡し・再起動・作り直し）は[秘匿管理の手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md)。
+スクリプトはどれも `--live` が無ければ何もしない。**秘密の値を引数・環境変数・ディスクに置かない**（age の復号はパイプで Pod の標準入力へだけ流す）。
+
 ```sh
 kubectl apply -f deploy/cloud/infra/namespaces.yaml
-ANTHROPIC_API_KEY_FILE=<鍵の 0600 のファイル> bash deploy/cloud/bootstrap-secrets.sh --live   # 値は表示しない。在る Secret は触らない
+kubectl apply -k deploy/cloud/vault                                   # OpenBao（封印された状態で起きる。Ready にならないのが正しい）
+bash deploy/cloud/vault/init.sh --live --recipients <age の受取人> --out <init>.age              # 一度だけ
+bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <age の識別子>
+bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <age の識別子> \
+  --recipients <age の受取人> --operator-out <operator>.age          # 初回の root は最後に失効する
+bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <age の識別子>   # 7 種を OpenBao の中で作る
+. scripts/lib/pinned-artifacts.sh && pinned_work_init
+helm upgrade --install external-secrets "$(pinned_chart external-secrets 2.8.0 "$PINNED_WORK")" \
+  -n external-secrets --create-namespace -f deploy/cloud/vault/external-secrets-values.yaml --wait
+node deploy/cloud/realm-for-cloud.js --template deploy/keycloak/microservices-platform-realm.json \
+  | kubectl -n platform-infra create configmap keycloak-realm-template --from-file=platform-realm.json=/dev/stdin --dry-run=client -o yaml \
+  | kubectl apply -f -                                                 # 雛形（secret を持たない）
+kubectl apply -k deploy/cloud/vault/eso                               # SecretStore・ExternalSecret（値は OpenBao から写る）
+kubectl wait --for=condition=Ready externalsecret --all -n platform-infra --timeout=300s
+kubectl wait --for=condition=Ready externalsecret --all -n microservices-platform --timeout=300s
+node deploy/cloud/secret-inventory.js                                 # 参照する Secret の全件と供給元を照らす（区分 2・3 に穴があれば止まる）
 kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ（backup）・観測（observability）と、collector の結線（patch）を一緒に当てる
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
@@ -136,27 +157,25 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言が入らない。
   バックアップの保管先・Discord・heartbeat の資格情報は、[運用手順書](../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md)の準備で作る（作るまで Alertmanager は起動しない）。
 - **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。
-- 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットが読む Secret（`ast-db`・`rabbitmq-users`・
-  `keycloak-client-secrets`）と CA（ConfigMap `platform-infra-ca`）の写し方も、取引ユニットの側の手順が持つ。
+- 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
+  `cloud/shared/*`（DB・ブローカ・3 つの client の secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
 
 ## 4. 資格情報
 
-- `bootstrap-secrets.sh` は、DB の管理者・取引ユニットの DB の利用者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー・
-  取引ユニットのサービスごとのユーザー・取引ユニットの 5 つの機密クライアントの secret を、**初回に乱数で作る**。
-  利用者名も乱数の接尾辞を付ける。在る Secret は触らない（作り直しで稼働中の値と食い違わせない）。
-- 取り込む realm は、宣言から取引ユニットの 5 つの機密クライアントと組み込みのクライアントだけを残し、secret を乱数へ差し替え、
-  人の利用者・試験の利用者・SMTP を外して組む（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
+| 値 | 作り手 | OpenBao | 写す先 |
+| --- | --- | --- | --- |
+| DB の管理者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー | `seed-secrets.sh`（Pod の中の乱数。利用者名も乱数の接尾辞） | `cloud/platform/*` | `platform-infra` の Secret `postgres`・`keycloak-db`・`keycloak-admin`・`rabbitmq` |
+| 取引ユニットの DB の利用者・ブローカの 11 ユーザー・3 つの機密クライアントの secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
+| サーバ証明書と鍵（Postgres・RabbitMQ・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない） | — | `postgres-tls`・`rabbitmq-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
+| CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
+
+- 在る値は作り直さない（`seed-secrets.sh` の 2 回目は何も変えない）。
+- 取り込む realm は、宣言から取引ユニットの 3 つの機密クライアント（`ai-stock-trading-svc`・`-llm-caller`・`-owner`）と組み込みの
+  クライアントだけを残し、人の利用者・試験の利用者・SMTP を外す（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
 - Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
   ユーザーはサービスごとのユーザーが揃うと消える）。
-- 証明書: `bootstrap-secrets.sh` がその場で CA を作り、Postgres・RabbitMQ・LLM ゲートウェイ（取引ユニットからの https の受け口）の
-  サーバ証明書を発行する。**CA の鍵は保存しない。**
-  作り直すときは組（`platform-infra` の `postgres-tls`・`rabbitmq-tls`・ConfigMap `platform-infra-ca`、`microservices-platform` の
-  `llmgateway-tls`・ConfigMap `platform-infra-ca`）を消してから `bootstrap-secrets.sh` を流し、Postgres・RabbitMQ・Keycloak・
-  LLM ゲートウェイと取引ユニットの消費側を作り直す。**組が一部だけ在るときは、bootstrap は作り直さずに止まる**（在る証明書と別の CA にしない）。
-- **LLM の鍵**: 鍵を 1 行で書いた 0600 のファイルを `ANTHROPIC_API_KEY_FILE` に渡す。後から入れるときは
-  `kubectl -n microservices-platform delete secret llm-provider-credentials` の後に同じように流し、
-  `kubectl -n microservices-platform rollout restart deploy/llmgateway-service` で作り直す。
-- 秘匿管理（OpenBao・ESO）は持ち込まない。理由と残余は IADR-0674。
+- 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）。
+- 外から持ち込む資格情報（LLM の鍵・バックアップの保管先・Discord・heartbeat）を OpenBao から写す形は、別の段で入れる。
 
 ## 5. 確かめ方（クラスタに触れない）
 
@@ -168,14 +187,10 @@ node scripts/deploy-cloud.test.js    # 上の 2 つを描いて、持ち込ま�
 
 ## 6. 運用: 証明書の更新
 
-- `bootstrap-secrets.sh` が発行する CA とサーバ証明書（Postgres・RabbitMQ・LLM ゲートウェイ）の有効期限は **825 日**（`CERT_DAYS` の既定）。
-  CA の鍵を保存しないので、更新は**組ごとの作り直し**になる（1 枚だけを延ばすことはできない）。
-- 発行した日と期限を記録しておく。期限は次で読める（値ではなく証明書の公開の部分だけを読む）:
-  `kubectl -n platform-infra get configmap platform-infra-ca -o jsonpath='{.data.ca\.crt}' | openssl x509 -noout -enddate`
-- **期限の 30 日前まで**に、場の時間帯（JST 22:30〜05:00）を避けて、次の順で作り直す:
-  1. 組を消す: `platform-infra` の Secret `postgres-tls`・`rabbitmq-tls` と ConfigMap `platform-infra-ca`、
-     `microservices-platform` の Secret `llmgateway-tls` と ConfigMap `platform-infra-ca`。
-  2. `bootstrap-secrets.sh --live` を流す（在る資格情報は触らず、証明書の組だけを作る）。
-  3. 取引ユニットの名前空間の CA の写しを新しいものへ差し替える（AST#1525 の手順）。
-  4. Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ、取引ユニットのサービスの順に作り直す（`kubectl rollout restart`）。
-- 組が一部だけ在る状態で `bootstrap-secrets.sh` を流すと、作り直さずに止まる（在る証明書と別の CA にしない）。
+- サーバ証明書は OpenBao の PKI が発行する（有効期限 1 年）。ESO が**半年ごとに**作り直して Secret を書き換える。
+- 書き換わった後に、消費側（Postgres・RabbitMQ・LLM ゲートウェイ）を作り直して読み直させる（`kubectl rollout restart`）。期限は次で読める:
+  `kubectl -n platform-infra get secret postgres-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -enddate`
+  （証明書の公開の部分だけを読む。鍵 `tls.key` は読まない）と、CA（10 年）は
+  `kubectl -n platform-infra get configmap platform-infra-ca -o jsonpath='{.data.ca\.crt}' | openssl x509 -noout -enddate`。
+- すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret postgres-tls force-sync="$(date +%s)" --overwrite`（RabbitMQ・LLM ゲートウェイも同じ）の後に消費側を作り直す。
+- **封印のあいだは発行できない。** 作り直しは unseal の後に行う。

@@ -1,0 +1,8 @@
+# NFR-05, NFR-18, IADR-0689: クラウドの秘匿管理（OpenBao）。ESO の本体（helm）より先に当ててよい（CRD を使わない）。
+# 適用: kubectl apply -k deploy/cloud/vault（続きは README §3。init・unseal・configure・seed はオーナーが流す）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - openbao.yaml
+  - networkpolicy.yaml

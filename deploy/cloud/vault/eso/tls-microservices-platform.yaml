@@ -1,0 +1,53 @@
+# NFR-05, NFR-18, IADR-0689 決定 4: 基盤との通信の TLS の鍵を、OpenBao の PKI（pki_cloud。CA の鍵は OpenBao の外へ出さない）で発行する。
+#   ESO の VaultDynamicSecret が pki_cloud/issue/<role> を呼び、証明書と鍵を Secret に写す。鍵は OpenBao の中で作られ、
+#   PKI は発行した証明書を保存しない（role の no_store。configure.sh）。CA の証明書（公開してよい）は configure.sh が ConfigMap platform-infra-ca に置く。
+#   SAN は従来（IADR-0674 決定 3）と同じ（短い名前・名前空間つき・.svc・.svc.cluster.local）。
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: llmgateway-tls
+  namespace: microservices-platform
+spec:
+  method: POST
+  path: pki_cloud/issue/llmgateway-service
+  parameters:
+    common_name: llmgateway-service
+    alt_names: "llmgateway-service.microservices-platform,llmgateway-service.microservices-platform.svc,llmgateway-service.microservices-platform.svc.cluster.local"
+    ttl: 8760h
+  resultType: Data
+  provider:
+    server: http://openbao.openbao.svc:8200
+    auth:
+      kubernetes:
+        mountPath: kubernetes
+        role: msp-eso
+        # NFR-18, IADR-0585: 受ける側の role は audience=vault を要求する（configure.sh）。名乗る側も明示する。
+        serviceAccountRef:
+          name: eso-openbao
+          audiences:
+            - vault
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: llmgateway-tls
+  namespace: microservices-platform
+spec:
+  # 発行は 1 年（ttl）。半年ごとに作り直す（作り直したら消費側を再起動して読み直させる。README §証明書）。
+  refreshInterval: 4380h
+  target:
+    name: llmgateway-tls
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      engineVersion: v2
+      type: Opaque
+      data:
+        tls.crt: "{{ .certificate }}"
+        tls.key: "{{ .private_key }}"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: llmgateway-tls

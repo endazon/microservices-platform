@@ -7,7 +7,7 @@
 # - 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle**（bucket-lifecycle.json）が行い、スクリプトは消さない。
 #   バケットは Object Lock（object-lock.json。COMPLIANCE・28 日。日次の保持より短くし、期限の日の削除を拒ませない）で作る。
 # - 資格情報: S3 の鍵は Secret platform-backup-s3（キー access-key-id / secret-access-key）を rclone の env で渡す。
-#   Postgres の超利用者の名前とパスワードは Secret postgres のキー username / password（#2401 の bootstrap-secrets.sh が乱数で作る）。
+#   Postgres の超利用者の名前とパスワードは Secret postgres のキー username / password（OpenBao の中で乱数で作り、ESO が写す。IADR-0689）。
 #   🔴 値をマニフェスト・引数に書かない。
 # - 接続は TLS（verify-full）。CA は #2401 の ConfigMap platform-infra-ca のキー ca.crt、名前の照合は PGHOST（Service postgres。
 #   #2401 の証明書の SAN に入っている）。Postgres は hostssl だけを受けるので、TLS でなければ繋がらない（#2405 と同じ形）。

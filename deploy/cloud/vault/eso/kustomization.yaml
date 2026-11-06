@@ -1,0 +1,10 @@
+# NFR-05, NFR-18, IADR-0689: 基盤の側の SecretStore と ExternalSecret（ESO の CRD を使う）。ESO の本体（helm）と
+# configure.sh・seed-secrets.sh の後に当てる（README §3）。取引ユニットの名前空間の分は取引ユニットの側が持つ（IADR-0689 決定 6）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - platform-infra.yaml
+  - tls-platform-infra.yaml
+  - microservices-platform.yaml
+  - tls-microservices-platform.yaml
