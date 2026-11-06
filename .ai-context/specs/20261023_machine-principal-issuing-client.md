@@ -1,15 +1,15 @@
 ---
-title: 作業仕様書 — 無人主体の判定を IdP が付与するクライアント識別に基づかせる（GHSA-94cm-55g9-2967）
+title: 作業仕様書 — 無人主体の判定を IdP が付与するクライアント識別に基づかせる（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-09, ADR-0032, ADR-0036, ADR-0085, IADR-0606, IADR-0420, IADR-0429, IADR-0449, IADR-0410, IADR-0476]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md NFR-09
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
-issue: "GHSA-94cm-55g9-2967"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — 無人主体の判定を IdP が付与するクライアント識別に基づかせる
@@ -116,3 +116,5 @@ BFF・AuthorizationService の試験はサービスアカウントの要求に `
 - `dotnet test GraphService.Tests` → 855 pass／`RetrievalService.Tests` → 573 pass（いずれも中継者の試験を畳む前の全件。畳んだ後に `--filter TrustedRelay` で 18 / 37 pass）／`DashboardService.Tests` → 98 pass
 - `dotnet test Knowledge.IntegrationTests --filter McpTool` → 4 pass
 - 変異: 腕 A を接頭辞へ戻す → Shared 5 件・DocumentService 2 件が赤／従前の実装へ戻す → Shared 6 件が赤（いずれも戻して緑）
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

@@ -25,7 +25,7 @@
 MSP chart はインフラを**デプロイせず**素のサービス名（`postgres` 等）で参照するため、infra を
 `platform-infra` に置き、各アプリ namespace に ExternalName エイリアスを張って名前解決させる。
 
-### 基盤との通信の TLS（段 1・IADR-0591。Refs GHSA-j4qv-2w99-xg5p）
+### 基盤との通信の TLS（段 1・IADR-0591。Refs 非公開の指摘（MSP））
 
 - **cert-manager は既定で入る**（`[4/7]` の先頭。従来は `LOCALEDGE=1` のときだけ）。基盤専用の CA（`cert-manager/platform-infra-root-ca`。
   エッジの CA とは別）が `platform-infra/postgres-tls`・`rabbitmq-tls` を発行し（`deploy/local/infra-tls`）、Ready を待ってから基盤を当てる。

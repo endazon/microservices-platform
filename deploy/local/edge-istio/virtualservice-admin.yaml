@@ -1,4 +1,4 @@
-# 🔴 NFR-18, IADR-0586 (GHSA-j4qv-2w99-xg5p): 本ファイルは edge-istio の kustomization に含めない。scripts/lib/admin-edge.sh が
+# 🔴 NFR-18, IADR-0586 (非公開の指摘（MSP）): 本ファイルは edge-istio の kustomization に含めない。scripts/lib/admin-edge.sh が
 #   ADMIN_EDGE=1（明示の opt-in）のときだけ当て、それ以外では消す。既定は virtualservice-admin-deny.yaml の 403 だけが 50000 に居る。
 # IADR-0091 決定 4 / #782: 管理面（admin entrypoint 50000）のルーティング。
 # Traefik の deploy/local/edge/admin-ingress-infra.yaml /

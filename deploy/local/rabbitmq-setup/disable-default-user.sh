@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: ブローカの既定のユーザー（Secret `rabbitmq` の username）を無効化する
+# NFR-18, IADR-0577（Refs 非公開の指摘（MSP））: ブローカの既定のユーザー（Secret `rabbitmq` の username）を無効化する
 # （IADR-0573 の移行の段 3 の最後）。**全サービスがサービスごとのユーザーへ切り替わったことを確かめてからだけ**消す。
 #
 #   bash deploy/local/rabbitmq-setup/disable-default-user.sh           # 確かめて、消す（冪等）

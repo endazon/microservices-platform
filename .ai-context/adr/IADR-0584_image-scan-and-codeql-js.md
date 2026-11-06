@@ -5,12 +5,12 @@ status: Accepted
 related_ids: [NFR, IADR-0581, IADR-0578, IADR-0067, IADR-0232]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 related_specs:
   - ../specs/20261022_image-scan-and-codeql-js.md
 ---
 
-# IADR-0584: イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p）
+# IADR-0584: イメージの走査と CodeQL の JS/TS（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -20,7 +20,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-552h-47r7-6v6p の 3 本目（多層防御の強化）。
+- 起点: 非公開の指摘（MSP）の 3 本目（多層防御の強化）。
 - 前提: [IADR-0067](./IADR-0067_service-image-build-ci-gate.md)（イメージのビルド検証と集約 `image-build`）・[IADR-0232](./IADR-0232_ci-pr-latency-reduction.md)（CodeQL の PR は build-mode: none）・[IADR-0581](./IADR-0581_actions-sha-pin-and-dependabot.md)（SHA 固定）。
 
 ## コンテキストと課題
@@ -63,3 +63,5 @@ related_specs:
 1. **走査を必須（落とす形）にするかは未決**（オーナーの裁定待ち）。決めるまでは報告だけで、見落としは人の確認に依存する。
 2. `build-local (platform-backup)` のイメージは走査しない（compose の外。必要なら同じ形で足す）。
 3. 脆弱性 DB の取得に失敗した回は表が空になる（サマリに「結果が無い」と出す。合格ではない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

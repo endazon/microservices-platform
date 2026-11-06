@@ -5,14 +5,14 @@ status: Accepted
 related_ids: [NFR, FR-04, FR-07, UC-01, UC-02, ADR-0010]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0010 （LLM ゲートウェイ）
 related_specs:
-  - ../specs/20261022_ghsa-5h4q_rag-prompt-trust-boundary.md
+  - ../specs/20261022_rag-prompt-trust-boundary.md
 ---
 
-# IADR-0580: RAG のプロンプトに信頼境界を置く（GHSA-5h4q-4m2j-rjhm）
+# IADR-0580: RAG のプロンプトに信頼境界を置く（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,7 +22,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-5h4q-4m2j-rjhm（多層防御の強化）。本 IADR はその 2 本目（1 本目は描画の sanitize と CSP。IADR-0579）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化）。本 IADR はその 2 本目（1 本目は描画の sanitize と CSP。IADR-0579）。
 - 計画: **FR-04** / **FR-07**・**ADR-0010**（LLM ゲートウェイ）。矛盾しない（ゲートウェイの契約は変えない）。
 
 ## コンテキストと課題
@@ -64,3 +64,5 @@ related_specs:
 - ゲートウェイの契約に system の欄は無い（選択肢 1）。足すなら、契約・プロバイダ・AST の呼び出し側を揃える別の判断になる。
 - 無害化は行頭の `#`（ATX 見出し）と山括弧だけを写す。Setext 見出し（次の行の `===` / `---`）や区切り線 `---` は写さない（囲みの中にあり、囲みを閉じることはできないため、見た目のセクションの偽装に留まる）。
 - GraphService の提案・クラスタ要約のプロンプトは本 IADR の射程外（ask / analyze ではない）。同じ形へ揃えるかは別に判断する。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

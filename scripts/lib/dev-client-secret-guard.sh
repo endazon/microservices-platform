@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830), IADR-0572 (GHSA-rh44-px44-p48q):
+# NFR-18, ADR-0124 決定 1, IADR-0517 (#1830), IADR-0572 (非公開の指摘（MSP）):
 # **dev 以外のクラスタで、サービスアカウントを持つ機密クライアントの secret を公知の dev の値で作らせない**判定の唯一の口。
 # `source` して使う。呼び出し元は scripts/k8s-local-up.sh（手動の Secret）・deploy/local/vault/eso/bootstrap.sh（Vault の種）・
 # deploy/local/keycloak-setup/reconcile-realm.sh（realm の後追い Job へ判定を env で渡す）の 3 本。**判定をここ以外へ複写しない。**
@@ -24,7 +24,7 @@
 #
 # 🔴 値はこの関数の引数（bash の関数呼び出し＝exec しない）と比較にしか使わない。**どこにも出力しない。**
 
-# 判定の対象。［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
+# 判定の対象。［2026-10-22 / 非公開の指摘（MSP） / IADR-0572］**手で並べず realm の宣言から導出する** —— サービスアカウントを持つ
 # 機密クライアントのうち、宣言が secret を持つもの全部（述語の正は reconcile-realm.js の isDevSecretGuardedClient。
 # scripts/lib/dev-client-secret-targets.js が読んで「clientId・env の名前・宣言の値」の表にする）。新しいクライアントを宣言に
 # 足せば、ここを触らずに対象へ入る。呼び出し元は dev_client_secret_load_targets を 1 度呼んでから下の関数を使う。

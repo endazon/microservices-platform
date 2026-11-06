@@ -1,7 +1,7 @@
 # IADR-0017 フォローアップ / IADR-0026: ClusterIP + NetworkPolicy（デフォルト拒否）。
 # mesh(mTLS) は第一防御だが、NetworkPolicy を多層防御（defense-in-depth）として維持する。
 # 既定でこの Namespace への ingress を拒否し、同 Namespace 内からの ingress のみ許可する。
-# NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: egress（同 Namespace・DNS・istiod・別 Namespace の宛先）は
+# NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: egress（同 Namespace・DNS・istiod・別 Namespace の宛先）は
 # networkpolicy-egress.yaml へ移した（networkPolicy.enabled のとき必ず描く。経路B は networkPolicy.egress.enabled で当てる）。
 {{- if .Values.networkPolicy.enabled }}
 apiVersion: networking.k8s.io/v1

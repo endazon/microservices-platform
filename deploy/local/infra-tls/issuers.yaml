@@ -1,4 +1,4 @@
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤の CA（selfSigned → CA の 2 段。IADR-0206 決定 2 と同じ形）。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤の CA（selfSigned → CA の 2 段。IADR-0206 決定 2 と同じ形）。
 # 1 段目の selfSigned はルート CA を発行するだけに使う。ルート CA は Secret cert-manager/platform-infra-root-ca の ca.crt として
 # 安定して存在し、k8s-local-up.sh がその ca.crt を ConfigMap platform-infra-ca（MSP・AST の名前空間）へ写す。
 # CA 固有の設定は ClusterIssuer に閉じる（計画 ADR-0023 の設計要件）。Vault PKI 等へ移すときは issuerRef の差し替えで済む。

@@ -77,7 +77,7 @@ spec:
     metadata:
       labels: { app: postgres }
     spec:
-      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: サーバ証明書（cert-manager の Secret postgres-tls。deploy/local/infra-tls）を
+      # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: サーバ証明書（cert-manager の Secret postgres-tls。deploy/local/infra-tls）を
       #   postgres の利用者（uid 70）だけが読める形へ写す。postgres は鍵が自分の所有で 0600（または root の所有で 0640 以下）で
       #   なければ起動しない。Secret のボリュームは root の所有になるので、そのままでは渡せない（fsGroup はデータの
       #   ボリュームの権限まで変えるので使わない）。

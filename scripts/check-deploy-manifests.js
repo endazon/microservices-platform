@@ -48,7 +48,7 @@
  *    **走査全体で Loki・Tempo が 1 度も判定されなければ失敗にする**（要点 2 と同じ。識別が壊れて 0 件になったときに緑を返さない）。
  *
  * 8. **compose がホストへ出す口（`ports:`）が、すべてループバック（127.0.0.1）に限られていることも見る**（IADR-0587 /
- *    GHSA-j4qv-2w99-xg5p）。判定は `lib/compose-host-ports.js`（短い形式・流れ形式・長い形式の `host_ip`・`network_mode: host`）。
+ *    非公開の指摘（MSP））。判定は `lib/compose-host-ports.js`（短い形式・流れ形式・長い形式の `host_ip`・`network_mode: host`）。
  *    **ツールが無くても見る。** 走査全体で口が 1 件も数えられなければ失敗にする（要点 2 と同じ）。
  */
 

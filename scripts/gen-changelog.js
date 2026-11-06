@@ -72,7 +72,7 @@ const TYPE_LABEL = {
 };
 const TYPE_ORDER = ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'build', 'ci', 'style', 'chore'];
 
-// NFR, GHSA-552h-47r7-6v6p / IADR-0578: git は引数の配列で呼び、シェルを介さない。
+// NFR, 非公開の指摘（MSP） / IADR-0578: git は引数の配列で呼び、シェルを介さない。
 // 参照（タグ名・範囲）は下の isSafeRef を通ったものだけを渡す（多層防御）。
 function git(args) {
   return execFileSync('git', args, { encoding: 'utf8' }).trim();

@@ -920,21 +920,21 @@ jobs:
           node scripts/gen-rabbitmq-permissions.js
           node scripts/rabbitmq-permissions.test.js
 
-      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
+      # NFR, IADR-0583（Refs 非公開の指摘（MSP））: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
       # 任意部品の全てで seccomp RuntimeDefault・権限昇格なし・（外部 3 つ以外は）非 root とケーパビリティなし・SA を持たない Pod はトークンを置かない、
       # Namespace の Pod Security Admission の水準、描画で止まる条件、Dockerfile / overlay / 起動器との一致、変異。helm が要るのでこのジョブ（段の追加のみ）。
       - name: Test helm pod security settings (render, supply, mutation)
         if: ${{ !cancelled() }}
         run: node scripts/helm-pod-security.test.js
 
-      # SC-22, NFR-18, IADR-0588（Refs GHSA-j4qv-2w99-xg5p）: BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を
+      # SC-22, NFR-18, IADR-0588（Refs 非公開の指摘（MSP））: BFF の SA の ExternalSecret の更新を force-sync の注釈だけに限る ValidatingAdmissionPolicy を
       # **実際に helm template で描いて**固定する —— Role と同じ描画条件・Fail / Deny の形・CEL の判定の行列（陽性・陰性・主体）・BFF の要求と
       # RBAC の動詞との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
       - name: Test BFF ExternalSecret admission policy (render, CEL matrix, supply, mutation)
         if: ${{ !cancelled() }}
         run: node scripts/helm-bff-externalsecret-admission.test.js
 
-      # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）の既定拒否と許可の一覧を**実際に helm template で描いて**固定する
+      # NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: 外向き通信（egress）の既定拒否と許可の一覧を**実際に helm template で描いて**固定する
       # —— 本番像は名前空間の全 Pod・DNS は kube-dns だけ、values-local は段 1 の Pod だけ（全 Pod が段 1 / 段 2 に分類済み）・宛先の送り元が
       # DB / ブローカ / OTLP / Qdrant の宣言と一致・宛先が基盤の manifest の実体と一致、k8s の評価規則で通信の一覧へ当てた結果、描画で止まる条件、変異。
       # helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。稼働のクラスタでの強制は integration-stack.yml の門が測る。
@@ -942,7 +942,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-egress-network-policy.test.js
 
-      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への接続が検証つきの TLS であることを**実際に helm template で描いて**
+      # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（DB・ブローカ）への接続が検証つきの TLS であることを**実際に helm template で描いて**
       # 固定する —— DB は VerifyFull ＋ 基盤の CA、ブローカは amqps ＋ 信頼ストアへの追加、CA の ConfigMap は非 optional で 1 キーだけ、描画で止まる
       # 条件、切り戻しの形、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。稼働の効きは integration-stack.yml の門が測る。
       - name: Test helm infra TLS (render, rollback, mutation)
@@ -964,7 +964,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/helm-image-tag.test.js
 
-      # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 秘匿管理の kubernetes 認証で、role（deploy/ の bootstrap が書く全て）と名乗る側
+      # NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: 秘匿管理の kubernetes 認証で、role（deploy/ の bootstrap が書く全て）と名乗る側
       # （ESO の store・helm が描く Vault を使う Deployment・バックアップの CronJob）の audience が揃うことを**実際に helm template で描いて**固定する
       # —— コードの既定のトークンの置き場との一致、変異。helm が要るのでこのジョブ（段の追加のみ・起動条件は不変）。
       - name: Test Vault k8s auth audience (roles, store, render, mutation)

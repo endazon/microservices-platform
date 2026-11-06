@@ -1106,7 +1106,7 @@ public class KeycloakIdentityAdminClientTests
         result.Complete.Should().BeTrue();
         result.Users.Should().HaveCount(KeycloakIdentityAdminClient.PageSize + 2);
         result.Users.Single(u => u.Id == "u-last").Attributes["department"].Should().Be("hr", "属性つき（briefRepresentation=false）で引く");
-        // ［2026-10-23 / [[IADR-0607]]・GHSA-94cm-55g9-2967］🔴 SA かどうかは表現の `serviceAccountClientId` だけで決める。
+        // ［2026-10-23 / [[IADR-0607]]・非公開の指摘（MSP）］🔴 SA かどうかは表現の `serviceAccountClientId` だけで決める。
         // 名前が接頭辞の形でも、その属性を持たない利用者は人として返す（同期の対象に残す）。
         result.Users.Should().ContainSingle(u => u.Id == "u-lookalike")
             .Which.ServiceAccountClientId.Should().BeNull();

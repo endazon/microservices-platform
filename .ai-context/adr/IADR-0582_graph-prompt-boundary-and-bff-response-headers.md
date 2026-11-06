@@ -5,16 +5,16 @@ status: Accepted
 related_ids: [NFR, FR-17, FR-18, ADR-0032, ADR-0033, ADR-0035, ADR-0051, IADR-0580, IADR-0579, IADR-0266, IADR-0430]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0051_ai-suggestion-abac-boundary.md
   - planning:projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
 related_specs:
-  - ../specs/20261022_ghsa-5h4q_graph-prompt-boundary-and-bff-headers.md
+  - ../specs/20261022_graph-prompt-boundary-and-bff-headers.md
 ---
 
-# IADR-0582: GraphService のプロンプトの信頼境界と BFF の応答ヘッダ（GHSA-5h4q-4m2j-rjhm）
+# IADR-0582: GraphService のプロンプトの信頼境界と BFF の応答ヘッダ（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -24,7 +24,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-5h4q-4m2j-rjhm（多層防御の強化）。本 IADR はその 3 本目。
+- 起点: 非公開の指摘（MSP）（多層防御の強化）。本 IADR はその 3 本目。
 - 前提: [IADR-0580](./IADR-0580_rag-prompt-trust-boundary.md)（ask / analyze の信頼境界。§残る制約で GraphService を射程外とした）・
   [IADR-0579](./IADR-0579_answer-sanitize-allowlist-and-spa-csp.md)（§残る制約で BFF の応答ヘッダを射程外とした）・
   IADR-0266 / IADR-0430（提案・クラスタ要約の封）。
@@ -84,3 +84,5 @@ related_specs:
 - 区別はプロンプトの上の区別であり、LLM の振る舞いを保証するものではない（IADR-0580 と同じ）。
 - 辺の型・タグの名前集合は囲みに入れていない（決定 2）。辞書を管理者以外が書けるようにするなら、囲みへ入れることを判断し直す。
 - 応答ヘッダは BFF が返す応答だけに付く。BFF 以外のサービスの応答は本 IADR の射程外である。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

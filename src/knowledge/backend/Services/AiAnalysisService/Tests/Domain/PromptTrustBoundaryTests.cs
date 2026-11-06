@@ -6,7 +6,7 @@ using Knowledge.Contracts.Dtos;
 
 namespace AiAnalysisService.Tests.Domain;
 
-// NFR, FR-04, FR-07 / IADR-0580（Refs GHSA-5h4q-4m2j-rjhm）: RAG のプロンプトの信頼境界。
+// NFR, FR-04, FR-07 / IADR-0580（Refs 非公開の指摘（MSP））: RAG のプロンプトの信頼境界。
 // 参照文書と利用者の入力は境界つきの囲みに入り、囲みの中からは囲みを閉じられず、
 // こちらの指示（決まり）は囲みの外にある。
 [Trait("TestKind", "Unit")]

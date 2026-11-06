@@ -40,7 +40,7 @@ global:
     # DB パスワードを保持する Secret（key=password）。scripts/k8s-local-up.sh が dev 既定で作成する。
     existingSecret: postgres-app
     passwordKey: password
-    # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: DB への接続は TLS で、**サーバ証明書を検証する**
+    # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: DB への接続は TLS で、**サーバ証明書を検証する**
     #   （`SSL Mode=VerifyFull` ＋ `Root Certificate` ＝ global.infraCa の CA だけを信頼し、host の名前も照合する）。
     #   検証を緩める値（Require / Prefer / Trust Server Certificate）を与える口は持たない。false は平文（切り戻し専用）。
     tls:
@@ -51,7 +51,7 @@ global:
   # 各サービスの `appsettings.json` は `RabbitMq:ConnectionString` を持たず（#1022 で撤去）、
   # 未注入なら起動時に落ちる（注入漏れが「既定の資格情報で接続成功」へ倒れない）。
   # パスワードは Secret（credentialsSecretName）から `$(RABBITMQ_PASSWORD)` で補間する（値を chart に書かない）。
-  # NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）: サービスごとのユーザーで接続する（IADR-0573 の段 3）。
+  # NFR-18, IADR-0577（Refs 非公開の指摘（MSP））: サービスごとのユーザーで接続する（IADR-0573 の段 3）。
   #   ユーザー名 = <usernamePrefix><services のキー>（例: msp-document）。パスワードは Secret の同名のキー。
   #   一覧の単一情報源は deploy/local/rabbitmq-setup/users.txt（試験が messaging: true のサービスと突き合わせる）。
   #   供給: ESO=1 は ExternalSecret msp-rabbitmq-users（KV msp/rabbitmq-users）、それ以外は k8s-local-up.sh が乱数で作る。
@@ -62,7 +62,7 @@ global:
     port: 5672
     credentialsSecretName: msp-rabbitmq-users
     usernamePrefix: msp-
-    # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの接続は TLS（amqps・tls.port）で、サーバ証明書を検証する
+    # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: ブローカへの接続は TLS（amqps・tls.port）で、サーバ証明書を検証する
     #   （CA は global.infraCa を信頼ストアへ足す。host の名前の照合は共通ヘルパ UsePlatformRabbitMq が必ず行う）。
     tls:
       enabled: true
@@ -114,7 +114,7 @@ namespace:
   # Istio サイドカー自動注入ラベル。mesh.enabled=true のとき有効化する。
   istioInjection: true
 
-# NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod のセキュリティ設定（多層防御・最小権限）。
+# NFR, IADR-0583（Refs 非公開の指摘（MSP））: Pod のセキュリティ設定（多層防御・最小権限）。
 # 部品は templates/_pod-security.tpl。チャートが作る Pod は restricted の形（非 root・権限昇格なし・ケーパビリティなし・
 # seccomp RuntimeDefault）で描き、外部のイメージ（SeaweedFS・Wiki.js・TEI）は利用者 ID を変えずに付けられる分だけ付ける。
 podSecurity:
@@ -225,7 +225,7 @@ edge:
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
 networkPolicy:
   enabled: true
-  # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）の既定拒否（templates/networkpolicy-egress.yaml）。
+  # NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: 外向き通信（egress）の既定拒否（templates/networkpolicy-egress.yaml）。
   # 描く条件は `enabled`（上）か `egress.enabled` のどちらか。上が true なら必ず描き、ここを false にすると描画で止める。
   # 上が false の配備（経路B）は ingress を絞らないまま egress だけを当てられる（deploy/local/values-local.yaml）。
   # 許すのは: DNS（dns の Pod の 53 番だけ）・同じ名前空間の Pod・mesh.enabled のとき istiod・destinations の宛先・

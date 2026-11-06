@@ -13,7 +13,7 @@ related_ids:
   - IADR-0488
 author: claude
 created: 2026-08-30
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -85,7 +85,7 @@ CRD が `Established` になるまで `kubectl wait` してから先へ進む（
 「平文許容へ後退していないこと」を回帰として固定しており、そこは変えない。
 変えたのは**経路B の導入手順の既定**だけである。
 
-> ［2026-10-23 追記 / [[IADR-0590]]（Refs GHSA-j4qv-2w99-xg5p）］ **経路B の初回の既定は STRICT へ改めた。**
+> ［2026-10-23 追記 / [[IADR-0590]]（Refs 非公開の指摘（MSP））］ **経路B の初回の既定は STRICT へ改めた。**
 > 段取り「注入 → 全 Pod Ready → STRICT」は残す（`LOCALEDGE=1` の初回は入口を移した後で上げる。`ISTIO=1` 単独の初回は注入ラベルを helm より前に貼る）。
 > 上の表の `platform-infra` 宛は**出る側**であり、STRICT（受信の規則）の影響を受けない（auto-mTLS が平文で出す）。引き継いだ PERMISSIVE は上げずに告げる。
 
@@ -229,3 +229,5 @@ helm uninstall istiod -n istio-system && helm uninstall istio-base -n istio-syst
   1. **STRICT への移行を実クラスタで通す**（PERMISSIVE で疎通確認したうえで）。#458 が引き受ける
   2. Kiali の配備（`ADR-0005` に付随。未着手）
   3. 経路B のエッジを Traefik から Istio Ingress Gateway へ寄せるかの判断（`ADR-0021` / `IADR-0091` の突合）
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

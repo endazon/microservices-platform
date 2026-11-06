@@ -84,7 +84,7 @@ public class BearerCallerPolicyTests
             .Should().BeFalse();
     }
 
-    // 🔴 ★ NFR-09, [[IADR-0606]]（GHSA-94cm-55g9-2967）: 利用者名の接頭辞だけでは無人の主体と読まない。
+    // 🔴 ★ NFR-09, [[IADR-0606]]（非公開の指摘（MSP））: 利用者名の接頭辞だけでは無人の主体と読まない。
     // 利用者名が発行元のクライアント（`azp`）のサービスアカウント名と一致しない利用者トークンは通らない。
     [Theory]
     [InlineData(BffClientId, "service-account-retrieval-service")]

@@ -5,14 +5,14 @@ status: Accepted
 related_ids: [NFR-18, ADR-0124, IADR-0517, IADR-0518, IADR-0485, IADR-0133]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密・初期投入は無いときだけ作る・本番の秘密を realm の宣言から外す）
 related_specs:
   - ../specs/20261022_dev-secret-guard-all-sa-clients.md
 ---
 
-# IADR-0572: dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（GHSA-rh44-px44-p48q）
+# IADR-0572: dev の値の守りを、サービスアカウントを持つ機密クライアント全部へ広げ、対象を宣言から導出する（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,7 +22,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-rh44-px44-p48q（多層防御の強化。既定を fail-closed へ寄せる一連の変更の 1 本目）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。既定を fail-closed へ寄せる一連の変更の 1 本目）。
 - 計画: **ADR-0124 決定 1**。要求 **NFR-18**。
 - 前提: [IADR-0517](./IADR-0517_dev-client-secret-guard-kube-context-allowlist.md)（kube context の許可集合・`ALLOW_DEV_CLIENT_SECRETS=1`・`--check-dev-secrets`）・[IADR-0518](./IADR-0518_realm-import-secret-with-env-client-secrets.md)（取り込み元の差し替え）・[IADR-0485](./IADR-0485_paired-secrets-create-only-declarations.md)（宣言の `secret` は作成時にだけ運ぶ・種は無いときだけ作る）。
 - 本 IADR は IADR-0517 の残余 2（対象外のクライアント）を閉じる。IADR-0517 の決定 1・3（context の許可集合・上書き）と決定 5（検知の形）は変えない。
@@ -74,3 +74,5 @@ IADR-0517 は守りの対象を、レルム管理のロールを持つ 3 クラ�
 ## フォローアップ
 
 - なし（本 IADR と同じ PR で配備・試験・文書まで入れた）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

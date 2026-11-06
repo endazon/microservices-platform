@@ -1,18 +1,18 @@
 ---
-title: 作業仕様書 — compose がホストへ出す口（ports:）をループバック（127.0.0.1）に限り、CI で全件を検査する（GHSA-j4qv-2w99-xg5p）
+title: 作業仕様書 — compose がホストへ出す口（ports:）をループバック（127.0.0.1）に限り、CI で全件を検査する（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-09, NFR-18, ADR-0005, ADR-0112, IADR-0587, IADR-0017, IADR-0026, IADR-0032, IADR-0403, IADR-0586]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md（多層防御の前提）
   - planning:projects/microservices-platform/07_adr/ADR-0112_infrastructure-admin-endpoint-criterion.md（管理用の口の到達の制限）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — compose がホストへ出す口をループバックに限る（GHSA-j4qv-2w99-xg5p）
+# 作業仕様書 — compose がホストへ出す口をループバックに限る（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0587**（新規）に置く。
 > 多層防御の強化（最小の公開面）。IADR-0586 の残余 2（経路 A の公開ポート）を扱う後続である。参照は GHSA の ID だけとする。
@@ -88,3 +88,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 - 変更: `deploy/docker-compose.yml`・`scripts/lib/compose-host-ports.js`（新設）・`scripts/check-deploy-manifests.js`（要点 8）・`scripts/lib/product-egress-defaults.js`（`splitComposeServices` の公開）・`scripts/README.md`・`docs/how-to/local-development.md`・`docs/security/security.md`・IADR-0587・索引。
 - PoC（経路 B・k3s）: compose を起動しないので影響なし。配備前の手順は不要。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

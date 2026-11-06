@@ -87,7 +87,7 @@ public class CitationMapperTests
         context.Should().Contain("[2] 文書B");
     }
 
-    // NFR / IADR-0580（Refs GHSA-5h4q-4m2j-rjhm）: 表題の改行は 1 行に畳まれ、文書の側から
+    // NFR / IADR-0580（Refs 非公開の指摘（MSP））: 表題の改行は 1 行に畳まれ、文書の側から
     // 行頭の出典番号を起こせない。
     [Fact]
     public void BuildContext_FoldsTitleOntoOneLine()

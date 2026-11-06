@@ -13,13 +13,13 @@ related_ids:
   - IADR-0585
 author: claude
 created: 2026-10-24
-updated: 2026-10-24
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0095 決定 3（BFF が Vault へ書く。ESO は読み取り専用の同期）
   - planning:projects/microservices-platform/07_adr/ADR-0104 決定 2（供給元は配備の事実を出す）
   - planning:projects/microservices-platform/07_adr/ADR-0132（秘匿管理は OpenBao）
 related_specs:
-  - 20261022_ghsa-j4qv_vault-k8s-auth-audience
+  - 20261022_vault-k8s-auth-audience
 issue: "#2193"
 ---
 
@@ -87,3 +87,5 @@ kube-apiserver は対象者（audience）が API サーバでないトークン�
 ## PoC
 
 配備前の手順・配備後の確認は PR 本文に書く。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

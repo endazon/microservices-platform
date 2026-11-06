@@ -1,15 +1,15 @@
 ---
-title: 作業仕様書 — 部門の同期のサービスアカウント判定を IdP の属性に寄せ、無人主体の腕 B の前提を確かめる（GHSA-94cm-55g9-2967 の追補）
+title: 作業仕様書 — 部門の同期のサービスアカウント判定を IdP の属性に寄せ、無人主体の腕 B の前提を確かめる（非公開の指摘（MSP）の追補）
 type: spec
 status: done
 related_ids: [NFR-09, FR-05, FR-09, SC-17, ADR-0032, ADR-0115, ADR-0116, IADR-0607, IADR-0606, IADR-0473, IADR-0420]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md NFR-09
   - planning:projects/microservices-platform/07_adr/ADR-0116_sc17-department-edits-group-membership.md
-issue: "GHSA-94cm-55g9-2967"
+issue: "非公開の指摘（MSP）"
 ---
 
 # 作業仕様書 — 部門の同期のサービスアカウント判定と、腕 B の前提の確認
@@ -79,3 +79,5 @@ issue: "GHSA-94cm-55g9-2967"
 
 - `dotnet build` / `dotnet test`（AuthorizationService）緑、`dotnet format --verify-no-changes`。
 - `node scripts/check-realm-constraints.js --self-test` と本走査、`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`、文書系検査が緑。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

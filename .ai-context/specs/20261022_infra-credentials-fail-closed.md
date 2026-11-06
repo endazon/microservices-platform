@@ -1,17 +1,17 @@
 ---
-title: 作業仕様書 — 起動器が Keycloak の管理者・RabbitMQ のブローカの Secret を公知の既定値で作らない（fail-closed。GHSA-rh44-px44-p48q）
+title: 作業仕様書 — 起動器が Keycloak の管理者・RabbitMQ のブローカの Secret を公知の既定値で作らない（fail-closed。非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0124, IADR-0574, IADR-0572, IADR-0485, IADR-0286]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密・初期投入は無いときだけ作る）
-issue: "GHSA-rh44-px44-p48q"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — 基盤の資格情報を公知の既定値で作らない（GHSA-rh44-px44-p48q）
+# 作業仕様書 — 基盤の資格情報を公知の既定値で作らない（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0574**（新規）に置く。
 > 多層防御の強化（既定を fail-closed にする）の 2 本目。参照は GHSA の ID だけとする。
@@ -77,3 +77,5 @@ PR 本文に順序つきで書く。要点: **オーナーの入れ替えの後�
 
 - `postgres`・`object-storage-credentials` 等は従来どおり既定値で作る（今回の範囲外）。
 - 既存の Secret の値を使う形は、Secret が開発用でない値を持つ限り env を求めない（運用の負担を増やさない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

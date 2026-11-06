@@ -40,7 +40,7 @@ vexec 'vault write auth/kubernetes/config kubernetes_host=https://kubernetes.def
 echo "==> platform-backup(vault): policy $BACKUP_VAULT_POLICY（sys/storage/raft/snapshot の read だけ）"
 vexec "vault policy write $BACKUP_VAULT_POLICY -" < "$ROOT/deploy/local/platform-backup/vault/policy-raft-snapshot.hcl"
 
-# NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: role は audience=vault のトークンだけを受ける（CronJob の projected token が同じ値を持つ）。
+# NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: role は audience=vault のトークンだけを受ける（CronJob の projected token が同じ値を持つ）。
 echo "==> platform-backup(vault): role $BACKUP_VAULT_ROLE（SA $INFRA_NS/$BACKUP_VAULT_SA にだけ束縛・1 回きり・5 分）"
 vexec "$(vault_role_write_cmd "vault write auth/kubernetes/role/$BACKUP_VAULT_ROLE \
   bound_service_account_names=$BACKUP_VAULT_SA bound_service_account_namespaces=$INFRA_NS \

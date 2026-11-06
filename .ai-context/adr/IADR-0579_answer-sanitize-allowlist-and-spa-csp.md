@@ -5,15 +5,15 @@ status: Accepted
 related_ids: [NFR, ADR-0021, ADR-0031, IADR-0362, IADR-0365, IADR-0134]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md （SPA の静的配信は Caddy）
   - planning:projects/microservices-platform/07_adr/ADR-0031 （フロントエンドの技術スタック）
 related_specs:
-  - ../specs/20261022_ghsa-5h4q_answer-sanitize-allowlist-and-csp.md
+  - ../specs/20261022_answer-sanitize-allowlist-and-csp.md
 ---
 
-# IADR-0579: AI 回答・Wiki 本文の sanitize を絞り、SPA の配信に CSP を置く（GHSA-5h4q-4m2j-rjhm）
+# IADR-0579: AI 回答・Wiki 本文の sanitize を絞り、SPA の配信に CSP を置く（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-5h4q-4m2j-rjhm（多層防御の強化。描画の許可を最小にし、配信に 2 枚目の壁を置く）。本 IADR はその 1 本目
+- 起点: 非公開の指摘（MSP）（多層防御の強化。描画の許可を最小にし、配信に 2 枚目の壁を置く）。本 IADR はその 1 本目
   （2 本目の RAG のプロンプトの信頼境界は別の IADR で扱う）。
 - 計画: **ADR-0021**（SPA の静的配信は Caddy）・**ADR-0031**（フロントエンドの技術スタック）。矛盾しない
   （配信サーバ・ライブラリは変えない。計画書に CSP を定める・禁じる記述は無い）。
@@ -101,3 +101,5 @@ related_specs:
   （画像は `/bff/...` の同一オリジンだけ）。
 - BFF の応答（`/bff/*`）は Caddy を通らない経路（エッジから直接）がある。BFF の応答ヘッダは本 IADR の射程外。
 - E2E のガード（決定 4）は spec の `page` だけを見る。`context.newPage()` やポップアップで開いた別ページの違反は観測しない（2026-10-22 時点で e2e の spec に `newPage(` / `context.pages` / ポップアップ待ちは 0 件。使う spec を足すときはガードを context 単位へ広げる）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

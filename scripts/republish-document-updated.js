@@ -52,7 +52,7 @@
 const fs = require('fs');
 const { spawn, spawnSync } = require('child_process');
 const { requireLiveOptIn } = require('./lib/live-opt-in.js');
-// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体は既定で無効。実行の間だけ有効にし、資格情報は稼働の Secret から読む。
+// NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体は既定で無効。実行の間だけ有効にし、資格情報は稼働の Secret から読む。
 const seeder = require('./lib/abac-seeder-session.js');
 
 const env = (k, d) => process.env[k] || d;

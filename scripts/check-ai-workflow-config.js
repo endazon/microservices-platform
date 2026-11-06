@@ -79,9 +79,9 @@ const CODING_ONLY_BASH = [
   'mkdir',
 ];
 // レビュー用にだけあるのが正しいコマンド（PR / CI の読解系。実装用は GitHub MCP で代替する）。
-// NFR, GHSA-552h-47r7-6v6p / IADR-0578: `awk` は実装用から外した（多層防御。許可するツールの最小化）。
+// NFR, 非公開の指摘（MSP） / IADR-0578: `awk` は実装用から外した（多層防御。許可するツールの最小化）。
 const REVIEW_ONLY_BASH = ['gh issue view', 'gh pr view', 'gh run list', 'awk'];
-// NFR, GHSA-552h-47r7-6v6p / IADR-0578: 実装用でだけ**狭めた形**で許可するスタック別の指定
+// NFR, 非公開の指摘（MSP） / IADR-0578: 実装用でだけ**狭めた形**で許可するスタック別の指定
 // （レビュー用の広い指定 → 実装用の狭い指定）。この対で揃っていればドリフトとしない。
 const CODING_NARROWED_TOOLCHAIN = [['Bash(node:*)', 'Bash(node scripts/:*)']];
 
@@ -419,7 +419,7 @@ function parityWarnings(perFile, settingsPath = SETTINGS_PATH) {
     return warnings; // settings.json が無い/壊れている場合は黙って skip
   }
   for (const { file, tools } of perFile) {
-    // GHSA-552h-47r7-6v6p / IADR-0578: 宣言した狭めた形は、広い形が allow にあれば覆われている（ローカルの方が広い）。
+    // 非公開の指摘（MSP） / IADR-0578: 宣言した狭めた形は、広い形が allow にあれば覆われている（ローカルの方が広い）。
     const covered = (t) => allow.has(t) || CODING_NARROWED_TOOLCHAIN.some(([wide, narrow]) => t === narrow && allow.has(wide));
     const missing = tools.filter((t) => !covered(t));
     if (missing.length) {
@@ -542,7 +542,7 @@ function selfTest() {
     ],
     // 逆向き（レビュー側にだけある）も同じく検出すること。
     ['レビュー側にだけあるツールも検出する', pair(FULL, `${FULL},Bash(node:*)`), true],
-    // GHSA-552h-47r7-6v6p / IADR-0578: 宣言した狭めた対は誤検知しない。対の片方だけ・逆向きは検出する。
+    // 非公開の指摘（MSP） / IADR-0578: 宣言した狭めた対は誤検知しない。対の片方だけ・逆向きは検出する。
     ['宣言した狭めた対（実装 node scripts/ ⇔ レビュー node）は検出しない', pair(`${FULL},Bash(node scripts/:*)`, `${FULL},Bash(node:*)`), false],
     ['狭めた形が実装側にだけあれば検出する', pair(`${FULL},Bash(node scripts/:*)`, FULL), true],
     ['逆向き（実装 node ⇔ レビュー node scripts/）は検出する', pair(`${FULL},Bash(node:*)`, `${FULL},Bash(node scripts/:*)`), true],
@@ -560,7 +560,7 @@ function selfTest() {
       pair(`${RO},Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(mkdir:*)`, RO),
       false,
     ],
-    // GHSA-552h-47r7-6v6p / IADR-0578: find は実装用から外した。戻すと検出する。
+    // 非公開の指摘（MSP） / IADR-0578: find は実装用から外した。戻すと検出する。
     ['実装用へ find を戻すと検出する', pair(`${RO},Bash(find:*)`, RO), true],
     ['レビュー専用の awk は誤検知しない', pair(RO, `${RO},Bash(awk:*)`), false],
     ['実装用へ awk を戻すと検出する', pair(`${RO},Bash(awk:*)`, `${RO},Bash(awk:*)`), true],

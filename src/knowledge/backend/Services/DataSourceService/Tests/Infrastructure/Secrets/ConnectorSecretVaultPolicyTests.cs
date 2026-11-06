@@ -149,7 +149,7 @@ public sealed class ConnectorSecretVaultPolicyTests
         bffLine.Should().NotContain("datasource-connector-read");
     }
 
-    // NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: role は対象者（audience）を秘匿管理（vault）に限ったトークンだけを受け、
+    // NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: role は対象者（audience）を秘匿管理（vault）に限ったトークンだけを受け、
     // 解決器は既定でその専用の projected token（helm が置くパス）で名乗る。k8s API 用の既定のトークンのパスへ戻すと落ちる。
     [Fact]
     public void ReaderRole_RequiresTheVaultAudience_AndTheResolverReadsTheDedicatedTokenByDefault()

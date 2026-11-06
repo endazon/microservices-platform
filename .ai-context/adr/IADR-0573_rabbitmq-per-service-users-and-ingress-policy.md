@@ -5,11 +5,11 @@ status: Accepted
 related_ids: [NFR-18, ADR-0027, ADR-0124, IADR-0066, IADR-0096, IADR-0099, IADR-0494, IADR-0522]
 author: claude
 created: 2026-10-22
-updated: 2026-11-05
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-18 シークレット管理）
 related_specs:
-  - ../specs/20261022_GHSA-pvmh_rabbitmq-per-service-users.md
+  - ../specs/20261022_rabbitmq-per-service-users.md
 ---
 
 # IADR-0573: 共有ブローカのサービスごとのユーザーと到達の制限（段 1）
@@ -18,11 +18,11 @@ related_specs:
 
 - 状態: Accepted
 - 日付: 2026-10-22
-- 決定者: オーナー裁定 2026-10-22（Refs GHSA-pvmh-cvmf-pvcp。許可範囲・順序・vhost は 1 つのまま）。方式は実装が決めた。
+- 決定者: オーナー裁定 2026-10-22（Refs 非公開の指摘（AST）。許可範囲・順序・vhost は 1 つのまま）。方式は実装が決めた。
 
 ## 起点・関連
 
-- 起点: Refs GHSA-pvmh-cvmf-pvcp（多層防御の強化・最小権限）。
+- 起点: Refs 非公開の指摘（AST）（多層防御の強化・最小権限）。
 - 関連: [IADR-0096](./IADR-0096_vault-eso-secret-supply-k8s-auth.md)・IADR-0099（Vault ＋ ESO の供給）・IADR-0494（書いた KV の同期を促す）・
   [IADR-0522](./IADR-0522_session-store-valkey-auth-required.md)（Valkey の到達の制限と同じ形）。AST 側の消費は AST の chart（後の PR）。
 
@@ -34,7 +34,7 @@ related_specs:
   - 到達の許可範囲は「ブローカを使う AST と MSP のサービス全部」。ラベルで列挙し、それ以外は拒否する。
   - 順序は MSP → AST。MSP の PR はユーザーと権限・Vault の種と ExternalSecret・NetworkPolicy。vhost は 1 つのまま。
   - 移行の期間は既存の接続を壊さない（新ユーザーを足し、各サービスを切り替えてから既定のユーザーを無効化する。段は分けてよい）。
-  - 既定のユーザーの Secret を既定値で作らない fail-closed 化は別の作業（GHSA-rh44）の担当で、本 IADR は二重に実装しない。
+  - 既定のユーザーの Secret を既定値で作らない fail-closed 化は別の作業（非公開の指摘（MSP））の担当で、本 IADR は二重に実装しない。
 
 ## 検討した選択肢
 
@@ -85,7 +85,7 @@ related_specs:
 | --- | --- | --- | --- |
 | **1（本 IADR）** | MSP | ユーザー・権限・種・写し・NetworkPolicy | そのまま（既定のユーザーで接続し続ける） |
 | 2 | AST | AST の chart をサービスごとの資格情報（ESO）へ。`guest` の既定を外す | AST の 11 サービスが切り替わる |
-| 3 | MSP | 基盤の 7 サービスをサービスごとの資格情報へ。その後に既定のユーザーを無効化する（既定のユーザーの Secret の fail-closed 化は GHSA-rh44 の作業と合わせる） | 全サービスが切り替わった後にだけ無効化する |
+| 3 | MSP | 基盤の 7 サービスをサービスごとの資格情報へ。その後に既定のユーザーを無効化する（既定のユーザーの Secret の fail-closed 化は非公開の指摘（MSP）の作業と合わせる） | 全サービスが切り替わった後にだけ無効化する |
 
 ## 結果
 
@@ -99,3 +99,5 @@ related_specs:
 2. NetworkPolicy の強制は稼働クラスタで実測していない（IADR-0522 残余 1 と同じ）。強制されないクラスタでは、防御はサービスごとの資格情報の 1 段になる（段 2・3 の後）。
 3. `ESO` を使わない経路（手動の Secret）ではサービスごとのユーザーを作らない。その経路では既定のユーザーのまま（段 3 で扱いを決める）。
 4. ブローカを使うサービスを足すときは、users.txt・NetworkPolicy・消費側の chart を同じ変更でそろえる（試験が食い違いを止める）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

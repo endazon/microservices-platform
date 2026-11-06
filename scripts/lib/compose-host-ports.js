@@ -1,6 +1,6 @@
 'use strict';
 /*
- * compose-host-ports.js — NFR / IADR-0587（GHSA-j4qv-2w99-xg5p）
+ * compose-host-ports.js — NFR / IADR-0587（非公開の指摘（MSP））
  *
  * **compose がホストへ出す口（`ports:`）が、すべてループバック（127.0.0.1）に限られていること**を判定する
  * （`check-deploy-manifests.js` の要点 8 が呼ぶ）。IP を省いた `"HOST:CONTAINER"` は全インターフェースで待ち受ける。

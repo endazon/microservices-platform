@@ -5,16 +5,16 @@ status: Accepted
 related_ids: [NFR-18, ADR-0005, ADR-0008, IADR-0026, IADR-0461, IADR-0513, IADR-0520, IADR-0522, IADR-0573, IADR-0583]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/06_technical/08_data-egress-policy.md（§非LLM 外部送信の統制 §基本原則: egress は既定拒否・許可先を allowlist で管理する）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービスメッシュ）
   - planning:projects/microservices-platform/07_adr/ADR-0008（k3s 実行基盤）
 related_specs:
-  - ../specs/20261022_j4qv_egress-default-deny.md
+  - ../specs/20261022_egress-default-deny.md
 ---
 
-# IADR-0589: 外向き通信（egress）の既定拒否（GHSA-j4qv-2w99-xg5p）
+# IADR-0589: 外向き通信（egress）の既定拒否（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -24,7 +24,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化。最小権限）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。最小権限）。
 - 計画: **08_data-egress-policy**（fixed）§基本原則「egress は既定拒否（default-deny）とし、許可先を allowlist で管理する」と §リスク・未決事項「default-deny ネットワークポリシーの実装確認」。本 IADR はその実装の段 1 であり、許す範囲を広げない。**ADR-0005**（メッシュ）・**ADR-0008**（k3s）。要求 **NFR-18**。
 - 前提: [IADR-0026](./IADR-0026_mesh-mtls-supersedes-network-isolation.md)（NetworkPolicy は多層防御として維持）・[IADR-0461](./IADR-0461_object-storage-seaweedfs-deployment.md) 決定 10・[IADR-0513](./IADR-0513_ast-kb-ingress-network-policy.md)・[IADR-0520](./IADR-0520_infra-product-default-egress-disabled.md)（製品の既定の外部通信は設定で止める。本 IADR はその下の網の層）・[IADR-0522](./IADR-0522_session-store-valkey-auth-required.md) 決定 4（経路 B の NetworkPolicy の強制は未実測と記録していた）・[IADR-0573](./IADR-0573_rabbitmq-per-service-users-and-ingress-policy.md)・[IADR-0583](./IADR-0583_pod-security-context-and-admission.md)（同じ GHSA の Pod 側）。
 
@@ -69,3 +69,5 @@ related_specs:
 3. NetworkPolicy を強制しないクラスタでは宣言が残るだけになる。経路 B は統合スタックの門が赤で知らせる。本番像のクラスタの CNI は配備先で確かめる。
 4. NodeLocal DNSCache 等で名前解決の宛先が kube-dns と違う配備は `networkPolicy.egress.dns` を上書きする（しなければ名前解決が落ちる＝見える壊れ方）。
 5. 計画 08_data-egress-policy §リスク・未決事項の「default-deny ネットワークポリシーの実装確認」は段 1 の範囲で進んだ。段 2・3 の完了後に計画へ環流する。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

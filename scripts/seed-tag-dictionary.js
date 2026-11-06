@@ -67,7 +67,7 @@ const log = (m) => console.log(`[seed-tag-dictionary] ${m}`);
 const warn = (m) => console.error(`[seed-tag-dictionary] ${m}`);
 
 // client_secret は realm ファイル（単一情報源）から引く。値をここへ写さない（#984）。
-// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): client_secret は実行時に **明示（TAG_SEED_CLIENT_SECRET）＞ 稼働の Secret
+// NFR-18, IADR-0576 (非公開の指摘（MSP）): client_secret は実行時に **明示（TAG_SEED_CLIENT_SECRET）＞ 稼働の Secret
 // `platform-infra/abac-seeder-oidc`**（OpenBao → ESO。ESO が無ければ起動器が作る）から読む。realm の宣言の値（公知の dev の値）へは
 // 落ちない（secret を回した後も動く）。投入器の主体は既定で無効なので、実行の間だけ有効にする（scripts/lib/abac-seeder-session.js）。
 let CLIENT_SECRET = '';

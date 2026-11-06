@@ -5,17 +5,17 @@ status: done
 related_ids: [NFR, IADR-0584, IADR-0581, IADR-0067, IADR-0232]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
-issue: "GHSA-552h-47r7-6v6p"
+updated: 2026-11-07
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — イメージの走査と CodeQL の JS/TS（GHSA-552h-47r7-6v6p の 3 本目）
+# 作業仕様書 — イメージの走査と CodeQL の JS/TS（非公開の指摘（MSP）の 3 本目）
 
 > 本仕様書は実装着手前に作成した（2026-10-22）。1 本目は IADR-0578、2 本目は IADR-0581。
 
 ## 起点
 
-- GHSA-552h-47r7-6v6p（多層防御の強化。成果物と JS/TS のコードの静的な走査を足す）。
+- 非公開の指摘（MSP）（多層防御の強化。成果物と JS/TS のコードの静的な走査を足す）。
 - 計画: NFR（統制・セキュリティ）。
 
 ## 方式
@@ -38,3 +38,5 @@ issue: "GHSA-552h-47r7-6v6p"
 | AC2 | CodeQL が csharp と javascript-typescript を解析し、JS/TS はビルドしない | 同「codeql.yml は…」 |
 | AC3 | 必須チェックの名前と結果の扱いが変わらない | `git diff`・この PR の CI（`image-build` が従来どおり） |
 | AC4 | 走査の結果が実行サマリに出る | この PR の `build (<service>)` の実行サマリ |
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

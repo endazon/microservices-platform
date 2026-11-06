@@ -14982,7 +14982,7 @@ exit 0
       assert.deepStrictEqual(annotated(r.calls).sort(), ['ai-stock-trading/ast-secrets', 'microservices-platform/llm-provider-credentials']);
     });
 
-    // NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのユーザーの種は乱数で、無いときだけ入れる。値は標準入力で渡す。
+    // NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのユーザーの種は乱数で、無いときだけ入れる。値は標準入力で渡す。
     ok('IADR-0573: ブローカのユーザーの KV が無ければ、宣言の全ユーザーに互いに違う乱数を標準入力で入れる', () => {
       const r = run1728({ setup: ({ state }) => {
         fs1728.rmSync(path1728.join(state, 'kv', 'msp__rabbitmq-users'));
@@ -15297,7 +15297,7 @@ exit 0
     const vaultWrites1830 = (r) => r.calls.filter((c) => c.startsWith('VAULT '));
     const probe1830 = (c) => ['probe', '1830', c].join('-');
 
-    // ［IADR-0572 / GHSA-rh44-px44-p48q］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
+    // ［IADR-0572 / 非公開の指摘（MSP）］対象は realm の宣言から導出する（サービスアカウントを持つ機密クライアント全部）。既定の世界の
     // app-secrets は kb-reader-auth-client-* を欠く（PoC の状態）ので、dev ではない context ではそのクライアントも名指される。
     const { envNameOf: envNameOf0570 } = require('./lib/dev-client-secret-targets.js');
     const READER_FILLED0570 = ({ kv }) => kv('ai-stock-trading/app-secrets', { ...AUTH, 'kb-reader-auth-client-id': 'ai-stock-trading-kb-reader',
@@ -15377,7 +15377,7 @@ exit 0
       assert.ok(/!!! WARNING: bootstrap\.sh: ALLOW_DEV_CLIENT_SECRETS=1/.test(over.stderr), '上書きで警告しない');
     });
 
-    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (GHSA-rh44-px44-p48q): 基盤の資格情報の KV を公知の既定値で作らない ---
+    // --- NFR-18, ADR-0124 決定 1, IADR-0574 (非公開の指摘（MSP）): 基盤の資格情報の KV を公知の既定値で作らない ---
     // 判定器は scripts/lib/infra-credentials.sh（真理値表は k8s-local-up.test.js の IADR-0574 節）。ここは bootstrap.sh の実走で
     // (1) 無い KV だけを判定へ渡す (2) 止まるときは Vault へ何も書かない (3) 明示・opt-in・在る KV では進む、を固定する。
     const probe0573 = (c) => ['probe', '0573', c].join('-');
@@ -16485,7 +16485,7 @@ server.listen(0, '127.0.0.1', async () => {
     const docs1762 = ['d0', 'd1', 'd2', 'd3', 'd4'];
     const paging1762 = ['--canary', '1', '--page-size', '2', '--max-dlq-growth', '0'];
 
-    // --- NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): 投入器の主体（abac-seeder）は既定で無効。運用スクリプトは実行の間だけ有効にし、
+    // --- NFR-18, IADR-0576 (非公開の指摘（MSP）): 投入器の主体（abac-seeder）は既定で無効。運用スクリプトは実行の間だけ有効にし、
     //     資格情報は稼働の Secret（OpenBao → ESO）から読む（realm の宣言の値へは落ちない＝secret を回した後も動く） ----------
     ok('IADR-0576: 投入器の資格情報は 明示 ＞ 稼働の Secret の順で、どちらも無ければ realm の宣言の値へ落ちずに例外', () => {
       const sess = require('./lib/abac-seeder-session.js');
@@ -19041,7 +19041,7 @@ server.listen(0, '127.0.0.1', async () => {
   }
 
 
-  // --- NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーと到達の制限の一致 ---------------
+  // --- NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのサービスごとのユーザーと到達の制限の一致 ---------------
   //   単一情報源 deploy/local/rabbitmq-setup/users.txt を、(1) MSP の chart の messaging: true のサービス、(2) AST の chart の
   //   Worker 全件（submodule が無ければ check-unit-service-ownership.js の既知の一覧）、(3) rabbitmq.yaml の NetworkPolicy の列挙、
   //   (4) bootstrap.sh・reconcile-users.sh・ExternalSecret が読む KV と突き合わせる。
@@ -19106,7 +19106,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(rows.length, of('microservices-platform').length + of('ai-stock-trading').length, '名前空間が 2 つの外の行がある');
     });
 
-    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS の 3 経路（経路B・helm・compose）の整合。
+    // NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（DB・ブローカ）への TLS の 3 経路（経路B・helm・compose）の整合。
     ok('IADR-0591: compose のブローカの TLS 設定（deploy/rabbitmq/20-tls.conf）は経路B の ConfigMap rabbitmq-tls と同じ内容', () => {
       const y = readR('deploy/local/infra/rabbitmq.yaml');
       const m = /\n {2}20-tls\.conf: \|\n((?: {4}.*\n)+)/.exec(y);
@@ -19242,7 +19242,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0578: ワークフローの多層防御（入力の展開と AI 実装の起動者） ---------
+  // --- NFR, 非公開の指摘（MSP） / IADR-0578: ワークフローの多層防御（入力の展開と AI 実装の起動者） ---------
   //
   //   1. 全ワークフローの run の本文に、外から与えられる値（github.event.* / inputs.* / github.head_ref /
   //      github.ref / github.ref_name）の式を直接展開しない。値は env で渡す。
@@ -19276,7 +19276,7 @@ server.listen(0, '127.0.0.1', async () => {
     };
     const untrustedInRun = (yml) => runLines(yml).filter((r) => UNTRUSTED.test(r.text));
 
-    ok('GHSA-552h: run の本文に外から与えられる値の式を直接展開しない（全ワークフロー）', () => {
+    ok('CI 堅牢化: run の本文に外から与えられる値の式を直接展開しない（全ワークフロー）', () => {
       const files = fs.readdirSync(WF).filter((f) => f.endsWith('.yml'));
       assert.ok(files.length >= 10, `ワークフローを読めていない: ${files.length}`);
       let scanned = 0;
@@ -19290,7 +19290,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(bad, [], `env で渡すこと:\n${bad.join('\n')}`);
     });
 
-    ok('GHSA-552h: 変異試験 —— 1 行形・ブロック形の run へ式を戻すと検出し、env と with は対象外', () => {
+    ok('CI 堅牢化: 変異試験 —— 1 行形・ブロック形の run へ式を戻すと検出し、env と with は対象外', () => {
       const one = 'jobs:\n  a:\n    steps:\n      - name: x\n        run: node a.js --tag "${{ inputs.tag || github.ref }}"\n';
       assert.strictEqual(untrustedInRun(one).length, 1, '1 行形を検出しない');
       const blk = 'jobs:\n  a:\n    steps:\n      - run: |\n          echo ok\n          echo "${{ github.event.pull_request.title }}"\n      - name: y\n        with:\n          tag_name: ${{ inputs.tag }}\n';
@@ -19333,13 +19333,13 @@ server.listen(0, '127.0.0.1', async () => {
       return out;
     };
 
-    ok('GHSA-552h: claude-coding.yml は句ごとに本文の書き手を OWNER / MEMBER / COLLABORATOR に絞る', () => {
+    ok('CI 堅牢化: claude-coding.yml は句ごとに本文の書き手を OWNER / MEMBER / COLLABORATOR に絞る', () => {
       const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
       assert.strictEqual(codingClauses(yml).length, 4, '句の数が 4 でない（読み取りの穴の疑い）');
       assert.deepStrictEqual(codingViolations(yml), []);
     });
 
-    ok('GHSA-552h: 変異試験 —— 1 句から書き手の判定を外す・判定の対象を取り違えると落ちる', () => {
+    ok('CI 堅牢化: 変異試験 —— 1 句から書き手の判定を外す・判定の対象を取り違えると落ちる', () => {
       const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
       const drop = yml.replace(` && ${TRUSTED}github.event.review.author_association)`, '');
       assert.notStrictEqual(drop, yml, '変異させる箇所が見つからない');
@@ -19349,7 +19349,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(codingViolations(swap), ['issues: 本文の書き手の判定が無い']);
     });
 
-    ok('GHSA-552h: claude-coding.yml の許可ツールは最小化した形を保つ（find / awk / 広い node を持たない）', () => {
+    ok('CI 堅牢化: claude-coding.yml の許可ツールは最小化した形を保つ（find / awk / 広い node を持たない）', () => {
       const yml = fs.readFileSync(path.join(WF, 'claude-coding.yml'), 'utf8');
       const m = /--allowedTools "([^"]+)"/.exec(yml);
       assert.ok(m, '許可ツール一覧を読めない');
@@ -19360,10 +19360,10 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(!tools.some((t) => /^Bash\((?:bash|sh|python3?|npx|curl|wget)(?::\*)?\)$/.test(t)), '汎用の実行系が許可されている');
     });
 
-    ok('GHSA-552h: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
+    ok('CI 堅牢化: settings.json との突き合わせ —— 狭めた形は広い形があれば覆われ、無ければ警告する', () => {
       const os = require('os');
       const { parityWarnings } = require('./check-ai-workflow-config.js');
-      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-parity-'));
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-ci-hardening-parity-'));
       try {
         const sp = path.join(work, 'settings.json');
         const perFile = [{ file: 'claude-coding.yml', tools: ['Read', 'Bash(node scripts/:*)'] }];
@@ -19382,7 +19382,7 @@ server.listen(0, '127.0.0.1', async () => {
     // --- gen-changelog.js: git は引数の配列で呼び、参照名の形を確かめる ---
     const { isSafeRef, filterSafeTags } = require('./gen-changelog.js');
 
-    ok('GHSA-552h: gen-changelog の参照名の判定（陽性 / 陰性の対）', () => {
+    ok('CI 堅牢化: gen-changelog の参照名の判定（陽性 / 陰性の対）', () => {
       for (const r of ['v1.2.3', 'obsidian-plugin-v0.2.0', 'release/2026-10', 'HEAD']) assert.ok(isSafeRef(r), `受け付けるはず: ${r}`);
       for (const r of ['', '-x', 'v1 2', 'a..b', 'v1;x', 'v1$x', 'v1`x', 'v1|x', 'v1"x', 'v1(x)', '.v1', 'x'.repeat(201), undefined]) {
         assert.ok(!isSafeRef(r), `外すはず: ${JSON.stringify(r)}`);
@@ -19396,16 +19396,16 @@ server.listen(0, '127.0.0.1', async () => {
       assert.match(warned, /受け付けない形のタグ/);
     });
 
-    ok('GHSA-552h: gen-changelog は child_process をシェル経由で呼ばない（静的）', () => {
+    ok('CI 堅牢化: gen-changelog は child_process をシェル経由で呼ばない（静的）', () => {
       const src = fs.readFileSync(path.join(__dirname, 'gen-changelog.js'), 'utf8').replace(/^\s*(\/\/|\*).*$/gm, '');
       assert.ok(!/\bexecSync\b|\bexec\(|shell:\s*true/.test(src), 'シェルを介す呼び出しが在る');
       assert.ok(/execFileSync\('git', \[/.test(src), 'git を引数の配列で呼んでいない');
     });
 
-    ok('GHSA-552h: gen-changelog の実走 —— 受け付けない形のタグを外し、他のタグの節は出す（一時リポジトリ）', () => {
+    ok('CI 堅牢化: gen-changelog の実走 —— 受け付けない形のタグを外し、他のタグの節は出す（一時リポジトリ）', () => {
       const os = require('os');
       const { spawnSync } = require('child_process');
-      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-552h-'));
+      const work = fs.mkdtempSync(path.join(os.tmpdir(), 'msp-ci-hardening-'));
       const g = (...a) => {
         const r = spawnSync('git', a, { cwd: work, encoding: 'utf8' });
         assert.strictEqual(r.status, 0, `git ${a.join(' ')}: ${r.stderr}`);
@@ -19429,7 +19429,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0581: Actions の SHA 固定と依存の自動更新 ----------------
+  // --- NFR, 非公開の指摘（MSP） / IADR-0581: Actions の SHA 固定と依存の自動更新 ----------------
   //   1. 全ワークフローの外部の `uses:` は 40 桁の commit SHA で固定し、同じ行に版の注記（`# vX…`）を置く。
   //   2. dependabot.yml は github-actions / nuget / npm を更新の対象にする。
   {
@@ -19445,7 +19445,7 @@ server.listen(0, '127.0.0.1', async () => {
       return [`${i + 1}: ${l.trim()}`];
     });
 
-    ok('GHSA-552h: 外部の uses: は全ワークフローで commit SHA に固定し、版の注記を同じ行に置く', () => {
+    ok('CI 堅牢化: 外部の uses: は全ワークフローで commit SHA に固定し、版の注記を同じ行に置く', () => {
       let n = 0;
       const bad = [];
       for (const f of fs.readdirSync(WF).filter((x) => x.endsWith('.yml'))) {
@@ -19457,7 +19457,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.deepStrictEqual(bad, [], `SHA 固定＋版の注記にすること:\n${bad.join('\n')}`);
     });
 
-    ok('GHSA-552h: 変異試験 —— タグ指定・注記なし・短い SHA を検出し、ローカル参照は対象外', () => {
+    ok('CI 堅牢化: 変異試験 —— タグ指定・注記なし・短い SHA を検出し、ローカル参照は対象外', () => {
       const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
       assert.strictEqual(unpinned('      - uses: actions/checkout@v7\n').length, 1, 'タグ指定を検出しない');
       assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha}\n`).length, 1, '注記なしを検出しない');
@@ -19465,7 +19465,7 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(unpinned(`      - uses: actions/checkout@${sha} # v7.0.1\n        uses: ./.github/workflows/x.yml\n`).length, 0, '正しい形・ローカル参照を誤検出する');
     });
 
-    ok('GHSA-552h: dependabot.yml は github-actions / nuget / npm を更新の対象にする', () => {
+    ok('CI 堅牢化: dependabot.yml は github-actions / nuget / npm を更新の対象にする', () => {
       const y = fs.readFileSync(path.join(__dirname, '..', '.github/dependabot.yml'), 'utf8');
       const eco = [...y.matchAll(/^\s*- package-ecosystem:\s*"([^"]+)"\s*\n\s*directory:\s*"([^"]+)"/gm)].map((m) => `${m[1]}:${m[2]}`);
       for (const e of ['github-actions:/', 'nuget:/src', 'npm:/src']) assert.ok(eco.includes(e), `${e} が無い: ${eco.join(', ')}`);
@@ -19474,7 +19474,7 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
-  // --- NFR, GHSA-552h-47r7-6v6p / IADR-0584: イメージの走査と CodeQL の JavaScript / TypeScript ----------
+  // --- NFR, 非公開の指摘（MSP） / IADR-0584: イメージの走査と CodeQL の JavaScript / TypeScript ----------
   {
     const fs = require('fs');
     const path = require('path');
@@ -19501,7 +19501,7 @@ server.listen(0, '127.0.0.1', async () => {
       return out;
     };
 
-    ok('GHSA-552h: images.yml は建てたイメージを Trivy で走査し、当面は報告だけで落とさない', () => {
+    ok('CI 堅牢化: images.yml は建てたイメージを Trivy で走査し、当面は報告だけで落とさない', () => {
       const yml = read('images.yml');
       assert.deepStrictEqual(trivyViolations(yml), []);
       const build = yml.slice(yml.indexOf('\n  build:\n'), yml.indexOf('\n  build-local:\n'));
@@ -19509,13 +19509,13 @@ server.listen(0, '127.0.0.1', async () => {
       assert.ok(build.indexOf('Build image') < build.indexOf('Scan image'), '建てる前に走査している');
     });
 
-    ok('GHSA-552h: 変異試験 —— Trivy を落とす形にする・continue-on-error を外すと検出する', () => {
+    ok('CI 堅牢化: 変異試験 —— Trivy を落とす形にする・continue-on-error を外すと検出する', () => {
       const yml = read('images.yml');
       assert.deepStrictEqual(trivyViolations(yml.replace('exit-code: "0"', 'exit-code: "1"')), ['exit-code が 0 でない（落とす形）']);
       assert.deepStrictEqual(trivyViolations(yml.replace(/\n\s*continue-on-error: true(?=\n\s*uses: aquasecurity)/, '')), ['continue-on-error が無い']);
     });
 
-    ok('GHSA-552h: codeql.yml は csharp と javascript-typescript を解析し、JS/TS はビルドしない', () => {
+    ok('CI 堅牢化: codeql.yml は csharp と javascript-typescript を解析し、JS/TS はビルドしない', () => {
       const yml = read('codeql.yml');
       assert.match(yml, /language: \["csharp", "javascript-typescript"\]/);
       assert.match(yml, /build-mode: \$\{\{ \(github\.event_name == 'pull_request' \|\| matrix\.language != 'csharp'\) && 'none' \|\| 'manual' \}\}/);

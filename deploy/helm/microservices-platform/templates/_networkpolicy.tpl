@@ -1,5 +1,5 @@
 {{- /*
-NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: NetworkPolicy の部品（外向き通信の既定拒否で共有する）。
+NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: NetworkPolicy の部品（外向き通信の既定拒否で共有する）。
 
 - msp.netpol.dnsEgressRule : egress の 1 規則。名前解決（UDP / TCP 53）を networkPolicy.egress.dns の
                              名前空間 × Pod ラベル（既定 kube-system の k8s-app: kube-dns）だけへ許す。

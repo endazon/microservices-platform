@@ -1,18 +1,18 @@
 ---
-title: 作業仕様書 — エッジで Keycloak の管理面（/admin・/realms/master）を遮断し、利用者の realm の経路は保つ（GHSA-rh44-px44-p48q）
+title: 作業仕様書 — エッジで Keycloak の管理面（/admin・/realms/master）を遮断し、利用者の realm の経路は保つ（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-11, NFR-18, ADR-0021, ADR-0097, IADR-0575, IADR-0227, IADR-0432, IADR-0524, IADR-0076]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md（エッジは Istio Gateway。経路B の Traefik はその前段）
   - planning:projects/microservices-platform/07_adr/ADR-0097_timing-floor-release-default-on-and-periodic-review.md 決定 2（リセット申請の床は既定オン）
-issue: "GHSA-rh44-px44-p48q"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — エッジで Keycloak の管理面を遮断する（GHSA-rh44-px44-p48q）
+# 作業仕様書 — エッジで Keycloak の管理面を遮断する（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-22）。判断の記録は **IADR-0575**（新規）に置く。
 > 多層防御の強化（最小の公開面）の 3 本目。参照は GHSA の ID だけとする。
@@ -81,3 +81,5 @@ PR 本文に順序つきで書く。要点: 管理コンソールを使う手順
 ## 残余
 
 - Traefik の中間処理の名前（`ipAllowList`）は Traefik v3 のもの。起動器は k3s を v1.35 に固定する。Rancher Desktop で古い k3s（Traefik v2）を使う場合は中間処理が読めず router が無効になり得る —— G4b が落ちて気付ける。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

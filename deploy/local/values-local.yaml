@@ -44,11 +44,11 @@ edge:
   enabled: false
 
 # metrics-server 依存の HPA と NetworkPolicy を dev では無効化（本番像は不変）。
-# NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: ただし egress の既定拒否は当てる（ingress の NetworkPolicy は無効のまま）。
+# NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: ただし egress の既定拒否は当てる（ingress の NetworkPolicy は無効のまま）。
 #   段 1（本変更）は**クラスタの外へ出ない Pod** だけ。基盤（platform-infra）への宛先は下の destinations で 1 件ずつ開ける。
 #   段 2 で足す（それまで egress は従前どおり制限なし）: bff-service（AST の名前空間・Valkey・Vault・API サーバ・opend）、
 #   llmgateway-service（LLM・埋め込みの提供元）、datasource-service（SaaS コネクタ・Vault）、wiki-js（エッジの issuer）、
-#   config-drift-postsync・embedding・synthetic-monitor。段の一覧の正は作業仕様書 20261022_j4qv_egress-default-deny。
+#   config-drift-postsync・embedding・synthetic-monitor。段の一覧の正は作業仕様書 20261022_egress-default-deny。
 #   🔴 送り元（from）を足すときは、サービスの宣言（database / messaging / Qdrant の利用）と一緒にそろえる
 #      （scripts/helm-egress-network-policy.test.js が values の宣言と突き合わせる）。
 networkPolicy:
@@ -188,7 +188,7 @@ services:
   # Services__* 23 件が消え、BFF の下流 4 サービスへの経路が既定ポートへ外れる（当時は readiness の URL 検査が落ちて
   # integration-stack で実測した。#2105 / IADR-0602 以後は readiness に下流を含めないので、症状は各画面の 502 になる）。
   bff:
-    # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: 共有シークレットを回したら Reloader が BFF を作り直す（env は起動時に 1 度だけ解決される）。
+    # NFR, AST/IADR-0566（Refs 非公開の指摘（AST））: 共有シークレットを回したら Reloader が BFF を作り直す（env は起動時に 1 度だけ解決される）。
     deploymentAnnotations:
       secret.reloader.stakater.com/reload: "opend-auth-caller-secret"
     extraEnvAppend:
@@ -196,7 +196,7 @@ services:
         value: "http://opend:8080"
       - name: OpendAuth__DeviceTrustPersisted
         value: "true"
-      # NFR, AST/IADR-0566（Refs GHSA-57gc-27c7-gvwm）: AST の OpenD 認証サイドカーへ名乗る共有シークレット（呼び出し元の検証）。
+      # NFR, AST/IADR-0566（Refs 非公開の指摘（AST））: AST の OpenD 認証サイドカーへ名乗る共有シークレット（呼び出し元の検証）。
       # Secret は ESO=1 で deploy/local/vault/eso/externalsecret-opend-auth-caller-secret.yaml が同期する（AST の chart と同じ Vault のキー）。
       # optional: Secret が無くても BFF は起動する（上流を呼ばず、SC-04 に「接続資格が構成されていません」と示す）。
       - name: OpendAuth__CallerSecret

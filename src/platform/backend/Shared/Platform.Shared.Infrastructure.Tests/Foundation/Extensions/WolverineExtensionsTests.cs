@@ -465,7 +465,7 @@ public class WolverineExtensionsTests
         WolverineExtensions.PlatformStepQueueName<ProbeEvent>(null).Should().Be(nameof(ProbeEvent));
     }
 
-    // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: ブローカへの TLS は CA の検証と名前の照合の両方を求める。
+    // NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: ブローカへの TLS は CA の検証と名前の照合の両方を求める。
     private static RabbitMQ.Client.ConnectionFactory FactoryOf(WolverineOptions options) =>
         options.Transports.OfType<RabbitMqTransport>().Single().ConnectionFactory
         ?? throw new InvalidOperationException("RabbitMqTransport.ConnectionFactory が null です（Wolverine の版更新で観測点が変わった可能性があります）。");

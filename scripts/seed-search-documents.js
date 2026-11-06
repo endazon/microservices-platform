@@ -79,7 +79,7 @@ const warn = (s) => process.stderr.write(`${s}\n`);
 // 🔴 client_credentials で名乗る（#438 / IADR-0294）。人のパスワードグラントは使わない ——
 // MFA を必須にすると `CONFIGURE_TOTP` 未消化の利用者は password grant を拒まれる。
 // 投入器は機械であり、機械に第二要素は無い。
-// NFR-18, IADR-0576 (GHSA-rh44-px44-p48q): client_secret は実行時に **明示（SEARCH_SEED_CLIENT_SECRET）＞ 稼働の Secret
+// NFR-18, IADR-0576 (非公開の指摘（MSP）): client_secret は実行時に **明示（SEARCH_SEED_CLIENT_SECRET）＞ 稼働の Secret
 // `platform-infra/abac-seeder-oidc`**（OpenBao → ESO。ESO が無ければ起動器が作る）から読む。realm の宣言の値（公知の dev の値）へは
 // 落ちない（secret を回した後も動く）。投入器の主体は既定で無効なので、実行の間だけ有効にする（scripts/lib/abac-seeder-session.js）。
 let CLIENT_SECRET = '';

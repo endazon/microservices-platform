@@ -5,15 +5,15 @@ status: Accepted
 related_ids: [NFR, ADR-0005, ADR-0007, ADR-0008, ADR-0021]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0008 （k3s 実行基盤）
   - planning:projects/microservices-platform/07_adr/ADR-0005 （サービスメッシュ）
 related_specs:
-  - ../specs/20261022_ghsa-j4qv_pod-security-context.md
+  - ../specs/20261022_pod-security-context.md
 ---
 
-# IADR-0583: Pod のセキュリティ設定と Pod Security Admission（GHSA-j4qv-2w99-xg5p）
+# IADR-0583: Pod のセキュリティ設定と Pod Security Admission（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-j4qv-2w99-xg5p（多層防御の強化・最小権限）。本 IADR はその 1 本目（Pod のセキュリティ設定）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化・最小権限）。本 IADR はその 1 本目（Pod のセキュリティ設定）。
 - 計画: **ADR-0008**（k3s 実行基盤）・**ADR-0005**（サービスメッシュ）・**ADR-0007**（Deployment の骨格）・**ADR-0021**（SPA の配信は Caddy）。
   いずれとも矛盾しない（実行基盤・メッシュ・配信の選択は変えない。Pod の設定を足すだけ）。
 
@@ -90,3 +90,5 @@ related_specs:
   （試験は values と描画の一致までで、イメージの中身は見ない）。
 - `readOnlyRootFilesystem` は付けていない（.NET の一時ファイル・Caddy の `/config` `/data` の置き場を emptyDir へ移す設計が要る）。
 - 基盤（platform-infra）・観測（observability）の名前空間の Pod は本 IADR の射程外。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

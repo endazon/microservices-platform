@@ -7,7 +7,7 @@
 # 外部からの入口は BFF（エッジ、5000）に一本化し、BFF が Keycloak JWT で認証する。
 # インフラ系（postgres/rabbitmq/keycloak/qdrant/grafana 等）の公開ポートは開発利便のため維持するが、
 # 共有・ステージング・本番では公開しない（docs/security/security.md 参照）。
-# NFR, IADR-0587（GHSA-j4qv-2w99-xg5p）: ホストへ出す口（ports:）は**すべてループバック（127.0.0.1）に限る**。
+# NFR, IADR-0587（非公開の指摘（MSP））: ホストへ出す口（ports:）は**すべてループバック（127.0.0.1）に限る**。
 # 短い形式は "127.0.0.1:HOST:CONTAINER"、長い形式は host_ip: 127.0.0.1 と書く（IP を省くと全インターフェースになる）。
 # 同じホストのブラウザ・CLI からの接続（http://localhost:...）は変わらない。コンテナ間の通信は ports: を経ない。
 # `scripts/check-deploy-manifests.js`（要点 8）が CI で固定する。
@@ -16,7 +16,7 @@ x-common-env: &common-env
   OTLP__ENDPOINT: http://otel-collector:4317
   Auth__Authority: http://keycloak:8080/realms/platform
 
-# NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: DB への接続は TLS で、サーバ証明書を検証する（VerifyFull ＋ 基盤の CA）。
+# NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: DB への接続は TLS で、サーバ証明書を検証する（VerifyFull ＋ 基盤の CA）。
 # CA は下の infra-tls-init が作り、ボリューム infra-tls-ca を /etc/platform-infra-ca へ読み取り専用でマウントする（*infra-ca-volumes）。
 # NFR-16, NFR-18, IADR-0673（#2403）: 段 4b-2 で取引ユニット（AST）のサービス（configuration / risk-management / market-monitor）も
 #   同じ形へ切り替えた（個別の接続文字列も VerifyFull ＋ 基盤の CA で終える）。
@@ -55,7 +55,7 @@ services:
   # ─────────────────────────────────────────────
   # Infrastructure
   # ─────────────────────────────────────────────
-  # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（postgres・rabbitmq）のサーバ証明書を作る 1 回きりのコンテナ。
+  # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（postgres・rabbitmq）のサーバ証明書を作る 1 回きりのコンテナ。
   #   compose には cert-manager が無いので、経路B（deploy/local/infra-tls）と同じ形（ECDSA P-256 の自己署名 CA → 葉証明書・
   #   名前は素の名前と FQDN）を openssl で作る。openssl はブローカのイメージに入っているもの（同じ digest）を使う。
   #   - 揃っていれば何もしない。1 つでも欠けていれば全部を作り直す（CA の鍵は署名の後に捨て、どこにも残さない）。

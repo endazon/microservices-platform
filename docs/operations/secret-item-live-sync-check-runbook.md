@@ -10,7 +10,7 @@ updated: 2026-10-29
 ids: [SC-22, FR-05, NFR-18]
 adrs: [ADR-0131, ADR-0095, ADR-0104, ADR-0110]
 iadrs: [IADR-0522, IADR-0103, IADR-0453, IADR-0454, IADR-0456, IADR-0460, IADR-0494, IADR-0588]
-specs: [20261029_2133_runbook-derived-values, 20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap, 20261022_j4qv_bff-externalsecret-admission-policy]
+specs: [20261029_2133_runbook-derived-values, 20261009_1839_session-store-valkey, 20261004_issue-1472_sc22-t40-live-procedure, 20260915_issue-1467_sc22-audit-followups, 20260915_issue-1477_screen-only-poc-setup, 20260925_1502_sc22-supply-source-and-restart-notice, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_1728_eso-force-sync-after-bootstrap, 20261022_bff-externalsecret-admission-policy]
 issues: [#2133, #1839, #1472, #1467, #1477, #1502, #1682, #1728, planning#750]
 -->
 

@@ -39,7 +39,7 @@ public sealed class ClusterSummaryPrompt
     // 🔴 **区分内の構成員だけが入る。** 件数も区分外については何も表さない。
     public IReadOnlyList<ClusterMemberDocument> Members { get; }
 
-    // NFR / IADR-0582（Refs GHSA-5h4q-4m2j-rjhm）: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
+    // NFR / IADR-0582（Refs 非公開の指摘（MSP））: 表題（取り込み文書由来＝信頼しない入力）を囲む境界。
     // 封ごとに 1 つ作る（同じ封の Render は同じ本文を返す）。
     private readonly string _boundary;
 

@@ -10,7 +10,7 @@ updated: 2026-10-23
 ids: [FR-05, FR-09, FR-10, FR-16, FR-17, FR-18, FR-19, NFR, UC-05, SC-05, SC-09, SC-10, SC-12]
 adrs: [ADR-0002, ADR-0006, ADR-0033, ADR-0035, ADR-0083, ADR-0034, ADR-0036, ADR-0050, ADR-0054, ADR-0062, ADR-0085, ADR-0120]
 iadrs: [IADR-0606, IADR-0593, IADR-0011, IADR-0119, IADR-0153, IADR-0265, IADR-0281, IADR-0299, IADR-0353, IADR-0373, IADR-0389, IADR-0405, IADR-0420, IADR-0425, IADR-0430]
-specs: [20261023_ghsa-94cm_machine-principal-issuing-client, 20261023_2097_first-series-zero-normal-alerts, 20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator, 20260909_issue-1233_unit-project-missing-indicator, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
+specs: [20261023_machine-principal-issuing-client, 20261023_2097_first-series-zero-normal-alerts, 20260829_issue-443_knowledge-health-producer, 20260809_issue-637_ingest-no-tag-generation, 20260903_issue-1186_stale-documents-indicator, 20260909_issue-1233_unit-project-missing-indicator, 20260911_issue-1395_cluster-summary-generator, 20260927_issue-1663_singleton-cluster-summary-exclusion]
 issues: [#2097, #443, #637, #912, #1186, #1233, #1246, #1363, #1395, #1663, planning#70, planning#304, planning#494, planning#557]
 -->
 

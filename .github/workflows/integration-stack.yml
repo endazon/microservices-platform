@@ -374,7 +374,7 @@ jobs:
         if: ${{ !cancelled() && steps.stack-ready.outcome == 'success' }}
         run: node scripts/check-mcp-client-provisioning.js --live
 
-      # NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信の既定拒否が**稼働のクラスタで効いている**ことを測る。
+      # NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: 外向き通信の既定拒否が**稼働のクラスタで効いている**ことを測る。
       # 静的な検査（scripts/helm-egress-network-policy.test.js）は描画の形と評価規則までしか言えない。CNI が NetworkPolicy を
       # 強制しないクラスタでは、宣言だけが残って何も止まらない（k3s の内蔵のコントローラが強制することはここで確かめる）。
       # 使い捨ての busybox を 2 つ立てる（作れなければ赤。後始末は trap）（サイドカーは入れない。L4 の到達だけを見る）:
@@ -444,7 +444,7 @@ jobs:
           want "egress-probe external=closed"
           exit "$fail"
 
-      # NFR-18 / ADR-0005 / IADR-0590（Refs GHSA-j4qv-2w99-xg5p）: メッシュの mTLS が STRICT で**効いている**ことを稼働で測る。
+      # NFR-18 / ADR-0005 / IADR-0590（Refs 非公開の指摘（MSP））: メッシュの mTLS が STRICT で**効いている**ことを稼働で測る。
       # G12（check-stack-ready.js）は宣言と稼働の一致を見るが、宣言そのものが PERMISSIVE でも緑になる。ここは宣言ではなく受け手の挙動を見る:
       #   - 名前空間全体の PeerAuthentication が STRICT であること
       #   - サイドカーの無い Pod（同じ名前空間・別の名前空間）から平文の HTTP が届か**ない**こと
@@ -512,7 +512,7 @@ jobs:
           want "mtls-probe-plain-other=refused"
           exit "$fail"
 
-      # NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）への接続が TLS で効いていること（稼働の効き）。
+      # NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（platform-infra）への接続が TLS で効いていること（稼働の効き）。
       # 静的な検査（scripts/helm-infra-tls.test.js ほか）は描画の形までしか言えない。サーバの側の観測で、MSP のサービスの接続がすべて
       # TLS であることを測る:
       #   - postgres: pg_stat_ssl で、MSP のサービスの利用者（kp）が MSP の DB（*_svc）へ張っている接続がすべて ssl（1 本以上）

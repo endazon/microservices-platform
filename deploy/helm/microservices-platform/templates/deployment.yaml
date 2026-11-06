@@ -10,10 +10,10 @@
 {{- /* FR-14/FR-15 (#146): pipeline.json をマウントする条件。段ホスト（pipelineSteps）に加え、
        宣言突合のため宣言を必要とする BFF（pipelineDeclaration）も同じ ConfigMap をマウントする。 */}}
 {{- $pipelineMount := and (or $svc.pipelineSteps $svc.pipelineDeclaration) $.Values.pipeline.enabled }}
-{{- /* NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault（k8s auth）へ名乗るサービスには、対象者（audience）を秘匿管理に限った
+{{- /* NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: Vault（k8s auth）へ名乗るサービスには、対象者（audience）を秘匿管理に限った
        projected token を専用のパスへ置く。k8s API 用の既定のトークン（audience＝API サーバ）では名乗らない。 */}}
 {{- $vaultToken := and $svc.vault $svc.vault.address }}
-{{- /* NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（DB・ブローカ）への TLS。検証に使う CA（global.infraCa）を
+{{- /* NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））: 基盤（DB・ブローカ）への TLS。検証に使う CA（global.infraCa）を
        /etc/platform-infra-ca へマウントする。検証を緩める形（Require 等の SSL Mode・名前の照合を外す等）は描かない。 */}}
 {{- $dbTls := and $svc.database $.Values.global.db.tls $.Values.global.db.tls.enabled }}
 {{- $mqTls := and $svc.messaging $.Values.global.messaging.tls $.Values.global.messaging.tls.enabled }}
@@ -112,11 +112,11 @@ spec:
       # 宣言が無いサービスは従来どおり名前空間の `default` で動く（`default` を Vault に束縛しないこと）。
       serviceAccountName: {{ .name }}
       {{- else }}
-      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: 専用の SA を持たないサービスは k8s API を呼ばない。
+      # NFR, IADR-0583（Refs 非公開の指摘（MSP））: 専用の SA を持たないサービスは k8s API を呼ばない。
       # 名前空間の `default` のトークンを Pod に置かない（最小権限）。メッシュのサイドカーは自前の projected token を使う。
       automountServiceAccountToken: false
       {{- end }}
-      # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: 非 root（aspnet イメージの APP_UID）・seccomp RuntimeDefault。
+      # NFR, IADR-0583（Refs 非公開の指摘（MSP））: 非 root（aspnet イメージの APP_UID）・seccomp RuntimeDefault。
       {{- include "msp.podSecurityContext.restricted" $.Values.podSecurity.dotnetRunAsUser | nindent 6 }}
       {{- with $.Values.imagePullSecrets }}
       # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
@@ -286,7 +286,7 @@ spec:
               value: {{ $svc.vault.authMount | default "kubernetes" | quote }}
           {{- end }}
           {{- if $vaultToken }}
-            # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: k8s auth に渡すトークンは下の projected token（audience: vault）。
+            # NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: k8s auth に渡すトークンは下の projected token（audience: vault）。
             # role は audience=vault を要求する（deploy/local/vault/eso/bootstrap.sh）。コードの既定も同じパス。
             - name: Vault__ServiceAccountTokenPath
               value: /var/run/secrets/vault/token
@@ -642,7 +642,7 @@ spec:
             name: mcp-publication-config
         {{- end }}
         {{- if $vaultToken }}
-        # NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: Vault 専用のトークン（対象者 vault・期限 10 分。kubelet が期限前に更新する）。
+        # NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: Vault 専用のトークン（対象者 vault・期限 10 分。kubelet が期限前に更新する）。
         - name: vault-token
           projected:
             sources:

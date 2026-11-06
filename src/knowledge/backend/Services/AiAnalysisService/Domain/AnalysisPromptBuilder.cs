@@ -16,7 +16,7 @@ public static partial class AnalysisPromptBuilder
     public static string Build(AnalysisTaskRequest request, string context)
         => Build(request, context, PromptTrustBoundary.NewBoundary());
 
-    // NFR / IADR-0580（Refs GHSA-5h4q-4m2j-rjhm）: 参照文書と指示は PromptTrustBoundary の囲みに入れ、
+    // NFR / IADR-0580（Refs 非公開の指摘（MSP））: 参照文書と指示は PromptTrustBoundary の囲みに入れ、
     // こちらの指示（タスク・決まり）は囲みの外に置く。境界は要求ごと（試験だけが固定値を渡す）。
     internal static string Build(AnalysisTaskRequest request, string context, string boundary)
     {

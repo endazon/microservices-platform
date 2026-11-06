@@ -51,7 +51,7 @@ permissions:
 jobs:
   claude:
     # @claude を含むイベントのみ起動する。
-    # NFR, GHSA-552h-47r7-6v6p / IADR-0578: 加えて、**本文の書き手**が OWNER / MEMBER / COLLABORATOR のときだけ起動する
+    # NFR, 非公開の指摘（MSP） / IADR-0578: 加えて、**本文の書き手**が OWNER / MEMBER / COLLABORATOR のときだけ起動する
     # （起動した人ではなく、AI が読む本文を書いた人で判定する。issues の assigned では両者が異なる）。
     # 各句に author_association の判定を必ず置くこと（scripts/scripts.repo.test.js が句ごとに固定する）。
     if: |
@@ -214,7 +214,7 @@ jobs:
           # 「許可ツール一覧」等と言い換える。claude_args の外にあるコメントは対象外）。
           # 【記法】この値も空白区切りでトークン化される。**1 行・二重引用符でくくる**こと
           # （改行して書くと後続行が別の引数になり、指示が壊れる）。
-          # 【最小化（NFR, GHSA-552h-47r7-6v6p / IADR-0578）】実装用からは find と awk を外し、node は
+          # 【最小化（NFR, 非公開の指摘（MSP） / IADR-0578）】実装用からは find と awk を外し、node は
           # `node scripts/` の前置の形だけを許す（レビュー用の `node:*` との対は check-ai-workflow-config.js の
           # CODING_NARROWED_TOOLCHAIN が宣言する）。広げるときは IADR を改定すること。
           claude_args: |

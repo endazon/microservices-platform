@@ -5,14 +5,14 @@ status: Accepted
 related_ids: [NFR-18, ADR-0124, IADR-0572, IADR-0485, IADR-0286, IADR-0517]
 author: claude
 created: 2026-10-22
-updated: 2026-11-05
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密・初期投入は無いときだけ作る）
 related_specs:
   - ../specs/20261022_infra-credentials-fail-closed.md
 ---
 
-# IADR-0574: 基盤の資格情報を公知の既定値で作らない（fail-closed。GHSA-rh44-px44-p48q）
+# IADR-0574: 基盤の資格情報を公知の既定値で作らない（fail-closed。非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -22,7 +22,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-rh44-px44-p48q（多層防御の強化。既定を fail-closed にする一連の 2 本目）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。既定を fail-closed にする一連の 2 本目）。
 - 計画: **ADR-0124 決定 1**。要求 **NFR-18**。
 - 前提: [IADR-0485](./IADR-0485_paired-secrets-create-only-declarations.md)（無いときだけ作る）・[IADR-0286](./IADR-0286_default-credentials-fail-fast.md)（既定の資格情報を埋め込まない）・[IADR-0572](./IADR-0572_dev-secret-guard-all-service-account-clients.md)（1 本目）。
 
@@ -54,3 +54,5 @@ related_specs:
 1. `postgres` 等のほかの基盤の資格情報は従来どおり（今回の範囲外）。
    ［2026-11-05 追記 / #2399］[IADR-0672](./IADR-0672_infra-credentials-staged-fail-closed.md) が同じ口（`scripts/lib/infra-credentials.sh`）へ段階の対象として広げた（段 1＝報告・段 2＝`INFRA_CREDENTIALS_ENFORCE=1`）。検査と作り直しのスクリプトも同 IADR。
 2. `deploy/docker-compose.yml` の手元の経路は対象外（kube context を持たない）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

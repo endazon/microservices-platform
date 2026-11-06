@@ -1,4 +1,4 @@
-{{- /* NFR-18, IADR-0589（Refs GHSA-j4qv-2w99-xg5p）: 外向き通信（egress）は既定で拒否し、要る宛先だけを許す（多層防御・最小権限）。
+{{- /* NFR-18, IADR-0589（Refs 非公開の指摘（MSP））: 外向き通信（egress）は既定で拒否し、要る宛先だけを許す（多層防御・最小権限）。
        描くのは networkPolicy.enabled（本番像）か networkPolicy.egress.enabled（経路B。ingress の NetworkPolicy を持たない配備）のとき。
        - default-deny-egress            : workloads の Pod（空＝名前空間の全 Pod）の egress を既定で拒否する。
        - allow-egress-dns               : 名前解決は dns の名前空間 × Pod ラベル（既定 kube-system の kube-dns）の 53 番だけ。

@@ -1,4 +1,4 @@
-# NFR, IADR-0573（Refs GHSA-pvmh-cvmf-pvcp）: ブローカのサービスごとのユーザーの**単一情報源**。
+# NFR, IADR-0573（Refs 非公開の指摘（AST））: ブローカのサービスごとのユーザーの**単一情報源**。
 # 書式: <ユーザー名> <接続元の名前空間> <接続元の Pod の app ラベル> <パスワードを持つ Vault の KV>
 # 読み手: deploy/local/vault/eso/bootstrap.sh（Vault の種）・reconcile-users.sh（ブローカのユーザーと権限）・
 #         deploy/local/infra/rabbitmq.yaml の NetworkPolicy（届いてよい Pod）。一致は scripts/scripts.repo.test.js が突き合わせる

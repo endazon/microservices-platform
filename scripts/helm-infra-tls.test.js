@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-infra-tls.test.js
- * NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）:
+ * NFR-16, NFR-18, IADR-0591（Refs 非公開の指摘（MSP））:
  * **基盤（DB・ブローカ）への接続が検証つきの TLS であることを、実際に `helm template` で描いて固定する。**
  *
  * 固定するもの:

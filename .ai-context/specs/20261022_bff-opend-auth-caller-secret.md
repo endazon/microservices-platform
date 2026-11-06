@@ -1,5 +1,5 @@
 ---
-title: MSP 連結ローカルの BFF へ、AST の OpenD 認証サイドカーに名乗る共有シークレット（OpendAuth__CallerSecret）を ESO で配線し、AST の submodule を前進させる（Refs GHSA-57gc-27c7-gvwm）
+title: MSP 連結ローカルの BFF へ、AST の OpenD 認証サイドカーに名乗る共有シークレット（OpendAuth__CallerSecret）を ESO で配線し、AST の submodule を前進させる（Refs 非公開の指摘（AST））
 plan_refs:
   - NFR
 adr_refs:
@@ -13,7 +13,7 @@ created: 2026-10-22
 
 ## 起点
 
-- Refs GHSA-57gc-27c7-gvwm（多層防御の強化。オーナー裁定 2026-10-21・本 PR はオーナー承認 2026-10-22）。
+- Refs 非公開の指摘（AST）（多層防御の強化。オーナー裁定 2026-10-21・本 PR はオーナー承認 2026-10-22）。
 - AST 側（AST#1426・AST/IADR-0566）が、OpenD 認証サイドカーに呼び出し元の共有シークレットの検証を足した。
   送り手の BFF は基盤の Pod であり、AST の BFF ライブラリ（`AiStockTrading.Bff.Endpoints`）を submodule から合成して動く。
   ライブラリは構成キー `OpendAuth:CallerSecret` の値をヘッダーに載せ、未構成なら上流を呼ばない。
@@ -60,3 +60,5 @@ created: 2026-10-22
 - 🔴 手順 1 を後回しにした場合: Reloader は既定で Secret の**更新**だけを見て**作成**を見ない（`reload-on-create` を設定していない）。
   後から ESO が Secret を作っても BFF は古い env のままなので、`kubectl -n microservices-platform rollout restart deploy/bff-service` を手で打つ。
   以後の値の回し（Secret の更新）は Reloader が作り直す。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

@@ -2,7 +2,7 @@
 'use strict';
 /*
  * helm-broker-per-service-users.test.js
- * NFR-18, IADR-0577（Refs GHSA-rh44-px44-p48q）, IADR-0573 の段 3:
+ * NFR-18, IADR-0577（Refs 非公開の指摘（MSP））, IADR-0573 の段 3:
  * **基盤のサービスがブローカへサービスごとのユーザーで名乗ることを、実際に `helm template` で描いて固定する。**
  *
  * 固定するもの:

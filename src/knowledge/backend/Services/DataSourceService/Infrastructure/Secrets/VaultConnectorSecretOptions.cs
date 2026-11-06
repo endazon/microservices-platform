@@ -33,7 +33,7 @@ public sealed class VaultConnectorSecretOptions
 
     /// <summary>
     /// k8s auth に渡す ServiceAccount トークンの置き場。
-    /// NFR-18, IADR-0585（Refs GHSA-j4qv-2w99-xg5p）: 対象者（audience）を秘匿管理（`vault`）に限った projected token の位置
+    /// NFR-18, IADR-0585（Refs 非公開の指摘（MSP））: 対象者（audience）を秘匿管理（`vault`）に限った projected token の位置
     /// （helm の deployment テンプレートが同じパスへ置く）。k8s API 用の既定のトークンは使わない —— role が audience を要求する。
     /// </summary>
     public string ServiceAccountTokenPath { get; set; } = DefaultServiceAccountTokenPath;

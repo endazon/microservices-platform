@@ -1,18 +1,18 @@
 ---
-title: 作業仕様書 — 経路B のメッシュの mTLS を既定で STRICT にする（GHSA-j4qv-2w99-xg5p）
+title: 作業仕様書 — 経路B のメッシュの mTLS を既定で STRICT にする（非公開の指摘（MSP））
 type: spec
 status: done
 related_ids: [NFR-18, ADR-0005, ADR-0021, IADR-0590, IADR-0026, IADR-0307, IADR-0317, IADR-0377, IADR-0487, IADR-0488, IADR-0589]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービスメッシュ。サービス間通信を mTLS で徹底する）
   - planning:projects/microservices-platform/07_adr/ADR-0021（エッジ＝Istio Ingress Gateway）
-issue: "GHSA-j4qv-2w99-xg5p"
+issue: "非公開の指摘（MSP）"
 ---
 
-# 作業仕様書 — 経路B のメッシュの mTLS を既定で STRICT にする（GHSA-j4qv-2w99-xg5p）
+# 作業仕様書 — 経路B のメッシュの mTLS を既定で STRICT にする（非公開の指摘（MSP））
 
 > 本仕様書は実装着手前に作成した（着手 2026-10-23）。判断の記録は **IADR-0590**（新規）に置く。
 > 多層防御の強化（既定を fail-closed にする）。参照は GHSA の ID だけとする。
@@ -67,3 +67,5 @@ issue: "GHSA-j4qv-2w99-xg5p"
 
 - `scripts/k8s-local-up.sh`・`scripts/k8s-local-up.test.js`・`.github/workflows/integration-stack.yml`・`deploy/istio/README.md`・`deploy/local/README.md`・`deploy/local/edge-istio/README.md`・IADR-0590（新規）・IADR-0307 / IADR-0377（日付つき追記）。
 - 稼働のクラスタ: 再実行は現行のモードを引き継ぐので、PERMISSIVE のクラスタは変わらない（WARN が増える）。STRICT へ上げるのは `ISTIO_MTLS_MODE=STRICT` の明示で、前提は AST のメッシュ参入。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（ファイル名を含む。決定内容は不変）

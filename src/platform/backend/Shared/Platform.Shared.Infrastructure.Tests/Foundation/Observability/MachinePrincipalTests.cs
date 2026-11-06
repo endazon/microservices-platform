@@ -72,7 +72,7 @@ public class MachinePrincipalTests
                 new Claim("azp", KbWriter)))
             .Should().BeTrue();
 
-    // ── NFR-09, [[IADR-0606]]（GHSA-94cm-55g9-2967）: 腕 A は利用者名とクライアント識別のクレームの一致で判定する ──
+    // ── NFR-09, [[IADR-0606]]（非公開の指摘（MSP））: 腕 A は利用者名とクライアント識別のクレームの一致で判定する ──
 
     // 🔴 ★ 利用者名の接頭辞だけでは無人と読まない。発行元のクライアント（`azp`）が別なら人である。
     [Theory]

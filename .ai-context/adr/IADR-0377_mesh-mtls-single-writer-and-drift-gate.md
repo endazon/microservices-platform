@@ -16,7 +16,7 @@ related_ids:
   - IADR-0369
 author: claude
 created: 2026-09-04
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md
@@ -166,7 +166,7 @@ IADR-0307 決定 4 が書いた段取り「注入 → 全 Pod Ready → PERMISSI
 > 未設定の**再実行**は helm の宣言（`helm get values msp`）から現行の `mesh.mtlsMode` を引き継ぎ、読めなければ `[2/7]` の前に止まる。
 > 従前は再実行でも PERMISSIVE を渡し、STRICT のクラスタを黙って降格していた。判断は [[IADR-0487]]。
 
-> ［2026-10-23 追記 / [[IADR-0590]]（Refs GHSA-j4qv-2w99-xg5p）］ **初回の既定は STRICT へ改めた**（本決定の据え置きを覆す）。
+> ［2026-10-23 追記 / [[IADR-0590]]（Refs 非公開の指摘（MSP））］ **初回の既定は STRICT へ改めた**（本決定の据え置きを覆す）。
 > AST の扱いは決定 4 のまま（MSP 側で平文を許さない。恒久像は AST をメッシュへ入れる）で、STRICT のとき AST の名前空間に
 > Pod が居て注入ラベルが無ければ起動器が WARN を出す。引き継いだ PERMISSIVE は上げずに告げる。
 
@@ -270,3 +270,5 @@ IADR-0317 が「動いているが宣言が持っていない」として**記�
 - **`kubectl apply --server-side --force-conflicts --field-manager=helm` で所有権を取り返す**:
   復旧の一手としては成立するが、**helm が次に適用する集合と 1 バイトでも違うと別のずれが生まれる**。
   復旧手順は「delete して helm に作り直させる」に統一した（実測で確認した唯一の経路）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

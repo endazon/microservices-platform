@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-11, NFR-18, ADR-0021, ADR-0097, IADR-0227, IADR-0432, IADR-0524, IADR-0076]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md（エッジ）
   - planning:projects/microservices-platform/07_adr/ADR-0097_timing-floor-release-default-on-and-periodic-review.md 決定 2（床は既定オン）
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20261022_edge-block-keycloak-admin.md
 ---
 
-# IADR-0575: エッジで Keycloak の管理面を拒む（GHSA-rh44-px44-p48q）
+# IADR-0575: エッジで Keycloak の管理面を拒む（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -23,7 +23,7 @@ related_specs:
 
 ## 起点・関連
 
-- 起点: GHSA-rh44-px44-p48q（多層防御の強化。最小の公開面）。
+- 起点: 非公開の指摘（MSP）（多層防御の強化。最小の公開面）。
 - 計画: **ADR-0021**・**ADR-0097 決定 2**。要求 **NFR-11**・**NFR-18**。
 - 前提: [IADR-0227](./IADR-0227_edge-host-pod-side-resolution.md)（Keycloak を websecure の `keycloak.localhost` へ出した。管理コンソールの除外は別件とした）・[IADR-0432](./IADR-0432_reset-timing-median-judgement-and-response-floor.md)（リセット申請の床）・[IADR-0524](./IADR-0524_keycloak-26-upgrade.md)（hostname v2）・[IADR-0076](./IADR-0076_edge-bff-routing-and-oidc-hostname.md)（chart のエッジ）。
 
@@ -55,3 +55,5 @@ IADR-0227 は、ブラウザの OIDC を成立させるため Keycloak を `/` �
 
 1. 古い k3s（Traefik v2）では中間処理の名前が違い、拒否の router が無効になり得る。G4b で気付ける。
 2. 管理コンソール（画面）を安全に出す方法（管理用の別の入口・送信元の制限）は扱わない。要るなら別の決定にする。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）

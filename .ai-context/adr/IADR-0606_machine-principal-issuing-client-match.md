@@ -5,21 +5,21 @@ status: Accepted
 related_ids: [NFR-09, ADR-0032, ADR-0036, ADR-0085, IADR-0420, IADR-0429, IADR-0449, IADR-0410, IADR-0426, IADR-0476, IADR-0524]
 author: claude
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-09）
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
 related_specs:
-  - ../specs/20261023_ghsa-94cm_machine-principal-issuing-client.md
+  - ../specs/20261023_machine-principal-issuing-client.md
 ---
 
-# IADR-0606: 無人主体の判定を発行元のクライアント識別に基づかせる（GHSA-94cm-55g9-2967）
+# IADR-0606: 無人主体の判定を発行元のクライアント識別に基づかせる（非公開の指摘（MSP））
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
 - 日付: 2026-10-23
-- 決定者: claude（GHSA-94cm-55g9-2967。多層防御の強化）
+- 決定者: claude（非公開の指摘（MSP）。多層防御の強化）
 
 ## 起点・関連
 
@@ -28,7 +28,7 @@ related_specs:
   [IADR-0429](./IADR-0429_platform-spa-removal-and-bearer-caller-narrowing.md) 決定 3（BFF の Bearer 受理）、
   [IADR-0449](./IADR-0449_user-and-group-lookup-are-interactive-user-only.md)（`InteractiveUser`）、
   [IADR-0524](./IADR-0524_keycloak-26-upgrade.md)（宣言から取り込んだ realm ではサービスアカウントのトークンに `client_id` が載らず、`azp` は載る）。
-- 作業仕様書: [20261023_ghsa-94cm_machine-principal-issuing-client](../specs/20261023_ghsa-94cm_machine-principal-issuing-client.md)。
+- 作業仕様書: [20261023_machine-principal-issuing-client](../specs/20261023_machine-principal-issuing-client.md)。
 
 ## コンテキストと課題
 
@@ -79,3 +79,5 @@ Keycloak はサービスアカウントの利用者名を `service-account-<clie
      宣言の realm では、そのようなクライアントのトークンは platform の API の audience（IADR-0523）を持たず、受理の前に 401 になる。
      利用者名の側は検査 7 が宣言で禁じる。新しいクライアントへ platform の audience を割り当てるときは、この組を見直す。
   3. `client_id` / `clientId` が人のトークンに載る写像を realm へ足すと前提が崩れる。足さない（足すなら本 IADR を改める）。
+
+［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）
