@@ -3,15 +3,15 @@ title: 運用 Runbook — Alertmanager のメール受信先（近接 MTA 経由
 type: runbook
 status: draft
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-06
 author: claude
 ---
 <!-- trace:
 ids: [NFR-21, SC-10]
 adrs: [ADR-0006, ADR-0045, ADR-0078]
-iadrs: [IADR-0571, IADR-0304, IADR-0165, IADR-0404]
-specs: [20261022_2044_alertmanager-mail-receiver]
-issues: [#2044, #2050, #546]
+iadrs: [IADR-0682, IADR-0571, IADR-0304, IADR-0165, IADR-0404]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261022_2044_alertmanager-mail-receiver]
+issues: [#2413, #2044, #2050, #546]
 -->
 
 # 運用 Runbook: Alertmanager のメール受信先
@@ -39,7 +39,7 @@ issues: [#2044, #2050, #546]
 
 ESO を使う環境（値はシェル履歴に残さない）:
 
-```sh
+```bash
 read -rs ALERT_MAIL_TO; echo
 printf '%s' "$ALERT_MAIL_TO" | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
   'export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"; vault kv put secret/msp/alertmanager-mail to=-'
@@ -52,12 +52,14 @@ kubectl -n platform-infra wait --for=condition=Ready externalsecret/alertmanager
 
 ESO を使わない環境:
 
-```sh
+```bash
 read -rs ALERT_MAIL_TO; echo
-printf '%s' "$ALERT_MAIL_TO" > /tmp/alert-mail-to && chmod 600 /tmp/alert-mail-to
-kubectl -n platform-infra create secret generic alertmanager-mail --from-file=to=/tmp/alert-mail-to \
-  --dry-run=client -o yaml | kubectl apply -f -
-rm -f /tmp/alert-mail-to; unset ALERT_MAIL_TO
+# 値のファイルは作る時点から 0600（umask）にし、失敗しても消す（trap）。( ) の中で回すので手元のシェルを閉じない
+( umask 077; f="$(mktemp)"; trap 'rm -f -- "$f"' EXIT
+  printf '%s' "$ALERT_MAIL_TO" > "$f"
+  kubectl -n platform-infra create secret generic alertmanager-mail --from-file=to="$f" \
+    --dry-run=client -o yaml | kubectl apply -f - )
+unset ALERT_MAIL_TO
 ```
 
 ## 2. 反映する

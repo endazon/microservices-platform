@@ -1,0 +1,15 @@
+# NFR-18, IADR-0674 (#2401): クラウドの単一ノード（取引ユニット AST を動かすだけの MSP の最小構成）の基盤。
+# 適用: kubectl apply -k deploy/cloud/infra（手順は deploy/cloud/README.md。先に bootstrap-secrets.sh で Secret を作る）
+# 🔴 ここに資格情報の値を置かない。Secret は 1 つも描かない（bootstrap-secrets.sh が乱数で作る。試験が固定する）。
+# 持ち込まないもの: valkey・qdrant・mailpit・mail-relay・観測の保存先（Web の画面・ニュースの RAG を持ち込まない。#2401）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespaces.yaml
+  - postgres.yaml
+  - rabbitmq.yaml
+  - keycloak.yaml
+  - otel-collector.yaml
+  - aliases.yaml
+  - networkpolicy.yaml

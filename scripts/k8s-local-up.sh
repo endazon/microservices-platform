@@ -22,6 +22,9 @@
 #   `node scripts/lib/dev-client-secret-targets.js deploy/keycloak/microservices-platform-realm.json | cut -f1,2`。既定の規則は
 #   `<CLIENT_ID の大文字・- を _>_CLIENT_SECRET`、例外は bff＝BFF_OIDC_CLIENT_SECRET・abac-seeder＝ABAC_SEED_CLIENT_SECRET）
 #   SESSION_STORE_PASSWORD（#1839。セッションストア Valkey の認証。未指定なら既存の Secret の値、無ければ初回だけ乱数で作る）
+#   GRAFANA_ADMIN_PASSWORD（#2407。OBSERVABILITY=1 のときの Grafana の内蔵の管理者。未指定なら既存の Secret の値、無ければ乱数）
+# dev のクラスタの印（#2407・IADR-0676）: この実行で k3d のクラスタを作ると ConfigMap kube-system/msp-dev-cluster を置く。
+#   既存の dev のクラスタは MARK_DEV_CLUSTER=1 で 1 度置く。DEV_CLUSTER_MARKER_REQUIRED=1 で名前と印の両方を要求する（段 2）。
 # 永続化（Keycloak/Postgres/Qdrant ＋ OBSERVABILITY=1 の可観測性 4 種の PVC）は **既定オン**（IADR-0369 / #1088）。
 #   使い捨てスタックでだけ PERSIST=0 で外す。
 # 管理ツールの集約入口（LOCALEDGE=1 の admin(50000)）の経路は **既定で置かない**（IADR-0586）。置くときだけ ADMIN_EDGE=1。
@@ -101,6 +104,11 @@ pin_version ESO_CHART_VERSION 2.8.0 deploy/local/vault/eso/external-secrets-valu
 pin_version RELOADER_CHART_VERSION 2.2.17 deploy/local/reloader/values.yaml
 pin_version CERT_MANAGER_VERSION v1.21.1 deploy/local/edge/cert-manager/kustomization.yaml
 pin_version ARGOCD_VERSION v3.5.4 deploy/argocd/install/kustomization.yaml
+# NFR-18, IADR-0679 (#2410): 版に加えて、取り込む chart の tgz・URL のマニフェストの中身を sha256 で固定する（lib/pinned-artifacts.sh）。
+#   取得したものは一時ディレクトリに置き、終了のときに消す。sha256 が合わなければ何も当てずに止まる。
+# shellcheck source=scripts/lib/pinned-artifacts.sh
+. "$(dirname "$0")/lib/pinned-artifacts.sh" || exit 3
+pinned_work_init
 # Reloader のイメージは values（tag@digest）が持つ。従前の RELOADER_IMAGE_TAG（tag だけで上書き）は固定を外すので受けない。
 if [ -n "${RELOADER_IMAGE_TAG:-}" ]; then
   echo "ERROR: RELOADER_IMAGE_TAG は廃止した（IADR-0547）。Reloader のイメージは deploy/local/reloader/values.yaml が tag@digest で持つ。" >&2
@@ -272,6 +280,8 @@ if [ "$RUNTIME" = "k3d" ]; then
     #   従前は素で呼び、ノードの起動で止まるとステップの上限 30 分を無言で使い切った（#2257 ほか同型 2 回）。
     #   🔴 reuse の経路（下の else。PoC を含む既存のクラスタ）では呼ばない —— 既存のクラスタを消さない。
     k3d_create_with_retry "$CLUSTER" "${CREATE_ARGS[@]}" || exit 1
+    # NFR-18, IADR-0676 (#2407): この実行で作ったクラスタは dev である（下でクラスタ側の印を置く）。
+    K3D_CLUSTER_CREATED_HERE=1
   else
     echo "    cluster '$CLUSTER' exists — reuse"
   fi
@@ -297,6 +307,26 @@ fi
 # ［2026-10-22 / GHSA-rh44-px44-p48q / IADR-0572］対象は 3 つから、realm の宣言でサービスアカウントを持つ機密クライアント全部へ広げた。
 #   手で並べず宣言から導出する（dev_client_secret_load_targets）。env の名前は判定器が持つ（dev_client_secret_env_name）。
 #   [3/7] の取り込み元は同じ集合を env の値へ差し替えるので、dev ではない context では全部に env が要る。
+# NFR-18, IADR-0676 (#2407): **dev のクラスタの 2 つ目の手掛かり（クラスタ側の印 ConfigMap kube-system/msp-dev-cluster）。**
+#   置くのは、この実行で k3d のクラスタを作ったときと、利用者の明示 MARK_DEV_CLUSTER=1 のとき（どちらも名前が許可集合に在るときだけ）。
+#   判定の前に 1 回読み、DEV_CLUSTER_MARKER で判定へ渡す。段 1（既定）は名前だけで判定し、印が無ければ警告する。
+#   段 2（DEV_CLUSTER_MARKER_REQUIRED=1）は名前と印の両方が揃うときだけ dev とする（既定化は印を置いた後の別の PR）。
+dev_marker_ctx="$(dev_client_secret_current_context)"
+# 置くと決めたら、判定には今すぐ present を渡す（段 2 で止めない）。**書くのは [3/7] の最初の書き込みと一緒**（下の
+#   dev_cluster_marker_write_pending）—— 判定で止まる実行が何かを書いてから止まらないようにする（「何も書かずに止まる」の約束）。
+DEV_CLUSTER_MARKER_PENDING=""
+if [ "${K3D_CLUSTER_CREATED_HERE:-}" = "1" ] || [ "${MARK_DEV_CLUSTER:-}" = "1" ]; then
+  if dev_client_secret_context_name_is_dev "$dev_marker_ctx"; then
+    DEV_CLUSTER_MARKER_PENDING="$dev_marker_ctx"
+    DEV_CLUSTER_MARKER=present
+    export DEV_CLUSTER_MARKER
+  elif [ "${MARK_DEV_CLUSTER:-}" = "1" ]; then
+    echo "ERROR: MARK_DEV_CLUSTER=1: kube context '${dev_marker_ctx:-（読めない）}' は名前が dev の許可集合に無い。印を置かずに止める（IADR-0676）。" >&2
+    exit 1
+  fi
+fi
+[ -n "$DEV_CLUSTER_MARKER_PENDING" ] || dev_cluster_marker_probe "k8s-local-up.sh" "$dev_marker_ctx"
+unset dev_marker_ctx
 dev_client_secret_load_targets || exit 1
 dev_secret_args=()
 for dev_secret_client in $DEV_CLIENT_SECRET_GUARDED; do
@@ -486,12 +516,25 @@ echo "==> [2/7] build & import images"
 bash "$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
 
 echo "==> [3/7] infra namespace, secrets, realm ConfigMap & realm import Secret (dev 既定; env で上書き可)"
+# NFR-18, IADR-0676 (#2407): 判定を通った後の最初の書き込みと一緒に、クラスタ側の dev の印を置く（[1/7] の直後で決めた）。
+if [ -n "${DEV_CLUSTER_MARKER_PENDING:-}" ]; then
+  if dev_cluster_marker_apply "$DEV_CLUSTER_MARKER_PENDING"; then
+    echo "    クラスタ側の dev の印を置いた（ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME}。IADR-0676）"
+  else
+    echo "ERROR: クラスタ側の dev の印（ConfigMap ${DEV_CLUSTER_MARKER_NS}/${DEV_CLUSTER_MARKER_NAME}）を置けない（IADR-0676）。" >&2
+    exit 1
+  fi
+fi
 kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f -
 # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）は下の [4/7] infra rollout（ブロッキング）で
 # **非 optional** に消費されるため、Vault/ESO がまだ存在しないこの時点で手動作成が必須（bootstrap）。よって PR-1〜3 と
 # 異なり **ESO=1 でも手動 apply をスキップしない**。ESO はこの後の ESO ブロックで `creationPolicy: Merge` の
 # ExternalSecret を適用し、既存 Secret に **同一値を上書きするだけ**（所有・再作成しない）で本番同等の供給経路を配線する。
 apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:?}"  # IADR-0672: 値は [1/7] の直後で決めた
+# NFR-18, IADR-0676 決定 4 (#2407): DB の初期化（空の PVC の初回だけ）が DB 利用者 kp を作るときの値。[1/7] の直後で決めた
+#   APP_DB_PASSWORD と同じ値（消費側の postgres-app・wikijs-db と揃える）。DB の Pod は optional に読む（無ければ従前の値）。
+#   既存の DB には効かない（初期化は 1 度しか走らない。作り直しは scripts/rotate-infra-credentials.sh app-db）。
+apply_secret "$INFRA_NS" postgres-init-users "kp-password=${APP_DB_PASSWORD:?}"
 # NFR, #1022: ブローカ自身の資格情報（利用者名・パスワード）を Secret 由来にする。
 # deploy/local/infra/rabbitmq.yaml が RABBITMQ_DEFAULT_USER/PASS を**非 optional** に参照する。
 # NFR-18, IADR-0577: サービスはこのユーザーで名乗らない（サービスごとのユーザー。users.txt）。既定のユーザーはブローカの
@@ -692,7 +735,9 @@ CERT_MANAGER_READY=""
 install_cert_manager() {
   [ -n "$CERT_MANAGER_READY" ] && return 0
   echo "    -> cert-manager ${CERT_MANAGER_VERSION} (基盤 TLS・エッジ TLS。IADR-0591 / IADR-0206・digest は IADR-0547)"
-  kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
+  # NFR-18, IADR-0679: 上流のマニフェストは sha256 を確かめた写し（PINNED_WORK の下の同じ相対パス）を当てる。
+  pinned_kustomize_dir deploy/local/edge/cert-manager "$PINNED_WORK" || exit 1
+  ( cd "$PINNED_WORK" && kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager )
   kubectl wait --for=condition=Established --timeout=120s \
     crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
   kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
@@ -1017,13 +1062,14 @@ fi
 ISTIO_MESH_ARGS=""
 if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio service mesh (control plane)"
-  helm repo add istio https://istio-release.storage.googleapis.com/charts >/dev/null 2>&1 || true
-  helm repo update istio >/dev/null
+  # NFR-18, IADR-0679: chart は取得元から tgz を取り、sha256 を確かめてからそのパスで入れる（helm repo を経由しない）。
+  istio_base_chart="$(pinned_chart base "$ISTIO_VERSION" "$PINNED_WORK")" || exit 1
+  istiod_chart="$(pinned_chart istiod "$ISTIO_VERSION" "$PINNED_WORK")" || exit 1
   # base = CRD とクラスタ共通のリソース。istiod = コントロールプレーン。
-  helm upgrade --install istio-base istio/base \
-    -n istio-system --create-namespace --version "$ISTIO_VERSION" --wait --timeout 5m
-  helm upgrade --install istiod istio/istiod \
-    -n istio-system --version "$ISTIO_VERSION" \
+  helm upgrade --install istio-base "$istio_base_chart" \
+    -n istio-system --create-namespace --wait --timeout 5m
+  helm upgrade --install istiod "$istiod_chart" \
+    -n istio-system \
     -f deploy/istio/istiod-values-local.yaml --wait --timeout 10m
   # CRD が Established になるまで待つ（apply の競合を避ける。cert-manager と同じ作法）。
   for crd in peerauthentications.security.istio.io destinationrules.networking.istio.io \
@@ -1114,8 +1160,8 @@ reconcile_recreate_strategy "$MSP_NS" $RECREATE_DEPLOYMENTS
 DEPT_SYNC_ARGS=()
 DEPT_SYNC_DIR=""
 if [ -n "$DEPT_SYNC_DECLARE" ]; then
-  DEPT_SYNC_DIR="$(mktemp -d)"
-  trap 'rm -rf "$DEPT_SYNC_DIR"' EXIT
+  # NFR-18, IADR-0679: 一時ディレクトリは冒頭の PINNED_WORK の下に作る（終了のときの片付けを 1 つの EXIT trap に揃える）。
+  DEPT_SYNC_DIR="$(mktemp -d "$PINNED_WORK/dept-sync.XXXXXX")"
   dept_sync_values_file "$DEPT_SYNC_DECLARE" "$DEPT_SYNC_OTHERS" > "$DEPT_SYNC_DIR/dept-sync-values.yaml"
   DEPT_SYNC_ARGS=(-f "$DEPT_SYNC_DIR/dept-sync-values.yaml")
 fi
@@ -1123,7 +1169,7 @@ fi
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" "${CONFIG_GIT_COMMIT_ARGS[@]+"${CONFIG_GIT_COMMIT_ARGS[@]}"}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}" \
   "${LLM_KEYLESS_ARGS[@]+"${LLM_KEYLESS_ARGS[@]}"}"
-if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
+if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; fi
 # NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける
 #   （ExternalSecret を先に消す。残すと ESO が Secret を作り直す。ESO の CRD が無いクラスタでは何もしない）。
 kubectl -n "$MSP_NS" delete externalsecret rabbitmq-app --ignore-not-found >/dev/null 2>&1 || true
@@ -1192,6 +1238,22 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
     if [[ "$cur" =~ ^[0-9a-f]{64}$ ]]; then printf '%s' "$cur"; else od -An -tx1 -N32 /dev/urandom | tr -d ' \n'; fi
   }
   apply_secret "$INFRA_NS" observability-gate "writer=$(obs_gate_token writer)" "reader=$(obs_gate_token reader)"
+  # NFR-18, IADR-0676 決定 3 (#2407): Grafana の内蔵の管理者（OIDC が使えないときの break-glass）の資格情報。
+  #   **明示（GRAFANA_ADMIN_PASSWORD）＞ 既存の Secret の値 ＞ 乱数**（開発用の値を持たない）。grafana.yaml は optional に読み、
+  #   永続化の overlay は起動のたびに Secret の値を Grafana の DB へ合わせる（製品は初回の作成のときしか env を読まない）。
+  #   🔴 値は apply_secret のファイル経由で渡し、表示しない。値は Grafana の CLI へ stdin で渡すので、改行・空白を含む値は拒む。
+  grafana_admin_password="${GRAFANA_ADMIN_PASSWORD:-}"
+  if [ -z "$grafana_admin_password" ]; then
+    grafana_admin_password="$(kubectl -n "$INFRA_NS" get secret grafana-admin -o 'jsonpath={.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  fi
+  [ -n "$grafana_admin_password" ] || grafana_admin_password="$(od -An -N24 -tx1 /dev/urandom | tr -d ' \n')"
+  case "$grafana_admin_password" in
+    *[[:space:]]*)
+      echo "ERROR: Grafana の管理者のパスワード（GRAFANA_ADMIN_PASSWORD か Secret grafana-admin）が空白・改行を含みます（値は表示しない）。" >&2
+      exit 1 ;;
+  esac
+  apply_secret "$INFRA_NS" grafana-admin "password=$grafana_admin_password"
+  unset grafana_admin_password
   # IADR-0210 (#787) → IADR-0369 (#1088): 可観測性側も永続化オーバーレイが**既定**（INFRA_KUSTOMIZE と同じ意味論）。
   # **OBSERVABILITY=1 のときだけ効く**（永続化単独ではスタック自体が立たない）。opt-out は PERSIST=0。
   OBS_KUSTOMIZE="deploy/local/observability-persistence"
@@ -1266,6 +1328,16 @@ if [ "${VAULT:-}" = "1" ]; then
     echo "    [PERSIST 既定] 秘匿管理（OpenBao）を raft ストレージ＋PVC で永続化（Pod 内ラッパーが init / unseal / 固定トークンを自動化）"
     vault_openbao_migration_gate
   fi
+  # NFR-18, IADR-0676 決定 1 (#2407): 永続化のラッパーが、固定 root トークンを印の後に作り直すかの切り替え（Pod が optional に読む）。
+  #   INFRA_CREDENTIALS_ENFORCE=1（IADR-0672 の段 2 の切り替え。`1` だけ）なら 1（作り直さずに起動を止める）、それ以外は 0（段 1。警告して作る）。
+  #   Pod は起動のときに読むので、次の起動から効く。値は秘密ではない。
+  vault_root_token_init_only=0
+  [ "${INFRA_CREDENTIALS_ENFORCE:-}" = "1" ] && vault_root_token_init_only=1
+  #   値は秘密ではないが、起動器の作法（#1793。--from-literal を使わない）に揃えて宣言を標準入力で渡す。
+  printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: vault-local-switches\n  namespace: %s\ndata:\n  root-token-init-only: "%s"\n' \
+    "$INFRA_NS" "$vault_root_token_init_only" | kubectl apply -f -
+  echo "    秘匿管理の切り替え（ConfigMap vault-local-switches）: root-token-init-only=${vault_root_token_init_only}（IADR-0676）"
+  unset vault_root_token_init_only
   VAULT_PERSIST_APPLIED=0
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k "$VAULT_KUSTOMIZE"
@@ -1280,6 +1352,15 @@ if [ "${VAULT:-}" = "1" ]; then
   # 永続化版は readinessProbe（vault status＝unseal 済み）を持つ。ここで待たないと、後段の ESO bootstrap が
   # unseal 前に `kubectl exec` して "Vault is sealed" で落ちる。-dev（PERSIST=0）は probe が無く即座に返る。
   kubectl -n "$INFRA_NS" rollout status deploy/vault --timeout=180s
+  # NFR-18, IADR-0676 決定 6 (#2407): 秘匿管理へ届く送り手を絞る NetworkPolicy（Ingress だけ）。段 1 は opt-in。
+  #   VAULT_NETWORK_POLICY=1 で当て、=0 で外す。未指定は何も変えない（当てていれば当てたまま）。値は `1` / `0` だけを受ける。
+  case "${VAULT_NETWORK_POLICY:-}" in
+    1) kubectl apply -f deploy/local/vault-networkpolicy/networkpolicy.yaml
+       echo "    [VAULT_NETWORK_POLICY=1] 秘匿管理へ届く送り手を絞った（ESO・bff/datasource・バックアップ・管理ツールのエッジ）" ;;
+    0) kubectl -n "$INFRA_NS" delete networkpolicy vault-ingress-known-clients --ignore-not-found ;;
+    '') echo "    INFO: 秘匿管理へ届く送り手を絞る NetworkPolicy は VAULT_NETWORK_POLICY=1 で当てる（段 1 は opt-in。IADR-0676）" ;;
+    *) echo "ERROR: VAULT_NETWORK_POLICY は 1 か 0 だけを受ける" >&2; exit 1 ;;
+  esac
   if [ "$VAULT_PERSIST_APPLIED" = "1" ]; then
     platform_backup_vault_bootstrap
   fi
@@ -1320,10 +1401,8 @@ if [ "${ESO:-}" = "1" ]; then
   # 既定は v1 を GA 提供する安定版（動作実証済み）。
   # ［2026-10-15 / #1858・IADR-0547］版は冒頭の pin_version が決め（ESO_CHART_VERSION は同じ値しか受けない）、
   #   内側のイメージは values（tag@digest）が持つ。版を上げるときは両方を対で改める。
-  helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
-  helm repo update external-secrets >/dev/null 2>&1 || true
-  helm upgrade --install external-secrets external-secrets/external-secrets \
-    --version "$ESO_CHART_VERSION" \
+  eso_chart="$(pinned_chart external-secrets "$ESO_CHART_VERSION" "$PINNED_WORK")" || exit 1  # IADR-0679
+  helm upgrade --install external-secrets "$eso_chart" \
     -f deploy/local/vault/eso/external-secrets-values.yaml \
     -n external-secrets --create-namespace --set installCRDs=true --wait
   # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
@@ -1341,10 +1420,8 @@ if [ "${ESO:-}" = "1" ]; then
   #     🔴 見る名前空間を 3 つに限る（watchGlobally=false ＋ namespaces ＝ 各名前空間の Role。クラスタ全体の Secret を読ませない）。
   #     ［2026-10-15 / #1858・IADR-0547］chart の版は冒頭の pin_version、image は values（tag@digest）が持つ
   #     （従前の --set image.tag は tag だけで digest を持てないので外した。RELOADER_IMAGE_TAG は冒頭で拒否する）。
-  helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
-  helm repo update stakater >/dev/null 2>&1 || true
-  helm upgrade --install reloader stakater/reloader \
-    --version "$RELOADER_CHART_VERSION" \
+  reloader_chart="$(pinned_chart reloader "$RELOADER_CHART_VERSION" "$PINNED_WORK")" || exit 1  # IADR-0679
+  helm upgrade --install reloader "$reloader_chart" \
     -f deploy/local/reloader/values.yaml \
     -n reloader --create-namespace \
     --set reloader.watchGlobally=false \
@@ -1648,7 +1725,8 @@ if [ "${ARGOCD:-}" = "1" ]; then
   # ［2026-10-15 / #1858・IADR-0547］URL と内側の 3 イメージ（argocd・dex・redis）の digest は kustomization が持つ
   #   （kustomize の images 置換）。版は冒頭の pin_version が決め、ARGOCD_VERSION は同じ値しか受けない。
   echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519・digest は IADR-0547)"
-  kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
+  pinned_kustomize_dir deploy/argocd/install "$PINNED_WORK" || exit 1  # IADR-0679: sha256 を確かめた写しを当てる
+  ( cd "$PINNED_WORK" && kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install )
   kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml

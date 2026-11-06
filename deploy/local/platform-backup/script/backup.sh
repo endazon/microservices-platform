@@ -2,7 +2,9 @@
 # NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0471 (#1560): platform-infra の Postgres / Vault を
 # **age の公開鍵で暗号化して**クラスタ外の 2 か所（hostPath）へ置く CronJob の本体。
 #
-# 🔴 deploy/local 専用（ローカル開発・PoC 環境）。本番のバックアップ設計ではない。
+# 🔴 ローカル開発・PoC 環境のもの。本番のバックアップ設計ではない。
+# ［2026-11-05 / #2402・IADR-0675］クラウドの最小構成（バックアップの CronJob）も同じ本体を使い、保管先を S3 互換の
+#   オブジェクトストレージ（BACKUP_S3_DEST）にする（BACKUP_TARGETS=none で hostPath を使わない）。hostPath の既定は変えない。
 #
 # 1 回の実行で 1 種類（BACKUP_KIND=postgres | vault）を扱う:
 #   1. 受取人（公開鍵）を検査する。無い・占位のまま・不正な行があれば**何もせずに失敗する**（fail-closed）
@@ -17,6 +19,8 @@
 #      **目印ファイル（.platform-backup-target）が無い保管先には書かない**（ドライブが外れていると kubelet が
 #      ディストリ内に空のディレクトリを作る。そこはクラスタ外ではない）
 #   4. 保持の規則で古い回を消す（名前の規則に合うディレクトリだけ・再帰削除をしない）
+#   3s. ［#2402・IADR-0675］BACKUP_S3_DEST があれば、オブジェクトストレージへも書く（publish_s3）。改名とロックの代わりに、
+#      送った回を読み戻して検算してから最後に COMPLETE を置く。保持の削除はバケットの lifecycle が行う（ここでは消さない）
 #   片方の保管先に書けなくてももう片方には書く。**どこかで失敗したら exit 1**（Job を失敗として見せる）。
 #
 # 🔴 秘密の値（DB のパスワード・Vault のトークン・ServiceAccount の JWT・unseal 鍵）をログ・引数へ出さない。
@@ -52,6 +56,18 @@ BACKUP_DEPS_WAIT_INTERVAL="${BACKUP_DEPS_WAIT_INTERVAL:-5}"
 BACKUP_DEPS_PROBE_TIMEOUT="${BACKUP_DEPS_PROBE_TIMEOUT:-10}"
 # 自分が持っているロック（保管先の kind_dir）。trap で解放する。
 HELD_LOCKS=()
+# NFR-21, IADR-0675 (#2402): S3 互換のオブジェクトストレージの宛先（rclone のリモート名:バケット[/接頭辞]）。空なら使わない。
+# 資格情報は rclone の env（RCLONE_CONFIG_<リモート>_ACCESS_KEY_ID 等。secretKeyRef）で渡し、🔴 引数に載せない。
+BACKUP_S3_DEST="${BACKUP_S3_DEST:-}"
+# rclone の 1 回の呼び出しの上限（秒）。最悪の合計は Job の activeDeadlineSeconds の内側に収める（試験 T-2402-12）。
+BACKUP_S3_CALL_TIMEOUT="${BACKUP_S3_CALL_TIMEOUT:-240}"
+# 月の最初の完全な回を monthly/ へも書くか（1 = 書く）。
+BACKUP_S3_MONTHLY="${BACKUP_S3_MONTHLY:-1}"
+# 月次の有無を決めるとき、その月の monthly/<回>/ の中身（COMPLETE の有無）を確かめる回の数の上限（新しい順）。
+# 1 回の確かめが rclone の呼び出し 1 回なので、最悪の合計（試験 T-2402-12）に入る。上限で決められなければ失敗で返す。
+BACKUP_S3_MONTHLY_CHECK_MAX="${BACKUP_S3_MONTHLY_CHECK_MAX:-2}"
+# リモート名（英小文字・数字・-・_）＋ : ＋ バケット（S3 の命名規則の 3〜63 文字）＋ 任意の接頭辞（.. を含まない）。
+S3_DEST_RE='^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$'
 
 # 回の名前: UTC の時刻 ＋ 任意の接尾辞（-partial = 一部失敗 / -keep = 運用者が長期保持へ改名したもの）。
 RUN_NAME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-partial|-keep)?$'
@@ -751,6 +767,144 @@ prune_target() {
 	return "$rc"
 }
 
+# ---------------------------------------------------------------- S3 互換のオブジェクトストレージ（#2402・IADR-0675）
+#
+# 置き場所: <BACKUP_S3_DEST>/<種類>/daily/<回>/ と、月の最初の完全な回だけ <BACKUP_S3_DEST>/<種類>/monthly/<回>/。
+# 🔴 オブジェクトストレージには改名も mkdir の原子性も無い。IADR-0669 のロックと改名の代わりに、次の順で書く:
+#    1. 同じ名前の回が無いことを確かめる（あれば書かない）
+#    2. 成果物と SHA256SUMS を送る
+#    3. 送った回を作業場所へ読み戻し、SHA256SUMS が staging のものと一致し、`sha256sum -c` が通ることを確かめる
+#    4. 最後に COMPLETE（SHA256SUMS の sha256）を置く —— **COMPLETE の無い回は完了ではない**（リストア試験も同じに読む）
+# 🔴 消さない。保持はバケットの lifecycle（日次 30 日・月次 12 か月）と Object Lock が持つ（手順は cloud の runbook）。
+
+# rclone を上限つきで呼ぶ（rclone は外部のコマンドなので timeout で包める）。資格情報は env にあり、引数に無い。
+s3() { timeout "$BACKUP_S3_CALL_TIMEOUT" rclone -q "$@"; }
+
+# 接頭辞の一覧を出す。🔴 #2402 のレビュー 🔴2: rclone は、まだ無い接頭辞の一覧で「directory not found」（終了コード 3）を返し得る
+# （bucket 型のバックエンドで実測。S3 の API〔rclone serve s3〕では 0 と空。バケットそのものが無いときも 3）。
+# **3 だけを「空」と見なす**。それ以外の失敗（認証・接続・時間切れ）は失敗のまま返す。バケットが無いときは、続く送信が失敗する。
+s3_lsf() {
+	local out rc
+	out="$(s3 lsf "$1" 2>/dev/null)"
+	rc=$?
+	if [ "$rc" -eq 3 ]; then return 0; fi
+	[ "$rc" -eq 0 ] || return "$rc"
+	printf '%s' "$out"
+}
+
+check_s3_dest() {
+	[ -n "$BACKUP_S3_DEST" ] || return 0
+	if [[ ! "$BACKUP_S3_DEST" =~ $S3_DEST_RE ]] || [[ "$BACKUP_S3_DEST" == *..* ]]; then
+		err "BACKUP_S3_DEST の形が不正です（<リモート>:<バケット>[/<接頭辞>]）: $BACKUP_S3_DEST"
+		return 1
+	fi
+	if ! command -v rclone >/dev/null 2>&1; then
+		err "rclone がありません（イメージがクラウド用の platform-backup ではない可能性があります。何も書きません）"
+		return 1
+	fi
+	return 0
+}
+
+# 保管先が 1 つも無い構成（BACKUP_TARGETS=none で S3 も無い）は、何もダンプせずに失敗させる。
+check_destinations() {
+	check_s3_dest || return 1
+	if [ "$BACKUP_TARGETS" = none ] && [ -z "$BACKUP_S3_DEST" ]; then
+		err "保管先が 1 つもありません（BACKUP_TARGETS=none で BACKUP_S3_DEST も空です）"
+		return 1
+	fi
+	return 0
+}
+
+# 1 つの宛先（daily か monthly の回）へ書く。0 = 書けた / 1 = 書けなかった（COMPLETE は置いていない）。
+publish_s3_to() {
+	local dest="$1" staging="$2" tag="$3" verify listed sums_hash marker
+	if ! listed="$(s3_lsf "$dest/")"; then
+		err "オブジェクトストレージへ書けませんでした（宛先を確かめられません）: $dest"
+		return 1
+	fi
+	if [ -n "$listed" ]; then
+		err "同じ名前の回が既にあります: $dest"
+		return 1
+	fi
+	if ! s3 copy "$staging" "$dest"; then
+		err "オブジェクトストレージへ書けませんでした: $dest"
+		return 1
+	fi
+	verify="$BACKUP_STAGING/.verify-$tag-$$"
+	marker="$BACKUP_STAGING/.complete-$tag-$$"
+	if ! mkdir -- "$verify"; then
+		err "読み戻しの作業場所を作れません: $verify"
+		return 1
+	fi
+	if ! s3 copy "$dest" "$verify"; then
+		err "送った回を読み戻せません（COMPLETE を置きません）: $dest"
+		remove_flat_dir "$verify"
+		return 1
+	fi
+	if ! cmp -s -- "$staging/SHA256SUMS" "$verify/SHA256SUMS" ||
+		! (cd "$verify" && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
+		err "送った回の検算が合いません（COMPLETE を置きません）: $dest"
+		remove_flat_dir "$verify"
+		return 1
+	fi
+	remove_flat_dir "$verify"
+	sums_hash="$(sha256sum < "$staging/SHA256SUMS" | cut -d ' ' -f 1)"
+	printf '%s\n' "$sums_hash" > "$marker" || { err "COMPLETE を作れません"; return 1; }
+	if ! s3 copyto "$marker" "$dest/COMPLETE"; then
+		rm -f -- "$marker"
+		err "オブジェクトストレージへ書けませんでした（COMPLETE を置けません）: $dest"
+		return 1
+	fi
+	rm -f -- "$marker"
+	log "書きました: $dest"
+	return 0
+}
+
+# daily へ書き、完全な回で、その月の**完了した**回がまだ monthly に無ければ monthly へも書く。
+# 戻り値: 0 = すべて書けた / 1 = daily は書けたが monthly で失敗 / 2 = daily に書けなかった。
+# ［#2406 のレビュー 🟡］月次の回が途中で失敗すると COMPLETE の無い monthly/<回>/ が残る。それを数えるとその月は取り直されない。
+#   **COMPLETE を持つ回だけを「その月は取得済み」と数える**（取りこぼしの回は消さずに残し、翌日の回で取り直す）。
+#   回の中身を確かめられないときは、取得済みとも未取得とも決めずに失敗を返す（同じ月の回を二重に書かない）。
+# ［#2406 の再レビュー 🟡］確かめるのは新しい順に BACKUP_S3_MONTHLY_CHECK_MAX 件まで（COMPLETE を見つけたら打ち切る）。
+#   取りこぼしが溜まっても、呼び出しの数（＝最悪の時間）が上限の内に収まる。上限までに決められず、まだ確かめていない回が
+#   残るときは、取得済みとも未取得とも決めずに失敗で返す（daily は書けている。人が取りこぼしの回を見る）。
+publish_s3() {
+	local run="$1" staging="$2" now="$3" base month existing entry inner checked=0 candidates
+	base="$BACKUP_S3_DEST/$BACKUP_KIND"
+	publish_s3_to "$base/daily/$run" "$staging" daily || return 2
+	[ "$BACKUP_S3_MONTHLY" = 1 ] || return 0
+	case "$run" in *-partial) return 0 ;; esac
+	month="${now:0:7}"
+	if ! existing="$(s3_lsf "$base/monthly/")"; then
+		err "monthly の回を確かめられません: $base/monthly"
+		return 1
+	fi
+	if [[ ! "$BACKUP_S3_MONTHLY_CHECK_MAX" =~ ^[1-9][0-9]*$ ]]; then
+		err "BACKUP_S3_MONTHLY_CHECK_MAX は 1 以上の整数です: $BACKUP_S3_MONTHLY_CHECK_MAX"
+		return 1
+	fi
+	# その月の回だけを、新しい順に（回の名前は時刻なので、名前の逆順が新しい順）。
+	candidates="$(sed -n 's#/$##; /^'"$month"'-/p' <<< "$existing" | sort -r)"
+	while IFS= read -r entry; do
+		[ -n "$entry" ] || continue
+		if [ "$checked" -ge "$BACKUP_S3_MONTHLY_CHECK_MAX" ]; then
+			err "monthly の回の確かめが上限（${BACKUP_S3_MONTHLY_CHECK_MAX} 件）に達しました。COMPLETE の無い回が溜まっています: $base/monthly/$month-*（月次を決めずに止めます）"
+			return 1
+		fi
+		checked=$((checked + 1))
+		if ! inner="$(s3_lsf "$base/monthly/$entry/")"; then
+			err "monthly の回の中身を確かめられません: $base/monthly/$entry"
+			return 1
+		fi
+		if grep -qx 'COMPLETE' <<< "$inner"; then
+			return 0
+		fi
+		log "monthly の回 $entry は COMPLETE が無いので数えません（取り直します）"
+	done <<< "$candidates"
+	publish_s3_to "$base/monthly/$run" "$staging" monthly || return 1
+	return 0
+}
+
 # ---------------------------------------------------------------- main
 
 main() {
@@ -761,6 +915,8 @@ main() {
 	esac
 	check_recipients "$BACKUP_RECIPIENTS_FILE" || return 2
 	ensure_age || return 2
+	# #2402・IADR-0675: 保管先の構成の誤り（S3 の宛先の形・rclone の不在・保管先 0 件）は、何も作らずに失敗させる。
+	check_destinations || return 2
 	# #2394・IADR-0670: 書き始める前に依存先を待つ（staging も保管先も、まだ何も作っていない）。
 	# 構成の誤り（ServiceAccount のトークン）は待たずに失敗させる。
 	if [ "$BACKUP_KIND" = vault ]; then check_vault_login_inputs || return 2; fi
@@ -794,7 +950,9 @@ main() {
 	trap 'release_all_locks' EXIT
 	trap 'release_all_locks; exit 143' TERM
 	trap 'release_all_locks; exit 130' INT
-	for target in $BACKUP_TARGETS; do
+	local -a hosts=()
+	[ "$BACKUP_TARGETS" = none ] || read -r -a hosts <<< "$BACKUP_TARGETS"
+	for target in "${hosts[@]}"; do
 		if publish "$target" "$run" "$staging"; then
 			written=$((written + 1))
 			prune_target "$target" "$now" || rc=1
@@ -804,6 +962,12 @@ main() {
 		# 保持の削除もロックの中で行い、終わったら解放する（publish が失敗したときもロックを持っていれば解放する）。
 		release_lock "$target/$BACKUP_KIND"
 	done
+	if [ -n "$BACKUP_S3_DEST" ]; then
+		local s3_rc=0
+		publish_s3 "$run" "$staging" "$now" || s3_rc=$?
+		[ "$s3_rc" -ne 2 ] && written=$((written + 1))
+		[ "$s3_rc" -ne 0 ] && rc=1
+	fi
 	remove_flat_dir "$staging"
 	if [ "$written" -eq 0 ]; then
 		err "どの保管先にも書けませんでした"

@@ -1,0 +1,53 @@
+# NFR-21, NFR-18, IADR-0675 (#2402): バックアップの Pod の外向きの通信を、名前解決・Postgres・HTTPS（オブジェクトストレージ）に絞る。
+# 受けは持たない（Ingress の規則を書かない ＝ policyTypes に Ingress を入れない。受け口を増やさない）。
+# 🔴 HTTPS はクラスタの外（私設のアドレス帯を除く）だけへ出す。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-backup-egress
+  namespace: platform-infra
+  labels: { app: platform-backup }
+spec:
+  podSelector:
+    matchLabels: { app: platform-backup }
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels: { app: postgres }
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+# NFR-21, NFR-18, IADR-0675 (#2402): Postgres への入りを、バックアップの Pod から 5432 だけ許す**別宣言**。
+# 🔴 #2401 の postgres-ingress-clients を書き換えない —— NetworkPolicy は加算的で、同じ Pod を選ぶ宣言の ingress は和になる。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress-backup
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: platform-backup }
+      ports:
+        - { protocol: TCP, port: 5432 }
