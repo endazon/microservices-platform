@@ -12,6 +12,10 @@
  *   3. 欠け: 各ユーザーが要る操作（宣言・束ね・発行・購読・デッドレター・応答キュー・戻し）が、その権限の正規表現に当たる。
  *      変異（名前を 1 つ抜く）で必ず赤になる。
  *   4. 隔て: 他のサービスのキューには configure / read / write のいずれも当たらない。発行しない exchange には write が当たらない。
+ *   4-a. 最小権限の陰性対照（NFR-18, IADR-0691）: 利用者ごとに「拒まれるべき操作」を列挙し、どれも当たらない。
+ *        既定の exchange への write は受信キューを持つ利用者だけ。使わない exchange の configure（宣言・削除）・read・write、
+ *        応答キューの形でない名前、錨の外（前後に字を足した名前）。規則を元に戻す変異（全員に既定の exchange・`.*` の応答キュー・
+ *        全 exchange の configure・錨なし）で必ず赤になる。
  *   5. 導出の検出力: 規則の字面が変わった・ServiceName が見つからない・接頭辞が食い違うと、生成器は止まる（黙って緩めない）。
  *   6. 合わせ（reconcile-users.sh）: 既定（段 1）は vhost 全体のまま、narrow（段 2）は生成物の行を当てる。行の欠け・届かないものが
  *      あれば何も変えずに止まる。--permissions-report は何も書かない。当てた段を ConfigMap に写す。
@@ -57,15 +61,25 @@ ok('生成物はコードから導いた権限と一致する（スナップシ�
 ok('基盤の 1 行の値を字面で固定する（生成器の規則そのものの退行を止める）', () => {
   assert.deepStrictEqual(committed.get('msp-ingestion'), {
     user: 'msp-ingestion',
-    configure: '^(ingestion-service\\..*|wolverine\\.response\\..*|wolverine-dead-letter-queue|DocumentDeleted|DocumentUpdated|IngestionCompleted)$',
+    configure: `^(ingestion-service\\..*|${gen.RESPONSE_PATTERN}|wolverine-dead-letter-queue|DocumentDeleted|DocumentUpdated|IngestionCompleted)$`,
     write: '^(ingestion-service\\..*|wolverine-dead-letter-queue|amq\\.default|IngestionCompleted)$',
-    read: '^(ingestion-service\\..*|wolverine\\.response\\..*|wolverine-dead-letter-queue|DocumentDeleted|DocumentUpdated)$',
+    read: `^(ingestion-service\\..*|${gen.RESPONSE_PATTERN}|wolverine-dead-letter-queue|DocumentDeleted|DocumentUpdated)$`,
   });
+  // NFR-18, IADR-0691: 発行だけの利用者（受信キューを持たない）は既定の exchange に書けない。
+  assert.deepStrictEqual(committed.get('msp-document'), {
+    user: 'msp-document',
+    configure: `^(document-service\\..*|${gen.RESPONSE_PATTERN}|wolverine-dead-letter-queue|DocumentDeleted|DocumentUpdated)$`,
+    write: '^(document-service\\..*|wolverine-dead-letter-queue|DocumentDeleted|DocumentUpdated)$',
+    read: `^(document-service\\..*|${gen.RESPONSE_PATTERN}|wolverine-dead-letter-queue)$`,
+  });
+  assert.strictEqual(gen.RESPONSE_PATTERN,
+    'wolverine\\.response\\.' + [8, 4, 4, 4, 12].map((n) => '[0-9a-f]'.repeat(n)).join('-'));
 });
 
 ok('行の集合は users.txt とちょうど一致し、正規表現は awk / RabbitMQ / JS で同じに読める字句だけを使う', () => {
   assert.deepStrictEqual([...committed.keys()].sort(), users.map((u) => u.user).sort());
-  const safe = /^\^\((?:[A-Za-z0-9_-]|\\\.|\.\*|\|)+\)\$$/;
+  // 文字クラスは応答キューの Guid の 16 進（`[0-9a-f]`）だけを許す（区間 `{n}` は awk の実装によって読めないので使わない）。
+  const safe = /^\^\((?:[A-Za-z0-9_-]|\\\.|\.\*|\[0-9a-f\]|\|)+\)\$$/;
   for (const r of committed.values()) {
     for (const k of ['configure', 'write', 'read']) {
       assert.ok(safe.test(r[k]), `${r.user} の ${k} に許していない字句がある: ${r[k].slice(0, 80)}`);
@@ -123,6 +137,94 @@ ok('隔て: 他のサービスのキューには当たらず、発行しない e
       assert.ok(!rx(row[k]).test('ai-stock-trading.someone-else.OrderApproved'), `${a.user} の ${k} が前置の外に当たる`);
       assert.ok(!rx(row[k]).test(`x${a.queuePrefix}q`), `${a.user} の ${k} が行頭に錨を持たない`);
     }
+  }
+});
+
+// --- 4-a --------------------------------------------------------------------------------------------------------
+// NFR-18, IADR-0691: 利用者ごとの陰性対照。RabbitMQ の権限の表（requiredAccess の注記）で「その名前に要る権限」を読む:
+//   configure = 宣言と削除（exchange.delete・queue.delete も configure）、write = 発行・束ねの宛先、read = 購読・束ねの元。
+const ALL_EXCHANGES = [...new Set(G.derived.flatMap((d) => [...d.subscribe, ...d.publish]))].sort();
+const SAMPLE_UUID = '3f2b8c1e-9a4d-4e6f-8b2a-1c3d5e7f9a0b';
+
+/** 拒まれるべき操作（{ perm, name, why }）。 */
+function forbiddenAccess(d) {
+  const out = [];
+  const no = (perm, name, why) => out.push({ perm, name, why });
+  if (!d.hasListener) no('write', gen.DEFAULT_EXCHANGE, '受信キューを持たない利用者の既定の exchange への発行（宛先のキューを権限で分けない）');
+  for (const ex of ALL_EXCHANGES) {
+    const sub = d.subscribe.includes(ex);
+    const pub = d.publish.includes(ex);
+    if (!sub && !pub) no('configure', ex, '使わない exchange の宣言・削除');
+    if (!sub) no('read', ex, '購読しない exchange への束ね');
+    if (!pub) no('write', ex, '発行しない exchange への発行');
+  }
+  for (const perm of ['configure', 'read']) {
+    no(perm, `${gen.RESPONSE_PREFIX}not-a-guid`, '応答キューの形でない名前');
+    no(perm, `${gen.RESPONSE_PREFIX}${SAMPLE_UUID}.OrderApproved`, '応答キューの名前の後ろに字を足した名前');
+    no(perm, `${gen.RESPONSE_PREFIX}${SAMPLE_UUID.toUpperCase()}`, '応答キューの Guid の書式でない名前（大文字）');
+  }
+  for (const perm of ['configure', 'write', 'read']) {
+    no(perm, `x${gen.DEAD_LETTER}`, '錨の外（前）');
+    no(perm, `${gen.DEAD_LETTER}x`, '錨の外（後）');
+  }
+  for (const ex of [...d.subscribe, ...d.publish]) {
+    no('configure', `${ex}x`, '錨の外（exchange の後）');
+    no('configure', `x${ex}`, '錨の外（exchange の前）');
+  }
+  if (d.hasListener) no('write', `${gen.DEFAULT_EXCHANGE}x`, '錨の外（既定の exchange の後）');
+  return out;
+}
+function violations(d, row) {
+  return forbiddenAccess(d).filter((a) => rx(row[a.perm]).test(a.name)).map((a) => `${a.perm} ${a.name}（${a.why}）`);
+}
+
+ok('最小権限: 既定の exchange へ書けるのは受信キューを持つ利用者だけ（発行だけの利用者は書けない）', () => {
+  for (const d of G.derived) {
+    assert.strictEqual(rx(committed.get(d.user).write).test(gen.DEFAULT_EXCHANGE), d.hasListener,
+      `${d.user}: 既定の exchange への write が受信キューの有無（${d.hasListener}）と食い違う`);
+  }
+  assert.ok(G.derived.some((d) => !d.hasListener), '発行だけの利用者が 1 人も居ない（陰性対照が空になる）');
+  assert.ok(G.derived.some((d) => d.hasListener), '受信キューを持つ利用者が 1 人も居ない');
+  if (hasAst) {
+    const astOff = G.derived.filter((d) => d.unit === 'ai-stock-trading' && !d.hasListener).map((d) => d.user).sort();
+    assert.deepStrictEqual(astOff, ['ast-backtest', 'ast-configuration', 'ast-information-collection', 'ast-report']);
+  }
+});
+
+ok('最小権限の陰性対照: 利用者ごとの拒まれるべき操作は、どれもその権限に当たらない', () => {
+  let n = 0;
+  for (const d of G.derived) {
+    const v = violations(d, committed.get(d.user));
+    assert.deepStrictEqual(v, [], `${d.user} が拒まれるべき操作を許す:\n  ${v.join('\n  ')}`);
+    n += forbiddenAccess(d).length;
+  }
+  assert.ok(n >= 100, `陰性対照が少なすぎる（${n}）`);
+});
+
+ok('最小権限: exchange の configure（宣言・削除）は購読と発行の exchange ちょうどに限る', () => {
+  for (const d of G.derived) {
+    const got = ALL_EXCHANGES.filter((ex) => rx(committed.get(d.user).configure).test(ex));
+    assert.deepStrictEqual(got, [...new Set([...d.subscribe, ...d.publish])].sort(), `${d.user} の configure の exchange`);
+  }
+});
+
+ok('最小権限（変異）: 規則を元に戻すと、陰性対照が必ず赤になる', () => {
+  const allExchanges = ALL_EXCHANGES.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const mutants = [
+    ['全員に既定の exchange の write', (d, r) => ({ ...r, write: gen.patternsFor({ ...d, hasListener: true }).write })],
+    ['応答キューを `.*` へ戻す', (d, r) => ({ ...r, configure: r.configure.replace(gen.RESPONSE_PATTERN, 'wolverine\\.response\\..*'), read: r.read.replace(gen.RESPONSE_PATTERN, 'wolverine\\.response\\..*') })],
+    ['全 exchange の configure', (d, r) => ({ ...r, configure: r.configure.replace(/\)\$$/, `|${allExchanges.join('|')})$`) })],
+    ['錨を外す', (d, r) => ({ configure: r.configure.replace(/^\^/, '').replace(/\$$/, ''), write: r.write.replace(/^\^/, '').replace(/\$$/, ''), read: r.read.replace(/^\^/, '').replace(/\$$/, '') })],
+  ];
+  for (const [name, mutate] of mutants) {
+    const caught = G.derived.filter((d) => violations(d, mutate(d, committed.get(d.user))).length > 0).map((d) => d.user);
+    assert.ok(caught.length > 0, `変異「${name}」を陰性対照が検出しない`);
+  }
+  // 全員に既定の exchange を戻す変異は、発行だけの利用者の全員で赤になる。
+  const off = G.derived.filter((d) => !d.hasListener);
+  for (const d of off) {
+    const r = committed.get(d.user);
+    assert.ok(violations(d, { ...r, write: gen.patternsFor({ ...d, hasListener: true }).write }).length > 0, `${d.user}: 既定の exchange を戻しても赤にならない`);
   }
 });
 

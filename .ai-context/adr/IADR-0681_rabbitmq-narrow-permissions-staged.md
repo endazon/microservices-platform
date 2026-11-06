@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, IADR-0573, IADR-0577, IADR-0591]
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-07
 related_specs:
   - ../specs/20261105_2412_rabbitmq-narrow-permissions.md
 ---
@@ -71,6 +71,7 @@ related_specs:
   - 宣言は configure。`x-dead-letter-exchange` 付きの宣言は DLX への write。
   - 束ねはキューへの write と exchange の read。発行は exchange の write。購読はキューの read。
 - `amq.default` を入れる理由: Wolverine はリスナーの停止のとき、受け取り済みの未処理のメッセージを既定の exchange でキューへ戻す。書けないと 1 通が消えた（実測）。
+- ［2026-11-07 追記 / IADR-0691］本表の write の `amq.default` は、受信キューを持つ利用者だけに改めた（発行だけの利用者は戻しをしない）。応答キューの `wolverine.response.*` は、Wolverine の名付けの形（`wolverine.response.<Guid>`）だけに当てる形へ改めた。決定は IADR-0691 決定 1・2。
 
 ### 決定 3: 段に分ける
 
@@ -115,6 +116,7 @@ related_specs:
 1-a. **段 2 の後に検討する**: Wolverine のリスナーの戻しの経路を固定の exchange（サービスごとの名前のある exchange）に寄せ、
    `amq.default` の write を外せるか（Wolverine の設定か上流の変更が要る。外せれば上の直接の発行の経路が閉じる）。
 2. 応答キュー `wolverine.response.*` は名前にサービスを含まず、どのサービスも読める（要求・応答は使っていない）。
+   - ［2026-11-07 追記 / IADR-0691］上の 1 は受信キューを持つ利用者だけに狭まった（発行だけの利用者からは外した）。1・1-a の残りと、購読の exchange の configure（削除を含む）を外す道筋は IADR-0691 §残る制約 1・2 が引き継ぐ。
 3. 取引ユニットの発行の導出は過大側の近似である。作るが出さない型にも write が付く。
 4. 段 2 は稼働クラスタで当てていない。切り替えは利用者が点検（`--permissions-report`）の後に行う。手元の RabbitMQ 3.13 で、基盤の模型と取引ユニットの実アセンブリを使って拒否 0 件を確かめた。
 5. `deploy/cloud/`（並行の作業）の写しは本 IADR の対象外。追随はコーディネーターへ渡した。
