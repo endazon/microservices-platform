@@ -59,6 +59,12 @@ RECREATE_USERS="${RECONCILE_RECREATE_USERS:-}"
 case "$RECREATE_USERS" in
   *[!a-z0-9._@,-]*) echo "ERROR: RECONCILE_RECREATE_USERS は利用者名（英小文字・数字・. _ @ -）のカンマ区切りだけを受ける" >&2; exit 2 ;;
 esac
+# NFR-18, IADR-0688 (#2466): サービスアカウントの余剰のロールを apply で外すか（0 / 1 だけ。既定 0＝報告だけ）。クラスタに触る前に検める。
+REMOVE_SURPLUS="${RECONCILE_REMOVE_SURPLUS:-0}"
+case "$REMOVE_SURPLUS" in
+  0 | 1) ;;
+  *) echo "ERROR: RECONCILE_REMOVE_SURPLUS は 0 か 1 だけを受ける" >&2; exit 2 ;;
+esac
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$HERE/../../../scripts/lib/dev-client-secret-guard.sh"
 KC_CONTEXT="$(dev_client_secret_current_context)"
@@ -94,9 +100,11 @@ kubectl -n "$INFRA_NS" delete job "$JOB" --ignore-not-found --wait=true >/dev/nu
 
 # 3. マニフェストの name と RECONCILE_MODE を差し替えて apply する。
 #    宣言は realm-reconcile-job.yaml の 1 本だけ（check 用の写しを持たない）。
+#    余剰の行（"0"）を空の行（""）より先に差し替える。作り直しの名前が "0" でも、余剰の行へ二重に当たらない（IADR-0688）。
 sed -e "s/^\(  name:\) keycloak-realm-reconcile\$/\1 $JOB/" \
     -e "s/^\(              value:\) \"apply\"\$/\1 \"$MODE\"/" \
     -e "s/^\(              value:\) \"deny\"\$/\1 \"$DEV_SECRETS\"/" \
+    -e "s/^\(              value:\) \"0\"\$/\1 \"$REMOVE_SURPLUS\"/" \
     -e "s/^\(              value:\) \"\"\$/\1 \"$RECREATE_USERS\"/" \
     "$MANIFEST" | kubectl apply -f - >/dev/null
 
