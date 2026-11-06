@@ -3,7 +3,7 @@ title: セキュリティ仕様書
 type: security-spec
 status: in-progress
 created: 2026-07-02
-updated: 2026-11-05
+updated: 2026-11-07
 author: claude
 ---
 <!-- trace:

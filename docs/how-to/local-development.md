@@ -3,7 +3,7 @@ title: how-to — ローカル開発フロー
 type: how-to
 status: published
 created: 2026-07-09
-updated: 2026-10-22
+updated: 2026-11-07
 author: claude
 ---
 <!-- trace:

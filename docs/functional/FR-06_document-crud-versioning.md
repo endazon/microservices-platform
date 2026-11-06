@@ -3,7 +3,7 @@ title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-10-23
+updated: 2026-11-07
 author: claude
 ---
 <!-- trace:
