@@ -757,3 +757,4 @@
 | [IADR-0677](./IADR-0677_llm-route-startup-check-staged.md) | LLM ゲートウェイは起動時に経路の設定（未知のモデル・空の宛先・単価の欠落）を 1 か所で引き、段 1 は Warning、段 2（Llm:RouteValidation:Mode=Fail）で起動を止める（#2411） | Accepted |
 | [IADR-0678](./IADR-0678_llm-gateway-pre-send-call-limits.md) | LLM ゲートウェイは送る前に、入力の上限と、呼び手ごと・呼び手×用途ごとの要求数と当日の費用（見込み額を含む）を 1 か所で判定する。段 1 は報告だけ、段 2 は設定の切り替えで Sent=false にする（#2404） | Accepted |
 | [IADR-0679](./IADR-0679_pin-external-artifacts-sha256.md) | 起動器が取り込む外部の helm chart と URL のマニフェストを、版に加えて内容の sha256 で固定する（#2410） | Accepted |
+| [IADR-0680](./IADR-0680_ast-api-audience-scope.md) | 取引ユニットの API の audience（ai-stock-trading-api）を専用のクライアントスコープで載せ、付ける先を bff と ai-stock-trading-owner に限る（#2418） | Accepted |
