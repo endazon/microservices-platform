@@ -8,6 +8,12 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # NFR / #2469: CodeQL は同じ workflow 内の codeql-action（init / analyze）が同じ版であることを要求する。
+    # サブアクションごとの別 PR では、どちらも単独で CI が赤になるため、1 本の PR にまとめて上げる。
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # NFR: submodule の pin 自動更新（gitlink を追跡先の先端へ前進させる更新 PR を生成する）。
   # 既定は自動マージしない（人手レビュー必須）。root .gitmodules の全 submodule が対象
