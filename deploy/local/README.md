@@ -199,7 +199,19 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 > dev の context（k3d-* / kind-* / rancher-desktop / docker-desktop）は従来どおり開発用の値で作る。dev ではない context は**段 1 では警告して作り**、
 > `INFRA_CREDENTIALS_ENFORCE=1` を付けると何も作らずに止まる（使い捨ての環境だけ `ALLOW_DEV_INFRA_CREDENTIALS=1` で通す）。
 > 稼働中の値が開発用の値のままかは `bash scripts/check-infra-credentials.sh --live`（読むだけ・値は出さない）で確かめ、
-> 残っていれば `bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>` で作り直す（値は表示しない）。
+> 残っていれば `bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token|grafana-admin>` で作り直す（値は表示しない）。
+>
+> **段階の続き**（[IADR-0676](../../.ai-context/adr/IADR-0676_infra-credentials-staged-followup.md)）:
+> - `OBSERVABILITY=1` は Grafana の内蔵の管理者を Secret `platform-infra/grafana-admin`（`GRAFANA_ADMIN_PASSWORD` の明示 ＞ 既存 ＞ 乱数）で作る。
+>   値は `kubectl -n platform-infra get secret grafana-admin -o jsonpath='{.data.password}' | base64 -d` で読む（break-glass のときだけ）。
+> - DB の初期化（空の PVC の初回）は DB 利用者 `kp` を `APP_DB_PASSWORD` と同じ値（Secret `platform-infra/postgres-init-users`）で作る。
+> - `VAULT=1` は ConfigMap `platform-infra/vault-local-switches` を書く。`INFRA_CREDENTIALS_ENFORCE=1` の実行の後は、秘匿管理は
+>   固定の管理者トークンを一度作った後に作り直さない（Secret を作り直しのスクリプトの外で変えると起動しない）。
+> - `VAULT_NETWORK_POLICY=1` は秘匿管理（8200）へ届く送り手を ESO・bff/datasource・バックアップ・管理ツールのエッジに絞る
+>   NetworkPolicy を当てる（段 1 は opt-in。`=0` で外す）。当てた後は ESO の同期・秘密の一覧の画面・バックアップの回を確かめる。
+> - **dev のクラスタの印**: この実行で k3d のクラスタを作ると、起動器は ConfigMap `kube-system/msp-dev-cluster` を置く。
+>   既存の dev のクラスタには `MARK_DEV_CLUSTER=1 bash scripts/k8s-local-up.sh --live` で 1 度置く（名前が許可集合に在るときだけ）。
+>   `DEV_CLUSTER_MARKER_REQUIRED=1` を付けると、名前と印の両方が揃うときだけ dev とする（印の無い既存のクラスタは dev ではない扱いになる）。
 
 破棄（**既定は `--dry-run`**。消す予定のものを順に表示するだけで何も変えない。実行は `--apply`）:
 
@@ -381,6 +393,15 @@ ESO を使わないときは、起動器が Secret `platform-infra/rabbitmq-user
 消した後は印（ConfigMap `platform-infra/rabbitmq-default-user`）に従い、再起動のたびに消し直す。管理 UI へ既定のユーザーで入れなくなるので、
 ブローカの操作は `kubectl -n platform-infra exec deploy/rabbitmq -- rabbitmqctl …` で行う。戻すときはスクリプト冒頭の手順。
 ブローカへの到達は NetworkPolicy `rabbitmq-ingress-clients`（`deploy/local/infra/rabbitmq.yaml`）が `users.txt` の Pod だけに絞る。
+権限は段で選ぶ。既定（段 1）は vhost 全体のままである。
+`bash deploy/local/rabbitmq-setup/reconcile-users.sh --permissions-report` で、使う名前へ絞った権限（同じディレクトリの `permissions.txt`。
+`node scripts/gen-rabbitmq-permissions.js` がコードから作る生成物）との差分と、ブローカに在るものに届くかを読む（何も書かない）。
+届くことを確かめてから `RABBITMQ_PERMISSIONS=narrow bash deploy/local/rabbitmq-setup/reconcile-users.sh` で当てる（段 2。届かないものがあれば何も変えずに止まる）。
+戻すときは `RABBITMQ_PERMISSIONS=vhost` で回し直す。再起動の直後の作り直しも、最後に当てた段に従う（ConfigMap `platform-infra/rabbitmq-permissions`）。
+合わせが途中で止まると段は `applying` のまま残り、再起動の直後の作り直しは vhost 全体（通信を止めない側）になる。合わせを回し直して確定させる。
+🔴 段 2 でも、既定の exchange（`amq.default`）への書き込みは許す（Wolverine がリスナーの停止のときに未処理のメッセージをキューへ戻す経路で、外すと
+メッセージが欠ける）。このため、キューの名前を知っていれば他のサービスのキューへ直接入れる経路は残る。取引ユニットの発注の承認は、発行元の印を
+発注執行が確かめる仕組み（AST#1538。マージ済みだが段 1 は報告のみ）で補う。外せるかは段 2 の後に検討する。
 ブローカを使うサービスを足すときは、`users.txt`・NetworkPolicy・消費側の chart を同じ変更でそろえる。
 
 | 環境変数 | 生成 Secret / キー | 既定 | 用途 |
@@ -511,7 +532,8 @@ kubectl -n platform-infra get secret e2e-accounts -o 'jsonpath={.data.E2E_USER_T
 2. ESO を同期させる（上の「反映する」の `annotate` と `wait`）。
 3. Keycloak の Admin REST（管理面はエッジに出ない。`kubectl -n platform-infra port-forward svc/keycloak 8080:8080` のうえで master realm の管理者のトークンを取り、`GET http://localhost:8080/admin/realms/platform/users?search=e2e-` で引いて `DELETE …/users/<id>`。IADR-0575・`deploy/local/edge/README.md`「Keycloak の管理コンソール」）で **`e2e-` で始まる 6 名だけ**を削除する。
    人のアカウントは消さない。`kcadm.sh` を Keycloak の Pod で exec しない（本体が OOMKilled になる）。
-4. `bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
+4. `RECONCILE_RECREATE_USERS=e2e-user,e2e-operator,e2e-admin,e2e-noaccess,e2e-revocable,e2e-trading-owner bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
+   ［2026-11-06 / IADR-0685］調停は、一度在った seed 利用者が消されていても既定では作り直さない（`kept` の行で報告する）。作り直す利用者の名前を `RECONCILE_RECREATE_USERS` に与える。
 5. 値を写した先（GitHub Actions の secrets・runner の `.env.e2e`・保存済みの storageState）を捨てて取り直す。
 
 ## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）

@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # NFR-21, NFR-05, ADR-0002, IADR-0471 (#1560): platform-infra の Postgres バックアップ（age 暗号化）の**リストア試験**。
 #
-#   bash scripts/backup-restore-drill.sh --run-dir <回のディレクトリ> --identity <age の秘密鍵ファイル> [--live | --live-counts <TSV>]
-#                                        [--exact] [--ledger-tables <ファイル>] [--db <DB 名>]... [--image <イメージ>]
+#   bash scripts/backup-restore-drill.sh {--run-dir <回のディレクトリ> | --from-s3 <リモート:バケット/…/回>} --identity <age の秘密鍵ファイル>
+#                                        [--live | --live-counts <TSV>] [--exact] [--ledger-tables <ファイル>] [--db <DB 名>]... [--image <イメージ>]
 #   bash scripts/backup-restore-drill.sh --self-test
 #
 # 手順（docs/operations/platform-infra-backup-runbook.md の「リストア試験」）:
+#   0. ［2026-11-05 / #2402・IADR-0675］--from-s3 なら、オブジェクトストレージの回を rclone で作業場所へ落とす（暗号文だけ）。
+#      COMPLETE（SHA256SUMS の sha256）が無い・合わない回は書きかけとして戻さない。資格情報は rclone の env で渡す（引数に載せない）
 #   1. 回のディレクトリの SHA256SUMS で暗号文を検証する（写しの破損を先に見つける）
 #   2. 使い捨ての Postgres をコンテナで起こす（**--network none**。外から一切つながらない。ポートも開けない）
 #   3. globals と各 DB を、age で復号しながらパイプで流し込む（平文をディスクへ書かない）
 #   4. 戻した各 DB の全テーブルの行数を取り、稼働 DB（--live。**読み取り専用トランザクション**）か、
 #      与えた TSV（--live-counts）と突き合わせる
-#   5. 使い捨てのコンテナを消す（失敗しても消す）
+#   5. 使い捨てのコンテナを消す（失敗しても・止められても消す。名前の無いボリュームごと）
+#
+# 🔴 NFR-18, IADR-0682: 戻した DB は平文である。使い捨ての Postgres のデータ領域は tmpfs（メモリ）に置き、ディスクへ書かない。
+#    イメージは VOLUME を宣言しているので、tmpfs が無いと名前の無いボリュームに平文が残る。片付けは `rm -f -v` でボリュームも消す。
 #
 # 判定:
 #   - 稼働側にあって戻した側に無いテーブル …… 失敗
@@ -40,6 +45,9 @@ err() { printf '==> drill: ERROR: %s\n' "$*" >&2; }
 usage() {
 	sed -n '4,6p' "$0" | sed 's/^# \{0,1\}//'
 }
+
+# --from-s3 の形（backup.sh の BACKUP_S3_DEST と同じ規則に、回の接尾辞までを足したもの）。
+S3_RUN_RE='^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$'
 
 # 行数の突き合わせ（純関数）。入力はどちらも `db|schema.table|count` の行。
 #   $1 = 戻した側 / $2 = 稼働側 / $3 = 台帳テーブルの一覧（`db|schema.table`。空ファイル可）/ $4 = exact（0|1）
@@ -82,24 +90,58 @@ compare_counts() {
 DRILL_CLI=""
 DRILL_NAME=""
 DRILL_WORK=""
+DRILL_S3_DIR=""
 # 使い捨てのコンテナと作業ファイル（行数の TSV だけ。平文のダンプは置かない）を片付ける。
 # 🔴 再帰削除をしない —— 作ったファイルを名前で消してから rmdir する。
+# 🔴 NFR-18, IADR-0682: `-v` で名前の無いボリュームも消す（データ領域は tmpfs だが、イメージの他の VOLUME や別のイメージに備える）。
 drill_cleanup() {
 	if [ -n "$DRILL_NAME" ] && [ -n "$DRILL_CLI" ]; then
-		"$DRILL_CLI" rm -f "$DRILL_NAME" >/dev/null 2>&1 || true
+		"$DRILL_CLI" rm -f -v "$DRILL_NAME" >/dev/null 2>&1 || true
 	fi
 	if [ -n "$DRILL_WORK" ] && [ -d "$DRILL_WORK" ]; then
 		rm -f -- "$DRILL_WORK/restored.tsv" "$DRILL_WORK/live.tsv" "$DRILL_WORK/ledger.txt" "$DRILL_WORK/globals.err"
 		rmdir -- "$DRILL_WORK" 2>/dev/null || true
 	fi
+	# 落とした暗号文（--from-s3）。🔴 再帰削除をしない —— 通常ファイルだけを名前で消してから rmdir する。
+	if [ -n "$DRILL_S3_DIR" ] && [ -d "$DRILL_S3_DIR" ]; then
+		local f
+		for f in "$DRILL_S3_DIR"/* "$DRILL_S3_DIR"/.[!.]*; do
+			[ -f "$f" ] && [ ! -L "$f" ] && rm -f -- "$f"
+		done
+		rmdir -- "$DRILL_S3_DIR" 2>/dev/null || true
+	fi
+}
+
+# オブジェクトストレージの回を作業場所へ落とし、COMPLETE を確かめる。成功なら作業場所のパスを出す。
+fetch_s3_run() {
+	local src="$1" want got
+	DRILL_S3_DIR="$(mktemp -d)"
+	trap drill_cleanup EXIT
+	if ! rclone -q copy "$src" "$DRILL_S3_DIR" >&2; then
+		err "オブジェクトストレージの回を落とせません: $src"
+		return 1
+	fi
+	if [ ! -f "$DRILL_S3_DIR/COMPLETE" ] || [ ! -f "$DRILL_S3_DIR/SHA256SUMS" ]; then
+		err "この回には COMPLETE（または SHA256SUMS）がありません。書きかけの回は戻しません: $src"
+		return 1
+	fi
+	want="$(tr -d ' \r\n' < "$DRILL_S3_DIR/COMPLETE")"
+	got="$(sha256sum < "$DRILL_S3_DIR/SHA256SUMS" | cut -d ' ' -f 1)"
+	if [ "$want" != "$got" ]; then
+		err "この回の COMPLETE が SHA256SUMS と合いません（書きかけか、別の回の混入）: $src"
+		return 1
+	fi
+	log "オブジェクトストレージの回を落としました（$src）"
+	return 0
 }
 
 main() {
-	local run_dir="" identity="" live=0 live_counts="" exact=0 ledger="" image="$DEFAULT_IMAGE"
+	local run_dir="" from_s3="" identity="" live=0 live_counts="" exact=0 ledger="" image="$DEFAULT_IMAGE"
 	local -a dbs=()
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--run-dir) run_dir="${2:-}"; shift 2 ;;
+			--from-s3) from_s3="${2:-}"; shift 2 ;;
 			--identity) identity="${2:-}"; shift 2 ;;
 			--live) live=1; shift ;;
 			--live-counts) live_counts="${2:-}"; shift 2 ;;
@@ -112,8 +154,14 @@ main() {
 		esac
 	done
 	[ "${#dbs[@]}" -gt 0 ] || dbs=("${AST_DBS[@]}")
-	if [ -z "$run_dir" ] || [ -z "$identity" ]; then
-		err "--run-dir と --identity は必須です"; usage >&2; return 2
+	if [ -n "$run_dir" ] && [ -n "$from_s3" ]; then
+		err "--run-dir と --from-s3 はどちらか一方です"; return 2
+	fi
+	if [ -n "$from_s3" ] && { [[ ! "$from_s3" =~ $S3_RUN_RE ]] || [[ "$from_s3" == *..* ]]; }; then
+		err "--from-s3 の形が不正です（<リモート>:<バケット>/<接頭辞>/<回>）: $from_s3"; return 2
+	fi
+	if { [ -z "$run_dir" ] && [ -z "$from_s3" ]; } || [ -z "$identity" ]; then
+		err "--run-dir（または --from-s3）と --identity は必須です"; usage >&2; return 2
 	fi
 	if [ "$live" -eq 1 ] && [ -n "$live_counts" ]; then
 		err "--live と --live-counts はどちらか一方です"; return 2
@@ -132,6 +180,12 @@ main() {
 		if [[ ! "$db" =~ ^[A-Za-z0-9_]+$ ]]; then err "DB 名が不正です: $db"; return 2; fi
 	done
 
+	# 0. オブジェクトストレージの回（#2402）
+	if [ -n "$from_s3" ]; then
+		fetch_s3_run "$from_s3" || return 1
+		run_dir="$DRILL_S3_DIR"
+	fi
+
 	# 1. 暗号文の検証
 	if [ ! -f "$run_dir/SHA256SUMS" ]; then err "SHA256SUMS がありません: $run_dir"; return 1; fi
 	if ! (cd "$run_dir" && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
@@ -149,6 +203,10 @@ main() {
 	DRILL_NAME="platform-backup-drill-$$"
 	DRILL_WORK="$(mktemp -d)"
 	trap drill_cleanup EXIT
+	# NFR-18, IADR-0682: 止められた（Ctrl-C・SIGTERM・端末の切断）ときも EXIT の片付けへ進める（シグナルで落ちると EXIT の trap が走らない）。
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	trap 'exit 129' HUP
 	local cli="$DRILL_CLI" name="$DRILL_NAME" work="$DRILL_WORK"
 	local restored="$work/restored.tsv" livef="$work/live.tsv" ledgerf="$work/ledger.txt"
 	: > "$restored"; : > "$livef"; : > "$ledgerf"
@@ -156,9 +214,11 @@ main() {
 
 	# 2. 使い捨ての Postgres（ネットワーク無し・ポートを開けない・パスワード不要＝外から届かない）
 	log "使い捨ての Postgres を起こします（$image・--network none）"
-	# #2391: `--rm` を付けない。containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（drill_cleanup の rm -f）が
+	# #2391: `--rm` を付けない。containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（drill_cleanup の rm -f -v）が
 	#    成功・失敗の両方で持つ。
-	if ! "$cli" run -d --network none --name "$name" -e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
+	# NFR-18, IADR-0682: データ領域（PGDATA）は tmpfs。戻した平文をディスク（名前の無いボリューム）へ書かない。大きさはメモリが上限になる。
+	if ! "$cli" run -d --network none --name "$name" --tmpfs /var/lib/postgresql/data -e PGDATA=/var/lib/postgresql/data \
+		-e POSTGRES_HOST_AUTH_METHOD=trust "$image" >/dev/null; then
 		err "コンテナを起こせません（$cli）"; return 1
 	fi
 	local i=0
@@ -263,9 +323,9 @@ self_test() {
 #!/usr/bin/env bash
 echo "docker $*" >> "$STUB_LOG"
 case "$*" in
-  run\ *) echo "stub-container-id"; exit 0 ;;
+  run\ *) [ -f "$STUB_STATE/run-fail" ] && exit 125; echo "stub-container-id"; exit 0 ;;
   rm\ *) exit 0 ;;
-  *pg_isready*) exit 0 ;;
+  *pg_isready*) [ -f "$STUB_STATE/hang" ] && { : > "$STUB_STATE/hanging"; sleep 3; }; exit 0 ;;
   *createdb*) exit 0 ;;
   *pg_restore*) cat > /dev/null; [ -f "$STUB_STATE/restore-fail" ] && exit 1; exit 0 ;;
   *psql*-c*) db=""; prev=""; for a in "$@"; do [ "$prev" = "-d" ] && db="$a"; prev="$a"; done; cat "$STUB_STATE/restored-$db.tsv" 2>/dev/null; exit 0 ;;
@@ -309,7 +369,7 @@ STUB
 	eq 'T-1560-37 --live: 戻して突き合わせ、合格する（台帳が増えただけ）' "$RC" "0"
 	LOG="$(cat "$log_file")"
 	has 'T-1560-37 使い捨てのコンテナはネットワーク無しで起こす' "$LOG" 'run -d --network none'
-	# #2391: containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（rm -f）が持つので、run に --rm を付けない。
+	# #2391: containerd の nerdctl は `run -d --rm` を拒む。片付けは EXIT の trap（rm -f -v）が持つので、run に --rm を付けない。
 	lacks 'T-2391-01 使い捨てのコンテナを --rm 付きで起こさない（nerdctl が -d と --rm の併用を拒む）' "$(grep ' run ' "$log_file")" '--rm'
 	lacks 'T-1560-37 使い捨てのコンテナはポートを開けない' "$LOG" ' -p '
 	has 'T-1560-37 稼働側は読み取り専用トランザクションで数える' "$LOG" 'PGOPTIONS=-c default_transaction_read_only=on psql'
@@ -319,7 +379,11 @@ STUB
 	has 'T-1560-37 秘密鍵はパスで age -d -i に渡す' "$LOG" "age -d -i $w/identity.txt"
 	lacks 'T-1560-37 秘密鍵の中身が出力に出ない' "$OUT" "$secret"
 	lacks 'T-1560-37 秘密鍵の中身がどのコマンドの引数にも出ない' "$LOG" "$secret"
-	has 'T-1560-37 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f platform-backup-drill-'
+	has 'T-1560-37 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f -v platform-backup-drill-'
+	# NFR-18, IADR-0682: 戻した DB（平文）をディスクへ残さない。データ領域はメモリ（tmpfs）に置き、名前の無いボリュームも消す。
+	has 'T-NFR18-01 使い捨ての Postgres のデータ領域を tmpfs に置く' "$(grep ' run ' "$log_file")" '--tmpfs /var/lib/postgresql/data'
+	has 'T-NFR18-01 データ領域の場所をイメージの既定に任せない（PGDATA を tmpfs に固定する）' "$(grep ' run ' "$log_file")" '-e PGDATA=/var/lib/postgresql/data'
+	lacks 'T-NFR18-02 片付けはボリュームを残す rm -f（-v なし）を使わない' "$LOG" 'docker rm -f platform-backup-drill-'
 	has 'T-1560-37 globals を先に流し込む' "$LOG" 'psql -q -X -h 127.0.0.1 -U postgres -d postgres'
 
 	: > "$log_file"
@@ -327,7 +391,29 @@ STUB
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc)"; RC=$?
 	rm -f "$w/state/restore-fail"
 	eq 'T-1560-38 戻せなければ失敗' "$RC" "1"
-	has 'T-1560-38 失敗しても使い捨てのコンテナを消す' "$(cat "$log_file")" 'docker rm -f platform-backup-drill-'
+	has 'T-1560-38 失敗しても使い捨てのコンテナを消す（ボリュームごと）' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
+
+	# NFR-18, IADR-0682: コンテナを起こせなかった（途中まで作られ得る）・止められた（SIGTERM）経路でも、ボリュームごと消す。
+	: > "$log_file"
+	: > "$w/state/run-fail"
+	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc)"; RC=$?
+	rm -f "$w/state/run-fail"
+	eq 'T-NFR18-03 コンテナを起こせなければ失敗' "$RC" "1"
+	has 'T-NFR18-03 起こせなくても名前で消す（ボリュームごと）' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
+
+	: > "$log_file"
+	: > "$w/state/hang"; rm -f "$w/state/hanging"
+	PATH="$w/bin:$PATH" KUBECONFIG="$w/no-such-kubeconfig" STUB_LOG="$log_file" STUB_STATE="$w/state" \
+		CONTAINER_CLI=docker KUBECTL=kubectl DRILL_WAIT_TRIES=2 DRILL_WAIT_INTERVAL=0 \
+		bash "$0" --run-dir "$w/run" --identity "$w/identity.txt" --live --db audit_svc >/dev/null 2>&1 &
+	local pid=$! n=0
+	until [ -f "$w/state/hanging" ] || [ "$n" -ge 50 ]; do sleep 0.1; n=$((n + 1)); done
+	kill -TERM "$pid" 2>/dev/null
+	wait "$pid"; RC=$?
+	rm -f "$w/state/hang" "$w/state/hanging"
+	lacks 'T-NFR18-04 止められた（SIGTERM）ら合格にしない' "$RC" "0"
+	has 'T-NFR18-04 止められても使い捨てのコンテナをボリュームごと消す' "$(cat "$log_file")" 'docker rm -f -v platform-backup-drill-'
+	lacks 'T-NFR18-04 止められたら流し込みへ進まない' "$(cat "$log_file")" 'pg_restore'
 
 	printf 'audit_svc|public.audit_log|7\nreport_svc|public.report|3\n' > "$w/live.tsv"
 	: > "$log_file"
@@ -347,6 +433,73 @@ STUB
 	eq 'T-1560-41 突き合わせる相手が無ければ止まる' "$RC" "2"
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db 'x;drop')"; RC=$?
 	eq 'T-1560-41 不正な DB 名は止まる' "$RC" "2"
+
+	# ---- #2402・IADR-0675: オブジェクトストレージの回から戻す（--from-s3） ----
+	# rclone のスタブは、リモート `objstore:` を $w/s3 の下のディレクトリとして扱う（オブジェクトストレージのモック）。
+	cat > "$w/bin/rclone" <<'STUB'
+#!/usr/bin/env bash
+echo "rclone $*" >> "$STUB_LOG"
+args=()
+for a in "$@"; do case "$a" in -*) ;; *) args+=("$a") ;; esac; done
+map() { case "$1" in objstore:*) printf '%s/%s' "$STUB_S3_ROOT" "${1#objstore:}" ;; *:*) return 1 ;; *) printf '%s' "$1" ;; esac; }
+case "${args[0]:-}" in
+  copy) src="$(map "${args[1]}")" || exit 1; dst="$(map "${args[2]}")" || exit 1
+        [ -d "$src" ] || { echo "stub rclone: directory not found" >&2; exit 3; }
+        mkdir -p "$dst" && cp "$src"/* "$dst"/ ;;
+  *) exit 1 ;;
+esac
+STUB
+	chmod +x "$w/bin/rclone"
+	local s3run="$w/s3/bkt/ast-poc/postgres/daily/2026-11-01T030000Z"
+	mkdir -p "$s3run"
+	for f in pg-globals.sql.age pg-audit_svc.dump.age pg-report_svc.dump.age; do printf 'cipher-%s' "$f" > "$s3run/$f"; done
+	(cd "$s3run" && sha256sum -- *.age > SHA256SUMS)
+	sha256sum < "$s3run/SHA256SUMS" | cut -d ' ' -f 1 > "$s3run/COMPLETE"
+	local s3_secret="stub-s3-secret-DO-NOT-LEAK"
+	drill_s3() { STUB_S3_ROOT="$w/s3" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$s3_secret" drill "$@"; }
+
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --exact --db audit_svc --db report_svc)"; RC=$?
+	eq 'T-2402-20 --from-s3: オブジェクトストレージの回から戻して突き合わせ、合格する' "$RC" "0"
+	LOG="$(cat "$log_file")"
+	has 'T-2402-20 --from-s3: rclone で回を作業場所へ落とす' "$LOG" 'rclone -q copy objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z '
+	has 'T-2402-20 --from-s3: 落とした暗号文を age -d で復号して戻す' "$LOG" "age -d -i $w/identity.txt"
+	# NFR-18, IADR-0682: --from-s3 の回も同じ使い捨ての Postgres（tmpfs）と片付け（rm -f -v。名前の無いボリュームごと）を通る。
+	has 'T-2402-20 --from-s3: 使い捨てのコンテナを最後に消す（ボリュームごと）' "$LOG" 'docker rm -f -v platform-backup-drill-'
+	has 'T-2402-20 --from-s3: 使い捨ての Postgres のデータ領域を tmpfs に置く' "$(grep ' run ' "$log_file")" '--tmpfs /var/lib/postgresql/data'
+	lacks 'T-2402-21 --from-s3: 資格情報がどのコマンドの引数にも出ない' "$LOG" "$s3_secret"
+	lacks 'T-2402-21 --from-s3: 資格情報が出力に出ない' "$OUT" "$s3_secret"
+	lacks 'T-2402-21 --from-s3: 秘密鍵の中身が出力に出ない' "$OUT" "$secret"
+
+	# COMPLETE の無い回（書きかけ）は戻さない。
+	mv "$s3run/COMPLETE" "$w/COMPLETE.bak"
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-22 --from-s3: COMPLETE の無い回は失敗' "$RC" "1"
+	has 'T-2402-22 --from-s3: COMPLETE が無いと告げる' "$OUT" 'COMPLETE'
+	lacks 'T-2402-22 --from-s3: COMPLETE の無い回ではコンテナを起こさない' "$(cat "$log_file")" 'docker run'
+	# COMPLETE が SHA256SUMS と合わない回は戻さない。
+	printf '0000\n' > "$s3run/COMPLETE"
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-22 --from-s3: COMPLETE が SHA256SUMS と合わない回は失敗' "$RC" "1"
+	lacks 'T-2402-22 --from-s3: 合わない回ではコンテナを起こさない' "$(cat "$log_file")" 'docker run'
+	mv "$w/COMPLETE.bak" "$s3run/COMPLETE"
+
+	# 暗号文が壊れた回は、既存の検証（SHA256SUMS）で止まる。
+	printf 'tampered' > "$s3run/pg-audit_svc.dump.age"
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-23 --from-s3: 暗号文が SHA256SUMS と合わなければ失敗' "$RC" "1"
+	lacks 'T-2402-23 --from-s3: 検証に落ちたらコンテナを起こさない' "$(cat "$log_file")" 'docker run'
+
+	# 落とせない回・不正な指定・--run-dir との併用は止まる。
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-01-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-24 --from-s3: 落とせない回は失敗' "$RC" "1"
+	OUT="$(drill_s3 --from-s3 'objstore:bkt/../x' --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-24 --from-s3: 不正な指定は使い方の誤りで止まる' "$RC" "2"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --run-dir "$w/run" --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-24 --from-s3 と --run-dir はどちらか一方' "$RC" "2"
 
 	printf '\nbackup-restore-drill self-test: %d passed, %d failed\n' "$passed" "$failed"
 	[ "$failed" -eq 0 ]

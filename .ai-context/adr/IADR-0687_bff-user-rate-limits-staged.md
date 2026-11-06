@@ -1,5 +1,5 @@
 ---
-title: IADR-0686 BFF の LLM を伴う口に、利用者ごと・群ごとの直近 60 秒の要求数の上限（段 1 は報告、段 2 は 429）を共有の端点フィルタで掛ける（#2432）
+title: IADR-0687 BFF の LLM を伴う口に、利用者ごと・群ごとの直近 60 秒の要求数の上限（段 1 は報告、段 2 は 429）を共有の端点フィルタで掛ける（#2432）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, ADR-0032, ADR-0044]
@@ -10,9 +10,9 @@ related_specs:
   - ../specs/20261106_2432_bff-user-rate-limits.md
 ---
 
-# IADR-0686: BFF の利用者ごとの要求数の上限（#2432）
+# IADR-0687: BFF の利用者ごとの要求数の上限（#2432）
 
-> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。番号は仮（マージ直前に develop の最大＋1 へ改める）。
+> 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
 - 状態: Accepted
 - 日付: 2026-11-06

@@ -202,7 +202,7 @@ public static class GraphBffEndpoints
                 IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
             => ForwardAsync(HttpMethod.Post, $"/graph/suggestions/generate/{documentId}", httpFactory, http, ct))
             .WithName("BffGraphSuggestionGenerate")
-            // NFR-18, IADR-0686 (#2432): 利用者ごとの要求数の上限（LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 10 件/分。
+            // NFR-18, IADR-0687 (#2432): 利用者ごとの要求数の上限（LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 10 件/分。
             .LimitPerUserOrReport("graph-suggestion", defaultPerMinute: 10)
             .Produces<List<AiSuggestionDto>>()
             .Produces(StatusCodes.Status404NotFound)

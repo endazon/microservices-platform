@@ -3,7 +3,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Extensions;
 
-// NFR-18, IADR-0686 (#2432・AI レビュー): 利用者ごとの直近 60 秒の窓。
+// NFR-18, IADR-0687 (#2432・AI レビュー): 利用者ごとの直近 60 秒の窓。
 // 🔴 段 1（Report）でも、超えた要求は記録しない（段 2 で拒んだ要求と同じ扱い）。記録は上限の件数で頭打ちになり、
 // 超過の判定（どの要求が超えたか）は段 1 と段 2 で変わらない。
 [Trait("TestKind", "Unit")]

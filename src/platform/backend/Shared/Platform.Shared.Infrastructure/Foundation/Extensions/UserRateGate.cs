@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
-// NFR-18, ADR-0032, ADR-0044, IADR-0686 (#2432): BFF の LLM を伴う口の、**利用者ごとの要求数の上限**（段階つき）。
+// NFR-18, ADR-0032, ADR-0044, IADR-0687 (#2432): BFF の LLM を伴う口の、**利用者ごとの要求数の上限**（段階つき）。
 //
 // LLM ゲートウェイの上限は呼び手のサービス単位であり、利用者 1 人の量を区別しない。外周（BFF）で利用者ごとに数える。
 //   - 段 1（`Bff:UserRateLimits:Mode` 未設定・`Report`）: 上限を超えた要求を計器と Warning で数えるだけ。応答は従来どおり。
@@ -175,7 +175,7 @@ public static class UserRateGate
     }
 }
 
-// NFR-18, IADR-0686 (#2432): 利用者ごとの直近 60 秒の窓。
+// NFR-18, IADR-0687 (#2432): 利用者ごとの直近 60 秒の窓。
 // 🔴 **超えた要求は、段に依らず記録しない**（段 2 で拒んだ要求と同じ扱い）。記録は利用者ごとに上限の件数で頭打ちになり、
 // 段 1 と段 2 で「どの要求が超えたか」の判定が変わらない（段 1 の計器が、段 2 で拒む件数をそのまま表す）。
 internal sealed class UserRateWindow

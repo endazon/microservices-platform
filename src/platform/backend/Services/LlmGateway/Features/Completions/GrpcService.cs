@@ -1,4 +1,5 @@
 using Grpc.Core;
+using LlmGateway.Domain.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Llm;
@@ -29,13 +30,14 @@ namespace LlmGateway.Features.Completions;
 // RpcException になるのは s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）・輸送不達（UNAVAILABLE）・
 // 値域外の要求（INVALID_ARGUMENT）だけである。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.LlmCompletion.LlmCompletionBase
+public sealed class LlmCompletionGrpcService(CompletionUseCase useCase, LlmCallerPolicy callerPolicy) : Pb.LlmCompletion.LlmCompletionBase
 {
     public override async Task<Pb.CompleteResponse> Complete(
         Pb.CompleteRequest request, ServerCallContext context)
     {
         var dto = ToDtoOrThrow(request);
-        var result = await useCase.ExecuteAsync(dto, IsSynthetic(context), context.CancellationToken);
+        EnsureCallerAllowed(dto, context);
+        var result = await useCase.ExecuteAsync(dto, IsSynthetic(context), context.CancellationToken, Caller(context));
         return LlmGrpcMapping.ToProto(result);
     }
 
@@ -53,7 +55,8 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         ServerCallContext context)
     {
         var dto = ToDtoOrThrow(request);
-        await foreach (var ev in useCase.StreamAsync(dto, IsSynthetic(context), context.CancellationToken))
+        EnsureCallerAllowed(dto, context);
+        await foreach (var ev in useCase.StreamAsync(dto, IsSynthetic(context), context.CancellationToken, Caller(context)))
             await responseStream.WriteAsync(LlmGrpcMapping.ToProto(ev), context.CancellationToken);
     }
 
@@ -72,9 +75,24 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         return LlmGrpcMapping.ToDto(request);
     }
 
+    // NFR-18, IADR-0684 (#2417): 呼び手ごとの許可表（REST と同じ判定器）。段 2 のときだけ PERMISSION_DENIED。
+    private void EnsureCallerAllowed(Platform.Shared.Contracts.Dtos.CompletionApiRequest dto, ServerCallContext context)
+    {
+        var decision = callerPolicy.Evaluate(
+            MachinePrincipal.ClientIdOf(context.GetHttpContext().User), dto.Purpose, dto.Model);
+        if (!decision.Allowed)
+            throw new RpcException(new Status(
+                StatusCode.PermissionDenied,
+                "この呼び手には、要求した用途（またはモデルの指定）が許可されていない。"));
+    }
+
     // NFR-02, ADR-0076 決定 4, IADR-0378, IADR-0400 決定 3: 合成監視の標識は**メタデータ**で運ぶ。
     // ASP.NET Core gRPC では `GetHttpContext().Request` が REST と同じ `HttpRequest` なので、
     // **判定は既存の単一情報源をそのまま呼ぶ**（定義を 2 つにしない）。
     private static bool IsSynthetic(ServerCallContext context) =>
         SyntheticTraffic.IsSyntheticInternalRequest(context.GetHttpContext().Request);
+
+    // NFR-18, IADR-0678 決定 3 (#2404): 上限を数える呼び手（検証済みのトークンの主体。REST と同じ関数）。
+    private static string? Caller(ServerCallContext context) =>
+        MachinePrincipal.ClientIdOf(context.GetHttpContext().User);
 }

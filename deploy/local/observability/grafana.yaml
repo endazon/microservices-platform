@@ -1597,12 +1597,18 @@ spec:
         - name: grafana
           image: grafana/grafana:11.0.0@sha256:0dc5a246ab16bb2c38a349fb588174e832b4c6c2db0981d0c3e6cd774ba66a54
           # IADR-0090 (#353): Keycloak OIDC(generic OAuth) 認証。匿名 Admin は廃止（fail-safe: 認証未設定/失敗時は
-          # 匿名フルアクセスへ倒さず、Grafana 組み込み local admin=admin/admin へフォールバックする）。
+          # 匿名フルアクセスへ倒さず、Grafana 組み込みの local admin へフォールバックする）。
+          # NFR-18, IADR-0676 決定 3 (#2407): local admin のパスワードは Secret grafana-admin（起動器が明示 ＞ 既存 ＞ 乱数で作る）。
           # issuer は https://keycloak.localhost/realms/platform（IADR-0243・#780。手順A の
           # hosts 追記＋port-forward は不要になった）。URL の使い分けは下の env のコメントを見ること。
           env:
-            # fail-safe: 匿名アクセスを無効化。ロックアウト回避の break-glass は local admin（dev 既定 admin/admin）。
+            # fail-safe: 匿名アクセスを無効化。ロックアウト回避の break-glass は local admin（パスワードは下の Secret grafana-admin）。
             - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }
+            # NFR-18, IADR-0676 決定 3 (#2407): local admin のパスワード。optional: Secret が無くても起動する。製品は DB の初回の作成の
+            #   ときしか読まないので、永続化の overlay（observability-persistence）は command のラッパーで起動のたびに DB へ合わせ、/run.sh へ exec する。
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: grafana-admin, key: password, optional: true }
             # IADR-0091 (#356) PR-2: redirect_uri 構築の基準を集約後 URL（ホスト名ベース・edge admin:50000）へ。
             # Grafana は root_url から redirect_uri=<root_url>login/generic_oauth を「一意に」生成するため、OIDC の
             # 実効ログイン経路は edge（https://grafana.localhost:50000・LOCALEDGE=1 前提）になる。ホスト名ベース＝

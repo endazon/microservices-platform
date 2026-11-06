@@ -22,7 +22,7 @@ public static class AnalysisBffEndpoints
         // 無認証でも `RagOrchestrator` が `!Granted` で LLM 呼び出し前に縮退していたが、
         // **その安全は ABAC ポリシーの内容だけに依存していた**（IADR-0044 の多層防御）。
         var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF").RequireAuthorization()
-            // NFR-18, IADR-0686 (#2432): 利用者ごとの要求数の上限（LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 20 件/分。
+            // NFR-18, IADR-0687 (#2432): 利用者ごとの要求数の上限（LLM を伴う。段 1 は報告だけ・段 2 で 429）。既定 20 件/分。
             .LimitPerUserOrReport("analysis", defaultPerMinute: 20);
 
         // FR-04, UC-01, UC-02: 検索結果を根拠に AI 回答＋出典を返す。

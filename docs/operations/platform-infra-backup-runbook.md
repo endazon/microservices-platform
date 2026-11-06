@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-11-04
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [NFR-21, NFR-05, NFR-18]
 adrs: [ADR-0132, ADR-0002, ADR-0008]
-iadrs: [IADR-0670, IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
-specs: [20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
-issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
+iadrs: [IADR-0682, IADR-0675, IADR-0670, IADR-0669, IADR-0548, IADR-0585, IADR-0525, IADR-0096, IADR-0066, IADR-0081, IADR-0369, IADR-0457, IADR-0471, IADR-0489, IADR-0568]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261105_2402_cloud-backup-alerts-heartbeat, 20261104_2394_backup-wait-dependencies, 20261104_2389_backup-concurrent-runs, 20261016_1868_openbao-raft-snapshot-backup, 20261022_ghsa-j4qv_vault-k8s-auth-audience, 20261009_1840_secret-store-openbao, 20260926_issue-1560_platform-infra-encrypted-backup, 20260926_issue-1564_platform-backup-image, 20260928_issue-1689_backup-image-build-warn-cause, 20260929_issue-1699_backup-cronjob-suspend-until-ready, 20261001_issue-1709_backup-suspended-status, 20261001_1709_backup-image-build-credential-helper, 20261020_2005_age-apkindex-watch]
+issues: [#2413, #2402, #2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, AST#346]
 -->
 
 # 運用 Runbook: platform-infra の暗号化バックアップ
@@ -21,6 +21,7 @@ issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, A
 >
 > 🔴 **ローカル開発・PoC 環境（`deploy/local`）専用である。本番のバックアップ設計ではない。**
 > 保管先は本機の C: と E: であり、本機そのものを失えば両方を失う（オフサイトではない）。
+> クラウドの最小構成（単一ノード・オブジェクトストレージへの保管・Discord への警報）の手順は、別の runbook（[cloud-backup-alerts-heartbeat-runbook.md](cloud-backup-alerts-heartbeat-runbook.md)）にある。
 >
 > 🔴 **秘密鍵（age の identity）はクラスタにもリポジトリにも置かない。** 本書のどの手順も秘密鍵の中身を表示しない。
 
@@ -278,37 +279,14 @@ issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, A
    リポジトリの作業ツリーの根で、`RUN` に試す回（例 `/c/platform-infra-backups/vault/2026-10-16T031500Z`）、`KEY` に秘密鍵のファイルを入れて:
 
    ```bash
-   BAO_IMAGE="$(sed -n 's/^ *image: \(openbao\/openbao:.*\)$/\1/p' deploy/local/vault/vault-dev.yaml)"
-   W="$(mktemp -d)"
-   (cd "$RUN" && sha256sum -c SHA256SUMS)                                   # 保管先の写しの検証
-   age -d -i "$KEY" -o "$W/raft.snap" "$RUN/vault-raft.snap.age"
-   age -d -i "$KEY" -o "$W/init" "$RUN/vault-init.age"
-   mkdir "$W/x" && tar -xzf "$W/raft.snap" -C "$W/x" && (cd "$W/x" && sha256sum -c SHA256SUMS)   # meta.json: OK / state.bin: OK
-   chmod 755 "$W" && chmod 644 "$W/raft.snap" "$W/init"                    # コンテナの利用者（openbao）が読めるように
-   docker run -d --name bao-drill --network none -v "$W:/drill:ro" --entrypoint sh "$BAO_IMAGE" -c '
-     mkdir -p /tmp/raft && printf "%s\n" "storage \"raft\" {" "  path = \"/tmp/raft\"" "  node_id = \"drill\"" "}" \
-       "listener \"tcp\" {" "  address = \"127.0.0.1:8200\"" "  tls_disable = true" "}" \
-       "api_addr = \"http://127.0.0.1:8200\"" "cluster_addr = \"http://127.0.0.1:8201\"" > /tmp/drill.hcl &&
-     exec bao server -config=/tmp/drill.hcl'
-   sleep 5
-   docker exec bao-drill sh -c '
-     export BAO_ADDR=http://127.0.0.1:8200
-     bao operator init -key-shares=1 -key-threshold=1 > /tmp/new || exit 1
-     printf "%s" "$(sed -n "s/^Unseal Key 1: //p" /tmp/new)" | bao write sys/unseal key=- >/dev/null || exit 1
-     sleep 3
-     BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /tmp/new)" bao operator raft snapshot restore -force /drill/raft.snap || exit 1
-     sleep 3
-     printf "%s" "$(sed -n "s/^Unseal Key 1: //p" /drill/init)" | bao write sys/unseal key=- >/dev/null || exit 1
-     sleep 3
-     BAO_TOKEN="$(sed -n "s/^Initial Root Token: //p" /drill/init)" bao kv list secret/msp'
-   echo "drill: $?"                                                          # 0 で、KV の名前の一覧が出れば合格
-   docker rm -f bao-drill
-   rm -rf "$W"                                                               # 🔴 復号したものを残さない
+   bash scripts/vault-restore-drill.sh --run-dir "$RUN" --identity "$KEY"     # 「合格: … secret/msp の名前を N 件読めました」で終了コード 0
    ```
 
+   - 復号したもの（スナップショットと init のファイル。unseal 鍵と root トークンを含む）は、使い捨てのコンテナの tmpfs へ直に流す。
+     **手元のディスクに平文を置かない。** コンテナは成否・中断（Ctrl-C）によらず、名前の無いボリュームごと消える。
    - 使い捨ての OpenBao は新しい鍵で init してから、写しを `-force` で戻す（鍵が違うので sealed になる）。そこへ写しの init のファイルの
      unseal 鍵を与えて開く —— §5 の「失ったときの戻し」と同じ道筋を、稼働側に触れずに通している。
-   - 値は表示しない（`kv list` は名前だけ）。数を稼働側と比べるなら `| wc -l` を付ける。
+   - 値は表示しない（`secret/msp` の名前の数だけを出す）。
    - **差し替え（OpenBao への移行）の前に取った回**は `vault-data.tar.gz.age`（旧 Vault の file ストレージの tar）で、この手順の対象外である。
      復号できることだけを確かめる: `age -d -i "$KEY" "$RUN/vault-data.tar.gz.age" | tar -tzf - | head`。
 
@@ -332,7 +310,7 @@ issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, A
 
     ```bash
     age -d -i <秘密鍵のファイル> <回>/vault-raft.snap.age | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
-      'umask 077; f="$(mktemp)"; cat > "$f" && VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault operator raft snapshot restore "$f"; rc=$?; rm -f "$f"; exit $rc'
+      'umask 077; f="$(mktemp)"; trap "rm -f -- \"\$f\"" EXIT; cat > "$f" && VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault operator raft snapshot restore "$f"'
     kubectl -n platform-infra exec deploy/vault -- vault status | grep Sealed     # false
     ```
 
@@ -344,7 +322,7 @@ issues: [#2394, #2389, #1840, #1868, #1709, #1560, #1564, #1689, #1699, #2005, A
     ```bash
     kubectl -n platform-infra rollout status deploy/vault --timeout=180s            # 新しい鍵で init・unseal 済み
     age -d -i <秘密鍵のファイル> <回>/vault-raft.snap.age | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
-      'umask 077; f="$(mktemp)"; cat > "$f" && VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault operator raft snapshot restore -force "$f"; rc=$?; rm -f "$f"; exit $rc'
+      'umask 077; f="$(mktemp)"; trap "rm -f -- \"\$f\"" EXIT; cat > "$f" && VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID" vault operator raft snapshot restore -force "$f"'
     # 鍵が違うので、ここで sealed になる（正しい）。init のファイルを写しの方へ差し替える:
     age -d -i <秘密鍵のファイル> <回>/vault-init.age | kubectl -n platform-infra exec -i deploy/vault -- sh -c \
       'umask 077; cat > /vault/data/.local-dev-init.restore && mv /vault/data/.local-dev-init.restore /vault/data/.local-dev-init'

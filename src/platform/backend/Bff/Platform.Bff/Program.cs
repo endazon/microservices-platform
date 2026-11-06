@@ -242,7 +242,7 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
 // Bearer で受理するのは無人の主体（サービス間）だけである（BearerCallerPolicy。IADR-0429 / #1535）。
 builder.Services.AddBffSession(builder.Configuration);
 
-// NFR-18, IADR-0686 (#2432): LLM を伴う口の利用者ごとの要求数の上限の設定（`Bff:UserRateLimits`）。起動時に検証する。
+// NFR-18, IADR-0687 (#2432): LLM を伴う口の利用者ごとの要求数の上限の設定（`Bff:UserRateLimits`）。起動時に検証する。
 builder.Services.AddUserRateLimits(builder.Configuration);
 
 // SC-22, FR-05, ADR-0095 決定 3, IADR-0433, IADR-0453 (#1411): 秘密情報の投入（BFF → Vault の KV v2）。

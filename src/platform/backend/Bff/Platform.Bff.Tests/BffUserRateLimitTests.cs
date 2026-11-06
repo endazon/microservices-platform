@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Platform.Bff.Tests;
 
-// NFR-18, ADR-0032, ADR-0044, IADR-0686 (#2432): BFF の LLM を伴う口の、利用者ごとの要求数の上限。
+// NFR-18, ADR-0032, ADR-0044, IADR-0687 (#2432): BFF の LLM を伴う口の、利用者ごとの要求数の上限。
 // 群は 3 つ（analysis = /bff/analysis/*、search = /bff/search、graph-suggestion = /bff/graph/suggestions/generate/*）。
 // 🔴 段 1（既定 Report）は止めない。段 2（Enforce）は上限を超えた要求を 429 で拒み、後段へ転送しない。
 // 設定キーは配備が書く外部の契約なので綴りで書く。

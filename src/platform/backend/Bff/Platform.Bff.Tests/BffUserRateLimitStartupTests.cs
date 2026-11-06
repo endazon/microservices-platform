@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Platform.Bff.Tests;
 
-// NFR-18, IADR-0686 (#2432・AI レビュー): 利用者ごとの上限の設定は**起動時に**検証し、不正なら起動を止める
+// NFR-18, IADR-0687 (#2432・AI レビュー): 利用者ごとの上限の設定は**起動時に**検証し、不正なら起動を止める
 // （最初の要求で 500 にしない。LLM ゲートウェイの段の切り替えと同じ方針）。
 public sealed class BffUserRateLimitStartupTests : IDisposable
 {

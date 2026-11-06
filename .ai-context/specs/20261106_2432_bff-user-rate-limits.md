@@ -2,7 +2,7 @@
 title: 作業仕様書 — BFF の LLM を伴う口に、利用者ごとの要求数の上限を掛ける（段 1 は報告・段 2 で 429。#2432）
 type: spec
 status: done
-related_ids: [NFR-18, ADR-0032, ADR-0044, IADR-0686]
+related_ids: [NFR-18, ADR-0032, ADR-0044, IADR-0687]
 author: claude
 created: 2026-11-06
 updated: 2026-11-06
@@ -19,7 +19,7 @@ issue: "#2432"
 - `GraphBffEndpoints.cs` の注記にも「BFF に LLM 経路の流量制限は無い」とあった（本 PR で改めた）。
 - LLM ゲートウェイの上限は呼び手のサービス単位であり、利用者 1 人の量は区別しない。
 
-## 方針（IADR-0686）
+## 方針（IADR-0687）
 
 - 共有の門 `UserRateGate.LimitPerUserOrReport(群, 既定)`（`Platform.Shared.Infrastructure`）を、LLM を伴う 3 つの口に掛ける。
 - 段は `Bff:UserRateLimits:Mode` で切り替える。段 1（既定）は報告だけ、段 2 は 429。
