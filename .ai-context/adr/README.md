@@ -761,3 +761,4 @@
 | [IADR-0681](./IADR-0681_rabbitmq-narrow-permissions-staged.md) | ブローカのサービスごとのユーザーの権限は、コード（Wolverine の配線）から導いたキューと exchange の名前の正規表現へ絞る。段 1 は報告だけ、段 2 で明示して当てる（#2412） | Accepted |
 | [IADR-0682](./IADR-0682_plaintext-cleanup-and-otel-collector-netpol.md) | 復号した物と秘密は手元のディスク・シェルの環境・コマンドの引数に残さない（リストア試験は tmpfs と trap、手順書は read -rs・age へのパイプ）。otel-collector の到達は opt-in の NetworkPolicy で絞る（#2413） | Accepted |
 | [IADR-0683](./IADR-0683_vault-operator-policy-least-privilege.md) | 秘匿管理の運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える（#2421） | Accepted |
+| [IADR-0684](./IADR-0684_llm-caller-purpose-policy-staged.md) | LLM ゲートウェイの補完は、呼び手ごとの許可表（用途・モデルの明示の指定）を REST と gRPC の両面で 1 つの判定器が見る。段 1 は報告、段 2 は 403 / PERMISSION_DENIED（#2417） | Accepted |

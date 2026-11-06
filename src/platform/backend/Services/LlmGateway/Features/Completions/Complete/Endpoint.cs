@@ -1,3 +1,4 @@
+using LlmGateway.Domain.Authorization;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
@@ -17,9 +18,16 @@ public static class CompleteEndpoint
         app.MapPost("/complete", async (
             CompletionApiRequest req,
             CompletionUseCase useCase,
+            LlmCallerPolicy callerPolicy,
             HttpContext http,
             CancellationToken ct) =>
         {
+            // NFR-18, IADR-0684 (#2417): 呼び手ごとの許可表（段 2 のときだけ拒む）。判定器へ入る前に見る。
+            if (!callerPolicy.Evaluate(MachinePrincipal.ClientIdOf(http.User), req.Purpose, req.Model).Allowed)
+                return Results.Problem(
+                    statusCode: StatusCodes.Status403Forbidden,
+                    title: "この呼び手には、要求した用途（またはモデルの指定）が許可されていない。");
+
             // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視のトラフィックか。
             // 🔴 **本サービスはメッシュ内部の面である**（外部から到達しない）。標識は外周（BFF）が
             // 検証済み JWT の主体から決めて付けたヘッダであり、ここでは引き継ぐだけである。
