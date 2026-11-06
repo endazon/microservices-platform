@@ -64,3 +64,20 @@ b() { BAO_TOKEN="$T" bao "$@"; }
 done_revoke() { BAO_TOKEN="$T" bao token revoke -self >/dev/null 2>&1 || true; }
 trap done_revoke EXIT
 '
+
+# Pod の中の関数: パスとキーの有無を、OpenBao が「無い」と明示したときだけ「無い」と読む（IADR-0689 決定 11。2026-11-07）。
+# 🔴 権限・通信・封印などで読めないときは unknown を返す。呼び手は unknown なら書かずに止める（無いと読むと、kv put がパスの
+#    既存のキーを全部置き換える）。字面は OpenBao 2.7.1 の CLI で確かめた:
+#    パスが無い → 「No value found at cloud/metadata/<パス>」（終了 2）・キーが無い → 「Field "<キー>" not present in …」（終了 1）。
+#    値は読まない（kv get の標準出力は捨て、エラーの出力だけを見る）。
+# shellcheck disable=SC2016
+OB_POD_KV_STATE='
+path_state() {
+  _e="$(b kv metadata get -mount=cloud "$1" 2>&1 >/dev/null)" && { echo present; return 0; }
+  case "$_e" in "No value found at cloud/metadata/$1"*) echo absent ;; *) echo unknown ;; esac
+}
+key_state() {
+  _e="$(b kv get -mount=cloud -field="$2" "$1" 2>&1 >/dev/null)" && { echo present; return 0; }
+  case "$_e" in *"Field \"$2\" not present in"*) echo absent ;; *) echo unknown ;; esac
+}
+'

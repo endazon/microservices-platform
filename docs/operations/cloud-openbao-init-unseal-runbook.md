@@ -120,7 +120,7 @@ openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       #
 
 - 書けるのは `cloud/ast`・`cloud/platform`・`cloud/msp` の下だけ（`cloud/shared` は §4 の `seed-secrets.sh` が作る）。
 - **キーが在れば止まる**（終了コード 5。何も変えない）。作り直すときだけ `--overwrite` を付ける（同じパスのほかのキーは残す）。
-- 終了コード: 0 書いた・1 失敗・2 引数の誤りか値が空・3 `--live` が無い・5 キーが在る。
+- 終了コード: 0 書いた・1 失敗（パスやキーの有無を読めないときも、書かずに 1）・2 引数の誤りか値が空・3 `--live` が無い・5 キーが在る。
 - 書いた後は ESO が 1 時間以内に写す。すぐに写すときは `kubectl -n <名前空間> annotate externalsecret <名前> force-sync="$(date +%s)" --overwrite`。
 
 | 値 | パス | キー | 写す先（名前空間 / Secret） |

@@ -241,6 +241,26 @@ set +e; "${PUT_CMD[@]}" "cloud/ast/ast-owner-totp" secret < "$W/totp" >/dev/null
 "${PUT_CMD[@]}" --overwrite "cloud/ast/ast-owner-totp" secret < "$W/totp" >/dev/null || ng "取引ユニットの呼び方で、--overwrite（前置きの後ろ）が効かない"
 rm -f "$W/rsa.expected" "$W/rsa.got" "$W/totp"
 ok "put: 値を標準入力からだけ受けてそのまま書き（PEM の改行も変えない）、在るキーは 5 で止まり、--overwrite でだけ上書きし、cloud/shared へは書かない。取引ユニットの呼び方で通る"
+# 読めない状態（オーナー用の policy から読み取りを外す）では、書かずに 1 で止まり、在る値もほかのキーも変えない
+RP="$(mkroot)"
+policy_without() { grep -v -- "$1" "$HERE/policies/cloud-operator.hcl" | BAO_TOKEN="$RP" B policy write cloud-operator - >/dev/null; }
+before="$(BAO_TOKEN="$RP" B kv get -mount=cloud -format=json msp/llm-provider-credentials | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s).data.data)))')"
+for cut in 'cloud/metadata/' 'cloud/data/'; do
+  if [ "$cut" = 'cloud/data/' ]; then
+    # データの読み取りだけを外す（書き込みは残す）: パスの有無は読めて、キーの有無が読めない
+    sed 's/"create", "read", "update", "patch"/"create", "update", "patch"/' "$HERE/policies/cloud-operator.hcl" | BAO_TOKEN="$RP" B policy write cloud-operator - >/dev/null
+  else
+    policy_without "$cut"
+  fi
+  set +e; printf '%s' "$(head -c 30 /dev/urandom | base64 | tr -d '\n=+/')" | put cloud/msp/llm-provider-credentials new-key >"$W/put.log" 2>&1; rc=$?; set -e
+  [ "$rc" -eq 1 ] || ng "読めない状態（$cut を外した）の put が 1 で止まらない（$rc）"
+  grep -q '読めない' "$W/put.log" || ng "読めない状態の put が理由を言わない（$cut）"
+  BAO_TOKEN="$RP" B policy write cloud-operator "$HERE/policies/cloud-operator.hcl" >/dev/null
+  after="$(BAO_TOKEN="$RP" B kv get -mount=cloud -format=json msp/llm-provider-credentials | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s).data.data)))')"
+  [ "$after" = "$before" ] || ng "読めない状態の put が、在るパスの値を変えた（$cut を外した。ほかのキーが消えた）"
+done
+BAO_TOKEN="$RP" B token revoke -self >/dev/null
+ok "put: パスやキーの有無を読めないとき（読み取りを外した資格）は、書かずに 1 で止まり、在るパスの値もほかのキーも変えない"
 
 R1="$(mkroot)"
 

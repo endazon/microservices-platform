@@ -13,7 +13,7 @@
 #   OpenBao の中で作る）へは書かない。
 # - Pod の中では値を表示しない。オーナー用の資格は age の復号からパイプで Pod の標準入力へだけ流す（lib.sh）。
 #
-# 終了コード: 0＝書いた / 1＝失敗 / 2＝引数の誤り・値が空 / 3＝--live が無い / 5＝キーが在る（--overwrite なし。何も変えない）
+# 終了コード: 0＝書いた / 1＝失敗（有無を読めないときも書かずに 1） / 2＝引数の誤り・値が空 / 3＝--live が無い / 5＝キーが在る（--overwrite なし。何も変えない）
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -54,19 +54,23 @@ POD_PUT='
 p="__REL__"; k="__KEY__"; over="__OVER__"
 v="$(cat; printf x)"; v="${v%x}"
 [ -n "$v" ] || { echo "ERROR: 値が空（何も書かない）" >&2; exit 2; }
-if b kv metadata get -mount=cloud "$p" >/dev/null 2>&1; then
-  if b kv get -mount=cloud -field="$k" "$p" >/dev/null 2>&1 && [ "$over" != 1 ]; then
-    unset v; echo "ERROR: cloud/$p の $k は在る。上書きしない（上書きは --overwrite）" >&2; exit 5
-  fi
-  op=patch
-else
-  op=put
-fi
+# パスが在れば常に patch（ほかのキーを残す）。put はパスが「無い」と OpenBao が明示したときだけ。読めなければ書かずに止める。
+case "$(path_state "$p")" in
+  present)
+    case "$(key_state "$p" "$k")" in
+      present) if [ "$over" != 1 ]; then unset v; echo "ERROR: cloud/$p の $k は在る。上書きしない（上書きは --overwrite）" >&2; exit 5; fi ;;
+      absent) ;;
+      *) unset v; echo "ERROR: cloud/$p の $k の有無を読めない（権限・通信・封印）。書かずに止める" >&2; exit 1 ;;
+    esac
+    op=patch ;;
+  absent) op=put ;;
+  *) unset v; echo "ERROR: cloud/$p の有無を読めない（権限・通信・封印）。書かずに止める" >&2; exit 1 ;;
+esac
 printf "%s" "$v" | b kv "$op" -mount=cloud "$p" "$k=-" >/dev/null
 unset v
 echo "    書いた: cloud/$p の $k（値は表示しない）"
 '
 POD_PUT="${POD_PUT/__REL__/$REL}"; POD_PUT="${POD_PUT/__KEY__/$K}"; POD_PUT="${POD_PUT/__OVER__/$OVERWRITE}"
 # 値は手元の標準入力から、資格の 2 行の後ろへそのまま続けて Pod の標準入力へ流す（ディスクに書かない）。
-{ ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id; cat; } | ob_exec "${OB_POD_LOGIN}${POD_PUT}"
+{ ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id; cat; } | ob_exec "${OB_POD_LOGIN}${OB_POD_KV_STATE}${POD_PUT}"
 echo "OK: ${P} の ${K} を書いた（値は表示しない）。ESO が写すまで待つか、ExternalSecret に force-sync の注釈を付ける"

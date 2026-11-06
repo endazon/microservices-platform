@@ -63,7 +63,11 @@ ob_need kubectl age node
 # Pod の中の共通の関数（値を持たない）
 # shellcheck disable=SC2016
 POD_FN='
-have() { b kv metadata get -mount=cloud "$1" >/dev/null 2>&1; }
+# 有無は OB_POD_KV_STATE（lib.sh）で読む。読めなければ書かずに止める（無いと読むと put が既存の値を置き換える）。
+have() {
+  case "$(path_state "$1")" in present) return 0 ;; absent) return 1 ;;
+    *) echo "ERROR: cloud/$1 の有無を読めない（権限・通信・封印）。書かずに止める" >&2; exit 1 ;; esac
+}
 hex() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d " \n"; }
 '
 
@@ -102,22 +106,27 @@ perkey shared/ast-client-secrets __CLIENTS__
     POD_SEED="${POD_SEED/__MQ_USERS__/$MQ_USERS}"
     POD_SEED="${POD_SEED/__CLIENTS__/$CLIENTS}"
     echo "==> クラスタの中で使う資格情報を OpenBao の中で作る（在れば触らない。値は表示しない）"
-    ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${POD_FN}${POD_SEED}"
+    ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${OB_POD_KV_STATE}${POD_FN}${POD_SEED}"
     ;;
   gen)
     REL="${ARGS[0]#cloud/}" KEY="${ARGS[1]}" BYTES="${ARGS[2]}"
     # shellcheck disable=SC2016
     POD_GEN='
 p="__REL__"; k="__KEY__"; n="__BYTES__"
-if have "$p" && b kv get -mount=cloud -field="$k" "$p" >/dev/null 2>&1; then
-  echo "ERROR: cloud/$p の $k は在る。上書きしない" >&2; exit 5
+if have "$p"; then
+  case "$(key_state "$p" "$k")" in
+    present) echo "ERROR: cloud/$p の $k は在る。上書きしない" >&2; exit 5 ;;
+    absent) op=patch ;;
+    *) echo "ERROR: cloud/$p の $k の有無を読めない（権限・通信・封印）。書かずに止める" >&2; exit 1 ;;
+  esac
+else
+  op=put
 fi
-if have "$p"; then op=patch; else op=put; fi
 head -c "$n" /dev/urandom | base64 | tr -d "\n" | b kv "$op" -mount=cloud "$p" "$k=-" >/dev/null
 echo "    書いた: cloud/$p の $k（$n バイトの乱数・標準の base64。値は表示しない）"
 '
     POD_GEN="${POD_GEN/__REL__/$REL}"; POD_GEN="${POD_GEN/__KEY__/$KEY}"; POD_GEN="${POD_GEN/__BYTES__/$BYTES}"
-    ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${POD_FN}${POD_GEN}"
+    ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${OB_POD_KV_STATE}${POD_FN}${POD_GEN}"
     ;;
 esac
 echo "OK: ${CMD} を終えた（値は表示しない）"
