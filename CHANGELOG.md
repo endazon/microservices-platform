@@ -784,6 +784,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2475) (ef9f75cc)
 - **NFR**: CHANGELOG を自動更新 (#2472) (9df3d8c9)
 - **NFR**: CHANGELOG を自動更新 (#2468) (206836b7)
 - **NFR**: CHANGELOG を自動更新 (#2465) (8bf398bb)
@@ -986,6 +987,7 @@
 
 ### テスト
 
+- **NFR**: check-nul-bytes の変異試験を、作業ツリーを書き換えない一時のリポジトリで行う (#2488) (8a8989ca)
 - **NFR**: k8s-local-up.test.js のコマンド列の比較で、ノードの Ready 待ちの残り時間を伏せる（#2442） (#2443) (77d9a135)
 - **NFR**: backup.test.sh の保持の判定を here-string にし、source で受け継ぐ pipefail の下の「| grep -q」も検査する（#2436） (#2437) (00fa8b26)
 - **FR-11**: 逐次応答の無通信の期限の試験を、実時間の余裕に頼らない比へ改める（#2426） (#2428) (17565cd0)
@@ -1186,6 +1188,7 @@
 
 ### その他
 
+- **NFR**: 公開のファイルから非公開の指摘の識別子を除き、advisory の識別子を allowlist の検査器で止める (#2480) (8cca73e2)
 - **deps**: bump the codeql-action group with 2 updates (#2473) (43c4f70e)
 - **deps-dev**: bump eslint-plugin-lingui from 0.14.0 to 0.16.0 in /src (#2453) (2e08dc7f)
 - **deps**: bump @hookform/resolvers from 5.9.2 to 7.0.1 in /src (#2454) (74297400)
