@@ -37,6 +37,7 @@ related_specs:
 - `collectLive` はサービスアカウント利用者の全割当を読む。読めない形なら余剰を見ない。
 - 余剰は `plan` の出力先 `surplus` に積む（`ops` に混ぜない）。数えないもの: `default-roles-<realm>`、自分の client の `uma_protection`。
 - `--check` は余剰を drift に数える。apply は段 1（既定）では外さずに `surplus` の行で報告し、収束の判定に入れない。`RECONCILE_REMOVE_SURPLUS=1`（Job の env。起動器の `reconcile-realm.sh` が 0 / 1 だけを受ける）で外す。
+- `plan` の出力先は IADR-0685 の `kept`（稼働側の無効化・削除を戻さない）と並べて持つ。Job の差し替えは、余剰の `"0"` の行を作り直しの名前の `""` の行より先に当てる（名前が `0` でも互いの env へ当たらない）。
 
 ## 結果
 
