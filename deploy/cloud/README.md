@@ -105,6 +105,7 @@ kubectl -n platform-infra get pods                                # すべてが
 ```
 
 - マウントせずに `systemctl start k3s` しても、drop-in の条件で起動しない（`systemctl status k3s` に条件が満たされない旨が出る）。
+- **`systemctl start k3s` の終了コードで成否を判断しない。** 条件が満たされずに起動しなかったときも 0 で終わる。`mountpoint` の確かめを先に行い、起動の後は `systemctl is-active k3s` と Pod の Ready で確かめる。
 
 ## 2. イメージ
 
@@ -125,13 +126,15 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 ```sh
 kubectl apply -f deploy/cloud/infra/namespaces.yaml
 ANTHROPIC_API_KEY_FILE=<鍵の 0600 のファイル> bash deploy/cloud/bootstrap-secrets.sh --live   # 値は表示しない。在る Secret は触らない
-kubectl apply -k deploy/cloud/infra
+kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ（backup）・観測（observability）と、collector の結線（patch）を一緒に当てる
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
 
+- `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言が入らない。
+  バックアップの保管先・Discord・heartbeat の資格情報は、[運用手順書](../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md)の準備で作る（作るまで Alertmanager は起動しない）。
 - **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットが読む Secret（`ast-db`・`rabbitmq-users`・
   `keycloak-client-secrets`）と CA（ConfigMap `platform-infra-ca`）の写し方も、取引ユニットの側の手順が持つ。

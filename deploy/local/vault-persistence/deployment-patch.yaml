@@ -13,6 +13,14 @@
   value:
     name: VAULT_ADDR
     value: "http://127.0.0.1:8200"
+# NFR-18, IADR-0676 (#2407): 固定 root トークンを印の後に作り直すかの切り替え（段 2 は `1`）。起動器が VAULT=1 の実行のたびに
+#   ConfigMap vault-local-switches を書く（INFRA_CREDENTIALS_ENFORCE=1 なら 1）。optional: 無ければ段 1（従前どおり）。
+- op: add
+  path: /spec/template/spec/containers/0/env/-
+  value:
+    name: VAULT_ROOT_TOKEN_INIT_ONLY
+    valueFrom:
+      configMapKeyRef: { name: vault-local-switches, key: root-token-init-only, optional: true }
 - op: add
   path: /spec/template/spec/containers/0/readinessProbe
   value:
