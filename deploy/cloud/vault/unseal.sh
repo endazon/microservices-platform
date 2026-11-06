@@ -29,6 +29,8 @@ ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
 live_opt_in_require "unseal.sh"
 ob_need kubectl age node
 
+# 開けた後、書き込みを受ける状態（active）になるまで待ってから OK を出す（lib.sh の wait_active）。
+# 開けた直後の standby の間は読み取りだけが通り、続けて流す configure の失効・seed・put の書き込みが落ちるため。
 # shellcheck disable=SC2016
 ob_decrypt_lines "$INIT_FILE" "$IDENTITY" unseal_keys_b64 | ob_exec '
 set -eu
@@ -39,5 +41,12 @@ case "$out" in
   *"\"sealed\": false"*) ;;
   *) echo "ERROR: 開けなかった（鍵が違うか、OpenBao の状態を確かめる）" >&2; exit 1 ;;
 esac
+'"$OB_POD_WAIT_ACTIVE"'
+rc=0; wait_active || rc=$?
+case "$rc" in
+  0) ;;
+  1) echo "ERROR: 開けたが、'"$OB_ACTIVE_WAIT_S"' 秒待っても書き込みを受ける状態（active）にならない。OpenBao のログ（raft のリーダー選出）を確かめ、unseal.sh を流し直す" >&2; exit 1 ;;
+  *) echo "ERROR: 開けた後に、封印中か届かない状態になった。OpenBao の状態を確かめる" >&2; exit 1 ;;
+esac
 '
-echo "OK: OpenBao を開けた（値は表示しない）。ESO の同期が戻るまで待つ: kubectl get externalsecret -A"
+echo "OK: OpenBao を開け、書き込みを受ける状態（active）になった（値は表示しない）。ESO の同期が戻るまで待つ: kubectl get externalsecret -A"

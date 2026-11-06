@@ -44,16 +44,19 @@ ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
 
 # 初回の root を失効させる（既に失効していれば何もしない）。失効したことを確かめて 0。
-# 🔴 「失効した」と読むのは、OpenBao に届き、unseal 済み（sealed=false）で、lookup が permission denied（403）を返したときだけ。
+# 🔴 「失効した」と読むのは、OpenBao に届き、unseal 済みで書き込みを受ける状態（active）にあり、lookup が permission denied（403）を返したときだけ。
 #    封印中・届かない・想定外のエラーは、失効したとも生きているとも言わずに止める（fail-open にしない）。
+#    開けた直後の standby（読み取りだけが通る）の間は、active になるまで待つ（lib.sh の wait_active）。
 # shellcheck disable=SC2016
 revoke_root() {
   ob_decrypt_lines "$INIT_FILE" "$IDENTITY" root_token | ob_exec '
 set -eu
 read -r T
-st="$(bao status -format=json 2>/dev/null || true)"
-case "$st" in
-  *"\"sealed\": false"*) ;;
+'"$OB_POD_WAIT_ACTIVE"'
+rc=0; wait_active || rc=$?
+case "$rc" in
+  0) ;;
+  1) echo "ERROR: OpenBao が書き込みを受ける状態（active）にならない（開けた直後の standby のまま）。失効させられず、判定もしない（OpenBao の状態を確かめてから流し直す）" >&2; exit 1 ;;
   *) echo "ERROR: OpenBao が封印中か、届かない。root が失効したかを判定できない（unseal.sh で開けてから流し直す）" >&2; exit 1 ;;
 esac
 root_state() {

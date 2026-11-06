@@ -37,8 +37,21 @@ for _ in $(seq 1 50); do rc=0; BAO_ADDR="$TEST_BAO_ADDR" "$BAO" status >/dev/nul
 
 # kubectl のスタブ（引数を全部記録する。値が引数に載れば、後の確かめで見つかる）
 # Pod の中の bao。試験は BAO_FAIL_ON（引数の部分文字列）で 1 回だけ失敗を差し込める（途中で落ちる経路の確かめ）。
+# BAO_STANDBY_STATUS=N は、最初の N 回の `bao status` を、開けた直後の standby の形（active の欄 is_self・leader_* ・
+# active_time が無い。OpenBao 2.7.1 の実測）で返す（回数は $W/standby.count）。
 cat > "$W/bin/bao" <<EOF
 #!/usr/bin/env bash
+if [ -n "\${BAO_STANDBY_STATUS:-}" ] && [ "\${1:-}" = status ]; then
+  n="\$(cat "$W/standby.count" 2>/dev/null || echo 0)"
+  if [ "\$n" -lt "\$BAO_STANDBY_STATUS" ]; then
+    echo "\$((n + 1))" > "$W/standby.count"
+    out="\$("$BAO" "\$@")"; rc=\$?
+    while IFS= read -r l; do
+      case "\$l" in *'"is_self"'* | *'"leader_'* | *'"active_time"'*) ;; *) printf '%s\n' "\$l" ;; esac
+    done <<< "\$out"
+    exit "\$rc"
+  fi
+fi
 if [ -n "\${BAO_FAIL_ON:-}" ] && [[ " \$* " == *"\$BAO_FAIL_ON"* ]] && [ ! -e "$W/fail.done" ]; then
   : > "$W/fail.done"; echo "injected failure: \$BAO_FAIL_ON" >&2; exit 1
 fi
@@ -104,8 +117,10 @@ ok "init: 1 分割・閾値 1 の出力を age で暗号化したファイル（
 
 # --- unseal ---
 run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null
-[[ "$(B status -format=json || true)" == *'"sealed": false'* ]] || ng "開いていない"
-ok "unseal: 復号した鍵を標準入力で渡して開ける"
+st="$(B status -format=json || true)"
+[[ "$st" == *'"sealed": false'* ]] || ng "開いていない"
+[[ "$st" == *'"is_self": true'* ]] || ng "unseal.sh が、書き込みを受ける状態（active）になる前に戻った"
+ok "unseal: 復号した鍵を標準入力で渡して開け、書き込みを受ける状態（active）になってから戻る"
 
 # --- configure ---
 export OPENBAO_KUBERNETES_HOST="https://127.0.0.1:1"
@@ -147,9 +162,27 @@ BAO_TOKEN="$ROOT0" B operator seal >/dev/null
 set +e; run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >"$W/conf.log" 2>&1; rc=$?; set -e
 [ "$rc" -eq 3 ] || ng "封印中の --revoke-only が 3 で止まらない（$rc）"
 grep -q '既に失効している' "$W/conf.log" && ng "封印中なのに「既に失効している」と言った（fail-open）"
-run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null
+# 開けた直後の standby（読み取りだけが通り、書き込みは拒まれる）が続く間: unseal.sh は待ち切って 1 で止まり（OK と言わない）、
+# --revoke-only も失効させず判定もせずに 3 で止まる。実物は開いて active になっている（standby は Pod の中の bao status だけの差し込み）
+rm -f "$W/standby.count"
+set +e; BAO_STANDBY_STATUS=1000 OB_ACTIVE_WAIT_S=2 run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >"$W/unseal.log" 2>&1; rc=$?; set -e
+[ "$rc" -eq 1 ] || ng "standby のまま active にならないのに、unseal.sh が 1 で止まらない（$rc）"
+grep -q 'active）にならない' "$W/unseal.log" || ng "unseal.sh が、active にならないことを告げない"
+grep -q '^OK' "$W/unseal.log" && ng "standby のままなのに、unseal.sh が OK と言った"
+[ "$(cat "$W/standby.count")" -ge 2 ] || ng "陽性対照: unseal.sh が状態を繰り返し確かめていない"
+rm -f "$W/standby.count"
+set +e; BAO_STANDBY_STATUS=1000 OB_ACTIVE_WAIT_S=2 run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >"$W/conf.log" 2>&1; rc=$?; set -e
+[ "$rc" -eq 3 ] || ng "standby の間の --revoke-only が 3 で止まらない（$rc）"
+grep -q '既に失効している' "$W/conf.log" && ng "standby の間に「既に失効している」と言った（fail-open）"
+alive || ng "standby の間の --revoke-only が、root を失効させた"
+# standby が少しの間で終わる形: unseal.sh は active になるまで待ってから OK で戻る
+BAO_TOKEN="$ROOT0" B operator seal >/dev/null
+rm -f "$W/standby.count"
+BAO_STANDBY_STATUS=2 run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null || ng "standby が終われば、unseal.sh は通る"
+[ "$(cat "$W/standby.count")" -eq 2 ] || ng "陽性対照: unseal.sh が standby の間を待っていない"
+[[ "$(B status -format=json || true)" == *'"is_self": true'* ]] || ng "unseal.sh が、書き込みを受ける状態（active）になる前に戻った"
 alive || ng "封印の後に root が生きていない（封印中に失効させた）"
-ok "configure --revoke-only: 封印中は失効したとも生きているとも言わずに 3 で止まり、root は生きたまま"
+ok "configure --revoke-only: 封印中と、開けた直後の standby の間は、失効したとも生きているとも言わずに 3 で止まり（unseal.sh も active になるまで OK と言わない）、root は生きたまま"
 # 失効だけを流し直す。1 回目は効いたのに結果が届かない形で落とす → root は無く、ファイルは有効のまま
 rm -f "$W/fail.done"
 set +e; KUBECTL_FAIL_AFTER="token revoke -self" run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null 2>&1; rc=$?; set -e

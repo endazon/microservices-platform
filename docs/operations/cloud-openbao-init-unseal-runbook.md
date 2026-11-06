@@ -60,6 +60,9 @@ bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <識�
 kubectl -n openbao get pods                    # Ready 1/1 になる
 ```
 
+- `unseal.sh` は、開けた後に書き込みを受ける状態（active）になるまで待ってから OK を出す（上限 60 秒）。開けた直後は読み取りだけが通り、
+  書き込み（configure・seed・put）が拒まれる間がある。60 秒で active にならなければ 1 で止まる。OpenBao のログを確かめてから流し直す。
+
 ### 再起動のときに止まるもの
 
 - 解錠の順は **LUKS → k3s → unseal → ESO の同期**である。unseal はノードの再起動と、OpenBao の Pod の作り直しのたびに要る。

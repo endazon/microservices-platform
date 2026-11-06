@@ -48,6 +48,11 @@ related_specs:
 - オーナーはこのファイルを別々の 2 か所に保管する。場所はリポジトリに書かない（利用者の裁定）。
 - 受取人で暗号化できることを先に確かめてから初期化し、途中で失敗したら書き出し先を消す（壊れた鍵のファイルを残さない）。
 - `unseal.sh` は復号した鍵を `bao write sys/unseal -` の標準入力へだけ流す。
+- ［2026-11-07 追記 / #2471］`unseal.sh` は、開けた（sealed=false）後に書き込みを受ける状態（active。`bao status` の `"is_self": true`）になるまで待ってから戻る（上限 60 秒。
+  lib.sh の `wait_active`）。OpenBao 2.7.1 の raft は開けた直後にまず読み取りだけを受ける standby に入り、active になるまで書き込みを
+  `local node not active but active cluster node not found`（500）で拒む（実測）。この間も token lookup は通るため、開けた直後の root の失効だけが落ちていた
+  （CI の実物の OpenBao の試験で観測。ストレージの fsync を遅らせると手元でも同じ所で落ちる）。configure の失効の段（`revoke_root`）も同じ待ちを持ち、
+  active にならなければ失効させず判定もせずに止まる（終了コード 3）。
 
 ### 決定 2 — root は configure の 1 回だけ使って失効させる。作り直しはオーナー用の AppRole と unseal の鍵で行う
 
