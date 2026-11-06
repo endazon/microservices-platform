@@ -9,7 +9,7 @@ updated: 2026-11-06
 <!-- trace:
 ids: [NFR-18, SC-22]
 adrs: [ADR-0132, ADR-0005, ADR-0023, ADR-0095, ADR-0106, ADR-0110, ADR-0124, ADR-0126, ADR-0131]
-iadrs: [IADR-0682, IADR-0664, IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522, IADR-0672]
+iadrs: [IADR-0682, IADR-0664, IADR-0577, IADR-0573, IADR-0525, IADR-0492, IADR-0096, IADR-0097, IADR-0098, IADR-0099, IADR-0327, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0457, IADR-0460, IADR-0461, IADR-0485, IADR-0501, IADR-0522, IADR-0672, IADR-0676]
 specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261031_458_connector-credential-migration, 20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261009_1840_secret-store-openbao, 20260925_458_secret-rotation-runbook, 20260925_1499_object-storage-seaweedfs, 20260926_1523_sc22-supply-label-and-restart-confirm, 20260928_issue-1682_paired-secrets-outside-sc22, 20261003_458_connector-secret-vault-reference, 20261009_1839_session-store-valkey, 20261105_2399_infra-credentials-staged-fail-closed]
 issues: [#2413, #2148, #1840, #1817, #1696, #458, #1411, #1477, #1499, #1523, #1682, #1839, #2399, planning#700, planning#716, AST#1078]
 -->
@@ -164,9 +164,17 @@ kubectl -n <namespace> annotate externalsecret <name> force-sync="$(date +%s)" -
 ### B-1. ストアごとの手順
 
 ［2026-11-05］**DB 管理者・アプリの DB 利用者・オブジェクトストレージ・秘匿管理の管理者トークンは、スクリプトで作り直せる**:
-`bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>`。
+`bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token|grafana-admin>`。
 新しい値は乱数で作り、表示しない。順序は下の表と同じ（保管先 → ストア側 → 同期 → 消費側の作り直し）。
 作り直す前後に、`bash scripts/check-infra-credentials.sh --live`（読むだけ）で開発用の値のままのものが無いかを確かめる。
+
+［2026-11-05 追記］
+
+- `grafana-admin` は可観測性の画面の内蔵の管理者（Secret `platform-infra/grafana-admin`）である。Secret を乱数で書き、画面を作り直す。永続化の構成は起動のたびに Secret の値を画面の DB へ合わせる。
+- 秘匿管理の管理者トークンは、**作り直しのスクリプトの外で Secret `platform-infra/vault-dev-token` を書き換えない**。
+  - 秘匿管理は、一度作った固定の管理者トークンが Secret の値と食い違うと、既定（段 1）では警告して作る。
+  - `INFRA_CREDENTIALS_ENFORCE=1` で起動器を実行した後（段 2）は、作らずに起動を止める。
+  - 止まったら、Secret を作り直しの前の値（スクリプトが作ったトークン）へ戻して秘匿管理を作り直す。戻す値が分からなければ、初期の root トークン（PVC 上の初期化の出力。Pod の中でだけ読む）で新しい固定のトークンを作り、Secret をその値にする。
 
 | 対象（保管先のパス） | ストア側で先に行うこと | 保管先に書くもの | 同期を促す ExternalSecret | 作り直す消費側 | 以後の env |
 | --- | --- | --- | --- | --- | --- |

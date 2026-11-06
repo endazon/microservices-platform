@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # NFR-21, NFR-05, ADR-0002, IADR-0471 (#1560): platform-infra の Postgres バックアップ（age 暗号化）の**リストア試験**。
 #
-#   bash scripts/backup-restore-drill.sh --run-dir <回のディレクトリ> --identity <age の秘密鍵ファイル> [--live | --live-counts <TSV>]
-#                                        [--exact] [--ledger-tables <ファイル>] [--db <DB 名>]... [--image <イメージ>]
+#   bash scripts/backup-restore-drill.sh {--run-dir <回のディレクトリ> | --from-s3 <リモート:バケット/…/回>} --identity <age の秘密鍵ファイル>
+#                                        [--live | --live-counts <TSV>] [--exact] [--ledger-tables <ファイル>] [--db <DB 名>]... [--image <イメージ>]
 #   bash scripts/backup-restore-drill.sh --self-test
 #
 # 手順（docs/operations/platform-infra-backup-runbook.md の「リストア試験」）:
+#   0. ［2026-11-05 / #2402・IADR-0675］--from-s3 なら、オブジェクトストレージの回を rclone で作業場所へ落とす（暗号文だけ）。
+#      COMPLETE（SHA256SUMS の sha256）が無い・合わない回は書きかけとして戻さない。資格情報は rclone の env で渡す（引数に載せない）
 #   1. 回のディレクトリの SHA256SUMS で暗号文を検証する（写しの破損を先に見つける）
 #   2. 使い捨ての Postgres をコンテナで起こす（**--network none**。外から一切つながらない。ポートも開けない）
 #   3. globals と各 DB を、age で復号しながらパイプで流し込む（平文をディスクへ書かない）
@@ -43,6 +45,9 @@ err() { printf '==> drill: ERROR: %s\n' "$*" >&2; }
 usage() {
 	sed -n '4,6p' "$0" | sed 's/^# \{0,1\}//'
 }
+
+# --from-s3 の形（backup.sh の BACKUP_S3_DEST と同じ規則に、回の接尾辞までを足したもの）。
+S3_RUN_RE='^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$'
 
 # 行数の突き合わせ（純関数）。入力はどちらも `db|schema.table|count` の行。
 #   $1 = 戻した側 / $2 = 稼働側 / $3 = 台帳テーブルの一覧（`db|schema.table`。空ファイル可）/ $4 = exact（0|1）
@@ -85,6 +90,7 @@ compare_counts() {
 DRILL_CLI=""
 DRILL_NAME=""
 DRILL_WORK=""
+DRILL_S3_DIR=""
 # 使い捨てのコンテナと作業ファイル（行数の TSV だけ。平文のダンプは置かない）を片付ける。
 # 🔴 再帰削除をしない —— 作ったファイルを名前で消してから rmdir する。
 # 🔴 NFR-18, IADR-0682: `-v` で名前の無いボリュームも消す（データ領域は tmpfs だが、イメージの他の VOLUME や別のイメージに備える）。
@@ -96,14 +102,46 @@ drill_cleanup() {
 		rm -f -- "$DRILL_WORK/restored.tsv" "$DRILL_WORK/live.tsv" "$DRILL_WORK/ledger.txt" "$DRILL_WORK/globals.err"
 		rmdir -- "$DRILL_WORK" 2>/dev/null || true
 	fi
+	# 落とした暗号文（--from-s3）。🔴 再帰削除をしない —— 通常ファイルだけを名前で消してから rmdir する。
+	if [ -n "$DRILL_S3_DIR" ] && [ -d "$DRILL_S3_DIR" ]; then
+		local f
+		for f in "$DRILL_S3_DIR"/* "$DRILL_S3_DIR"/.[!.]*; do
+			[ -f "$f" ] && [ ! -L "$f" ] && rm -f -- "$f"
+		done
+		rmdir -- "$DRILL_S3_DIR" 2>/dev/null || true
+	fi
+}
+
+# オブジェクトストレージの回を作業場所へ落とし、COMPLETE を確かめる。成功なら作業場所のパスを出す。
+fetch_s3_run() {
+	local src="$1" want got
+	DRILL_S3_DIR="$(mktemp -d)"
+	trap drill_cleanup EXIT
+	if ! rclone -q copy "$src" "$DRILL_S3_DIR" >&2; then
+		err "オブジェクトストレージの回を落とせません: $src"
+		return 1
+	fi
+	if [ ! -f "$DRILL_S3_DIR/COMPLETE" ] || [ ! -f "$DRILL_S3_DIR/SHA256SUMS" ]; then
+		err "この回には COMPLETE（または SHA256SUMS）がありません。書きかけの回は戻しません: $src"
+		return 1
+	fi
+	want="$(tr -d ' \r\n' < "$DRILL_S3_DIR/COMPLETE")"
+	got="$(sha256sum < "$DRILL_S3_DIR/SHA256SUMS" | cut -d ' ' -f 1)"
+	if [ "$want" != "$got" ]; then
+		err "この回の COMPLETE が SHA256SUMS と合いません（書きかけか、別の回の混入）: $src"
+		return 1
+	fi
+	log "オブジェクトストレージの回を落としました（$src）"
+	return 0
 }
 
 main() {
-	local run_dir="" identity="" live=0 live_counts="" exact=0 ledger="" image="$DEFAULT_IMAGE"
+	local run_dir="" from_s3="" identity="" live=0 live_counts="" exact=0 ledger="" image="$DEFAULT_IMAGE"
 	local -a dbs=()
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--run-dir) run_dir="${2:-}"; shift 2 ;;
+			--from-s3) from_s3="${2:-}"; shift 2 ;;
 			--identity) identity="${2:-}"; shift 2 ;;
 			--live) live=1; shift ;;
 			--live-counts) live_counts="${2:-}"; shift 2 ;;
@@ -116,8 +154,14 @@ main() {
 		esac
 	done
 	[ "${#dbs[@]}" -gt 0 ] || dbs=("${AST_DBS[@]}")
-	if [ -z "$run_dir" ] || [ -z "$identity" ]; then
-		err "--run-dir と --identity は必須です"; usage >&2; return 2
+	if [ -n "$run_dir" ] && [ -n "$from_s3" ]; then
+		err "--run-dir と --from-s3 はどちらか一方です"; return 2
+	fi
+	if [ -n "$from_s3" ] && { [[ ! "$from_s3" =~ $S3_RUN_RE ]] || [[ "$from_s3" == *..* ]]; }; then
+		err "--from-s3 の形が不正です（<リモート>:<バケット>/<接頭辞>/<回>）: $from_s3"; return 2
+	fi
+	if { [ -z "$run_dir" ] && [ -z "$from_s3" ]; } || [ -z "$identity" ]; then
+		err "--run-dir（または --from-s3）と --identity は必須です"; usage >&2; return 2
 	fi
 	if [ "$live" -eq 1 ] && [ -n "$live_counts" ]; then
 		err "--live と --live-counts はどちらか一方です"; return 2
@@ -135,6 +179,12 @@ main() {
 	for db in "${dbs[@]}"; do
 		if [[ ! "$db" =~ ^[A-Za-z0-9_]+$ ]]; then err "DB 名が不正です: $db"; return 2; fi
 	done
+
+	# 0. オブジェクトストレージの回（#2402）
+	if [ -n "$from_s3" ]; then
+		fetch_s3_run "$from_s3" || return 1
+		run_dir="$DRILL_S3_DIR"
+	fi
 
 	# 1. 暗号文の検証
 	if [ ! -f "$run_dir/SHA256SUMS" ]; then err "SHA256SUMS がありません: $run_dir"; return 1; fi
@@ -383,6 +433,71 @@ STUB
 	eq 'T-1560-41 突き合わせる相手が無ければ止まる' "$RC" "2"
 	OUT="$(drill --run-dir "$w/run" --identity "$w/identity.txt" --live --db 'x;drop')"; RC=$?
 	eq 'T-1560-41 不正な DB 名は止まる' "$RC" "2"
+
+	# ---- #2402・IADR-0675: オブジェクトストレージの回から戻す（--from-s3） ----
+	# rclone のスタブは、リモート `objstore:` を $w/s3 の下のディレクトリとして扱う（オブジェクトストレージのモック）。
+	cat > "$w/bin/rclone" <<'STUB'
+#!/usr/bin/env bash
+echo "rclone $*" >> "$STUB_LOG"
+args=()
+for a in "$@"; do case "$a" in -*) ;; *) args+=("$a") ;; esac; done
+map() { case "$1" in objstore:*) printf '%s/%s' "$STUB_S3_ROOT" "${1#objstore:}" ;; *:*) return 1 ;; *) printf '%s' "$1" ;; esac; }
+case "${args[0]:-}" in
+  copy) src="$(map "${args[1]}")" || exit 1; dst="$(map "${args[2]}")" || exit 1
+        [ -d "$src" ] || { echo "stub rclone: directory not found" >&2; exit 3; }
+        mkdir -p "$dst" && cp "$src"/* "$dst"/ ;;
+  *) exit 1 ;;
+esac
+STUB
+	chmod +x "$w/bin/rclone"
+	local s3run="$w/s3/bkt/ast-poc/postgres/daily/2026-11-01T030000Z"
+	mkdir -p "$s3run"
+	for f in pg-globals.sql.age pg-audit_svc.dump.age pg-report_svc.dump.age; do printf 'cipher-%s' "$f" > "$s3run/$f"; done
+	(cd "$s3run" && sha256sum -- *.age > SHA256SUMS)
+	sha256sum < "$s3run/SHA256SUMS" | cut -d ' ' -f 1 > "$s3run/COMPLETE"
+	local s3_secret="stub-s3-secret-DO-NOT-LEAK"
+	drill_s3() { STUB_S3_ROOT="$w/s3" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$s3_secret" drill "$@"; }
+
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --exact --db audit_svc --db report_svc)"; RC=$?
+	eq 'T-2402-20 --from-s3: オブジェクトストレージの回から戻して突き合わせ、合格する' "$RC" "0"
+	LOG="$(cat "$log_file")"
+	has 'T-2402-20 --from-s3: rclone で回を作業場所へ落とす' "$LOG" 'rclone -q copy objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z '
+	has 'T-2402-20 --from-s3: 落とした暗号文を age -d で復号して戻す' "$LOG" "age -d -i $w/identity.txt"
+	has 'T-2402-20 --from-s3: 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f platform-backup-drill-'
+	lacks 'T-2402-21 --from-s3: 資格情報がどのコマンドの引数にも出ない' "$LOG" "$s3_secret"
+	lacks 'T-2402-21 --from-s3: 資格情報が出力に出ない' "$OUT" "$s3_secret"
+	lacks 'T-2402-21 --from-s3: 秘密鍵の中身が出力に出ない' "$OUT" "$secret"
+
+	# COMPLETE の無い回（書きかけ）は戻さない。
+	mv "$s3run/COMPLETE" "$w/COMPLETE.bak"
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-22 --from-s3: COMPLETE の無い回は失敗' "$RC" "1"
+	has 'T-2402-22 --from-s3: COMPLETE が無いと告げる' "$OUT" 'COMPLETE'
+	lacks 'T-2402-22 --from-s3: COMPLETE の無い回ではコンテナを起こさない' "$(cat "$log_file")" 'docker run'
+	# COMPLETE が SHA256SUMS と合わない回は戻さない。
+	printf '0000\n' > "$s3run/COMPLETE"
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-22 --from-s3: COMPLETE が SHA256SUMS と合わない回は失敗' "$RC" "1"
+	lacks 'T-2402-22 --from-s3: 合わない回ではコンテナを起こさない' "$(cat "$log_file")" 'docker run'
+	mv "$w/COMPLETE.bak" "$s3run/COMPLETE"
+
+	# 暗号文が壊れた回は、既存の検証（SHA256SUMS）で止まる。
+	printf 'tampered' > "$s3run/pg-audit_svc.dump.age"
+	: > "$log_file"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-23 --from-s3: 暗号文が SHA256SUMS と合わなければ失敗' "$RC" "1"
+	lacks 'T-2402-23 --from-s3: 検証に落ちたらコンテナを起こさない' "$(cat "$log_file")" 'docker run'
+
+	# 落とせない回・不正な指定・--run-dir との併用は止まる。
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-01-01T030000Z --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-24 --from-s3: 落とせない回は失敗' "$RC" "1"
+	OUT="$(drill_s3 --from-s3 'objstore:bkt/../x' --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-24 --from-s3: 不正な指定は使い方の誤りで止まる' "$RC" "2"
+	OUT="$(drill_s3 --from-s3 objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z --run-dir "$w/run" --identity "$w/identity.txt" --live-counts "$w/live.tsv" --db audit_svc)"; RC=$?
+	eq 'T-2402-24 --from-s3 と --run-dir はどちらか一方' "$RC" "2"
 
 	printf '\nbackup-restore-drill self-test: %d passed, %d failed\n' "$passed" "$failed"
 	[ "$failed" -eq 0 ]
