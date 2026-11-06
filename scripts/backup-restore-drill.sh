@@ -464,7 +464,9 @@ STUB
 	LOG="$(cat "$log_file")"
 	has 'T-2402-20 --from-s3: rclone で回を作業場所へ落とす' "$LOG" 'rclone -q copy objstore:bkt/ast-poc/postgres/daily/2026-11-01T030000Z '
 	has 'T-2402-20 --from-s3: 落とした暗号文を age -d で復号して戻す' "$LOG" "age -d -i $w/identity.txt"
-	has 'T-2402-20 --from-s3: 使い捨てのコンテナを最後に消す' "$LOG" 'docker rm -f platform-backup-drill-'
+	# NFR-18, IADR-0682: --from-s3 の回も同じ使い捨ての Postgres（tmpfs）と片付け（rm -f -v。名前の無いボリュームごと）を通る。
+	has 'T-2402-20 --from-s3: 使い捨てのコンテナを最後に消す（ボリュームごと）' "$LOG" 'docker rm -f -v platform-backup-drill-'
+	has 'T-2402-20 --from-s3: 使い捨ての Postgres のデータ領域を tmpfs に置く' "$(grep ' run ' "$log_file")" '--tmpfs /var/lib/postgresql/data'
 	lacks 'T-2402-21 --from-s3: 資格情報がどのコマンドの引数にも出ない' "$LOG" "$s3_secret"
 	lacks 'T-2402-21 --from-s3: 資格情報が出力に出ない' "$OUT" "$s3_secret"
 	lacks 'T-2402-21 --from-s3: 秘密鍵の中身が出力に出ない' "$OUT" "$secret"
