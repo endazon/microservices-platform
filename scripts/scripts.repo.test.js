@@ -19880,6 +19880,37 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR-18, IADR-0683 (#2421): 秘匿管理の運用者の policy は、要る path と操作だけ ---
+  ok('IADR-0683: 運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える', () => {
+    const fs2421 = require('fs');
+    const path2421 = require('path');
+    const hcl = fs2421.readFileSync(path2421.join(__dirname, '..', 'deploy/local/vault/oidc/policies/operator.hcl'), 'utf8')
+      .split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    const blocks = [...hcl.matchAll(/path\s+"([^"]+)"\s*\{\s*capabilities\s*=\s*\[([^\]]*)\]\s*\}/g)].map((m) => ({ path: m[1], caps: m[2].split(',').map((c) => c.trim().replace(/"/g, '')).filter(Boolean) }));
+    assert.ok(blocks.length >= 3, `陽性対照: path を拾えていない（${blocks.length}）`);
+    const allowed = {
+      'secret/metadata/': ['list'],
+      'secret/metadata/msp/*': ['read', 'list'],
+      'secret/metadata/ai-stock-trading/*': ['read', 'list'],
+      'secret/metadata/datasource/*': ['read', 'list'],
+      'sys/mounts': ['read'],
+    };
+    for (const b of blocks) {
+      assert.ok(Object.prototype.hasOwnProperty.call(allowed, b.path), `運用者に要らない path を与えている: ${b.path}`);
+      for (const c of b.caps) assert.ok(allowed[b.path].includes(c), `${b.path} に要らない操作 ${c} を与えている`);
+    }
+    assert.ok(!/secret\/data\//.test(hcl), '運用者に KV の値（secret/data/）を与えている');
+    assert.ok(!/path\s+"\*"|path\s+"secret\/\*"|path\s+"secret\/metadata\/\*"/.test(hcl), '運用者に KV 全体のワイルドカードを与えている');
+    // 使っている KV の接頭辞（ESO の読み取りと BFF の書き込みの policy が引くもの）は、運用者のメタデータの一覧に入っている
+    const dir = path2421.join(__dirname, '..', 'deploy/local/vault/eso');
+    const used = new Set();
+    for (const f of fs2421.readdirSync(dir).filter((n) => n.endsWith('.hcl'))) {
+      for (const m of fs2421.readFileSync(path2421.join(dir, f), 'utf8').matchAll(/path\s+"secret\/(?:data|metadata)\/([a-z0-9-]+)\//g)) used.add(m[1]);
+    }
+    assert.ok(used.size >= 3, `陽性対照: 接頭辞を拾えていない（${[...used]}）`);
+    for (const u of used) assert.ok(blocks.some((b) => b.path === `secret/metadata/${u}/*`), `接頭辞 ${u} が運用者のメタデータの一覧に無い`);
+  });
+
   // --- NFR-18, ADR-0107 決定 3, IADR-0679 (#2410): 外部の chart とマニフェストの中身を sha256 で固定する ---
   {
     const fs2410 = require('fs');
