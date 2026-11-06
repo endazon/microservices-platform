@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, ADR-0107, ADR-0135, IADR-0519, IADR-0547]
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-06
 related_specs:
   - ../specs/20261105_2410_pin-external-artifacts-sha256.md
 ---
@@ -58,3 +58,4 @@ related_specs:
 ## 残余
 
 1. `deploy/cloud/` は並行の作業の範囲（同じ口を使えるようにしてある）。
+2. ［2026-11-06 追記 / #2410］URL の検査（固定の無い URL が残れば止める）は、`kustomization.yaml` の素の `- https://…` の形（引用符なしの 1 行 1 項目）だけを拾う。引用符で囲んだ形（`- "https://…"`）や流れの形（`resources: [https://…]`）は拾わない。今の取り込み物にその形は無い。
