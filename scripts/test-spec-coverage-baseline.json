@@ -427,7 +427,8 @@
       "BearerArmPipelineTests",
       "BearerCallerPolicyTests",
       "BffEndpointAuthenticationTests",
-      "BffKeyRingSharingTests"
+      "BffKeyRingSharingTests",
+      "InternalAuthGateTests"
     ],
     "docs/tests/NFR_test-isolation.md": [
       "TestDbIsolationTests"
