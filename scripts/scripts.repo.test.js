@@ -19729,6 +19729,91 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR (#2439): 回収実行の変換ツールの導入（apt の取得）が時に 8〜13 分止まり、ジョブの上限 30 分に達した ----------------
+  // .deb をランナーのイメージの名前と版で鍵を付けてキャッシュし、在れば取得せずに dpkg -i で入れる。無ければ時間切れと
+  // 再試行の付いた apt で取得し（既定の置き場＝_apt の sandbox で取る）、この回の .deb を写す。取り出しと保存を分け、保存は
+  // 導入の直後（試験の成否・cancelled に依らない）。導入の step に上限を付け、ジョブの上限は変えない（根拠は仕様書）。
+  {
+    const REPO_2439 = path.join(__dirname, '..');
+    const wf2439 = fs.readFileSync(path.join(REPO_2439, '.github/workflows/integration.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const stepsOf2439 = (text) => text.split(/\n(?= {6}- )/).slice(1);
+    const DEBS_2439 = '~/.cache/conversion-tools-debs';
+    const issues2439 = (text) => {
+      const out = [];
+      const steps = stepsOf2439(text);
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st));
+      const testAt = steps.findIndex((st) => /dotnet test /.test(st));
+      const withPath = (re) => steps.findIndex((st) => re.test(st) && st.includes(`path: ${DEBS_2439}`));
+      const restoreAt = withPath(/uses: actions\/cache\/restore@[0-9a-f]{40}/);
+      const saveAt = withPath(/uses: actions\/cache\/save@[0-9a-f]{40}/);
+      if (toolAt < 0) return ['導入の step が無い'];
+      if (withPath(/uses: actions\/cache@/) >= 0) out.push('変換ツールの .deb を actions/cache（post で保存）で置いている（赤・cancelled の回に保存されない）');
+      if (restoreAt < 0) out.push('変換ツールの .deb の取り出し（actions/cache/restore）の step が無い');
+      if (saveAt < 0) out.push('変換ツールの .deb の保存（actions/cache/save）の step が無い');
+      if (restoreAt >= 0 && restoreAt > toolAt) out.push('取り出しの step が導入の step より後にある');
+      if (saveAt >= 0) {
+        if (saveAt !== toolAt + 1) out.push('保存の step が導入の直後に無い（試験の成否・cancelled に依る）');
+        if (testAt >= 0 && saveAt > testAt) out.push('保存の step が試験より後にある');
+        const restoreId = restoreAt >= 0 && /\bid: ([A-Za-z0-9_-]+)/.exec(steps[restoreAt]);
+        if (!restoreId || !new RegExp(`if: steps\\.${restoreId[1]}\\.outputs\\.cache-hit != 'true'`).test(steps[saveAt])) out.push('保存の step が「キャッシュに無かった回だけ」の条件を持たない');
+        if (/always\(\)/.test(steps[saveAt])) out.push('保存の step が always() を持つ（導入が赤の回に空の置き場を保存する）');
+      }
+      const keyOf = (i) => (i >= 0 ? /key: \$\{\{ steps\.([A-Za-z0-9_-]+)\.outputs\.key \}\}/.exec(steps[i]) : null);
+      const keyRef = keyOf(restoreAt);
+      if (restoreAt >= 0 && saveAt >= 0 && (!keyRef || !keyOf(saveAt) || keyRef[1] !== keyOf(saveAt)[1])) out.push('取り出しと保存の鍵が同じ step の出力でない');
+      const keyStep = keyRef && steps.find((st) => new RegExp(`\\bid: ${keyRef[1]}\\b`).test(st));
+      if (!keyStep) out.push('キャッシュの鍵を作る step が無い');
+      else if (!/\$\{?ImageOS\b/.test(keyStep) || !/\$\{?ImageVersion\b/.test(keyStep)) out.push('キャッシュの鍵がランナーのイメージの名前と版を含まない');
+      const st = steps[toolAt];
+      if (!st.includes('"$HOME/.cache/conversion-tools-debs"')) out.push('導入の step がキャッシュの置き場を使わない');
+      if (!/sudo dpkg -i "\$debs"\/\*\.deb/.test(st)) out.push('キャッシュの .deb を dpkg -i で入れていない');
+      if (!/Acquire::Retries=\d+/.test(st) || !/Acquire::https?::Timeout=\d+/.test(st)) out.push('apt の取得に再試行と時間切れが無い');
+      if (/Dir::Cache::Archives/.test(st)) out.push('apt の取得の置き場をホームの下へ向けている（_apt が書けず unsandboxed で取得する）');
+      if (!/sudo apt-get clean/.test(st) || !/cp \/var\/cache\/apt\/archives\/\*\.deb "\$debs"\//.test(st)) out.push('この回に取得した .deb だけをキャッシュの置き場へ写していない');
+      // 取得した .deb が 0 個（イメージに入っていた）なら写さない（cp の glob が展開されずに落ちる）。保存もしない。
+      if (!/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/.test(st)) out.push('取得した .deb が 0 個のときに写すのを飛ばしていない（cp が落ちる）');
+      const toolId = /\bid: ([A-Za-z0-9_-]+)/.exec(st);
+      if (!toolId) out.push('導入の step に id が無い（保存の条件に使う）');
+      if (!/echo "debs=true" >> "\$GITHUB_OUTPUT"/.test(st)) out.push('導入の step が「.deb を置いた」を出力しない');
+      if (saveAt >= 0 && toolId && !new RegExp(`steps\\.${toolId[1]}\\.outputs\\.debs == 'true'`).test(steps[saveAt])) out.push('保存の step が「.deb を置いた回だけ」の条件を持たない（空の置き場を保存する）');
+      const stepTimeout = /^\s+timeout-minutes:\s*(\d+)/m.exec(st);
+      if (!stepTimeout || Number(stepTimeout[1]) > 15) out.push('導入の step に 15 分以下の上限が無い');
+      const jobTimeout = /\n {4}timeout-minutes:\s*(\d+)/.exec(text);
+      if (!jobTimeout || Number(jobTimeout[1]) !== 30) out.push('ジョブの上限が 30 分でない（上げるだけの直しをしない。根拠は仕様書）');
+      return out;
+    };
+
+    ok('#2439: 回収実行は変換ツールの .deb をイメージの版の鍵で取り出し・導入の直後に保存し、無いときは sandbox の apt で時間切れと再試行を付けて取り、導入に上限を付ける', () => {
+      assert.deepStrictEqual(issues2439(wf2439), []);
+    });
+
+    ok('#2439 陰性対照: post で保存する形・保存を試験の後へ回す・保存の条件を外す・鍵から版を外す・時間切れを外す・置き場をホームへ向ける・上限を外す・0 個の .deb で写す・空の置き場を保存する・ジョブの上限を上げると赤', () => {
+      const head = wf2439.split(/\n(?= {6}- )/)[0];
+      const steps = stepsOf2439(wf2439);
+      const join = (arr) => [head, ...arr].join('\n');
+      const at = (re) => steps.findIndex((st) => re.test(st));
+      const restoreAt = at(/actions\/cache\/restore@/);
+      const saveAt = at(/actions\/cache\/save@/);
+      const toolAt = at(/apt-get install[^\n]*\bpandoc\b/);
+      const testAt = at(/dotnet test /);
+      assert.ok(restoreAt >= 0 && saveAt >= 0 && toolAt >= 0 && testAt >= 0, '陽性の前提（取り出し・保存・導入・試験の step）が無い');
+      const has = (text, re) => issues2439(text).some((e) => re.test(e));
+      const swap = (i, f) => steps.map((st, j) => (j === i ? f(st) : st));
+      assert.ok(has(join(swap(restoreAt, (st) => st.replace('actions/cache/restore@', 'actions/cache@')).filter((_, j) => j !== saveAt)), /post で保存/));
+      const moved = steps.filter((_, j) => j !== saveAt);
+      moved.splice(moved.findIndex((st) => /dotnet test /.test(st)) + 1, 0, steps[saveAt]);
+      assert.ok(has(join(moved), /導入の直後に無い/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/^\s+if:.*\n/m, ''))), /キャッシュに無かった回だけ/));
+      assert.ok(has(join(steps.map((st) => st.replace(/\$\{?ImageVersion[:}A-Za-z-]*\}?/g, 'x'))), /イメージの名前と版/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/ -o Acquire::https?::Timeout=\d+/g, ''))), /再試行と時間切れ/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace('pandoc poppler-utils\n', 'pandoc poppler-utils -o Dir::Cache::Archives="$debs"\n'))), /ホームの下へ向けて/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/^\s+timeout-minutes:.*\n/m, ''))), /15 分以下の上限/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/, 'if true; then'))), /0 個のとき/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/ && steps\.[A-Za-z0-9_-]+\.outputs\.debs == 'true'/, ''))), /\.deb を置いた回だけ/));
+      assert.ok(has(join(steps).replace(/(\n {4}timeout-minutes:\s*)30/, '$145'), /ジョブの上限が 30 分でない/));
+    });
+  }
+
   // --- NFR / #2039 / IADR-0661: 視覚回帰の Docker イメージの版 ------------------------------------------------------
   {
     const REPO_2039 = path.join(__dirname, '..');
