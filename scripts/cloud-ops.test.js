@@ -546,8 +546,10 @@ t('T-2402-47 Prometheus: 保持は 7 日・1GB 以内、メモリの上限は 76
 });
 
 // ---------------------------------------------------------------- クラウドの最小構成（#2401）との結線
-// 🔴 #2401 の実物（deploy/cloud/infra・bootstrap-secrets.sh）の名前と突き合わせる。片側だけ変えると、ここで赤になる。
-const bootstrap = fs.existsSync(path.join(REPO_ROOT, 'deploy/cloud/bootstrap-secrets.sh')) ? read('deploy/cloud/bootstrap-secrets.sh') : '';
+// 🔴 #2401 の実物（deploy/cloud/infra）と、秘匿管理（deploy/cloud/vault。IADR-0689: CA は configure.sh・証明書は OpenBao の PKI）の名前と突き合わせる。
+//   片側だけ変えると、ここで赤になる。
+const configure = fs.existsSync(path.join(REPO_ROOT, 'deploy/cloud/vault/configure.sh')) ? read('deploy/cloud/vault/configure.sh') : '';
+const tlsGen = fs.existsSync(path.join(REPO_ROOT, 'deploy/cloud/vault/eso/tls-platform-infra.yaml')) ? docs(read('deploy/cloud/vault/eso/tls-platform-infra.yaml')) : [];
 let all = '';
 t('T-2402-50 結線: deploy/cloud の kustomization が infra・backup・observability を束ねて描画できる', () => {
   const kz = parseYaml(read('deploy/cloud/kustomization.yaml'));
@@ -571,13 +573,14 @@ t('T-2402-37 TLS: バックアップは Postgres へ verify-full で繋ぎ、CA 
   assert.strictEqual((v.configMap || {}).name, 'platform-infra-ca');
   assert.deepStrictEqual(((v.configMap || {}).items || []).map((i) => i.key), ['ca.crt']);
   assert.notStrictEqual((v.configMap || {}).optional, 'true', 'CA が optional（無ければ検証なしへ倒れる構成を許す）');
-  // #2401 が作る CA の置き場所と名前を突き合わせる。
-  assert.ok(bootstrap.includes('create configmap platform-infra-ca --from-file=ca.crt='), '#2401 が ConfigMap platform-infra-ca（ca.crt）を作っていない');
+  // 秘匿管理が作る CA の置き場所と名前を突き合わせる（IADR-0689 決定 4）。
+  assert.ok(configure.includes('create configmap platform-infra-ca --from-file=ca.crt='), 'configure.sh が ConfigMap platform-infra-ca（ca.crt）を作っていない');
 });
 t('T-2402-37 TLS: 名前の照合に使うホスト（PGHOST）は Postgres の Service 名で、#2401 の証明書の SAN に入っている', () => {
   const host = (envOf(backupC, 'PGHOST') || {}).value;
   assert.ok(find(infraDs, 'Service', host), `Service ${host} が #2401 に無い`);
-  assert.ok(bootstrap.includes('subjectAltName=DNS:%s,'), '#2401 の証明書の SAN が Service の短い名前を含まない');
+  const gen = find(tlsGen, 'VaultDynamicSecret', 'postgres-tls') || EMPTY;
+  assert.strictEqual(((gen.obj.spec || {}).parameters || {}).common_name, host, 'Postgres の証明書（OpenBao の PKI）の名前が Service の短い名前でない');
   assert.ok((pgC.args || []).includes('ssl=on'), '#2401 の Postgres が TLS でない');
 });
 t('T-2402-37 資格情報: 超利用者の名前とパスワードは #2401 の Secret postgres の username / password から読む', () => {

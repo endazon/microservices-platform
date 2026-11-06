@@ -1,0 +1,96 @@
+# NFR-05, NFR-18, IADR-0689 決定 4: 基盤との通信の TLS の鍵を、OpenBao の PKI（pki_cloud。CA の鍵は OpenBao の外へ出さない）で発行する。
+#   ESO の VaultDynamicSecret が pki_cloud/issue/<role> を呼び、証明書と鍵を Secret に写す。鍵は OpenBao の中で作られ、
+#   PKI は発行した証明書を保存しない（role の no_store。configure.sh）。CA の証明書（公開してよい）は configure.sh が ConfigMap platform-infra-ca に置く。
+#   SAN は従来（IADR-0674 決定 3）と同じ（短い名前・名前空間つき・.svc・.svc.cluster.local）。
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: postgres-tls
+  namespace: platform-infra
+spec:
+  method: POST
+  path: pki_cloud/issue/postgres
+  parameters:
+    common_name: postgres
+    alt_names: "postgres.platform-infra,postgres.platform-infra.svc,postgres.platform-infra.svc.cluster.local"
+    ttl: 8760h
+  resultType: Data
+  provider:
+    server: http://openbao.openbao.svc:8200
+    auth:
+      kubernetes:
+        mountPath: kubernetes
+        role: platform-infra-eso
+        serviceAccountRef: { name: eso-openbao }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: postgres-tls
+  namespace: platform-infra
+spec:
+  # 発行は 1 年（ttl）。半年ごとに作り直す（作り直したら消費側を再起動して読み直させる。README §証明書）。
+  refreshInterval: 4380h
+  target:
+    name: postgres-tls
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      engineVersion: v2
+      type: Opaque
+      data:
+        tls.crt: "{{ .certificate }}"
+        tls.key: "{{ .private_key }}"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: postgres-tls
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: rabbitmq-tls
+  namespace: platform-infra
+spec:
+  method: POST
+  path: pki_cloud/issue/rabbitmq
+  parameters:
+    common_name: rabbitmq
+    alt_names: "rabbitmq.platform-infra,rabbitmq.platform-infra.svc,rabbitmq.platform-infra.svc.cluster.local"
+    ttl: 8760h
+  resultType: Data
+  provider:
+    server: http://openbao.openbao.svc:8200
+    auth:
+      kubernetes:
+        mountPath: kubernetes
+        role: platform-infra-eso
+        serviceAccountRef: { name: eso-openbao }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rabbitmq-tls
+  namespace: platform-infra
+spec:
+  # 発行は 1 年（ttl）。半年ごとに作り直す（作り直したら消費側を再起動して読み直させる。README §証明書）。
+  refreshInterval: 4380h
+  target:
+    name: rabbitmq-tls
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      engineVersion: v2
+      type: Opaque
+      data:
+        tls.crt: "{{ .certificate }}"
+        tls.key: "{{ .private_key }}"
+        ca.crt: "{{ .issuing_ca }}"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: rabbitmq-tls

@@ -1,0 +1,28 @@
+# NFR-05, NFR-18, IADR-0689: 基盤の側（microservices-platform）の資格情報を OpenBao から写す（ESO）。
+#   - ストアは名前空間ごとの SecretStore openbao（kubernetes 認証。role msp-eso）。読めるのは policy msp-eso の範囲だけ。
+#   - 値は OpenBao の中で作る（seed-secrets.sh）。k8s の Secret に作ってから移す形は採らない（ADR-0080 決定 1）。
+#   - Secret の名前とキーは従来（IADR-0674）のまま。消費側（postgres・rabbitmq・keycloak・chart）は変えない。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-openbao
+  namespace: microservices-platform
+  labels: { app: eso-openbao }
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: openbao
+  namespace: microservices-platform
+spec:
+  provider:
+    vault:
+      server: http://openbao.openbao.svc:8200
+      path: cloud
+      version: v2
+      auth:
+        kubernetes:
+          mountPath: kubernetes
+          role: msp-eso
+          serviceAccountRef: { name: eso-openbao }

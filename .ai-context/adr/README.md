@@ -766,3 +766,4 @@
 | [IADR-0686](./IADR-0686_internal-rest-staged-auth-gate.md) | 内部の AI 分析と Wiki の REST の群に、段階つきの共有の認証の門（Auth:InternalGate:Mode。段 1 は報告、段 2 は 401）を掛ける（#2430） | Accepted |
 | [IADR-0687](./IADR-0687_bff-user-rate-limits-staged.md) | BFF の LLM を伴う口に、利用者ごと・群ごとの直近 60 秒の要求数の上限（段 1 は報告、段 2 は 429）を共有の端点フィルタで掛ける（#2432） | Accepted |
 | [IADR-0688](./IADR-0688_reconcile-surplus-roles-as-drift.md) | realm の調停は、サービスアカウントの宣言より多いロールを余剰として数える（check は drift・apply は段 1 で報告だけ） | Accepted |
+| [IADR-0689](./IADR-0689_cloud-openbao-eso-in-cluster-credentials.md) | クラウドの最小構成に秘匿管理（OpenBao・ESO）を持ち込み、クラスタの中の資格情報と TLS の鍵を OpenBao から供給する（unseal の鍵と資格は age で手元に・root は使うたびに作り直して失効） | Accepted |

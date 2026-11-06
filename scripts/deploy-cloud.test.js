@@ -86,16 +86,16 @@ function keycloakExposureProblems(docs, where) {
 }
 
 /** AC1・AC2・AC3 の共通の判定。問題の一覧（空なら合格）を返す。 */
-function commonProblems(docs, where) {
+function commonProblems(docs, where, { allow = [] } = {}) {
   const out = [];
   const text = JSON.stringify(docs);
   for (const d of docs) {
     const id = `${where}: ${d.kind}/${d.metadata && d.metadata.namespace ? `${d.metadata.namespace}/` : ''}${d.metadata && d.metadata.name}`;
     const names = [d.metadata && d.metadata.name, labelApp(d)].filter(Boolean).map(String);
     if (d.kind !== 'NetworkPolicy') {
-      for (const f of FORBIDDEN) if (names.some((n) => n.includes(f))) out.push(`${id}: 持ち込まない資源（${f}）`);
+      for (const f of FORBIDDEN) if (!allow.includes(f) && names.some((n) => n.includes(f))) out.push(`${id}: 持ち込まない資源（${f}）`);
     }
-    if (d.kind === 'Secret') out.push(`${id}: Secret を描いている（資格情報は bootstrap-secrets.sh が乱数で作る）`);
+    if (d.kind === 'Secret') out.push(`${id}: Secret を描いている（資格情報は OpenBao の中で作り ESO が写す。IADR-0689）`);
     if (d.kind === 'Service' && ['LoadBalancer', 'NodePort'].includes(d.spec && d.spec.type)) out.push(`${id}: ${d.spec.type} の Service`);
     const ps = podSpec(d);
     if (ps && String(ps.hostNetwork) === 'true') out.push(`${id}: hostNetwork`);
@@ -281,7 +281,62 @@ function renderChart(extra = [], chartDir = CHART) {
     '--set-string', `global.image.tag=${IMAGE_TAG}`, ...extra]));
 }
 
-module.exports = { commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+/**
+ * NFR-05, NFR-18, IADR-0689: 秘匿管理（deploy/cloud/vault）の描画の判定。
+ *   - OpenBao は dev モードでなく（`-dev`・`*_DEV_ROOT_TOKEN_ID` が無い）、宣言の digest はローカルの OpenBao と同じ。
+ *   - 受け口（8200）に入れるのは名前空間 external-secrets の controller だけ。入り・出とも既定で拒否。
+ *   - Secret・ClusterSecretStore・PushSecret を描かない。外への口を持たない（commonProblems）。
+ */
+function vaultProblems(docs, esoDocs, localVaultImage) {
+  // 秘匿管理は、deploy/cloud/vault にだけ置く（基盤・chart の描画には引き続き持ち込まない資源として数える）。
+  const allow = ['vault', 'openbao'];
+  const out = [...commonProblems(docs, 'deploy/cloud/vault', { allow }), ...commonProblems(esoDocs, 'deploy/cloud/vault/eso', { allow })];
+  const dep = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao');
+  if (!dep) return [...out, 'OpenBao の Deployment が無い'];
+  const c = (dep.spec.template.spec.containers || [])[0] || {};
+  const argv = [...(c.command || []), ...(c.args || [])].map(String);
+  if (argv.some((a) => /^-dev/.test(a))) out.push(`OpenBao が dev モードで起きる: ${argv.join(' ')}`);
+  if (!argv.includes('server')) out.push('OpenBao が server で起きない');
+  if ((c.env || []).some((e) => /DEV_ROOT_TOKEN/.test(e.name))) out.push('OpenBao に dev の root の env がある');
+  if (localVaultImage && c.image !== localVaultImage) out.push(`OpenBao のイメージがローカルと違う: ${c.image}`);
+  if (!/@sha256:[0-9a-f]{64}$/.test(String(c.image))) out.push('OpenBao のイメージを digest で固定していない');
+  const cfg = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'openbao-config');
+  const hcl = cfg ? String(cfg.data['cloud.hcl']) : '';
+  if (!/storage "raft"/.test(hcl)) out.push('ストレージが raft でない');
+  if (!/log_raw\s*=\s*"false"/.test(hcl) || /log_raw\s*=\s*"true"/.test(hcl)) out.push('監査が値を記録し得る（log_raw）');
+  const np = docs.filter((d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'openbao');
+  const deny = np.find((d) => JSON.stringify(d.spec.podSelector) === '{}' && !d.spec.ingress && !d.spec.egress);
+  if (!deny || !['Ingress', 'Egress'].every((t) => (deny.spec.policyTypes || []).includes(t))) out.push('openbao の名前空間に入り・出の既定拒否が無い');
+  const ingress = np.flatMap((d) => (d.spec.ingress || []));
+  for (const r of ingress) {
+    const from = r.from || [];
+    const onlyEso = from.length === 1 && JSON.stringify(from[0].namespaceSelector) === JSON.stringify({ matchLabels: { 'kubernetes.io/metadata.name': 'external-secrets' } })
+      && JSON.stringify(from[0].podSelector) === JSON.stringify({ matchLabels: { 'app.kubernetes.io/name': 'external-secrets' } });
+    if (!onlyEso) out.push(`OpenBao の入りに ESO の controller の外の送り元がある: ${JSON.stringify(from)}`);
+    if (JSON.stringify((r.ports || []).map((p) => Number(p.port))) !== '[8200]') out.push(`OpenBao の入りのポートが 8200 だけでない: ${JSON.stringify(r.ports)}`);
+  }
+  if (ingress.length === 0) out.push('陽性対照: OpenBao の入りの許可が無い（ESO が届かない）');
+  for (const d of esoDocs) if (/^Cluster/.test(d.kind) || d.kind === 'PushSecret') out.push(`${d.kind}/${d.metadata.name} を描いている（名前空間ごとの SecretStore だけ）`);
+  return out;
+}
+
+/** IADR-0689 決定 9: クラウドの realm に、取引ユニットの aud / azp の強制の前提（audience のスコープと trading-bot）が残るか。 */
+function cloudRealmAudienceProblems(realm) {
+  const out = [];
+  const scope = (realm.clientScopes || []).find((s) => s.name === 'ai-stock-trading-api-audience');
+  if (!scope) out.push('クライアントスコープ ai-stock-trading-api-audience が無い');
+  else if (!(scope.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-audience-mapper' && (m.config || {})['included.custom.audience'] === 'ai-stock-trading-api')) {
+    out.push('audience のスコープが ai-stock-trading-api を載せない');
+  }
+  const holders = (realm.clients || []).filter((c) => (c.defaultClientScopes || []).includes('ai-stock-trading-api-audience')).map((c) => c.clientId);
+  if (JSON.stringify(holders) !== '["ai-stock-trading-owner"]') out.push(`audience のスコープの持ち手が owner だけでない: ${holders.join(', ')}`);
+  if (!((realm.roles || {}).realm || []).some((r) => r.name === 'trading-bot')) out.push('realm ロール trading-bot が無い');
+  const bots = (realm.users || []).filter((u) => (u.realmRoles || []).includes('trading-bot')).map((u) => u.username);
+  if (JSON.stringify(bots) !== '["service-account-ai-stock-trading-owner"]') out.push(`trading-bot の持ち手が owner のサービスアカウントだけでない: ${bots.join(', ')}`);
+  return out;
+}
+
+module.exports = { vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -336,6 +391,43 @@ if (require.main === module) {
       const p = mutate(from, to);
       assert.ok(p.some((x) => want.test(x)), `${want} の変異を捕まえない:\n${p.join('\n')}`);
     }
+  });
+  const renderVault = () => docsOf(run('kubectl', ['kustomize', 'deploy/cloud/vault']));
+  const renderEso = () => docsOf(run('kubectl', ['kustomize', 'deploy/cloud/vault/eso']));
+  const localVaultImage = () => {
+    const d = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/vault/vault-dev.yaml'), 'utf8')).find((x) => x.kind === 'Deployment');
+    return d.spec.template.spec.containers[0].image;
+  };
+  ok('IADR-0689: 秘匿管理の描画 — OpenBao は dev モードでなく、ローカルと同じ digest、raft・値を記録しない監査。受け口に入れるのは ESO の controller だけ。Secret・ClusterSecretStore を描かない', () => {
+    assert.deepStrictEqual(vaultProblems(renderVault(), renderEso(), localVaultImage()), []);
+  });
+  ok('IADR-0689 陰性対照: dev モード・別の送り元・別のポート・ClusterSecretStore・Secret を検出する', () => {
+    const v = JSON.parse(JSON.stringify(renderVault()));
+    const e = JSON.parse(JSON.stringify(renderEso()));
+    v.find((d) => d.kind === 'Deployment').spec.template.spec.containers[0].command = ['bao', 'server', '-dev'];
+    const ing = v.find((d) => d.kind === 'NetworkPolicy' && (d.spec.ingress || []).length);
+    ing.spec.ingress[0].from.push({ namespaceSelector: {} });
+    ing.spec.ingress[0].ports.push({ protocol: 'TCP', port: 8201 });
+    e.push({ kind: 'ClusterSecretStore', metadata: { name: 'x' }, spec: {} }, { kind: 'Secret', metadata: { name: 'y', namespace: 'platform-infra' } });
+    const p = vaultProblems(v, e, localVaultImage());
+    for (const want of [/dev モード/, /ESO の controller の外の送り元/, /8200 だけでない/, /ClusterSecretStore/, /Secret を描いている/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
+  ok('IADR-0689 決定 9: クラウドの realm に、audience のスコープ（owner の既定のスコープ）と trading-bot（owner のサービスアカウントだけ）が残る', () => {
+    const { buildCloudRealm, CLOUD_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
+    const realm = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+    const secrets = Object.fromEntries(CLOUD_CLIENTS.map((c) => [c, ['probe', c, 'z'.repeat(32)].join('-')]));
+    assert.deepStrictEqual(cloudRealmAudienceProblems(buildCloudRealm(realm, secrets)), []);
+    assert.deepStrictEqual(cloudRealmAudienceProblems(buildCloudRealm(realm, {}, { template: true })), [], '雛形でも残る');
+    // 陰性対照: スコープを外す・持ち手を足す・ロールを外す
+    const cut = buildCloudRealm(realm, secrets);
+    cut.clientScopes = cut.clientScopes.filter((s) => s.name !== 'ai-stock-trading-api-audience');
+    assert.ok(cloudRealmAudienceProblems(cut).some((x) => /スコープ ai-stock-trading-api-audience が無い/.test(x)));
+    const more = buildCloudRealm(realm, secrets);
+    more.clients.find((c) => c.clientId === 'ai-stock-trading-svc').defaultClientScopes.push('ai-stock-trading-api-audience');
+    assert.ok(cloudRealmAudienceProblems(more).some((x) => /持ち手が owner だけでない/.test(x)));
+    const norole = buildCloudRealm(realm, secrets);
+    norole.roles.realm = norole.roles.realm.filter((r) => r.name !== 'trading-bot');
+    assert.ok(cloudRealmAudienceProblems(norole).some((x) => /trading-bot が無い/.test(x)));
   });
   ok('陰性対照: 基盤の描画へ start-dev・LoadBalancer・字面のパスワードを足すと判定に落ちる', () => {
     const docs = JSON.parse(JSON.stringify(renderInfra()));

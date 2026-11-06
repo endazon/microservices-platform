@@ -88,7 +88,7 @@ issues: [#2402, #2401]
      --from-literal=dest=objstore:<バケット>/ast-poc
    ```
 2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、超利用者の Secret `postgres`（`username` / `password`）は、
-   クラウドの最小構成の `bootstrap-secrets.sh` が作る。手で作らない。
+   クラウドの最小構成の秘匿管理（OpenBao）の手順で作る（[手順書](cloud-openbao-init-unseal-runbook.md)）。手で作らない。
 3. age の公開鍵（ConfigMap `platform-backup-age-recipients`）はローカルと同じ手順で作る（[platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の準備）。秘密鍵はクラスタに置かない。
 4. バックアップのイメージ（レジストリへ置かない。手元でビルドしてノードへ取り込む）:
    ```bash

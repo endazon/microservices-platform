@@ -5,7 +5,7 @@
 #
 # 持ち込むのは LLM ゲートウェイだけ。knowledge ユニットの全サービス・BFF・frontend・認可・MCP・通知・オブジェクトストレージ・
 # Wiki.js・エッジ・メッシュは描かない（Web の画面とニュースの RAG を持ち込まない。#2401）。試験が描画で固定する。
-# 🔴 資格情報の値を書かない。LLM ゲートウェイの API キーの Secret（llm-provider-credentials）は bootstrap-secrets.sh が作る。
+# 🔴 資格情報の値を書かない。LLM ゲートウェイの API キーの Secret（llm-provider-credentials）は OpenBao から写す（IADR-0689）。
 
 global:
   image:
@@ -63,7 +63,7 @@ services:
     resources:
       requests: { cpu: 50m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
-    # NFR-16, IADR-0674: メッシュが無いので、受け口をアプリで TLS にする（基盤の CA が発行した証明書。bootstrap-secrets.sh が作る）。
+    # NFR-16, IADR-0674: メッシュが無いので、受け口をアプリで TLS にする（基盤の CA が発行した証明書。OpenBao の PKI が発行し ESO が写す。IADR-0689）。
     # 取引ユニットは REST（/complete）だけを使う。gRPC の h2c の受け口は http でしか立たないので外す（平文の受け口を残さない）。
     grpcPort: null
     tls:

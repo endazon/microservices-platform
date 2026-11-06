@@ -8,7 +8,7 @@
 # IADR-0066 / ADR-0003(MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580): 共有 RabbitMQ。
 #
 # NFR, #1022: ブローカ自身の資格情報は **Secret `rabbitmq`（key=username / password）由来**である。
-# クラウドでは bootstrap-secrets.sh が初回に乱数で作る（在れば触らない）。
+# クラウドでは OpenBao の中で乱数で作り、ESO が写す（IADR-0689）。
 # クラウドでブローカを使うのは取引ユニットのサービスだけ（MSP の LLM ゲートウェイは使わない）。接続の設定は AST の chart が注入する。
 # NFR-18, IADR-0573 / IADR-0577: **サービスごとのユーザー**（users.txt の取引ユニットの行）で名乗る。既定のユーザー（Secret `rabbitmq`）は
 # ブローカの初期化にだけ使う。無効化の印（ConfigMap rabbitmq-default-user）は最初から立てるので、サービスごとのユーザーが揃えば起動のたびに消える。
@@ -38,7 +38,7 @@ spec:
     metadata:
       labels: { app: rabbitmq }
     spec:
-      # NFR-16, NFR-18, IADR-0591, IADR-0674: サーバ証明書（Secret rabbitmq-tls。クラウドでは bootstrap-secrets.sh がその場の CA で発行する）を
+      # NFR-16, NFR-18, IADR-0591, IADR-0674: サーバ証明書（Secret rabbitmq-tls。クラウドでは OpenBao の PKI が発行し、ESO が写す。IADR-0689）を
       #   ブローカの利用者（uid 100 / gid 101）だけが読める形へ写す（Secret のボリュームは root の所有になる）。
       initContainers:
         - name: tls-files
@@ -113,7 +113,7 @@ spec:
           persistentVolumeClaim: { claimName: rabbitmq-data }
         - name: boot
           configMap: { name: rabbitmq-boot, defaultMode: 0555 }
-        # キー = ユーザー名・値 = パスワード。クラウドでは bootstrap-secrets.sh が作る。無い間は何も復元しない。
+        # キー = ユーザー名・値 = パスワード。クラウドでは OpenBao の中で作り、ESO が写す。無い間は何も復元しない。
         - name: users
           secret: { secretName: rabbitmq-users, optional: true, defaultMode: 0400 }
         # 既定のユーザーの無効化の印（クラウドでは宣言の ConfigMap rabbitmq-default-user が最初から立てる）。

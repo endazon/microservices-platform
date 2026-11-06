@@ -1,0 +1,158 @@
+# NFR-05, NFR-18, IADR-0689: 基盤の側（platform-infra）の資格情報を OpenBao から写す（ESO）。
+#   - ストアは名前空間ごとの SecretStore openbao（kubernetes 認証。role platform-infra-eso）。読めるのは policy platform-infra-eso の範囲だけ。
+#   - 値は OpenBao の中で作る（seed-secrets.sh）。k8s の Secret に作ってから移す形は採らない（ADR-0080 決定 1）。
+#   - Secret の名前とキーは従来（IADR-0674）のまま。消費側（postgres・rabbitmq・keycloak・chart）は変えない。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-openbao
+  namespace: platform-infra
+  labels: { app: eso-openbao }
+automountServiceAccountToken: false
+---
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: openbao
+  namespace: platform-infra
+spec:
+  provider:
+    vault:
+      server: http://openbao.openbao.svc:8200
+      path: cloud
+      version: v2
+      auth:
+        kubernetes:
+          mountPath: kubernetes
+          role: platform-infra-eso
+          serviceAccountRef: { name: eso-openbao }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: postgres
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: postgres
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: platform/postgres, property: username }
+    - secretKey: password
+      remoteRef: { key: platform/postgres, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-db
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: keycloak-db
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: platform/keycloak-db, property: username }
+    - secretKey: password
+      remoteRef: { key: platform/keycloak-db, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-admin
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: keycloak-admin
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: platform/keycloak-admin, property: username }
+    - secretKey: password
+      remoteRef: { key: platform/keycloak-admin, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rabbitmq
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: rabbitmq
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: platform/rabbitmq, property: username }
+    - secretKey: password
+      remoteRef: { key: platform/rabbitmq, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: rabbitmq-users
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: rabbitmq-users
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  # 全キー（利用者名ごとのパスワード。名前の集合は deploy/local/rabbitmq-setup/users.txt の取引ユニットの行）
+  dataFrom:
+    - extract: { key: shared/ast-rabbitmq-users }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-realm-import
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: keycloak-realm-import
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    # 雛形（ConfigMap keycloak-realm-template。secret を持たない）は realm-for-cloud.js --template が宣言から組む（README §3）。
+    # 3 つの機密クライアントの secret だけを OpenBao から差し込む。
+    template:
+      engineVersion: v2
+      templateFrom:
+        - configMap:
+            name: keycloak-realm-template
+            items:
+              - { key: platform-realm.json, templateAs: Values }
+  dataFrom:
+    - extract: { key: shared/ast-client-secrets }

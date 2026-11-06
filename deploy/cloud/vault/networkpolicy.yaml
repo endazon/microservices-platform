@@ -1,0 +1,48 @@
+# NFR-18, IADR-0689 決定 3: 秘匿管理の受け口は平文なので、届く相手をここで絞る（段 1 を持たない。最初から強制）。
+#   - 入り: ESO の controller（名前空間 external-secrets）からの 8200 だけ。オーナーは kubectl exec で Pod の中のループバックを使う
+#     （kubelet を経るので NetworkPolicy の外。ポートを外へ開かない）。
+#   - 出: 名前解決と、kubernetes 認証の TokenReview（API サーバー）だけ。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: openbao
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openbao-ingress-eso
+  namespace: openbao
+spec:
+  podSelector: { matchLabels: { app: openbao } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: external-secrets } }
+          podSelector: { matchLabels: { app.kubernetes.io/name: external-secrets } }
+      ports:
+        - { protocol: TCP, port: 8200 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openbao-egress-dns-and-apiserver
+  namespace: openbao
+spec:
+  podSelector: { matchLabels: { app: openbao } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # API サーバー（TokenReview）。k3s の API サーバーはノードのループバック（README §1-4）で、宛先の IP を名指せないため、
+    # ポートだけで絞る（IADR-0689 残余）。
+    - ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 6443 }

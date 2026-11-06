@@ -1,0 +1,148 @@
+# NFR-05, NFR-18, IADR-0689: クラウドの秘匿管理（OpenBao）。単一ノード・raft・PVC。**本番の init**（dev モードを使わない）。
+#
+#   - unseal の鍵（1 分割・閾値 1）と初回の root はオーナーが init.sh で作り、age で暗号化したファイルとしてだけ手元に持つ。
+#     リポジトリにもノードにも平文で置かない（ADR-0080 決定 1）。起動のたびに、オーナーが unseal.sh で開ける。
+#   - 受け口は平文の 8200（IADR-0689 決定 3）。入れるのは ESO の controller だけ（networkpolicy.yaml）。オーナーは Pod の中の
+#     bao（BAO_ADDR はループバック）を kubectl exec で使う。
+#   - 封印のあいだは readiness が落ちる（/v1/sys/health は封印中 503）。Pod が Ready でないことが「unseal を待っている」の印になる。
+#   - 監査は設定ファイルで宣言する（OpenBao は API での audit device の作成を既定で拒む。IADR-0525）。値は記録しない。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openbao
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openbao
+  namespace: openbao
+  labels: { app: openbao }
+---
+# kubernetes 認証（ESO の ServiceAccount のトークンを TokenReview で確かめる）に要る権限だけ。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openbao-tokenreview
+  labels: { app: openbao }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: openbao
+    namespace: openbao
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openbao-config
+  namespace: openbao
+  labels: { app: openbao }
+data:
+  cloud.hcl: |
+    # OpenBao 2.x は file ストレージを持たない（IADR-0525）。raft（単一ノード）。
+    storage "raft" {
+      path    = "/openbao/data/raft"
+      node_id = "openbao-0"
+    }
+    # IADR-0689 決定 3: 平文。届くのは ESO の controller（NetworkPolicy）と Pod の中のループバックだけ。
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = true
+    }
+    api_addr     = "http://openbao.openbao.svc:8200"
+    cluster_addr = "http://127.0.0.1:8201"
+    ui           = false
+    # 値を記録しない（log_raw=false・hmac_accessor=true を明示する。IADR-0525 と同じ）。
+    audit "file" "stdout" {
+      description = "audit to container stdout (kubelet log)"
+      options {
+        file_path     = "stdout"
+        log_raw       = "false"
+        hmac_accessor = "true"
+        format        = "json"
+      }
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openbao-data
+  namespace: openbao
+  labels: { app: openbao }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openbao
+  namespace: openbao
+  labels: { app: openbao }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: openbao }
+  template:
+    metadata:
+      labels: { app: openbao }
+    spec:
+      serviceAccountName: openbao
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: openbao
+          image: openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+          # イメージの起動器（dev の既定を持つ）を通さず、設定ファイルだけで起こす。
+          command: ["bao", "server", "-config=/openbao/config/cloud.hcl"]
+          env:
+            # Pod の中の bao（オーナーが kubectl exec で使う）の宛先。値ではない。
+            - { name: BAO_ADDR, value: "http://127.0.0.1:8200" }
+            - { name: HOME, value: /tmp }
+          ports:
+            - { containerPort: 8200, name: http }
+          readinessProbe:
+            httpGet: { path: /v1/sys/health, port: 8200 }
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          volumeMounts:
+            - { name: config, mountPath: /openbao/config, readOnly: true }
+            - { name: data, mountPath: /openbao/data }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap: { name: openbao-config }
+        - name: data
+          persistentVolumeClaim: { claimName: openbao-data }
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao
+  namespace: openbao
+  labels: { app: openbao }
+spec:
+  type: ClusterIP
+  selector: { app: openbao }
+  ports:
+    - { name: http, port: 8200, targetPort: 8200 }
