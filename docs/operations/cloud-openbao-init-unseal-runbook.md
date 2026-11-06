@@ -86,7 +86,7 @@ bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <�
 | --- | --- | --- |
 | 資格の書き出しより前（置き場・CA・認証・資格の作成） | `--operator-out` のファイルは消えている。初回の root は残っている | 理由を直して、**同じコマンドをそのまま流し直す**（済んだものは作り直さない。資格は流し直しのたびに 1 組へ作り直す） |
 | ConfigMap `platform-infra-ca` の段 | 同上（ファイルは消す。資格はまだ誰にも渡っていない。流し直しで資格は作り直すので、消したファイルの資格はどのみち無効になる） | 同上 |
-| 失効の段（終了コード 3） | `--operator-out` のファイルは**有効なので残っている**（2 か所に保管してよい）。初回の root は残っているか、失効が効いたのに結果が届かなかったかのどちらか | **失効だけを流し直す**: `bash deploy/cloud/vault/configure.sh --live --revoke-only --init-file <init>.age --identity <識別子のファイル>`（既に失効していれば何もせずに終わる）。全体を流し直さない（ファイルが在るので止まる） |
+| 失効の段（終了コード 3） | `--operator-out` のファイルは**有効なので残っている**（2 か所に保管してよい）。初回の root は残っているか、失効が効いたのに結果が届かなかったかのどちらか | **失効だけを流し直す**: `bash deploy/cloud/vault/configure.sh --live --revoke-only --init-file <init>.age --identity <識別子のファイル>`（既に失効していれば何もせずに終わる。「失効した」と読むのは、unseal 済みの OpenBao が root を拒んだ〔permission denied〕ときだけ。封印中・届かないときは判定せずに終了コード 3 で止まるので、§2 で開けてから流し直す）。全体を流し直さない（ファイルが在るので止まる） |
 
 - 成功して初回の root を失効させた後にもう一度流すと、root で入れないので止まる（何も変えない）。オーナー用の資格を作り直すときは §6。
 

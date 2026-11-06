@@ -44,15 +44,33 @@ ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
 
 # 初回の root を失効させる（既に失効していれば何もしない）。失効したことを確かめて 0。
+# 🔴 「失効した」と読むのは、OpenBao に届き、unseal 済み（sealed=false）で、lookup が permission denied（403）を返したときだけ。
+#    封印中・届かない・想定外のエラーは、失効したとも生きているとも言わずに止める（fail-open にしない）。
 # shellcheck disable=SC2016
 revoke_root() {
   ob_decrypt_lines "$INIT_FILE" "$IDENTITY" root_token | ob_exec '
 set -eu
 read -r T
-if ! BAO_TOKEN="$T" bao token lookup >/dev/null 2>&1; then echo "    初回の root は既に失効している"; exit 0; fi
+st="$(bao status -format=json 2>/dev/null || true)"
+case "$st" in
+  *"\"sealed\": false"*) ;;
+  *) echo "ERROR: OpenBao が封印中か、届かない。root が失効したかを判定できない（unseal.sh で開けてから流し直す）" >&2; exit 1 ;;
+esac
+root_state() {
+  out="$(BAO_TOKEN="$T" bao token lookup 2>&1)" && { echo alive; return 0; }
+  case "$out" in *"Code: 403"*"permission denied"*) echo revoked ;; *) echo unknown ;; esac
+}
+case "$(root_state)" in
+  revoked) echo "    初回の root は既に失効している"; exit 0 ;;
+  alive) ;;
+  *) echo "ERROR: root の状態を判定できない（permission denied 以外の失敗）。OpenBao の状態を確かめてから流し直す" >&2; exit 1 ;;
+esac
 BAO_TOKEN="$T" bao token revoke -self >/dev/null
-if BAO_TOKEN="$T" bao token lookup >/dev/null 2>&1; then echo "ERROR: 初回の root が失効していない" >&2; exit 1; fi
-echo "    初回の root を失効させた"
+case "$(root_state)" in
+  revoked) echo "    初回の root を失効させた" ;;
+  alive) echo "ERROR: 初回の root が失効していない" >&2; exit 1 ;;
+  *) echo "ERROR: 失効の後の root の状態を判定できない（permission denied 以外の失敗）" >&2; exit 1 ;;
+esac
 '
 }
 

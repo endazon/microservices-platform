@@ -141,6 +141,15 @@ alive || ng "失効の段で失効が効かなかったのに、root が無い"
 grep -q -- '--revoke-only' "$W/conf.log" || ng "失効だけを流し直す口を案内しない"
 set +e; conf >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ] && can_login && alive || ng "資格のファイルが在るときの流し直しが、止まらずに何かを変えた"
+# 封印中は、root が生きていても「失効した」と言わずに止まる（fail-open にしない）。開けてから流し直すと失効して通る
+BAO_TOKEN="$ROOT0" B operator seal >/dev/null
+[[ "$(B status -format=json || true)" == *'"sealed": true'* ]] || ng "陽性対照: 封印できていない"
+set +e; run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >"$W/conf.log" 2>&1; rc=$?; set -e
+[ "$rc" -eq 3 ] || ng "封印中の --revoke-only が 3 で止まらない（$rc）"
+grep -q '既に失効している' "$W/conf.log" && ng "封印中なのに「既に失効している」と言った（fail-open）"
+run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null
+alive || ng "封印の後に root が生きていない（封印中に失効させた）"
+ok "configure --revoke-only: 封印中は失効したとも生きているとも言わずに 3 で止まり、root は生きたまま"
 # 失効だけを流し直す。1 回目は効いたのに結果が届かない形で落とす → root は無く、ファイルは有効のまま
 rm -f "$W/fail.done"
 set +e; KUBECTL_FAIL_AFTER="token revoke -self" run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null 2>&1; rc=$?; set -e
