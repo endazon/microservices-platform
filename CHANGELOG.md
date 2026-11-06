@@ -781,6 +781,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2468) (206836b7)
 - **NFR**: CHANGELOG を自動更新 (#2465) (8bf398bb)
 - **NFR**: CHANGELOG を自動更新 (#2462) (0f3bda2d)
 - **NFR**: CHANGELOG を自動更新 (#2461) (a133870a)
@@ -1181,6 +1182,7 @@
 
 ### その他
 
+- **NFR**: dependabot で codeql-action の init と analyze を同じ PR で上げる (#2470) (daea58c5)
 - **NFR-21**: クラウドの最小構成で、バックアップをオブジェクトストレージへ書き、警報を Discord へ送り、heartbeat で外から死活を見る（#2402） (#2406) (4b90c510)
 - **NFR**: 計画 ID レンジの宣言を計画側の実物（ADR-0001..0148）へ引き直す（#2386） (#2387) (06b7a352)
 - **NFR**: dependabot の 8 本（npm 5・Actions 3）を最新の develop で 1 本にまとめて上げる (#2373) (08bd9908)
