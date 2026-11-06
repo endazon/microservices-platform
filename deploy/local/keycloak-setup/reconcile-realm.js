@@ -102,7 +102,7 @@
  *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
  *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0572）
  *   RECONCILE_RECREATE_USERS  消された seed 利用者のうち、作り直してよい名前（カンマ区切り。#2431 / IADR-0685。既定は空＝作り直さない）
- *   RECONCILE_REMOVE_SURPLUS  1 のときだけ、apply でサービスアカウントの余剰のロールを外す（IADR-0686。既定は報告だけ）
+ *   RECONCILE_REMOVE_SURPLUS  1 のときだけ、apply でサービスアカウントの余剰のロールを外す（IADR-0688。既定は報告だけ）
  *   E2E_<ROLE>_PASSWORD / E2E_<ROLE>_TOTP_SECRET  試験アカウントの資格情報（Secret e2e-accounts。無ければ e2e 利用者を作らない。#2024）
  *
  * 引数 `--render-import`: 標準入力の realm JSON へ同じ差し込みを当てて標準出力へ書く（Keycloak へは接続しない。#2024）。
@@ -164,7 +164,7 @@ function parseRecreateUsers(v, skipped = []) {
   return new Set(names.filter((x) => /^[a-z0-9._@-]+$/.test(x)));
 }
 
-// ［2026-11-06 / IADR-0686］**サービスアカウントの権限の余剰も差分として数える。**
+// ［2026-11-06 / #2466・IADR-0688］**サービスアカウントの権限の余剰も差分として数える。**
 //   サービスアカウント利用者のロールは宣言が全集合である（IADR-0369 の境界表）。従来は欠落だけを見ていたので、稼働で足された
 //   ロールがあっても drift=0 になった（偽の安心）。宣言より多い realm ロール・client ロールを `surplus` として計画する。
 //   - check: drift に数える（G9 が赤くなる）。
@@ -538,7 +538,7 @@ function plan(desired, live, { recreateUsers = new Set(), kept = [], surplus = [
         add({ op: 'user.clientRoles.add', target: `${user.username}:${clientId}`, method: 'POST',
           path: `${U}/role-mappings/clients/${cr.clientUuid}`, body: cr.refs, reason: `client ロールの欠落: ${missing.join(', ')}` });
       }
-      // IADR-0686: 宣言より多いロール（余剰）。稼働の全割当（collectLive の all）を読めたときだけ見る。
+      // IADR-0688: 宣言より多いロール（余剰）。稼働の全割当（collectLive の all）を読めたときだけ見る。
       if (sa.all && Array.isArray(sa.all.realm)) {
         const declRealm = new Set(user.realmRoles || []);
         const extraRealm = sa.all.realm.filter((r) => r && r.name && !declRealm.has(r.name)
@@ -873,7 +873,7 @@ async function collectLive(kc, desired) {
         const cc = clientByClientId.get(cid);
         if (cc) cr[cid] = ((await kc.get(`${R}/users/${user.id}/role-mappings/clients/${cc.id}`)) || []).map((r) => r.name);
       }
-      // IADR-0686: 余剰を見るため、全部の割当（realm と全 client）を 1 回で読む。読めない形なら余剰は見ない（all を持たない）。
+      // IADR-0688: 余剰を見るため、全部の割当（realm と全 client）を 1 回で読む。読めない形なら余剰は見ない（all を持たない）。
       const allMappings = await kc.get(`${R}/users/${user.id}/role-mappings`);
       let all;
       if (isObj(allMappings)) {
@@ -992,7 +992,7 @@ async function applyOps(kc, realmName, ops) {
  * ［2026-10-25 / #2026］当てられなかった操作の数（applyErrors）を返す —— 作成の後の手順の失敗は再計画の差分に戻らないことがある。
  */
 async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive, recreateUsers = new Set(), removeSurplus = false }) {
-  // IADR-0686: 余剰（surplus）は plan の出力先で受ける。apply で外すのは removeSurplus のときだけ（そのときは ops に足す）。
+  // IADR-0688: 余剰（surplus）は plan の出力先で受ける。apply で外すのは removeSurplus のときだけ（そのときは ops に足す）。
   let kept = [];
   let surplus = [];
   const planOf = async () => {
@@ -1096,7 +1096,7 @@ async function main() {
     const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, recreateUsers, removeSurplus });
     const ops = r.ops;
     for (const k of r.kept) console.log(`    kept      ${k.target} — ${k.reason}`);
-    // IADR-0686: 余剰は check では drift に数え、apply（外さない段 1）では報告だけにする（起動器を止めない）。
+    // IADR-0688: 余剰は check では drift に数え、apply（外さない段 1）では報告だけにする（起動器を止めない）。
     for (const op of r.surplus) {
       console.log(`    ${mode === 'check' ? 'drift' : 'surplus'}   ${describe(op)}${mode === 'check' ? '' : `（外すのは ${REMOVE_SURPLUS_ENV}=1）`}`);
     }

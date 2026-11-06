@@ -763,6 +763,6 @@
 | [IADR-0683](./IADR-0683_vault-operator-policy-least-privilege.md) | 秘匿管理の運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える（#2421） | Accepted |
 | [IADR-0684](./IADR-0684_llm-caller-purpose-policy-staged.md) | LLM ゲートウェイの補完は、呼び手ごとの許可表（用途・モデルの明示の指定）を REST と gRPC の両面で 1 つの判定器が見る。段 1 は報告、段 2 は 403 / PERMISSION_DENIED（#2417） | Accepted |
 | [IADR-0685](./IADR-0685_reconcile-keep-runtime-disable-delete.md) | realm の調停は、稼働側で無効にしたクライアントを有効へ戻さず、一度在った seed 利用者が消されていても作り直さない（#2431） | Accepted |
-| [IADR-0686](./IADR-0686_reconcile-surplus-roles-as-drift.md) | realm の調停は、サービスアカウントの宣言より多いロールを余剰として数える（check は drift・apply は段 1 で報告だけ） | Accepted |
 | [IADR-0686](./IADR-0686_internal-rest-staged-auth-gate.md) | 内部の AI 分析と Wiki の REST の群に、段階つきの共有の認証の門（Auth:InternalGate:Mode。段 1 は報告、段 2 は 401）を掛ける（#2430） | Accepted |
 | [IADR-0687](./IADR-0687_bff-user-rate-limits-staged.md) | BFF の LLM を伴う口に、利用者ごと・群ごとの直近 60 秒の要求数の上限（段 1 は報告、段 2 は 429）を共有の端点フィルタで掛ける（#2432） | Accepted |
+| [IADR-0688](./IADR-0688_reconcile-surplus-roles-as-drift.md) | realm の調停は、サービスアカウントの宣言より多いロールを余剰として数える（check は drift・apply は段 1 で報告だけ） | Accepted |

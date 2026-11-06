@@ -60,7 +60,7 @@ Job（`node:22-alpine`・`platform-infra`）は **ConfigMap `keycloak-realms`**�
 | 宣言（**加えるだけ**。#1894 / IADR-0546） | 既存の人の seed 利用者の `account` の `view-profile`・`manage-account`（`SEED_USER_SELF_SERVICE_ROLES`） | 実効の割当に無ければ加える。外さない。他のロールは触らない |
 | 宣言（**作るときだけ・差し込めたときだけ**。#2024 / IADR-0570） | 試験アカウント `e2e-*` の資格情報（宣言はプレースホルダ `${E2E_…}`。値は Secret `e2e-accounts` を Job が `envFrom` で読む） | 差し込めない利用者は作らない（`skipped` の行。drift にしない）。作った後は実行時が所有する |
 | Keycloak（**自動付与**。#2208 / IADR-0618） | サービスアカウントを持つ client（宣言の `serviceAccountsEnabled: true`）の既定スコープ `service_account`（Keycloak 26 が client の作成・更新のたびに足す。`KEYCLOAK_AUTO_ASSIGNED_CLIENT_SCOPES`） | 稼働側にあっても余剰と見なさない（外さない）。宣言には書かない（`scripts/check-realm-constraints.js` の検査 11）。それ以外の余剰スコープは従来どおり外す |
-| 宣言（**全集合**。IADR-0686） | サービスアカウント利用者の realm ロール・client ロール | 宣言より多い割当は**余剰**として、`--check` では drift に数える（G9 が赤）。apply は段 1 では外さず `surplus` の行で報告し、`RECONCILE_REMOVE_SURPLUS=1` のときだけ外す。Keycloak が付ける既定ロール `default-roles-<realm>` と自分の client の `uma_protection` は数えない |
+| 宣言（**全集合**。IADR-0688） | サービスアカウント利用者の realm ロール・client ロール | 宣言より多い割当は**余剰**として、`--check` では drift に数える（G9 が赤）。apply は段 1 では外さず `surplus` の行で報告し、`RECONCILE_REMOVE_SURPLUS=1` のときだけ外す。Keycloak が付ける既定ロール `default-roles-<realm>` と自分の client の `uma_protection` は数えない |
 
 > **［2026-09-28 / #1682 / ADR-0124 決定 1・IADR-0485］client の `secret` を「作成時だけ」へ移した。**
 > client シークレットは認証基盤と Vault を同時に変えないと成立しない「対になる秘密」であり、本番の値を realm の宣言（Git）に置かない。

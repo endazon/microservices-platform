@@ -2,15 +2,16 @@
 title: 作業仕様書 — realm の調停の差分に、サービスアカウントの権限の余剰を数える（段 1 は check で数え apply は報告だけ）
 type: spec
 status: in-progress
-related_ids: [NFR-18, IADR-0369, IADR-0686]
+related_ids: [NFR-18, IADR-0369, IADR-0688]
 author: claude
 created: 2026-11-06
 updated: 2026-11-06
+issue: "#2466"
 ---
 
 # 作業仕様書 — 調停の差分にサービスアカウントの権限の余剰を数える
 
-> 着手 2026-11-06（develop `00fa8b26`）。判断の記録は **IADR-0686**（新規。番号は仮）。issue は PR を作るときに起票する。稼働中のクラスタには何もしない。
+> 着手 2026-11-06（develop `00fa8b26`）。判断の記録は **IADR-0688**（新規）。issue は #2466。稼働中のクラスタには何もしない。
 
 ## 起点
 

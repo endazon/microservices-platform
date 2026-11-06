@@ -1,16 +1,16 @@
 ---
-title: IADR-0686 realm の調停は、サービスアカウントの宣言より多いロールを余剰として数える。check は drift に入れ、apply は段 1 では外さず報告し、明示の切り替えでだけ外す
+title: IADR-0688 realm の調停は、サービスアカウントの宣言より多いロールを余剰として数える。check は drift に入れ、apply は段 1 では外さず報告し、明示の切り替えでだけ外す（#2466）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, IADR-0369]
+related_ids: [NFR-18, IADR-0369, IADR-0685]
 author: claude
 created: 2026-11-06
 updated: 2026-11-06
 related_specs:
-  - ../specs/20261106_reconcile-surplus-roles-as-drift.md
+  - ../specs/20261106_2466_reconcile-surplus-roles-as-drift.md
 ---
 
-# IADR-0686: 調停の差分にサービスアカウントの権限の余剰を数える
+# IADR-0688: 調停の差分にサービスアカウントの権限の余剰を数える
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
@@ -20,7 +20,7 @@ related_specs:
 
 ## 起点・関連
 
-- 要求 **NFR-18**。前提: IADR-0369（サービスアカウント利用者のロールは宣言が正）。
+- 要求 **NFR-18**。issue #2466。前提: IADR-0369（サービスアカウント利用者のロールは宣言が正）。
 
 ## コンテキストと課題
 
