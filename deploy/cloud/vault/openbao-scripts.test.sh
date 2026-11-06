@@ -48,12 +48,21 @@ chmod +x "$W/bin/bao"
 cat > "$W/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$KLOG"
+# 試験の差し込み（1 回だけ）: KUBECTL_FAIL_ON は走らせずに落とす。KUBECTL_FAIL_AFTER は走らせてから落とす（効いたのに結果が届かない形）。
+if [ -n "${KUBECTL_FAIL_ON:-}" ] && [[ "$*" == *"$KUBECTL_FAIL_ON"* ]] && [ ! -e "$FAIL_DONE" ]; then
+  : > "$FAIL_DONE"; echo "injected failure (before): $KUBECTL_FAIL_ON" >&2; exit 1
+fi
 args=("$@")
 for i in "${!args[@]}"; do
   if [ "${args[$i]}" = "--" ]; then
     rest=("${args[@]:$((i + 1))}")
     [ "${rest[0]}" = sh ] && [ "${rest[1]}" = -c ] || { echo "stub: 想定外の exec: ${rest[*]}" >&2; exit 9; }
-    cd "$POD_HOME" && exec env BAO_ADDR="$TEST_BAO_ADDR" HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}"
+    cd "$POD_HOME" || exit 9
+    if [ -n "${KUBECTL_FAIL_AFTER:-}" ] && [[ "${rest[2]}" == *"$KUBECTL_FAIL_AFTER"* ]] && [ ! -e "$FAIL_DONE" ]; then
+      env BAO_ADDR="$TEST_BAO_ADDR" HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}" >/dev/null 2>&1 || true
+      : > "$FAIL_DONE"; echo "injected failure (after): $KUBECTL_FAIL_AFTER" >&2; exit 1
+    fi
+    exec env BAO_ADDR="$TEST_BAO_ADDR" HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}"
   fi
 done
 case "$*" in
@@ -63,7 +72,7 @@ case "$*" in
 esac
 EOF
 chmod +x "$W/bin/kubectl"
-export KLOG="$W/kubectl.log" POD_HOME="$W/pod" CM_DIR="$W/cm" STUB_BIN="$W/bin" PATH="$W/bin:$PATH"
+export FAIL_DONE="$W/fail.done" KLOG="$W/kubectl.log" POD_HOME="$W/pod" CM_DIR="$W/cm" STUB_BIN="$W/bin" PATH="$W/bin:$PATH"
 mkdir -p "$POD_HOME" "$CM_DIR"
 : > "$KLOG"
 age-keygen -o "$W/id.txt" 2> "$W/recipients.txt"
@@ -113,13 +122,37 @@ for at in "auth enable kubernetes" "-field=secret_id"; do
   BAO_TOKEN="$ROOT0" B token lookup >/dev/null 2>&1 || ng "途中で落ちたのに初回の root を失効させた（回復できない。$at）"
 done
 ok "configure: 途中で落ちても初回の root を残し、資格のファイルを残さない（マウントの後・AppRole の後のどちらでも）"
+conf() { run configure.sh --init-file "$W/init.age" --identity "$W/id.txt" --recipients "$W/recipients.txt" --operator-out "$W/operator.age" "$@"; }
+alive() { BAO_TOKEN="$ROOT0" B token lookup >/dev/null 2>&1; }
+can_login() { [ -n "$(printf '{"role_id":"%s","secret_id":"%s"}' "$(dec "$W/operator.age" role_id)" "$(dec "$W/operator.age" secret_id)" | B write -field=token auth/approle/login - 2>/dev/null)" ]; }
+# 経路 2: ConfigMap の段で落ちる → root は生きていて資格はまだ渡っていない。ファイルを消し、同じコマンドで流し直せる
 rm -f "$W/fail.done"
-run configure.sh --init-file "$W/init.age" --identity "$W/id.txt" --recipients "$W/recipients.txt" --operator-out "$W/operator.age" >/dev/null
+set +e; KUBECTL_FAIL_ON="create configmap" conf >"$W/conf.log" 2>&1; rc=$?; set -e
+[ -e "$W/fail.done" ] || ng "陽性対照: ConfigMap の段に失敗を差し込めていない"
+[ "$rc" -ne 0 ] && [ ! -e "$W/operator.age" ] && alive || ng "ConfigMap の段で落ちたのに、ファイルが残るか root を失効させた"
+ok "configure: ConfigMap の段で落ちたら、資格のファイルを消して root を残す（同じコマンドで流し直せる）"
+# 経路 3: 失効の段で落ちる（失効が効かなかった）→ 資格のファイルは残して有効、root も生きている
+rm -f "$W/fail.done"
+set +e; BAO_FAIL_ON="token revoke -self" conf >"$W/conf.log" 2>&1; rc=$?; set -e
+[ -e "$W/fail.done" ] || ng "陽性対照: 失効の段に失敗を差し込めていない"
+[ "$rc" -eq 3 ] || ng "失効の段の失敗が 3 で終わらない（$rc）"
+[ -e "$W/operator.age" ] && can_login || ng "失効の段で落ちたのに、資格のファイルを消した（回復できない）"
+alive || ng "失効の段で失効が効かなかったのに、root が無い"
+grep -q -- '--revoke-only' "$W/conf.log" || ng "失効だけを流し直す口を案内しない"
+set +e; conf >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 2 ] && can_login && alive || ng "資格のファイルが在るときの流し直しが、止まらずに何かを変えた"
+# 失効だけを流し直す。1 回目は効いたのに結果が届かない形で落とす → root は無く、ファイルは有効のまま
+rm -f "$W/fail.done"
+set +e; KUBECTL_FAIL_AFTER="token revoke -self" run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null 2>&1; rc=$?; set -e
+[ -e "$W/fail.done" ] && [ "$rc" -ne 0 ] || ng "陽性対照: 失効の結果を落とせていない"
+! alive && can_login || ng "失効が効いた後に落ちたのに、root が生きているか資格が使えない"
+run configure.sh --revoke-only --init-file "$W/init.age" --identity "$W/id.txt" >"$W/conf.log" 2>&1 || ng "失効だけの流し直しが、既に失効した root で止まった"
+grep -q '既に失効している' "$W/conf.log" || ng "既に失効していることを伝えない"
+ok "configure: 失効の段で落ちたら資格のファイルを有効のまま残し、--revoke-only で失効だけを流し直せる（効いたのに結果が届かない形でも）"
 [ "$(stat -c %a "$W/operator.age")" = 600 ] || ng "オーナー用の資格のファイルが 0600 でない"
-set +e; BAO_TOKEN="$ROOT0" B token lookup >/dev/null 2>&1; rc=$?; set -e
-[ "$rc" -ne 0 ] || ng "初回の root が失効していない"
+! alive || ng "初回の root が失効していない"
 for ns in platform-infra microservices-platform; do grep -q 'BEGIN CERTIFICATE' "$CM_DIR/$ns.crt" || ng "CA の ConfigMap（$ns）が無い"; done
-ok "configure: 流し直しで最後まで進み、初回の root は失効し、オーナー用の資格は age のファイル（0600）にだけ在り、CA の証明書を ConfigMap に置く"
+ok "configure: 案内どおりに流し直すと最後まで進み、初回の root は失効し、オーナー用の資格は age のファイル（0600）にだけ在り、CA の証明書を ConfigMap に置く"
 
 # 試験の側で、オーナー用の資格と unseal の鍵から root を作り直す（root-token.sh と同じ道筋の独立な確かめ）
 login() { printf '{"role_id":"%s","secret_id":"%s"}' "$(dec "$W/operator.age" role_id)" "$(dec "$W/operator.age" secret_id)" | B write -field=token auth/approle/login -; }

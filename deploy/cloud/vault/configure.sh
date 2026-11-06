@@ -3,6 +3,8 @@
 #
 #   bash deploy/cloud/vault/configure.sh --live --init-file <init.sh のファイル>.age --identity <age の識別子> \
 #     --recipients <age の受取人のファイル> --operator-out <書き出すファイル>.age
+#   bash deploy/cloud/vault/configure.sh --live --revoke-only --init-file <init.sh のファイル>.age --identity <age の識別子>
+#     （前の回が失効の段で止まったときだけ。失効だけを流し直す。既に失効していれば何もしない）
 #
 # 設定するもの（どれも在れば作り直さない）:
 #   - KV v2 `cloud/`（値の置き場。パスの規則は IADR-0689 決定 6）
@@ -25,7 +27,7 @@ ROOT="$(cd "$HERE/../../.." && pwd)"
 live_opt_in_scan "$@"
 set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
 
-INIT_FILE="" IDENTITY="" RECIPIENTS="" OUT=""
+INIT_FILE="" IDENTITY="" RECIPIENTS="" OUT="" REVOKE_ONLY=0
 K8S_HOST="${OPENBAO_KUBERNETES_HOST:-https://kubernetes.default.svc}"
 CA_NAMESPACES="${CA_NAMESPACES:-platform-infra microservices-platform}"
 while [ "$#" -gt 0 ]; do
@@ -34,12 +36,39 @@ while [ "$#" -gt 0 ]; do
     --identity) IDENTITY="${2:-}"; shift 2 ;;
     --recipients) RECIPIENTS="${2:-}"; shift 2 ;;
     --operator-out) OUT="${2:-}"; shift 2 ;;
-    *) echo "ERROR: 未知の引数: $1（受け付けるのは --live・--init-file・--identity・--recipients・--operator-out）" >&2; exit 2 ;;
+    --revoke-only) REVOKE_ONLY=1; shift ;;
+    *) echo "ERROR: 未知の引数: $1（受け付けるのは --live・--init-file・--identity・--recipients・--operator-out・--revoke-only）" >&2; exit 2 ;;
   esac
 done
 ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+
+# 初回の root を失効させる（既に失効していれば何もしない）。失効したことを確かめて 0。
+# shellcheck disable=SC2016
+revoke_root() {
+  ob_decrypt_lines "$INIT_FILE" "$IDENTITY" root_token | ob_exec '
+set -eu
+read -r T
+if ! BAO_TOKEN="$T" bao token lookup >/dev/null 2>&1; then echo "    初回の root は既に失効している"; exit 0; fi
+BAO_TOKEN="$T" bao token revoke -self >/dev/null
+if BAO_TOKEN="$T" bao token lookup >/dev/null 2>&1; then echo "ERROR: 初回の root が失効していない" >&2; exit 1; fi
+echo "    初回の root を失効させた"
+'
+}
+
+# --revoke-only: 前の回が失効の段で止まったとき（資格のファイルは書き出し済み・有効）に、失効だけを流し直す。
+if [ "$REVOKE_ONLY" = 1 ]; then
+  live_opt_in_require "configure.sh"
+  ob_need kubectl age node
+  revoke_root || { echo "ERROR: 失効を確かめられない。OpenBao の状態を確かめてから --revoke-only を流し直す" >&2; exit 3; }
+  echo "OK: 初回の root は失効している。"
+  exit 0
+fi
 ob_readable "$RECIPIENTS" "age の受取人のファイル（--recipients）"
+if [ -e "$OUT" ]; then
+  echo "ERROR: ${OUT} は在る。上書きしない。前の回が失効の段で止まったなら、そのファイルは有効なので --revoke-only を流す。それ以外は別の名前を与える" >&2
+  exit 2
+fi
 ob_fresh "$OUT"
 case "$K8S_HOST" in https://*) ;; *) echo "ERROR: OPENBAO_KUBERNETES_HOST は https:// で始める" >&2; exit 2 ;; esac
 live_opt_in_require "configure.sh"
@@ -129,35 +158,41 @@ K8S_CA="$( [ -n "${OPENBAO_KUBERNETES_CA_FILE:-}" ] && cat "$OPENBAO_KUBERNETES_
 POD="${POD/__K8S_CA__/$K8S_CA}"
 
 echo "==> 設定（初回の root を使う。失効は資格を書き出して確かめた後）"
+# 経路 1: 書き出しの前に落ちた → 書き出し先を消す。root は残る。同じコマンドで流し直す。
 if ! ( umask 077
        ob_decrypt_lines "$INIT_FILE" "$IDENTITY" root_token | ob_exec "$POD" | age -R "$RECIPIENTS" -o "$OUT" ); then
   rm -f "$OUT"
-  echo "ERROR: 設定に失敗した（書き出し先は消した）。初回の root は残してある。理由を直して configure.sh をそのまま流し直す（済んだものは作り直さない）" >&2
+  echo "ERROR: 設定に失敗した（書き出し先は消した）。初回の root は残してある。理由を直して configure.sh を同じ引数で流し直す（済んだものは作り直さない）" >&2
   exit 1
 fi
 chmod 600 "$OUT"
 # 書き出した資格を復号して確かめる（中身は表示しない）。確かめられなければ root を残して止まる。
 if ! ob_decrypt_lines "$OUT" "$IDENTITY" role_id secret_id >/dev/null; then
   rm -f "$OUT"
-  echo "ERROR: 書き出した資格を復号できない（書き出し先は消した）。初回の root は残してある。configure.sh を流し直す" >&2
+  echo "ERROR: 書き出した資格を復号できない（書き出し先は消した）。初回の root は残してある。configure.sh を同じ引数で流し直す" >&2
   exit 1
 fi
 
 echo "==> CA の証明書（公開してよい）を ConfigMap platform-infra-ca に置く"
+# 経路 2: ここで落ちた → root は生きていて、資格はまだ誰にも渡っていない。書き出し先を消し、同じコマンドで流し直す
+#   （流し直しは secret_id を全部作り直すので、消したファイルの資格はどのみち無効になる）。
 for ns in $CA_NAMESPACES; do
-  ob_exec 'bao read -field=certificate pki_cloud/cert/ca' \
-    | kubectl -n "$ns" create configmap platform-infra-ca --from-file=ca.crt=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  if ! ob_exec 'bao read -field=certificate pki_cloud/cert/ca' \
+       | kubectl -n "$ns" create configmap platform-infra-ca --from-file=ca.crt=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null; then
+    rm -f "$OUT"
+    echo "ERROR: ConfigMap ${ns}/platform-infra-ca を置けない（書き出し先は消した。流し直しで資格は作り直す）。初回の root は残してある。理由を直して configure.sh を同じ引数で流し直す" >&2
+    exit 1
+  fi
   echo "    作った: ConfigMap ${ns}/platform-infra-ca"
 done
 
 echo "==> 失効（オーナー用の資格を書き出して確かめたので、初回の root を失効させる）"
-# shellcheck disable=SC2016
-ob_decrypt_lines "$INIT_FILE" "$IDENTITY" root_token | ob_exec '
-set -eu
-read -r T
-BAO_TOKEN="$T" bao token revoke -self >/dev/null
-if BAO_TOKEN="$T" bao token lookup >/dev/null 2>&1; then echo "ERROR: 初回の root が失効していない" >&2; exit 1; fi
-echo "    初回の root を失効させた"
-'
+# 経路 3: ここで落ちた → 🔴 資格のファイルは消さない（失効が実は効いていたなら、消すと root も資格も無くなる）。
+#   ファイルは有効のまま残し、失効だけを流し直す口（--revoke-only）を案内する。既に失効していれば何もしない。
+if ! revoke_root; then
+  echo "ERROR: 初回の root の失効を確かめられない。資格のファイル ${OUT} は有効なので消していない（2 か所に保管してよい）。" >&2
+  echo "       失効だけを流し直す: bash deploy/cloud/vault/configure.sh --live --revoke-only --init-file ${INIT_FILE} --identity <識別子のファイル>" >&2
+  exit 3
+fi
 echo "OK: 設定した。オーナー用の資格を age で暗号化して ${OUT} に書いた（値は表示しない）。初回の root は失効させた。"
 echo "    次: ${OUT} も別々の 2 か所に保管し、seed-secrets.sh を流す（手順書）。"
