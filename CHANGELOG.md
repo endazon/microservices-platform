@@ -4,6 +4,8 @@
 
 ### 新機能
 
+- **NFR-05**: クラウドの外から持ち込む値を OpenBao から写し（put-external-secret.sh）、クラウドの段 2 の切り替えを強制にする（#2471） (#2478) (c00aa579)
+- **NFR-05**: クラウドの最小構成に秘匿管理（OpenBao）と ESO を持ち込み、クラスタの中の資格情報と TLS の鍵を OpenBao から供給する（#2471） (#2474) (e9e01524)
 - **NFR-09**: 取引ユニットの Discord ボットの機密クライアントに専用のロール trading-bot を足し、AST の submodule を写しと同時に c322b26d へ進める（#2441） (#2464) (ee770135)
 - **NFR-09**: 取引ユニットの API の audience（ai-stock-trading-api）を専用のクライアントスコープで載せ、付ける先を bff と ai-stock-trading-owner に限る（#2418） (#2419) (c43f3926)
 - **NFR-18**: AST をクラウドの単一ノードへ移すための MSP の最小構成（deploy/cloud）を足す（#2401） (#2409) (7f0b2a8d)
@@ -337,6 +339,7 @@
 
 ### 不具合修正
 
+- **NFR**: claude-code-action の pin の行末コメントの版を SHA に合わせて v1.0.267 にする (#2477) (2e9de755)
 - **NFR-18**: realm の調停の差分に、サービスアカウントの宣言より多いロールを余剰として数える（check は drift・apply は段 1 で報告だけ。#2466） (#2467) (fd7750de)
 - **NFR-18**: BFF の LLM を伴う口に、利用者ごとの要求数の上限を掛ける（段 1 は報告・段 2 で 429。#2432） (#2435) (71e052bb)
 - **NFR-18**: 内部の AI 分析と Wiki の REST の群に認証の門を掛ける（段 1 は報告・段 2 で 401。#2430） (#2434) (79dfb4d9)
@@ -781,6 +784,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2472) (9df3d8c9)
 - **NFR**: CHANGELOG を自動更新 (#2468) (206836b7)
 - **NFR**: CHANGELOG を自動更新 (#2465) (8bf398bb)
 - **NFR**: CHANGELOG を自動更新 (#2462) (0f3bda2d)
@@ -1182,6 +1186,15 @@
 
 ### その他
 
+- **deps**: bump the codeql-action group with 2 updates (#2473) (43c4f70e)
+- **deps-dev**: bump eslint-plugin-lingui from 0.14.0 to 0.16.0 in /src (#2453) (2e08dc7f)
+- **deps**: bump @hookform/resolvers from 5.9.2 to 7.0.1 in /src (#2454) (74297400)
+- **deps**: bump dompurify from 3.4.14 to 3.4.17 in /src (#2455) (25c9eb75)
+- **deps-dev**: bump knip from 6.43.0 to 6.44.1 in /src (#2452) (31104e44)
+- **deps-dev**: bump eslint-plugin-playwright from 2.12.1 to 2.12.2 in /src (#2451) (6243be31)
+- **deps**: bump anthropics/claude-code-action from 1.0.264 to 1.0.267 (#2450) (12862644)
+- **deps**: bump pnpm/action-setup from 6.1.0 to 6.1.1 (#2449) (f6d4011d)
+- **deps**: bump actions/setup-dotnet from 6.0.0 to 6.1.0 (#2447) (586e0ff7)
 - **NFR**: dependabot で codeql-action の init と analyze を同じ PR で上げる (#2470) (daea58c5)
 - **NFR-21**: クラウドの最小構成で、バックアップをオブジェクトストレージへ書き、警報を Discord へ送り、heartbeat で外から死活を見る（#2402） (#2406) (4b90c510)
 - **NFR**: 計画 ID レンジの宣言を計画側の実物（ADR-0001..0148）へ引き直す（#2386） (#2387) (06b7a352)
