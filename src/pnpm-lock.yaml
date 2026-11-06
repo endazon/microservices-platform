@@ -278,8 +278,8 @@ importers:
   knowledge/frontend:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^5.9.2
-        version: 5.9.2(@sinclair/typebox@0.27.12)(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)
+        specifier: ^7.0.1
+        version: 7.0.1(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)
       '@lingui/core':
         specifier: ^6.6.0
         version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(babel-plugin-macros@3.1.0)
@@ -1131,12 +1131,10 @@ packages:
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@hookform/resolvers@5.9.2':
-    resolution: {integrity: sha512-RtjTnZqsC38s4NKp2XO3fD8IA5uyN4tB7McQ5C6uiMPcV+WWO8F+wVa3e+BXUpH2ScgxghAlwFRMVqjT9WChAQ==}
+  '@hookform/resolvers@7.0.1':
+    resolution: {integrity: sha512-F3aM0dDWsRGmFjnnXjogaGLwP7gY2HA6/c5qp4v4Im/UV7pTNkX+WAjcOlM1V0PE0zoMzuPqCyaYtMzUhoFToA==}
     peerDependencies:
-      '@sinclair/typebox': '>=0.25.24'
       '@standard-schema/spec': ^1.0.0
-      '@typeschema/main': '>=0.13.7'
       '@vinejs/vine': ^2.0.0 || ^3.0.0 || ^4.0.0
       ajv: ^8.12.0
       ajv-errors: ^3.0.0
@@ -1146,7 +1144,7 @@ packages:
       class-transformer: '>=0.4.0'
       class-validator: '>=0.12.0'
       computed-types: ^1.0.0
-      effect: ^3.10.3
+      effect: ^4.0.0
       fluentvalidation-ts: ^3.0.0
       fp-ts: ^2.7.0
       io-ts: ^2.0.0
@@ -1155,16 +1153,13 @@ packages:
       react-hook-form: ^7.55.0
       superstruct: '>=0.12.0'
       typanion: ^3.3.2
+      typebox: ^1.0.0
       valibot: '>=0.31.0 || ^1.0.0-beta.4 || ^1.0.0-rc'
       vest: '>=6.0.0'
       yup: ^1.0.0
       zod: ^3.25.0 || ^4.0.0
     peerDependenciesMeta:
-      '@sinclair/typebox':
-        optional: true
       '@standard-schema/spec':
-        optional: true
-      '@typeschema/main':
         optional: true
       '@vinejs/vine':
         optional: true
@@ -1199,6 +1194,8 @@ packages:
       superstruct:
         optional: true
       typanion:
+        optional: true
+      typebox:
         optional: true
       valibot:
         optional: true
@@ -6287,12 +6284,11 @@ snapshots:
       - '@types/react'
       - supports-color
 
-  '@hookform/resolvers@5.9.2(@sinclair/typebox@0.27.12)(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)':
+  '@hookform/resolvers@7.0.1(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.86.0(react@19.2.8)
     optionalDependencies:
-      '@sinclair/typebox': 0.27.12
       ajv: 8.20.0
       zod: 4.6.7
 
