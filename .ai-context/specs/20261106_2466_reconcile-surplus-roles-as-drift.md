@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — realm の調停の差分に、サービスアカウントの権限の余剰を数える（段 1 は check で数え apply は報告だけ）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR-18, IADR-0369, IADR-0688]
 author: claude
 created: 2026-11-06
@@ -42,6 +42,8 @@ issue: "#2466"
 - AC-3: check は余剰を返し、apply は既定で外さず収束し、切り替えでだけ DELETE を打つ（試験）。
 - AC-4: Job は切り替えを `"0"` の既定で持ち、起動器の口は 0 / 1 以外で止まる（試験）。
 - AC-4b: 起動器の Job の差し替えは、余剰の切り替えと作り直しの名前（IADR-0685）を互いの env へ当てない（名前が `0` でも。試験・順を逆にすると落ちることを確かめた）。
+- AC-4c: 全割当を読めない（role-mappings が想定外の形）サービスアカウントは、check でも apply でも 1 行で報告し、余剰 0 として黙って流さない。drift には数えない（試験）。
+- AC-4d: 大文字を含む realm 名でも、既定ロールを余剰に数えない。`removeSurplus` のときに DELETE が失敗すると、`applyErrors` に数える（試験）。
 - AC-5: 既存の調停の試験が通る。
 
 ## 残余

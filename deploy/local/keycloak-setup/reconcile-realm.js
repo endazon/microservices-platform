@@ -303,7 +303,7 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  * 返す操作: { op, target, method, path, body, reason }。`op === 'deferred'` は前提（依存先の実体）が
  * まだ無く、次の周で計画し直すもの。check モードでは drift として数える。
  */
-function plan(desired, live, { recreateUsers = new Set(), kept = [], surplus = [] } = {}) {
+function plan(desired, live, { recreateUsers = new Set(), kept = [], surplus = [], surplusUnread = [] } = {}) {
   const ops = [];
   // #2431 / IADR-0685: 戻さなかったもの（稼働側の無効化・削除）は、呼び出し側が渡す出力先 `kept` へ積む（ops には混ぜない。
   //   ops の比較・件数・drift を変えない）。
@@ -556,6 +556,10 @@ function plan(desired, live, { recreateUsers = new Set(), kept = [], surplus = [
             path: `${U}/role-mappings/clients/${entry.clientUuid}`, body: extra.map((r) => ({ id: r.id, name: r.name })),
             reason: `client ロールの余剰（宣言が全集合）: ${extra.map((r) => r.name).join(', ')}` });
         }
+      } else {
+        // 全割当を読めなかった（想定外の形）。余剰は見ないが、黙って 0 件にしない —— 出力先 surplusUnread に名前を積む
+        //   （呼び出し側が 1 行で報告する。drift には数えない。IADR-0688 決定）。
+        surplusUnread.push(user.username);
       }
       if (user.attributes && !contains(user.attributes, sa.user.attributes || {})) {
         add({ op: 'user.attributes.update', target: user.username, method: 'PUT', path: U,
@@ -995,10 +999,12 @@ async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = 
   // IADR-0688: 余剰（surplus）は plan の出力先で受ける。apply で外すのは removeSurplus のときだけ（そのときは ops に足す）。
   let kept = [];
   let surplus = [];
+  let surplusUnread = [];
   const planOf = async () => {
     kept = [];
     surplus = [];
-    const o = plan(desired, await collect(kc, desired), { recreateUsers, kept, surplus });
+    surplusUnread = [];
+    const o = plan(desired, await collect(kc, desired), { recreateUsers, kept, surplus, surplusUnread });
     return mode === 'apply' && removeSurplus ? o.concat(surplus) : o;
   };
   let ops = await planOf();
@@ -1028,7 +1034,9 @@ async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = 
   }
   // 外したなら最後の計画の余剰は ops に入っている（二重に数えない）。
   if (mode === 'apply' && removeSurplus) surplus = [];
-  return { ops, kept, surplus, applied, guardBlocked, applyErrors };
+  // IADR-0688: 全割当を読めなかったサービスアカウントは、check でも apply でも最後の計画について 1 行ずつ出す（drift には数えない）。
+  for (const name of surplusUnread) console.log(`    skipped   ${name} の全割当を読めず、余剰を見ていない`);
+  return { ops, kept, surplus, surplusUnread, applied, guardBlocked, applyErrors };
 }
 
 function readRealmFiles(dir) {

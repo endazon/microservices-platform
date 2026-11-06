@@ -34,7 +34,8 @@ related_specs:
 
 ## 決定
 
-- `collectLive` はサービスアカウント利用者の全割当を読む。読めない形なら余剰を見ない。
+- `collectLive` はサービスアカウント利用者の全割当を読む。読めない形なら余剰を見ない。そのときは黙って余剰 0 にせず、check でも apply でも `skipped   <利用者名> の全割当を読めず、余剰を見ていない` を 1 行出す。**drift には数えない**。読めないのは認証基盤の側の形の都合であり、宣言との食い違いではない。起動器を止める理由にはしない（行で見える）。
+- 既定ロール `default-roles-<realm>` は、Keycloak が realm 名の小文字で作る。大文字を含む realm 名でも、小文字にして比べる。
 - 余剰は `plan` の出力先 `surplus` に積む（`ops` に混ぜない）。数えないもの: `default-roles-<realm>`、自分の client の `uma_protection`。
 - `--check` は余剰を drift に数える。apply は段 1（既定）では外さずに `surplus` の行で報告し、収束の判定に入れない。`RECONCILE_REMOVE_SURPLUS=1`（Job の env。起動器の `reconcile-realm.sh` が 0 / 1 だけを受ける）で外す。
 - `plan` の出力先は IADR-0685 の `kept`（稼働側の無効化・削除を戻さない）と並べて持つ。Job の差し替えは、余剰の `"0"` の行を作り直しの名前の `""` の行より先に当てる（名前が `0` でも互いの env へ当たらない）。

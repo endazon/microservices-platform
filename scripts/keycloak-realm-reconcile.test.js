@@ -103,9 +103,9 @@ function liveFrom(desired) {
         user: { id: uuid(), username: u.username, attributes: clone(u.attributes || {}) },
         realmRoles: [...(u.realmRoles || [])],
         clientRoles: clone(u.clientRoles || {}),
-        // IADR-0688: 全部の割当（collectLive が role-mappings から読む形）。Keycloak が付ける既定ロールを含む。
+        // IADR-0688: 全部の割当（collectLive が role-mappings から読む形）。Keycloak が付ける既定ロールを含む（名前は realm 名の小文字）。
         all: {
-          realm: [...(u.realmRoles || []), `default-roles-${desired.realm}`].map((name) => ({ id: uuid(), name })),
+          realm: [...(u.realmRoles || []), `default-roles-${String(desired.realm).toLowerCase()}`].map((name) => ({ id: uuid(), name })),
           clients: Object.fromEntries(Object.entries(u.clientRoles || {}).map(([cid, names]) => [cid, { clientUuid: `cu-${cid}`, roles: names.map((name) => ({ id: uuid(), name })) }])),
         },
       };
@@ -597,10 +597,22 @@ ok('IADR-0688: Keycloak が付けるもの（既定ロール・自分の client 
   const old = liveFrom(REALM);
   delete saOf(old, firstSa.username).all;
   const s3 = [];
-  plan(REALM, old, { surplus: s3 });
+  const unread = [];
+  plan(REALM, old, { surplus: s3, surplusUnread: unread });
   assert.deepStrictEqual(s3, []);
+  assert.deepStrictEqual(unread, [firstSa.username], '全割当を読めない利用者を出力先へ積まない（黙って余剰 0 になる）');
 });
 
+ok('IADR-0688: 大文字を含む realm 名でも、既定ロール（Keycloak は realm 名の小文字で作る）を余剰に数えない', () => {
+  assert.ok(isKeycloakOwnedSaRole('MyRealm', 'realm', null, 'default-roles-myrealm', 'x'), '小文字の既定ロールを除外しない');
+  assert.ok(!isKeycloakOwnedSaRole('MyRealm', 'realm', null, 'default-roles-other', 'x'), '陰性対照: 別の realm の既定ロールまで除外した');
+  const upper = { ...clone(REALM), realm: 'Platform-Upper' };
+  const live = liveFrom(upper);
+  assert.ok(saOf(live, firstSa.username).all.realm.some((r) => r.name === 'default-roles-platform-upper'), '陽性対照: 稼働の模型が小文字の既定ロールを持たない');
+  const surplus = [];
+  plan(upper, live, { surplus });
+  assert.deepStrictEqual(surplus, [], `大文字の realm 名で既定ロールを余剰に数えた: ${JSON.stringify(surplus.map((o) => o.reason))}`);
+});
 
 ok('seed 利用者が無ければ user.create（資格情報・requiredActions・グループを body に、ロール割当を postSteps に運ぶ）', () => {
   const live = liveFrom(REALM);
@@ -981,6 +993,30 @@ okLater('IADR-0688: reconcileRealm — check は余剰を返し、apply は既�
   assert.deepStrictEqual(rm.ops, []);
   assert.deepStrictEqual(rm.surplus, []);
   assert.strictEqual(REMOVE_SURPLUS_ENV, 'RECONCILE_REMOVE_SURPLUS');
+  // 外す DELETE が失敗したら applyErrors に数える（黙って緑にしない）
+  const kc3 = fakeAdminApi((m) => (m === 'DELETE' ? 500 : 204));
+  const bad = await quiet(() => reconcileRealm(kc3, REALM, { mode: 'apply', devSecretsAllowed: true, removeSurplus: true, collect: async () => withExtra() }));
+  assert.ok(kc3.calls.some((c) => c.method === 'DELETE'), '陽性対照: DELETE を打っていない');
+  assert.ok(bad.applyErrors > 0, `DELETE の失敗を applyErrors に数えない: ${bad.applyErrors}`);
+});
+
+okLater('IADR-0688: role-mappings が配列（想定外の形）を返したサービスアカウントは、check でも apply でも「読めず、余剰を見ていない」を 1 行出す（drift には数えない）', async () => {
+  const saUser = { id: 'u-bff', username: 'service-account-bff' };
+  const bffUser = REALM.users.find((u) => u.serviceAccountClientId === 'bff');
+  const live = await collectLive(fakeKc({ saEnabled: true, saUser, mappings: [{ id: 'r1', name: 'platform-admin' }] }), REALM);
+  assert.ok(!('all' in live.serviceAccounts.bff), '配列の形でも all を持った');
+  for (const mode of ['check', 'apply']) {
+    const lines = [];
+    const log = console.log; const err = console.error;
+    console.log = (x) => lines.push(String(x)); console.error = () => {};
+    let r;
+    try {
+      r = await reconcileRealm(fakeAdminApi(() => 204), REALM, { mode, devSecretsAllowed: true, collect: async () => { const l = liveFrom(REALM); l.serviceAccounts.bff = live.serviceAccounts.bff; return l; } });
+    } finally { console.log = log; console.error = err; }
+    assert.deepStrictEqual(r.surplus, [], `${mode}: 読めないのに余剰を出した`);
+    assert.deepStrictEqual(r.surplusUnread, [bffUser.username], `${mode}: 読めない利用者を返さない`);
+    assert.ok(lines.some((l) => l.includes(`skipped   ${bffUser.username} の全割当を読めず、余剰を見ていない`)), `${mode}: 読めない行を出さない: ${lines.join(' | ')}`);
+  }
 });
 
 /** 偽の Admin API。method + path ごとに状態を返し、呼ばれた順を記録する。 */
