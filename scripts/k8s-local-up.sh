@@ -104,6 +104,11 @@ pin_version ESO_CHART_VERSION 2.8.0 deploy/local/vault/eso/external-secrets-valu
 pin_version RELOADER_CHART_VERSION 2.2.17 deploy/local/reloader/values.yaml
 pin_version CERT_MANAGER_VERSION v1.21.1 deploy/local/edge/cert-manager/kustomization.yaml
 pin_version ARGOCD_VERSION v3.5.4 deploy/argocd/install/kustomization.yaml
+# NFR-18, IADR-0679 (#2410): 版に加えて、取り込む chart の tgz・URL のマニフェストの中身を sha256 で固定する（lib/pinned-artifacts.sh）。
+#   取得したものは一時ディレクトリに置き、終了のときに消す。sha256 が合わなければ何も当てずに止まる。
+# shellcheck source=scripts/lib/pinned-artifacts.sh
+. "$(dirname "$0")/lib/pinned-artifacts.sh" || exit 3
+pinned_work_init
 # Reloader のイメージは values（tag@digest）が持つ。従前の RELOADER_IMAGE_TAG（tag だけで上書き）は固定を外すので受けない。
 if [ -n "${RELOADER_IMAGE_TAG:-}" ]; then
   echo "ERROR: RELOADER_IMAGE_TAG は廃止した（IADR-0547）。Reloader のイメージは deploy/local/reloader/values.yaml が tag@digest で持つ。" >&2
@@ -730,7 +735,9 @@ CERT_MANAGER_READY=""
 install_cert_manager() {
   [ -n "$CERT_MANAGER_READY" ] && return 0
   echo "    -> cert-manager ${CERT_MANAGER_VERSION} (基盤 TLS・エッジ TLS。IADR-0591 / IADR-0206・digest は IADR-0547)"
-  kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager
+  # NFR-18, IADR-0679: 上流のマニフェストは sha256 を確かめた写し（PINNED_WORK の下の同じ相対パス）を当てる。
+  pinned_kustomize_dir deploy/local/edge/cert-manager "$PINNED_WORK" || exit 1
+  ( cd "$PINNED_WORK" && kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager )
   kubectl wait --for=condition=Established --timeout=120s \
     crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
   kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
@@ -1055,13 +1062,14 @@ fi
 ISTIO_MESH_ARGS=""
 if [ "${ISTIO:-}" = "1" ]; then
   echo "==> [opt-in] Istio service mesh (control plane)"
-  helm repo add istio https://istio-release.storage.googleapis.com/charts >/dev/null 2>&1 || true
-  helm repo update istio >/dev/null
+  # NFR-18, IADR-0679: chart は取得元から tgz を取り、sha256 を確かめてからそのパスで入れる（helm repo を経由しない）。
+  istio_base_chart="$(pinned_chart base "$ISTIO_VERSION" "$PINNED_WORK")" || exit 1
+  istiod_chart="$(pinned_chart istiod "$ISTIO_VERSION" "$PINNED_WORK")" || exit 1
   # base = CRD とクラスタ共通のリソース。istiod = コントロールプレーン。
-  helm upgrade --install istio-base istio/base \
-    -n istio-system --create-namespace --version "$ISTIO_VERSION" --wait --timeout 5m
-  helm upgrade --install istiod istio/istiod \
-    -n istio-system --version "$ISTIO_VERSION" \
+  helm upgrade --install istio-base "$istio_base_chart" \
+    -n istio-system --create-namespace --wait --timeout 5m
+  helm upgrade --install istiod "$istiod_chart" \
+    -n istio-system \
     -f deploy/istio/istiod-values-local.yaml --wait --timeout 10m
   # CRD が Established になるまで待つ（apply の競合を避ける。cert-manager と同じ作法）。
   for crd in peerauthentications.security.istio.io destinationrules.networking.istio.io \
@@ -1152,8 +1160,8 @@ reconcile_recreate_strategy "$MSP_NS" $RECREATE_DEPLOYMENTS
 DEPT_SYNC_ARGS=()
 DEPT_SYNC_DIR=""
 if [ -n "$DEPT_SYNC_DECLARE" ]; then
-  DEPT_SYNC_DIR="$(mktemp -d)"
-  trap 'rm -rf "$DEPT_SYNC_DIR"' EXIT
+  # NFR-18, IADR-0679: 一時ディレクトリは冒頭の PINNED_WORK の下に作る（終了のときの片付けを 1 つの EXIT trap に揃える）。
+  DEPT_SYNC_DIR="$(mktemp -d "$PINNED_WORK/dept-sync.XXXXXX")"
   dept_sync_values_file "$DEPT_SYNC_DECLARE" "$DEPT_SYNC_OTHERS" > "$DEPT_SYNC_DIR/dept-sync-values.yaml"
   DEPT_SYNC_ARGS=(-f "$DEPT_SYNC_DIR/dept-sync-values.yaml")
 fi
@@ -1161,7 +1169,7 @@ fi
 helm upgrade --install msp deploy/helm/microservices-platform \
   -n "$MSP_NS" -f deploy/local/values-local.yaml --set-string "global.image.tag=${IMAGE_TAG}" "${CONFIG_GIT_COMMIT_ARGS[@]+"${CONFIG_GIT_COMMIT_ARGS[@]}"}" $ISTIO_MESH_ARGS $LOCALEMBED_ARGS "${DEPT_SYNC_ARGS[@]+"${DEPT_SYNC_ARGS[@]}"}" \
   "${LLM_KEYLESS_ARGS[@]+"${LLM_KEYLESS_ARGS[@]}"}"
-if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; trap - EXIT; fi
+if [ -n "$DEPT_SYNC_DIR" ]; then rm -rf "$DEPT_SYNC_DIR"; fi
 # NFR-18, IADR-0577: 旧 rabbitmq-app（全サービス共通の 1 組・#1022）は読み手が無くなった。helm がサービスを切り替えた後に片付ける
 #   （ExternalSecret を先に消す。残すと ESO が Secret を作り直す。ESO の CRD が無いクラスタでは何もしない）。
 kubectl -n "$MSP_NS" delete externalsecret rabbitmq-app --ignore-not-found >/dev/null 2>&1 || true
@@ -1393,10 +1401,8 @@ if [ "${ESO:-}" = "1" ]; then
   # 既定は v1 を GA 提供する安定版（動作実証済み）。
   # ［2026-10-15 / #1858・IADR-0547］版は冒頭の pin_version が決め（ESO_CHART_VERSION は同じ値しか受けない）、
   #   内側のイメージは values（tag@digest）が持つ。版を上げるときは両方を対で改める。
-  helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
-  helm repo update external-secrets >/dev/null 2>&1 || true
-  helm upgrade --install external-secrets external-secrets/external-secrets \
-    --version "$ESO_CHART_VERSION" \
+  eso_chart="$(pinned_chart external-secrets "$ESO_CHART_VERSION" "$PINNED_WORK")" || exit 1  # IADR-0679
+  helm upgrade --install external-secrets "$eso_chart" \
     -f deploy/local/vault/eso/external-secrets-values.yaml \
     -n external-secrets --create-namespace --set installCRDs=true --wait
   # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
@@ -1414,10 +1420,8 @@ if [ "${ESO:-}" = "1" ]; then
   #     🔴 見る名前空間を 3 つに限る（watchGlobally=false ＋ namespaces ＝ 各名前空間の Role。クラスタ全体の Secret を読ませない）。
   #     ［2026-10-15 / #1858・IADR-0547］chart の版は冒頭の pin_version、image は values（tag@digest）が持つ
   #     （従前の --set image.tag は tag だけで digest を持てないので外した。RELOADER_IMAGE_TAG は冒頭で拒否する）。
-  helm repo add stakater https://stakater.github.io/stakater-charts >/dev/null 2>&1 || true
-  helm repo update stakater >/dev/null 2>&1 || true
-  helm upgrade --install reloader stakater/reloader \
-    --version "$RELOADER_CHART_VERSION" \
+  reloader_chart="$(pinned_chart reloader "$RELOADER_CHART_VERSION" "$PINNED_WORK")" || exit 1  # IADR-0679
+  helm upgrade --install reloader "$reloader_chart" \
     -f deploy/local/reloader/values.yaml \
     -n reloader --create-namespace \
     --set reloader.watchGlobally=false \
@@ -1721,7 +1725,8 @@ if [ "${ARGOCD:-}" = "1" ]; then
   # ［2026-10-15 / #1858・IADR-0547］URL と内側の 3 イメージ（argocd・dex・redis）の digest は kustomization が持つ
   #   （kustomize の images 置換）。版は冒頭の pin_version が決め、ARGOCD_VERSION は同じ値しか受けない。
   echo "    -> Argo CD ${ARGOCD_VERSION} (IADR-0519・digest は IADR-0547)"
-  kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install
+  pinned_kustomize_dir deploy/argocd/install "$PINNED_WORK" || exit 1  # IADR-0679: sha256 を確かめた写しを当てる
+  ( cd "$PINNED_WORK" && kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install )
   kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml

@@ -756,3 +756,4 @@
 | [IADR-0676](./IADR-0676_infra-credentials-staged-followup.md) | 基盤の資格情報の段階の fail-closed を続ける。秘匿管理の固定の管理者トークンは印の後は作り直さない形を段階で入れ、値を stdin で渡す。Grafana の管理者と DB の初期化の kp を対象に足す。dev のクラスタの判定にクラスタ側の印を段階で足す（#2407） | Accepted |
 | [IADR-0677](./IADR-0677_llm-route-startup-check-staged.md) | LLM ゲートウェイは起動時に経路の設定（未知のモデル・空の宛先・単価の欠落）を 1 か所で引き、段 1 は Warning、段 2（Llm:RouteValidation:Mode=Fail）で起動を止める（#2411） | Accepted |
 | [IADR-0678](./IADR-0678_llm-gateway-pre-send-call-limits.md) | LLM ゲートウェイは送る前に、入力の上限と、呼び手ごと・呼び手×用途ごとの要求数と当日の費用（見込み額を含む）を 1 か所で判定する。段 1 は報告だけ、段 2 は設定の切り替えで Sent=false にする（#2404） | Accepted |
+| [IADR-0679](./IADR-0679_pin-external-artifacts-sha256.md) | 起動器が取り込む外部の helm chart と URL のマニフェストを、版に加えて内容の sha256 で固定する（#2410） | Accepted |
