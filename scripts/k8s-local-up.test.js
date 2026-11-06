@@ -116,6 +116,9 @@ if (SHARD === null && SHARD_COUNT > 1) {
 }
 
 const REPO_ROOT = path.resolve(__dirname, '..');
+// NFR-18, IADR-0679 (#2410): runUp が起動器へ渡す取得物の作業ディレクトリ（プロセスごと。終了のときに消す）。
+const PINNED_DIR_2410 = path.join(os.tmpdir(), `k8s-up-pinned-${process.pid}`);
+process.on('exit', () => { try { fs.rmSync(PINNED_DIR_2410, { recursive: true, force: true }); } catch { /* 片付けだけ */ } });
 
 // NFR, #2291: 🔴 **試験はリポジトリの作業ツリーへ書かない。** 並列の別シャードの試験が作業ツリーの状態を読む
 //   （#2132 の IMAGE_TAG は `git status --porcelain` で -dirty- を決める）ので、一瞬だけ置くファイルでも結果を反転させる
@@ -184,7 +187,7 @@ const OPTIN_TOKENS = [
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
-  'stakater/reloader', //              ESO (Stakater Reloader の install, IADR-0456 決定 5 / #1477)
+  'helm upgrade --install reloader', // ESO (Stakater Reloader の install, IADR-0456 決定 5 / #1477。IADR-0679 で chart は tgz のパス)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
   'seed-search-documents.js', //       SEARCHSEED (検索検証用文書の初期投入, IADR-0284)
   'seed-tag-dictionary.js', //         TAGSEED (タグ辞書の初期投入, #1359)
@@ -583,6 +586,30 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } 
   ].join('\n'));
   write('helm', HELM_STUB); // #1710: 既定は PLAIN_STUB と同じ振る舞い（リリース無し）
   write('docker', DOCKER_STUB);
+  // NFR-18, IADR-0679 (#2410): 外部の成果物の取得（curl）と sha256 の確かめ（sha256sum）。ネットワークへ出ない。
+  //   curl は「stub-artifact <URL>」を書き、sha256sum はその URL の固定の sha256（lib/pinned-artifacts.sh か remote-resources.sha256）を返す。
+  //   STUB_ARTIFACT_TAMPER=1 で中身の違う世界（sha256 が合わない）を作る。stub-artifact でないファイルは本物の sha256sum に渡す。
+  write('curl', [
+    '#!/usr/bin/env bash',
+    'echo "curl $*" >> "$STUB_LOG"',
+    'out=""; url=""; prev=""',
+    'for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; case "$a" in http*) url="$a";; esac; prev="$a"; done',
+    '[ -n "$out" ] || exit 2',
+    'printf "stub-artifact %s\\n" "$url" > "$out"',
+    '',
+  ].join('\n'));
+  write('sha256sum', [
+    '#!/usr/bin/env bash',
+    'f="${1:-}"',
+    'if [ -n "$f" ] && head -c 14 "$f" 2>/dev/null | grep -q "^stub-artifact "; then',
+    '  url="$(sed -n "s/^stub-artifact //p" "$f")"',
+    '  [ "${STUB_ARTIFACT_TAMPER:-}" = "1" ] && { printf "%064d  %s\\n" 0 "$f"; exit 0; }',
+    `  sha="$(grep -rhF -- "$url" ${JSON.stringify(path.join(REPO_ROOT, 'scripts', 'lib', 'pinned-artifacts.sh'))} ${JSON.stringify(path.join(REPO_ROOT, 'deploy'))} --include=pinned-artifacts.sh --include=remote-resources.sha256 | grep -oE "[0-9a-f]{64}" | head -1)"`,
+    '  printf "%s  %s\\n" "${sha:-unknown}" "$f"; exit 0',
+    'fi',
+    `exec ${JSON.stringify(spawnSync('bash', ['-c', 'command -v sha256sum'], { encoding: 'utf8' }).stdout.trim() || '/usr/bin/sha256sum')} "$@"`,
+    '',
+  ].join('\n'));
   // FR-15, IADR-0646 (#2118): HEAD を読めない git（構成バージョンを作れない）の経路を試すときだけ置く。
   if (extraEnv.STUB_GIT_FAIL === '1') write('git', '#!/usr/bin/env bash\necho "git $*" >> "$STUB_LOG"\nexit 128\n');
   // FR-15, IADR-0646 (#2118): 壊れた HEAD を返す git（形の検査を試すときだけ置く）。
@@ -592,6 +619,9 @@ function runUp(extraEnv, { cwd = REPO_ROOT, script = UP_SCRIPT, source = null } 
   const modelFile = path.join(workdir, 'helm-controller-model.awk');
   fs.writeFileSync(modelFile, HELM_CONTROLLER_MODEL);
 
+  // NFR-18, IADR-0679 (#2410): 取得物の作業ディレクトリを固定する（起動器の出すコマンドを実行どうしで比べる試験がある）。
+  //   試験のプロセスごとに 1 つ（シャードどうしで混ざらない）。中身は起動器が毎回取り直して確かめる。
+  extraEnv = { PINNED_ARTIFACTS_DIR: PINNED_DIR_2410, ...extraEnv };
   const origPath = process.env.PATH || process.env.Path || '';
   // 実行環境に opt-in ゲート/override が漏れていても既定＝全 OFF を再現できるよう、
   // ハーネスが制御する env を基底から一旦除去してから extraEnv を適用する（決定性の担保）。
@@ -1933,7 +1963,8 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
     lines.some((l) => l === 'kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager'),
     'cert-manager を kustomization（版の URL ＋ digest の固定）から入れていない',
   );
-  assert.ok(!lines.some((l) => l.includes('cert-manager/releases/download/')), 'cert-manager の URL を直接 apply した（digest の固定を経ない）');
+  // ［#2410・IADR-0679］URL は curl が取得して sha256 を確かめる（kubectl へ URL を渡さない）。
+  assert.ok(!lines.some((l) => l.startsWith('kubectl') && l.includes('cert-manager/releases/download/')), 'cert-manager の URL を直接 apply した（digest の固定を経ない）');
 });
 
 // NFR-16, NFR-18, IADR-0591（Refs GHSA-j4qv-2w99-xg5p）: 基盤（platform-infra）のサーバ証明書は**既定で**発行し、
@@ -2104,7 +2135,13 @@ ok('VAULT_BFF_WRITER (#2230): 既定（VAULT=1 だけ）の手順は、VAULT_BFF
   assert.strictEqual(base.status, 0, `VAULT=1 が非0終了: ${base.stderr}`);
   // 一時ファイルの名前（mktemp）は実行ごとに変わるので伏せる。並行して走る段の記録は行の順が入れ替わり得るので、
   // 順序ではなく行の多重集合で比べる（出すコマンドの集合が同じ＝手順が変わっていない）。
-  const norm = (lines) => lines.map((l) => l.replace(/\/tmp\/tmp\.[A-Za-z0-9]+/g, '/tmp/tmp.X')).sort();
+  // ［2026-11-06 / #2442］ノードの Ready 待ちの上限（`--timeout=<残り>s`）は、k3d-create.sh が起動からの経過（bash の SECONDS）
+  // で残りを計算するので、遅いランナーで秒の境目をまたぐと 2 回の起動で 1 秒ずれる（実測: 179s と 180s）。
+  // 値そのものは assertWaitBudget（下の #2273 の節）が範囲で固定しているので、ここでは伏せて手順の同一だけを見る。
+  const norm = (lines) => lines
+    .map((l) => l.replace(/\/tmp\/tmp\.[A-Za-z0-9]+/g, '/tmp/tmp.X'))
+    .map((l) => l.replace(/^(kubectl wait --for=condition=Ready node --all --timeout=)\d+s$/, '$1<remaining>s'))
+    .sort();
   assert.deepStrictEqual(norm(off.lines), norm(base.lines), 'VAULT_BFF_WRITER=0 で起動器の出すコマンドが既定と変わった');
   assert.ok(!anyLineHas(base.lines, 'bff-writer'), '既定の VAULT=1 で BFF の書き込みの役の bootstrap が出た');
   // vault-auth-rbac そのものは既定の VAULT=1 でもバックアップの bootstrap（永続化のとき）が当てるので、ここでは見ない（上の多重集合の一致が手順の不変を見る）。
@@ -2238,12 +2275,13 @@ ok('ESO=1 (#1477): ai-stock-trading ns を作ってから BFF の RBAC と Reloa
   const res = runUp({ VAULT: '1', ESO: '1' });
   const nsAt = res.lines.findIndex((l) => l.startsWith('kubectl create namespace ai-stock-trading'));
   const rbacAt = res.lines.indexOf('kubectl apply -f deploy/local/vault/eso/rbac-bff-externalsecret-sync.yaml');
-  const reloaderAt = res.lines.findIndex((l) => l.startsWith('helm upgrade --install reloader stakater/reloader'));
+  const reloaderAt = res.lines.findIndex((l) => l.startsWith('helm upgrade --install reloader '));
   assert.ok(nsAt >= 0, 'ai-stock-trading の名前空間を作っていない');
   assert.ok(rbacAt > nsAt, 'BFF の同期依頼の RBAC が apply されない、または名前空間の作成より前にある');
   assert.ok(reloaderAt > nsAt, 'Reloader が入らない、または名前空間の作成より前にある');
   const reloader = res.lines[reloaderAt];
-  assert.ok(/--version 2\.2\.17(\s|$)/.test(reloader), `Reloader の chart の版を pin していない: ${reloader}`);
+  // ［#2410・IADR-0679］版は取得した tgz（版の名前・sha256 を確かめたもの）のパスが持つ。
+  assert.ok(/\/reloader-2\.2\.17\.tgz(\s|$)/.test(reloader), `Reloader の chart の版を pin していない: ${reloader}`);
   // #1858 / IADR-0547: image は values（tag@digest）が持つ。tag だけの --set image.tag は固定を外すので使わない。
   assert.ok(reloader.includes('-f deploy/local/reloader/values.yaml'), `Reloader の image を values（tag@digest）で固定していない: ${reloader}`);
   assert.ok(!/image\.tag=/.test(reloader), `Reloader の image を tag だけで上書きしている: ${reloader}`);
@@ -3076,7 +3114,8 @@ ok('#1843・#1858: ARGOCD=1 の install は kustomization（版のタグの URL 
   const installs = res.lines.filter((l) => ARGOCD_INSTALL_RE.test(l) && l.includes('kubectl apply'));
   assert.strictEqual(installs.length, 1, `install の apply 行が 1 本でない:\n${installs.join('\n')}`);
   assert.strictEqual(installs[0], 'kubectl apply --server-side --force-conflicts -n argocd -k deploy/argocd/install');
-  assert.ok(!anyLineHas(res.lines, 'manifests/install.yaml'), 'install.yaml の URL を直接 apply した（digest の固定を経ない）');
+  // ［#2410・IADR-0679］URL は curl が取得して sha256 を確かめる（kubectl へ URL を渡さない）。
+  assert.ok(!res.lines.some((l) => l.startsWith('kubectl') && l.includes('manifests/install.yaml')), 'install.yaml の URL を直接 apply した（digest の固定を経ない）');
 });
 
 // #1858 / IADR-0547: 版は内側のイメージの digest と対で決まる。固定と同じ値は受け、違う値は何もせずに止まる。
@@ -3203,14 +3242,45 @@ ok('ESO manifests: external-secrets.io の apiVersion は v1（v1beta1 残存ゼ
 });
 
 // #310 フォローアップ（apiVersion 移行 fix）: ESO chart 版を pin する（latest 追従禁止）。無指定だと v1beta1 提供を
-// 停止した版を掴んだ瞬間、v1 マニフェストと乖離して壊れる。--version 引数の存在を固定する（再現性の回帰ガード）。
-ok('up-script: ESO chart 版が pin されている（helm install に --version）', () => {
+// 停止した版を掴んだ瞬間、v1 マニフェストと乖離して壊れる。［#2410・IADR-0679］版は pin_version の固定と、その版の tgz を
+// sha256 で確かめる pinned_chart が持つ（--version は使わない）。下の「up-script: ESO chart 版が pin されている」が両方を固定する。
+// --- NFR-18, IADR-0679 (#2410): 外部の chart とマニフェストは、版に加えて中身の sha256 で固定する ----------------------------
+ok('IADR-0679: 既定の cert-manager は上流のマニフェストを取得して sha256 を確かめた写しを当て、合わなければ何も当てずに止まる', () => {
+  const r = runUp({});
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  const fetchAt = r.lines.findIndex((l) => l.startsWith('curl ') && l.includes('https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml'));
+  const applyAt = r.lines.indexOf('kubectl apply --server-side --force-conflicts -k deploy/local/edge/cert-manager');
+  assert.ok(fetchAt >= 0 && applyAt > fetchAt, '取得してから当てていない');
+  const bad = runUp({ STUB_ARTIFACT_TAMPER: '1' });
+  assert.notStrictEqual(bad.status, 0, 'sha256 が合わないのに止まらなかった');
+  assert.ok(/外部の成果物の sha256 が固定と違う（何も当てずに止める）/.test(bad.stderr), bad.stderr.slice(-600));
+  assert.ok(!anyLineHas(bad.lines, '-k deploy/local/edge/cert-manager'), 'sha256 が合わないのに当てた');
+});
+
+ok('IADR-0679: ISTIO=1・ESO=1 の chart は、固定の URL の tgz を sha256 で確かめてからそのパスで入れる（helm repo を経由しない）', () => {
+  const r = runUp({ ISTIO: '1', VAULT: '1', ESO: '1' });
+  assert.strictEqual(r.status, 0, r.stderr.slice(-800));
+  for (const [rel, url] of [['istio-base', 'charts/base-1.30.4.tgz'], ['istiod', 'charts/istiod-1.30.4.tgz'],
+    ['external-secrets', 'helm-chart-2.8.0/external-secrets-2.8.0.tgz'], ['reloader', 'stakater-charts/reloader-2.2.17.tgz']]) {
+    const fetchAt = r.lines.findIndex((l) => l.startsWith('curl ') && l.includes(url));
+    const installAt = r.lines.findIndex((l) => l.startsWith(`helm upgrade --install ${rel} `) && /\.tgz /.test(l));
+    assert.ok(fetchAt >= 0, `${rel}: 固定の URL から取得していない`);
+    assert.ok(installAt > fetchAt, `${rel}: 確かめた tgz のパスで入れていない`);
+  }
+  assert.ok(!r.lines.some((l) => l.startsWith('helm repo ')), 'helm repo を使った（取得元を固定していない）');
+  const bad = runUp({ ISTIO: '1', STUB_ARTIFACT_TAMPER: '1' });
+  assert.notStrictEqual(bad.status, 0);
+  assert.ok(!bad.lines.some((l) => l.startsWith('helm upgrade --install istio')), 'sha256 が合わないのに入れた');
+});
+
+// ［2026-11-05 / #2410・IADR-0679］chart は版に加えて tgz の sha256 で固定し、確かめた tgz のパスで入れる（--version は要らない）。
+ok('up-script: ESO chart 版が pin されている（版の固定の tgz を sha256 で確かめて入れる）', () => {
   const text = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
-  // helm install は行継続（\）で複数行に跨るため、install 開始位置からブロックを見て --version を確認する。
-  const idx = text.indexOf('helm upgrade --install external-secrets external-secrets/external-secrets');
+  // helm install は行継続（\）で複数行に跨るため、install 開始位置からブロックを見る。
+  const idx = text.indexOf('helm upgrade --install external-secrets "$eso_chart"');
   assert.ok(idx >= 0, 'ESO の helm upgrade --install 行が見つからない');
   const block = text.slice(idx, idx + 240); // 継続行を含む同一コマンドの範囲
-  assert.ok(/--version\s/.test(block), 'ESO の helm install に --version（版 pin）が無い＝latest 追従');
+  assert.ok(/eso_chart="\$\(pinned_chart external-secrets "\$ESO_CHART_VERSION" "\$PINNED_WORK"\)" \|\| exit 1/.test(text), 'ESO の chart を版の固定と sha256 で確かめていない');
   // 既定 pin（固定版）が存在すること。#1858 / IADR-0547: 版は冒頭の pin_version が決め、内側のイメージは values が持つ。
   assert.ok(
     /^pin_version ESO_CHART_VERSION \d+\.\d+\.\d+ /m.test(text) || /--version\s+"?\d+\.\d+\.\d+/.test(block),
@@ -4883,7 +4953,7 @@ ok('#782: メッシュ内の 3 サービスがすべて Gateway 経由になっ�
 
 ok('#782: up は「Traefik を明け渡す → Gateway を立てる」の順で、down はその逆順である', () => {
   const offAt = ISTIO_EDGE_UP.indexOf('kubectl apply -f deploy/local/edge-istio/traefik-service-off.yaml');
-  const gwAt = ISTIO_EDGE_UP.indexOf('istio/gateway');
+  const gwAt = ISTIO_EDGE_UP.indexOf('helm upgrade --install istio-ingressgateway');
   assert.ok(offAt > 0 && gwAt > 0, 'istio-edge-up.sh に明け渡し/Gateway 導入が無い');
   assert.ok(
     offAt < gwAt,
@@ -5208,7 +5278,7 @@ ok('#1159: STRICT への昇格は入口を Envoy へ移した後に来る（順�
   const upAt = UP_SH.indexOf('scripts/istio-edge-up.sh');
   const installAt = UP_SH.indexOf('helm upgrade --install msp');
   assert.ok(installAt > 0 && upAt > installAt, 'k8s-local-up.sh で入口の移設が [6/7] より前に来ている');
-  const gwAt = ISTIO_EDGE_UP.indexOf('istio/gateway');
+  const gwAt = ISTIO_EDGE_UP.indexOf('helm upgrade --install istio-ingressgateway');
   const promoteAt = ISTIO_EDGE_UP.indexOf('set_mesh_mtls_mode "STRICT"');
   assert.ok(gwAt > 0 && promoteAt > 0, 'istio-edge-up.sh の段が読めない');
   assert.ok(promoteAt > gwAt, 'STRICT への昇格が Gateway の導入より前に来ている（入口が 502 になる）');

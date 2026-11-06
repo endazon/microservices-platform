@@ -1,0 +1,2 @@
+# NFR-18, IADR-0679 (#2410): kustomization.yaml の resources の URL の内容の sha256（1 行「<sha256>  <URL>」）。版を上げるときは対で改める。
+5f6a499b8c1857d57f560f536e0dcc830914b45c420899fe7ad0692c8624e408  https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml

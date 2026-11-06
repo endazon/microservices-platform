@@ -101,6 +101,7 @@
  *   REALM_DIR           realm JSON の置き場（既定 /import ＝ ConfigMap keycloak-realms のマウント先）
  *   RECONCILE_MODE      apply（既定）| check | check-dev-secrets（引数 `--check-dev-secrets` でも同じ）
  *   DEV_CLIENT_SECRETS_ALLOWED  allow のときだけ、無い対象のクライアントを宣言の dev の値で作る（既定は拒否。#1830 / IADR-0572）
+ *   RECONCILE_RECREATE_USERS  消された seed 利用者のうち、作り直してよい名前（カンマ区切り。#2431 / IADR-0685。既定は空＝作り直さない）
  *   RECONCILE_REMOVE_SURPLUS  1 のときだけ、apply でサービスアカウントの余剰のロールを外す（IADR-0686。既定は報告だけ）
  *   E2E_<ROLE>_PASSWORD / E2E_<ROLE>_TOTP_SECRET  試験アカウントの資格情報（Secret e2e-accounts。無ければ e2e 利用者を作らない。#2024）
  *
@@ -140,6 +141,28 @@ const GATE_OWNED_REALM_KEYS = new Set(['resetPasswordAllowed']);
 //    属性は**実行時にだけ存在する** —— 門が書き、本 Job は読むだけである。
 const GATE_STATE_ATTRIBUTE = 'reset-gate.state';
 const GATE_STATE_CLOSED = 'closed';
+
+// ［2026-11-06 / #2431・IADR-0685］**稼働側の無効化と削除を宣言へ戻さない。**
+//   - client: 宣言が有効（enabled: true）・稼働が無効なら、有効へ戻さない（運用者が止めたものを次の起動で開き直さない）。
+//     逆向き（宣言が無効・稼働が有効）は従来どおり宣言へ合わせる（危険な向き。投入器の client は宣言が無効で、使うときだけ有効にする）。
+//   - 人の seed 利用者: 調停が一度でも見た（在ると確かめた・作った）利用者を realm の属性 SEEDED_USERS_ATTRIBUTE に記録する。
+//     記録に在るのに稼働に無い（＝消された）利用者は作り直さない。宣言へ新しく足した利用者（記録に無い）は従来どおり作る。
+//     作り直しが要る場合（試験アカウントの回し直し）は、利用者の名前を明示して許す（env RECONCILE_RECREATE_USERS）。
+//   - 戻さなかったものは計画の `kept` に載せて報告する（drift には数えない。稼働側の所有である）。
+//   🔴 この属性を realm 宣言（realm JSON）へ書かない（GATE_STATE_ATTRIBUTE と同じく、実行時にだけ在る）。
+const SEEDED_USERS_ATTRIBUTE = 'reconcile.seeded-users';
+const RECREATE_USERS_ENV = 'RECONCILE_RECREATE_USERS';
+const seededUsersOf = (liveRealm) => new Set(asStr(((liveRealm && liveRealm.attributes) || {})[SEEDED_USERS_ATTRIBUTE])
+  .split(',').map((x) => x.trim()).filter(Boolean));
+/**
+ * env の値（カンマ区切りの利用者名）を集合にする。名前は英小文字・数字・`-`・`_`・`.`・`@` だけを受ける。
+ * 受けなかった名前は `skipped` に積む（呼び出し側が 1 行で報告する。値は利用者名で秘密ではない）。
+ */
+function parseRecreateUsers(v, skipped = []) {
+  const names = asStr(v).split(',').map((x) => x.trim()).filter(Boolean);
+  for (const x of names) if (!/^[a-z0-9._@-]+$/.test(x)) skipped.push(x);
+  return new Set(names.filter((x) => /^[a-z0-9._@-]+$/.test(x)));
+}
 
 // ［2026-11-06 / IADR-0686］**サービスアカウントの権限の余剰も差分として数える。**
 //   サービスアカウント利用者のロールは宣言が全集合である（IADR-0369 の境界表）。従来は欠落だけを見ていたので、稼働で足された
@@ -280,8 +303,10 @@ function gateHoldsClosed(key, wantedValue, liveRealm) {
  * 返す操作: { op, target, method, path, body, reason }。`op === 'deferred'` は前提（依存先の実体）が
  * まだ無く、次の周で計画し直すもの。check モードでは drift として数える。
  */
-function plan(desired, live, { surplus = [] } = {}) {
+function plan(desired, live, { recreateUsers = new Set(), kept = [], surplus = [] } = {}) {
   const ops = [];
+  // #2431 / IADR-0685: 戻さなかったもの（稼働側の無効化・削除）は、呼び出し側が渡す出力先 `kept` へ積む（ops には混ぜない。
+  //   ops の比較・件数・drift を変えない）。
   const realmName = desired.realm;
   const R = `/admin/realms/${encodeURIComponent(realmName)}`;
   const add = (o) => ops.push(o);
@@ -306,10 +331,20 @@ function plan(desired, live, { surplus = [] } = {}) {
       !REALM_COLLECTION_KEYS.has(k) && !REALM_IDENTITY_KEYS.has(k) && !RUNTIME_OWNED_REALM_KEYS.has(k)
       && !heldByGate.has(k));
     const drifted = Object.keys(wanted).filter((k) => !contains(wanted[k], live.realm[k]));
-    if (drifted.length > 0) {
+    // #2431 / IADR-0685: 在ると確かめた人の seed 利用者で、まだ記録に無いものを記録する（同じ PUT に載せる。
+    //   PUT を 2 本に分けると、後の本文が前の本文を古い稼働の値で上書きする）。
+    const seeded = seededUsersOf(live.realm);
+    const toRecord = (desired.users || []).filter((u) => !u.serviceAccountClientId && (live.users || {})[u.username] && !seeded.has(u.username))
+      .map((u) => u.username);
+    if (drifted.length > 0 || toRecord.length > 0) {
       const body = pick(merge(live.realm, wanted), (k) => !RUNTIME_OWNED_REALM_KEYS.has(k) && !REALM_COLLECTION_KEYS.has(k));
-      add({ op: 'realm.update', target: realmName, method: 'PUT', path: R, body,
-        reason: `realm 設定の差分: ${drifted.join(', ')}` });
+      if (toRecord.length > 0) {
+        body.attributes = { ...(body.attributes || {}), [SEEDED_USERS_ATTRIBUTE]: [...new Set([...seeded, ...toRecord])].sort().join(',') };
+      }
+      const reasons = [];
+      if (drifted.length > 0) reasons.push(`realm 設定の差分: ${drifted.join(', ')}`);
+      if (toRecord.length > 0) reasons.push(`在ると確かめた seed 利用者を記録する: ${toRecord.join(', ')}`);
+      add({ op: 'realm.update', target: realmName, method: 'PUT', path: R, body, reason: reasons.join(' / ') });
     }
   }
 
@@ -389,6 +424,11 @@ function plan(desired, live, { surplus = [] } = {}) {
     }
     // 作成時だけのキー（`secret`）は比べない（ADR-0124 決定 1。稼働の値は対の手順が正）。
     const wanted = pick(client, (k) => !CLIENT_SKIP_KEYS.has(k) && !CLIENT_CREATE_ONLY_KEYS.has(k));
+    // #2431 / IADR-0685: 宣言が有効・稼働が無効なら有効へ戻さない（比べない・本文は稼働の値を運ぶ）。
+    if (wanted.enabled === true && cur.enabled === false) {
+      delete wanted.enabled;
+      kept.push({ target: `client ${client.clientId}`, reason: '稼働側で無効にされている。宣言の enabled=true へ戻さない（有効にするのは運用者の操作）' });
+    }
     const drifted = Object.keys(wanted).filter((k) => !contains(wanted[k], cur[k]));
     if (drifted.length > 0) {
       // 本文にも載せない —— GET の表現が `secret` を含んでいても落とす（稼働の値を往復させない）。
@@ -538,6 +578,11 @@ function plan(desired, live, { surplus = [] } = {}) {
           path: `${R}/users/${cur.id}/role-mappings/clients/${cr.clientUuid}`, body: cr.refs,
           reason: `自己管理のロールの欠落: ${missing.join(', ')}` });
       }
+      continue;
+    }
+    // #2431 / IADR-0685: 一度在った（記録に在る）のに稼働に無い利用者は、消されたものとして作り直さない（明示で許す）。
+    if (seededUsersOf(live.realm).has(user.username) && !recreateUsers.has(user.username)) {
+      kept.push({ target: `user ${user.username}`, reason: `一度在った seed 利用者が稼働に無い（消された）。作り直さない（作り直すときは ${RECREATE_USERS_ENV} に名前を与える）` });
       continue;
     }
     // 作成。POST /users は realmRoles / clientRoles を処理しないので、作成直後の割当を postSteps で運ぶ。
@@ -946,12 +991,14 @@ async function applyOps(kc, realmName, ops) {
  * 1 つの realm を計画し、apply なら当てて計画し直す（MAX_PASSES まで）。`collect` は試験で差し替える（既定 collectLive）。
  * ［2026-10-25 / #2026］当てられなかった操作の数（applyErrors）を返す —— 作成の後の手順の失敗は再計画の差分に戻らないことがある。
  */
-async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive, removeSurplus = false }) {
+async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = collectLive, recreateUsers = new Set(), removeSurplus = false }) {
   // IADR-0686: 余剰（surplus）は plan の出力先で受ける。apply で外すのは removeSurplus のときだけ（そのときは ops に足す）。
+  let kept = [];
   let surplus = [];
   const planOf = async () => {
+    kept = [];
     surplus = [];
-    const o = plan(desired, await collect(kc, desired), { surplus });
+    const o = plan(desired, await collect(kc, desired), { recreateUsers, kept, surplus });
     return mode === 'apply' && removeSurplus ? o.concat(surplus) : o;
   };
   let ops = await planOf();
@@ -981,7 +1028,7 @@ async function reconcileRealm(kc, desired, { mode, devSecretsAllowed, collect = 
   }
   // 外したなら最後の計画の余剰は ops に入っている（二重に数えない）。
   if (mode === 'apply' && removeSurplus) surplus = [];
-  return { ops, surplus, applied, guardBlocked, applyErrors };
+  return { ops, kept, surplus, applied, guardBlocked, applyErrors };
 }
 
 function readRealmFiles(dir) {
@@ -1041,9 +1088,14 @@ async function main() {
     // #2024 / IADR-0570: 試験アカウントの資格情報を差し込む。差し込めない利用者は作らない（drift にも数えない）。
     const { desired, skipped } = resolveE2eCredentials(declared, process.env);
     for (const s of skipped) console.log(`    ${describeSkipped(s)}`);
+    const ignored = [];
+    const recreateUsers = parseRecreateUsers(process.env[RECREATE_USERS_ENV], ignored);
+    // 名前は利用者名で秘密ではない。何を無視したかが分かるよう、JSON の文字列で出す（制御文字も見える形にする）。
+    if (ignored.length > 0) console.log(`    skipped   ${RECREATE_USERS_ENV} の形の外の名前を無視した: ${ignored.map((x) => JSON.stringify(x)).join(', ')}（英小文字・数字・. _ @ - だけを受ける）`);
     const removeSurplus = process.env[REMOVE_SURPLUS_ENV] === '1';
-    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, removeSurplus });
+    const r = await reconcileRealm(kc, desired, { mode, devSecretsAllowed, recreateUsers, removeSurplus });
     const ops = r.ops;
+    for (const k of r.kept) console.log(`    kept      ${k.target} — ${k.reason}`);
     // IADR-0686: 余剰は check では drift に数え、apply（外さない段 1）では報告だけにする（起動器を止めない）。
     for (const op of r.surplus) {
       console.log(`    ${mode === 'check' ? 'drift' : 'surplus'}   ${describe(op)}${mode === 'check' ? '' : `（外すのは ${REMOVE_SURPLUS_ENV}=1）`}`);
@@ -1078,6 +1130,7 @@ if (require.main === module) {
 
 module.exports = {
   applyOps, exitCodeFor, reconcileRealm, USER_UPDATE_SKIP_KEYS,
+  SEEDED_USERS_ATTRIBUTE, RECREATE_USERS_ENV, parseRecreateUsers,
   REMOVE_SURPLUS_ENV, isKeycloakOwnedSaRole,
   plan, planMappers, collectLive, contains, merge, describe, gateHoldsClosed,
   devSecretCreations, devSecretFindings, collectGuardedSecrets, checkDevSecrets, isDevSecretGuardedClient, devSecretGuardedClients,

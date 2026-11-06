@@ -124,6 +124,15 @@ jobs:
       - name: Self-test backup restore drill (docker / kubectl / age stub)
         if: ${{ !cancelled() }}
         run: bash scripts/backup-restore-drill.sh --self-test
+      # NFR-18, IADR-0682: 復号した物を手元に残さないこと（リストア試験のデータ領域は tmpfs・片付けはボリュームごと・失敗と中断の経路でも消す）と、
+      #   秘匿管理のリストア試験（復号物はコンテナの tmpfs へ直に流す）・手順書の秘密の扱い（export・平文のダンプ・引数のトークン）・
+      #   otel-collector の NetworkPolicy（opt-in の段 1。宛先と送り手は collector の設定と宣言から導く）を固定する（既存ジョブへの段の追加・起動条件は不変）。
+      - name: Self-test vault restore drill and secret handling in runbooks (stub)
+        if: ${{ !cancelled() }}
+        run: |
+          bash scripts/vault-restore-drill.sh --self-test
+          node scripts/runbook-secret-handling.test.js
+          node scripts/otel-collector-network-policy.test.js
 
   # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #
@@ -879,6 +888,17 @@ jobs:
       - name: Test helm broker per-service users (render, supply, mutation)
         if: ${{ !cancelled() }}
         run: node scripts/helm-broker-per-service-users.test.js
+
+      # NFR-18, IADR-0681: ブローカの権限の絞り込み（deploy/local/rabbitmq-setup/permissions.txt）は、コード（Wolverine の配線）から導いた値と
+      #   一致する（スナップショット）。欠け・隔て・段の切り替え・起動の直後の復元も固定する。取引ユニットの行は submodule の配線から導くので、
+      #   submodule を取るこのジョブで、写しが無いことを失敗にして回す（既存ジョブへの段の追加・起動条件は不変）。
+      - name: Test broker permissions narrowed from code (snapshot, coverage, staging)
+        if: ${{ !cancelled() }}
+        env:
+          RABBITMQ_PERMISSIONS_REQUIRE_AST: "1"
+        run: |
+          node scripts/gen-rabbitmq-permissions.js
+          node scripts/rabbitmq-permissions.test.js
 
       # NFR, IADR-0583（Refs GHSA-j4qv-2w99-xg5p）: Pod とコンテナのセキュリティ設定を**実際に helm template で描いて**固定する —— 既定・values-local・
       # 任意部品の全てで seccomp RuntimeDefault・権限昇格なし・（外部 3 つ以外は）非 root とケーパビリティなし・SA を持たない Pod はトークンを置かない、

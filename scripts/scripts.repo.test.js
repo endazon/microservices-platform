@@ -8949,6 +8949,9 @@ ${r.stderr}`);
           // #2024 / IADR-0570: 試験アカウントの資格情報の**生成器**（乱数の KV の JSON を標準出力へ書く。判定を返さない）。
           // 標準出力が端末だと exit 2 で止まる。検査器として spawn される母集合に入れてはならない（試験は keycloak-realm-reconcile.test.js）。
           'gen-e2e-accounts.js',
+          // #2412 / IADR-0681: ブローカの権限の生成物（permissions.txt）の**生成器**。既定の照合は `gen-knowledge-graph.js --check` と同じ
+          // 生成器の付属で、`--write` でファイルを書く。照合と試験は rabbitmq-permissions.test.js と CI の専用ステップが走らせる。母集合に数えない。
+          'gen-rabbitmq-permissions.js',
           'measure-abac-combinations.js',
           // #336 / IADR-0422: 検索の関連性（nDCG@10）の**測定器**。`measure-abac-combinations.js` と
           // 同じ扱いで、判定を返さない（数字を出す）。走らせると検索 API を叩きに行くので、
@@ -19729,6 +19732,91 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR (#2439): 回収実行の変換ツールの導入（apt の取得）が時に 8〜13 分止まり、ジョブの上限 30 分に達した ----------------
+  // .deb をランナーのイメージの名前と版で鍵を付けてキャッシュし、在れば取得せずに dpkg -i で入れる。無ければ時間切れと
+  // 再試行の付いた apt で取得し（既定の置き場＝_apt の sandbox で取る）、この回の .deb を写す。取り出しと保存を分け、保存は
+  // 導入の直後（試験の成否・cancelled に依らない）。導入の step に上限を付け、ジョブの上限は変えない（根拠は仕様書）。
+  {
+    const REPO_2439 = path.join(__dirname, '..');
+    const wf2439 = fs.readFileSync(path.join(REPO_2439, '.github/workflows/integration.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const stepsOf2439 = (text) => text.split(/\n(?= {6}- )/).slice(1);
+    const DEBS_2439 = '~/.cache/conversion-tools-debs';
+    const issues2439 = (text) => {
+      const out = [];
+      const steps = stepsOf2439(text);
+      const toolAt = steps.findIndex((st) => /apt-get install[^\n]*\bpandoc\b/.test(st));
+      const testAt = steps.findIndex((st) => /dotnet test /.test(st));
+      const withPath = (re) => steps.findIndex((st) => re.test(st) && st.includes(`path: ${DEBS_2439}`));
+      const restoreAt = withPath(/uses: actions\/cache\/restore@[0-9a-f]{40}/);
+      const saveAt = withPath(/uses: actions\/cache\/save@[0-9a-f]{40}/);
+      if (toolAt < 0) return ['導入の step が無い'];
+      if (withPath(/uses: actions\/cache@/) >= 0) out.push('変換ツールの .deb を actions/cache（post で保存）で置いている（赤・cancelled の回に保存されない）');
+      if (restoreAt < 0) out.push('変換ツールの .deb の取り出し（actions/cache/restore）の step が無い');
+      if (saveAt < 0) out.push('変換ツールの .deb の保存（actions/cache/save）の step が無い');
+      if (restoreAt >= 0 && restoreAt > toolAt) out.push('取り出しの step が導入の step より後にある');
+      if (saveAt >= 0) {
+        if (saveAt !== toolAt + 1) out.push('保存の step が導入の直後に無い（試験の成否・cancelled に依る）');
+        if (testAt >= 0 && saveAt > testAt) out.push('保存の step が試験より後にある');
+        const restoreId = restoreAt >= 0 && /\bid: ([A-Za-z0-9_-]+)/.exec(steps[restoreAt]);
+        if (!restoreId || !new RegExp(`if: steps\\.${restoreId[1]}\\.outputs\\.cache-hit != 'true'`).test(steps[saveAt])) out.push('保存の step が「キャッシュに無かった回だけ」の条件を持たない');
+        if (/always\(\)/.test(steps[saveAt])) out.push('保存の step が always() を持つ（導入が赤の回に空の置き場を保存する）');
+      }
+      const keyOf = (i) => (i >= 0 ? /key: \$\{\{ steps\.([A-Za-z0-9_-]+)\.outputs\.key \}\}/.exec(steps[i]) : null);
+      const keyRef = keyOf(restoreAt);
+      if (restoreAt >= 0 && saveAt >= 0 && (!keyRef || !keyOf(saveAt) || keyRef[1] !== keyOf(saveAt)[1])) out.push('取り出しと保存の鍵が同じ step の出力でない');
+      const keyStep = keyRef && steps.find((st) => new RegExp(`\\bid: ${keyRef[1]}\\b`).test(st));
+      if (!keyStep) out.push('キャッシュの鍵を作る step が無い');
+      else if (!/\$\{?ImageOS\b/.test(keyStep) || !/\$\{?ImageVersion\b/.test(keyStep)) out.push('キャッシュの鍵がランナーのイメージの名前と版を含まない');
+      const st = steps[toolAt];
+      if (!st.includes('"$HOME/.cache/conversion-tools-debs"')) out.push('導入の step がキャッシュの置き場を使わない');
+      if (!/sudo dpkg -i "\$debs"\/\*\.deb/.test(st)) out.push('キャッシュの .deb を dpkg -i で入れていない');
+      if (!/Acquire::Retries=\d+/.test(st) || !/Acquire::https?::Timeout=\d+/.test(st)) out.push('apt の取得に再試行と時間切れが無い');
+      if (/Dir::Cache::Archives/.test(st)) out.push('apt の取得の置き場をホームの下へ向けている（_apt が書けず unsandboxed で取得する）');
+      if (!/sudo apt-get clean/.test(st) || !/cp \/var\/cache\/apt\/archives\/\*\.deb "\$debs"\//.test(st)) out.push('この回に取得した .deb だけをキャッシュの置き場へ写していない');
+      // 取得した .deb が 0 個（イメージに入っていた）なら写さない（cp の glob が展開されずに落ちる）。保存もしない。
+      if (!/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/.test(st)) out.push('取得した .deb が 0 個のときに写すのを飛ばしていない（cp が落ちる）');
+      const toolId = /\bid: ([A-Za-z0-9_-]+)/.exec(st);
+      if (!toolId) out.push('導入の step に id が無い（保存の条件に使う）');
+      if (!/echo "debs=true" >> "\$GITHUB_OUTPUT"/.test(st)) out.push('導入の step が「.deb を置いた」を出力しない');
+      if (saveAt >= 0 && toolId && !new RegExp(`steps\\.${toolId[1]}\\.outputs\\.debs == 'true'`).test(steps[saveAt])) out.push('保存の step が「.deb を置いた回だけ」の条件を持たない（空の置き場を保存する）');
+      const stepTimeout = /^\s+timeout-minutes:\s*(\d+)/m.exec(st);
+      if (!stepTimeout || Number(stepTimeout[1]) > 15) out.push('導入の step に 15 分以下の上限が無い');
+      const jobTimeout = /\n {4}timeout-minutes:\s*(\d+)/.exec(text);
+      if (!jobTimeout || Number(jobTimeout[1]) !== 30) out.push('ジョブの上限が 30 分でない（上げるだけの直しをしない。根拠は仕様書）');
+      return out;
+    };
+
+    ok('#2439: 回収実行は変換ツールの .deb をイメージの版の鍵で取り出し・導入の直後に保存し、無いときは sandbox の apt で時間切れと再試行を付けて取り、導入に上限を付ける', () => {
+      assert.deepStrictEqual(issues2439(wf2439), []);
+    });
+
+    ok('#2439 陰性対照: post で保存する形・保存を試験の後へ回す・保存の条件を外す・鍵から版を外す・時間切れを外す・置き場をホームへ向ける・上限を外す・0 個の .deb で写す・空の置き場を保存する・ジョブの上限を上げると赤', () => {
+      const head = wf2439.split(/\n(?= {6}- )/)[0];
+      const steps = stepsOf2439(wf2439);
+      const join = (arr) => [head, ...arr].join('\n');
+      const at = (re) => steps.findIndex((st) => re.test(st));
+      const restoreAt = at(/actions\/cache\/restore@/);
+      const saveAt = at(/actions\/cache\/save@/);
+      const toolAt = at(/apt-get install[^\n]*\bpandoc\b/);
+      const testAt = at(/dotnet test /);
+      assert.ok(restoreAt >= 0 && saveAt >= 0 && toolAt >= 0 && testAt >= 0, '陽性の前提（取り出し・保存・導入・試験の step）が無い');
+      const has = (text, re) => issues2439(text).some((e) => re.test(e));
+      const swap = (i, f) => steps.map((st, j) => (j === i ? f(st) : st));
+      assert.ok(has(join(swap(restoreAt, (st) => st.replace('actions/cache/restore@', 'actions/cache@')).filter((_, j) => j !== saveAt)), /post で保存/));
+      const moved = steps.filter((_, j) => j !== saveAt);
+      moved.splice(moved.findIndex((st) => /dotnet test /.test(st)) + 1, 0, steps[saveAt]);
+      assert.ok(has(join(moved), /導入の直後に無い/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/^\s+if:.*\n/m, ''))), /キャッシュに無かった回だけ/));
+      assert.ok(has(join(steps.map((st) => st.replace(/\$\{?ImageVersion[:}A-Za-z-]*\}?/g, 'x'))), /イメージの名前と版/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/ -o Acquire::https?::Timeout=\d+/g, ''))), /再試行と時間切れ/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace('pandoc poppler-utils\n', 'pandoc poppler-utils -o Dir::Cache::Archives="$debs"\n'))), /ホームの下へ向けて/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/^\s+timeout-minutes:.*\n/m, ''))), /15 分以下の上限/));
+      assert.ok(has(join(swap(toolAt, (st) => st.replace(/if compgen -G "\/var\/cache\/apt\/archives\/\*\.deb" >\/dev\/null; then/, 'if true; then'))), /0 個のとき/));
+      assert.ok(has(join(swap(saveAt, (st) => st.replace(/ && steps\.[A-Za-z0-9_-]+\.outputs\.debs == 'true'/, ''))), /\.deb を置いた回だけ/));
+      assert.ok(has(join(steps).replace(/(\n {4}timeout-minutes:\s*)30/, '$145'), /ジョブの上限が 30 分でない/));
+    });
+  }
+
   // --- NFR / #2039 / IADR-0661: 視覚回帰の Docker イメージの版 ------------------------------------------------------
   {
     const REPO_2039 = path.join(__dirname, '..');
@@ -19789,6 +19877,114 @@ server.listen(0, '127.0.0.1', async () => {
       const scaled = JSON.parse(JSON.stringify(values));
       scaled.scaling.services.push('ingestion');
       assert.strictEqual(m2271.valuesProblems(scaled, 'values.yaml').length, 1);
+    });
+  }
+
+  // --- NFR-18, IADR-0683 (#2421): 秘匿管理の運用者の policy は、要る path と操作だけ ---
+  ok('IADR-0683: 運用者の policy は KV の値を読まず、メタデータの read / list を使っている接頭辞だけに与える', () => {
+    const fs2421 = require('fs');
+    const path2421 = require('path');
+    const hcl = fs2421.readFileSync(path2421.join(__dirname, '..', 'deploy/local/vault/oidc/policies/operator.hcl'), 'utf8')
+      .split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+    const blocks = [...hcl.matchAll(/path\s+"([^"]+)"\s*\{\s*capabilities\s*=\s*\[([^\]]*)\]\s*\}/g)].map((m) => ({ path: m[1], caps: m[2].split(',').map((c) => c.trim().replace(/"/g, '')).filter(Boolean) }));
+    assert.ok(blocks.length >= 3, `陽性対照: path を拾えていない（${blocks.length}）`);
+    const allowed = {
+      'secret/metadata/': ['list'],
+      'secret/metadata/msp/*': ['read', 'list'],
+      'secret/metadata/ai-stock-trading/*': ['read', 'list'],
+      'secret/metadata/datasource/*': ['read', 'list'],
+      'sys/mounts': ['read'],
+    };
+    for (const b of blocks) {
+      assert.ok(Object.prototype.hasOwnProperty.call(allowed, b.path), `運用者に要らない path を与えている: ${b.path}`);
+      for (const c of b.caps) assert.ok(allowed[b.path].includes(c), `${b.path} に要らない操作 ${c} を与えている`);
+    }
+    assert.ok(!/secret\/data\//.test(hcl), '運用者に KV の値（secret/data/）を与えている');
+    assert.ok(!/path\s+"\*"|path\s+"secret\/\*"|path\s+"secret\/metadata\/\*"/.test(hcl), '運用者に KV 全体のワイルドカードを与えている');
+    // 使っている KV の接頭辞（ESO の読み取りと BFF の書き込みの policy が引くもの）は、運用者のメタデータの一覧に入っている
+    const dir = path2421.join(__dirname, '..', 'deploy/local/vault/eso');
+    const used = new Set();
+    for (const f of fs2421.readdirSync(dir).filter((n) => n.endsWith('.hcl'))) {
+      for (const m of fs2421.readFileSync(path2421.join(dir, f), 'utf8').matchAll(/path\s+"secret\/(?:data|metadata)\/([a-z0-9-]+)\//g)) used.add(m[1]);
+    }
+    assert.ok(used.size >= 3, `陽性対照: 接頭辞を拾えていない（${[...used]}）`);
+    for (const u of used) assert.ok(blocks.some((b) => b.path === `secret/metadata/${u}/*`), `接頭辞 ${u} が運用者のメタデータの一覧に無い`);
+  });
+
+  // --- NFR-18, ADR-0107 決定 3, IADR-0679 (#2410): 外部の chart とマニフェストの中身を sha256 で固定する ---
+  {
+    const fs2410 = require('fs');
+    const path2410 = require('path');
+    const os2410 = require('os');
+    const { spawnSync: sp2410 } = require('child_process');
+    const REPO2410 = path2410.join(__dirname, '..');
+    const LIB2410 = path2410.join(__dirname, 'lib', 'pinned-artifacts.sh');
+    const sh2410 = (body, env = {}) => sp2410('bash', ['-c', `. "$LIB"\n${body}`], { encoding: 'utf8', env: { ...process.env, LIB: LIB2410, ...env } });
+
+    ok('IADR-0679: 起動器が入れる chart（版の固定）は全部、sha256 の表に在る', () => {
+      const pins = {};
+      for (const f of ['scripts/k8s-local-up.sh', 'scripts/istio-edge-up.sh']) {
+        for (const m of fs2410.readFileSync(path2410.join(REPO2410, f), 'utf8').matchAll(/^pin_version (\w+) (\S+) /gm)) pins[m[1]] = m[2];
+      }
+      const charts = { base: 'ISTIO_VERSION', istiod: 'ISTIO_VERSION', gateway: 'ISTIO_VERSION', 'external-secrets': 'ESO_CHART_VERSION', reloader: 'RELOADER_CHART_VERSION' };
+      for (const [c, v] of Object.entries(charts)) {
+        const r = sh2410(`pinned_chart_entry "${c}" "${pins[v]}"`);
+        assert.strictEqual(r.status, 0, `${c} ${pins[v]} の sha256 が表に無い（版だけを上げた）`);
+        assert.ok(/^https:\/\/\S+\.tgz [0-9a-f]{64}$/.test(r.stdout), `${c}: 表の形が違う: ${r.stdout}`);
+        assert.ok(r.stdout.includes(pins[v]), `${c}: URL が固定の版を指していない`);
+      }
+      // helm の chart の参照（<repo>/<chart>）が起動器に残っていない
+      for (const f of ['scripts/k8s-local-up.sh', 'scripts/istio-edge-up.sh']) {
+        const src = fs2410.readFileSync(path2410.join(REPO2410, f), 'utf8').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+        assert.ok(!/helm repo (add|update)/.test(src), `${f} が helm repo を使う`);
+        assert.ok(!/helm upgrade --install \S+ (istio|external-secrets|stakater)\//.test(src), `${f} が chart のリポジトリから入れる`);
+      }
+    });
+
+    ok('IADR-0679: kustomization の resources の URL は全部、同じディレクトリの remote-resources.sha256 に在る（deploy/cloud を除く）', () => {
+      const files = sp2410('git', ['-C', REPO2410, 'ls-files', '--', '*kustomization.yaml'], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean)
+        .filter((f) => !f.startsWith('deploy/cloud/') && !f.startsWith('src/'));
+      let seen = 0;
+      for (const f of files) {
+        const urls = [...fs2410.readFileSync(path2410.join(REPO2410, f), 'utf8').matchAll(/^\s*-\s*(https?:\/\/\S+)\s*$/gm)].map((m) => m[1]);
+        if (urls.length === 0) continue;
+        const list = path2410.join(REPO2410, path2410.dirname(f), 'remote-resources.sha256');
+        assert.ok(fs2410.existsSync(list), `${f}: URL を持つのに remote-resources.sha256 が無い`);
+        const lines = fs2410.readFileSync(list, 'utf8').split('\n').filter((l) => l && !l.startsWith('#'));
+        for (const u of urls) {
+          assert.ok(lines.some((l) => /^[0-9a-f]{64}  \S+$/.test(l) && l.endsWith(`  ${u}`)), `${f}: ${u} の sha256 が無い`);
+          seen++;
+        }
+      }
+      assert.ok(seen >= 2, `陽性対照: URL を拾えていない（${seen}）`);
+    });
+
+    ok('IADR-0679: 取得と確かめ — sha256 が合えば置き、合わなければ消して止まる。表に無い chart は取り込まない。URL の残る kustomization は当てない', () => {
+      const dir = fs2410.mkdtempSync(path2410.join(os2410.tmpdir(), 'iadr0679-'));
+      try {
+        const src = path2410.join(dir, 'src.yaml');
+        fs2410.writeFileSync(src, 'kind: ConfigMap\n');
+        const sha = require('crypto').createHash('sha256').update('kind: ConfigMap\n').digest('hex');
+        const good = sh2410(`pinned_fetch_verified "file://$SRC" "${sha}" "$OUT" && echo placed`, { SRC: src, OUT: path2410.join(dir, 'a') });
+        assert.ok(good.stdout.includes('placed') && fs2410.existsSync(path2410.join(dir, 'a')), good.stderr);
+        const bad = sh2410(`pinned_fetch_verified "file://$SRC" "${'0'.repeat(64)}" "$OUT"`, { SRC: src, OUT: path2410.join(dir, 'b') });
+        assert.notStrictEqual(bad.status, 0, '合わないのに通した');
+        assert.ok(!fs2410.existsSync(path2410.join(dir, 'b')), '合わないファイルを残した');
+        assert.notStrictEqual(sh2410('pinned_chart reloader 9.9.9 "$D"', { D: dir }).status, 0, '表に無い版を取り込んだ');
+        // URL を差し替えた写しを作る（作業ディレクトリの下の同じ相対パス）
+        const kdir = path2410.join(dir, 'repo', 'k');
+        fs2410.mkdirSync(kdir, { recursive: true });
+        fs2410.writeFileSync(path2410.join(kdir, 'kustomization.yaml'), `resources:\n  - file://${src}\n`);
+        fs2410.writeFileSync(path2410.join(kdir, 'remote-resources.sha256'), `${sha}  file://${src}\n`);
+        const k = sp2410('bash', ['-c', '. "$LIB"; cd "$R" && pinned_kustomize_dir k "$W"'], { encoding: 'utf8', env: { ...process.env, LIB: LIB2410, R: path2410.join(dir, 'repo'), W: path2410.join(dir, 'work') } });
+        assert.strictEqual(k.status, 0, k.stderr);
+        assert.strictEqual(fs2410.readFileSync(path2410.join(dir, 'work', 'k', 'kustomization.yaml'), 'utf8'), 'resources:\n  - remote-1.yaml\n');
+        fs2410.writeFileSync(path2410.join(kdir, 'remote-resources.sha256'), '');
+        const left = sp2410('bash', ['-c', '. "$LIB"; cd "$R" && pinned_kustomize_dir k "$W"'], { encoding: 'utf8', env: { ...process.env, LIB: LIB2410, R: path2410.join(dir, 'repo'), W: path2410.join(dir, 'work2') } });
+        assert.notStrictEqual(left.status, 0, '固定の無い URL の残る kustomization を通した');
+      } finally {
+        fs2410.rmSync(dir, { recursive: true, force: true });
+      }
     });
   }
 
