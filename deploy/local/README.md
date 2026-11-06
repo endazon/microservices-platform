@@ -532,7 +532,8 @@ kubectl -n platform-infra get secret e2e-accounts -o 'jsonpath={.data.E2E_USER_T
 2. ESO を同期させる（上の「反映する」の `annotate` と `wait`）。
 3. Keycloak の Admin REST（管理面はエッジに出ない。`kubectl -n platform-infra port-forward svc/keycloak 8080:8080` のうえで master realm の管理者のトークンを取り、`GET http://localhost:8080/admin/realms/platform/users?search=e2e-` で引いて `DELETE …/users/<id>`。IADR-0575・`deploy/local/edge/README.md`「Keycloak の管理コンソール」）で **`e2e-` で始まる 6 名だけ**を削除する。
    人のアカウントは消さない。`kcadm.sh` を Keycloak の Pod で exec しない（本体が OOMKilled になる）。
-4. `bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
+4. `RECONCILE_RECREATE_USERS=e2e-user,e2e-operator,e2e-admin,e2e-noaccess,e2e-revocable,e2e-trading-owner bash deploy/local/keycloak-setup/reconcile-realm.sh` で作り直す（期待: `user.create` が 6 件）。上の「確かめる」を通す。
+   ［2026-11-06 / IADR-0685］調停は、一度在った seed 利用者が消されていても既定では作り直さない（`kept` の行で報告する）。作り直す利用者の名前を `RECONCILE_RECREATE_USERS` に与える。
 5. 値を写した先（GitHub Actions の secrets・runner の `.env.e2e`・保存済みの storageState）を捨てて取り直す。
 
 ## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）

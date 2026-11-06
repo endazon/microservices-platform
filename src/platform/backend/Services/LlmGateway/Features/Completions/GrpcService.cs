@@ -1,4 +1,5 @@
 using Grpc.Core;
+using LlmGateway.Domain.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Llm;
@@ -29,12 +30,13 @@ namespace LlmGateway.Features.Completions;
 // RpcException になるのは s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）・輸送不達（UNAVAILABLE）・
 // 値域外の要求（INVALID_ARGUMENT）だけである。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.LlmCompletion.LlmCompletionBase
+public sealed class LlmCompletionGrpcService(CompletionUseCase useCase, LlmCallerPolicy callerPolicy) : Pb.LlmCompletion.LlmCompletionBase
 {
     public override async Task<Pb.CompleteResponse> Complete(
         Pb.CompleteRequest request, ServerCallContext context)
     {
         var dto = ToDtoOrThrow(request);
+        EnsureCallerAllowed(dto, context);
         var result = await useCase.ExecuteAsync(dto, IsSynthetic(context), context.CancellationToken, Caller(context));
         return LlmGrpcMapping.ToProto(result);
     }
@@ -53,6 +55,7 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
         ServerCallContext context)
     {
         var dto = ToDtoOrThrow(request);
+        EnsureCallerAllowed(dto, context);
         await foreach (var ev in useCase.StreamAsync(dto, IsSynthetic(context), context.CancellationToken, Caller(context)))
             await responseStream.WriteAsync(LlmGrpcMapping.ToProto(ev), context.CancellationToken);
     }
@@ -70,6 +73,17 @@ public sealed class LlmCompletionGrpcService(CompletionUseCase useCase) : Pb.Llm
                 StatusCode.InvalidArgument,
                 "max_tokens は 0（未指定＝既定 4096）以上でなければなりません。"));
         return LlmGrpcMapping.ToDto(request);
+    }
+
+    // NFR-18, IADR-0684 (#2417): 呼び手ごとの許可表（REST と同じ判定器）。段 2 のときだけ PERMISSION_DENIED。
+    private void EnsureCallerAllowed(Platform.Shared.Contracts.Dtos.CompletionApiRequest dto, ServerCallContext context)
+    {
+        var decision = callerPolicy.Evaluate(
+            MachinePrincipal.ClientIdOf(context.GetHttpContext().User), dto.Purpose, dto.Model);
+        if (!decision.Allowed)
+            throw new RpcException(new Status(
+                StatusCode.PermissionDenied,
+                "この呼び手には、要求した用途（またはモデルの指定）が許可されていない。"));
     }
 
     // NFR-02, ADR-0076 決定 4, IADR-0378, IADR-0400 決定 3: 合成監視の標識は**メタデータ**で運ぶ。
