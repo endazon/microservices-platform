@@ -4619,6 +4619,63 @@ ${r.stderr}`);
     });
   }
 
+  // --- check-advisory-ids: advisory の識別子は公開の第三者 allowlist だけ（#2479 / IADR-0690） ---------
+  //
+  // NFR（#2479）: 本検査は allowlist だけの形である（非公開の識別子を検査器にも試験にも書かない）。
+  // 🔴 **陰性対照の架空の識別子は、ここで組み立てる**（同じ文字の繰り返しで、実在しない形が明らかなもの）。
+  // 字面で書くと、実ツリーの検査を自分で赤にする。規則は取引ユニットの同名の検査器とそろえる。
+  {
+    const { spawnSync: spawnAid } = require('child_process');
+    const pathAid = require('path');
+    const fsAid = require('fs');
+    const aidScript = pathAid.join(__dirname, 'check-advisory-ids.js');
+    const runAid = (args, opts) =>
+      spawnAid(process.execPath, [aidScript, ...args], { encoding: 'utf8', ...opts });
+    const aid = require('./check-advisory-ids.js');
+    const fakeHead = 'w'.repeat(4);
+    const fakeFull = ['GHSA', fakeHead, fakeHead, fakeHead].join('-');
+
+    ok('check-advisory-ids --self-test が通る', () => {
+      const r = runAid(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-advisory-ids が実データ（追跡下すべて）で違反 0 件', () => {
+      const r = runAid([]);
+      assert.strictEqual(r.status, 0, `allowlist に無い advisory の識別子がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-advisory-ids: allowlist は公開の第三者 12 件ちょうど', () => {
+      assert.strictEqual(aid.ALLOWLIST.length, 12);
+      assert.strictEqual(new Set(aid.ALLOWLIST).size, 12);
+    });
+
+    ok('check-advisory-ids: 陰性対照 — 先頭の区画が allowlist と同じで 2 区画目が違う 2 区画の形を検出する', () => {
+      const head = aid.ALLOWLIST[2].split('-')[1];
+      const fakeTwo = ['GHSA', head, fakeHead].join('-');
+      const v = aid.findViolations(`# Refs ${fakeTwo}: 説明`);
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].id, fakeTwo);
+      assert.deepStrictEqual(aid.findViolations(aid.ALLOWLIST[2].split('-').slice(0, 3).join('-')), []);
+    });
+
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。**
+    // 追跡下のファイルへ架空の識別子を 1 行足して、CLI が exit 1 を返し**ファイル名と行番号を名指しする**ことを見る。
+    ok('check-advisory-ids: 追跡下のファイルへ架空の識別子を足すと exit 1 で名指しする', () => {
+      const target = pathAid.join(__dirname, '..', 'docs', 'README.md');
+      const orig = fsAid.readFileSync(target);
+      try {
+        fsAid.writeFileSync(target, Buffer.concat([orig, Buffer.from(`\n${fakeFull}\n`)]));
+        const r = runAid([]);
+        assert.notStrictEqual(r.status, 0, '架空の識別子を足したのに exit 0 だった');
+        assert.match(r.stderr, /docs\/README\.md:\d+/, 'ファイル名と行番号を名指ししていない');
+      } finally {
+        fsAid.writeFileSync(target, orig);
+      }
+      assert.strictEqual(runAid([]).status, 0, '復元後も落ちたままである');
+    });
+  }
+
   // --- check-test-name-references: 注記が指す試験名の実在（#1312） ----------------
   //
   // NFR（#1312）: 「この帰結は <X>Tests が固定する」と書いてあるのに、その名前のクラスが無い。
@@ -8762,6 +8819,8 @@ ${r.stderr}`);
     // ★ #956 で check-nul-bytes.js を追加（git ls-files を母集合にするためクラス B）。
     // ★ #1195 で check-scaffolding-frames.js を追加（同上。追跡下の .gitkeep だけを見るため）。
     const TRACKED_CHECKERS = [
+      // #2479: advisory の識別子の allowlist 検査。git ls-files で母集合を引くのでクラス B である。
+      'check-advisory-ids.js',
       'check-cross-repo-refs.js',
       'check-nul-bytes.js',
       'check-plan-id-qualification.js',
@@ -8772,7 +8831,7 @@ ${r.stderr}`);
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=3 / B=5 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=6 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -8797,7 +8856,7 @@ ${r.stderr}`);
       assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
     });
 
-    ok('#683: 該当 7 本すべてが実際に警告を出し、終了コードを変えない', () => {
+    ok('#683: 該当 9 本すべてが実際に警告を出し、終了コードを変えない', () => {
       const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
       const run = (f) =>
         spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
@@ -9185,7 +9244,11 @@ ${r.stderr}`);
         //    🔴 **「同型の事故が 2 回」ではなく、IADR-0595・IADR-0640 の残余（「複数レプリカにする前に解消する」）と #2271 の棚卸し（2026-10-30・
         //    2026-10-31 の承認）の名指しに基づく新設である。** 窓は今は閉じているが、閉じていることを機械が見ていなかった。
         //    git を一切呼ばず fs のみで走査するため、TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-image-digests.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 67, `検査器の母集合が 67 本から変わった（${scripts.length} 件）`);
+        // ★ #2479 / IADR-0690 で `check-advisory-ids.js`（追跡下の本文の advisory の識別子は公開の第三者 allowlist にあるものだけを許す）を
+        //    新設したため 67 → 68（ラチェットが設計どおり発火した）。🔴 **「同型の事故が 2 回」ではなく利用者の裁定（2026-11-06。
+        //    再混入を防ぐ検査器を allowlist だけの形で足す）の名指しに基づく新設である。** git ls-files で母集合を引くため
+        //    TRACKED_CHECKERS に載る（`check-nul-bytes.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 68, `検査器の母集合が 68 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

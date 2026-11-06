@@ -354,6 +354,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-nul-bytes.js
 
+      # NFR, Issue #2479, IADR-0690: advisory の識別子（`GHSA-` で始まるもの）は、公開の第三者 advisory の
+      # allowlist にあるものだけを許す。非公開の指摘の識別子を公開のファイルへ書かない（利用者裁定 2026-11-06）。
+      # 検査器は非公開の識別子を持たない（allowlist だけの形・ハッシュ照合なし）。前置きの無い断片は捕まえない（残余）。
+      # 取引ユニット（AST）の同名の検査器と規則をそろえる。git ls-files を呼ぶため fetch-depth や submodule 取得は
+      # 要らない。scripts.repo.test.js の companion 経由でも回すが、専用ステップにすると失敗がジョブ名で見える
+      # （check-nul-bytes.js と同じ理由）。
+      - name: Self-test advisory id checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-advisory-ids.js --self-test
+      - name: Check advisory ids (public third-party allowlist only)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-advisory-ids.js
+
       # NFR, Issue #1312: コード注記が指す `*Tests` が**実在するか**を検査する。
       # 「この帰結は <X>Tests が固定する」と書いてあるのに、その名前のクラスが 1 つも無い形は、
       # **「試験がある」と読ませたまま何も固定していない**。読み手は名前で検索して見つからず、
