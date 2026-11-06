@@ -89,6 +89,7 @@ issue: "#2471"
 6. 試験:
    - `scripts/deploy-cloud.test.js`: OpenBao・ESO の宣言（digest・dev モードでない・平文の受け口は NetworkPolicy の内側だけ・Secret を描かない）、クラウドの realm に audience のスコープと `trading-bot` が残ること、3 つの機密クライアント、雛形の一致。
    - `deploy/cloud/vault/openbao-scripts.test.sh`（新規。CI の scripts-tests に段を足す）: 固定の OpenBao の配布物（sha256 を確かめる）を手元で起こし、`kubectl` をスタブにして、`init → unseal → configure → seed → gen → gen-rsa → root の作り直し` を実物の OpenBao で通す。値が引数に載らないこと・root が失効していること・policy の境界・`gen` のバイト数と形式・在れば触らないことを固定する。
+     ［2026-11-06 追記 / #2471］gen-rsa は置かない（IADR-0689 決定 7。moomoo-rsa は手元の openssl から put-external-secret.sh へ直に流す。PR ②）。
    - `scripts/scripts.repo.test.js` の #2401 の節（bootstrap の削除の追随）・`scripts/cloud-ops.test.js`（bootstrap の名前の突き合わせの追随）・`scripts/live-scripts.json`（新しいスクリプトの分類）。
 
 ## 受け入れ基準
@@ -101,6 +102,7 @@ issue: "#2471"
 - AC-6: policy の境界: 基盤の側は `cloud/ast/*` を読めない。AST の側は `cloud/platform/*` を読めず、`cloud/shared/*` は名指しの 4 つだけを読める（同上）。
 - AC-7: クラウドの realm に、クライアントスコープ `ai-stock-trading-api-audience`（owner の既定のスコープ）と realm ロール `trading-bot`（owner のサービスアカウントだけ）が残る。機密クライアントは 3 つ（試験）。
 - AC-8: IADR-0689 が、unseal の鍵・root トークン・OpenBao 自身の受け口・再起動のときに止まるもの・ノードのメモリ・`gen-rsa` の代わりの案を決める。IADR-0674 に覆したことを追記する。
+  ［2026-11-06 追記 / #2471］gen-rsa は置かない（IADR-0689 決定 7。moomoo-rsa は手元の openssl から put-external-secret.sh へ直に流す。PR ②）。
 
 ## 範囲の外
 
