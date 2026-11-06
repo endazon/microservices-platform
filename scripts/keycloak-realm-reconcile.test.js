@@ -572,6 +572,38 @@ ok('サービスアカウントの realm ロール・client ロール・属性�
   assert.ok(/manage-users/.test(cr.reason) && !/view-users/.test(cr.reason));
 });
 
+// 🔴 #2441 / AST#1554（AST/IADR-0622 の段 ②）: 稼働の realm が段 ② の前（trading-bot が無く、ボットのサービスアカウントは
+// trading-owner だけ）なら、1 回目はロールを作り、割当はロールが出来るまで deferred。2 回目で trading-bot だけを**足す**
+// （trading-owner は外さない＝通信を止めない。外すのは別の段 ⑤）。
+ok('#2441: 段 ② の前の稼働 realm へは trading-bot を作ってからボットに足し、trading-owner は外さない', () => {
+  const bot = 'ai-stock-trading-owner';
+  const declared = REALM.users.find((u) => u.serviceAccountClientId === bot);
+  assert.deepStrictEqual([...declared.realmRoles].sort(), ['trading-bot', 'trading-owner'], '宣言は段 ② の形（両方）');
+
+  const live = liveFrom(REALM);
+  live.realmRoles = live.realmRoles.filter((r) => r.name !== 'trading-bot');
+  live.serviceAccounts[bot].realmRoles = ['trading-owner'];
+  const first = opsOf(REALM, live);
+  assert.ok(first.some((o) => o.op === 'role.create' && o.target === 'trading-bot'), 'ロールを作る');
+  assert.ok(first.some((o) => o.op === 'deferred' && /service-account-ai-stock-trading-owner/.test(o.target)), 'ロールが出来るまで割当は待つ');
+  assert.ok(!first.some((o) => o.op === 'user.realmRoles.add'), '無いロールを割り当てない');
+
+  const second = liveFrom(REALM);
+  second.serviceAccounts[bot].realmRoles = ['trading-owner'];
+  const ops = opsOf(REALM, second);
+  assert.deepStrictEqual(kinds(ops), ['user.realmRoles.add']);
+  assert.deepStrictEqual(ops[0].body.map((r) => r.name), ['trading-bot'], '足すのは trading-bot だけ');
+  assert.ok(!ops.some((o) => /remove|delete/i.test(o.op) || o.method === 'DELETE'), '所有者のロールを外す操作は出さない');
+});
+
+// 他のクライアント・利用者には trading-bot を付けない（AST の提供側はボット以外の azp の trading-bot を拒む）。
+ok('#2441: trading-bot を持つのはボットのサービスアカウントだけ', () => {
+  const holders = REALM.users.filter((u) => (u.realmRoles || []).includes('trading-bot')).map((u) => u.username);
+  assert.deepStrictEqual(holders, ['service-account-ai-stock-trading-owner']);
+  const composites = REALM.roles.realm.filter((r) => ((r.composites || {}).realm || []).includes('trading-bot')).map((r) => r.name);
+  assert.deepStrictEqual(composites, [], '複合ロール経由でも付けない');
+});
+
 // --- 3. 実行時層には触れない ------------------------------------------------------------
 
 ok('既存の人間の利用者は宣言と違っても触らない（資格情報・属性・requiredActions・ロールは実行時が所有する）', () => {

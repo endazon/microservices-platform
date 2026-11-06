@@ -227,6 +227,10 @@
         "description": "Issue #1372 / AST#727, AST/IADR-0051・AST/IADR-0324: AST の読み取り専用 s2s ロール（OwnerOrService）。MSP 連結配備では AST サービスが本レルムで検証するため、AST レルムの同名ロールをここへ写す。kill switch・設定変更は持たない。"
       },
       {
+        "name": "trading-bot",
+        "description": "Issue #2441 / AST#1554, AST/IADR-0622: AST の Discord ボット専用のロール。AST の提供側はボットのクライアント（ai-stock-trading-owner）かつボットの許可表の経路と gRPC の所有者の面でだけ受け入れる。他のクライアントには付けない。"
+      },
+      {
         "name": "Administrators",
         "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。"
       },
@@ -1104,7 +1108,7 @@
     {
       "clientId": "ai-stock-trading-owner",
       "name": "AST owner client (Discord bot control, client_credentials)",
-      "description": "Issue #1372 / AST#727, AST/IADR-0098・AST/IADR-0324: Discord Bot 制御コマンドの owner 認証用の機密クライアント（client_credentials・service-account に trading-owner 単独）。MSP 連結配備では AST が本レルムで検証するため AST レルムから写す。本番 secret は config から供給する。",
+      "description": "Issue #1372 / AST#727, AST/IADR-0098・AST/IADR-0324: Discord Bot 制御コマンドの owner 認証用の機密クライアント（client_credentials・service-account に trading-owner と trading-bot。#2441）。MSP 連結配備では AST が本レルムで検証するため AST レルムから写す。本番 secret は config から供給する。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
@@ -1873,7 +1877,8 @@
       "enabled": true,
       "serviceAccountClientId": "ai-stock-trading-owner",
       "realmRoles": [
-        "trading-owner"
+        "trading-owner",
+        "trading-bot"
       ]
     },
     {
