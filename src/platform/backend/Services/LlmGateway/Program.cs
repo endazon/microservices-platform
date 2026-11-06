@@ -6,6 +6,8 @@ using LlmGateway.Features.Completions;
 using LlmGateway.Features.Embeddings.Embed;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Pricing;
+using LlmGateway.Domain.Authorization;
+using LlmGateway.Domain.Limits;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Infrastructure.ExternalServices;
 using LlmGateway.Domain.Routing;
@@ -58,6 +60,16 @@ builder.Services.AddOptions<LlmBudgetOptions>()
 builder.Services.AddSingleton<IValidateOptions<LlmBudgetOptions>, LlmBudgetOptionsValidator>();
 builder.Services.AddSingleton<LlmBudgetMetrics>();
 
+// NFR-18, NFR-21, ADR-0044, IADR-0678 (#2404): 送る前の呼び出しの上限（入力・呼び手ごとの要求数と当日の費用）。
+// 🔴 **既定の段は Report**（判定して報告だけ。送信は止めない）。Enforce への切り替えは設定 `Llm:CallLimits:Mode` で行う。
+// 0 以下の上限・未知の用途のキーは起動時に落とす。
+builder.Services.AddOptions<LlmCallLimitOptions>()
+    .Bind(builder.Configuration.GetSection(LlmCallLimitOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<LlmCallLimitOptions>, LlmCallLimitOptionsValidator>();
+builder.Services.AddSingleton<LlmCallLimitMetrics>();
+builder.Services.AddSingleton<LlmCallLimiter>();
+
 // Meter は 1 本（サービス名と一致）。補完カウンタと利用実績の計器は同じ Meter に載る。
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(LlmCompletionMetrics.MeterName));
@@ -84,6 +96,9 @@ builder.Services.AddOptions<LlmRoutingOptions>()
     .Bind(builder.Configuration.GetSection(LlmRoutingOptions.SectionName))
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, ClaudeApiKeyStartupValidator>();
+// NFR-18, FR-11, ADR-0044, IADR-0677 (#2411): 経路の設定（用途のモデルの割当・上流の宛先・単価表）の起動時検査。
+// 🔴 **既定（段 1）は警告だけ**（下の起動後のブロックが 1 件 1 行で出す）。`Llm:RouteValidation:Mode=Fail`（段 2）で誤りがあれば起動を止める。
+builder.Services.AddSingleton<IValidateOptions<LlmRoutingOptions>, LlmRouteStartupValidator>();
 builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
 
 // FR-11: ルーターの判定に従って呼び出し先を切り替えるため、プロバイダをキー付きで登録する。
@@ -129,6 +144,14 @@ builder.Services.AddSingleton<LogOccurrenceThrottle>();
 // REST（/complete）と gRPC（LlmCompletion/Complete・CompleteStream）の
 // **両方がこれを呼ぶ**（［2026-10-15 / #1902］逐次の REST /complete/stream は撤去した） —— 越境判定・フォールバック鎖・計器の計上を輸送ごとに分けない。
 builder.Services.AddSingleton<CompletionUseCase>();
+
+// NFR-18, NFR-09, ADR-0084 決定 1, IADR-0684 (#2417): 補完の呼び手ごとの許可表（用途・モデルの明示の指定）。
+// 🔴 **既定の段は Report**（判定して報告だけ）。`Llm:CallerPolicy:Mode=Enforce` で、許可表に無い呼び出しを REST 403 / gRPC PERMISSION_DENIED で拒む。
+builder.Services.AddOptions<LlmCallerPolicyOptions>()
+    .Bind(builder.Configuration.GetSection(LlmCallerPolicyOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<LlmCallerPolicyOptions>, LlmCallerPolicyOptionsValidator>();
+builder.Services.AddSingleton<LlmCallerPolicy>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
 // LLM 生成・埋め込みの合成可能ポート（機密区分ルーティングで複数プロバイダを束ねるルータ）を申告する。
@@ -179,6 +202,24 @@ app.Services.GetRequiredService<LlmBudgetMetrics>();
                 + "Claude への呼び出しは 401 で失敗する。鍵なしの検証スタック専用である（#2136 / IADR-0641）。",
                 string.Join(", ", enabledClaude), AnthropicClientFactory.ApiKeyConfigKey,
                 ClaudeApiKeyStartupValidator.AllowMissingConfigKey);
+    }
+}
+
+// NFR-18, IADR-0677 (#2411): 段 1（Warn）で経路の設定の誤りを起動時に 1 件 1 行の Warning で出す（段 2 は上の検証が起動を止める）。
+{
+    if (LlmRouteConfigurationCheck.TryReadMode(app.Configuration, out var routeMode) && routeMode == LlmRouteValidationMode.Warn)
+    {
+        var findings = LlmRouteConfigurationCheck.Find(
+            app.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value,
+            app.Services.GetRequiredService<IOptions<EmbeddingRoutingOptions>>().Value,
+            app.Services.GetRequiredService<IOptions<ModelPricingOptions>>().Value,
+            app.Configuration,
+            app.Services.GetRequiredService<TimeProvider>().GetUtcNow());
+        var routeLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LlmGateway.Startup");
+        foreach (var finding in findings)
+            routeLogger.LogWarning(
+                "LLM の経路の設定に誤りがある（kind={Kind}）: {Finding} 段 2（{ModeKey}=Fail）では起動を止める（#2411 / IADR-0677）。",
+                finding.Kind, finding.Message, LlmRouteConfigurationCheck.ModeConfigKey);
     }
 }
 

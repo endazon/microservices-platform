@@ -16,7 +16,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Extensions;
 
-// NFR-18, ADR-0084 決定 1, IADR-0685 (#2430・AI レビュー): 段階つきの認証の門の単体試験。
+// NFR-18, ADR-0084 決定 1, IADR-0686 (#2430・AI レビュー): 段階つきの認証の門の単体試験。
 // 🔴 段 2 へ上げる前提は「段 1 の計器 auth.internal_gate.anonymous.total が 0」なので、計器の配線（群・段の属性）を固定する。
 [Trait("TestKind", "Unit")]
 public class InternalAuthGateTests

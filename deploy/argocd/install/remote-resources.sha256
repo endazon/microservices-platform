@@ -1,0 +1,2 @@
+# NFR-18, IADR-0679 (#2410): kustomization.yaml の resources の URL の内容の sha256（1 行「<sha256>  <URL>」）。版を上げるときは対で改める。
+1feb02cc7bacf3a379da58b0ca8c6f07d18288cd04d531dabd08816375e5e010  https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.4/manifests/install.yaml

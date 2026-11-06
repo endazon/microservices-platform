@@ -73,6 +73,24 @@ for name in $(VAULT=1 infra_cred_staged_names); do
   check_secret "$name" "$ns" "$sname" "$skey" "$(infra_cred_staged_dev_value "$name")"
 done
 
+# NFR-18, IADR-0676 決定 3 (#2407): Grafana の内蔵の管理者（Grafana を置いているときだけ）。Secret が無ければ、製品は
+#   リポジトリが与えない値で管理者を作るので名指す。値は起動のたびに Secret から DB へ合わせる（永続化の overlay）。
+if kubectl -n "$INFRA_NS" get deploy grafana -o name >/dev/null 2>&1; then
+  if v="$(secret_value "$INFRA_NS" grafana-admin password)"; then
+    if [ "$v" = "admin" ]; then
+      echo "    !! GRAFANA_ADMIN_PASSWORD（Secret $INFRA_NS/grafana-admin/password）: 開発用の値のまま"
+      add_found "GRAFANA_ADMIN_PASSWORD"
+    else
+      echo "    ok GRAFANA_ADMIN_PASSWORD（Secret $INFRA_NS/grafana-admin/password）"
+    fi
+  else
+    echo "    !! GRAFANA_ADMIN_PASSWORD（Secret $INFRA_NS/grafana-admin/password）: 無い（Grafana が在るのに管理者の値を与えていない）"
+    add_found "GRAFANA_ADMIN_PASSWORD"
+  fi
+else
+  echo "    -  GRAFANA_ADMIN_PASSWORD（deploy/grafana が無い）"
+fi
+
 echo "==> 2. ストア側（DB 利用者のログイン・秘匿管理のトークン。値は表示しない）"
 # DB 利用者 → 開発用の値。postgres・kp は段階の対象と同じ値、ai は deploy/local/infra/postgres.yaml の初期化が作る値（取引ユニット）。
 pg_roles="postgres:$(infra_cred_staged_dev_value PG_PASSWORD) kp:$(infra_cred_staged_dev_value APP_DB_PASSWORD) ai:ai"
@@ -129,7 +147,7 @@ fi
 
 if [ -n "$found" ]; then
   echo "NG: 開発用の値のままのものがある: ${found}" >&2
-  echo "    作り直す: bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token>（値は表示しない）。" >&2
+  echo "    作り直す: bash scripts/rotate-infra-credentials.sh --live <postgres-admin|app-db|object-storage|vault-root-token|grafana-admin>（値は表示しない）。" >&2
   echo "    Keycloak の管理者・ブローカは docs/operations/secret-rotation-runbook.md B-1 の手順で回す。" >&2
   [ -n "$unknown" ] && echo "    確かめられなかったもの: ${unknown}" >&2
   exit 1

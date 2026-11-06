@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
-// NFR-18, ADR-0084 決定 1, IADR-0685 (#2430): 内部サービスの REST の群に掛ける**段階つきの認証の門**。
+// NFR-18, ADR-0084 決定 1, IADR-0686 (#2430): 内部サービスの REST の群に掛ける**段階つきの認証の門**。
 //
 // 計画 ADR-0084 決定 1 は門を端点（群）ごとに掛けることを求める。`/analysis/*`・`/wiki/*` は門を持たず、
 // 未認証をハンドラの中で「閲覧できるものが無い」へ倒していた（IADR-0335）。素の `RequireAuthorization()` を足すと

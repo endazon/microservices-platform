@@ -33,7 +33,7 @@ builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(RagStreamMetrics.MeterName));
 
 builder.Services.AddPlatformAuth(builder.Configuration);
-// NFR-18, IADR-0685 (#2430): 群の認証の門の段（`Auth:InternalGate:Mode`）を起動時に検証する。
+// NFR-18, IADR-0686 (#2430): 群の認証の門の段（`Auth:InternalGate:Mode`）を起動時に検証する。
 builder.Services.AddInternalAuthGate(builder.Configuration);
 // FR-15, NFR-09, NFR-16, ADR-0029, ADR-0075, [[IADR-0379]] 決定 3, [[IADR-0462]] (#1514, #1255 経路 ⑤):
 // east-west gRPC の h2c リスナ（`Grpc:Port`。未設定なら立てない）。面は自己申告の gRPC 面

@@ -31,6 +31,7 @@ const {
   plan, gateHoldsClosed, GATE_OWNED_REALM_KEYS,
   GATE_STATE_ATTRIBUTE: JOB_GATE_STATE_ATTRIBUTE, GATE_STATE_CLOSED: JOB_GATE_STATE_CLOSED,
   SEED_USER_SELF_SERVICE_ROLES,
+  SEEDED_USERS_ATTRIBUTE,
 } = require('../deploy/local/keycloak-setup/reconcile-realm.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -126,8 +127,30 @@ function liveFrom(desired, realmOverride) {
 const liveRealmRep = () => {
   const r = clone(REALM);
   r.id = uuid();
+  // #2431 / IADR-0685: 調停を一度通した realm は、在ると確かめた seed 利用者の記録（realm の属性）を持つ。
+  r.attributes = { [SEEDED_USERS_ATTRIBUTE]: REALM.users.filter((u) => !u.serviceAccountClientId).map((u) => u.username).sort().join(',') };
   return r;
 };
+
+ok('🔴 IADR-0685: 門と調停は realm の属性を互いに消さない（どちらも稼働の属性を写してから自分の鍵だけを書く）', () => {
+  const live = liveRealmRep();
+  const seeded = live.attributes[SEEDED_USERS_ATTRIBUTE];
+  // 門の PUT の本文は、調停の記録を残す
+  const closed = gate.buildRealmUpdate(live, { allowed: false, reason: 'r', at: 'T1' });
+  assert.strictEqual(closed.attributes[SEEDED_USERS_ATTRIBUTE], seeded, '門の PUT が調停の記録を消す');
+  assert.strictEqual(closed.attributes[gate.GATE_STATE_ATTRIBUTE], gate.GATE_STATE_CLOSED);
+  // 調停の記録の PUT の本文は、門の属性を残す（記録の無い realm へ記録を足す形で確かめる）
+  const unrecorded = clone(closed);
+  delete unrecorded.attributes[SEEDED_USERS_ATTRIBUTE];
+  const ops = plan(REALM, liveFrom(REALM, unrecorded));
+  const put = ops.find((o) => o.op === 'realm.update');
+  assert.ok(put, '記録の無い realm に記録を足さない');
+  for (const k of [gate.GATE_STATE_ATTRIBUTE, gate.GATE_REASON_ATTRIBUTE, gate.GATE_SINCE_ATTRIBUTE]) {
+    assert.strictEqual(put.body.attributes[k], closed.attributes[k], `調停の PUT が門の属性 ${k} を消す`);
+  }
+  assert.strictEqual(put.body.attributes[SEEDED_USERS_ATTRIBUTE], seeded, '記録が違う');
+  assert.strictEqual(put.body.resetPasswordAllowed, false, '調停の PUT が門の閉鎖を開き直す');
+});
 
 ok('陽性対照: 宣言と一致した稼働は drift 0 件（この節の前提）', () => {
   assert.deepStrictEqual(plan(REALM, liveFrom(REALM, liveRealmRep())), []);

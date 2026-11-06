@@ -23,10 +23,12 @@ Vault は既定で永続化されている（raft ストレージ＋PVC）ので
 # 1) Vault へ到達（port-forward）
 kubectl -n platform-infra port-forward svc/vault 8200:8200 &
 
-# 2) root トークン（Secret vault-dev-token・既定 devroot）で bootstrap を実行
-export VAULT_ADDR=http://localhost:8200
-export VAULT_TOKEN=$(kubectl -n platform-infra get secret vault-dev-token -o jsonpath='{.data.token}' | base64 -d)
-bash deploy/local/vault/oidc/bootstrap.sh
+# 2) root トークン（Secret vault-dev-token）で bootstrap を実行。( ) の中で回し、終わった後のシェルの環境にトークンを残さない
+(
+  export VAULT_ADDR=http://localhost:8200
+  VAULT_TOKEN="$(kubectl -n platform-infra get secret vault-dev-token -o jsonpath='{.data.token}' | base64 -d)"; export VAULT_TOKEN
+  bash deploy/local/vault/oidc/bootstrap.sh
+)
 ```
 
 ### 経路2: ホストに `vault` CLI が無い場合（IADR-0103・**Windows/dev で一般的**）
@@ -45,13 +47,14 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
 export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
 vault auth list | grep -q "^oidc/" || vault auth enable oidc'
 
-# config（client secret は変数展開でのみ渡し、リポジトリに平文を置かない）
-kubectl -n platform-infra exec deploy/vault -- sh -c "
+# config（client secret は標準入力で渡す。`oidc_client_secret=-` は値を標準入力から読む。コマンドの引数・リポジトリに平文を置かない）
+printf '%s' "$SEC" | kubectl -n platform-infra exec -i deploy/vault -- sh -c "
 export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=\"\$VAULT_DEV_ROOT_TOKEN_ID\"
 vault write auth/oidc/config \
   oidc_discovery_url='https://keycloak.localhost/realms/platform' \
   oidc_discovery_ca_pem="$CA_PEM" \
-  oidc_client_id='vault' oidc_client_secret='$SEC' default_role='default'"
+  oidc_client_id='vault' oidc_client_secret=- default_role='default'"
+unset SEC
 
 # role default
 kubectl -n platform-infra exec deploy/vault -- sh -c '
@@ -97,6 +100,8 @@ curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 \
   Grafana のような「ブラウザだけエッジ」の分離はできない。CA を渡すのはそのためである。
 - OIDC role `default`（`groups_claim=groups`・`token_policies=default`＝**最小・secret アクセス無し**）。
 - policy `admin`（`policies/admin.hcl`）／`operator`（`policies/operator.hcl`）を作成。
+  - ［2026-11-05 / IADR-0683］`operator` は KV の値を読まない（メタデータの read / list を msp・ai-stock-trading・datasource の接頭辞だけ）。値の投入・更新は SC-22 の画面、値の読み取りは `admin` が行う。
+    一覧はマウントの根を `vault kv list secret/`（API では `LIST secret/metadata/`。末尾のスラッシュつき）で引く。末尾のスラッシュの無い `secret/metadata` は policy の path に当たらず拒否され得る。
 - **external group** `platform-admin`→`admin` / `platform-operator`→`operator` を作成し group-alias で OIDC accessor に紐付け。
   realm ロールが `groups` クレームで届き、**external group に一致したユーザーのみ**該当 policy を得る。
 - **`auth tune -listing-visibility=unauth`**（IADR-0103）: これが無いと未認証の `sys/internal/ui/mounts` が

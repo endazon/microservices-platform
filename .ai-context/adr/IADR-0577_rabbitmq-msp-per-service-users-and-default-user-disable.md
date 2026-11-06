@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, ADR-0027, ADR-0124, IADR-0573, IADR-0574, IADR-0291, IADR-0286, IADR-0485]
 author: claude
 created: 2026-10-22
-updated: 2026-10-22
+updated: 2026-11-05
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027 （メッセージングは Wolverine ＋ RabbitMQ）
   - planning:projects/microservices-platform/07_adr/ADR-0124_paired-secrets-outside-sc22-and-vault-audit-for-fallback.md 決定 1（対になる秘密）
@@ -108,6 +108,7 @@ related_specs:
 ## 残る制約
 
 1. 権限は vhost 全体（`.*`）のまま（IADR-0573 残る制約 1）。キュー・exchange の名前で絞るのは別の作業。
+   ［2026-11-05 追記 / #2412］名前で絞る作業は IADR-0681 が引き継いだ（コードから導いた生成物。段 1 は報告だけ・段 2 は `RABBITMQ_PERMISSIONS=narrow` で明示して当てる）。
 2. 既定のユーザーを消した後は、管理 UI へ既定のユーザーで入れない。ブローカの操作は `kubectl exec … rabbitmqctl` で行う。
 3. 再起動の直後の復元と無効化は、稼働クラスタでは統合スタックの CI（ESO を使わない経路）でだけ実測する。ESO の経路は単体の模型で固定する。
 4. `deploy/docker-compose.yml`（compose の開発経路）は本 IADR の対象外（k8s の経路だけを変える）。

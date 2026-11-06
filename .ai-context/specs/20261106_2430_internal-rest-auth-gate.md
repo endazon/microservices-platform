@@ -2,7 +2,7 @@
 title: 作業仕様書 — 内部の AI 分析と Wiki の REST の群に認証の門を掛ける（段 1 は報告・段 2 で 401。#2430）
 type: spec
 status: done
-related_ids: [NFR-18, NFR-09, ADR-0084, ADR-0032, IADR-0335, IADR-0424, IADR-0685]
+related_ids: [NFR-18, NFR-09, ADR-0084, ADR-0032, IADR-0335, IADR-0424, IADR-0686]
 author: claude
 created: 2026-11-06
 updated: 2026-11-06
@@ -18,7 +18,7 @@ issue: "#2430"
 - AI 分析の `/analysis`（`AnalysisEndpoints.cs`）と Wiki の `/wiki`（`WikiEndpoints.cs`）の群には、`RequireAuthorization` が無い。
 - 未認証の要求は、ハンドラの中で「閲覧できるものが無い」（200 の空・404）に倒している（IADR-0335。`AnalysisEndpoints.IsAnonymous`・`WikiAccessResolver`）。
 
-## 方針（IADR-0685）
+## 方針（IADR-0686）
 
 - 共有の門 `InternalAuthGate.RequireAuthenticatedOrReport(group)`（`Platform.Shared.Infrastructure`）を 2 つの群に掛ける。
 - 段は `Auth:InternalGate:Mode` で切り替える。段 1（既定）は報告だけ、段 2 は未認証を 401 で拒む。

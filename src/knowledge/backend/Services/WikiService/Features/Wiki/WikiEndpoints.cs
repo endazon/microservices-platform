@@ -26,7 +26,7 @@ public static class WikiEndpoints
 {
     public static IEndpointRouteBuilder MapWikiEndpoints(this IEndpointRouteBuilder app)
     {
-        // NFR-18, ADR-0084 決定 1, IADR-0685 (#2430): 群の認証の門（段 1 は報告だけ・段 2 で未認証を 401）。
+        // NFR-18, ADR-0084 決定 1, IADR-0686 (#2430): 群の認証の門（段 1 は報告だけ・段 2 で未認証を 401）。
         var g = app.MapGroup("/wiki").WithTags("Wiki").RequireAuthenticatedOrReport("wiki");
 
         ListWikiPagesEndpoint.Map(g);

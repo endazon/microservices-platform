@@ -1,5 +1,5 @@
 ---
-title: IADR-0685 内部の AI 分析と Wiki の REST の群に、段階つきの共有の認証の門（Auth:InternalGate:Mode。段 1 は報告、段 2 は 401）を掛ける（#2430）
+title: IADR-0686 内部の AI 分析と Wiki の REST の群に、段階つきの共有の認証の門（Auth:InternalGate:Mode。段 1 は報告、段 2 は 401）を掛ける（#2430）
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-09, ADR-0084, ADR-0032, IADR-0335, IADR-0424]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261106_2430_internal-rest-auth-gate.md
 ---
 
-# IADR-0685: 内部の REST の群の段階つきの認証の門（#2430）
+# IADR-0686: 内部の REST の群の段階つきの認証の門（#2430）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。番号は仮（マージ直前に develop の最大＋1 へ改める）。
 

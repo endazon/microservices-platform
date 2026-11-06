@@ -54,9 +54,18 @@ elif [ -n "${1:-}" ]; then
   echo "ERROR: 未知の引数: $1（受け付けるのは --check と --check-dev-secrets だけ）" >&2
   exit 2
 fi
+# NFR-18, IADR-0685 (#2431): 消された seed 利用者を作り直してよい名前（カンマ区切り）。形の外の値は渡さない（sed の置換にも安全な字だけ）。クラスタに触る前に検める。
+RECREATE_USERS="${RECONCILE_RECREATE_USERS:-}"
+case "$RECREATE_USERS" in
+  *[!a-z0-9._@,-]*) echo "ERROR: RECONCILE_RECREATE_USERS は利用者名（英小文字・数字・. _ @ -）のカンマ区切りだけを受ける" >&2; exit 2 ;;
+esac
 # shellcheck source=scripts/lib/dev-client-secret-guard.sh
 . "$HERE/../../../scripts/lib/dev-client-secret-guard.sh"
 KC_CONTEXT="$(dev_client_secret_current_context)"
+# NFR-18, IADR-0676 (#2407): クラスタ側の dev の印（段 2 の DEV_CLUSTER_MARKER_REQUIRED=1 が使う）。起動器の値を引き継ぐ。
+if [ -z "${DEV_CLUSTER_MARKER:-}" ]; then
+  dev_cluster_marker_probe "reconcile-realm.sh" "$KC_CONTEXT"
+fi
 if dev_client_secret_create_allowed "$KC_CONTEXT" "${ALLOW_DEV_CLIENT_SECRETS:-}"; then
   DEV_SECRETS="allow"
   if ! dev_client_secret_context_is_dev "$KC_CONTEXT"; then
@@ -88,6 +97,7 @@ kubectl -n "$INFRA_NS" delete job "$JOB" --ignore-not-found --wait=true >/dev/nu
 sed -e "s/^\(  name:\) keycloak-realm-reconcile\$/\1 $JOB/" \
     -e "s/^\(              value:\) \"apply\"\$/\1 \"$MODE\"/" \
     -e "s/^\(              value:\) \"deny\"\$/\1 \"$DEV_SECRETS\"/" \
+    -e "s/^\(              value:\) \"\"\$/\1 \"$RECREATE_USERS\"/" \
     "$MANIFEST" | kubectl apply -f - >/dev/null
 
 # 4. 完了を待つ。Complete / Failed のどちらかが立つまで見る（`kubectl wait --for=condition=complete` は

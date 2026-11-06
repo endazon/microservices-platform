@@ -1,0 +1,150 @@
+# NFR-21, NFR-05, ADR-0002, ADR-0008, IADR-0675 (#2402): platform-infra の Postgres（全 DB ＋ globals）を日次で age 暗号化し、
+# S3 互換のオブジェクトストレージ（Hetzner Object Storage を想定）へ置く CronJob。
+#
+# - 本体はローカルと同じ backup.sh。BACKUP_TARGETS=none で hostPath を使わず、BACKUP_S3_DEST へだけ書く。
+#   送った回を読み戻して検算し、最後に COMPLETE を置く（COMPLETE の無い回は完了ではない。IADR-0675 決定 1）。
+# - 時刻: JST 12:00（米国市場の時間帯 JST 22:30〜05:00 を避ける）。ノードは常時起動なので、後追いは 1 時間に限る。
+# - 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle**（bucket-lifecycle.json）が行い、スクリプトは消さない。
+#   バケットは Object Lock（object-lock.json。COMPLIANCE・28 日。日次の保持より短くし、期限の日の削除を拒ませない）で作る。
+# - 資格情報: S3 の鍵は Secret platform-backup-s3（キー access-key-id / secret-access-key）を rclone の env で渡す。
+#   Postgres の超利用者の名前とパスワードは Secret postgres のキー username / password（#2401 の bootstrap-secrets.sh が乱数で作る）。
+#   🔴 値をマニフェスト・引数に書かない。
+# - 接続は TLS（verify-full）。CA は #2401 の ConfigMap platform-infra-ca のキー ca.crt、名前の照合は PGHOST（Service postgres。
+#   #2401 の証明書の SAN に入っている）。Postgres は hostssl だけを受けるので、TLS でなければ繋がらない（#2405 と同じ形）。
+# - 宛先（エンドポイント・<リモート>:<バケット>/<接頭辞>）は ConfigMap platform-backup-s3-target（kustomize の外。手順書参照）。
+#   optional なので、無ければスクリプトが**何もダンプせずに失敗する**（保管先が 1 つも無い。Job の失敗として見える）。
+# - 受取人（age の公開鍵）: ConfigMap platform-backup-age-recipients（kustomize の外。ローカルと同じ）。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: platform-backup-postgres
+  namespace: platform-infra
+  labels:
+    app: platform-backup
+    app.kubernetes.io/component: postgres
+spec:
+  schedule: "0 12 * * *"
+  timeZone: Asia/Tokyo
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 7
+  jobTemplate:
+    spec:
+      # 失敗を再試行で上書きしない（1 回の失敗をそのまま Job の失敗として残す）。
+      backoffLimit: 0
+      # 最悪の合計（依存先の待ち＋ S3 の呼び出し 9 回 × 上限＋余裕）より大きい（試験 T-2402-12）。
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app: platform-backup
+            app.kubernetes.io/component: postgres
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: backup
+              # deploy/cloud/backup/image/Dockerfile を手元でビルドし、ノードへ取り込む（レジストリへ置かない）。
+              # 🔴 imagePullPolicy: Never —— 取り込んでいなければ起動しない。同じ名前のイメージを外のレジストリから取らない。
+              # タグは中身の版から作る（試験 T-2402-32 が Dockerfile と突き合わせる）。
+              image: microservices-platform/platform-backup-cloud:pg16.15-age1.3.2-r1-rclone1.75.2-r0
+              imagePullPolicy: Never
+              command: ["/bin/bash", "/opt/platform-backup/backup.sh"]
+              env:
+                - name: BACKUP_KIND
+                  value: postgres
+                # hostPath を使わない（クラウドのノードの外は、オブジェクトストレージだけ）。
+                - name: BACKUP_TARGETS
+                  value: none
+                - name: BACKUP_S3_DEST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: platform-backup-s3-target
+                      key: dest
+                      optional: true
+                - name: RCLONE_CONFIG_OBJSTORE_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_OBJSTORE_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_OBJSTORE_ENV_AUTH
+                  value: "false"
+                # バケットの作成を試みない（資格情報にその権限を要らなくする）。
+                - name: RCLONE_CONFIG_OBJSTORE_NO_CHECK_BUCKET
+                  value: "true"
+                - name: RCLONE_CONFIG_OBJSTORE_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: platform-backup-s3-target
+                      key: endpoint
+                      optional: true
+                - name: RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: platform-backup-s3
+                      key: access-key-id
+                - name: RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: platform-backup-s3
+                      key: secret-access-key
+                - name: PGHOST
+                  value: postgres
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres
+                      key: username
+                - name: PGDATABASE
+                  value: postgres
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres
+                      key: password
+                # 🔴 サーバ証明書を CA と名前（PGHOST）で検証する。PGSSLROOTCERT が読めなければ接続しない（検証なしへ倒れない）。
+                - name: PGSSLMODE
+                  value: verify-full
+                - name: PGSSLROOTCERT
+                  value: /etc/platform-infra-ca/ca.crt
+              securityContext:
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - name: script
+                  mountPath: /opt/platform-backup
+                  readOnly: true
+                - name: recipients
+                  mountPath: /etc/platform-backup/recipients
+                  readOnly: true
+                - name: staging
+                  mountPath: /staging
+                - name: platform-infra-ca
+                  mountPath: /etc/platform-infra-ca
+                  readOnly: true
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { cpu: "1", memory: 512Mi }
+          volumes:
+            - name: script
+              configMap:
+                name: platform-backup-script
+                defaultMode: 0555
+            - name: recipients
+              configMap:
+                name: platform-backup-age-recipients
+                optional: true
+            # #2401 の CA（公開してよい証明書）。ca.crt だけを写す。非 optional（無ければ Pod は立たず、Job の失敗として見える）。
+            - name: platform-infra-ca
+              configMap:
+                name: platform-infra-ca
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+            # 暗号化済みの成果物と、送った回の読み戻し（暗号文）だけを置く。
+            - name: staging
+              emptyDir:
+                sizeLimit: 4Gi

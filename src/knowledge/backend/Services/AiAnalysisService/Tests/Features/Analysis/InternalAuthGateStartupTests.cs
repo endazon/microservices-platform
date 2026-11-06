@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace AiAnalysisService.Tests.Features.Analysis;
 
-// NFR-18, IADR-0685 (#2430・AI レビュー): `Auth:InternalGate:Mode` の不正な値は**起動時に**止める（最初の要求で 500 にしない）。
+// NFR-18, IADR-0686 (#2430・AI レビュー): `Auth:InternalGate:Mode` の不正な値は**起動時に**止める（最初の要求で 500 にしない）。
 [Trait("TestKind", "Integration")]
 public class InternalAuthGateStartupTests(AnalysisAnonymousContractTestFactory factory)
     : IClassFixture<AnalysisAnonymousContractTestFactory>

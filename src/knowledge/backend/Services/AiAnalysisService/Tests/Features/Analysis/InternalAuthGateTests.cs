@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace AiAnalysisService.Tests.Features.Analysis;
 
-// NFR-18, ADR-0084 決定 1, IADR-0685 (#2430): `/analysis/*` の群に掛けた認証の門を固定する。
+// NFR-18, ADR-0084 決定 1, IADR-0686 (#2430): `/analysis/*` の群に掛けた認証の門を固定する。
 // 🔴 段 1（既定 Report）は従来の応答（未認証は 200 ＋ 空回答）のまま。段 2（Enforce）は未認証を 401 で拒み、
 // 認可サービスも呼ばない。認証済みは通す。
 [Trait("TestKind", "Integration")]

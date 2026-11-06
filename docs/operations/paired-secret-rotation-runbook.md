@@ -4,14 +4,14 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-28
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [SC-22, NFR-18, SC-12, FR-16]
 adrs: [ADR-0132, ADR-0124, ADR-0095, ADR-0005, ADR-0023, ADR-0123]
-iadrs: [IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524, IADR-0654, IADR-0672]
-specs: [20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe, 20261105_2399_infra-credentials-staged-fail-closed]
-issues: [#2148, #1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, #2399, planning#700, AST#1078]
+iadrs: [IADR-0682, IADR-0577, IADR-0576, IADR-0574, IADR-0572, IADR-0525, IADR-0518, IADR-0517, IADR-0516, IADR-0492, IADR-0485, IADR-0369, IADR-0433, IADR-0453, IADR-0456, IADR-0092, IADR-0133, IADR-0524, IADR-0654, IADR-0672]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261030_2148_ci-deploy-details, 20261022_rabbitmq-msp-per-service-users, 20261022_abac-seeder-disabled-by-default, 20261022_infra-credentials-fail-closed, 20261022_dev-secret-guard-all-sa-clients, 20261010_1877_paired-rotation-windows-portable, 20261009_1840_secret-store-openbao, 20261009_1834_realm-import-secret, 20261009_1830_dev-secret-guard, 20261009_1818_sc12-idp-drift-detection, 20261009_1817_sc12-provisioning-wiring, 20260928_issue-1682_paired-secrets-outside-sc22, 20260925_458_secret-rotation-runbook, 20261009_1859_keycloak-26-upgrade, 20261030_2335_llm-slo-synthetic-probe, 20261105_2399_infra-credentials-staged-fail-closed]
+issues: [#2413, #2148, #1877, #1840, #1834, #1830, #1818, #1817, #1696, #1682, #458, #1411, #1859, #2335, #2399, planning#700, AST#1078]
 -->
 
 # 運用 Runbook: 対になる秘密のローテーション
@@ -226,6 +226,9 @@ kc_token() {   # 管理者のトークンを取り直す（何度でも呼べる
 }
 TOKEN="$(kc_token)"
 [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
+auth_hdr() {   # 管理者のトークンを curl の引数に載せない: その時点の $TOKEN を $WORK の見出しのファイル（0600）へ書き、そのパスを返す
+  printf 'Authorization: Bearer %s\n' "$TOKEN" > "$WORK/auth"; np "$WORK/auth"
+}
 ```
 
 🔴 **master realm の管理者のトークンは短命である**（既定で 60 秒）。1-3 の 5 の `PUT` の前と、[途中で止まったとき](#途中で止まったとき)の確かめ方の前に、
@@ -239,7 +242,7 @@ TOKEN="$(kc_token)"
 
 ```bash
 CLIENT=<client>   # 例: bff
-CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients?clientId=$CLIENT" | jq -j '.[0].id')"
+CID="$(curl -sf -H @"$(auth_hdr)" "$KC/admin/realms/platform/clients?clientId=$CLIENT" | jq -j '.[0].id')"
 [ -n "$CID" ] && [ "$CID" != null ] && echo "client ok"
 ```
 
@@ -251,7 +254,7 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
 2. **新しい client の表現を組み立てて確かめる**（client の表現を読み、`secret` だけを差し替える。値はファイルで渡し、引数にも画面にも出さない。まだどこにも書かない）:
 
    ```bash
-   curl -sf -H "Authorization: Bearer $TOKEN" -o "$(np "$WORK/client.json")" "$KC/admin/realms/platform/clients/$CID"
+   curl -sf -H @"$(auth_hdr)" -o "$(np "$WORK/client.json")" "$KC/admin/realms/platform/clients/$CID"
    printf '%s' "$NEW_VALUE" > "$WORK/secret"
    jq --rawfile s "$(np "$WORK/secret")" '.secret = $s' "$(np "$WORK/client.json")" > "$WORK/client-new.json"
    jq -e --arg cid "$CID" --arg c "$CLIENT" --rawfile s "$(np "$WORK/secret")" \
@@ -268,7 +271,7 @@ CID="$(curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/cli
 
    ```bash
    TOKEN="$(kc_token)"; [ -n "$TOKEN" ] && [ "$TOKEN" != null ] && echo "token ok"
-   CODE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $TOKEN" \
+   CODE="$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H @"$(auth_hdr)" \
      -H 'Content-Type: application/json' --data-binary @"$(np "$WORK/client-new.json")" \
      "$KC/admin/realms/platform/clients/$CID")"
    [ "$CODE" = 204 ] && rm -f "$WORK/client-new.json"
@@ -402,7 +405,7 @@ kubectl -n <namespace> get secret <name> -o jsonpath='{.data.<key>}' | base64 -d
 TOKEN="$(kc_token)"
 printf '%s' "$NEW_VALUE" > "$WORK/secret"
 CODE="$(curl -s -o "$(np "$WORK/client-now.json")" -w '%{http_code}' \
-  -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID")"
+  -H @"$(auth_hdr)" "$KC/admin/realms/platform/clients/$CID")"
 if [ -z "$TOKEN" ] || [ "$TOKEN" = null ] || [ "$CODE" != 200 ]; then
   echo "判定不能: HTTP $CODE"
 else

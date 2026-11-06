@@ -6,7 +6,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace WikiService.Tests.Features.Wiki;
 
-// NFR-18, ADR-0084 決定 1, IADR-0685 (#2430): `/wiki/*` の群に掛けた認証の門を固定する。
+// NFR-18, ADR-0084 決定 1, IADR-0686 (#2430): `/wiki/*` の群に掛けた認証の門を固定する。
 // 🔴 段 1（既定 Report）は従来の応答（未認証は 200 の空・404）のまま。段 2（Enforce）は未認証を 401 で拒み、認証済みは通す。
 // 設定キーは配備が書く外部の契約なので綴りで書く。
 [Trait("TestKind", "Integration")]

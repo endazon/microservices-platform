@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace WikiService.Tests.Features.Wiki;
 
-// NFR-18, IADR-0685 (#2430・AI レビュー): `Auth:InternalGate:Mode` の不正な値は**起動時に**止める（最初の要求で 500 にしない）。
+// NFR-18, IADR-0686 (#2430・AI レビュー): `Auth:InternalGate:Mode` の不正な値は**起動時に**止める（最初の要求で 500 にしない）。
 [Trait("TestKind", "Integration")]
 public class InternalAuthGateStartupTests(AnonymousContractTestFactory factory)
     : IClassFixture<AnonymousContractTestFactory>
