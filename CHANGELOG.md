@@ -4,6 +4,7 @@
 
 ### 新機能
 
+- **NFR-09**: 取引ユニットの Discord ボットの機密クライアントに専用のロール trading-bot を足し、AST の submodule を写しと同時に c322b26d へ進める（#2441） (#2464) (ee770135)
 - **NFR-09**: 取引ユニットの API の audience（ai-stock-trading-api）を専用のクライアントスコープで載せ、付ける先を bff と ai-stock-trading-owner に限る（#2418） (#2419) (c43f3926)
 - **NFR-18**: AST をクラウドの単一ノードへ移すための MSP の最小構成（deploy/cloud）を足す（#2401） (#2409) (7f0b2a8d)
 - **FR-15**: 構成取得 API と SC-11 に、データソース管理画面に登録したデータソースと有効・無効を載せる（#2285） (#2380) (1e2ddcd0)
@@ -779,6 +780,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2462) (0f3bda2d)
 - **NFR**: CHANGELOG を自動更新 (#2461) (a133870a)
 - **NFR**: CHANGELOG を自動更新 (#2460) (8f51df6f)
 - **NFR**: CHANGELOG を自動更新 (#2459) (03af8a22)
