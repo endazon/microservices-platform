@@ -51,7 +51,6 @@ const DEFAULT_EXCHANGE = 'amq.default';
 // 接頭辞を同じにした任意の名前（他の用途のキュー・exchange）にも当たる。awk（点検）が区間 `{n}` を読めない実装でも
 // 同じに読めるよう、文字クラスを並べて書く。
 const HEX = '[0-9a-f]';
-const RESPONSE_PATTERN = `${RESPONSE_PREFIX.replace(/\./g, '\\.')}${[8, 4, 4, 4, 12].map((n) => HEX.repeat(n)).join('-')}`;
 
 // Wolverine のハンドラ発見の規則（型名の接尾辞・メソッド名）。WolverineFx 6.24 の既定。
 const HANDLER_TYPE_SUFFIX = /(Handler|Consumer)$/;
@@ -61,6 +60,7 @@ class GenError extends Error {}
 const fail = (msg) => { throw new GenError(msg); };
 
 const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const RESPONSE_PATTERN = `${reEscape(RESPONSE_PREFIX)}${[8, 4, 4, 4, 12].map((n) => HEX.repeat(n)).join('-')}`;
 const toPosix = (p) => p.split(path.sep).join('/');
 
 // コメント（// と /* */）と文字列の中身を除く（コメントアウトした配線を読まない）。文字列は位置を保ったまま残す。
