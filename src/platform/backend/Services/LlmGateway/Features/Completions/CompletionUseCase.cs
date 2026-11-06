@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using LlmGateway.Common.Observability;
+using LlmGateway.Domain.Limits;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Pricing;
 using LlmGateway.Domain.Routing;
@@ -29,20 +30,25 @@ namespace LlmGateway.Features.Completions;
 // 🔴 FR-11, NFR-19, IADR-0104 追記 (#1819): **`Sent=false` の 6 経路（一括 3・逐次 3）はすべて
 // `FailureKind` を名乗る**（越境拒否・プロバイダ未登録・上流不調）。上流不調は HTTP 状態も載せる。
 // 呼び出し側が文言（Text）を解釈せずに原因を記録し分けられるようにするためである。
+//
+// 🔴 NFR-18, NFR-21, IADR-0678 (#2404): **送る直前に上限の判定器（LlmCallLimiter）を通す**（一括・逐次の両方）。
+// 段 1（Report）は判定して報告するだけで送信の挙動を変えない。段 2（Enforce）で超えた呼び出しは
+// `Sent=false`・`FailureKind=limit_exceeded` で返す（例外にしない）。`caller` は輸送が検証済みのトークンから決めて渡す。
 public sealed class CompletionUseCase(
     ILlmRouter router,
     IServiceProvider services,
     ILoggerFactory loggerFactory,
     LlmCompletionMetrics metrics,
     LlmUsageMetrics usage,
-    LogOccurrenceThrottle logThrottle)
+    LogOccurrenceThrottle logThrottle,
+    LlmCallLimiter limiter)
 {
     public const string CompleteLoggerCategory = "LlmGateway.Complete";
     public const string StreamLoggerCategory = "LlmGateway.CompleteStream";
 
     // FR-04, FR-11, ADR-0010: 一括生成（REST `POST /complete` の本体）。
     public async Task<CompletionApiResponse> ExecuteAsync(
-        CompletionApiRequest req, bool isSynthetic, CancellationToken ct)
+        CompletionApiRequest req, bool isSynthetic, CancellationToken ct, string? caller = null)
     {
         var logger = loggerFactory.CreateLogger(CompleteLoggerCategory);
 
@@ -78,85 +84,109 @@ public sealed class CompletionUseCase(
                 FailureKind: CompletionFailureKinds.ProviderMissing);
         }
 
-        // FR-11, ADR-0038 決定 3 (#863): 第 1 候補 → フォールバック順序 の順に試す。
-        // 鎖が空なら 1 回だけ回り、従来と同じ挙動になる（回帰なし）。
-        var chain = new List<string?> { decision.Model };
-        chain.AddRange(decision.Fallbacks);
-
-        for (var attemptIndex = 0; attemptIndex < chain.Count; attemptIndex++)
+        // NFR-18, IADR-0678 決定 1 (#2404): 送る前の上限。見込み額の換算にモデルが要るので越境判定の後に置く。
+        var admission = limiter.Admit(caller, purpose, decision.Model, PromptChars(req), req.MaxTokens);
+        if (admission.Denied)
         {
-            // 実際に投げたモデルで応答・メトリクス・ログを名乗る（IADR-0111: 使用モデルを偽らない）。
-            var attempt = decision with { Model = chain[attemptIndex] };
-            try
-            {
-                // IADR-0671 (#2396): 呼び手が分けた接頭辞はそのまま渡す（キャッシュの区切りを置くかはプロバイダが決める）。
-                var result = await provider.CompleteAsync(
-                    new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model, purpose, req.CacheablePrefix), ct);
-                CompletionEndpoints.LogStopReason(logger, result.StopReason, attempt);
-                // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
-                metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultSent, result.StopReason, attempt, purpose, sensitivity,
-                    result.OutputTokens);
-                // FR-10, ADR-0044 決定 1・3 (#443): 用途別・モデル別のトークン累計と金額換算。
-                // **実際に投げたモデル（attempt）で計上する** —— フォールバックが起きた呼び出しの
-                // 費用は第 1 候補ではなく成功した候補の単価で発生する。
-                //
-                // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視は費用へ計上しない。**
-                // 監視のために打った呼び出しが費用に入ると、費用が「人が使った量」を表さなくなる。
-                // **黙って落とさず、除外した件数を別の計器に積む。**
-                if (isSynthetic)
-                    usage.RecordSyntheticExclusion(attempt, purpose, sensitivity);
-                else
-                    usage.RecordUsage(
-                        attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens,
-                        cache: new PromptCacheTokens(result.CacheCreationInputTokens, result.CacheReadInputTokens));
-                // FR-10, IADR-0671 (#2396): InputTokens はプロンプト全体（従前と同じ意味）。うちの書き・読みを並べて返す。
-                return new CompletionApiResponse(
-                    result.Text, attempt.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
-                    Sent: true, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
-                    StopReason: result.StopReason,
-                    CacheCreationInputTokens: result.CacheCreationInputTokens,
-                    CacheReadInputTokens: result.CacheReadInputTokens);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // ADR-0038 決定 4 (#863): フォールバックするのは HTTP 400 系のときだけである。
-                // **429 は再試行であってフォールバックではない**ため、ここでは落とさない。
-                var hasNextCandidate = attemptIndex + 1 < chain.Count;
-                if (hasNextCandidate && LlmFallbackPolicy.ShouldFallBack(ex))
-                {
-                    // ADR-0038 決定 6: 発火を可観測にする。メトリクスは llm.result=fallback（llm.model は
-                    // 見送った候補）、ログには遷移と上流ステータスを残す。**利用者由来の purpose は
-                    // 載せない**（設定由来のモデル名・エンドポイント名だけを載せ、ログ行偽造の経路を作らない）。
-                    // IADR-0374 (#1091): 見送った試行に対して上流が返したものも軸として残す。
-                    metrics.RecordCompletion(
-                        LlmCompletionMetrics.ResultFallback, null, attempt, purpose, sensitivity,
-                        failure: ex);
-                    logger.LogWarning(ex,
-                        "LLM falling back at endpoint {Endpoint}: {FromModel} -> {ToModel} (upstream status {Status})",
-                        attempt.EndpointName, attempt.Model, chain[attemptIndex + 1],
-                        LlmFallbackPolicy.StatusCodeOf(ex));
-                    continue;
-                }
-
-                // 呼び出し先が不調な場合も 500 を伝播させず、縮退可能な応答を返す。
-                // IADR-0374 (#1091): **429 が来るのはここである。** 両方（ログ・メトリクス）へ残す。
-                logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model}) (upstream status {Status})",
-                    attempt.EndpointName, attempt.Model, LlmFallbackPolicy.StatusCodeOf(ex));
-                metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultUpstreamError, null, attempt, purpose, sensitivity,
-                    failure: ex);
-                return new CompletionApiResponse(
-                    Text: $"呼び出し先 {attempt.EndpointName} が現在利用できません。",
-                    Model: attempt.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
-                    Sent: false, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
-                    FailureKind: CompletionFailureKinds.UpstreamError,
-                    UpstreamStatusCode: LlmFallbackPolicy.StatusCodeOf(ex));
-            }
+            metrics.RecordCompletion(
+                LlmCompletionMetrics.ResultLimitExceeded, null, decision, purpose, sensitivity);
+            return new CompletionApiResponse(
+                Text: LimitExceededText(admission), Model: string.Empty, InputTokens: 0, OutputTokens: 0,
+                Sent: false, Endpoint: decision.EndpointName, RoutingReason: decision.Reason,
+                FailureKind: CompletionFailureKinds.LimitExceeded);
         }
 
-        // 到達しない（ループは必ず return する）。コンパイラの制御フロー解析のための保険。
-        throw new UnreachableException("completion attempt chain ended without a response");
+        // IADR-0678 決定 2: 送れなかった（上流の失敗・取り消し）ときは見込みを戻す。Settle の後の Release は何もしない。
+        try
+        {
+            // FR-11, ADR-0038 決定 3 (#863): 第 1 候補 → フォールバック順序 の順に試す。
+            // 鎖が空なら 1 回だけ回り、従来と同じ挙動になる（回帰なし）。
+            var chain = new List<string?> { decision.Model };
+            chain.AddRange(decision.Fallbacks);
+
+            for (var attemptIndex = 0; attemptIndex < chain.Count; attemptIndex++)
+            {
+                // 実際に投げたモデルで応答・メトリクス・ログを名乗る（IADR-0111: 使用モデルを偽らない）。
+                var attempt = decision with { Model = chain[attemptIndex] };
+                try
+                {
+                    // IADR-0671 (#2396): 呼び手が分けた接頭辞はそのまま渡す（キャッシュの区切りを置くかはプロバイダが決める）。
+                    var result = await provider.CompleteAsync(
+                        new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model, purpose, req.CacheablePrefix), ct);
+                    CompletionEndpoints.LogStopReason(logger, result.StopReason, attempt);
+                    // IADR-0678 決定 2: 見込み額を実額へ置き換える（実際に投げたモデルの単価）。
+                    admission.Settle(
+                        attempt.Model, result.InputTokens, result.OutputTokens,
+                        new PromptCacheTokens(result.CacheCreationInputTokens, result.CacheReadInputTokens));
+                    // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
+                    metrics.RecordCompletion(
+                        LlmCompletionMetrics.ResultSent, result.StopReason, attempt, purpose, sensitivity,
+                        result.OutputTokens);
+                    // FR-10, ADR-0044 決定 1・3 (#443): 用途別・モデル別のトークン累計と金額換算。
+                    // **実際に投げたモデル（attempt）で計上する** —— フォールバックが起きた呼び出しの
+                    // 費用は第 1 候補ではなく成功した候補の単価で発生する。
+                    //
+                    // NFR-02, ADR-0076 決定 4, [[IADR-0378]] (#1203): 🔴 **合成監視は費用へ計上しない。**
+                    // 監視のために打った呼び出しが費用に入ると、費用が「人が使った量」を表さなくなる。
+                    // **黙って落とさず、除外した件数を別の計器に積む。**
+                    if (isSynthetic)
+                        usage.RecordSyntheticExclusion(attempt, purpose, sensitivity);
+                    else
+                        usage.RecordUsage(
+                            attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens,
+                            cache: new PromptCacheTokens(result.CacheCreationInputTokens, result.CacheReadInputTokens));
+                    // FR-10, IADR-0671 (#2396): InputTokens はプロンプト全体（従前と同じ意味）。うちの書き・読みを並べて返す。
+                    return new CompletionApiResponse(
+                        result.Text, attempt.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
+                        Sent: true, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
+                        StopReason: result.StopReason,
+                        CacheCreationInputTokens: result.CacheCreationInputTokens,
+                        CacheReadInputTokens: result.CacheReadInputTokens);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // ADR-0038 決定 4 (#863): フォールバックするのは HTTP 400 系のときだけである。
+                    // **429 は再試行であってフォールバックではない**ため、ここでは落とさない。
+                    var hasNextCandidate = attemptIndex + 1 < chain.Count;
+                    if (hasNextCandidate && LlmFallbackPolicy.ShouldFallBack(ex))
+                    {
+                        // ADR-0038 決定 6: 発火を可観測にする。メトリクスは llm.result=fallback（llm.model は
+                        // 見送った候補）、ログには遷移と上流ステータスを残す。**利用者由来の purpose は
+                        // 載せない**（設定由来のモデル名・エンドポイント名だけを載せ、ログ行偽造の経路を作らない）。
+                        // IADR-0374 (#1091): 見送った試行に対して上流が返したものも軸として残す。
+                        metrics.RecordCompletion(
+                            LlmCompletionMetrics.ResultFallback, null, attempt, purpose, sensitivity,
+                            failure: ex);
+                        logger.LogWarning(ex,
+                            "LLM falling back at endpoint {Endpoint}: {FromModel} -> {ToModel} (upstream status {Status})",
+                            attempt.EndpointName, attempt.Model, chain[attemptIndex + 1],
+                            LlmFallbackPolicy.StatusCodeOf(ex));
+                        continue;
+                    }
+
+                    // 呼び出し先が不調な場合も 500 を伝播させず、縮退可能な応答を返す。
+                    // IADR-0374 (#1091): **429 が来るのはここである。** 両方（ログ・メトリクス）へ残す。
+                    logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model}) (upstream status {Status})",
+                        attempt.EndpointName, attempt.Model, LlmFallbackPolicy.StatusCodeOf(ex));
+                    metrics.RecordCompletion(
+                        LlmCompletionMetrics.ResultUpstreamError, null, attempt, purpose, sensitivity,
+                        failure: ex);
+                    return new CompletionApiResponse(
+                        Text: $"呼び出し先 {attempt.EndpointName} が現在利用できません。",
+                        Model: attempt.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
+                        Sent: false, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
+                        FailureKind: CompletionFailureKinds.UpstreamError,
+                        UpstreamStatusCode: LlmFallbackPolicy.StatusCodeOf(ex));
+                }
+            }
+
+            // 到達しない（ループは必ず return する）。コンパイラの制御フロー解析のための保険。
+            throw new UnreachableException("completion attempt chain ended without a response");
+        }
+        finally
+        {
+            admission.Release();
+        }
     }
 
     // IADR-0037, FR-04, FR-11: 逐次生成（gRPC `LlmCompletion/CompleteStream` の本体。［2026-10-15 / #1902］REST `/complete/stream` は撤去した）。
@@ -166,7 +196,7 @@ public sealed class CompletionUseCase(
     // 受け取った順に送出することで、初回トークンの境界が保たれる（IADR-0400 決定 1）。
     // ここでバッファリングすると、輸送を server-streaming にした意味が消える。
     public async IAsyncEnumerable<CompletionStreamEvent> StreamAsync(
-        CompletionApiRequest req, bool isSynthetic, [EnumeratorCancellation] CancellationToken ct)
+        CompletionApiRequest req, bool isSynthetic, [EnumeratorCancellation] CancellationToken ct, string? caller = null)
     {
         var logger = loggerFactory.CreateLogger(StreamLoggerCategory);
 
@@ -199,6 +229,18 @@ public sealed class CompletionUseCase(
                 string.Empty, Done: true, Sent: false,
                 Text: $"呼び出し先プロバイダ {decision.Provider} が未登録のため送信できません。",
                 RoutingReason: decision.Reason, FailureKind: CompletionFailureKinds.ProviderMissing);
+            yield break;
+        }
+
+        // NFR-18, IADR-0678 決定 1 (#2404): 送る前の上限（一括と同じ判定器）。
+        var admission = limiter.Admit(caller, purpose, decision.Model, PromptChars(req), req.MaxTokens);
+        if (admission.Denied)
+        {
+            metrics.RecordCompletion(
+                LlmCompletionMetrics.ResultLimitExceeded, null, decision, purpose, sensitivity);
+            yield return new CompletionStreamEvent(
+                string.Empty, Done: true, Sent: false, Text: LimitExceededText(admission),
+                RoutingReason: decision.Reason, FailureKind: CompletionFailureKinds.LimitExceeded);
             yield break;
         }
 
@@ -380,6 +422,14 @@ public sealed class CompletionUseCase(
                     LlmCompletionMetrics.ResultCancelled, null, decision, purpose, sensitivity);
                 RecordUnfinishedUsage(LlmUsageMetrics.IncompleteCancelled);
             }
+
+            // IADR-0678 決定 2: 見込み額を、実数（Done）か判明分で置き換える。どちらも無ければ戻す。
+            if (sawDone)
+                admission.Settle(decision.Model, inputTokens, outputTokens, new PromptCacheTokens(cacheWrite, cacheRead));
+            else if (knownInput > 0 || knownOutput > 0)
+                admission.Settle(decision.Model, knownInput, knownOutput, new PromptCacheTokens(knownCacheWrite, knownCacheRead));
+            else
+                admission.Release();
         }
 
         // IADR-0601 決定 1・2: Done に届かなかった送信の計上。判明分があれば RecordUsage を**1 回**呼び（下限）、
@@ -401,6 +451,14 @@ public sealed class CompletionUseCase(
             usage.RecordIncomplete(decision, purpose, sensitivity, reason, known);
         }
     }
+
+    // IADR-0678 (#2404): 判定に使うプロンプトの長さ（モデルが読む全文 = 接頭辞 + 本文）。
+    private static int PromptChars(CompletionApiRequest req)
+        => (int)Math.Min(int.MaxValue, (long)(req.CacheablePrefix?.Length ?? 0) + (req.Prompt?.Length ?? 0));
+
+    // 理由の文言には種類だけを載せる（上限の値・現在の量は載せない）。
+    private static string LimitExceededText(LlmCallAdmission admission)
+        => $"呼び出しの上限を超えたため送信しませんでした（{string.Join(", ", admission.Exceeded)}）。";
 
     // FR-11, NFR-17, NFR-19, NFR-28, IADR-0104 追記 (#1819): 越境拒否を運用者が事後に追えるようにする。
     // 従前この枝は計器だけを数えてログを出さず、Prometheus の無い経路B では原因（越境拒否か・上流か・鍵か）を

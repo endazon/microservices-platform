@@ -4126,6 +4126,11 @@
             "type": "string",
             "value": "\"egress_denied\""
           },
+          "LimitExceeded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"limit_exceeded\""
+          },
           "ProviderMissing": {
             "source": "const",
             "type": "string",

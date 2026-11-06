@@ -1,0 +1,18 @@
+{
+  "Rules": [
+    {
+      "ID": "postgres-daily-30d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "ast-poc/postgres/daily/" },
+      "Expiration": { "Days": 30 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 1 }
+    },
+    {
+      "ID": "postgres-monthly-365d",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "ast-poc/postgres/monthly/" },
+      "Expiration": { "Days": 365 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 1 }
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+# NFR-18, IADR-0674 (#2401): 共有 Postgres（取引ユニットの DB と、Keycloak の DB）。deploy/local/infra/postgres.yaml を写し、次を変えた:
+#   - データは PVC（local-path）に置く（クラウドの単一ノード。ノードのディスクは暗号化した領域に置く。README）。
+#   - 初期化は利用者名・パスワードを Secret から env で受け、psql の \getenv で読む（値を SQL・引数・ConfigMap に書かない）。
+#   - MSP のサービスの DB と利用者は作らない（クラウドの MSP は LLM ゲートウェイだけで、DB を持たない）。
+#   - 管理者の利用者名も Secret から読む（描画に資格情報の字面を置かない）。
+# 取引ユニットの DB は src/ai-stock-trading/infra/postgres/init と同じ 7 つ（AST の chart の database と一致）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: platform-infra
+data:
+  01-create-databases.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    : "${AST_DB_USER:?}" "${AST_DB_PASSWORD:?}" "${KEYCLOAK_DB_USER:?}" "${KEYCLOAK_DB_PASSWORD:?}"
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
+      \getenv ast_user AST_DB_USER
+      \getenv ast_password AST_DB_PASSWORD
+      \getenv kc_user KEYCLOAK_DB_USER
+      \getenv kc_password KEYCLOAK_DB_PASSWORD
+      CREATE USER :"ast_user" WITH PASSWORD :'ast_password';
+      CREATE DATABASE audit_svc OWNER :"ast_user";
+      CREATE DATABASE configuration_svc OWNER :"ast_user";
+      CREATE DATABASE cost_control_svc OWNER :"ast_user";
+      CREATE DATABASE market_monitor_svc OWNER :"ast_user";
+      CREATE DATABASE order_execution_svc OWNER :"ast_user";
+      CREATE DATABASE report_svc OWNER :"ast_user";
+      CREATE DATABASE risk_management_svc OWNER :"ast_user";
+      CREATE USER :"kc_user" WITH PASSWORD :'kc_password';
+      CREATE DATABASE keycloak OWNER :"kc_user";
+    EOSQL
+---
+# 接続の受け入れ（pg_hba）。TCP は TLS（hostssl）だけを受け、平文の TCP（host・hostnossl）は書かない。
+# クラウドには平文で繋ぐ利用者がいない（取引ユニット・Keycloak・バックアップとも TLS）。ソケット（local）は初期化と pg_isready が使う。
+# 認証はどれも scram-sha-256（trust・password・md5 は書かない）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-hba
+  namespace: platform-infra
+  labels: { app: postgres }
+data:
+  pg_hba.conf: |
+    local   all  all                scram-sha-256
+    hostssl all  all  0.0.0.0/0     scram-sha-256
+    hostssl all  all  ::/0          scram-sha-256
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 10Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      automountServiceAccountToken: false
+      initContainers:
+        - name: tls-files
+          image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              cp /tls-src/tls.crt /tls/tls.crt
+              cp /tls-src/tls.key /tls/tls.key
+              chown 70:70 /tls/tls.crt /tls/tls.key
+              chmod 0644 /tls/tls.crt
+              chmod 0600 /tls/tls.key
+          volumeMounts:
+            - { name: tls-src, mountPath: /tls-src, readOnly: true }
+            - { name: tls, mountPath: /tls }
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: postgres
+          image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/etc/postgres-tls/tls.crt
+            - -c
+            - ssl_key_file=/etc/postgres-tls/tls.key
+            - -c
+            - ssl_min_protocol_version=TLSv1.2
+            - -c
+            - hba_file=/etc/postgres-hba/pg_hba.conf
+          env:
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: postgres, key: username } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: postgres, key: password } }
+            - name: POSTGRES_DB
+              valueFrom: { secretKeyRef: { name: postgres, key: username } }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: AST_DB_USER
+              valueFrom: { secretKeyRef: { name: ast-db, key: username } }
+            - name: AST_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: ast-db, key: password } }
+            - name: KEYCLOAK_DB_USER
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: username } }
+            - name: KEYCLOAK_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+            - { name: init, mountPath: /docker-entrypoint-initdb.d }
+            - { name: tls, mountPath: /etc/postgres-tls, readOnly: true }
+            - { name: hba, mountPath: /etc/postgres-hba, readOnly: true }
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\""]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-data }
+        - name: init
+          configMap: { name: postgres-init, defaultMode: 0755 }
+        - name: hba
+          configMap: { name: postgres-hba, defaultMode: 0444 }
+        - name: tls-src
+          secret: { secretName: postgres-tls, defaultMode: 0400 }
+        - name: tls
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432
