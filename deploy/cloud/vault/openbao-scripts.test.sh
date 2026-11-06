@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-05, NFR-18, IADR-0689: クラウドの秘匿管理の手順（init・unseal・configure・seed・gen・root-token）を、
+# NFR-05, NFR-18, IADR-0689: クラウドの秘匿管理の手順（init・unseal・configure・seed・gen・put-external-secret・root-token）を、
 # **実物の OpenBao**（宣言と同じ版の配布物）で通して固定する。稼働のクラスタには触れない。
 #
 #   bash deploy/cloud/vault/openbao-scripts.test.sh            # PATH の bao（か BAO_BIN）を使う
@@ -205,6 +205,43 @@ set +e; run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.
 [ "$rc" -ne 0 ] && [ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=order-approval-signing-key ast/ast-secrets)" = "$v" ] || ng "在るキーへの gen が止まらない（上書きした）"
 ok "gen: 指定のバイト数の乱数を標準の base64 で書き、在るパスでは patch（ほかのキーを残す）、在るキーは上書きしない"
 
+# --- put-external-secret.sh: 外から持ち込む値を標準入力からだけ受けて書く ---
+put() { run put-external-secret.sh --operator-file "$W/operator.age" --identity "$W/id.txt" "$@"; }
+set +e
+printf 'x' | bash "$HERE/put-external-secret.sh" --operator-file "$W/operator.age" --identity "$W/id.txt" cloud/msp/a k >/dev/null 2>&1; [ $? -eq 3 ] || ng "put は --live が無ければ 3 で終わる"
+printf 'x' | put cloud/shared/ast-db password >/dev/null 2>&1; [ $? -eq 2 ] || ng "put は cloud/shared へ書かない"
+printf 'x' | put cloud/msp/a 'k;x' >/dev/null 2>&1; [ $? -eq 2 ] || ng "put はキーの形の外を拒む"
+printf '' | put cloud/msp/llm-provider-credentials anthropic-api-key >/dev/null 2>&1; [ $? -eq 2 ] || ng "put は空の値を書かない"
+set -e
+k1="$(head -c 30 /dev/urandom | base64 | tr -d '\n=+/')"
+printf '%s' "$k1" | put cloud/msp/llm-provider-credentials anthropic-api-key >/dev/null
+[ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=anthropic-api-key msp/llm-provider-credentials)" = "$k1" ] || ng "put が値をそのまま書かない"
+k2="$(head -c 30 /dev/urandom | base64 | tr -d '\n=+/')"
+set +e; printf '%s' "$k2" | put cloud/msp/llm-provider-credentials anthropic-api-key >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 5 ] && [ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=anthropic-api-key msp/llm-provider-credentials)" = "$k1" ] || ng "在るキーへの put が 5 で止まらない（$rc）か、上書きした"
+printf '%s' "$k2" | put --overwrite cloud/msp/llm-provider-credentials anthropic-api-key >/dev/null
+[ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=anthropic-api-key msp/llm-provider-credentials)" = "$k2" ] || ng "--overwrite で上書きしない"
+k3="$(head -c 30 /dev/urandom | base64 | tr -d '\n=+/')"
+printf '%s' "$k3" | put cloud/msp/llm-provider-credentials voyage-api-key >/dev/null
+[ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=anthropic-api-key msp/llm-provider-credentials)" = "$k2" ] || ng "在るパスへの put が、ほかのキーを消した"
+# moomoo-rsa: 手元の openssl の出力をそのまま流す（1024 ビット・PKCS#1。末尾の改行も変えない）
+openssl genrsa -traditional 1024 2>/dev/null | tee "$W/rsa.expected" | put cloud/ast/moomoo-rsa opend_rsa.pem >/dev/null
+BAO_TOKEN="$OPT" B kv get -mount=cloud -field=opend_rsa.pem ast/moomoo-rsa > "$W/rsa.got"
+# kv get -field は値をそのまま出す（末尾の改行も含めて比べる）
+cmp -s "$W/rsa.expected" "$W/rsa.got" || ng "PEM がそのまま書かれない"
+rsa_text="$(openssl rsa -in "$W/rsa.got" -noout -text 2>/dev/null || true)"
+[[ "$rsa_text" == *"1024 bit"* ]] || ng "PEM が 1024 ビットの RSA として読めない"
+# 取引ユニットの呼び方（前置きを空白で分けて読み、末尾に パス キー を足し、値は標準入力。AST の ast-owner-totp-enroll.sh --openbao）
+read -r -a PUT_CMD <<< "bash $HERE/put-external-secret.sh --live --operator-file $W/operator.age --identity $W/id.txt"
+head -c 20 /dev/urandom | base64 | tr -d '\n' > "$W/totp"
+"${PUT_CMD[@]}" "cloud/ast/ast-owner-totp" secret < "$W/totp" >/dev/null
+[ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=secret ast/ast-owner-totp)" = "$(cat "$W/totp")" ] || ng "取引ユニットの呼び方で書けない"
+set +e; "${PUT_CMD[@]}" "cloud/ast/ast-owner-totp" secret < "$W/totp" >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 5 ] || ng "取引ユニットの呼び方で、在るキーが 5 で止まらない（$rc）"
+"${PUT_CMD[@]}" --overwrite "cloud/ast/ast-owner-totp" secret < "$W/totp" >/dev/null || ng "取引ユニットの呼び方で、--overwrite（前置きの後ろ）が効かない"
+rm -f "$W/rsa.expected" "$W/rsa.got" "$W/totp"
+ok "put: 値を標準入力からだけ受けてそのまま書き（PEM の改行も変えない）、在るキーは 5 で止まり、--overwrite でだけ上書きし、cloud/shared へは書かない。取引ユニットの呼び方で通る"
+
 R1="$(mkroot)"
 
 # --- policy の境界（試験の側で作り直した root で、各 policy のトークンの能力を引く） ---
@@ -218,6 +255,10 @@ TP="$(tok platform-infra-eso)" TM="$(tok msp-eso)" TA="$(tok ast-eso)"
 for p in ast-db ast-rabbitmq-users ast-client-secrets platform-infra-ca; do [ "$(cap "$TA" "cloud/data/shared/$p")" = read ] || ng "取引ユニットの側が cloud/shared/$p を読めない"; done
 [ "$(cap "$TA" cloud/data/shared/other)" = deny ] || ng "取引ユニットの側が名指しの外の cloud/shared を読める"
 [ "$(cap "$TM" pki_cloud/issue/llmgateway-service)" = update ] && [ "$(cap "$TM" pki_cloud/issue/postgres)" = deny ] || ng "MSP の側の発行の範囲が違う"
+for p in platform-backup-s3 alertmanager-discord alertmanager-heartbeat; do [ "$(cap "$TP" "cloud/data/platform/$p")" = read ] || ng "基盤の側が cloud/platform/$p を読めない"; done
+[ "$(cap "$TM" cloud/data/msp/llm-provider-credentials)" = read ] || ng "MSP の側が LLM の鍵を読めない"
+[ "$(cap "$TP" cloud/data/msp/llm-provider-credentials)" = deny ] && [ "$(cap "$TA" cloud/data/msp/llm-provider-credentials)" = deny ] || ng "MSP の外の側が LLM の鍵を読める"
+[ "$(cap "$TM" cloud/data/platform/platform-backup-s3)" = deny ] && [ "$(cap "$TA" cloud/data/platform/alertmanager-discord)" = deny ] || ng "基盤の外の側が外から持ち込む基盤の値を読める"
 [ "$(cap "$OPT" sys/policies/acl/x)" = deny ] && [ "$(cap "$OPT" sys/auth/x)" = deny ] || ng "オーナー用の資格が policy・認証を変えられる"
 ok "policy: 基盤は cloud/ast を、取引ユニットは cloud/platform と名指しの外の cloud/shared を読めず、オーナー用の資格は policy・認証を変えられない"
 
@@ -241,7 +282,7 @@ ok "root-token: 作り直した root で policy を当て直し、オーナー�
 
 # --- 値が引数・ディスクに残らない ---
 R2="$(mkroot)"
-vals="$(for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db shared/ast-rabbitmq-users shared/ast-client-secrets ast/ast-secrets; do
+vals="$(for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db shared/ast-rabbitmq-users shared/ast-client-secrets ast/ast-secrets msp/llm-provider-credentials ast/moomoo-rsa ast/ast-owner-totp; do
   BAO_TOKEN="$R2" B kv get -mount=cloud -format=json "$p" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{for(const v of Object.values(JSON.parse(s).data.data))if(!/^[a-z]+_[0-9a-f]{6}$/.test(v))console.log(v)})'; done
   dec "$W/init.age" unseal_keys_b64; echo; dec "$W/operator.age" secret_id; echo)"
 BAO_TOKEN="$R2" B token revoke -self >/dev/null

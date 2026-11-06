@@ -5,9 +5,10 @@ status: Accepted
 related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684]
 author: claude
 created: 2026-11-06
-updated: 2026-11-06
+updated: 2026-11-07
 related_specs:
   - ../specs/20261106_2471_cloud-openbao-eso.md
+  - ../specs/20261107_2471_cloud-external-secrets-stage2.md
 ---
 
 # IADR-0689: クラウドの秘匿管理（OpenBao・ESO）と、クラスタの中で作る資格情報・TLS の鍵
@@ -146,6 +147,32 @@ related_specs:
 - 常駐が増える分（要求 / 上限）: OpenBao 96Mi / 256Mi、ESO の controller 48Mi / 160Mi・webhook 32Mi / 96Mi・cert-controller 32Mi / 96Mi。合計で要求 208Mi・上限 608Mi。
 - IADR-0674 決定 4 の懸念（8 GB のノードで取引ユニットから数百 MiB を取る）は、この幅で受け入れる。稼働での実測（条件 5）で上限を見直す。
 
+### 決定 11 — ［2026-11-07 追記 / #2471］外から持ち込む値は、オーナーが `put-external-secret.sh` で標準入力から書く（PR ②）
+
+- 呼び方: `<値> | put-external-secret.sh --live --operator-file <operator>.age --identity <識別子> [--overwrite] cloud/<ast|platform|msp>/<名前> <キー>`。
+  - 値は**標準入力からだけ**受け、そのまま 1 つのキーの値にする（末尾の改行も変えない。PEM をそのまま流せる）。空なら書かない。
+  - オーナー用の資格は age の復号からパイプで Pod の標準入力へ流し、値はその後ろへ続ける（手元のディスクに置かない）。Pod の中では表示しない。
+  - キーが在れば止まる（終了コード 5。何も変えない）。上書きは `--overwrite` のときだけ（同じパスのほかのキーは残す）。
+  - `cloud/shared` へは書かない（基盤と取引ユニットが共有する値は `seed-secrets.sh` が OpenBao の中で作る。区分 2）。
+  - 終了コード: 0 書いた・1 失敗・2 引数の誤りか値が空・3 `--live` が無い・5 キーが在る。
+  - 取引ユニットの呼び方（前置きを空白で分けて読み、末尾に「パス」「キー」を足し、値は標準入力）とそのまま合う。`--overwrite` は前置きの後ろ（パスの前）に置ける。
+- 書いた値は ESO が写す。基盤の側の 4 つ（`llm-provider-credentials`・`platform-backup-s3`・`alertmanager-discord`・`alertmanager-heartbeat`）の ExternalSecret を足し、
+  `dataFrom.extract` で在るキーを全部写す（任意のキー〔`voyage-api-key`〕を許す）。policy は名指しのパスの read だけを足した（`msp-eso` に LLM の鍵、`platform-infra-eso` に 3 つ）。
+  これで `secret-inventory.js --strict`（区分 1 を含む全件）が通る。
+- OpenD の RSA の鍵（決定 7）は `openssl genrsa -traditional 1024 | put-external-secret.sh … cloud/ast/moomoo-rsa opend_rsa.pem` で入れる。
+
+### 決定 12 — ［2026-11-07 追記 / #2471］クラウドの段 2 の切り替えを強制にする（PR ②）
+
+| 切り替え | 値 | 置き場 | 前提から外れること |
+| --- | --- | --- | --- |
+| ブローカの権限（IADR-0681） | narrow。起動の直後の復元が、生成物 `deploy/cloud/infra/rabbitmq-permissions.yaml` の行だけを当てる。行の無いユーザーには権限を付けない。表は非 optional | `deploy/cloud/infra/rabbitmq.yaml` | クラウドは段 1 を持たない（vhost 全体へ倒さない）。生成物は `gen-rabbitmq-permissions.js --write` がローカルの表の取引ユニットの行から作り、既定の照合が食い違いを止める（`deploy/cloud/infra` は変換を持たないので生成物をコミットする。IADR-0674 決定 1） |
+| 経路の設定の検査（IADR-0677） | `Llm__RouteValidation__Mode=Fail` | `values-cloud.yaml` の `extraEnvAppend` | 配備の `appsettings.json` を検査の規則に当てると、不足は 0 件である（未知のモデル・空の宛先・単価の欠落のどれも無い。2026-11-07 に宣言から引いて確かめた） |
+| 呼び手ごとの許可表（IADR-0684） | `Llm__CallerPolicy__Mode=Enforce` | 同上 | IADR-0684 決定 4 の前提（稼働で段 1 の違反を確かめる・gRPC で段 2 の拒否を一度は実測する）を経ない。クラウドは REST だけを使い（gRPC の受け口を外した。IADR-0674 決定 2a）、取引ユニットの呼び手は既定の表に在る。移行の門（段 1 の直しはクラウドでは段 2）が前提に優先する（統括の決定 2026-11-06） |
+| 入力・要求数・費用の上限（IADR-0678） | `Llm__CallLimits__Mode=Enforce` | 同上 | IADR-0678 の前提（報告を所有者が確かめてから切り替える）を経ない。上限は既定の値（費用の上限は呼び手ごとに設定していない）。理由は上と同じ |
+
+- 入れないもの: 内部の REST の門（IADR-0686。AI 分析・Wiki を置かない）・BFF の流量の上限（IADR-0687。BFF を置かない）・ローカルの起動器と調停の Job の切り替え。
+- 既定の描画とローカル（`values-local.yaml`）は段 1 のまま。`scripts/deploy-cloud.test.js` が、クラウドの描画は段 2・既定とローカルは段 1 であることを固定する。
+
 ## 結果
 
 - 良い影響: クラスタの中の資格情報と TLS の鍵が NFR-05 の秘匿管理の下に入る。CA の鍵は OpenBao の外へ出ない。unseal の鍵・root・オーナー用の資格は、平文でリポジトリにもノードにも無い。
@@ -160,3 +187,4 @@ related_specs:
 4. ESO の名前空間（`external-secrets`）に NetworkPolicy を置いていない（chart の既定のまま）。
 5. OpenD の RSA の鍵（決定 7）は、オーナーの手元のプロセスのメモリを通る（OpenBao の中で作れないため）。ディスクには書かない。
 6. 外から持ち込む 4 つ（LLM の鍵・バックアップの保管先・Discord・heartbeat）は PR ② まで「供給元なし」（`secret-inventory.js`）。移行の門は満たさない。
+   ［2026-11-07 追記 / #2471］決定 11 で解消した（`secret-inventory.js --strict` が全件で通る）。

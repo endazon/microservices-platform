@@ -96,6 +96,8 @@ spec:
             - { name: boot, mountPath: /opt/rabbitmq-boot, readOnly: true }
             - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
             - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
+            # NFR-18, IADR-0681, IADR-0689 決定 12: 絞った権限（段 2）。行の無いユーザーには権限を付けない。
+            - { name: permissions, mountPath: /etc/rabbitmq-permissions, readOnly: true }
             # IADR-0591: conf.d へ 1 ファイルだけ足す（subPath。イメージの 10-defaults.conf を隠さない）。
             - { name: tls-conf, mountPath: /etc/rabbitmq/conf.d/20-tls.conf, subPath: 20-tls.conf, readOnly: true }
             - { name: tls, mountPath: /etc/rabbitmq-tls, readOnly: true }
@@ -119,6 +121,9 @@ spec:
         # 既定のユーザーの無効化の印（クラウドでは宣言の ConfigMap rabbitmq-default-user が最初から立てる）。
         - name: default-user-flag
           configMap: { name: rabbitmq-default-user, optional: true }
+        # 絞った権限の表（生成物 rabbitmq-permissions.yaml）。非 optional: 無ければ Pod は立たない（vhost 全体へ倒さない）。
+        - name: permissions
+          configMap: { name: rabbitmq-permissions, defaultMode: 0444 }
         # IADR-0591: TLS の設定と証明書（Secret は非 optional。無ければ Pod は立たない＝平文だけで黙って立たない）。
         - name: tls-conf
           configMap: { name: rabbitmq-tls, defaultMode: 0444 }
@@ -165,6 +170,7 @@ data:
     USERS_DIR="${RABBITMQ_BOOT_USERS_DIR:-/etc/rabbitmq-users}"
     FLAG="${RABBITMQ_BOOT_FLAG:-/etc/rabbitmq-default-user/disabled}"
     VHOST="${RABBITMQ_BOOT_VHOST:-/}"
+    PERMS_DIR="${RABBITMQ_BOOT_PERMISSIONS_DIR:-/etc/rabbitmq-permissions}"
     tries="${RABBITMQ_BOOT_TRIES:-90}"
     # 🔴 postStart はサーバの起動と並んで root で走る。サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
     #   root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。サーバが作った cookie が在るまで
@@ -194,11 +200,15 @@ data:
       if ! rabbitmqctl add_user "$u" < "$f" >/dev/null 2>&1; then
         rabbitmqctl change_password "$u" < "$f" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       fi
-      rabbitmqctl -q set_permissions -p "$VHOST" "$u" '.*' '.*' '.*' >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
+      # NFR-18, IADR-0681, IADR-0689 決定 12: クラウドは段 2（narrow）だけ。生成物の行を当て、行が無ければ権限を付けない。
+      line="$(awk -v u="$u" '!/^[[:space:]]*#/ && $1 == u && NF == 4 { print $2 " " $3 " " $4; exit }' "$PERMS_DIR/permissions.txt" 2>/dev/null)"
+      if [ -z "$line" ]; then log "絞った権限の行が無い（権限を付けない）: $u"; failed=$((failed + 1)); continue; fi
+      p_conf="${line%% *}"; rest="${line#* }"; p_write="${rest%% *}"; p_read="${rest#* }"
+      rabbitmqctl -q set_permissions -p "$VHOST" "$u" "$p_conf" "$p_write" "$p_read" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       rabbitmqctl -q set_user_tags "$u" >/dev/null 2>&1 || { failed=$((failed + 1)); continue; }
       n=$((n + 1))
     done
-    log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件）"
+    log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件・権限 narrow）"
     if [ "$(cat "$FLAG" 2>/dev/null)" = "true" ]; then
       if [ "$n" -gt 0 ] && [ "$failed" -eq 0 ] && [ -n "${RABBITMQ_DEFAULT_USER:-}" ]; then
         if rabbitmqctl -q delete_user "$RABBITMQ_DEFAULT_USER" >/dev/null 2>&1; then

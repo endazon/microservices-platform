@@ -480,6 +480,32 @@ function render(rows) {
   return `${HEADER.join('\n')}\n${rows.map((r) => `${r.user} ${r.configure} ${r.write} ${r.read}`).join('\n')}\n`;
 }
 
+/**
+ * ［2026-11-07 / IADR-0689 決定 12］クラウドの最小構成（deploy/cloud）のブローカは段 2（narrow）で動く。取引ユニットの行だけを
+ * ConfigMap rabbitmq-permissions（deploy/cloud/infra/rabbitmq-permissions.yaml。生成物）に写し、起動の直後の復元がそれを当てる。
+ * deploy/cloud/infra は変換を持たない kustomize なので（IADR-0674 決定 1）、ConfigMap を生成物としてコミットする。
+ */
+const CLOUD_PERMS_REL = 'deploy/cloud/infra/rabbitmq-permissions.yaml';
+function renderCloud(rows, users) {
+  const ast = new Set(users.filter((u) => u.namespace === 'ai-stock-trading').map((u) => u.user));
+  const lines = rows.filter((r) => ast.has(r.user)).map((r) => `    ${r.user} ${r.configure} ${r.write} ${r.read}`);
+  return [
+    '# NFR-18, IADR-0681, IADR-0689 決定 12: 生成物（手で直さない）。node scripts/gen-rabbitmq-permissions.js --write が',
+    '#   deploy/local/rabbitmq-setup/permissions.txt の取引ユニットの行から作り、同じスクリプト（既定の照合）が突き合わせる。',
+    '# クラウドのブローカは段 2（narrow）だけで動く。行の無いユーザーには権限を付けない（vhost 全体へ倒さない）。',
+    'apiVersion: v1',
+    'kind: ConfigMap',
+    'metadata:',
+    '  name: rabbitmq-permissions',
+    '  namespace: platform-infra',
+    '  labels: { app: rabbitmq }',
+    'data:',
+    '  permissions.txt: |',
+    ...lines,
+    '',
+  ].join('\n');
+}
+
 /** permissions.txt を読む（ユーザー → { configure, write, read }）。 */
 function readPermissions(repoRoot = REPO_ROOT, rel = PERMS_REL) {
   const p = path.join(repoRoot, rel);
@@ -506,7 +532,7 @@ function generate(repoRoot = REPO_ROOT, opts = {}) {
     if (existing.has(u.user)) { kept.push(u.user); return existing.get(u.user); }
     return fail(`${u.user}: 導出できず、生成物にも行が無い（AST の写しを取得して --write する）`);
   });
-  return { rows, derived, kept, astRoot: root, text: render(rows) };
+  return { rows, derived, kept, astRoot: root, text: render(rows), cloudText: renderCloud(rows, users) };
 }
 
 function main(argv) {
@@ -529,10 +555,17 @@ function main(argv) {
     return 0;
   }
   const target = path.join(REPO_ROOT, PERMS_REL);
+  const cloudTarget = path.join(REPO_ROOT, CLOUD_PERMS_REL);
   if (mode === 'write') {
     fs.writeFileSync(target, g.text);
-    process.stdout.write(`    ${PERMS_REL} を書いた（${g.rows.length} 行）\n`);
+    fs.writeFileSync(cloudTarget, g.cloudText);
+    process.stdout.write(`    ${PERMS_REL} と ${CLOUD_PERMS_REL} を書いた（${g.rows.length} 行）\n`);
     return 0;
+  }
+  const haveCloud = fs.existsSync(cloudTarget) ? fs.readFileSync(cloudTarget, 'utf8') : '';
+  if (haveCloud !== g.cloudText) {
+    process.stderr.write(`ERROR: ${CLOUD_PERMS_REL} が権限の生成物と食い違う。node scripts/gen-rabbitmq-permissions.js --write で作り直す\n`);
+    return 1;
   }
   const have = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
   if (have !== g.text) {
@@ -547,5 +580,5 @@ if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = {
   GenError, derive, generate, patternsFor, requiredAccess, readPermissions, readUsers, render, stripComments,
-  DEAD_LETTER, RESPONSE_PREFIX, DEFAULT_EXCHANGE, PERMS_REL, USERS_REL,
+  DEAD_LETTER, RESPONSE_PREFIX, DEFAULT_EXCHANGE, PERMS_REL, USERS_REL, CLOUD_PERMS_REL, renderCloud,
 };
