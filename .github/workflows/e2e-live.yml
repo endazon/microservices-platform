@@ -98,6 +98,8 @@ permissions:
 
 env:
   K3D_VERSION: v5.8.3
+  # NFR-18 (#2444): k3d-linux-amd64 の sha256（手元で計算し、同じリリースの checksums.txt と一致を確かめた）。3 つのワークフローで同じ値。
+  K3D_SHA256: dbaa79a76ace7f4ca230a1ff41dc7d8a5036a8ad0309e9c54f9bf3836dbe853e
   CLUSTER: e2e-live
 
 jobs:
@@ -134,10 +136,15 @@ jobs:
           node scripts/check-e2e-artifact-secrets.js --self-test
           node scripts/check-stack-ready.js --self-test
 
-      - name: Install k3d (pinned)
+      - name: Install k3d (pinned, checksum-verified)
         run: |
           set -euo pipefail
-          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="${K3D_VERSION}" bash
+          # NFR-18 (#2444): 版の付いたリリースのバイナリを取り、sha256 を照合してから入れる（main の install.sh は実行しない）。
+          # 合わなければ sha256sum -c が赤で止める。版を上げるときは K3D_VERSION と K3D_SHA256 を対で改める（作業仕様書）。
+          curl -fsSL -o k3d "https://github.com/k3d-io/k3d/releases/download/${K3D_VERSION}/k3d-linux-amd64"
+          echo "${K3D_SHA256}  k3d" | sha256sum -c -
+          sudo install -m 0755 k3d /usr/local/bin/k3d
+          rm -f k3d
           k3d version
 
       # NFR, #2230: ランナーのディスク・メモリを起動の段の前後で測る（GitHub-hosted の上限に対する余裕の実測。ログにだけ出す）。
