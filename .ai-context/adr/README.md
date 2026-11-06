@@ -759,3 +759,4 @@
 | [IADR-0679](./IADR-0679_pin-external-artifacts-sha256.md) | 起動器が取り込む外部の helm chart と URL のマニフェストを、版に加えて内容の sha256 で固定する（#2410） | Accepted |
 | [IADR-0680](./IADR-0680_ast-api-audience-scope.md) | 取引ユニットの API の audience（ai-stock-trading-api）を専用のクライアントスコープで載せ、付ける先を bff と ai-stock-trading-owner に限る（#2418） | Accepted |
 | [IADR-0681](./IADR-0681_rabbitmq-narrow-permissions-staged.md) | ブローカのサービスごとのユーザーの権限は、コード（Wolverine の配線）から導いたキューと exchange の名前の正規表現へ絞る。段 1 は報告だけ、段 2 で明示して当てる（#2412） | Accepted |
+| [IADR-0682](./IADR-0682_plaintext-cleanup-and-otel-collector-netpol.md) | 復号した物と秘密は手元のディスク・シェルの環境・コマンドの引数に残さない（リストア試験は tmpfs と trap、手順書は read -rs・age へのパイプ）。otel-collector の到達は opt-in の NetworkPolicy で絞る（#2413） | Accepted |

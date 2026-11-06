@@ -4,14 +4,14 @@ type: runbook
 status: fixed
 author: claude
 created: 2026-09-28
-updated: 2026-10-11
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [FR-06, FR-05, FR-19, SC-05, NFR-09, UC-03]
 adrs: [ADR-0122, ADR-0121, ADR-0057, ADR-0119]
-iadrs: [IADR-0484, IADR-0483, IADR-0459, IADR-0529, AST:IADR-0436]
-specs: [20261011_1891_ast-draft-not-duplicate, 20260928_issue-1667_ast-stale-copies-enumeration]
-issues: [#1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
+iadrs: [IADR-0682, IADR-0484, IADR-0483, IADR-0459, IADR-0529, AST:IADR-0436]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261011_1891_ast-draft-not-duplicate, 20260928_issue-1667_ast-stale-copies-enumeration]
+issues: [#2413, #1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
 -->
 
 # 運用 Runbook: 内容の ABAC の前に、株取引の外部システムの古い写しを列挙して消す
@@ -54,8 +54,13 @@ issues: [#1891, #1886, #1667, #457, #1679, planning#696, planning#784, AST#1301]
 
 ```bash
 kubectl -n microservices-platform port-forward svc/document-service 18092:8080 &
-export TOKEN="<platform-admin を持つ主体のアクセストークン>"
-curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18092/documents/ast-stale-copies > stale-copies.json
+read -rs -p 'platform-admin を持つ主体のアクセストークン: ' TOKEN; echo   # 貼り付けて Enter（表示されない・履歴に残らない。export しない）
+curl -sS -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") http://127.0.0.1:18092/documents/ast-stale-copies > stale-copies.json   # 引数に載せない
+```
+
+- トークンは手順の終わり（手順 A の 4 の後）で `unset TOKEN` で消す。期限が切れたら同じ `read -rs` で読み直す。
+
+```bash
 jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
 ```
 
@@ -85,7 +90,7 @@ jq '{scanned, targets, excluded, currentAccountReports}' stale-copies.json
    ```bash
    jq -r '.items[].id' stale-copies.json > stale-ids.txt   # 2 で外した id はここから除く
    while read -r id; do
-     code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $TOKEN" \
+     code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") \
        "http://127.0.0.1:18092/documents/$id")
      echo "$id $code"
    done < stale-ids.txt | tee delete-result.txt

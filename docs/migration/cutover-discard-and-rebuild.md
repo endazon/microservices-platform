@@ -4,14 +4,14 @@ type: migration-spec
 status: draft
 author: Claude
 created: 2026-09-25
-updated: 2026-10-10
+updated: 2026-11-06
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0008, ADR-0032, ADR-0124]
-iadrs: [IADR-0515, IADR-0461, IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
-specs: [20261010_1877_paired-rotation-windows-portable, 20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
-issues: [#1877, #1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
+iadrs: [IADR-0682, IADR-0515, IADR-0461, IADR-0494, IADR-0492, IADR-0459, IADR-0082, IADR-0197, IADR-0210, IADR-0369, IADR-0377, IADR-0456, IADR-0457, IADR-0485]
+specs: [20261105_2413_plaintext-cleanup-and-otel-netpol, 20261010_1877_paired-rotation-windows-portable, 20261008_1781_cutover-rehearsal-ci, 20261003_1728_eso-force-sync-after-bootstrap, 20260925_457_cutover-discard-and-rebuild, 20260909_issue-457_cutover-decision-table-draft, 20260928_issue-1682_paired-secrets-outside-sc22]
+issues: [#2413, #1877, #1781, #1499, #1728, #1696, #457, #454, #439, #458, #1682, AST#1078]
 -->
 
 # 移行仕様書: 再実装版への切替 —— 6 資産の破棄と realm の作り直し
@@ -249,9 +249,17 @@ done   # どちらも 0 でないこと
 - **任意の保全**: 調査用の記録を残したいなら、3 の前に次を取る（取るかどうかはオーナーが決める。戻すための手順ではない）。
 
   ```bash
-  kubectl -n platform-infra exec "$PG" -- pg_dumpall -U postgres --clean > cutover-pg-before.sql   # ai-stock-trading の DB も含む。扱いに注意
-  kubectl -n platform-infra exec "$KC" -- /opt/keycloak/bin/kcadm.sh get realms/platform > cutover-realm-before.json
+  # 🔴 平文をディスクへ書かない。バックアップと同じ受取人（ConfigMap platform-backup-age-recipients。公開鍵だけ）の age へパイプで渡す。
+  ( set -e -o pipefail   # ( ) の中で回す（失敗で止まっても手元のシェルを閉じない）
+    R="$(mktemp)"; trap 'rm -f -- "$R"' EXIT
+    kubectl -n platform-infra get configmap platform-backup-age-recipients -o jsonpath='{.data.recipients\.txt}' > "$R"
+    [ -s "$R" ] || { echo "受取人が無い（platform-infra-backup-runbook.md の §1）" >&2; exit 1; }
+    kubectl -n platform-infra exec "$PG" -- pg_dumpall -U postgres --clean | age -R "$R" -o cutover-pg-before.sql.age   # ai-stock-trading の DB も含む
+    kubectl -n platform-infra exec "$KC" -- /opt/keycloak/bin/kcadm.sh get realms/platform | age -R "$R" -o cutover-realm-before.json.age
+  )
   ```
+
+  読むときは `age -d -i <秘密鍵のファイル> cutover-pg-before.sql.age | less` のように、復号を画面かパイプの先へだけ流す。
 
 | リスク | 起きること | 抑え方 |
 | --- | --- | --- |
