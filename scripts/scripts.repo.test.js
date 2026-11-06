@@ -20820,4 +20820,62 @@ echo "unhandled: $*" >&2; exit 9
       assert.deepStrictEqual(findGrepQUnderPipefail(files), ['d/inherit.test.sh:5', 'd/self.sh:3', 'd/sourced-lib.sh:2']);
     });
   }
+
+  // --- NFR-18 (#2444): CI の k3d は、版の付いたリリースのバイナリを取り sha256 を照合して入れる（main の install.sh を実行しない） ---
+  // IADR-0679 の方針（外部の成果物は版に加えて内容の sha256 で固定し、合わなければ止める）を、ワークフローの k3d に当てる。
+  // 3 つのワークフローで同じ手順・同じ版・同じ sha256 であることを固定する（共通化はしない。理由は作業仕様書）。
+  {
+    const fs2444 = require('fs');
+    const path2444 = require('path');
+    const ROOT2444 = path2444.join(__dirname, '..');
+    const WF2444 = ['e2e-live.yml', 'integration-stack.yml', 'cutover-rehearsal.yml'];
+    const readWf2444 = (n) => fs2444.readFileSync(path2444.join(ROOT2444, '.github/workflows', n), 'utf8').replace(/\r\n/g, '\n');
+    // 取ったスクリプトを照合せずに実行する形（main の先頭から取る・パイプでシェルへ流す・プロセス置換で読む）。
+    const UNVERIFIED_EXEC_RE = [
+      /(?:curl|wget)\b[^\n]*\|\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:sudo\s+(?:-E\s+)?)?(?:ba|z)?sh\b/,
+      /(?:ba)?sh\s+<\(\s*(?:curl|wget)\b/,
+      /raw\.githubusercontent\.com\/[^\s/]+\/[^\s/]+\/(?:main|master|HEAD)\//,
+    ];
+    const issues2444 = (files) => {
+      const out = [];
+      const seen = [];
+      for (const [name, text] of files) {
+        const lines = text.split('\n').filter((l) => !/^\s*#/.test(l));
+        for (const l of lines) for (const re of UNVERIFIED_EXEC_RE) if (re.test(l)) out.push(`${name}: 取ったスクリプトを照合せずに実行している（${l.trim().slice(0, 80)}）`);
+        const ver = (/^ {2}K3D_VERSION:\s*(v\d+\.\d+\.\d+)\s*$/m.exec(text) || [])[1];
+        const sha = (/^ {2}K3D_SHA256:\s*([0-9a-f]{64})\s*$/m.exec(text) || [])[1];
+        if (!ver) out.push(`${name}: K3D_VERSION が版で固定されていない`);
+        if (!sha) out.push(`${name}: K3D_SHA256（64 桁の 16 進）が無い`);
+        // コメントの行は除いて読む（説明の文に同じ語が出ても、手順の順序の判定を誤らない）。
+        const step = ((text.split(/\n(?= {6}- )/).find((st) => /name: Install k3d/.test(st))) || '').split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+        if (!step) { out.push(`${name}: k3d の導入の step が無い`); continue; }
+        if (!/curl -fsSL -o k3d "https:\/\/github\.com\/k3d-io\/k3d\/releases\/download\/\$\{K3D_VERSION\}\/k3d-linux-amd64"/.test(step)) out.push(`${name}: k3d を版の付いたリリースの URL から取っていない`);
+        if (!/echo "\$\{K3D_SHA256\}  k3d" \| sha256sum -c -/.test(step)) out.push(`${name}: k3d の sha256 を照合していない`);
+        const at = (re) => step.search(re);
+        if (at(/sha256sum -c/) < 0 || at(/install -m 0755 k3d/) < 0 || at(/sha256sum -c/) > at(/install -m 0755 k3d/)) out.push(`${name}: 照合の前に k3d を入れている`);
+        if (/\|\|\s*true|continue-on-error:\s*true/.test(step)) out.push(`${name}: 導入の失敗を握り潰している`);
+        seen.push([name, ver, sha]);
+      }
+      const vers = new Set(seen.map((x) => `${x[1]} ${x[2]}`));
+      if (seen.length === files.length && vers.size > 1) out.push(`3 つのワークフローで k3d の版と sha256 が一致しない（${[...vers].join(' / ')}）`);
+      return out;
+    };
+    const current2444 = () => WF2444.map((n) => [n, readWf2444(n)]);
+
+    ok('#2444: e2e-live・integration-stack・cutover-rehearsal は k3d を版の付いたリリースから取り sha256 を照合して入れ、取ったスクリプトを照合せずに実行しない', () => {
+      assert.deepStrictEqual(issues2444(current2444()), []);
+    });
+
+    ok('#2444 陰性対照: main の install.sh を bash へ流す形・照合を外す・照合の前に入れる・sha256 を片側だけ変えると赤', () => {
+      const files = current2444();
+      const has = (fs, re) => issues2444(fs).some((e) => re.test(e));
+      const swap = (i, f) => files.map(([n, t], j) => [n, j === i ? f(t) : t]);
+      const legacy = '          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="${K3D_VERSION}" bash\n';
+      assert.ok(has(swap(0, (t) => t.replace(/(name: Install k3d[^\n]*\n {8}run: \|\n {10}set -euo pipefail\n)/, `$1${legacy}`)), /照合せずに実行/));
+      assert.ok(has(swap(1, (t) => t.replace(/ *echo "\$\{K3D_SHA256\}  k3d" \| sha256sum -c -\n/, '')), /sha256 を照合していない/));
+      assert.ok(has(swap(2, (t) => t.replace(/( *)(echo "\$\{K3D_SHA256\}  k3d" \| sha256sum -c -\n)( *sudo install -m 0755 k3d \/usr\/local\/bin\/k3d\n)/, '$3$1$2')), /照合の前に/));
+      assert.ok(has(swap(1, (t) => t.replace(/(K3D_SHA256:\s*)[0-9a-f]{64}/, `$1${'0'.repeat(64)}`)), /一致しない/));
+      assert.ok(has([['x.yml', '  K3D_VERSION: v5.8.3\n  K3D_SHA256: ' + 'a'.repeat(64) + '\njobs:\n  j:\n    steps:\n      - name: Install k3d\n        run: |\n          bash <(curl -fsSL https://example.invalid/i.sh)\n']], /照合せずに実行/));
+    });
+  }
 };

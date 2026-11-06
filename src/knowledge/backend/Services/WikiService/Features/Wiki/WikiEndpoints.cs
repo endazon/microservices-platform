@@ -1,3 +1,4 @@
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using WikiService.Domain;
 using WikiService.Domain.Ports;
 using WikiService.Features.Wiki.GetPageByDocument;
@@ -25,7 +26,8 @@ public static class WikiEndpoints
 {
     public static IEndpointRouteBuilder MapWikiEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/wiki").WithTags("Wiki");
+        // NFR-18, ADR-0084 決定 1, IADR-0686 (#2430): 群の認証の門（段 1 は報告だけ・段 2 で未認証を 401）。
+        var g = app.MapGroup("/wiki").WithTags("Wiki").RequireAuthenticatedOrReport("wiki");
 
         ListWikiPagesEndpoint.Map(g);
         // UC-07 基本フロー 1「検索する」（#1126 / IADR-0335）。**`/pages/{slug}` より先に登録しない**
