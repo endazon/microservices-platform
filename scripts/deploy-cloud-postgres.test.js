@@ -7,14 +7,17 @@
  *   1. 初期化（initdb と 01-create-databases.sh）が、pg_hba の `local ... scram-sha-256` の下で止まらずに終わる。
  *   2. 取引ユニットの 7 つの DB と keycloak の DB ができる。
  *   3. pg_hba が効いている: ソケットはパスワードなしでは入れない・TCP の平文は拒む・TCP の TLS は受ける・pg_isready は通る。
- *   4. 変異: initContainer が鍵の所有者と mode を整えない（root の所有・0644）と、Postgres は起動しない（判定が空振りしない）。
+ *   4. 変異: initContainer が鍵の mode を整えない（写した 0440 のまま）と、Postgres は起動しない（判定が空振りしない）。
  *   5. IADR-0695: ConfigMap postgres-ast-db-users の手順（Job が流すもの）を同じ Postgres に TLS で流す。apply が 7 人を作り、各 DB と中の物の
  *      OWNER を移し、各利用者は自分の DB にだけ入れる。移行の間も共有の利用者は読み書きできる。drop-shared は共有の利用者の接続が残れば止め、
  *      無ければ消す。どちらも冪等。値はログ・出力に出ない。変異（CONNECT を外さない・共有の利用者を役割の一員にしない）を検出する。
  *
- * 証明書の鍵の所有者と mode は本番と同じ経路で作る: Secret の中身（試験だけの使い捨ての鍵）を読み取り専用で渡し、
- * 宣言の initContainer の command をそのイメージ（root）で走らせて docker のボリュームへ写し、そのボリュームを Postgres に
- * 読み取り専用で渡す。手元のファイルの所有者（試験を走らせる利用者の uid）に依らない。
+ * 証明書の鍵の所有者と mode は本番と同じ経路で作る: Secret の中身（試験だけの使い捨ての鍵）を kubelet と同じ形（root の所有・
+ * 宣言の defaultMode）のボリュームに置いて読み取り専用で渡し、宣言の initContainer の command を宣言の securityContext（利用者・
+ * capability・権限の昇格）で走らせて emptyDir の代わりのボリューム（0777）へ写し、そのボリュームを Postgres に読み取り専用で渡す。
+ * 手元のファイルの所有者（試験を走らせる利用者の uid）に依らない。
+ * IADR-0697: initContainer・Postgres とも、宣言の securityContext を docker の旗（--user・--cap-drop・--cap-add・no-new-privileges・
+ * --read-only）へ写して走らせる。capability を全部落とした root でない利用者で、初回の起動と鍵の扱いが成り立つことを実物で確かめる。
  *
  * docker が要る（CI の static-checks-units は持つ）。無ければ失敗にする（fail-closed）。稼働のクラスタには触れない。
  * 試験の値（利用者名・パスワード）はこの場で乱数で作り、0600 のファイル（--env-file）からだけ渡す（引数・出力に出さない）。
@@ -33,6 +36,31 @@ const AST_DB_SERVICES = ['audit', 'configuration', 'cost-control', 'market-monit
 const dbOf = (svc) => `${svc.replace(/-/g, '_')}_svc`;
 const envOf = (kind, svc) => `AST_DB_${kind}_${svc.replace(/-/g, '_').toUpperCase()}`;
 const WANT_DBS = ['audit_svc', 'configuration_svc', 'cost_control_svc', 'market_monitor_svc', 'order_execution_svc', 'report_svc', 'risk_management_svc', 'keycloak'];
+
+/**
+ * IADR-0697: 宣言の securityContext（Pod と コンテナ。コンテナの側が勝つ）を docker run の旗へ写す。
+ * 宣言に無いもの（root で走る・capability を落とさない）は旗を足さない＝その宣言のまま走る（試験が宣言を緩めない）。
+ * seccomp は docker の既定のプロファイル（RuntimeDefault と同じ扱い）で走る。
+ */
+function dockerSecurityArgs(spec, container) {
+  const pod = spec.securityContext || {};
+  const sc = container.securityContext || {};
+  const pick = (k) => (sc[k] !== undefined ? sc[k] : pod[k]);
+  const out = [];
+  const user = pick('runAsUser');
+  const group = pick('runAsGroup');
+  if (String(pick('runAsNonRoot')) === 'true') assert.ok(user !== undefined && String(user) !== '0', `${container.name}: runAsNonRoot なのに利用者が数で書かれていない（${user}）`);
+  if (user !== undefined) out.push('--user', group !== undefined ? `${user}:${group}` : String(user));
+  const caps = sc.capabilities || {};
+  for (const x of caps.drop || []) out.push('--cap-drop', String(x));
+  for (const x of caps.add || []) out.push('--cap-add', String(x));
+  if (String(sc.allowPrivilegeEscalation) === 'false') out.push('--security-opt', 'no-new-privileges');
+  if (String(sc.readOnlyRootFilesystem) === 'true') out.push('--read-only');
+  return out;
+}
+
+/** 宣言の defaultMode（'0440' の形の文字列か数）を chmod の 8 進の字面にする。 */
+const modeOf = (v) => (typeof v === 'number' ? v.toString(8) : String(v).replace(/^0o/, ''));
 
 function docker(args, opts = {}) {
   const r = spawnSync('docker', args, { encoding: 'utf8', timeout: opts.timeout || 120000, maxBuffer: 16 * 1024 * 1024, input: opts.input });
@@ -68,10 +96,12 @@ function start(decl, label) {
   const tag = crypto.randomBytes(4).toString('hex');
   const name = `deploy-cloud-pg-${label}-${tag}`;
   const tlsVolume = `deploy-cloud-pg-tls-${label}-${tag}`;
+  const secretVolume = `deploy-cloud-pg-secret-${label}-${tag}`;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-pg-'));
   const cleanup = () => {
     docker(['rm', '-f', name]);
     docker(['volume', 'rm', '-f', tlsVolume]);
+    docker(['volume', 'rm', '-f', secretVolume]);
     fs.rmSync(dir, { recursive: true, force: true });
   };
   try {
@@ -94,7 +124,7 @@ function start(decl, label) {
     const hbaMount = path.posix.dirname(hbaArg.slice('hba_file='.length));
     assert.ok(fs.existsSync(path.join(hbaDir, path.posix.basename(hbaArg))), 'hba_file の中身が ConfigMap postgres-hba に無い');
 
-    // Secret postgres-tls の中身の代わり（試験だけの使い捨て）。手元の所有者は問わない（initContainer が root で読んで写す）。
+    // Secret postgres-tls の中身の代わり（試験だけの使い捨て）。手元の所有者は問わない（下で kubelet と同じ形のボリュームへ写す）。
     const ssl = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=postgres',
       '-keyout', path.join(srcDir, 'tls.key'), '-out', path.join(srcDir, 'tls.crt')], { encoding: 'utf8' });
     assert.strictEqual(ssl.status, 0, `openssl が失敗した: ${ssl.stderr}`);
@@ -112,8 +142,15 @@ function start(decl, label) {
       assert.strictEqual(pull.status, 0, `イメージを取れない: ${pull.stderr}`);
     }
     assert.strictEqual(docker(['volume', 'create', tlsVolume]).status, 0, 'ボリュームを作れない');
-    // 本番と同じ: initContainer をそのイメージ（既定の利用者＝root）で、宣言の command のまま走らせる。
-    const initRun = docker(['run', '--rm', '-v', `${srcDir}:${srcMount}:ro`, '-v', `${tlsVolume}:${initTlsMount}`,
+    assert.strictEqual(docker(['volume', 'create', secretVolume]).status, 0, 'ボリュームを作れない');
+    // kubelet の代わり（試験の足場。宣言ではない）: Secret のボリューム（root の所有・宣言の defaultMode）と emptyDir（0777）を root で整える。
+    const secretVol = (spec.volumes || []).find((v) => v.name === 'tls-src' && v.secret);
+    assert.ok(secretVol && secretVol.secret.defaultMode !== undefined, '写し元（tls-src）が defaultMode を持つ Secret でない');
+    const prep = docker(['run', '--rm', '--user', '0:0', '-v', `${srcDir}:/in:ro`, '-v', `${secretVolume}:/s`, '-v', `${tlsVolume}:/e`, '--entrypoint', 'sh', image, '-c',
+      `cp /in/tls.crt /in/tls.key /s/ && chown 0:0 /s/tls.crt /s/tls.key && chmod ${modeOf(secretVol.secret.defaultMode)} /s/tls.crt /s/tls.key && chmod 0777 /e`]);
+    assert.strictEqual(prep.status, 0, `ボリュームを整えられない: ${prep.stderr}`);
+    // 本番と同じ: initContainer をそのイメージで、宣言の command と securityContext のまま走らせる。
+    const initRun = docker(['run', '--rm', ...dockerSecurityArgs(spec, init), '-v', `${secretVolume}:${srcMount}:ro`, '-v', `${tlsVolume}:${initTlsMount}`,
       '--entrypoint', String(init.command[0]), String(init.image), ...init.command.slice(1).map(String)]);
     assert.strictEqual(initRun.status, 0, `initContainer が失敗した: ${initRun.stderr}`);
 
@@ -127,7 +164,7 @@ function start(decl, label) {
       ...AST_DB_SERVICES.flatMap((svc) => [`${envOf('USER', svc)}=ast_${svc.replace(/-/g, '_')}_${rnd(3)}`, `${envOf('PASSWORD', svc)}=${rnd(24)}`]), '',
     ].join('\n'), { mode: 0o600 });
 
-    const run = docker(['run', '-d', '--name', name, '--env-file', envFile,
+    const run = docker(['run', '-d', '--name', name, ...dockerSecurityArgs(spec, c), '--env-file', envFile,
       '-v', `${initDir}:/docker-entrypoint-initdb.d:ro`, '-v', `${usersDir}:/opt/ast-db-users:ro`, '-v', `${hbaDir}:${hbaMount}:ro`, '-v', `${tlsVolume}:${tlsMount}:ro`,
       '--tmpfs', '/var/lib/postgresql/data', image, ...args]);
     assert.strictEqual(run.status, 0, `起動できない: ${run.stderr}`);
@@ -157,7 +194,12 @@ function checkDeclared() {
   const r = start(loadDeclaration(), 'ok');
   try {
     if (!r.ready) throw new Error(`空のボリュームからの初回起動が終わらない（state=${r.state}）:\n${tailOf(r.logs)}`);
-    console.log('  ok  空のボリュームから初回起動し、初期化（initdb・01-create-databases.sh）が終わる（鍵は initContainer が整える）');
+    console.log('  ok  空のボリュームから初回起動し、初期化（initdb・01-create-databases.sh）が終わる（鍵は initContainer が整える。どちらも宣言の securityContext＝root でない・capability なし）');
+    const who = docker(['exec', r.name, 'sh', '-c', 'id -u; grep -E "^Cap(Eff|Prm|Bnd):" /proc/1/status']);
+    assert.strictEqual(who.status, 0, who.stderr);
+    assert.match(who.stdout, /^70\n/, `Postgres が uid 70 で走っていない:\n${who.stdout}`);
+    for (const m of who.stdout.matchAll(/^Cap(Eff|Prm|Bnd):\s*([0-9a-f]+)$/gm)) assert.strictEqual(BigInt(`0x${m[2]}`), 0n, `Postgres の PID 1 が capability を持つ（${m[1]}=${m[2]}）`);
+    console.log('  ok  IADR-0697: Postgres の PID 1 は uid 70 で、capability を 1 つも持たない（NET_RAW を含む）');
 
     // 値はコンテナの中の env からだけ読む（docker exec の引数に値を載せない）。
     const sh = (script) => docker(['exec', r.name, 'sh', '-c', script]);
@@ -299,7 +341,7 @@ function checkDbUsers(r, sh) {
 }
 
 function checkMutation() {
-  // 変異: initContainer の command から所有者と mode を整える行を外す（root の所有・0644 の鍵になる）。
+  // 変異: initContainer の command から mode を整える行を外す（写した 0440 のまま＝group が読める鍵になる）。
   const decl = loadDeclaration();
   const script = String(decl.init.command[decl.init.command.length - 1]);
   const mutated = script.split('\n').filter((l) => !/^\s*(chown|chmod)\b/.test(l)).join('\n');
@@ -307,9 +349,9 @@ function checkMutation() {
   decl.init = { ...decl.init, command: [...decl.init.command.slice(0, -1), mutated] };
   const r = start(decl, 'mut');
   try {
-    assert.ok(!r.ready, '鍵の所有者と mode を整えないのに起動した（判定が空振りしている）');
+    assert.ok(!r.ready, '鍵の mode を整えないのに起動した（判定が空振りしている）');
     assert.match(r.logs, /private key file .* has group or world access|private key file .* must be owned by/, `鍵の検査で止まっていない:\n${tailOf(r.logs)}`);
-    console.log('  ok  変異: 鍵の所有者と mode を整えないと起動しない（Postgres の鍵の検査で止まる）');
+    console.log('  ok  変異: 鍵の mode を整えないと起動しない（Postgres の鍵の検査で止まる）');
   } finally {
     r.cleanup();
   }

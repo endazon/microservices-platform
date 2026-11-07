@@ -79,6 +79,54 @@ data:
             annotations:
               summary: "OTel Collector 到達不可（可観測性パイプライン断）"
               description: "otel-collector の scrape が 2 分間失敗。AST のメトリクスが届いていない可能性。"
+          # NFR-21, IADR-0697: 受け口が生きていても系列が届かない（黙る）形を、collector の自己テレメトリ（直接の scrape。OTLP の経路を通らない）と
+          #   届いた系列の側の両方から見る。collector は受け取りを拒んでも落ちないので、OtelCollectorDown は鳴らない。
+          # 受け取りを拒んだ（メモリの上限・1 回の受け取りの上限・送り先の詰まりの逆流）。拒まれた系列は Prometheus に届かない。
+          - alert: OtelCollectorRefusingData
+            expr: |
+              (sum(increase(otelcol_receiver_refused_metric_points[10m])) or vector(0))
+                + (sum(increase(otelcol_receiver_refused_spans[10m])) or vector(0))
+                + (sum(increase(otelcol_receiver_refused_log_records[10m])) or vector(0))
+                > 0
+            labels: { severity: critical }
+            annotations:
+              summary: "otel-collector が受け取りを拒んでいる（系列が届かず、費用・取引の警報が黙り得る）"
+              description: "直近 10 分に otel-collector が {{ $value }} 件の受け取りを拒んだ。受け取りの量が上限を超えている（送り手の異常）。手順は cloud の runbook。"
+          # Prometheus への remote write が失敗している（collector は受け取れているが、Prometheus に書けない）。
+          - alert: OtelCollectorExportFailing
+            expr: sum(increase(otelcol_exporter_send_failed_metric_points{exporter="prometheusremotewrite"}[10m])) > 0
+            for: 5m
+            labels: { severity: critical }
+            annotations:
+              summary: "otel-collector から Prometheus へメトリクスを書けない"
+              description: "直近 10 分に remote write が {{ $value }} 件失敗した。アプリのメトリクス（費用・取引）が Prometheus に届いていない。"
+          # 受け取る系列が 0 のまま（送り手が全部止まったか、届かない）。collector の scrape は生きているので OtelCollectorDown は鳴らない。
+          - alert: OtlpMetricsPipelineSilent
+            expr: (sum(rate(otelcol_receiver_accepted_metric_points{receiver="otlp"}[10m])) or vector(0)) == 0
+            for: 15m
+            labels: { severity: critical }
+            annotations:
+              summary: "otel-collector がメトリクスを 1 件も受け取っていない"
+              description: "直近 10 分に OTLP のメトリクスの受け取りが 0 件。送り手（取引ユニット・LLM ゲートウェイ）が止まっているか、collector へ届いていない。"
+          # 系列を送ってくるサービスの数が、送るはずのサービスの数（入りを許した一覧と同じ 12 = 取引ユニットの 11 ＋ LLM ゲートウェイ）を下回る。
+          #   target_info は送り手ごと（job = service.name）に remote write が作る。一部の送り手だけが途絶えた（止まった・届かない）ことを見る。
+          #   注: 数は deploy/cloud/infra/networkpolicy.yaml の collector の入りの一覧と同じに保つ（scripts/deploy-cloud.test.js が突き合わせる）。
+          - alert: OtlpSendersMissing
+            expr: (count(count by (job) (last_over_time(target_info[10m]))) or vector(0)) < 12
+            for: 15m
+            labels: { severity: warning }
+            annotations:
+              summary: "メトリクスを送ってくるサービスが {{ $value }} 個（12 個のはず）"
+              description: "直近 10 分に系列を送ってきたサービスが 12 個に足りない。止まっているサービスか、collector へ届かないサービスがある（count by (job) (last_over_time(target_info[10m])) で見る）。"
+          # 系列の数が増えすぎた（メモリの上限〔768Mi〕で Prometheus が作り直されると、保持している値〔月次予算の 7 日の窓〕も消える）。
+          #   平時の見込み（12 のサービス × 数百 ＋ 自分たち）の 10 倍ほどを閾値にする。
+          - alert: PrometheusHeadSeriesHigh
+            expr: prometheus_tsdb_head_series{job="prometheus"} > 100000
+            for: 15m
+            labels: { severity: warning }
+            annotations:
+              summary: "Prometheus の系列の数が多い（{{ $value }}）"
+              description: "Prometheus の head の系列が 100000 を超えた。送り手が想定外の系列を送っている。メモリの上限で再起動すると、保持している値（月次予算の 7 日の窓）が消える。"
       # FR-11, NFR-21, IADR-0466, IADR-0692: LLM 費用の月次予算（用途別）の**進み**の超過（クラウド版）。
       # 注: この ConfigMap の値の中に絵文字を書かない（kustomize が値を引用符の 1 行へ書き換え、試験の読み手が読めなくなる）。
       # 金額も単価も式に無い。上限はゲートウェイのゲージ llm_budget_monthly_limit（Llm:Budget:MonthlyLimits。appsettings.json）。
@@ -176,10 +224,22 @@ spec:
       labels: { app: prometheus }
     spec:
       automountServiceAccountToken: false
+      # NFR-18, IADR-0697: 基盤の Pod の権限を最小にする。イメージの利用者（nobody＝uid 65534。名前の利用者は runAsNonRoot で検められないので
+      #   数で書く）のまま root でなく、capability を全部落とし（受け口は 9090 で 1024 より上）、権限の昇格を許さず、
+      #   ルートのファイルシステムは読み取り専用（書くのは emptyDir だけ）。seccomp は RuntimeDefault。
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
         - name: load-ast-rules
           image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
           command: ["/bin/sh", "/etc/prometheus/config/extract-ast-rules.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           env:
             - { name: AST_RULES_SRC, value: /ast-src }
             - { name: AST_RULES_OUT, value: /etc/prometheus/ast-rules }
@@ -200,6 +260,10 @@ spec:
             - "--web.enable-remote-write-receiver"
             - "--storage.tsdb.retention.time=7d"
             - "--storage.tsdb.retention.size=1GB"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           ports:
             - { containerPort: 9090, name: http }
           readinessProbe:

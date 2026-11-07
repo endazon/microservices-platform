@@ -14,16 +14,23 @@ data:
     receivers:
       otlp:
         protocols:
+          # IADR-0697: 1 回の受け取りの大きさと、1 つの接続の同時の流れの数に上限を置く（溢れさせて正当な系列を落とさせない）。
+          #   超えた分は受け取りを拒み、拒んだ数は自身の計器（otelcol_receiver_refused_*）に出る（警報 OtelCollectorRefusingData）。
           grpc:
             endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 4
+            max_concurrent_streams: 16
           http:
             endpoint: 0.0.0.0:4318
+            max_request_body_size: 4194304
     processors:
       batch:
         timeout: 5s
+      # 使う量が上限に近づくと受け取りを拒む（拒んだ数は otelcol_receiver_refused_* に出る）。spike は明示する（既定は上限の 2 割）。
       memory_limiter:
         check_interval: 1s
         limit_mib: 128
+        spike_limit_mib: 32
     exporters:
       debug:
         verbosity: basic

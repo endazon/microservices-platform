@@ -43,6 +43,14 @@ spec:
         spec:
           restartPolicy: Never
           automountServiceAccountToken: false
+          # NFR-18, IADR-0697: 基盤の Pod の権限を最小にする。イメージの postgres（uid 70）で走らせ、capability を全部落とす（足すものは無い）。
+          #   書くのは staging（emptyDir）と HOME（/var/lib/postgresql。イメージで uid 70 の所有）だけで、所有の付け替えをしない。
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: backup
               # deploy/cloud/backup/image/Dockerfile を手元でビルドし、ノードへ取り込む（レジストリへ置かない）。
@@ -111,6 +119,8 @@ spec:
                   value: /etc/platform-infra-ca/ca.crt
               securityContext:
                 allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
                 seccompProfile:
                   type: RuntimeDefault
               volumeMounts:

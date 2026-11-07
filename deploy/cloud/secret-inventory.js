@@ -43,6 +43,16 @@ const CATEGORY = Object.freeze({
   'platform-infra/platform-backup-s3': 1,
   'platform-infra/alertmanager-discord': 1,
   'platform-infra/alertmanager-heartbeat': 1,
+  // NFR-16, IADR-0696: OpenBao 自身の受け口の鍵（TLS）。下の OPENER_SUPPLIED（OpenBao を開ける側の値）。
+  'openbao/openbao-tls': 3,
+});
+
+/**
+ * NFR-16, IADR-0696: OpenBao を開ける側の値（OpenBao から供給できない: 封印のあいだも、ESO が OpenBao へ届く前にも要る）。
+ * 供給元は ExternalSecret でなく、名指しのスクリプト（オーナーが手元から流す）。ここに無い名前は従来どおり ExternalSecret を要る。
+ */
+const OPENER_SUPPLIED = Object.freeze({
+  'openbao/openbao-tls': 'tls-cert.sh（オーナーの手元。OpenBao を開ける側。IADR-0696）',
 });
 
 function walk(dir, skip) {
@@ -104,7 +114,7 @@ function inventory() {
   const supplied = collectSupplied();
   const rows = new Map();
   for (const r of refs) {
-    const row = rows.get(r.ref) || { ref: r.ref, from: new Set(), category: CATEGORY[r.ref], supplier: supplied.get(r.ref) };
+    const row = rows.get(r.ref) || { ref: r.ref, from: new Set(), category: CATEGORY[r.ref], supplier: supplied.get(r.ref) || OPENER_SUPPLIED[r.ref] };
     row.from.add(r.from);
     rows.set(r.ref, row);
   }
@@ -132,5 +142,5 @@ function main(argv) {
   return p.length === 0 ? 0 : 1;
 }
 
-module.exports = { inventory, problems, collectRefs, collectSupplied, CATEGORY };
+module.exports = { inventory, problems, collectRefs, collectSupplied, CATEGORY, OPENER_SUPPLIED };
 if (require.main === module) process.exit(main(process.argv.slice(2)));

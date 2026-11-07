@@ -11,16 +11,23 @@ data:
     receivers:
       otlp:
         protocols:
+          # IADR-0697: 1 回の受け取りの大きさと、1 つの接続の同時の流れの数に上限を置く（溢れさせて正当な系列を落とさせない）。
+          #   超えた分は受け取りを拒み、拒んだ数は自身の計器（otelcol_receiver_refused_*）に出る（警報 OtelCollectorRefusingData）。
           grpc:
             endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 4
+            max_concurrent_streams: 16
           http:
             endpoint: 0.0.0.0:4318
+            max_request_body_size: 4194304
     processors:
       batch:
         timeout: 5s
+      # 使う量が上限に近づくと受け取りを拒む（拒んだ数は otelcol_receiver_refused_* に出る）。spike は明示する（既定は上限の 2 割）。
       memory_limiter:
         check_interval: 1s
         limit_mib: 128
+        spike_limit_mib: 32
     exporters:
       debug:
         verbosity: basic
@@ -58,10 +65,21 @@ spec:
       labels: { app: otel-collector }
     spec:
       automountServiceAccountToken: false
+      # NFR-18, IADR-0697: 基盤の Pod の権限を最小にする。イメージの利用者（uid 10001）のまま root でなく、capability を全部落とし
+      #   （受け口は 4317・4318・8888 で 1024 より上）、権限の昇格を許さず、ルートのファイルシステムは読み取り専用（書く物が無い）。
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:0.102.0@sha256:26bce721ca2f83db1c2c4e8873514dfe5b3973401fe88a1208efdc74e32840c1
           args: ["--config=/etc/otelcol-contrib/config.yaml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           ports:
             - { containerPort: 4317, name: otlp-grpc }
             - { containerPort: 4318, name: otlp-http }

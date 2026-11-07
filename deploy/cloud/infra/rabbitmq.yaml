@@ -38,8 +38,22 @@ spec:
     metadata:
       labels: { app: rabbitmq }
     spec:
+      # NFR-18, IADR-0697: ブローカは API サーバーを呼ばない。ServiceAccount のトークンを載せない。
+      automountServiceAccountToken: false
+      # NFR-18, IADR-0697: 基盤の Pod の権限を最小にする。どのコンテナも root でなく（ブローカの利用者 rabbitmq＝uid 100 / gid 101）、
+      #   capability を全部落とし（足すものは無い）、権限の昇格を許さず、seccomp は RuntimeDefault。名前空間の PSA は restricted。
+      #   🔴 fsGroup は置かない。local-path の PVC にも所有の付け替えが効き（実測）、Erlang の cookie（所有者だけが読める 0400）に
+      #   group の読み書きが付くと、ノードは起動を拒む。
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        seccompProfile: { type: RuntimeDefault }
       # NFR-16, NFR-18, IADR-0591, IADR-0674: サーバ証明書（Secret rabbitmq-tls。クラウドでは OpenBao の PKI が発行し、ESO が写す。IADR-0689）を
-      #   ブローカの利用者（uid 100 / gid 101）だけが読める形へ写す（Secret のボリュームは root の所有になる）。
+      #   ブローカの利用者（uid 100）だけが読める形へ写す（Secret のボリュームは root の所有・0440）。IADR-0697: 写すのも uid 100 で、
+      #   Secret を読むための gid 0 はこの initContainer だけが持つ。写した物は初めから uid 100 の所有（chown・capability は要らない）。
+      #   サービスごとのユーザーのパスワード（Secret rabbitmq-users。起動の直後の復元が uid 100 で読む）も同じ形で写す。
+      #   写しは Pod の起動の時に作る（Secret を差し替えたら Pod を作り直す。コンテナだけの再起動は前の写しを読む）。
       initContainers:
         - name: tls-files
           image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
@@ -51,18 +65,35 @@ spec:
               cp /tls-src/ca.crt /tls/ca.crt
               cp /tls-src/tls.crt /tls/tls.crt
               cp /tls-src/tls.key /tls/tls.key
-              chown 100:101 /tls/ca.crt /tls/tls.crt /tls/tls.key
               chmod 0644 /tls/ca.crt /tls/tls.crt
               chmod 0400 /tls/tls.key
+              for f in /users-src/*; do
+                [ -f "$f" ] || continue
+                cp "$f" "/users/${f##*/}"
+                chmod 0400 "/users/${f##*/}"
+              done
+          securityContext:
+            runAsUser: 100
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           volumeMounts:
             - { name: tls-src, mountPath: /tls-src, readOnly: true }
             - { name: tls, mountPath: /tls }
+            - { name: users-src, mountPath: /users-src, readOnly: true }
+            - { name: users, mountPath: /users }
           resources:
             requests: { cpu: 10m, memory: 16Mi }
             limits: { cpu: 100m, memory: 64Mi }
       containers:
         - name: rabbitmq
           image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
+          # IADR-0697: 公式のイメージの起動器は root で起きたときだけ所有を付け替えて利用者を落とす（su-exec）。uid 100 で起きればそのまま
+          #   ブローカを起こす。既存のデータ（/var/lib/rabbitmq）は前の起動器が uid 100 の所有にしてある。postStart も uid 100 で走る。
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           env:
             - name: RABBITMQ_NODENAME
               value: rabbit@localhost
@@ -117,8 +148,11 @@ spec:
         - name: boot
           configMap: { name: rabbitmq-boot, defaultMode: 0555 }
         # キー = ユーザー名・値 = パスワード。クラウドでは OpenBao の中で作り、ESO が写す。無い間は何も復元しない。
+        #   IADR-0697: root の所有・0440 のまま initContainer が uid 100 の 0400 の写し（users。メモリの emptyDir）を作る。
+        - name: users-src
+          secret: { secretName: rabbitmq-users, optional: true, defaultMode: 0440 }
         - name: users
-          secret: { secretName: rabbitmq-users, optional: true, defaultMode: 0400 }
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
         # 既定のユーザーの無効化の印（クラウドでは宣言の ConfigMap rabbitmq-default-user が最初から立てる）。
         - name: default-user-flag
           configMap: { name: rabbitmq-default-user, optional: true }
@@ -129,7 +163,7 @@ spec:
         - name: tls-conf
           configMap: { name: rabbitmq-tls, defaultMode: 0444 }
         - name: tls-src
-          secret: { secretName: rabbitmq-tls, defaultMode: 0400 }
+          secret: { secretName: rabbitmq-tls, defaultMode: 0440 }
         - name: tls
           emptyDir: { medium: Memory, sizeLimit: 1Mi }
 ---
@@ -173,7 +207,7 @@ data:
     VHOST="${RABBITMQ_BOOT_VHOST:-/}"
     PERMS_DIR="${RABBITMQ_BOOT_PERMISSIONS_DIR:-/etc/rabbitmq-permissions}"
     tries="${RABBITMQ_BOOT_TRIES:-90}"
-    # 🔴 postStart はサーバの起動と並んで root で走る。サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
+    # 🔴 postStart はサーバの起動と並んで走る（クラウドは uid 100。IADR-0697。root で走る構成もこの形のまま扱う）。root で、サーバが cookie を作る前に rabbitmqctl を呼ぶと、rabbitmqctl が
     #   root の所有で cookie を作り、権限を落としたサーバが読めずに起動に失敗する。サーバが作った cookie が在るまで
     #   rabbitmqctl を呼ばず、呼ぶときは cookie の所有者として呼ぶ（su-exec が無ければそのまま）。
     COOKIE="${RABBITMQ_BOOT_COOKIE:-/var/lib/rabbitmq/.erlang.cookie}"

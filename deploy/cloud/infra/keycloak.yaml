@@ -27,12 +27,21 @@ spec:
       labels: { app: keycloak }
     spec:
       automountServiceAccountToken: false
+      # NFR-18, IADR-0697: 基盤の Pod の権限を最小にする。イメージの利用者（uid 1000・gid 0）のまま root でなく、capability を全部落とし
+      #   （受け口は 8443・9000 で 1024 より上なので NET_BIND_SERVICE も要らない）、権限の昇格を許さず、seccomp は RuntimeDefault。
+      #   fsGroup は鍵の 0440 を読むため（下の tls）。PVC を持たないので所有の付け替えはボリュームの Secret・emptyDir にしか及ばない。
       securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
         fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
           args: ["start", "--import-realm"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
           env:
             - name: KC_BOOTSTRAP_ADMIN_USERNAME
               valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
