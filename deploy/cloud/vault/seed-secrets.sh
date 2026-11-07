@@ -2,14 +2,15 @@
 # NFR-05, NFR-18, IADR-0689 決定 6・決定 7: クラスタの中で使う資格情報を、**OpenBao の Pod の中で**乱数から作る（オーナーが手元から流す）。
 #
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <configure.sh のファイル>.age --identity <age の識別子>
-#       → 7 種（下の表）を作る。在れば触らない（作り直しで稼働中の値と食い違わせない）。
+#       → 7 種（下の表。取引ユニットの DB はサービスごとの 7 組も）を作る。在れば触らない（作り直しで稼働中の値と食い違わせない）。
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … gen <cloud/パス> <キー> <バイト数>
 #       → 指定のバイト数の乱数を**標準の base64**（パディングつき・1 行）で書く。キーが在れば止まる（上書きしない）。
 #         例（取引ユニットの手順書）: gen cloud/ast/ast-secrets order-approval-signing-key 32
 #
 # 作る 7 種（ADR-0080 決定 1 の区分 2。パスとキーは IADR-0689 決定 6）:
 #   cloud/platform/postgres・keycloak-db・keycloak-admin・rabbitmq  … username（乱数の接尾辞）・password
-#   cloud/shared/ast-db                                            … username・password
+#   cloud/shared/ast-db                                            … username・password（共有の利用者。移行の間だけ。IADR-0695）
+#   cloud/shared/ast-db-<サービス>（7 つ）                         … username（ast_<サービス>_<乱数>）・password（IADR-0695。サービスごとの DB の利用者）
 #   cloud/shared/ast-rabbitmq-users  … deploy/local/rabbitmq-setup/users.txt の取引ユニットの行の利用者名ごとのパスワード
 #   cloud/shared/ast-client-secrets  … deploy/cloud/realm-for-cloud.js の CLOUD_CLIENTS（3 つ）ごとの secret
 #
@@ -100,6 +101,14 @@ userpass platform/keycloak-db keycloak
 userpass platform/keycloak-admin kcadmin
 userpass platform/rabbitmq mqadmin
 userpass shared/ast-db ast
+# IADR-0695: 取引ユニットの DB の利用者をサービスごとに（各利用者が自分の DB だけを持つ。利用者は Job が作る。手順書）
+userpass shared/ast-db-audit ast_audit
+userpass shared/ast-db-configuration ast_configuration
+userpass shared/ast-db-cost-control ast_cost_control
+userpass shared/ast-db-market-monitor ast_market_monitor
+userpass shared/ast-db-order-execution ast_order_execution
+userpass shared/ast-db-report ast_report
+userpass shared/ast-db-risk-management ast_risk_management
 perkey shared/ast-rabbitmq-users __MQ_USERS__
 perkey shared/ast-client-secrets __CLIENTS__
 '

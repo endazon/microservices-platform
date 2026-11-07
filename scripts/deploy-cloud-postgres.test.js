@@ -8,6 +8,9 @@
  *   2. 取引ユニットの 7 つの DB と keycloak の DB ができる。
  *   3. pg_hba が効いている: ソケットはパスワードなしでは入れない・TCP の平文は拒む・TCP の TLS は受ける・pg_isready は通る。
  *   4. 変異: initContainer が鍵の所有者と mode を整えない（root の所有・0644）と、Postgres は起動しない（判定が空振りしない）。
+ *   5. IADR-0695: ConfigMap postgres-ast-db-users の手順（Job が流すもの）を同じ Postgres に TLS で流す。apply が 7 人を作り、各 DB と中の物の
+ *      OWNER を移し、各利用者は自分の DB にだけ入れる。移行の間も共有の利用者は読み書きできる。drop-shared は共有の利用者の接続が残れば止め、
+ *      無ければ消す。どちらも冪等。値はログ・出力に出ない。変異（CONNECT を外さない・共有の利用者を役割の一員にしない）を検出する。
  *
  * 証明書の鍵の所有者と mode は本番と同じ経路で作る: Secret の中身（試験だけの使い捨ての鍵）を読み取り専用で渡し、
  * 宣言の initContainer の command をそのイメージ（root）で走らせて docker のボリュームへ写し、そのボリュームを Postgres に
@@ -26,6 +29,9 @@ const { spawnSync } = require('child_process');
 const { parseDocuments } = require('./lib/yaml-subset');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
+const AST_DB_SERVICES = ['audit', 'configuration', 'cost-control', 'market-monitor', 'order-execution', 'report', 'risk-management'];
+const dbOf = (svc) => `${svc.replace(/-/g, '_')}_svc`;
+const envOf = (kind, svc) => `AST_DB_${kind}_${svc.replace(/-/g, '_').toUpperCase()}`;
 const WANT_DBS = ['audit_svc', 'configuration_svc', 'cost_control_svc', 'market_monitor_svc', 'order_execution_svc', 'report_svc', 'risk_management_svc', 'keycloak'];
 
 function docker(args, opts = {}) {
@@ -41,7 +47,10 @@ function loadDeclaration() {
   const c = spec.containers.find((x) => x.name === 'postgres');
   const init = (spec.initContainers || []).find((x) => x.name === 'tls-files');
   assert.ok(init, '証明書を写す initContainer（tls-files）が無い');
-  return { docs, spec, c, init };
+  const users = parseDocuments(fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/infra/postgres-ast-db-users.yaml'), 'utf8'))
+    .find((d) => d && d.kind === 'ConfigMap' && d.metadata.name === 'postgres-ast-db-users');
+  assert.ok(users && users.data && users.data['ast-db-users.sh'], 'ConfigMap postgres-ast-db-users の ast-db-users.sh が無い');
+  return { docs, spec, c, init, usersScript: String(users.data['ast-db-users.sh']) };
 }
 
 /**
@@ -73,6 +82,8 @@ function start(decl, label) {
       return p;
     };
     const initDir = sub('init');
+    const usersDir = sub('ast-db-users');
+    fs.writeFileSync(path.join(usersDir, 'ast-db-users.sh'), decl.usersScript, { mode: 0o755 });
     const hbaDir = sub('hba');
     const srcDir = sub('tls-src');
     for (const d of docs.filter((x) => x.kind === 'ConfigMap')) {
@@ -111,11 +122,13 @@ function start(decl, label) {
     const envFile = path.join(dir, 'env');
     fs.writeFileSync(envFile, [
       `POSTGRES_USER=${admin}`, `POSTGRES_PASSWORD=${rnd(24)}`, `POSTGRES_DB=${admin}`, 'PGDATA=/var/lib/postgresql/data/pgdata',
-      `AST_DB_USER=ast_${rnd(3)}`, `AST_DB_PASSWORD=${rnd(24)}`, `KEYCLOAK_DB_USER=kc_${rnd(3)}`, `KEYCLOAK_DB_PASSWORD=${rnd(24)}`, '',
+      `AST_DB_USER=ast_${rnd(3)}`, `AST_DB_PASSWORD=${rnd(24)}`, `KEYCLOAK_DB_USER=kc_${rnd(3)}`, `KEYCLOAK_DB_PASSWORD=${rnd(24)}`,
+      // IADR-0695: Job の env と同じ名前（seed-secrets.sh の形: ast_<サービス>_<乱数>・24 バイト）。初期化は読まない。
+      ...AST_DB_SERVICES.flatMap((svc) => [`${envOf('USER', svc)}=ast_${svc.replace(/-/g, '_')}_${rnd(3)}`, `${envOf('PASSWORD', svc)}=${rnd(24)}`]), '',
     ].join('\n'), { mode: 0o600 });
 
     const run = docker(['run', '-d', '--name', name, '--env-file', envFile,
-      '-v', `${initDir}:/docker-entrypoint-initdb.d:ro`, '-v', `${hbaDir}:${hbaMount}:ro`, '-v', `${tlsVolume}:${tlsMount}:ro`,
+      '-v', `${initDir}:/docker-entrypoint-initdb.d:ro`, '-v', `${usersDir}:/opt/ast-db-users:ro`, '-v', `${hbaDir}:${hbaMount}:ro`, '-v', `${tlsVolume}:${tlsMount}:ro`,
       '--tmpfs', '/var/lib/postgresql/data', image, ...args]);
     assert.strictEqual(run.status, 0, `起動できない: ${run.stderr}`);
 
@@ -128,7 +141,7 @@ function start(decl, label) {
       logs = `${l.stdout}${l.stderr}`;
       state = docker(['inspect', '-f', '{{.State.Status}}', name]).stdout.trim();
       const ready = /PostgreSQL init process complete/.test(logs) && (logs.match(/ready to accept connections/g) || []).length >= 2;
-      if (ready) return { ready: true, logs, name, hbaArg, cleanup };
+      if (ready) return { ready: true, logs, name, hbaArg, cleanup, envFile };
       if (state !== 'running' || Date.now() > deadline) return { ready: false, logs, state, name, hbaArg, cleanup };
       spawnSync('sleep', ['1']);
     }
@@ -165,9 +178,121 @@ function checkDeclared() {
     assert.strictEqual(hba.stdout.trim(), r.hbaArg.slice('hba_file='.length), '宣言の hba_file が効いていない');
     assert.strictEqual(sh('pg_isready -U "$POSTGRES_USER"').status, 0, 'pg_isready（readiness）が通らない');
     console.log('  ok  pg_hba が効く（ソケットはパスワード必須・TCP の平文は拒む・TLS は受ける・pg_isready は通る）');
+    checkDbUsers(r, sh);
   } finally {
     r.cleanup();
   }
+}
+
+/**
+ * IADR-0695: ConfigMap postgres-ast-db-users の手順を、Job と同じ形（超利用者・TCP の TLS・値は env から）で流す。
+ * 試験の証明書は名前の照合ができない（CN=postgres を 127.0.0.1 で引く）ので sslmode は require（宣言の Job は verify-full。deploy-cloud.test.js が固定）。
+ */
+function checkDbUsers(r, sh) {
+  const values = fs.readFileSync(r.envFile, 'utf8').split('\n').filter((l) => /^(AST_DB_|KEYCLOAK_DB_|POSTGRES_PASSWORD)/.test(l)).map((l) => l.slice(l.indexOf('=') + 1)).filter((v) => v.length >= 6);
+  assert.ok(values.length >= 18, `陽性対照: 確かめる値が少ない（${values.length}）`);
+  const noValues = (text, what) => { for (const v of values) assert.ok(!text.includes(v), `${what} に値（利用者名かパスワード）が出た`); };
+  const JOB_ENV = 'PGHOST=127.0.0.1 PGSSLMODE=require PGDATABASE=postgres PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" AST_DB_SHARED_USER="$AST_DB_USER"';
+  const job = (stage, script = '/opt/ast-db-users/ast-db-users.sh') => {
+    const x = sh(`${JOB_ENV} bash ${script} ${stage}`);
+    noValues(`${x.stdout}${x.stderr}`, `${stage} の出力`);
+    return x;
+  };
+  // psql で <利用者>（env の名前）として <DB> に入って SQL を流す。値は env から（引数に載せない）。
+  const as = (userEnv, passEnv, db, sql) => sh(`PGPASSWORD="$${passEnv}" psql -X -q -tA -v ON_ERROR_STOP=1 -h 127.0.0.1 "sslmode=require dbname=${db} user=$${userEnv}" -c "${sql.replace(/"/g, '\\"')}"`);
+  const asShared = (db, sql) => as('AST_DB_USER', 'AST_DB_PASSWORD', db, sql);
+  const asSvc = (svc, db, sql) => as(envOf('USER', svc), envOf('PASSWORD', svc), db, sql);
+
+  // 稼働中の構成の代わり: 共有の利用者がマイグレーションで作った物（表・連番・スキーマ）を各 DB に置く。
+  for (const svc of AST_DB_SERVICES) {
+    const x = asShared(dbOf(svc), 'create table "__EFMigrationsHistory"(id text primary key); create table t(id serial primary key, v text); insert into t(v) values (1); create schema wolverine; create table wolverine.envelopes(id int)');
+    assert.strictEqual(x.status, 0, `共有の利用者で ${dbOf(svc)} に物を作れない: ${x.stderr}`);
+  }
+
+  // 変異 B（先に流す）: 共有の利用者を役割の一員にしないと、移行の間に旧の Pod（共有の利用者）が読めなくなる。
+  const script = '/opt/ast-db-users/ast-db-users.sh';
+  const src = fs.readFileSync(path.join(path.dirname(r.envFile), 'ast-db-users', 'ast-db-users.sh'), 'utf8');
+  const write = (name, text) => {
+    const f = path.join(path.dirname(r.envFile), 'ast-db-users', name);
+    fs.writeFileSync(f, text, { mode: 0o755 });
+    return `/opt/ast-db-users/${name}`;
+  };
+  const noGrant = src.replace(/^.*GRANT :"u_%s" TO :"shared".*$/m, '');
+  assert.notStrictEqual(noGrant, src, '変異の置換元（GRANT … TO shared）が無い（試験が古い）');
+  assert.strictEqual(job('apply', write('mut-nogrant.sh', noGrant)).status, 0, '変異 B の apply が通らない（下の確かめの前提）');
+  assert.notStrictEqual(asShared('audit_svc', 'select count(*) from t').status, 0, '変異 B: 共有の利用者を役割の一員にしないのに、移行の間も読めた（判定が空振りしている）');
+  console.log('  ok  変異: 共有の利用者を役割の一員にしないと、移行の間に旧の利用者が読めなくなる（検出する）');
+
+  // apply（本物）
+  const a1 = job('apply');
+  assert.strictEqual(a1.status, 0, `apply が失敗した:\n${a1.stdout}${a1.stderr}`);
+  assert.match(a1.stdout, /確かめた: 7 つのサービスの利用者は自分の DB と中の物だけの OWNER/);
+  for (const svc of AST_DB_SERVICES) {
+    const own = asSvc(svc, dbOf(svc), "insert into t(v) values (2); insert into wolverine.envelopes values (1); select count(*) from t");
+    assert.strictEqual(own.status, 0, `${svc} の利用者が自分の DB の物を読み書きできない: ${own.stderr}`);
+    assert.strictEqual(own.stdout.trim().split('\n').pop(), '2');
+    const ddl = asSvc(svc, dbOf(svc), 'create table t2(x int); drop table t2; alter table t add column c int; alter table t drop column c');
+    assert.strictEqual(ddl.status, 0, `${svc} の利用者が自分の DB でマイグレーション（DDL）を流せない: ${ddl.stderr}`);
+    for (const other of [...AST_DB_SERVICES.filter((x) => x !== svc).map(dbOf), 'keycloak', 'postgres', 'template1']) {
+      const x = asSvc(svc, other, 'select 1');
+      assert.notStrictEqual(x.status, 0, `${svc} の利用者が ${other} に入れた`);
+      assert.match(x.stderr, /CONNECT privilege/, `${svc} → ${other} が CONNECT の権限で拒まれていない: ${x.stderr}`);
+    }
+    const shared = asShared(dbOf(svc), 'insert into t(v) values (3); select count(*) from t');
+    assert.strictEqual(shared.status, 0, `移行の間に共有の利用者が ${dbOf(svc)} を読み書きできない: ${shared.stderr}`);
+  }
+  const kc = sh('PGPASSWORD="$KEYCLOAK_DB_PASSWORD" psql -X -tA -h 127.0.0.1 "sslmode=require dbname=keycloak user=$KEYCLOAK_DB_USER" -c "select 1"');
+  assert.strictEqual(kc.status, 0, `Keycloak の利用者が自分の DB に入れなくなった: ${kc.stderr}`);
+  const a2 = job('apply');
+  assert.strictEqual(a2.status, 0, `2 回目の apply が失敗した（冪等でない）:\n${a2.stdout}${a2.stderr}`);
+  console.log('  ok  apply: 7 人を作り、各 DB と中の物の OWNER を移し、各利用者は自分の DB にだけ入れて DDL も流せる。移行の間も共有の利用者は読み書きでき、Keycloak は変わらない。2 回目も通る');
+
+  // 変異 A: CONNECT を PUBLIC から外さないと、確かめ（CONNECT の表）が赤になる。PUBLIC に戻した DB の上で流す。
+  const noRevoke = src.replace(/^.*REVOKE CONNECT, TEMPORARY ON DATABASE.*$/m, '');
+  assert.notStrictEqual(noRevoke, src, '変異の置換元（REVOKE CONNECT）が無い（試験が古い）');
+  assert.strictEqual(sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "GRANT CONNECT ON DATABASE configuration_svc TO PUBLIC"').status, 0);
+  const ma = job('apply', write('mut-norevoke.sh', noRevoke));
+  assert.notStrictEqual(ma.status, 0, '変異 A: CONNECT を外さないのに apply が通った（確かめが空振りしている）');
+  assert.match(ma.stderr, /NG: .* が configuration_svc に CONNECT できる/);
+  assert.strictEqual(job('apply').status, 0, '変異 A の後の apply（本物）が通らない');
+  console.log('  ok  変異: PUBLIC の CONNECT を外さないと、確かめが他の DB への CONNECT を検出して失敗する');
+
+  // drop-shared: 共有の利用者の接続が残っていれば止める（消さない）。
+  const hold = docker(['exec', '-d', r.name, 'sh', '-c', 'PGPASSWORD="$AST_DB_PASSWORD" psql -X -h 127.0.0.1 "sslmode=require dbname=audit_svc user=$AST_DB_USER" -c "select pg_sleep(20)"']);
+  assert.strictEqual(hold.status, 0);
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    const n = sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -tA -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "select count(*) from pg_stat_activity where usename = \'"$AST_DB_USER"\'"');
+    if (n.stdout.trim() === '1') break;
+    assert.ok(Date.now() < deadline, '共有の利用者の接続を張れない（試験の前提）');
+    spawnSync('sleep', ['0.5']);
+  }
+  const busy = job('drop-shared');
+  assert.strictEqual(busy.status, 4, `共有の利用者の接続が残るのに drop-shared が 4 で止まらない（${busy.status}）:\n${busy.stderr}`);
+  assert.match(busy.stderr, /共有の利用者の接続が 1 本ある/);
+  sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "select pg_terminate_backend(pid) from pg_stat_activity where usename = \'"$AST_DB_USER"\'"');
+  assert.strictEqual(asShared('audit_svc', 'select 1').status, 0, '止まった drop-shared の後に、共有の利用者が入れない（消さずに止まっていない）');
+
+  // drop-shared: 移行の間に共有の利用者が作った物も各サービスの利用者へ移して、共有の利用者を消す。
+  assert.strictEqual(asShared('report_svc', 'create table stray(x int)').status, 0);
+  const d1 = job('drop-shared');
+  assert.strictEqual(d1.status, 0, `drop-shared が失敗した:\n${d1.stdout}${d1.stderr}`);
+  assert.match(d1.stdout, /消した: 共有の利用者/);
+  const gone = asShared('audit_svc', 'select 1');
+  assert.notStrictEqual(gone.status, 0, 'drop-shared の後も共有の利用者で入れる');
+  assert.match(gone.stderr, /does not exist|authentication failed/);
+  assert.strictEqual(asSvc('report', 'report_svc', 'insert into stray values (1); select count(*) from t').status, 0, 'drop-shared の後に、移行の間に作られた物をサービスの利用者が使えない');
+  for (const svc of AST_DB_SERVICES) assert.strictEqual(asSvc(svc, dbOf(svc), 'select count(*) from t').status, 0, `drop-shared の後に ${svc} の利用者が自分の DB を読めない`);
+  const d2 = job('drop-shared');
+  assert.strictEqual(d2.status, 0, `2 回目の drop-shared が失敗した（冪等でない）:\n${d2.stderr}`);
+  assert.match(d2.stdout, /共有の利用者は既に無い/);
+  assert.strictEqual(job('apply').status, 0, 'drop-shared の後の apply が通らない');
+
+  // 値はサーバのログにも出ない（パスワードを含む文を記録しない）。
+  const logs = docker(['logs', r.name]);
+  const logText = `${logs.stdout}${logs.stderr}`;
+  noValues(logText.replace(/(user|role) "[^"]*"/gi, ''), 'Postgres のログ');
+  console.log('  ok  drop-shared: 共有の利用者の接続が残れば 4 で止まり（消さない）、無ければ残りの物を移して消す。2 回目も通る。値はログに出ない');
 }
 
 function checkMutation() {

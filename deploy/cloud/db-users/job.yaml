@@ -1,0 +1,102 @@
+# NFR-18, NFR-05, IADR-0695: 取引ユニットの DB の利用者をサービスごとに分ける Job（手順は ConfigMap postgres-ast-db-users）。
+#   🔴 kustomize には入れない（Job は作り直さないと流れない）。deploy/cloud/db-users/ast-db-users.sh --live <段> が、段（args）を差し替えて作り、
+#      終わるまで待ち、ログを出し、成功したら消す。新しく作る構成も稼働中の構成も同じ Job を流す（README §3・手順書）。
+#   - 接続は超利用者（Secret postgres）で TLS（verify-full。CA は ConfigMap platform-infra-ca、名前は Service postgres）。
+#   - 値は secretKeyRef だけで読む（このファイル・引数・ConfigMap に書かない）。サービスごとの資格は Secret ast-db-<サービス>（ESO が
+#     cloud/shared/ast-db-<サービス> から写す）。共有の利用者の名前は Secret ast-db（移行の間だけ。optional: 最終の段の後に消える）。
+#   - イメージは Postgres と同じ digest（psql を持つ）。到達は Postgres の 5432 だけ（infra/postgres-ast-db-users.yaml の NetworkPolicy）。
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-ast-db-users
+  namespace: platform-infra
+  labels: { app: postgres-ast-db-users }
+spec:
+  # 失敗を再試行で上書きしない（1 回の失敗をそのまま Job の失敗として残す。手順は冪等なので、理由を直して流し直す）。
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: { app: postgres-ast-db-users }
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      containers:
+        - name: ast-db-users
+          image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          command: ["/bin/bash", "/opt/ast-db-users/ast-db-users.sh"]
+          # 段（ast-db-users.sh が差し替える）
+          args: ["apply"]
+          env:
+            - name: PGHOST
+              value: postgres
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: postgres
+            - name: PGUSER
+              valueFrom: { secretKeyRef: { name: postgres, key: username } }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: postgres, key: password } }
+            # 🔴 サーバ証明書を CA と名前（PGHOST）で検証する。PGSSLROOTCERT が読めなければ接続しない（検証なしへ倒れない）。
+            - name: PGSSLMODE
+              value: verify-full
+            - name: PGSSLROOTCERT
+              value: /etc/platform-infra-ca/ca.crt
+            - name: AST_DB_SHARED_USER
+              valueFrom: { secretKeyRef: { name: ast-db, key: username, optional: true } }
+            - name: AST_DB_USER_AUDIT
+              valueFrom: { secretKeyRef: { name: ast-db-audit, key: username } }
+            - name: AST_DB_PASSWORD_AUDIT
+              valueFrom: { secretKeyRef: { name: ast-db-audit, key: password } }
+            - name: AST_DB_USER_CONFIGURATION
+              valueFrom: { secretKeyRef: { name: ast-db-configuration, key: username } }
+            - name: AST_DB_PASSWORD_CONFIGURATION
+              valueFrom: { secretKeyRef: { name: ast-db-configuration, key: password } }
+            - name: AST_DB_USER_COST_CONTROL
+              valueFrom: { secretKeyRef: { name: ast-db-cost-control, key: username } }
+            - name: AST_DB_PASSWORD_COST_CONTROL
+              valueFrom: { secretKeyRef: { name: ast-db-cost-control, key: password } }
+            - name: AST_DB_USER_MARKET_MONITOR
+              valueFrom: { secretKeyRef: { name: ast-db-market-monitor, key: username } }
+            - name: AST_DB_PASSWORD_MARKET_MONITOR
+              valueFrom: { secretKeyRef: { name: ast-db-market-monitor, key: password } }
+            - name: AST_DB_USER_ORDER_EXECUTION
+              valueFrom: { secretKeyRef: { name: ast-db-order-execution, key: username } }
+            - name: AST_DB_PASSWORD_ORDER_EXECUTION
+              valueFrom: { secretKeyRef: { name: ast-db-order-execution, key: password } }
+            - name: AST_DB_USER_REPORT
+              valueFrom: { secretKeyRef: { name: ast-db-report, key: username } }
+            - name: AST_DB_PASSWORD_REPORT
+              valueFrom: { secretKeyRef: { name: ast-db-report, key: password } }
+            - name: AST_DB_USER_RISK_MANAGEMENT
+              valueFrom: { secretKeyRef: { name: ast-db-risk-management, key: username } }
+            - name: AST_DB_PASSWORD_RISK_MANAGEMENT
+              valueFrom: { secretKeyRef: { name: ast-db-risk-management, key: password } }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+            seccompProfile: { type: RuntimeDefault }
+          volumeMounts:
+            - { name: script, mountPath: /opt/ast-db-users, readOnly: true }
+            - { name: platform-infra-ca, mountPath: /etc/platform-infra-ca, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { cpu: 500m, memory: 128Mi }
+      volumes:
+        - name: script
+          configMap: { name: postgres-ast-db-users, defaultMode: 0555 }
+        # #2401 の CA（公開してよい証明書）。非 optional（無ければ Pod は立たず、Job の失敗として見える）。
+        - name: platform-infra-ca
+          configMap:
+            name: platform-infra-ca
+            items:
+              - { key: ca.crt, path: ca.crt }
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }

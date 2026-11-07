@@ -67,6 +67,133 @@ spec:
     - secretKey: password
       remoteRef: { key: shared/ast-db, property: password }
 ---
+# ［2026-11-07 / IADR-0695］取引ユニットの DB のサービスごとの利用者（7 つ）。消費は Job postgres-ast-db-users（deploy/cloud/db-users）。
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-audit
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-audit
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-audit, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-audit, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-configuration
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-configuration
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-configuration, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-configuration, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-cost-control
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-cost-control
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-cost-control, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-cost-control, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-market-monitor
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-market-monitor
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-market-monitor, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-market-monitor, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-order-execution
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-order-execution
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-order-execution, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-order-execution, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-report
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-report
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-report, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-report, property: password }
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: ast-db-risk-management
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: ast-db-risk-management
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: shared/ast-db-risk-management, property: username }
+    - secretKey: password
+      remoteRef: { key: shared/ast-db-risk-management, property: password }
+---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:

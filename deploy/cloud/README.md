@@ -6,6 +6,7 @@
 | 置くもの | 宣言 |
 | --- | --- |
 | Postgres（取引ユニットの 7 つの DB・Keycloak の DB。TLS） | `infra/postgres.yaml` |
+| 取引ユニットの DB のサービスごとの利用者（各利用者が自分の DB だけを持つ。[IADR-0695](../../.ai-context/adr/IADR-0695_cloud-db-per-service-users.md)） | `infra/postgres-ast-db-users.yaml`・`db-users/` |
 | RabbitMQ（取引ユニットのサービスごとのユーザー。TLS） | `infra/rabbitmq.yaml` |
 | Keycloak（本番モード `start`・realm `platform`・HTTPS 8443 だけ。[IADR-0693](../../.ai-context/adr/IADR-0693_cloud-keycloak-tls-openbao-pki.md)） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
 | OpenTelemetry の collector（受けて捨てる） | `infra/otel-collector.yaml` |
@@ -162,7 +163,7 @@ bash deploy/cloud/vault/init.sh --live --recipients <age の受取人> --out <in
 bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <age の識別子>
 bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <age の識別子> \
   --recipients <age の受取人> --operator-out <operator>.age          # 初回の root は最後に失効する
-bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <age の識別子>   # 7 種を OpenBao の中で作る
+bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <age の識別子>   # 7 種（DB はサービスごとの 7 組も）を OpenBao の中で作る
 . scripts/lib/pinned-artifacts.sh && pinned_work_init
 helm upgrade --install external-secrets "$(pinned_chart external-secrets 2.8.0 "$PINNED_WORK")" \
   -n external-secrets --create-namespace -f deploy/cloud/vault/external-secrets-values.yaml --wait
@@ -176,6 +177,7 @@ node deploy/cloud/secret-inventory.js                                 # 参照�
 kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ（backup）・観測（observability）と、collector の結線（patch）を一緒に当てる
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
+bash deploy/cloud/db-users/ast-db-users.sh --live apply              # 取引ユニットの DB のサービスごとの利用者（Job。値は手元へ来ない）
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
@@ -186,6 +188,8 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - Keycloak は HTTPS（8443）だけで受ける（証明書は ESO が写す `keycloak-tls`。発行元は `https://keycloak:8443/realms/platform`）。LLM ゲートウェイは
   https を必須にし、基盤の CA で検証する（values-cloud の `global.auth`）。**平文で動いている構成を移すときは、この順ではなく**
   [認可サーバーの TLS の手順書](../../docs/operations/cloud-keycloak-tls-runbook.md)の併存の段（`deploy/cloud-transition/keycloak-tls-coexist`）を経る。
+- 取引ユニットの DB の利用者はサービスごとに分ける（[手順書](../../docs/operations/cloud-db-per-service-users-runbook.md)）。共有の利用者は移行の間だけ残り、
+  取引ユニットを入れた後に `ast-db-users.sh --live drop-shared` で消す。稼働中の構成を移すときは手順書の 3 段の順。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
   `cloud/shared/*`（DB・ブローカ・3 つの client の secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
 
@@ -195,6 +199,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | --- | --- | --- | --- |
 | DB の管理者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー | `seed-secrets.sh`（Pod の中の乱数。利用者名も乱数の接尾辞） | `cloud/platform/*` | `platform-infra` の Secret `postgres`・`keycloak-db`・`keycloak-admin`・`rabbitmq` |
 | 取引ユニットの DB の利用者・ブローカの 11 ユーザー・3 つの機密クライアントの secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
+| 取引ユニットの DB のサービスごとの利用者（7 組。共有の `ast-db` は移行の後に外す） | 同上（利用者名は `ast_<サービス>_<乱数>`） | `cloud/shared/ast-db-<サービス>` | `platform-infra` の `ast-db-<サービス>`（利用者を作る Job が読む）。取引ユニットの側も同じパスを読む |
 | サーバ証明書と鍵（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない。role の一覧は `vault/lib.sh` の `OB_PKI_ROLES`） | — | `postgres-tls`・`rabbitmq-tls`・`keycloak-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
 | CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
 

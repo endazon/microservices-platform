@@ -5,6 +5,14 @@ path "cloud/data/platform/keycloak-db"    { capabilities = ["read"] }
 path "cloud/data/platform/keycloak-admin" { capabilities = ["read"] }
 path "cloud/data/platform/rabbitmq"       { capabilities = ["read"] }
 path "cloud/data/shared/ast-db"             { capabilities = ["read"] }
+# ［2026-11-07 / IADR-0695］サービスごとの DB の利用者（名指しの 7 つ。共有の ast-db は移行の後に外す）。
+path "cloud/data/shared/ast-db-audit"       { capabilities = ["read"] }
+path "cloud/data/shared/ast-db-configuration" { capabilities = ["read"] }
+path "cloud/data/shared/ast-db-cost-control" { capabilities = ["read"] }
+path "cloud/data/shared/ast-db-market-monitor" { capabilities = ["read"] }
+path "cloud/data/shared/ast-db-order-execution" { capabilities = ["read"] }
+path "cloud/data/shared/ast-db-report"      { capabilities = ["read"] }
+path "cloud/data/shared/ast-db-risk-management" { capabilities = ["read"] }
 path "cloud/data/shared/ast-rabbitmq-users" { capabilities = ["read"] }
 path "cloud/data/shared/ast-client-secrets" { capabilities = ["read"] }
 # ［2026-11-07 / IADR-0689 決定 11］外から持ち込む値（オーナーが put-external-secret.sh で書く）。

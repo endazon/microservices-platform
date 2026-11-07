@@ -8,6 +8,7 @@ kind: Kustomization
 resources:
   - namespaces.yaml
   - postgres.yaml
+  - postgres-ast-db-users.yaml
   - rabbitmq.yaml
   - rabbitmq-permissions.yaml
   - keycloak.yaml

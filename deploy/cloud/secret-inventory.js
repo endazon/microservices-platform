@@ -23,6 +23,13 @@ const CLOUD = path.join(ROOT, 'deploy', 'cloud');
 const CATEGORY = Object.freeze({
   'platform-infra/postgres': 2,
   'platform-infra/ast-db': 2,
+  'platform-infra/ast-db-audit': 2,
+  'platform-infra/ast-db-configuration': 2,
+  'platform-infra/ast-db-cost-control': 2,
+  'platform-infra/ast-db-market-monitor': 2,
+  'platform-infra/ast-db-order-execution': 2,
+  'platform-infra/ast-db-report': 2,
+  'platform-infra/ast-db-risk-management': 2,
   'platform-infra/keycloak-db': 2,
   'platform-infra/keycloak-admin': 2,
   'platform-infra/rabbitmq': 2,

@@ -1,0 +1,191 @@
+# NFR-18, NFR-05, IADR-0695: 取引ユニットの DB の利用者をサービスごとに分け、各利用者が自分の DB だけを持つようにする（最小権限）。
+#   - 手順（SQL）は ConfigMap postgres-ast-db-users の 1 か所に持つ。流すのは Job（deploy/cloud/db-users/job.yaml。
+#     deploy/cloud/db-users/ast-db-users.sh が作って待って消す）。新しく作る構成も、稼働中の構成も同じ Job を流す（README §3・手順書）。
+#   - 🔴 値（利用者名・パスワード）は Job の env（Secret の secretKeyRef）から psql の \getenv で読む。SQL・引数・ConfigMap に書かない。
+#     パスワードを含む文がサーバのログに出ないよう、セッションで log_statement・log_min_error_statement・log_min_duration_statement を止め、
+#     psql は VERBOSITY terse（文の字面を返さない）で走らせる。
+#   - 01-create-databases.sh（initdb）は変えない（変えると Postgres の Deployment が作り直される。IADR-0695 決定 2）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-ast-db-users
+  namespace: platform-infra
+  labels: { app: postgres-ast-db-users }
+data:
+  ast-db-users.sh: |
+    #!/bin/bash
+    # 段（IADR-0695 決定 4）:
+    #   apply       … 7 人を作り（在ればパスワードを OpenBao の値に合わせる）、各 DB の OWNER と中の物の OWNER をその利用者へ移し、
+    #                 接続を許す全 DB の CONNECT・TEMPORARY を PUBLIC から外す。移行の間は共有の利用者を各利用者の役割の一員にする。冪等。
+    #   drop-shared … 共有の利用者の接続が無いことを確かめて、残りを移し、権限を外して消す（最終の段）。冪等。
+    # どちらも最後に「どの利用者がどの DB に CONNECT できるか」と OWNER を確かめ、自分の DB の外に出れば失敗にする。
+    # 出力にはサービスの名前と真偽だけを出す（利用者名・パスワードを出さない）。
+    set -euo pipefail
+    STAGE="${1:-}"
+    case "$STAGE" in apply | drop-shared) ;; *) echo "ERROR: 段は apply か drop-shared（値: ${STAGE:-（なし）}）" >&2; exit 2 ;; esac
+    # <サービス>:<DB>（取引ユニットの chart の services.<名前>.db と、01-create-databases.sh の 7 つの DB と 1 対 1。試験が突き合わせる）
+    SERVICES="audit:audit_svc configuration:configuration_svc cost-control:cost_control_svc market-monitor:market_monitor_svc order-execution:order_execution_svc report:report_svc risk-management:risk_management_svc"
+    export AST_DB_SHARED_USER="${AST_DB_SHARED_USER:-}"
+    PSQL=(psql -X -q -v ON_ERROR_STOP=1 -v VERBOSITY=terse -v SHOW_CONTEXT=never)
+    QUIET="SET log_statement = 'none'; SET log_min_error_statement = 'panic'; SET log_min_duration_statement = -1; SET client_min_messages = 'warning'; SET lock_timeout = '30s';"
+    var() { printf '%s' "${1//-/_}"; }
+    env_of() { printf 'AST_DB_%s_%s' "$1" "$(printf '%s' "${2//-/_}" | tr '[:lower:]' '[:upper:]')"; }
+
+    # 利用者名の形と重なりを検める（値は出さない）。
+    seen=" ${AST_DB_SHARED_USER} "
+    for e in $SERVICES; do
+      s="${e%%:*}" n="$(env_of USER "$s")" p="$(env_of PASSWORD "$s")"
+      u="${!n:-}"
+      [[ "$u" =~ ^[a-z][a-z0-9_]{0,62}$ ]] || { echo "ERROR: ${s} の利用者名（${n}）が無いか、形が違う" >&2; exit 2; }
+      [ "$STAGE" = drop-shared ] || [ -n "${!p:-}" ] || { echo "ERROR: ${s} のパスワード（${p}）が無い" >&2; exit 2; }
+      case "$seen" in *" $u "*) echo "ERROR: ${s} の利用者名が、共有の利用者かほかのサービスと重なる" >&2; exit 2 ;; esac
+      [ "$u" != "${PGUSER:-}" ] || { echo "ERROR: ${s} の利用者名が管理者と重なる" >&2; exit 2; }
+      seen="$seen$u "
+    done
+    if [ -n "$AST_DB_SHARED_USER" ] && ! [[ "$AST_DB_SHARED_USER" =~ ^[a-z][a-z0-9_]{0,62}$ ]]; then
+      echo "ERROR: 共有の利用者名（AST_DB_SHARED_USER）の形が違う" >&2; exit 2
+    fi
+
+    # psql の手順の前置き（値は持たない。\getenv で env から読む）
+    head_sql() {
+      printf '%s\n' "$QUIET"
+      printf '\\getenv shared AST_DB_SHARED_USER\n'
+      for e in $SERVICES; do
+        s="${e%%:*}"
+        printf '\\getenv u_%s %s\n' "$(var "$s")" "$(env_of USER "$s")"
+      done
+      printf "SELECT (:'shared' <> '' AND EXISTS (SELECT FROM pg_roles WHERE rolname = :'shared')) AS has_shared \\\\gset\n"
+    }
+
+    # 確かめ: サービスごとに、自分の DB の OWNER か・中の物（表・列の連番・型など・スキーマ）の OWNER がその利用者か・どの DB に CONNECT できるか。
+    # verify full … 中の物の OWNER も確かめる。verify db … DB の OWNER と CONNECT だけ（drop-shared の前の確かめ。移行の間に共有の利用者が
+    #   作った物は drop-shared が移すので、ここでは止めない）。
+    verify() {
+      local mode="$1" out bad=0 e s d row
+      out="$({
+        head_sql
+        for e in $SERVICES; do
+          s="${e%%:*}" d="${e#*:}"
+          printf "SELECT 'connect', '%s', datname, has_database_privilege(:'u_%s', datname, 'CONNECT') FROM pg_database WHERE datallowconn;\n" "$s" "$(var "$s")"
+          printf "SELECT 'dbowner', '%s', '%s', datdba = to_regrole(:'u_%s')::oid FROM pg_database WHERE datname = '%s';\n" "$s" "$d" "$(var "$s")" "$d"
+        done
+      } | "${PSQL[@]}" -tA -F '|' -d postgres)"
+      for e in $SERVICES; do
+        [ "$mode" = full ] || break
+        s="${e%%:*}" d="${e#*:}"
+        out="$out
+    $({
+          printf '%s\n' "$QUIET"
+          printf '\\getenv u U\n'
+          printf "SELECT 'objowner', '%s', '%s', count(*) = 0 FROM (SELECT relowner AS o FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%%' UNION ALL SELECT nspowner FROM pg_namespace WHERE nspname NOT IN ('pg_catalog', 'information_schema', 'public') AND nspname NOT LIKE 'pg_toast%%' AND nspname NOT LIKE 'pg_temp%%' UNION ALL SELECT typowner FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname NOT LIKE 'pg_toast%%') x WHERE o <> to_regrole(:'u')::oid;\n" "$s" "$d"
+        } | U="$(n="$(env_of USER "$s")"; printf '%s' "${!n}")" "${PSQL[@]}" -tA -F '|' -d "$d")"
+      done
+      while IFS='|' read -r kind s d v; do
+        [ -n "$kind" ] || continue
+        case "$kind" in
+          connect)
+            own="$(for e in $SERVICES; do [ "${e%%:*}" != "$s" ] || printf '%s' "${e#*:}"; done)"
+            want=f; [ "$d" = "$own" ] && want=t
+            [ "$v" = "$want" ] || { echo "NG: ${s} が ${d} に CONNECT $([ "$v" = t ] && echo できる || echo できない)" >&2; bad=1; } ;;
+          dbowner) [ "$v" = t ] || { echo "NG: ${d} の OWNER が ${s} の利用者でない" >&2; bad=1; } ;;
+          objowner) [ "$v" = t ] || { echo "NG: ${d} の中に ${s} の利用者の持たない物がある" >&2; bad=1; } ;;
+        esac
+      done <<< "$out"
+      [ "$(grep -c '^connect|' <<< "$out")" -ge 7 ] || { echo "NG: 確かめの行が足りない（陽性対照）" >&2; bad=1; }
+      [ "$bad" = 0 ] || { echo "ERROR: 確かめに失敗した（上の NG）" >&2; exit 1; }
+      if [ "$mode" = full ]; then
+        echo "    確かめた: 7 つのサービスの利用者は自分の DB と中の物だけの OWNER で、自分の DB にだけ CONNECT できる"
+      else
+        echo "    確かめた: 7 つのサービスの利用者は自分の DB の OWNER で、自分の DB にだけ CONNECT できる"
+      fi
+    }
+
+    case "$STAGE" in
+      apply)
+        {
+          head_sql
+          # 利用者・DB の OWNER・CONNECT の付け替えは 1 つのトランザクションで行う（途中で共有の利用者が入れない間を作らない）。
+          printf 'BEGIN;\n'
+          for e in $SERVICES; do
+            s="${e%%:*}" v="$(var "$s")"
+            printf '\\getenv p %s\n' "$(env_of PASSWORD "$s")"
+            printf "SELECT NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'u_%s') AS missing \\\\gset\n" "$v"
+            printf '\\if :missing\nCREATE ROLE :"u_%s";\n\\endif\n' "$v"
+            printf 'ALTER ROLE :"u_%s" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD :'"'"'p'"'"';\n' "$v"
+            printf '\\unset p\n'
+          done
+          # DB の OWNER を先に全部移す。DB は共有の対象なので、共有の利用者が DB を持ったまま REASSIGN すると、その間は 7 つの DB が 1 人へ移る。
+          for e in $SERVICES; do
+            s="${e%%:*}" d="${e#*:}"
+            printf 'ALTER DATABASE %s OWNER TO :"u_%s";\n' "$d" "$(var "$s")"
+          done
+          printf '\\if :has_shared\n'
+          for e in $SERVICES; do printf 'GRANT :"u_%s" TO :"shared";\n' "$(var "${e%%:*}")"; done
+          printf '\\endif\n'
+          printf "SELECT format('REVOKE CONNECT, TEMPORARY ON DATABASE %%I FROM PUBLIC', datname) FROM pg_database WHERE datallowconn ORDER BY datname \\\\gexec\n"
+          printf 'COMMIT;\n'
+          for e in $SERVICES; do
+            s="${e%%:*}" d="${e#*:}"
+            printf '\\connect %s\n%s\n' "$d" "$QUIET"
+            printf '\\if :has_shared\nREASSIGN OWNED BY :"shared" TO :"u_%s";\n\\endif\n' "$(var "$s")"
+          done
+        } | "${PSQL[@]}" -d postgres
+        echo "    合わせた: 7 つのサービスの利用者（在れば OpenBao の値へパスワードを合わせた）・各 DB と中の物の OWNER・PUBLIC の CONNECT"
+        [ "$({ head_sql; printf "SELECT :'has_shared';\n"; } | "${PSQL[@]}" -tA -d postgres)" != t ] || echo "    移行の間: 共有の利用者は 7 つの利用者の役割の一員（旧の Pod が動き続ける。drop-shared で外す）"
+        ;;
+      drop-shared)
+        if [ -z "$AST_DB_SHARED_USER" ]; then
+          echo "    共有の利用者の名前が無い（Secret ast-db が無い）。消すものは無い"
+        else
+          has="$({ head_sql; printf "SELECT :'has_shared';\n"; } | "${PSQL[@]}" -tA -d postgres)"
+          if [ "$has" != t ]; then
+            echo "    共有の利用者は既に無い"
+          else
+            verify db   # 消す前に、7 つの利用者が揃って自分の DB を持つことを確かめる（apply の前に流さない）
+            sessions() { { head_sql; printf "SELECT count(*) FROM pg_stat_activity WHERE usename = :'shared';\n"; } | "${PSQL[@]}" -tA -d postgres; }
+            n="$(sessions)"
+            [ "$n" = 0 ] || { echo "ERROR: 共有の利用者の接続が ${n} 本ある（取引ユニットの全サービスがサービスごとの利用者へ移ってから流す）" >&2; exit 4; }
+            # 新しい接続を止めてから、もう一度数える（数えた後に入った接続を残さない）。
+            { head_sql; printf 'ALTER ROLE :"shared" NOLOGIN;\n'; } | "${PSQL[@]}" -d postgres
+            n="$(sessions)"
+            if [ "$n" != 0 ]; then
+              { head_sql; printf 'ALTER ROLE :"shared" LOGIN;\n'; } | "${PSQL[@]}" -d postgres
+              echo "ERROR: 共有の利用者の接続が ${n} 本ある（入れ直した。取引ユニットを確かめてから流し直す）" >&2; exit 4
+            fi
+            {
+              head_sql
+              for e in $SERVICES; do
+                s="${e%%:*}" d="${e#*:}"
+                printf '\\connect %s\n%s\n' "$d" "$QUIET"
+                printf 'REASSIGN OWNED BY :"shared" TO :"u_%s";\nDROP OWNED BY :"shared";\n' "$(var "$s")"
+              done
+              printf '\\connect postgres\n%s\n' "$QUIET"
+              for e in $SERVICES; do printf 'REVOKE :"u_%s" FROM :"shared";\n' "$(var "${e%%:*}")"; done
+              printf 'DROP OWNED BY :"shared";\nDROP ROLE :"shared";\n'
+            } | "${PSQL[@]}" -d postgres
+            echo "    消した: 共有の利用者（残りの物は各サービスの利用者へ移した）"
+          fi
+        fi
+        ;;
+    esac
+    verify full
+    echo "OK: ${STAGE} を終えた（値は表示しない）"
+---
+# NFR-18, IADR-0695: Postgres への入りを、利用者を作る Job の Pod から 5432 だけ許す**別宣言**（NetworkPolicy は加算的。
+# postgres-ingress-clients を書き換えない）。Job の Pod の出は、名前空間の中への出の許可（networkpolicy.yaml）で足りる。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress-ast-db-users
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  podSelector:
+    matchLabels: { app: postgres }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app: postgres-ast-db-users }
+      ports:
+        - { protocol: TCP, port: 5432 }

@@ -606,7 +606,74 @@ function keycloakPkiProblems(esoDocs, texts) {
   return out;
 }
 
-module.exports = { keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+/**
+ * NFR-18, NFR-05, IADR-0695: 取引ユニットの DB のサービスごとの利用者（AC7）。
+ *   - 7 つのサービス（ConfigMap の手順の SERVICES・Postgres への入りの 7 つ・初期化の 7 つの DB）・ESO の Secret ast-db-<サービス>・Job の env・
+ *     2 つの policy の名指しが同じ集合である（どれかに足し忘れると、そのサービスだけ共有の利用者のまま・Job が起動しない）。
+ *   - Job: イメージは Postgres と同じ digest、TLS は verify-full、値は secretKeyRef だけ、Postgres への入りは Job の Pod の 5432 だけ。
+ */
+const AST_DB_SERVICES = ['audit', 'configuration', 'cost-control', 'market-monitor', 'order-execution', 'report', 'risk-management'];
+function astDbUsersProblems(infraDocs, esoDocs, job, policies) {
+  const out = [];
+  const sorted = (a) => [...a].sort().join(',');
+  const want = sorted(AST_DB_SERVICES);
+  const cm = infraDocs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-ast-db-users');
+  const script = cm && cm.data && String(cm.data['ast-db-users.sh'] || '');
+  if (!script) return ['db-users: ConfigMap postgres-ast-db-users の手順が無い'];
+  const m = script.match(/^SERVICES="([^"]+)"$/m);
+  const pairs = m ? m[1].split(/\s+/).map((e) => e.split(':')) : [];
+  if (sorted(pairs.map((p) => p[0])) !== want) out.push(`db-users: 手順の SERVICES が 7 つのサービスでない（${pairs.map((p) => p[0]).join(', ')}）`);
+  for (const [svc, db] of pairs) if (db !== `${svc.replace(/-/g, '_')}_svc`) out.push(`db-users: ${svc} の DB が ${db}`);
+  const init = infraDocs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-init');
+  const dbs = [...String((init && init.data && init.data['01-create-databases.sh']) || '').matchAll(/CREATE DATABASE (\w+_svc) /g)].map((x) => x[1]);
+  if (sorted(dbs) !== sorted(pairs.map((p) => p[1]))) out.push(`db-users: 初期化の DB（${dbs.join(', ')}）と手順の DB が違う`);
+  const pgIn = infraDocs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'postgres-ingress-clients');
+  const callers = pgIn ? pgIn.spec.ingress[0].from.flatMap((f) => (((f.podSelector || {}).matchExpressions || [])[0] || {}).values || []) : [];
+  if (sorted(callers.map((c) => c.replace(/-service$/, ''))) !== want) out.push(`db-users: Postgres に入る取引ユニットのサービス（${callers.join(', ')}）と 7 つが違う`);
+  const es = esoDocs.filter((d) => d.kind === 'ExternalSecret' && /^ast-db-/.test(d.metadata.name));
+  if (sorted(es.map((d) => d.metadata.name.replace(/^ast-db-/, ''))) !== want) out.push(`db-users: ESO の ast-db-<サービス> が 7 つでない（${es.map((d) => d.metadata.name).join(', ')}）`);
+  for (const d of es) {
+    const svc = d.metadata.name.replace(/^ast-db-/, '');
+    const keys = (d.spec.data || []).map((x) => `${x.secretKey}=${x.remoteRef.key}#${x.remoteRef.property}`).sort().join(',');
+    if (keys !== `password=shared/ast-db-${svc}#password,username=shared/ast-db-${svc}#username`) out.push(`db-users: ${d.metadata.name} の写し方が違う（${keys}）`);
+    if (d.spec.target.deletionPolicy !== 'Retain' || d.spec.target.name !== d.metadata.name) out.push(`db-users: ${d.metadata.name} の target が Retain・同じ名前でない`);
+  }
+  for (const [name, text] of Object.entries(policies)) {
+    const named = [...text.matchAll(/^path\s+"cloud\/data\/shared\/ast-db-([^"]+)"\s+\{\s*capabilities\s*=\s*\["read"\]\s*\}/gm)].map((x) => x[1]);
+    if (sorted(named) !== want) out.push(`db-users: policy ${name} の名指し（${named.join(', ')}）が 7 つでない`);
+    if (/^path\s+"cloud\/data\/shared\/[^"]*\*/m.test(text)) out.push(`db-users: policy ${name} の cloud/shared にワイルドカードがある`);
+  }
+  if (!job || job.kind !== 'Job') return [...out, 'db-users: Job の宣言が無い'];
+  const ps = job.spec.template.spec;
+  const c = ps.containers[0];
+  const pg = infraDocs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'postgres');
+  if (!pg || c.image !== pg.spec.template.spec.containers[0].image) out.push('db-users: Job のイメージが Postgres と同じ digest でない');
+  const env = Object.fromEntries((c.env || []).map((e) => [e.name, e]));
+  if ((env.PGSSLMODE || {}).value !== 'verify-full') out.push('db-users: Job の TLS が verify-full でない');
+  if ((env.PGHOST || {}).value !== 'postgres') out.push('db-users: Job の PGHOST が Service postgres でない（証明書の名前の照合）');
+  for (const e of c.env || []) {
+    if (/^(PGUSER|PGPASSWORD|AST_DB_)/.test(e.name) && !(e.valueFrom && e.valueFrom.secretKeyRef)) out.push(`db-users: Job の ${e.name} が Secret から来ない`);
+  }
+  for (const svc of AST_DB_SERVICES) {
+    const k = svc.replace(/-/g, '_').toUpperCase();
+    for (const [kind, key] of [['USER', 'username'], ['PASSWORD', 'password']]) {
+      const ref = ((env[`AST_DB_${kind}_${k}`] || {}).valueFrom || {}).secretKeyRef || {};
+      if (ref.name !== `ast-db-${svc}` || ref.key !== key || ref.optional) out.push(`db-users: Job の AST_DB_${kind}_${k} が Secret ast-db-${svc} の ${key}（非 optional）でない`);
+    }
+  }
+  if (JSON.stringify(c.args) !== '["apply"]') out.push('db-users: Job の段（args）の既定が apply でない（ast-db-users.sh が差し替える行）');
+  if (String(ps.automountServiceAccountToken) !== 'false') out.push('db-users: Job が ServiceAccount のトークンを載せる');
+  const label = (job.spec.template.metadata.labels || {}).app;
+  const np = infraDocs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'postgres-ingress-ast-db-users');
+  const from = np && np.spec.ingress.length === 1 && np.spec.ingress[0].from;
+  if (!(np && (np.spec.podSelector.matchLabels || {}).app === 'postgres' && from && from.length === 1 && !from[0].namespaceSelector
+    && (from[0].podSelector.matchLabels || {}).app === label && (np.spec.ingress[0].ports || []).map((x) => `${x.protocol}/${x.port}`).join() === 'TCP/5432')) {
+    out.push('db-users: Postgres への入りが Job の Pod（同じ名前空間）の 5432 だけでない');
+  }
+  return out;
+}
+
+module.exports = { astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -926,6 +993,36 @@ if (require.main === module) {
         fs.rmSync(dir, { recursive: true, force: true });
       }
     }
+  });
+  ok('IADR-0695 AC7: 取引ユニットの DB のサービスごとの利用者 — 7 つのサービスが手順・初期化の DB・Postgres への入り・ESO・Job の env・2 つの policy で揃い、Job は TLS（verify-full）と Secret だけで動く', () => {
+    const job = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/db-users/job.yaml'), 'utf8')).find((d) => d.kind === 'Job');
+    const pol = (n) => fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault/policies', `${n}.hcl`), 'utf8');
+    const policies = { 'ast-eso': pol('ast-eso'), 'platform-infra-eso': pol('platform-infra-eso') };
+    const infra = renderInfra();
+    const eso = renderEso();
+    assert.deepStrictEqual(astDbUsersProblems(infra, eso, job, policies), []);
+    // 陰性対照: サービスの足し忘れ・写し方のずれ・ワイルドカード・TLS の緩め・値の字面・入りの広げ・ほかの Secret
+    const clone = (x) => JSON.parse(JSON.stringify(x));
+    const i2 = clone(infra);
+    const n2 = i2.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'postgres-ingress-ast-db-users');
+    n2.spec.ingress[0].from[0] = { namespaceSelector: {} };
+    const e2 = clone(eso).filter((d) => d.metadata.name !== 'ast-db-report');
+    e2.find((d) => d.metadata.name === 'ast-db-audit').spec.data[0].remoteRef.key = 'shared/ast-db';
+    const j2 = clone(job);
+    const c2 = j2.spec.template.spec.containers[0];
+    c2.env.find((e) => e.name === 'PGSSLMODE').value = 'require';
+    c2.env.find((e) => e.name === 'AST_DB_PASSWORD_REPORT').valueFrom.secretKeyRef.name = 'ast-db';
+    c2.env.push({ name: 'AST_DB_PASSWORD_X', value: 'x' });
+    const p = astDbUsersProblems(i2, e2, j2, { 'ast-eso': policies['ast-eso'].replace(/^path "cloud\/data\/shared\/ast-db-report".*$/m, ''), 'platform-infra-eso': `${policies['platform-infra-eso']}\npath "cloud/data/shared/ast-db-*" { capabilities = ["read"] }\n` });
+    for (const want of [/ESO の ast-db-<サービス> が 7 つでない/, /ast-db-audit の写し方/, /policy ast-eso の名指し/, /policy platform-infra-eso の cloud\/shared にワイルドカード/, /verify-full でない/, /AST_DB_PASSWORD_REPORT が Secret ast-db-report/, /AST_DB_PASSWORD_X が Secret から来ない/, /Postgres への入りが Job の Pod/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    const i3 = clone(infra);
+    const cm = i3.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-ast-db-users');
+    cm.data['ast-db-users.sh'] = cm.data['ast-db-users.sh'].replace(' report:report_svc', '');
+    assert.ok(astDbUsersProblems(i3, eso, job, policies).some((x) => /手順の SERVICES が 7 つのサービスでない/.test(x)), '手順の SERVICES の欠けを検出しない');
+    // 基盤の描画の共通の判定（Secret を描かない・資格情報の env の字面・持ち込まない資源）は Job にも効く
+    assert.deepStrictEqual(commonProblems([job], 'db-users'), []);
   });
   ok('IADR-0693 KT6: keycloak の証明書は基盤の側だけが PKI の role keycloak で発行し、取引ユニットは CA の証明書だけを読む', () => {
     assert.deepStrictEqual(keycloakPkiProblems(renderEso(), pkiTexts()), []);
