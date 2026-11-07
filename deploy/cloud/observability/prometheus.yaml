@@ -79,6 +79,26 @@ data:
             annotations:
               summary: "OTel Collector 到達不可（可観測性パイプライン断）"
               description: "otel-collector の scrape が 2 分間失敗。AST のメトリクスが届いていない可能性。"
+      # FR-11, NFR-21, IADR-0466, IADR-0692: LLM 費用の月次予算（用途別）の**進み**の超過（クラウド版）。
+      # 注: この ConfigMap の値の中に絵文字を書かない（kustomize が値を引用符の 1 行へ書き換え、試験の読み手が読めなくなる）。
+      # 金額も単価も式に無い。上限はゲートウェイのゲージ llm_budget_monthly_limit（Llm:Budget:MonthlyLimits。appsettings.json）。
+      # 窓は直近 7 日である（30 日ではない）。この Prometheus の保持は 7 日・データは emptyDir なので、30 日の窓は
+      #   いつも過小になる（7 日分しか無い）。7 日の費用を、月次予算を 7/30 に按分した値と比べる（月次予算を超える速さで使っている）。
+      #   compose・経路 B の LlmMonthlyBudgetExceeded（直近 30 日）とは窓が違うので、名前を分けた。
+      # Prometheus の再起動でデータが消えると、7 日に満たない分だけ過小になる（鳴りにくい側）。当日の費用の上限
+      #   （values-cloud の Llm__CallLimits__*__DailyCostLimit。送る前に止める）が別にある。
+      - name: llm-cost-budget
+        rules:
+          - alert: LlmMonthlyBudgetPaceExceeded
+            expr: |
+              sum by (llm_purpose, llm_currency) (increase(llm_cost_total[7d]))
+                > on (llm_purpose, llm_currency)
+              max by (llm_purpose, llm_currency) (llm_budget_monthly_limit) * 7 / 30
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "LLM 費用が用途 {{ $labels.llm_purpose }} の月次予算を超える速さで使われている（直近 7 日）"
+              description: "用途 {{ $labels.llm_purpose }} の直近 7 日の LLM 費用が {{ $value }} {{ $labels.llm_currency }} となり、月次予算（Llm:Budget:MonthlyLimits）の 7/30 を超えた。このままの速さでは月次予算を超える。当日の費用の上限で止まった呼び出しは llm_call_limit_exceeded_total で見る。単価を解決できなかった呼び出し（llm_pricing_unpriced_total）が 0 でなければ金額は過小である。"
   # AST の PrometheusRule から spec（= Prometheus の規則ファイルの形）だけを取り出す。initContainer が実行する。
   #   ConfigMap が空・無い → 警告を出して起動する（AstAlertRulesNotLoaded が鳴る）
   #   PrometheusRule でない・spec が無い・promtool が読めない → 起動しない（exit 1）

@@ -1043,6 +1043,7 @@ groups:
   #   —— **どちらも正常時が「データ無し」**であり、`NoData` にすると恒常発火する（上の `absent()` 群と同じ理由）。
   # 🔴 **金額が未設定のあいだ本ルールは不活性である。** その間の統制は月次の手動確認の Runbook であり、
   #   金額を初めて設定する変更が Runbook を superseded にする（併存させない）。
+  #   ［2026-11-07 / IADR-0692］金額を設定した（所有者の裁定した当日の費用の上限から導いた値。appsettings.json）。本ルールは評価対象を持ち、月次の手動確認の Runbook は終了した。
   #   理由の正本は `deploy/prometheus/alerts.yml` の同名グループの前書きである。
   - orgId: 1
     name: llm-cost-budget

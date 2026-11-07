@@ -769,3 +769,4 @@
 | [IADR-0689](./IADR-0689_cloud-openbao-eso-in-cluster-credentials.md) | クラウドの最小構成に秘匿管理（OpenBao・ESO）を持ち込み、クラスタの中の資格情報と TLS の鍵を OpenBao から供給する（unseal の鍵と資格は age で手元に・root は使うたびに作り直して失効） | Accepted |
 | [IADR-0690](./IADR-0690_private-advisory-id-scrub-and-allowlist-check.md) | 公開のファイルから非公開の指摘の識別子を除き（凍結記録も本文を置換する例外）、advisory の識別子は公開の第三者の allowlist だけを許す検査器で再混入を止める | Accepted |
 | [IADR-0691](./IADR-0691_rabbitmq-least-privilege-default-exchange-and-response-queue.md) | ブローカの権限を利用者ごとの最小権限へ寄せる。既定の exchange への write は受信キューを持つ利用者だけに与え、応答キューは Guid の形の名前だけに当てる。購読先の exchange の configure は、購読側の宣言を passive に替えるまで残す | Accepted |
+| [IADR-0692](./IADR-0692_cloud-llm-daily-cost-cap-monthly-budget-and-k3s-pin.md) | クラウドの LLM ゲートウェイの当日の費用の上限を合計 1 日 20 USD（取引ユニットが主）とし、そこから用途別の月次予算を導いて全経路に置く。段 2 は金額が無ければ起動しない。クラウドの k3s は版を固定し sha256 で照合して入れる | Accepted |

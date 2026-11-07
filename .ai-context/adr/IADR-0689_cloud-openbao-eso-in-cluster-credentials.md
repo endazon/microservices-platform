@@ -2,7 +2,7 @@
 title: IADR-0689 クラウドの最小構成に秘匿管理（OpenBao）と ESO を持ち込み、クラスタの中で作る資格情報を OpenBao の中で作り、TLS の鍵を OpenBao の PKI で発行する。unseal の鍵とオーナー用の資格は age で暗号化してオーナーが手元に持ち、root は使うたびに作り直して失効させる（IADR-0674 決定 3・4 を覆す。#2471）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684]
+related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684, IADR-0692]
 author: claude
 created: 2026-11-06
 updated: 2026-11-07
@@ -180,6 +180,8 @@ related_specs:
 
 - 入れないもの: 内部の REST の門（IADR-0686。AI 分析・Wiki を置かない）・BFF の流量の上限（IADR-0687。BFF を置かない）・ローカルの起動器と調停の Job の切り替え。
 - 既定の描画とローカル（`values-local.yaml`）は段 1 のまま。`scripts/deploy-cloud.test.js` が、クラウドの描画は段 2・既定とローカルは段 1 であることを固定する。
+- ［2026-11-07 追記 / IADR-0692］上の表の「費用の上限は呼び手ごとに設定していない」は、段 2 で費用の判定が働かない継ぎ目だった。
+  IADR-0692 が当日の費用の上限（合計 1 日 20 USD）を `values-cloud.yaml` に置き、段 2 で金額が無ければ起動しないようにした。
 
 ## 結果
 

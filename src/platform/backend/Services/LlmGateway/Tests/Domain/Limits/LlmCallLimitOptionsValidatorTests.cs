@@ -87,4 +87,56 @@ public class LlmCallLimitOptionsValidatorTests
         e.PurposeDailyCostLimits["default"].Should().Be(2m);
         EffectiveCallerLimits.For(o, "retrieval-service").RequestsPerMinute.Should().Be(300);
     }
+
+    // ---- NFR-18, IADR-0692: 段 2（Enforce）は当日の費用の上限が無いまま起動しない（fail-closed） ----------
+
+    [Fact]
+    public void Enforceで既定の当日の費用の上限が無ければ失敗する()
+    {
+        var o = new LlmCallLimitOptions { Mode = LlmCallLimitMode.Enforce };
+
+        var result = Validator().Validate(null, o);
+
+        result.Failed.Should().BeTrue("費用の上限が無い段 2 は、費用を黙って無制限にする");
+        result.FailureMessage.Should().Contain("Llm:CallLimits:Default:DailyCostLimit");
+    }
+
+    [Fact]
+    public void Enforceで一部の呼び手にだけ費用の上限があっても既定が無ければ失敗する()
+    {
+        // 書いていない呼び手は Default へ倒れ、費用の上限を持たない（無制限になる）。
+        var o = new LlmCallLimitOptions { Mode = LlmCallLimitMode.Enforce };
+        o.Callers["ai-stock-trading-llm-caller"] = new LlmCallerLimits { DailyCostLimit = 18m };
+        o.Default.PurposeDailyCostLimits["rag-answer"] = 1m;
+
+        Validator().Validate(null, o).Failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Enforceで既定の当日の費用の上限が0なら失敗する()
+    {
+        var o = new LlmCallLimitOptions { Mode = LlmCallLimitMode.Enforce };
+        o.Default.DailyCostLimit = 0m;
+
+        Validator().Validate(null, o).Failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Enforceで既定の当日の費用の上限があれば成功し_どの呼び手にも費用の上限が効く()
+    {
+        var o = new LlmCallLimitOptions { Mode = LlmCallLimitMode.Enforce };
+        o.Default.DailyCostLimit = 0.5m;
+        o.Callers["ai-stock-trading-llm-caller"] = new LlmCallerLimits { DailyCostLimit = 18m };
+
+        Validator().Validate(null, o).Succeeded.Should().BeTrue();
+        EffectiveCallerLimits.For(o, "ai-stock-trading-llm-caller").DailyCostLimit.Should().Be(18m);
+        EffectiveCallerLimits.For(o, "graph-service").DailyCostLimit.Should().Be(0.5m);
+        EffectiveCallerLimits.For(o, "unknown").HasCostLimit.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Reportでは費用の上限が無くても成功する_段1の既定を変えない()
+    {
+        Validator().Validate(null, new LlmCallLimitOptions { Mode = LlmCallLimitMode.Report }).Succeeded.Should().BeTrue();
+    }
 }

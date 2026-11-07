@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-09-26
-updated: 2026-11-05
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [FR-11, SC-08, NFR-18, NFR-19]
 adrs: [ADR-0010, ADR-0025, ADR-0038, ADR-0044, ADR-0095]
-iadrs: [IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528, IADR-0531, IADR-0641, IADR-0671]
-specs: [20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models, 20261026_2136_llm-api-key-fail-fast, 20261105_2396_llm-gateway-prompt-caching]
+iadrs: [IADR-0692, IADR-0101, IADR-0110, IADR-0210, IADR-0212, IADR-0225, IADR-0369, IADR-0374, IADR-0400, IADR-0456, IADR-0466, IADR-0511, IADR-0528, IADR-0531, IADR-0641, IADR-0671]
+specs: [20261107_cloud-llm-cost-cap-and-k3s-pin, 20260926_issue-380_output-token-measurement-runbook, 20260830_issue-380_opus5-max-tokens-measurement, 20260926_issue-1558_runbook-nits, 20261005_1741_sonnet5-price-correction, 20261008_1785_graph-purpose-models, 20261010_1872_anthropic-timeout-config, 20261010_1875_claude-5-5-models, 20261026_2136_llm-api-key-fail-fast, 20261105_2396_llm-gateway-prompt-caching]
 issues: [#380, #1089, #1091, #1111, #1411, #1539, #1558, #1741, #1785, #1872, #1875, #2136, #2396, planning#783]
 -->
 
@@ -489,6 +489,8 @@ q 'sum by (llm_result, llm_upstream_status) (increase(llm_completion_total{llm_r
   （置き場と手順は [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) §金額を設定する手順）。
   ただし**アラートは検知であって費用を止めない**（既定の受信先は通知をどこへも届けない）。また金額を置く変更は
   月次確認の Runbook を終了させる変更と同じであり、金額を決める前提（数か月分の実績）は本測定の後に初めて貯まり始める。
+  **［2026-11-07］金額を設定した**（所有者の裁定した当日の費用の上限から導いた値。月次確認の Runbook は終了した）。
+  本測定の費用もこのアラートの対象になる。
   **金額が無いあいだ、実費の上限は本書の承認額と §3-5 の停止でしか守られない。**
 - `rag-answer` の値は `analysis` と共用であり、本書の標本の本体（`analysis`）だけでは `rag-answer` の妥当性は言えない。
   `rag-answer` についても判断したいなら §3-4 の任意の追加標本を取る。

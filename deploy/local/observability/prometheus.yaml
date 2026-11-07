@@ -357,6 +357,7 @@ data:
       # 🔴 **金額も単価も式に無い。** 上限はゲートウェイのゲージ `llm_budget_monthly_limit`（設定
       #   `Llm:Budget:MonthlyLimits`。既定なし）。**未設定のあいだ評価対象を持たず発火しない（不活性）。**
       #   その間の統制は月次の手動確認の Runbook である。窓は直近 30 日（暦月ではない）。
+      #   ［2026-11-07 / IADR-0692］金額を設定した（所有者の裁定した当日の費用の上限から導いた値。appsettings.json）。本ルールは評価対象を持ち、月次の手動確認の Runbook は終了した。
       #   理由の正本は compose 側（deploy/prometheus/alerts.yml）の同名グループの前書きである。
       - name: llm-cost-budget
         rules:

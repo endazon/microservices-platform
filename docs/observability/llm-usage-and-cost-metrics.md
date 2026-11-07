@@ -4,13 +4,13 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-11-05
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-18, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677, IADR-0678]
-specs: [20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check, 20261105_2404_llm-gateway-call-limits]
+iadrs: [IADR-0692, IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677, IADR-0678]
+specs: [20261107_cloud-llm-cost-cap-and-k3s-pin, 20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check, 20261105_2404_llm-gateway-call-limits]
 issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, #2411, #2404, planning#783]
 -->
 
@@ -237,5 +237,9 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
   **［2026-09-26 更新 / #1111］上限アラートの配線は入った**（上の上限のゲージと `LlmMonthlyBudgetExceeded`）。
   本書が扱わないのは**金額**だけであり、金額は所有者が `Llm:Budget:MonthlyLimits` に設定する。
   **未設定のあいだアラートは発火せず、月次の手動確認（Runbook）が唯一の統制である。**
+  **［2026-11-07］金額を設定した。** 所有者が当日の費用の上限を裁定し、そこから導いた月次予算を
+  `Llm:Budget:MonthlyLimits`（ゲートウェイの `appsettings.json`）に置いた。上限アラートは評価対象を持ち、
+  月次の手動確認の Runbook は終了した。クラウドの Prometheus は保持が 7 日なので、直近 7 日の費用を月次予算の 7/30 と
+  比べる別名のアラート（`LlmMonthlyBudgetPaceExceeded`）を置いた。
 - **基盤と利用側プロジェクトの費用の合算**。合算するとどちらの予算を超過したのか判別できなくなるため、
   計画が明示的に禁じている。

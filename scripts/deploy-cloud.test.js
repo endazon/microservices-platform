@@ -363,7 +363,113 @@ function stage2Problems(chartDocs, infraDocs) {
   return out;
 }
 
-module.exports = { stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+/**
+ * NFR-18, NFR-21, IADR-0692: クラウドの LLM ゲートウェイの当日の費用の上限（所有者の裁定 2026-11-07。合計 1 日 20 USD）。
+ *   - 既定（呼び手の項目が無い呼び手のそれぞれ）0.5 USD・取引ユニットの呼び手 18 USD。ナレッジの 4 つの呼び手は既定。
+ *   - 合計 = 取引ユニット ＋ 既定 × ナレッジの呼び手の数 が 20 USD（許可表に無い呼び手は許可表が拒む）。
+ *   - 上限はプロセスごとなので、LLM ゲートウェイは 1 レプリカで HPA を描かない。
+ */
+const CLOUD_DAILY_COST_TOTAL_USD = 20;
+const CLOUD_LLM_COST_ENV = Object.freeze({
+  Llm__CallLimits__Default__DailyCostLimit: '0.5',
+  'Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit': '18',
+});
+const KNOWLEDGE_LLM_CALLERS = Object.freeze(['aianalysis-service', 'graph-service', 'retrieval-service', 'conversion-service']);
+function cloudCostLimitProblems(chartDocs) {
+  const out = [];
+  const env = llmGatewayEnv(chartDocs);
+  for (const [k, v] of Object.entries(CLOUD_LLM_COST_ENV)) if (env[k] !== v) out.push(`LLM ゲートウェイの ${k} が ${v} でない（${env[k]}）`);
+  const num = (k) => Number(env[k]);
+  const def = num('Llm__CallLimits__Default__DailyCostLimit');
+  if (!(def > 0)) out.push('当日の費用の上限の既定が正の値でない（段 2 では起動しない・未設定なら費用が無制限）');
+  // 呼び手の項目は取引ユニットだけ（ナレッジの呼び手は既定。項目を足すと合計が変わる）。
+  const callerKeys = Object.keys(env).filter((k) => /^Llm__CallLimits__Callers__.+__DailyCostLimit$/i.test(k));
+  if (JSON.stringify(callerKeys) !== '["Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit"]') {
+    out.push(`呼び手ごとの当日の費用の上限が取引ユニットの呼び手だけでない: ${callerKeys.join(', ')}`);
+  }
+  const total = num('Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit') + def * KNOWLEDGE_LLM_CALLERS.length;
+  if (Math.abs(total - CLOUD_DAILY_COST_TOTAL_USD) > 1e-9) out.push(`当日の費用の上限の合計が ${CLOUD_DAILY_COST_TOTAL_USD} USD でない（${total}）`);
+  if (Object.keys(env).some((k) => /^Llm__CallLimits__.*PurposeDailyCostLimits/i.test(k))) out.push('用途ごとの当日の費用の上限を描いている（合計の前提が変わる）');
+  const d = chartDocs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name));
+  if (!d || Number(d.spec.replicas) !== 1) out.push(`LLM ゲートウェイが 1 レプリカでない（上限はプロセスごと。${d ? d.spec.replicas : '描かれない'}）`);
+  if (chartDocs.some((x) => x.kind === 'HorizontalPodAutoscaler')) out.push('HPA を描いている（上限がレプリカ数倍になる）');
+  return out;
+}
+
+/**
+ * NFR-21, IADR-0692: 月次予算（Llm:Budget:MonthlyLimits。用途別）は、当日の費用の上限から導く。
+ *   月次予算(用途) = 呼び手の日の上限のうち、その用途へ割り当てた額 × 30 日 × 0.5（日の上限の半分の速さを超えたら知らせる）。
+ *   取引ユニットの用途 other（stage0-recording・policy-revision・report-regeneration は単価表の用途に無く other に丸まる）は
+ *   月次予算に置けない（検証器が拒む）ので、割り当てだけを持ち、月次予算は置かない。
+ */
+const MONTHLY_BUDGET_FACTOR = 30 * 0.5;
+const DAILY_COST_ALLOCATION = Object.freeze({
+  'ai-stock-trading-llm-caller': { 'trade-decision': 9, 'trade-decision-screening': 2, 'report-daily': 2, 'report-weekly': 1.5, 'report-monthly': 0.5, other: 3 },
+  'aianalysis-service': { 'rag-answer': 0.25, analysis: 0.25 },
+  'graph-service': { 'graph-suggestion': 0.25, 'graph-cluster-summary': 0.25 },
+  'retrieval-service': { rerank: 0.5 },
+  'conversion-service': { 'diagram-coding': 0.5 },
+});
+function monthlyBudgetProblems(appsettings, env) {
+  const out = [];
+  const cap = (caller) => Number(env[`Llm__CallLimits__Callers__${caller}__DailyCostLimit`] ?? env.Llm__CallLimits__Default__DailyCostLimit);
+  const want = {};
+  for (const [caller, shares] of Object.entries(DAILY_COST_ALLOCATION)) {
+    const sum = Object.values(shares).reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - cap(caller)) > 1e-9) out.push(`${caller} の割り当ての合計（${sum}）が日の上限（${cap(caller)}）と違う`);
+    for (const [purpose, v] of Object.entries(shares)) if (purpose !== 'other') want[purpose] = v * MONTHLY_BUDGET_FACTOR;
+  }
+  const got = ((appsettings.Llm || {}).Budget || {}).MonthlyLimits || {};
+  for (const [purpose, v] of Object.entries(want)) if (got[purpose] !== v) out.push(`月次予算 ${purpose} が ${v} でない（${got[purpose]}）`);
+  for (const purpose of Object.keys(got)) if (!(purpose in want)) out.push(`割り当てに無い用途の月次予算がある: ${purpose}`);
+  return out;
+}
+
+/**
+ * NFR-18, IADR-0692: k3s の導入（README §1-4）は版を固定し、取得物を sha256 で照合してから入れる。
+ *   - 取得したスクリプトを照合せずにシェルへ流す形（`curl … | sh` 等）が、クラウドの手順書のどこにも無い。
+ *   - README の版は、表（scripts/lib/pinned-artifacts.sh の k3s / k3s-install）に在る。照合（sha256sum -c）が導入より前。
+ *   - インストーラには取得をさせない（INSTALL_K3S_SKIP_DOWNLOAD=true）。k3s の起動の旗は既存の値のまま。
+ */
+const K3S_FLAGS = Object.freeze(['server', '--disable traefik', '--disable servicelb', '--secrets-encryption',
+  '--bind-address 127.0.0.1', '--advertise-address 127.0.0.1', '--node-ip 127.0.0.1', '--write-kubeconfig-mode 0600']);
+const PIPE_TO_SHELL = /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s"']\S*)\s+)*(?:sh|bash|zsh)\b/;
+// 🔴 代入の値の 3 つの選択肢は互いに重ならない（引用符で始まる値は引用の形だけが当たる）。重なると、代入を長く並べた行で
+//   繰り返し（`(…\s+)*`）と掛け合わさって指数的に戻る（下の試験が、病的な入力ですぐ返ることを見る）。
+function pipeToShellProblems(files) {
+  const out = [];
+  for (const { rel, text } of files) {
+    // 行継続（\ 改行）を 1 行へ畳んでから見る。
+    text.replace(/\\\n/g, ' ').split('\n').forEach((line, i) => { if (PIPE_TO_SHELL.test(line)) out.push(`${rel}: 取得物を照合せずにシェルへ流す: ${line.trim().slice(0, 120)}`); });
+  }
+  return out;
+}
+function k3sInstallProblems(readme, pinnedLib) {
+  const out = [];
+  const sec = (/### 1-4\. k3s\n([\s\S]*?)\n### /.exec(readme) || [])[1] || '';
+  if (!sec) return ['README に §1-4 k3s が無い'];
+  const ver = (/^K3S_VERSION=(\S+)$/m.exec(sec) || [])[1];
+  if (!ver) out.push('§1-4 に K3S_VERSION= が無い');
+  for (const t of ['k3s', 'k3s-install']) {
+    const m = new RegExp(`^\\s*${t.replace('-', '\\-')}@(\\S+?)\\) printf '%s %s' '(https://[^']+)' '([0-9a-f]{64})'`, 'm').exec(pinnedLib);
+    if (!m) { out.push(`pinned-artifacts.sh の表に ${t} が無い`); continue; }
+    if (m[1] !== ver) out.push(`${t} の表の版（${m[1]}）が README の版（${ver}）と違う`);
+    if (!m[2].includes(encodeURIComponent(ver || ''))) out.push(`${t} の取得元が版のタグを指さない: ${m[2]}`);
+    if (/get\.k3s\.io|\/main\/|\/master\//.test(m[2])) out.push(`${t} の取得元が版で固定されない: ${m[2]}`);
+  }
+  if (ver && sec.split(ver).length - 1 < 3) out.push('§1-4 のノード側の手順の版が K3S_VERSION と違う');
+  const check = sec.indexOf('sha256sum -c k3s.sha256', sec.indexOf('ノードで'));
+  const install = sec.indexOf('install -m 0755');
+  const run = sec.indexOf('sh ./k3s-install-');
+  if (check < 0 || install < 0 || run < 0 || !(check < install && install < run)) out.push('ノードで照合（sha256sum -c）してから導入する順になっていない');
+  if (!/INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC=/.test(sec)) out.push('インストーラに取得をさせている（INSTALL_K3S_SKIP_DOWNLOAD=true が無い）');
+  const exec = ((/INSTALL_K3S_EXEC="([^"]*)"/.exec(sec.replace(/\\\n\s*/g, ' ')) || [])[1] || '').trim().split(/\s+(?=--)/);
+  if (JSON.stringify(exec) !== JSON.stringify(K3S_FLAGS)) out.push(`k3s の起動の旗が既存の値と違う: ${exec.join(' ')}`);
+  out.push(...pipeToShellProblems([{ rel: 'deploy/cloud/README.md', text: readme }]));
+  return out;
+}
+
+module.exports = { k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -440,6 +546,103 @@ if (require.main === module) {
     const gen = require('./gen-rabbitmq-permissions.js');
     const want = gen.renderCloud([...gen.readPermissions().values()], gen.readUsers());
     assert.strictEqual(fs.readFileSync(path.join(REPO_ROOT, gen.CLOUD_PERMS_REL), 'utf8'), want, 'rabbitmq-permissions.yaml が生成物と違う（gen-rabbitmq-permissions.js --write）');
+  });
+  ok('IADR-0692: クラウドの描画は LLM の当日の費用の上限（合計 1 日 20 USD・取引ユニットが主）を持ち、1 レプリカ。既定とローカルの描画は上限を持たない', () => {
+    assert.deepStrictEqual(cloudCostLimitProblems(renderChart()), []);
+    const deployments = (extra) => docsOf(run('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', ...extra, '-s', 'templates/deployment.yaml', '--set-string', `global.image.tag=${IMAGE_TAG}`]));
+    const base = llmGatewayEnv(deployments([]));
+    const local = llmGatewayEnv(deployments(['-f', 'deploy/local/values-local.yaml']));
+    assert.ok(Object.keys(base).length > 0 && Object.keys(local).length > 0, '陽性対照: 既定・ローカルの LLM ゲートウェイの env を読めていない');
+    for (const env of [base, local]) {
+      const costKeys = Object.keys(env).filter((k) => /^Llm__CallLimits__/i.test(k));
+      assert.deepStrictEqual(costKeys, [], `既定・ローカルの描画に LLM の上限の env がある（変えない）: ${costKeys.join(', ')}`);
+    }
+  });
+  ok('IADR-0692: 月次予算（用途別）は当日の費用の上限の割り当てから導いた値で、割り当ての合計は呼び手ごとの日の上限に等しい', () => {
+    const app = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'src/platform/backend/Services/LlmGateway/appsettings.json'), 'utf8'));
+    const env = llmGatewayEnv(renderChart());
+    assert.deepStrictEqual(monthlyBudgetProblems(app, env), []);
+    // 陰性対照: 金額のずれ・余分な用途・日の上限の変更を検出する。
+    const bad = JSON.parse(JSON.stringify(app));
+    bad.Llm.Budget.MonthlyLimits['trade-decision'] = 200;
+    bad.Llm.Budget.MonthlyLimits.default = 1;
+    const p = monthlyBudgetProblems(bad, { ...env, 'Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit': '17' });
+    for (const want of [/trade-decision が 135 でない/, /割り当てに無い用途/, /ai-stock-trading-llm-caller の割り当ての合計/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
+  ok('IADR-0692: k3s は版を固定し、取得物を sha256 で照合してから入れる。クラウドの手順書に取得物をシェルへ流す形が無い', () => {
+    const readme = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/README.md'), 'utf8');
+    const lib = fs.readFileSync(path.join(REPO_ROOT, 'scripts/lib/pinned-artifacts.sh'), 'utf8');
+    assert.deepStrictEqual(k3sInstallProblems(readme, lib), []);
+    // 走査の母集合: deploy/cloud の全ファイルと、docs/operations のクラウドの手順書。
+    const walk = (rel) => fs.readdirSync(path.join(REPO_ROOT, rel), { withFileTypes: true })
+      .flatMap((e) => (e.isDirectory() ? walk(`${rel}/${e.name}`) : [`${rel}/${e.name}`]));
+    const files = [...walk('deploy/cloud'), ...fs.readdirSync(path.join(REPO_ROOT, 'docs/operations')).filter((f) => /^cloud-/.test(f)).map((f) => `docs/operations/${f}`)];
+    assert.ok(files.length > 10 && files.some((f) => f.startsWith('docs/operations/cloud-')), `陽性対照: 走査の母集合が小さい（${files.length}）`);
+    assert.deepStrictEqual(pipeToShellProblems(files.map((rel) => ({ rel, text: fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8') }))), []);
+  });
+  ok('IADR-0692 陰性対照: curl | sh・照合の欠落と順序・取得の許可・旗の変更・版のずれを検出する', () => {
+    const readme = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/README.md'), 'utf8');
+    const lib = fs.readFileSync(path.join(REPO_ROOT, 'scripts/lib/pinned-artifacts.sh'), 'utf8');
+    const cases = [
+      [readme.replace('INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC="server', 'curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server'), /シェルへ流す/],
+      [readme.replace('cd /root && sha256sum -c k3s.sha256', 'cd /root'), /照合（sha256sum -c）してから/],
+      [readme.replace('INSTALL_K3S_SKIP_DOWNLOAD=true ', ''), /取得をさせている/],
+      [readme.replace('--secrets-encryption \\\n', ''), /起動の旗が既存の値と違う/],
+      [readme.replace('K3S_VERSION=v1.35.10+k3s1', 'K3S_VERSION=v1.35.11+k3s1'), /表の版/],
+    ];
+    for (const [text, want] of cases) {
+      assert.notStrictEqual(text, readme, `変異の置換元が無い（試験が古い）: ${want}`);
+      const p = k3sInstallProblems(text, lib);
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    assert.ok(k3sInstallProblems(readme, lib.replace(/^\s*k3s-install@.*$/m, '')).some((x) => /表に k3s-install が無い/.test(x)));
+    for (const bad of ['curl -sfL https://x | sh -', 'curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \\\n  --disable traefik" sh -','wget -qO- https://x | sudo bash', 'curl -fsSL https://x | FOO=1 sh -s -']) {
+      assert.strictEqual(pipeToShellProblems([{ rel: 'x', text: bad }]).length, 1, bad);
+    }
+    assert.strictEqual(pipeToShellProblems([{ rel: 'x', text: 'curl -s https://x | jq .' }]).length, 0);
+  });
+  ok('IADR-0692: 取得物をシェルへ流す形の検出は、代入を長く並べた病的な行でもすぐ返る（指数的な戻りが無い）', () => {
+    for (const sep of [' ', '\t']) {
+      const line = `curl x | ${'A=""'.concat(sep).repeat(5000)}`;
+      for (const tail of ['', 'x', 'sh -']) {
+        const t0 = process.hrtime.bigint();
+        const n = pipeToShellProblems([{ rel: 'x', text: line + tail }]).length;
+        const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+        assert.ok(ms < 1000, `病的な入力で ${ms.toFixed(0)} ms かかった（sep=${JSON.stringify(sep)} tail=${tail}）`);
+        assert.strictEqual(n, tail === 'sh -' ? 1 : 0, `病的な入力の判定が違う（tail=${tail}）`);
+      }
+    }
+  });
+  ok('IADR-0692 陰性対照: 上限の欠落・既定の欠落・合計のずれ・ナレッジの呼び手の項目・2 レプリカ・HPA を検出する', () => {
+    const drop = (name) => {
+      const docs = JSON.parse(JSON.stringify(renderChart()));
+      const c = docs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name)).spec.template.spec.containers[0];
+      return { docs, c, drop: () => { c.env = c.env.filter((e) => e.name !== name); } };
+    };
+    const a = drop('Llm__CallLimits__Default__DailyCostLimit'); a.drop();
+    assert.ok(cloudCostLimitProblems(a.docs).some((p) => /既定が正の値でない/.test(p)), '既定の欠落を検出しない');
+    const b = drop('Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit'); b.drop();
+    assert.ok(cloudCostLimitProblems(b.docs).some((p) => /ai-stock-trading-llm-caller__DailyCostLimit/.test(p)), '取引ユニットの上限の欠落を検出しない');
+    const c = drop('x'); c.c.env.find((e) => e.name === 'Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit').value = '30';
+    assert.ok(cloudCostLimitProblems(c.docs).some((p) => /合計が 20 USD でない/.test(p)), '合計のずれを検出しない');
+    const d = drop('x'); d.c.env.push({ name: 'Llm__CallLimits__Callers__graph-service__DailyCostLimit', value: '5' });
+    assert.ok(cloudCostLimitProblems(d.docs).some((p) => /取引ユニットの呼び手だけでない/.test(p)), 'ナレッジの呼び手の項目を検出しない');
+    const e = drop('x'); e.docs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name)).spec.replicas = 2;
+    e.docs.push({ kind: 'HorizontalPodAutoscaler', metadata: { name: 'llmgateway' }, spec: {} });
+    const pe = cloudCostLimitProblems(e.docs);
+    for (const want of [/1 レプリカでない/, /HPA/]) assert.ok(pe.some((p) => want.test(p)), `${want} を検出しない:\n${pe.join('\n')}`);
+    // values-cloud から上限を外した描画（段 2 だけ）も落ちる（描画の経路で空振りしない）。
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-cost-'));
+    let stage2Only;
+    try {
+      const f = path.join(tmp, 'stage2-only.yaml');
+      fs.writeFileSync(f, 'services:\n  llmgateway:\n    extraEnvAppend:\n'
+        + Object.entries(STAGE2_LLM_ENV).map(([k, v]) => `      - { name: ${k}, value: "${v}" }\n`).join(''));
+      stage2Only = renderChart(['-f', f]);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+    assert.ok(cloudCostLimitProblems(stage2Only).length > 0, '上限の無い段 2 の描画を検出しない');
   });
   ok('IADR-0689 決定 12 陰性対照: 段 1 の権限・表の欠落・optional・LLM の段 1 を検出する', () => {
     const infra = JSON.parse(JSON.stringify(renderInfra()));

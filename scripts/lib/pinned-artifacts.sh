@@ -39,9 +39,15 @@ pinned_chart_entry() {
 
 # pinned_tool_entry <道具> <版> → 「<URL> <sha256>」。試験と CI が入れる外部の実行ファイルの配布物（IADR-0689）。表に無ければ 1。
 #   openbao: 宣言のイメージ（openbao/openbao:2.7.1）と同じ版の公式の配布物。sha256 は公式の checksums.txt と突き合わせた値。
+#   k3s / k3s-install（IADR-0692）: クラウドのノードへ入れる k3s（deploy/cloud/README.md §1-4）。版は試験の k3d の k3s と同じ minor の
+#     最新の patch。k3s は公式のリリースのバイナリで、sha256 は同じリリースの sha256sum-amd64.txt の値と一致を確かめた。
+#     k3s-install は同じ版のタグの install.sh（取得のたびに中身が変わる get.k3s.io は使わない）。公式の checksum は無いので、
+#     2 回取って一致した値を固定した。版を上げるときは 2 行を対で改める（scripts/deploy-cloud.test.js が README と突き合わせる）。
 pinned_tool_entry() {
   case "$1@$2" in
     openbao@2.7.1) printf '%s %s' 'https://github.com/openbao/openbao/releases/download/v2.7.1/openbao_2.7.1_linux_amd64.tar.gz' '0e2f1ce10d124e03112b50dd2fbec6b78003783253bc3a91587938f39d1e2243' ;;
+    k3s@v1.35.10+k3s1) printf '%s %s' 'https://github.com/k3s-io/k3s/releases/download/v1.35.10%2Bk3s1/k3s' '5cd49f0faca5b2ea4355d4761e7b1445b8aa05cd50e612fd9c370551db49e5e2' ;;
+    k3s-install@v1.35.10+k3s1) printf '%s %s' 'https://raw.githubusercontent.com/k3s-io/k3s/v1.35.10%2Bk3s1/install.sh' '8598e002e61d658fed7b7542fc6d2c66d8da6eae69e088830105d2ee1ffb6d91' ;;
     *) return 1 ;;
   esac
 }
@@ -55,7 +61,8 @@ pinned_tool() {
   fi
   url="${entry% *}"
   sha="${entry#* }"
-  out="${dir}/${tool}-${version}.tar.gz"
+  out="${dir}/${tool}-${version}"
+  case "$url" in *.tar.gz) out="${out}.tar.gz" ;; esac
   pinned_fetch_verified "$url" "$sha" "$out" || return 1
   printf '%s' "$out"
 }

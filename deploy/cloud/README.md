@@ -67,13 +67,39 @@ mkdir -p /var/lib/rancher && mount /dev/mapper/rancher /var/lib/rancher
 
 ### 1-4. k3s
 
+**版を固定し、取得物の sha256 を確かめてから入れる**（取得のたびに中身が変わるスクリプトを照合せずに root で流さない）。
+版・取得元・sha256 は `scripts/lib/pinned-artifacts.sh` の表（`pinned_tool_entry` の `k3s` と `k3s-install`）が 1 つに持つ。
+入れるのは公式のリリースのバイナリ（`k3s`）と、同じ版のタグのインストーラ（`install.sh`）である。
+
+手元（リポジトリの根）で取得して照合し、照合に使った値と一緒にノードへ運ぶ:
+
 ```sh
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+K3S_VERSION=v1.35.10+k3s1
+. scripts/lib/pinned-artifacts.sh && pinned_work_init
+for t in k3s k3s-install; do
+  pinned_tool "$t" "$K3S_VERSION" "$PINNED_WORK" >/dev/null || break   # sha256 が表と違えば消して止まる
+  e="$(pinned_tool_entry "$t" "$K3S_VERSION")" && printf '%s  %s\n' "${e#* }" "$t-$K3S_VERSION"
+done > "$PINNED_WORK/k3s.sha256"
+( cd "$PINNED_WORK" && sha256sum -c k3s.sha256 )                    # 2 行とも OK を確かめる（macOS は shasum -a 256 -c）
+scp "$PINNED_WORK/k3s-$K3S_VERSION" "$PINNED_WORK/k3s-install-$K3S_VERSION" "$PINNED_WORK/k3s.sha256" <ノード>:/root/
+```
+
+ノードで、運んだものをもう一度照合してから入れる（インストーラには取得をさせない）:
+
+```sh
+cd /root && sha256sum -c k3s.sha256                                  # 2 行とも OK でなければ先へ進まない
+install -m 0755 -o root -g root k3s-v1.35.10+k3s1 /usr/local/bin/k3s
+INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC="server \
   --disable traefik --disable servicelb \
   --secrets-encryption \
   --bind-address 127.0.0.1 --advertise-address 127.0.0.1 --node-ip 127.0.0.1 \
-  --write-kubeconfig-mode 0600" sh -
+  --write-kubeconfig-mode 0600" sh ./k3s-install-v1.35.10+k3s1
+k3s --version                                                        # v1.35.10+k3s1 を確かめ、版と sha256 を運用の記録に残す
 ```
+
+- 版は、試験の k3d が使う k3s（`scripts/k8s-local-up.sh` の `K3S_IMAGE`）と同じ minor の、最新の patch に置いた。
+- **版を上げるときは**、表の 2 行（URL と sha256）と、上の 2 つの手順の版を対で改める（`scripts/deploy-cloud.test.js` が突き合わせる）。
+  sha256 は、バイナリは同じリリースの `sha256sum-amd64.txt` と、インストーラは 2 回取って一致することを確かめてから書く。
 
 インストールの**直後に**、k3s が暗号化した領域のマウントの前に起動しないようにする（二重に止める）:
 
@@ -186,7 +212,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | ブローカの権限 | narrow（生成物 `infra/rabbitmq-permissions.yaml` の行だけ。行の無いユーザーには権限を付けない） | `infra/rabbitmq.yaml` の起動の直後の復元 |
 | LLM ゲートウェイの経路の設定の検査 | `Llm__RouteValidation__Mode=Fail`（不足があれば起動しない） | `values-cloud.yaml` |
 | LLM ゲートウェイの呼び手ごとの許可表 | `Llm__CallerPolicy__Mode=Enforce`（表の外は 403） | 同上 |
-| LLM ゲートウェイの入力・要求数・費用の上限 | `Llm__CallLimits__Mode=Enforce`（超えたら送らない） | 同上 |
+| LLM ゲートウェイの入力・要求数・費用の上限 | `Llm__CallLimits__Mode=Enforce`（超えたら送らない）。当日の費用の上限は全呼び手の合計で 1 日 20 USD（取引ユニットの呼び手 18・既定 0.5。UTC の日）。既定の金額が無ければ起動しない | 同上 |
 
 - 既定の描画とローカル（`values-local.yaml`・`deploy/local`）は段 1 のまま（`scripts/deploy-cloud.test.js` が固定する）。
 

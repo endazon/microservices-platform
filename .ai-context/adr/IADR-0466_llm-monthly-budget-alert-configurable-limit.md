@@ -2,10 +2,10 @@
 title: IADR-0466 LLM 月次予算の上限は用途別の設定値（既定なし）とし、ゲートウェイがゲージで出して直近 30 日の費用と比べる
 type: impl-adr
 status: Accepted
-related_ids: [FR-10, FR-11, NFR-21, SC-10, ADR-0006, ADR-0044, IADR-0110, IADR-0164, IADR-0304, IADR-0322, IADR-0378]
+related_ids: [FR-10, FR-11, NFR-21, SC-10, ADR-0006, ADR-0044, IADR-0110, IADR-0164, IADR-0304, IADR-0322, IADR-0378, IADR-0692]
 author: claude
 created: 2026-09-26
-updated: 2026-09-26
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/06_technical/05_observability-ops.md
   - planning:projects/microservices-platform/07_adr/ADR-0044_llm-usage-metrics-and-pricing-table.md
@@ -183,3 +183,6 @@ max by (llm_purpose, llm_currency) (llm_budget_monthly_limit)
 - 通知の宛先は依然 `default-null`（IADR-0304 決定 2）。発火は Alertmanager の画面で見るまで誰にも届かない。
 - IADR-0304 決定 5・IADR-0322 決定 3 の「置かない」は、**金額（しきい値）を置かない**部分として存続し、
   **配線を置かない**部分は本 ADR が改める（両記録に日付つきの追記を置いた）。
+- ［2026-11-07 追記 / IADR-0692］**所有者が当日の費用の上限を裁定し、そこから導いた金額を `appsettings.json` の
+  `Llm:Budget:MonthlyLimits` に置いた。** 同じ変更で月次確認の Runbook を `superseded` にした（決定 6）。導き方は IADR-0692 決定 2。
+  クラウドの Prometheus は保持が 7 日なので、直近 7 日で進みを見る別名の規則を置いた（IADR-0692 決定 4）。
