@@ -12,7 +12,7 @@
 #   cloud/shared/ast-db                                            … username・password（共有の利用者。移行の間だけ。IADR-0695）
 #   cloud/shared/ast-db-<サービス>（7 つ）                         … username（ast_<サービス>_<乱数>）・password（IADR-0695。サービスごとの DB の利用者）
 #   cloud/shared/ast-rabbitmq-users  … deploy/local/rabbitmq-setup/users.txt の取引ユニットの行の利用者名ごとのパスワード
-#   cloud/shared/ast-client-secrets  … deploy/cloud/realm-for-cloud.js の CLOUD_CLIENTS（宣言の 3 つと、サービスごとの 7 つ。IADR-0699）ごとの secret
+#   cloud/shared/ast-client-secrets  … deploy/cloud/realm-for-cloud.js の CLOUD_CLIENTS（宣言の 3 つと、サービスごとの 7 つ。IADR-0700）ごとの secret
 #                                      在るパスには無いキーだけを足す（在るキーの値は触らない）
 #
 # 🔴 値は Pod の外へ出ない（手元へも返さない）。Pod の中で作り、標準入力で bao へ渡す。オーナー用の資格は age の復号から
@@ -91,7 +91,7 @@ userpass() {
 perkey() {
   p="$1"; shift
   if have "$p"; then
-    # IADR-0699: 在るパスには、無いキーだけを足す（在るキーの値は触らない。読めないキーがあれば書かずに止める）。
+    # IADR-0700: 在るパスには、無いキーだけを足す（在るキーの値は触らない。読めないキーがあれば書かずに止める）。
     miss=""
     for k in "$@"; do
       case "$(key_state "$p" "$k")" in present) ;; absent) miss="$miss $k" ;;

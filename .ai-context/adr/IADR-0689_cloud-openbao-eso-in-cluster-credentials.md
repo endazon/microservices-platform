@@ -205,7 +205,7 @@ related_specs:
 6. 外から持ち込む 4 つ（LLM の鍵・バックアップの保管先・Discord・heartbeat）は PR ② まで「供給元なし」（`secret-inventory.js`）。移行の門は満たさない。
    ［2026-11-07 追記 / #2471］決定 11 で解消した（`secret-inventory.js --strict` が全件で通る）。
 
-## ［2026-11-07 追記 / IADR-0699］決定 6・決定 9 の「3 つの機密クライアント」と「在れば触らない」を改めた
+## ［2026-11-07 追記 / IADR-0700］決定 6・決定 9 の「3 つの機密クライアント」と「在れば触らない」を改めた
 
 - クラウドの realm の機密クライアントは、宣言から残す 3 つ（`DECLARED_CLOUD_CLIENTS`）に、取引ユニットのサービスごとの 7 つ（`SERVICE_CLIENTS`。宣言には置かず
   realm-for-cloud.js が組む）を足した 10 である（`CLOUD_CLIENTS`）。`cloud/shared/ast-client-secrets` のキーも 10。

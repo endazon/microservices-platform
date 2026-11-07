@@ -1,5 +1,5 @@
 ---
-title: IADR-0699 クラウドの realm に取引ユニットのサービスごとの機密クライアント（ai-stock-trading-svc-<サービス>。宣言の ai-stock-trading-svc と同じ作り・宛先は取引ユニットの API だけ）を足し、secret は OpenBao の中で作る（在るパスには無いキーだけを足す）。稼働中の realm へは、取り込み元に在って稼働に無い機密クライアントだけを作る Job で足す
+title: IADR-0700 クラウドの realm に取引ユニットのサービスごとの機密クライアント（ai-stock-trading-svc-<サービス>。宣言の ai-stock-trading-svc と同じ作り・宛先は取引ユニットの API だけ）を足し、secret は OpenBao の中で作る（在るパスには無いキーだけを足す）。稼働中の realm へは、取り込み元に在って稼働に無い機密クライアントだけを作る Job で足す
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-05, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_s2s-per-service-clients.md
 ---
 
-# IADR-0699: クラウドの取引ユニットのサービスごとの機密クライアント
+# IADR-0700: クラウドの取引ユニットのサービスごとの機密クライアント
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

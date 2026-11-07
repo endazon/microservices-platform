@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0699, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
+iadrs: [IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
 specs: [20261107_s2s-per-service-clients]
 -->
 

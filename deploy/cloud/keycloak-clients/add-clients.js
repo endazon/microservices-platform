@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, NFR-05, IADR-0699: 稼働中のクラウドの Keycloak の realm に、取り込み元（Secret keycloak-realm-import の platform-realm.json。
+ * NFR-18, NFR-05, IADR-0700: 稼働中のクラウドの Keycloak の realm に、取り込み元（Secret keycloak-realm-import の platform-realm.json。
  * realm-for-cloud.js の雛形に ESO が OpenBao の値を差し込んだもの）に在って稼働の realm に無い**機密クライアント（サービスアカウントを持つもの）だけ**を作る。
  *
  * なぜ要るか: Keycloak の `--import-realm` は同名の realm が在ると黙って飛ばす。取り込み元にクライアントを足しても、稼働の realm は変わらない。

@@ -60,7 +60,7 @@ spec:
                   - trade-decision-service
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
           podSelector: { matchLabels: { app: llmgateway-service } }
-        # IADR-0699: 稼働中の realm へ機密クライアントを足す Job（最終の段の keycloak-ingress-clients と同じ）。
+        # IADR-0700: 稼働中の realm へ機密クライアントを足す Job（最終の段の keycloak-ingress-clients と同じ）。
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
           podSelector: { matchLabels: { app: keycloak-add-clients } }
       ports:

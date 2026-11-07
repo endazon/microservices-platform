@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, IADR-0699: add-clients.js（稼働中の realm へ無い機密クライアントだけを作る）の試験。稼働の Keycloak の代わりに、管理の API を
+ * NFR-18, IADR-0700: add-clients.js（稼働中の realm へ無い機密クライアントだけを作る）の試験。稼働の Keycloak の代わりに、管理の API を
  * 記録する偽物（メモリの中）を当てる。scripts/deploy-cloud.test.js が子のプロセスで走らせる（node deploy/cloud/keycloak-clients/add-clients.test.js でも）。
  *
  *   - apply: 無いクライアント（サービスごとの 7 つ）だけを作り、サービスアカウントに trading-service を足す。在るクライアントには書かない。

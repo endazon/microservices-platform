@@ -9,7 +9,7 @@
 | 取引ユニットの DB のサービスごとの利用者（各利用者が自分の DB だけを持つ。[IADR-0695](../../.ai-context/adr/IADR-0695_cloud-db-per-service-users.md)） | `infra/postgres-ast-db-users.yaml`・`db-users/` |
 | RabbitMQ（取引ユニットのサービスごとのユーザー。TLS） | `infra/rabbitmq.yaml` |
 | Keycloak（本番モード `start`・realm `platform`・HTTPS 8443 だけ。[IADR-0693](../../.ai-context/adr/IADR-0693_cloud-keycloak-tls-openbao-pki.md)） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
-| 稼働中の realm へ、取り込み元に在って稼働に無い機密クライアントだけを足す Job（[IADR-0699](../../.ai-context/adr/IADR-0699_cloud-ast-per-service-s2s-clients.md)） | `keycloak-clients/` |
+| 稼働中の realm へ、取り込み元に在って稼働に無い機密クライアントだけを足す Job（[IADR-0700](../../.ai-context/adr/IADR-0700_cloud-ast-per-service-s2s-clients.md)） | `keycloak-clients/` |
 | OpenTelemetry の collector（メトリクスは Prometheus へ。受けるのは OTLP を送る Pod だけ・gRPC だけ。[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
 | 秘匿管理（OpenBao。本番の init・raft）と、OpenBao から Secret へ写す ESO | `vault/`（`vault/eso/`・`vault/*.sh`） |
@@ -211,7 +211,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   取引ユニットを入れた後に `ast-db-users.sh --live drop-shared` で消す。稼働中の構成を移すときは手順書の 3 段の順。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
   `cloud/shared/*`（DB・ブローカ・機密クライアントの secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
-- 取引ユニットのサービス間の認証は、サービスごとの機密クライアント（`ai-stock-trading-svc-<サービス>` の 7 つ。[IADR-0699](../../.ai-context/adr/IADR-0699_cloud-ast-per-service-s2s-clients.md)）で行う。
+- 取引ユニットのサービス間の認証は、サービスごとの機密クライアント（`ai-stock-trading-svc-<サービス>` の 7 つ。[IADR-0700](../../.ai-context/adr/IADR-0700_cloud-ast-per-service-s2s-clients.md)）で行う。
   **稼働中の構成へ入れるとき**は、`seed-secrets.sh`（無いキーだけを足す）→ ESO の同期 → `bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check` →
   `… --live apply` の順で、取引ユニットの chart より先に当てる（[手順書](../../docs/operations/cloud-s2s-per-service-clients-runbook.md)）。新しく作る構成は realm の取り込みが最初から含む。
 

@@ -5,7 +5,7 @@
  * （deploy/keycloak/microservices-platform-realm.json）から組む。**宣言の開発用の値を 1 つも持ち込まない。**
  *
  *   - クライアントは、取引ユニット（AST）が使う機密クライアント（DECLARED_CLOUD_CLIENTS）と Keycloak の組み込み（account 系）だけを残す。
- *   - ［2026-11-07 / IADR-0699］取引ユニットのサービスごとの機密クライアント（SERVICE_CLIENTS）を、宣言の ai-stock-trading-svc と同じ作りで足す
+ *   - ［2026-11-07 / IADR-0700］取引ユニットのサービスごとの機密クライアント（SERVICE_CLIENTS）を、宣言の ai-stock-trading-svc と同じ作りで足す
  *     （サービスアカウントだけ・標準フロー・直接のパスワード・リダイレクトなし。トークンの宛先は取引ユニットの ai-stock-trading-api だけ）。
  *   - 残すクライアントの secret は、呼び出し側が乱数で作って渡す値へ差し替える（宣言の値は使わない）。
  *   - 利用者は、残すクライアントのサービスアカウントだけを残す（人の利用者・試験の利用者は持ち込まない。画面を公開しないので要らない）。
@@ -34,7 +34,7 @@ const DECLARED_CLOUD_CLIENTS = Object.freeze([
 ]);
 
 /**
- * ［2026-11-07 / IADR-0699］取引ユニットのサービス間の認証を、サービスごとの機密クライアントに分ける（取引ユニットの AST:IADR-0636）。
+ * ［2026-11-07 / IADR-0700］取引ユニットのサービス間の認証を、サービスごとの機密クライアントに分ける（取引ユニットの AST:IADR-0636）。
  * 名前は `ai-stock-trading-svc-<サービス>`。集合は取引ユニットの values-cloud で ServiceAuth を持つ 7 つ（取引ユニットの作業仕様書
  * 20261107_s2s-per-service-clients が呼び手の実装から引いた）。宣言（ローカル）には置かず、クラウドの realm にだけ足す。
  * 🔴 旧の共有クライアント（ai-stock-trading-svc）は、取引ユニットの移行の段が終わるまで残す（外すのは別の変更）。
@@ -72,7 +72,7 @@ function serviceClientsFrom(realm) {
       ...JSON.parse(JSON.stringify(base)),
       clientId,
       name: `AST service client: ${svc} (intra-unit s2s, client_credentials)`,
-      description: `IADR-0699 / AST:IADR-0636: 取引ユニットの ${svc} のサービス間の照会の機密クライアント（client_credentials・service-account に trading-service）。宛先 ai-stock-trading-api を載せる。クラウドの realm にだけ置く。`,
+      description: `IADR-0700 / AST:IADR-0636: 取引ユニットの ${svc} のサービス間の照会の機密クライアント（client_credentials・service-account に trading-service）。宛先 ai-stock-trading-api を載せる。クラウドの realm にだけ置く。`,
       ...flags,
       redirectUris: [],
       webOrigins: [],

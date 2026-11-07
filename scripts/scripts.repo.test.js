@@ -20737,7 +20737,7 @@ esac
       }
     });
 
-    ok('IADR-0674 / IADR-0689 / IADR-0699: クラウドの realm は取引ユニットの 3 つの機密クライアントとサービスごとの 7 つと組み込みだけを残し、secret を渡した値へ差し替え、人の利用者・SMTP を持ち込まない', () => {
+    ok('IADR-0674 / IADR-0689 / IADR-0700: クラウドの realm は取引ユニットの 3 つの機密クライアントとサービスごとの 7 つと組み込みだけを残し、secret を渡した値へ差し替え、人の利用者・SMTP を持ち込まない', () => {
       assert.deepStrictEqual([...CLOUD_CLIENTS].slice(0, 3), ['ai-stock-trading-svc', 'ai-stock-trading-llm-caller', 'ai-stock-trading-owner']);
       assert.strictEqual(CLOUD_CLIENTS.length, 10);
       assert.ok(CLOUD_CLIENTS.slice(3).every((c) => /^ai-stock-trading-svc-[a-z-]+$/.test(c)), 'サービスごとのクライアントの名前の形が違う');
@@ -20762,7 +20762,7 @@ esac
       }
     });
 
-    ok('IADR-0689 決定 9 / IADR-0699: realm の雛形（--template）は secret の位置にだけ CLOUD_CLIENTS の数（10）の印を持ち、印を値へ置き換えると値を渡して組んだ realm と同じになる', () => {
+    ok('IADR-0689 決定 9 / IADR-0700: realm の雛形（--template）は secret の位置にだけ CLOUD_CLIENTS の数（10）の印を持ち、印を値へ置き換えると値を渡して組んだ realm と同じになる', () => {
       const tpl = JSON.stringify(buildCloudRealm(realm2401, {}, { template: true }), null, 2);
       const marks = tpl.match(/\{\{[^}]*\}\}/g) || [];
       assert.deepStrictEqual(marks.sort(), CLOUD_CLIENTS.map((c) => templateMarker(c)).sort());

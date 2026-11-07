@@ -433,7 +433,7 @@ function cloudRealmAudienceProblems(realm) {
     out.push('audience のスコープが ai-stock-trading-api を載せない');
   }
   const holders = (realm.clients || []).filter((c) => (c.defaultClientScopes || []).includes('ai-stock-trading-api-audience')).map((c) => c.clientId).sort();
-  // IADR-0699: owner と、取引ユニットのサービスごとのクライアント（SERVICE_CLIENTS）だけ。旧の共有クライアント（ai-stock-trading-svc）は持たない。
+  // IADR-0700: owner と、取引ユニットのサービスごとのクライアント（SERVICE_CLIENTS）だけ。旧の共有クライアント（ai-stock-trading-svc）は持たない。
   const { SERVICE_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
   const want = ['ai-stock-trading-owner', ...SERVICE_CLIENTS].sort();
   if (JSON.stringify(holders) !== JSON.stringify(want)) out.push(`audience のスコープの持ち手が owner とサービスごとのクライアントだけでない: ${holders.join(', ')}`);
@@ -643,7 +643,7 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
         }
         seen[ns] = [...(seen[ns] || []), ...pods].sort();
       }
-      // IADR-0699: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
+      // IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
       const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients'] };
       if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
         out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);
@@ -1187,7 +1187,7 @@ if (require.main === module) {
     norole.roles.realm = norole.roles.realm.filter((r) => r.name !== 'trading-bot');
     assert.ok(cloudRealmAudienceProblems(norole).some((x) => /trading-bot が無い/.test(x)));
   });
-  ok('IADR-0699: クラウドの realm にサービスごとの機密クライアント 7 つ（サービスアカウントだけ・宛先は取引ユニットの API だけ・trading-service だけ）が足され、secret は互いに違う', () => {
+  ok('IADR-0700: クラウドの realm にサービスごとの機密クライアント 7 つ（サービスアカウントだけ・宛先は取引ユニットの API だけ・trading-service だけ）が足され、secret は互いに違う', () => {
     const { buildCloudRealm, CLOUD_CLIENTS, SERVICE_CLIENTS, DECLARED_CLOUD_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
     const realm = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
     assert.deepStrictEqual([...SERVICE_CLIENTS], ['backtest', 'cost-control', 'information-collection', 'market-monitor', 'order-execution', 'report', 'trade-decision'].map((x) => `ai-stock-trading-svc-${x}`));
@@ -1234,7 +1234,7 @@ if (require.main === module) {
     assert.throws(() => buildCloudRealm(pub, secrets), /standardFlowEnabled/);
     assert.throws(() => buildCloudRealm(realm, { ...secrets, [SERVICE_CLIENTS[4]]: undefined }), /secret が渡されていない/);
   });
-  ok('IADR-0699: 稼働中の realm へ無い機密クライアントだけを足す Job（宣言・入口・手順）の形と、手順の試験', () => {
+  ok('IADR-0700: 稼働中の realm へ無い機密クライアントだけを足す Job（宣言・入口・手順）の形と、手順の試験', () => {
     const job = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/job.yaml'), 'utf8'))[0];
     const pod = podSpec(job);
     const c = pod.containers[0];

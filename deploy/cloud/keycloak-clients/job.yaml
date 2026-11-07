@@ -1,4 +1,4 @@
-# NFR-18, NFR-05, IADR-0699: 稼働中の Keycloak の realm に、取り込み元に在って稼働に無い機密クライアントだけを作る Job（手順は add-clients.js）。
+# NFR-18, NFR-05, IADR-0700: 稼働中の Keycloak の realm に、取り込み元に在って稼働に無い機密クライアントだけを作る Job（手順は add-clients.js）。
 #   🔴 kustomize には入れない（Job は作り直さないと流れない）。deploy/cloud/keycloak-clients/keycloak-clients.sh --live <段> が、段（MODE）を差し替えて作り、
 #      終わるまで待ち、ログを出し、成功したら消す。新しく作る構成は realm の取り込みが最初から含むので、流しても「在る（触らない）」だけになる。
 #   - 取り込み元は Secret keycloak-realm-import（ESO が雛形に OpenBao の値を差し込んだもの。Keycloak の Pod と同じ）。値は Pod の外へ出ない。

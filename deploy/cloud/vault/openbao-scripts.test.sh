@@ -262,7 +262,7 @@ done
 users="$(grep -v '^[[:space:]]*#' "$HERE/../../local/rabbitmq-setup/users.txt" | awk 'NF >= 2 && $2 == "ai-stock-trading" { print $1 }' | sort | tr '\n' ',')"
 [ "$(get shared/ast-rabbitmq-users | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")+","))')" = "$users" ] || ng "ブローカの利用者の集合が users.txt の取引ユニットの行と違う"
 CLIENT_KEYS="$(node -e 'process.stdout.write([...require(process.argv[1]).CLOUD_CLIENTS].sort().join(","))' "$HERE/../realm-for-cloud.js")"
-[ "$(printf '%s' "$CLIENT_KEYS" | tr ',' '\n' | grep -c .)" -eq 10 ] || ng "CLOUD_CLIENTS が 10 でない（宣言の 3 つとサービスごとの 7 つ。IADR-0699）"
+[ "$(printf '%s' "$CLIENT_KEYS" | tr ',' '\n' | grep -c .)" -eq 10 ] || ng "CLOUD_CLIENTS が 10 でない（宣言の 3 つとサービスごとの 7 つ。IADR-0700）"
 [ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")))')" = "$CLIENT_KEYS" ] || ng "client の secret のキーが CLOUD_CLIENTS の 10 の clientId でない"
 get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const v=Object.values(JSON.parse(s));if(!v.every((x)=>/^[0-9a-f]{48}$/.test(x))||new Set(v).size!==v.length)process.exit(1);})' \
   || ng "client の secret が 24 バイトの乱数でないか、互いに同じ"
@@ -272,7 +272,7 @@ after="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/ast
 [ "$before" = "$after" ] || ng "2 回目の seed が値を変えた"
 ok "seed: 7 種とサービスごとの DB の 7 組を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 10）、2 回目は何も変えない"
 
-# IADR-0699: 在るパス（稼働中の構成。旧の 3 つの client だけ）には、無いキーだけを足す。在るキーの値は変えない。
+# IADR-0700: 在るパス（稼働中の構成。旧の 3 つの client だけ）には、無いキーだけを足す。在るキーの値は変えない。
 old3="$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);const o={};for(const k of ["ai-stock-trading-svc","ai-stock-trading-llm-caller","ai-stock-trading-owner"])o[k]=d[k];process.stdout.write(JSON.stringify(o));})')"
 printf '%s' "$old3" | BAO_TOKEN="$OPT" B kv put -mount=cloud shared/ast-client-secrets - >/dev/null
 [ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(String(Object.keys(JSON.parse(s)).length)))')" = 3 ] || ng "旧の 3 つの形に戻せない（試験の前提）"

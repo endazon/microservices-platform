@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, NFR-05, IADR-0699: 稼働中の Keycloak の realm に、取り込み元（Secret keycloak-realm-import）に在って稼働に無い機密クライアントだけを作る
+# NFR-18, NFR-05, IADR-0700: 稼働中の Keycloak の realm に、取り込み元（Secret keycloak-realm-import）に在って稼働に無い機密クライアントだけを作る
 # Job を流す（オーナーが手元から。kubectl は SSH のトンネル越し）。
 #
 #   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check   # 読むだけ: 無いクライアント・足りないロールを名指す（在れば 3 で終わる）

@@ -2,7 +2,7 @@
 title: 作業仕様書 — クラウドの realm に取引ユニットのサービスごとの機密クライアントを足し、秘密を OpenBao の中で作り、稼働中の realm へも足す
 type: spec
 status: in-progress
-related_ids: [NFR-18, NFR-05, IADR-0699, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
+related_ids: [NFR-18, NFR-05, IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -12,7 +12,7 @@ related_specs:
 
 # 作業仕様書 — 取引ユニットのサービスごとの機密クライアント（クラウド）
 
-> 着手 2026-11-07（develop `30588d467`）。判断の記録は IADR-0699。取引ユニットの側（受け側の宛先・口ごとの呼び手の一覧・chart）は AST:IADR-0637 と
+> 着手 2026-11-07（develop `30588d467`）。判断の記録は IADR-0700。取引ユニットの側（受け側の宛先・口ごとの呼び手の一覧・chart）は AST:IADR-0637 と
 > AST の作業仕様書 `20261107_s2s-per-service-clients`（呼び出しの母集合）。稼働中のクラスタには何もしない。秘密の値は扱わない。
 
 ## 起点
