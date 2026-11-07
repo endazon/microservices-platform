@@ -99,6 +99,24 @@ data:
             annotations:
               summary: "LLM 費用が用途 {{ $labels.llm_purpose }} の月次予算を超える速さで使われている（直近 7 日）"
               description: "用途 {{ $labels.llm_purpose }} の直近 7 日の LLM 費用が {{ $value }} {{ $labels.llm_currency }} となり、月次予算（Llm:Budget:MonthlyLimits）の 7/30 を超えた。このままの速さでは月次予算を超える。当日の費用の上限で止まった呼び出しは llm_call_limit_exceeded_total で見る。単価を解決できなかった呼び出し（llm_pricing_unpriced_total）が 0 でなければ金額は過小である。"
+      # NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動と、当日の費用の枠の置き場の障害。
+      # 当日の費用の枠は PVC に残る（再起動で 0 に戻らない）。短い間の再起動の繰り返しは、それでも原因を見る（要求数の窓はプロセス内で戻る）。
+      # 起動の回数は起動の時刻のゲージ llm_gateway_start_time_seconds の変わった回数で数える（プロセスごとに大きくなる。ラベルが変わっても max で 1 本になる）。
+      - name: llm-gateway-state
+        rules:
+          - alert: LlmGatewayRestartLoop
+            expr: changes(max(llm_gateway_start_time_seconds)[30m:1m]) >= 3
+            labels: { severity: warning }
+            annotations:
+              summary: "LLM ゲートウェイが短い間に再起動を繰り返している（直近 30 分に 3 回以上）"
+              description: "直近 30 分に LLM ゲートウェイが {{ $value }} 回起動し直した。kubectl -n microservices-platform describe pod -l app=llmgateway-service と logs --previous で理由を読む。当日の費用の枠は PVC に残る（IADR-0698）。"
+          # 置き場を読めない・書けない間、段 2 は費用の上限を持つ呼び手の呼び出しを送らない（fail-closed）。取引ユニットの LLM の判断が止まる。
+          - alert: LlmCostStateUnavailable
+            expr: sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0
+            labels: { severity: critical }
+            annotations:
+              summary: "LLM ゲートウェイが当日の費用の枠の置き場を扱えず、呼び出しを送っていない"
+              description: "直近 10 分に、当日の費用の枠を読めない・書けないため送らなかった呼び出しがある。ゲートウェイのログ（当日の費用の枠を置き場で扱えない）と PVC llmgateway-service-state を確かめる。"
   # AST の PrometheusRule から spec（= Prometheus の規則ファイルの形）だけを取り出す。initContainer が実行する。
   #   ConfigMap が空・無い → 警告を出して起動する（AstAlertRulesNotLoaded が鳴る）
   #   PrometheusRule でない・spec が無い・promtool が読めない → 起動しない（exit 1）

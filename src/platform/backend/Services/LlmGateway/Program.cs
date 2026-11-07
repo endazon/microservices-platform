@@ -10,6 +10,7 @@ using LlmGateway.Domain.Authorization;
 using LlmGateway.Domain.Limits;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Infrastructure.ExternalServices;
+using LlmGateway.Infrastructure.Persistence;
 using LlmGateway.Domain.Routing;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -68,7 +69,20 @@ builder.Services.AddOptions<LlmCallLimitOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<LlmCallLimitOptions>, LlmCallLimitOptionsValidator>();
 builder.Services.AddSingleton<LlmCallLimitMetrics>();
+// NFR-18, NFR-21, IADR-0698: 当日の費用の枠の置き場。`Llm:CallLimits:SpendStore:Path` を与えたらそのファイル（クラウドは PVC の上）に残し、
+// 再起動を越えて引き継ぐ。与えなければプロセス内だけ（ローカル・試験。再起動で 0 に戻る）。
+// 🔴 置き場を読めない・書けないときは、段 2 で費用の上限を持つ呼び手の呼び出しを送らない（LlmCallLimiter。fail-closed）。
+// 設定は解決の時に読む（試験の器が後から足す設定も効くように）。
+builder.Services.AddSingleton<ILlmSpendStore>(sp =>
+{
+    var spendStorePath = sp.GetRequiredService<IConfiguration>()[FileLlmSpendStore.PathConfigKey];
+    return string.IsNullOrWhiteSpace(spendStorePath)
+        ? new ProcessLocalLlmSpendStore()
+        : new FileLlmSpendStore(spendStorePath);
+});
 builder.Services.AddSingleton<LlmCallLimiter>();
+// NFR-18, IADR-0698: 起動の時刻のゲージ（短い間の再起動の繰り返しを警報で見る）。
+builder.Services.AddSingleton<LlmGatewayStartMetrics>();
 
 // Meter は 1 本（サービス名と一致）。補完カウンタと利用実績の計器は同じ Meter に載る。
 builder.Services.AddOpenTelemetry()
@@ -166,6 +180,26 @@ var app = builder.Build();
 // シングルトンは初めて解決されたときに作られるため、補完の呼び出しを待つと
 // 「金額を設定したのに系列が出ない」時間が生まれ、所有者の確認手順（系列が出ることを見る）が成り立たない。
 app.Services.GetRequiredService<LlmBudgetMetrics>();
+
+// NFR-18, NFR-21, IADR-0698: 起動の時刻のゲージを登録し、前回の当日の費用の枠を読む。
+// 読めなくても起動は止めない（readiness を落とすと原因のログ・計器ごと見えなくなる）。読めるまで段 2 は費用を数える呼び出しを送らない。
+// 起動の直後に計器を 1 回送り出す（既定の 60 秒を待つと、それより早く落ちる再起動の繰り返しが数えられない）。
+app.Services.GetRequiredService<LlmGatewayStartMetrics>();
+{
+    var limiter = app.Services.GetRequiredService<LlmCallLimiter>();
+    limiter.TryLoadState();
+    var callLimits = app.Services.GetRequiredService<IOptions<LlmCallLimitOptions>>().Value;
+    if (callLimits.Mode == LlmCallLimitMode.Enforce && !app.Services.GetRequiredService<ILlmSpendStore>().IsDurable)
+    {
+        app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("LlmGateway.Startup")
+            .LogWarning(
+                "段 2 だが当日の費用の枠の置き場（{PathKey}）が無い。枠はプロセス内だけで、再起動で 0 に戻る（IADR-0698）。",
+                FileLlmSpendStore.PathConfigKey);
+    }
+    app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(() =>
+        app.Services.GetService<MeterProvider>()?.ForceFlush(5000)));
+}
 
 // FR-02, #992, [[IADR-0313]]: 🔴 **決定的ローカル埋め込みが有効なら、起動時に警告を出す。**
 // 索引されるベクトルに意味的な近さは無く、**検索品質は保証されない**。

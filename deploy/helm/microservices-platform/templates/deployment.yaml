@@ -47,6 +47,25 @@
 {{- end }}
 {{- /* NFR-18, IADR-0674 (#2409): ルートのファイルシステムを読み取り専用にする（opt-in）。書き込みは /tmp の emptyDir だけ。 */}}
 {{- $roRoot := $svc.readOnlyRootFilesystem }}
+{{- /* NFR-18, NFR-21, IADR-0698: サービスの状態を再起動を越えて残すボリューム（opt-in。既定は描かない）。
+       services.<名>.persistence.{enabled,mountPath,size,storageClass}。PVC（ReadWriteOnce）は 1 つの Pod だけが書くので、
+       1 レプリカ・HPA の外・Recreate に限る（新旧の Pod が重ならない）。描画で止める。 */}}
+{{- $persistence := $svc.persistence | default dict }}
+{{- $persist := $persistence.enabled }}
+{{- if $persist }}
+{{- if not (hasPrefix "/" ($persistence.mountPath | default "" | toString)) }}
+{{- fail (printf "services.%s.persistence.mountPath は絶対パスで与えてください（IADR-0698）" $name) }}
+{{- end }}
+{{- if not $persistence.size }}
+{{- fail (printf "services.%s.persistence.size を与えてください（IADR-0698）" $name) }}
+{{- end }}
+{{- if ne (int ($svc.replicas | default 1)) 1 }}
+{{- fail (printf "services.%s.persistence は 1 レプリカにだけ書けます（ReadWriteOnce の 1 つのボリュームを 1 つの Pod が書く。IADR-0698）" $name) }}
+{{- end }}
+{{- if and $.Values.scaling.enabled (has $name $.Values.scaling.services) }}
+{{- fail (printf "services.%s.persistence と HPA（scaling.services）は併記できません（IADR-0698）" $name) }}
+{{- end }}
+{{- end }}
 {{- if $tlsListen }}
 {{- range $e := concat ($svc.extraEnv | default list) ($svc.extraEnvAppend | default list) }}
 {{- if has (upper ($e.name | toString)) (list "ASPNETCORE_URLS" "ASPNETCORE_HTTP_PORTS" "ASPNETCORE_HTTPS_PORTS" "KESTREL__CERTIFICATES__DEFAULT__PATH" "KESTREL__CERTIFICATES__DEFAULT__KEYPATH") }}
@@ -97,6 +116,11 @@ spec:
   {{- if not (and $.Values.scaling.enabled (has $name $.Values.scaling.services)) }}
   replicas: {{ $svc.replicas | default 1 }}
   {{- end }}
+  {{- if $persist }}
+  # NFR-18, IADR-0698: 1 つの PVC を 1 つの Pod だけが書く。RollingUpdate だと新旧の Pod が重なり、新しい側は置き場を開けない。
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app: {{ $name }}-service
@@ -130,6 +154,11 @@ spec:
       {{- end }}
       # NFR, IADR-0583（Refs 非公開の指摘（MSP））: 非 root（aspnet イメージの APP_UID）・seccomp RuntimeDefault。
       {{- include "msp.podSecurityContext.restricted" $.Values.podSecurity.dotnetRunAsUser | nindent 6 }}
+      {{- if $persist }}
+        # NFR-18, IADR-0698: 状態のボリュームを非 root の利用者が書けるようにする（所有者が違うときだけ直す）。
+        fsGroup: {{ $.Values.podSecurity.dotnetRunAsUser }}
+        fsGroupChangePolicy: OnRootMismatch
+      {{- end }}
       {{- with $.Values.imagePullSecrets }}
       # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
       imagePullSecrets:
@@ -619,7 +648,7 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
-          {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot }}
+          {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot $persist }}
           volumeMounts:
             {{- if $pipelineMount }}
             - name: pipeline-config
@@ -650,8 +679,12 @@ spec:
             - name: tmp
               mountPath: /tmp
             {{- end }}
+            {{- if $persist }}
+            - name: state
+              mountPath: {{ $persistence.mountPath }}
+            {{- end }}
           {{- end }}
-      {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot }}
+      {{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot $persist }}
       volumes:
         {{- if $pipelineMount }}
         - name: pipeline-config
@@ -697,6 +730,33 @@ spec:
           emptyDir:
             sizeLimit: 64Mi
         {{- end }}
+        {{- if $persist }}
+        # NFR-18, NFR-21, IADR-0698: 再起動を越えて残す状態（LLM ゲートウェイでは当日の費用の枠）。
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ $name }}-service-state
+        {{- end }}
       {{- end }}
+{{- if $persist }}
+---
+# NFR-18, NFR-21, IADR-0698: {{ $name }} の状態のボリューム。chart を消しても残す（消すと当日の費用の枠が 0 に戻る）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-service-state
+  labels:
+    app: {{ $name }}-service
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if $persistence.storageClass }}
+  storageClassName: {{ $persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $persistence.size }}
+{{- end }}
 {{- end }}
 {{- end }}

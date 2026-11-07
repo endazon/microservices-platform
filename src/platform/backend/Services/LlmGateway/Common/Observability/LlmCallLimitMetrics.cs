@@ -8,7 +8,7 @@ namespace LlmGateway.Common.Observability;
 // 段 1（Report）では「止めていたら止まった件数」、段 2（Enforce）では「止めた件数」である。
 // **段 2 へ切り替える前に、この系列（llm.limit.mode=report）で誤って止める呼び手が無いことを確かめる。**
 //
-// 属性の値域は閉じる（IADR-0110 の規律）: 種類は 6 値、段は 2 値、用途は計器と同じ正規化、
+// 属性の値域は閉じる（IADR-0110 の規律）: 種類は 7 値（cost_state は IADR-0698）、段は 2 値、用途は計器と同じ正規化、
 // 呼び手は検証済みのトークンのクライアント識別子（realm の有限集合。MachinePrincipal と同じ規律）。
 public sealed class LlmCallLimitMetrics
 {
@@ -29,6 +29,7 @@ public sealed class LlmCallLimitMetrics
         _exceeded = meter.CreateCounter<long>(
             ExceededCounterName, unit: "{completion}",
             description: "送る前の上限（max_tokens・プロンプト長・呼び手と呼び手×用途の要求数と当日の費用）を超えた呼び出しの件数。"
+                       + "cost_state は当日の費用の枠を置き場で読めない・書けない（費用を数えられない）。"
                        + "llm.limit.mode=report は送った（段 1）、enforce は送らなかった（段 2）。");
         _unpricedEstimate = meter.CreateCounter<long>(
             UnpricedEstimateCounterName, unit: "{completion}",

@@ -76,7 +76,7 @@ services:
     grpcPort: null
     tls:
       secretName: llmgateway-tls
-    # NFR-18, IADR-0674: ルートのファイルシステムを読み取り専用にする（書き込みは /tmp の emptyDir だけ）。
+    # NFR-18, IADR-0674: ルートのファイルシステムを読み取り専用にする（書き込みは /tmp の emptyDir と、下の当日の費用の枠の PVC だけ。IADR-0698）。
     readOnlyRootFilesystem: true
     # NFR-18, IADR-0689 決定 12（2026-11-07）: クラウドでは LLM ゲートウェイの段 2 を強制にする（移行の門の条件。段 1 は報告だけ）。
     #   既定の描画とローカル（values-local）は段 1 のまま（試験が固定する）。
@@ -90,12 +90,21 @@ services:
     #     許可表に無い呼び手は段 2 の許可表（CallerPolicy）が上限の判定より前に 403 で拒む。合計 18 + 0.5 × 4 = 20 USD。
     #   - 状態はレプリカごとなので、1 レプリカ（scaling.enabled: false）が前提（試験が固定する）。
     #   - 段 2 で既定の金額が無ければ、ゲートウェイは起動しない（IADR-0692）。
+    # NFR-18, NFR-21, IADR-0698（2026-11-07 の所有者の裁定「再起動しても残るように直す」）: 当日の費用の枠を PVC の上のファイルに残す。
+    #   - 再起動の後は前回の値を読み込んでから判定する。読めない・書けない間は、費用の上限を持つ呼び出しを送らない（fail-closed）。
+    #   - PVC（ReadWriteOnce）を 1 つの Pod だけが書く: 1 レプリカ・Recreate（chart が描画で止める）。ファイルの排他の鍵が 2 つ目の書き手を止める。
+    #   - 置き場のパス（Llm__CallLimits__SpendStore__Path）は mountPath の下（試験が突き合わせる）。
+    persistence:
+      enabled: true
+      mountPath: /var/lib/llm-gateway
+      size: 64Mi
     extraEnvAppend:
       - { name: Llm__RouteValidation__Mode, value: "Fail" }
       - { name: Llm__CallerPolicy__Mode, value: "Enforce" }
       - { name: Llm__CallLimits__Mode, value: "Enforce" }
       - { name: Llm__CallLimits__Default__DailyCostLimit, value: "0.5" }
       - { name: Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit, value: "18" }
+      - { name: Llm__CallLimits__SpendStore__Path, value: "/var/lib/llm-gateway/daily-spend.json" }
 
 frontend:
   enabled: false

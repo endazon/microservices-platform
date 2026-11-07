@@ -773,3 +773,4 @@
 | [IADR-0693](./IADR-0693_cloud-keycloak-tls-openbao-pki.md) | クラウドの認可サーバー（Keycloak）を OpenBao の PKI（DB・ブローカと同じ CA）の証明書で HTTPS だけにし、受け手は https を必須にしてシステムの信頼ストアに基盤の CA を足して検証する。稼働中の構成は併存の段を経て平文を閉じる | Accepted |
 | [IADR-0694](./IADR-0694_rabbitmq-cloud-subscriber-no-exchange-configure.md) | クラウドのブローカの権限から、購読する（自分が発行しない）exchange の configure を外す。購読される exchange はブローカの起動の直後の初期化が、利用者の権限を当てる前に宣言する。ローカルの権限は変えない | Accepted |
 | [IADR-0695](./IADR-0695_cloud-db-per-service-users.md) | クラウドの取引ユニットの DB の利用者をサービスごとに分け、各利用者が自分の DB だけを OWNER で持ち、他の DB へは CONNECT できないようにする。利用者は OpenBao の中で作った値で Job が作り、稼働中の構成は共有の利用者を残す 3 段で移す。監査の DB の追記だけの権限は別の作業 | Accepted |
+| [IADR-0698](./IADR-0698_llm-daily-cost-state-persistence.md) | LLM ゲートウェイの当日の費用の枠を、置き場（クラウドでは PVC の上の 1 つのファイル）に残して再起動を越えて引き継ぐ。読めない・書けない間は段 2 で送らない。起動の時刻を計器に出し、短い間の再起動の繰り返しを警報にする | Accepted |

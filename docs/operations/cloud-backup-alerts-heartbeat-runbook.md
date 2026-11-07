@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
-specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
+iadrs: [IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670]
+specs: [20261107_llm-cost-cap-persistence, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
 issues: [#2471, #2402, #2401]
 -->
 
@@ -210,4 +210,6 @@ kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres bac
 | Healthchecks.io から「down」が届いた | `kubectl -n platform-infra get pods`（alertmanager・prometheus）、ノードへの SSH | Pod が落ちていれば `logs` で原因を見る。ノードに届かなければ Hetzner Console でノードを確かめる |
 | check B が「down」（`/fail` か、ping の途絶え）になった | Alertmanager のログ（`notify` の失敗）、Discord の webhook | webhook が消された・URL が変わったなら §3 で Secret を作り直す。直れば 15 分ほどで B は「up」へ戻る |
 | `AstAlertRulesNotLoaded` が Discord に出た | ConfigMap `ast-prometheus-rules` | §4 の 3 を行う |
+| `LlmGatewayRestartLoop` が Discord に出た（LLM ゲートウェイが直近 30 分に 3 回以上起動し直した） | `kubectl -n microservices-platform describe pod -l app=llmgateway-service`、`logs --previous` | 起動で止まる理由（設定の検査・鍵の欠落・メモリの上限）を読んで直す。当日の費用の枠は PVC に残るので、再起動で枠は 0 に戻らない |
+| `LlmCostStateUnavailable` が Discord に出た（当日の費用の枠を読めない・書けないため、LLM の呼び出しを送っていない） | ゲートウェイのログ「当日の費用の枠を置き場で扱えない」（`operation`・`error`）、`kubectl -n microservices-platform get pvc llmgateway-service-state` | PVC が付いていない・容量が尽きた・ファイルが壊れた・2 つ目の Pod が同じ置き場を開いた、のどれかである。壊れたファイルは退避して残す。退避するとその日の枠は 0 から数え直すので、その日の消費は提供元のコンソールの使用量で確かめ、要れば当日の上限を一時的に下げる。直れば次の呼び出しから送る |
 | バックアップの Job が失敗した | `kubectl -n platform-infra logs job/<名前>` | 「保管先が 1 つもありません」→ §2 の ConfigMap。「検算が合いません」→ 再実行（`COMPLETE` は置かれていない）。「同じ名前の回が既にあります」→ 手動の回が同じ秒に重なった。「monthly の回の確かめが上限に達しました」→ その月の `monthly/` に `COMPLETE` の無い回が溜まっている。送れない原因（鍵・接続・容量）を直し、取りこぼしの回は消さずに（lifecycle が片付ける）、完全な回を 1 つ取る。上限を超えて溜まっている間は定時の回も手動の回も同じところで止まるので、「回を手動でやり直すとき」の、上限を上げた 1 回で取る（daily は毎回書けている） |
