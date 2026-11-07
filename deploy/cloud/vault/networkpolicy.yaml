@@ -1,5 +1,5 @@
-# NFR-18, IADR-0689 決定 3: 秘匿管理の受け口は平文なので、届く相手をここで絞る（段 1 を持たない。最初から強制）。
-#   - 入り: ESO の controller（名前空間 external-secrets）からの 8200 だけ。オーナーは kubectl exec で Pod の中のループバックを使う
+# NFR-18, IADR-0689 決定 3, IADR-0696: 秘匿管理の受け口（TLS の 8443）に届く相手をここで絞る（段 1 を持たない。最初から強制）。
+#   - 入り: ESO の controller（名前空間 external-secrets）からの 8443 だけ。オーナーは kubectl exec で Pod の中のループバックを使う
 #     （kubelet を経るので NetworkPolicy の外。ポートを外へ開かない）。
 #   - 出: 名前解決と、kubernetes 認証の TokenReview（API サーバー）だけ。
 apiVersion: networking.k8s.io/v1
@@ -24,7 +24,7 @@ spec:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: external-secrets } }
           podSelector: { matchLabels: { app.kubernetes.io/name: external-secrets } }
       ports:
-        - { protocol: TCP, port: 8200 }
+        - { protocol: TCP, port: 8443 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

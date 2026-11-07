@@ -1,0 +1,51 @@
+# NFR-16, NFR-18, IADR-0696: 稼働中のクラウドの構成で、OpenBao の受け口を平文（8200）から TLS（8443）へ移す間だけ当てる**併存の段**。
+#   kubectl apply -k deploy/cloud-transition/openbao-tls-coexist
+# deploy/cloud/vault（最終の段: TLS の 8443 だけ）に重ね、次だけを足す:
+#   - 平文の 8200 の listener（設定ファイルを 2 つ目として読ませる。最終の段の設定は書き換えない）・Service と NetworkPolicy の 8200。
+#     送り元は最終の段と同じ ESO の controller だけ。
+#   - ESO のストアがまだ http の間（基盤の側は deploy/cloud/vault/eso を当てる前、取引ユニットの側は取引ユニットの chart を
+#     当て直す前）も同期が止まらない。
+# 🔴 全てのストアが https へ移ったら、deploy/cloud/vault（最終の段）を当てて平文の口を閉じる。この重ねを残さない。
+#    手順: docs/operations/cloud-openbao-tls-runbook.md
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../cloud/vault
+  - plain-listener.yaml
+
+patches:
+  # 設定ファイルを 2 つ目として読ませる（listener は足し合わされる）。並びが変われば描画が止まる（test で名前と最初の引数を確かめる）。
+  - target: { kind: Deployment, name: openbao, namespace: openbao }
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/name
+        value: openbao
+      - op: test
+        path: /spec/template/spec/containers/0/command/2
+        value: -config=/openbao/config/cloud.hcl
+      - op: add
+        path: /spec/template/spec/containers/0/command/-
+        value: -config=/openbao/coexist/plain.hcl
+      - op: add
+        path: /spec/template/spec/containers/0/ports/-
+        value: { containerPort: 8200, name: http }
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value: { name: coexist, mountPath: /openbao/coexist, readOnly: true }
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value: { name: coexist, configMap: { name: openbao-config-coexist } }
+  - target: { kind: Service, name: openbao, namespace: openbao }
+    patch: |-
+      - op: add
+        path: /spec/ports/-
+        value: { name: http, port: 8200, targetPort: 8200 }
+  - target: { kind: NetworkPolicy, name: openbao-ingress-eso, namespace: openbao }
+    patch: |-
+      - op: test
+        path: /spec/ingress/0/ports/0/port
+        value: 8443
+      - op: add
+        path: /spec/ingress/0/ports/-
+        value: { protocol: TCP, port: 8200 }

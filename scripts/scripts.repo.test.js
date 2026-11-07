@@ -20713,7 +20713,10 @@ esac
       assert.ok(rows.length >= 14, `陽性対照: 参照を拾えていない（${rows.length}）`);
       assert.deepStrictEqual(inv.problems(rows), [], inv.problems(rows).join('\n'));
       for (const r of rows.filter((x) => x.category === 2 || x.category === 3)) assert.ok(r.supplier, `${r.ref} に供給元が無い`);
-      for (const r of rows.filter((x) => x.category === 3)) assert.match(r.supplier, /PKI/, `${r.ref}（TLS の鍵）が PKI で発行されていない`);
+      // ［2026-11-07 / IADR-0696］OpenBao 自身の受け口の鍵だけは PKI の外（OpenBao を開ける側。tls-cert.sh）。名指しの 1 つだけ。
+      assert.deepStrictEqual(Object.keys(inv.OPENER_SUPPLIED), ['openbao/openbao-tls']);
+      assert.ok(rows.some((x) => x.ref === 'openbao/openbao-tls' && x.category === 3 && /tls-cert\.sh/.test(x.supplier)), '受け口の鍵（openbao/openbao-tls）が表に無い');
+      for (const r of rows.filter((x) => x.category === 3 && !inv.OPENER_SUPPLIED[x.ref])) assert.match(r.supplier, /PKI/, `${r.ref}（TLS の鍵）が PKI で発行されていない`);
       // ［2026-11-07 / IADR-0689 決定 11］区分 1（外から持ち込む値）も OpenBao から写す。--strict（移行の判定）でも全件に供給元がある。
       assert.deepStrictEqual(rows.filter((x) => !x.supplier).map((x) => x.ref), []);
       assert.deepStrictEqual(inv.problems(rows, { strict: true }), []);
@@ -20730,7 +20733,11 @@ esac
       assert.ok(!esoDocs.some((d) => /^Cluster/.test(d.kind) || d.kind === 'PushSecret' || d.kind === 'Secret'), 'ClusterSecretStore・PushSecret・Secret を描いている');
       const stores = esoDocs.filter((d) => d.kind === 'SecretStore');
       assert.deepStrictEqual(stores.map((d) => `${d.metadata.namespace}/${d.metadata.name}`).sort(), ['microservices-platform/openbao', 'platform-infra/openbao']);
-      for (const s of stores) assert.strictEqual(s.spec.provider.vault.server, 'http://openbao.openbao.svc:8200');
+      // ［2026-11-07 / IADR-0696］受け口は TLS だけ。ストアは https で、CA を ConfigMap openbao-ca で検証する。
+      for (const s of stores) {
+        assert.strictEqual(s.spec.provider.vault.server, cloud.OPENBAO_SERVER);
+        assert.deepStrictEqual({ ...s.spec.provider.vault.caProvider }, cloud.OPENBAO_CA_PROVIDER);
+      }
       for (const e of esoDocs.filter((d) => d.kind === 'ExternalSecret' && d.spec.secretStoreRef)) {
         assert.deepStrictEqual(e.spec.secretStoreRef, { kind: 'SecretStore', name: 'openbao' }, `${e.metadata.name} が別のストアを使う`);
         for (const x of e.spec.data || []) assert.match(x.remoteRef.key, /^(platform|shared)\//, `${e.metadata.name}: 基盤の側が読むパスの外（${x.remoteRef.key}）`);
@@ -20755,7 +20762,7 @@ esac
     });
 
     ok('IADR-0689: 秘匿管理の手順（deploy/cloud/vault/*.sh）は --live が無ければ何もせずに 3 で終わり、秘密を引数・環境変数に置く形を持たない', () => {
-      for (const f of ['init.sh', 'unseal.sh', 'configure.sh', 'seed-secrets.sh', 'root-token.sh', 'put-external-secret.sh']) {
+      for (const f of ['init.sh', 'unseal.sh', 'configure.sh', 'seed-secrets.sh', 'root-token.sh', 'put-external-secret.sh', 'tls-cert.sh']) {
         const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/vault', f), '--init-file', '/dev/null', '--identity', '/dev/null', '--operator-file', '/dev/null', '--recipients', '/dev/null'], { encoding: 'utf8', env: { ...process.env, LIVE: '' } });
         assert.ok([2, 3].includes(r.status), `${f}: ${r.status} ${r.stderr}`);
         const src = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/vault', f), 'utf8');

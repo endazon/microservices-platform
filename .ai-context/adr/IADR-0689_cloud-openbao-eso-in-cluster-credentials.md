@@ -2,7 +2,7 @@
 title: IADR-0689 クラウドの最小構成に秘匿管理（OpenBao）と ESO を持ち込み、クラスタの中で作る資格情報を OpenBao の中で作り、TLS の鍵を OpenBao の PKI で発行する。unseal の鍵とオーナー用の資格は age で暗号化してオーナーが手元に持ち、root は使うたびに作り直して失効させる（IADR-0674 決定 3・4 を覆す。#2471）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684, IADR-0692]
+related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684, IADR-0692, IADR-0696]
 author: claude
 created: 2026-11-06
 updated: 2026-11-07
@@ -77,6 +77,11 @@ related_specs:
   - OpenBao の受け口の鍵は OpenBao から供給できない。封印のあいだは OpenBao が自分で発行できず、OpenBao を開ける前に要る値だからである（unseal の鍵と同じく「OpenBao を開ける側」の値にあたる）。
   - 鍵を置かない（平文にして届く相手を 1 つに絞る）ほうが、ノードに置く鍵が 1 つ減る。メッシュの無い単一ノードで、ESO の controller と OpenBao の間はノードの中の通信である。
 - 残る危険（ノードの中の通信路を読める者は ESO のトークンと値を読める）は §残余 3。
+- ［2026-11-07 追記 / IADR-0696］**本決定の「受け口は平文」を改めた。** 所有者の裁定（2026-11-07「OpenBao も TLS にする」）が、2026-11-06 の裁定
+  （受け口は平文＋NetworkPolicy）を改めたためである。受け口は TLS の 8443 だけになり、ESO とオーナーの手順は受け口の CA で検証する。
+  受け口の証明書は OpenBao の PKI では作らず、オーナーが流す `tls-cert.sh` が OpenBao の外で作る（上の「OpenBao から供給できない」理由はそのまま、
+  出どころの決定の理由になった）。「鍵を置かない」は改め、受け口の鍵は Secret `openbao/openbao-tls` に置く。
+  入りの送り元を ESO の controller だけに絞る NetworkPolicy は残す（TLS と重ねる。ポートは 8443）。詳細と移る順序は IADR-0696。
 
 ### 決定 4 — TLS の鍵は OpenBao の PKI で発行する（CA の鍵は外へ出さない）
 
@@ -194,6 +199,7 @@ related_specs:
    クラスタでしか確かめられない（移行の門の条件 5 で確かめる）。届かなければ k3s の起動のフラグを改める別の作業になる。
 2. OpenBao の出の NetworkPolicy は、API サーバーの宛先の IP を名指せないため、ポート（443・6443）だけで絞る。
 3. OpenBao の受け口は平文（決定 3）。ノードの中の通信路を読める者は ESO のトークンと値を読める（その者はノードの root であり、k8s の Secret も読める）。
+   ［2026-11-07 追記 / IADR-0696］受け口を TLS にしたので、この残余は閉じた（受け容れの理由に頼らない）。代わりに受け口の鍵が Secret に在ること（IADR-0696 残余 1）が残る。
 4. ESO の名前空間（`external-secrets`）に NetworkPolicy を置いていない（chart の既定のまま）。
 5. OpenD の RSA の鍵（決定 7）は、オーナーの手元のプロセスのメモリを通る（OpenBao の中で作れないため）。ディスクには書かない。
 6. 外から持ち込む 4 つ（LLM の鍵・バックアップの保管先・Discord・heartbeat）は PR ② まで「供給元なし」（`secret-inventory.js`）。移行の門は満たさない。

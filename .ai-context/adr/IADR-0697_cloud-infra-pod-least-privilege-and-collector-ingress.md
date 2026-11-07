@@ -96,6 +96,7 @@ related_specs:
 
   - `target_info` は remote write が送り手のリソースごと（job＝service.name）に作る（SDK の既定の属性があるとき。.NET の `ResourceBuilder.CreateDefault()` は持つ。実測）。
     サービスの名前に依らず、送ってくるサービスの**数**で途絶えを見る（取引ユニットの系列の名前を基盤が知らなくてよい）。
+  - `OtlpSendersMissing` の閾値と注釈（summary・description）の数は、送り元の一覧の数と同じであることを試験が突き合わせる。
   - 系列の名前は collector 0.102.0 の :8888 で実測した。式は promtool の単体試験（鳴るときに鳴り、平時は鳴らない）で固定する（`scripts/cloud-ops.test.js`）。
 
 ### 決定 6 — 偽の系列への備えと、OTLP の認証（bearer）は入れない（今は）
@@ -125,4 +126,4 @@ related_specs:
 3. Postgres・RabbitMQ・Keycloak の本体はルートのファイルシステムを書き込み可のまま（ソケット・作業の dir。emptyDir へ移すのは別の作業）。
 4. 手元で確かめられなかったこと: 実の k3s の上で全部を同時に動かすこと（ディスクの都合。k3s では PSA の受け付けと PVC の所有の付け替えを確かめ、各イメージの起動は docker で
    宣言の securityContext を写して確かめた）。取引ユニットの Pod から collector への到達（NetworkPolicy の実効）は、稼働の後に `OtlpSendersMissing` が鳴らないことで見る。
-5. `PrometheusHeadSeriesHigh` の閾値（100000）は見込みで、平時の実測が無い。稼働の後の実測で直す。
+5. `PrometheusHeadSeriesHigh` の閾値（100000）は見込みで、平時の実測が無い。**稼働の開始から 7 日の間の `max_over_time(prometheus_tsdb_head_series[7d])` の実測で見直す**（期限: 稼働の開始の 7 日後。平時の最大の 10 倍ほどへ直す）。
