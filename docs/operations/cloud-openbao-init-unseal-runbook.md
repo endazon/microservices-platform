@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695]
-specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users]
+iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696]
+specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls]
 issues: [#2471, #2401]
 -->
 
@@ -45,9 +45,13 @@ issues: [#2471, #2401]
 
 ```sh
 kubectl apply -k deploy/cloud/vault
+bash deploy/cloud/vault/tls-cert.sh --live issue   # 受け口（TLS）の証明書。これが無いと Pod は起きない
 kubectl -n openbao get pods                    # Running・Ready 0/1（初期化前・封印中は Ready にならない）
 bash deploy/cloud/vault/init.sh --live --recipients <受取人のファイル> --out <init>.age
 ```
+
+- 受け口は TLS だけである。手順（`deploy/cloud/vault/*.sh`）は Pod の中でも https と受け口の CA で話す。証明書の作り直しと、
+  平文の構成から移す順序は[受け口の TLS の手順書](cloud-openbao-tls-runbook.md)。
 
 - 出力は Pod の中から手元の `age -R` へそのまま流れ、暗号化したファイル（0600）だけができる。平文はどこにも残らない。
 - 受取人で暗号化できることを先に確かめてから初期化する。途中で失敗したら書き出し先を消す。

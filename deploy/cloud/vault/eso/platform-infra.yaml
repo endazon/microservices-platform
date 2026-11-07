@@ -18,7 +18,9 @@ metadata:
 spec:
   provider:
     vault:
-      server: http://openbao.openbao.svc:8200
+      # NFR-16, IADR-0696: 受け口は TLS だけ。CA は tls-cert.sh が置く ConfigMap openbao-ca で検証する（検証を外さない）。
+      server: https://openbao.openbao.svc:8443
+      caProvider: { type: ConfigMap, name: openbao-ca, key: ca.crt }
       path: cloud
       version: v2
       auth:
