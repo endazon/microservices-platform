@@ -40,6 +40,7 @@ related_specs:
 | AC2 | 名前空間 `openbao` の PSA は restricted、OpenBao の Pod は NET_RAW を持たない | 同 H2・H3 |
 | AC3 | OpenBao の手順（init・unseal・configure・seed ほか）の実物の試験が通る | `openbao-scripts.test.sh` |
 | AC4 | 明示のトークンで kubernetes 認証の設定とログインが通り、トークンが無いと通らない | 実の k3s での実測（下） |
+| AC5 | Pod の中のトークンを読み直す形（設定に保存しない・既定の置き場）で、トークンの作り直しの後も login が通る | `deploy-cloud.test.js`・実の k3s での実測（下） |
 
 ## 実測・記録
 
@@ -47,4 +48,8 @@ related_specs:
   OpenBao 2.7.1 を dev で起こした（試験の足場。値はその場の乱数）。`auth/kubernetes/config` を `kubernetes_host` だけで書け、ESO 役の ServiceAccount の
   トークン（audience vault）でログインでき（policy default）、audience の違うトークンは `invalid audience` で拒まれた。設定は `disable_local_ca_jwt=false`・
   `token_reviewer_jwt_set=false`。projected のボリュームを外した Pod では、`auth/kubernetes/config` の書き込みが `ca.crt: no such file` で通らなかった。
-- 測っていないこと: トークンの期限（1 時間）の切り替わりの後の動き（IADR-0697 残余 6）。
+- ［2026-11-07 追記 / #2498 のレビュー］トークンの切り替わり: 同じ形で期限だけ最短（600 秒）にした Pod で、1 分ごとに ESO 役の新しいトークンで login した。
+  置き場のトークンは起動の 508 秒後に作り直され（`iat` が変わる）、最初のトークンの期限（`exp`）を過ぎた後も login が通り続けた。出典（OpenBao v2.7.1 の
+  kubernetes 認証の `loadConfig`・`cachingFileReader`・既定の置き場）は IADR-0697 決定 7。宣言の期限（3600 秒）そのものでは測っていない（残余 6）。
+- 試験: configure.sh のクラスタの中の分岐が `token_reviewer_jwt`・`disable_local_ca_jwt`・`kubernetes_ca_cert` を書かないこと、トークンと CA が既定の置き場に載ることを
+  `deploy-cloud.test.js` が固定する（保存する形・読まない形・置き場の移動の変異で赤）。
