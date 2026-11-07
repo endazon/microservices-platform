@@ -18813,6 +18813,77 @@ server.listen(0, '127.0.0.1', async () => {
       }
     });
 
+    // IADR-0643 の 2026-11-07 追記（#2496 の追随）: 試験の出力（実行の結果）が読めないという「読めていない」で赤になった実本文（#2496 の 1 回目、head 49bdba0d）。
+    // 18/18 を申告し、変更ファイルは読んでいた。行に試験・`.js`・変更ファイルの名前が並ぶので #2276 の除外（行の単位）から外れていた。
+    const review2496 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2496-review1.txt'), 'utf8');
+    const changed2496 = [
+      '.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md',
+      '.ai-context/adr/README.md',
+      '.ai-context/specs/20261107_cloud-infra-pod-hardening.md',
+      'deploy/cloud/README.md',
+      'deploy/cloud/backup/cronjob-postgres.yaml',
+      'deploy/cloud/infra/keycloak.yaml',
+      'deploy/cloud/infra/namespaces.yaml',
+      'deploy/cloud/infra/networkpolicy.yaml',
+      'deploy/cloud/infra/otel-collector.yaml',
+      'deploy/cloud/infra/postgres.yaml',
+      'deploy/cloud/infra/rabbitmq.yaml',
+      'deploy/cloud/observability/alertmanager.yaml',
+      'deploy/cloud/observability/patches/otel-collector.yaml',
+      'deploy/cloud/observability/prometheus.yaml',
+      'docs/operations/cloud-backup-alerts-heartbeat-runbook.md',
+      'scripts/cloud-ops.test.js',
+      'scripts/deploy-cloud-postgres.test.js',
+      'scripts/deploy-cloud.test.js',
+    ];
+    ok('check-review-verdict[IADR-0643 追記]: #2496 の実本文は、試験の出力が読めないと書いた「読めていない」で赤にならない', () => {
+      assert.deepStrictEqual(floorRvf(review2496, changed2496, { scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0643 追記]: ★陽性対照 —— 同じ実本文でも、その文が変更ファイル・全文・差分を指すか、ほかの未精読の型に当たれば赤', () => {
+      const from1 = '出力は途中で切り捨てられ、失敗した試験の一覧は読めていない。';
+      const from2 = '`scripts.test.js` の中で実行された範囲の成否は上のとおり読めていない）。';
+      assert.ok(review2496.includes(from1) && review2496.includes(from2), '実本文の該当の文が無い（fixture が変わった）');
+      for (const [from, to] of [
+        [from1, '出力は途中で切り捨てられ、`cloud-ops.test.js` の一覧は読めていない。'],
+        [from1, '出力は途中で切り捨てられ、変更ファイルの全文は読めていない。'],
+        [from1, '出力は途中で切り捨てられ、差分の一覧は読めていない。'],
+        [from1, '出力は途中で切り捨てられ、一覧は全行は読んでいない。'],
+        [from2, '`scripts.test.js` の中で実行された範囲の本文は上のとおり読めていない）。'],
+        [from2, '`deploy-cloud-postgres.test.js` の中で実行された範囲の成否は上のとおり読めていない）。'],
+      ]) {
+        const v = floorRvf(review2496.replace(from, to), changed2496, { scriptsTestsConclusion: 'success' });
+        assert.strictEqual(v.length, 1, to);
+        assert.match(v[0], /精読していないと書いている/);
+      }
+    });
+    {
+      const SRC_RVF2 = fsRvf.readFileSync(pathRvf.join(__dirname, 'check-review-verdict.js'), 'utf8');
+      const mutate2 = (from, to) => {
+        assert.ok(SRC_RVF2.includes(from), `変異の置換元が無い（検査器の書き方が変わった）: ${from}`);
+        const file = pathRvf.join(__dirname, `.mutant-check-review-verdict-${process.pid}-${Math.random().toString(36).slice(2)}.js`);
+        fsRvf.writeFileSync(file, SRC_RVF2.replace(from, to));
+        try {
+          delete require.cache[file];
+          return require(file);
+        } finally {
+          fsRvf.rmSync(file, { force: true });
+        }
+      };
+      const real2 = require('./check-review-verdict.js');
+      const red2 = (m, body) => m.findFloorViolations(body, changed2496, { scriptsTestsConclusion: 'success' }).filter((x) => /精読していないと書いている/.test(x)).length >= 1;
+      const cases2 = [
+        { name: '条件 1（型が「読めていない」だけ）', from: 'hitPatterns.every((re) => re === READ_UNABLE) &&', to: 'true &&', body: review2496.replace('出力は途中で切り捨てられ、失敗した試験の一覧は読めていない。', '出力は途中で切り捨てられ、一覧は未読で読めていない。') },
+        { name: '条件 3（ファイルを読む語）', from: '!FILE_READ_CONTEXT.test(bareSentence) &&', to: 'true &&', body: review2496.replace('出力は途中で切り捨てられ、失敗した試験の一覧は読めていない。', '出力は途中で切り捨てられ、差分の一覧は読めていない。') },
+        { name: '条件 4（変更ファイルの名前）', from: '!mentionsChangedFile(rawSentence, changedFiles)', to: 'true', body: review2496.replace('`scripts.test.js` の中で実行された範囲の成否は上のとおり読めていない）。', '`deploy-cloud-postgres.test.js` の中で実行された範囲の成否は上のとおり読めていない）。') },
+      ];
+      for (const c of cases2) {
+        ok(`check-review-verdict[IADR-0643 追記]: ★変異 —— ${c.name}を外すと赤の例が緑になる（本物は赤）`, () => {
+          assert.ok(red2(real2, c.body), '本物の検査器で赤でない');
+          assert.ok(!red2(mutate2(c.from, c.to), c.body), '変異でも赤のまま（例がその条件を試していない）');
+        });
+      }
+    }
+
     // IADR-0643 (#2276): ★変異試験 —— 除外の 3 条件のそれぞれを外した検査器では、その条件だけが赤に保っている例が緑になる。
     // （＝自己試験と上の陽性対照が、条件を見ていることの固定。条件を黙って緩めると、ここではなく自己試験が赤になる）
     {
