@@ -1,11 +1,12 @@
 # NFR-18, IADR-0674 (#2401): 基盤と MSP の名前空間。MSP の chart は namespace.create=false で入れる（values-cloud.yaml）。
-# Pod Security Admission の水準は chart が作るときと同じ（enforce baseline・warn / audit restricted）。メッシュは持ち込まない。
+# Pod Security Admission は enforce・warn・audit とも restricted（IADR-0697。どちらの名前空間の Pod も root でなく、capability を全部落とし、
+#   権限の昇格を許さず、seccomp は RuntimeDefault。chart が名前空間を作るとき〔既定〕の baseline より強い）。メッシュは持ち込まない。
 apiVersion: v1
 kind: Namespace
 metadata:
   name: platform-infra
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
 ---
@@ -14,6 +15,6 @@ kind: Namespace
 metadata:
   name: microservices-platform
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
     pod-security.kubernetes.io/audit: restricted
