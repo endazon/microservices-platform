@@ -74,11 +74,20 @@ services:
     #   既定の描画とローカル（values-local）は段 1 のまま（試験が固定する）。
     #   - 経路の設定の不足は起動で止める（IADR-0677）
     #   - 呼び手ごとの許可表に無い用途・モデルは 403（IADR-0684。取引ユニットの呼び手は既定の表に在る）
-    #   - 入力の上限と要求数・当日の費用の上限を超えたら送らない（IADR-0678。上限は既定の値）
+    #   - 入力の上限と要求数・当日の費用の上限を超えたら送らない（IADR-0678。入力と要求数の上限は既定の値）
+    # NFR-18, NFR-21, IADR-0692（2026-11-07 の所有者の裁定）: 当日の費用の上限は、全呼び手の合計で 1 日 20 USD。
+    #   - 通貨は単価表の通貨（Llm:Pricing:Currency＝USD）。日の区切りは UTC の 0 時（ゲートウェイの判定器が固定で持つ）。
+    #   - 取引ユニットの呼び手が主（18 USD）。既定（0.5 USD）は呼び手の項目が無い呼び手のそれぞれに効く ——
+    #     ナレッジの 4 つの呼び手（aianalysis・graph・retrieval・conversion。クラウドでは描かない）で 2 USD。
+    #     許可表に無い呼び手は段 2 の許可表（CallerPolicy）が上限の判定より前に 403 で拒む。合計 18 + 0.5 × 4 = 20 USD。
+    #   - 状態はレプリカごとなので、1 レプリカ（scaling.enabled: false）が前提（試験が固定する）。
+    #   - 段 2 で既定の金額が無ければ、ゲートウェイは起動しない（IADR-0692）。
     extraEnvAppend:
       - { name: Llm__RouteValidation__Mode, value: "Fail" }
       - { name: Llm__CallerPolicy__Mode, value: "Enforce" }
       - { name: Llm__CallLimits__Mode, value: "Enforce" }
+      - { name: Llm__CallLimits__Default__DailyCostLimit, value: "0.5" }
+      - { name: Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit, value: "18" }
 
 frontend:
   enabled: false

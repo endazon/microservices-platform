@@ -724,6 +724,42 @@ t('T-2402-48 プラットフォームの規則と Prometheus の設定を promto
   const r = run('promtool', ['check', 'rules', f]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
 });
+// NFR-21, IADR-0692: クラウドの LLM 費用の月次予算の進みの警報。窓は保持（7 日）に合わせ、月次予算を 7/30 に按分して比べる。
+const LLM_PACE_EXPR = 'sum by (llm_purpose, llm_currency) (increase(llm_cost_total[7d]))\n  > on (llm_purpose, llm_currency)\nmax by (llm_purpose, llm_currency) (llm_budget_monthly_limit) * 7 / 30\n';
+t('IADR-0692 LLM の月次予算の進みの警報が、ゲートウェイのゲージを直近 7 日（保持と同じ）で見る', () => {
+  const r = ruleOf('LlmMonthlyBudgetPaceExceeded');
+  assert.strictEqual(r.expr, LLM_PACE_EXPR);
+  assert.match(rules, /alert: LlmMonthlyBudgetPaceExceeded[\s\S]{0,400}labels: \{ severity: warning \}/, '重大度が warning でない');
+  // 窓は保持を超えない（超えると黙って過小になる）。
+  const dep = find(ods, 'Deployment', 'prometheus') || EMPTY;
+  const args = ((((dep.obj || {}).spec || {}).template || {}).spec || {}).containers[0].args.join(' ');
+  assert.match(args, /--storage\.tsdb\.retention\.time=7d/, '保持が 7 日でない（警報の窓と対で改める）');
+});
+t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（按分を超えたら鳴り、下なら鳴らず、上限の無い用途は鳴らない）', () => {
+  need('promtool');
+  // 描いた規則の式と for をそのまま使う（注釈は $value の小数で揺れるので、単体試験の照合から外す）。
+  const r = ruleOf('LlmMonthlyBudgetPaceExceeded');
+  assert.ok(r.expr && r.for, '警報の式か for が読めない');
+  const f = path.join(sandbox, 'llm-pace-rules.yml');
+  fs.writeFileSync(f, `groups:\n  - name: llm-cost-budget\n    rules:\n      - alert: LlmMonthlyBudgetPaceExceeded\n        expr: ${JSON.stringify(r.expr)}\n        for: ${r.for}\n        labels: { severity: warning }\n`);
+  // 5 分ごとに 8 日分。trade-decision は月次 135 → 7 日の按分 31.5。5 分あたり 0.02 → 7 日で 40.32（超える）。
+  // report-daily は月次 30 → 按分 7。5 分あたり 0.0025 → 7 日で 5.04（超えない）。other はゲージが無い（鳴らない）。
+  const series = (purpose, step) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD"}'\n        values: '0+${step}x2304'\n`;
+  const gauge = (purpose, v) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD"}'\n        values: '${v}x2304'\n`;
+  const test = `rule_files:\n  - ${f}\nevaluation_interval: 5m\ntests:\n  - interval: 5m\n    input_series:\n`
+    + series('trade-decision', 0.02) + gauge('trade-decision', 135)
+    + series('report-daily', 0.0025) + gauge('report-daily', 30)
+    + series('other', 1)
+    + `    alert_rule_test:\n      - eval_time: 8d\n        alertname: LlmMonthlyBudgetPaceExceeded\n        exp_alerts:\n          - exp_labels: { severity: warning, llm_purpose: trade-decision, llm_currency: USD }\n`;
+  const tf = path.join(sandbox, 'llm-pace.test.yml');
+  fs.writeFileSync(tf, test);
+  const ok = run('promtool', ['test', 'rules', tf]);
+  assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+  // 陰性対照: 期待を外すと promtool が落ちる（試験が空回りしていない）。
+  fs.writeFileSync(tf, test.replace(/exp_alerts:\n[\s\S]*$/, 'exp_alerts: []\n'));
+  const ng = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
+});
 t('T-2402-47 描いた Alertmanager の設定を amtool check-config で読める', () => {
   need('amtool');
   const r0 = renderWith(FAKE_URL);

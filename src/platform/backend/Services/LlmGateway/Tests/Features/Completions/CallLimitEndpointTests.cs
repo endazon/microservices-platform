@@ -28,6 +28,11 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
         factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
             cfg.AddInMemoryCollection(settings.ToDictionary(s => s.Key, s => (string?)s.Value))));
 
+    // NFR-18, IADR-0692: 段 2 は既定の当日の費用の上限が無いと起動しない。費用以外を見る試験では、
+    // 判定に掛からない大きな金額を既定に置く（費用の試験は呼び手・用途の上限を足して見る）。
+    private WebApplicationFactory<Program> Enforce(params (string Key, string Value)[] settings) =>
+        With([("Llm:CallLimits:Mode", "Enforce"), ("Llm:CallLimits:Default:DailyCostLimit", "1000"), .. settings]);
+
     private static HttpClient As(WebApplicationFactory<Program> app, string subject)
     {
         var client = app.CreateClient();
@@ -94,7 +99,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Enforceではmax_tokensの上限を超えた呼び出しを送らない()
     {
-        using var app = With(("Llm:CallLimits:Mode", "Enforce"), ("Llm:CallLimits:MaxOutputTokens", "1000"));
+        using var app = Enforce(("Llm:CallLimits:MaxOutputTokens", "1000"));
         var client = As(app, "service-account-retrieval-service");
 
         ShouldBeLimited(await PostAsync(client, maxTokens: 1001), "max_tokens");
@@ -104,7 +109,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Enforceでは0以下のmax_tokensを送らない()
     {
-        using var app = With(("Llm:CallLimits:Mode", "Enforce"));
+        using var app = Enforce();
 
         ShouldBeLimited(await PostAsync(As(app, "service-account-retrieval-service"), maxTokens: -1), "max_tokens");
     }
@@ -112,7 +117,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Enforceではプロンプト長の上限を超えた呼び出しを送らない()
     {
-        using var app = With(("Llm:CallLimits:Mode", "Enforce"), ("Llm:CallLimits:MaxPromptChars", "10"));
+        using var app = Enforce(("Llm:CallLimits:MaxPromptChars", "10"));
         var client = As(app, "service-account-retrieval-service");
 
         ShouldBeLimited(await PostAsync(client, prompt: new string('あ', 11)), "prompt_length");
@@ -124,8 +129,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Enforceでは呼び手と用途の要求数の上限を超えた呼び出しを送らない_呼び手が違えば枠は別()
     {
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:Default:PurposeRequestsPerMinute", "2"));
         var retrieval = As(app, "service-account-retrieval-service");
 
@@ -140,8 +144,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 用途の名前を未知の文字列へ変えても同じ1つの枠に数える()
     {
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:Default:PurposeRequestsPerMinute", "2"));
         var client = As(app, "service-account-retrieval-service");
 
@@ -153,8 +156,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 呼び手の全用途の合計の上限は用途を分けても効く()
     {
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:Default:RequestsPerMinute", "2"));
         var client = As(app, "service-account-retrieval-service");
 
@@ -166,8 +168,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 合成監視の標識が付いた呼び出しも上限に数える()
     {
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:Default:PurposeRequestsPerMinute", "1"));
         var client = As(app, "service-account-retrieval-service");
 
@@ -178,8 +179,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task 呼び手ごとの上書きは書かなかった項目に既定を使う()
     {
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:Default:PurposeRequestsPerMinute", "1"),
             // 上書きは全用途の合計だけを書く。用途ごとの上限（1）は既定から引き継ぐ。
             ("Llm:CallLimits:Callers:retrieval-service:RequestsPerMinute", "50"));
@@ -196,8 +196,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     {
         // 既定の単価表（claude-opus-5-5: 出力 20 USD/MTok）で、出力の見込み 1,000,000 トークンは 20 USD。
         // スタブは入力 10・出力 20 トークンを返すので、送った後の実額はごく小さい。
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:MaxOutputTokens", "2000000"),
             ("Llm:CallLimits:Callers:retrieval-service:DailyCostLimit", "10"));
         var client = As(app, "service-account-retrieval-service");
@@ -213,8 +212,7 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
     public async Task Enforceでは呼び手と用途の当日の費用の上限を見込み額を含めて判定し_他の用途は別の枠になる()
     {
         // caller_cost の試験と対にする。用途 default の上限だけを置く（見込み 20 USD > 10 USD）。
-        using var app = With(
-            ("Llm:CallLimits:Mode", "Enforce"),
+        using var app = Enforce(
             ("Llm:CallLimits:MaxOutputTokens", "2000000"),
             ("Llm:CallLimits:Callers:retrieval-service:PurposeDailyCostLimits:default", "10"));
         var client = As(app, "service-account-retrieval-service");
@@ -223,5 +221,42 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
         // 同じ見込みでも、上限を置いていない用途は止めない（用途ごとの枠である）。
         ShouldBeSent(await PostAsync(client, maxTokens: 1_000_000, purpose: "rag-answer"));
         ShouldBeSent(await PostAsync(client, maxTokens: 100, purpose: "default"));
+    }
+
+    // ---- NFR-18, IADR-0692: 段 2 は当日の費用の上限が無いまま起動しない（fail-closed） ----------------
+
+    [Fact]
+    public void Enforceで当日の費用の上限が未設定なら起動で止まる()
+    {
+        using var app = With(("Llm:CallLimits:Mode", "Enforce"));
+
+        var start = () => app.CreateClient();
+
+        start.Should().Throw<Microsoft.Extensions.Options.OptionsValidationException>()
+            .Which.Message.Should().Contain("Llm:CallLimits:Default:DailyCostLimit");
+    }
+
+    [Fact]
+    public void Enforceで当日の費用の上限が0なら起動で止まる()
+    {
+        using var app = With(("Llm:CallLimits:Mode", "Enforce"), ("Llm:CallLimits:Default:DailyCostLimit", "0"));
+
+        var start = () => app.CreateClient();
+
+        start.Should().Throw<Microsoft.Extensions.Options.OptionsValidationException>();
+    }
+
+    [Fact]
+    public async Task Enforceで既定の当日の費用の上限は呼び手の項目が無い呼び手にも効く()
+    {
+        // 既定の上限（10 USD）だけを置く。見込み額（20 USD）が既定を超える → 送らない。
+        using var app = With(
+            ("Llm:CallLimits:Mode", "Enforce"),
+            ("Llm:CallLimits:MaxOutputTokens", "2000000"),
+            ("Llm:CallLimits:Default:DailyCostLimit", "10"));
+        var client = As(app, "service-account-graph-service");
+
+        ShouldBeLimited(await PostAsync(client, maxTokens: 1_000_000), "caller_cost");
+        ShouldBeSent(await PostAsync(client, maxTokens: 100));
     }
 }

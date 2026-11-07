@@ -53,7 +53,7 @@ builder.Services.AddSingleton<LlmUsageMetrics>();
 // FR-11, NFR-21, ADR-0044, IADR-0466 (#1111): 用途別の月次予算の上限（ゲージ）。**金額の既定は無い**
 // （計画が「金額は定めない」と定めている。所有者が Llm:Budget:MonthlyLimits に設定する）。
 // 未知の用途・0 以下の金額は起動時に落とす。未設定は正常であり、そのときゲージは系列を持たず
-// 上限アラートは発火しない（不活性）。
+// 上限アラートは発火しない（不活性）。［2026-11-07 / IADR-0692］金額は appsettings.json に設定した（所有者の裁定から導いた値）。
 builder.Services.AddOptions<LlmBudgetOptions>()
     .Bind(builder.Configuration.GetSection(LlmBudgetOptions.SectionName))
     .ValidateOnStart();

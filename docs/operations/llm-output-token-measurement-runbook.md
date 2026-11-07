@@ -489,6 +489,8 @@ q 'sum by (llm_result, llm_upstream_status) (increase(llm_completion_total{llm_r
   （置き場と手順は [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) §金額を設定する手順）。
   ただし**アラートは検知であって費用を止めない**（既定の受信先は通知をどこへも届けない）。また金額を置く変更は
   月次確認の Runbook を終了させる変更と同じであり、金額を決める前提（数か月分の実績）は本測定の後に初めて貯まり始める。
+  **［2026-11-07］金額を設定した**（所有者の裁定した当日の費用の上限から導いた値。月次確認の Runbook は終了した）。
+  本測定の費用もこのアラートの対象になる。
   **金額が無いあいだ、実費の上限は本書の承認額と §3-5 の停止でしか守られない。**
 - `rag-answer` の値は `analysis` と共用であり、本書の標本の本体（`analysis`）だけでは `rag-answer` の妥当性は言えない。
   `rag-answer` についても判断したいなら §3-4 の任意の追加標本を取る。

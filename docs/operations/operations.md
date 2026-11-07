@@ -968,6 +968,7 @@ MCP クライアント登録管理の画面の登録簿はその写しである�
     2. 費用の統制が働いていること。月次予算は用途ごとで（呼び出し元ごとではない）、取引ユニットの用途（`report-daily` / `report-weekly` / `report-monthly` /
        `trade-decision` / `trade-decision-screening`）も数える。上限は要求を止めずアラートだけで、金額が未設定のあいだは鳴らない
        （下の「LLM 費用の統制（暫定）」。その間は月次の手動確認が唯一の統制である）。開けると取引ユニットの呼び出しの分だけ費用が増える。
+       ［2026-11-07］金額を設定した（月次予算は `appsettings.json`。クラウドでは送る前に止める当日の費用の上限も `deploy/cloud/values-cloud.yaml` に置いた）。
        用途（`purpose`）は呼び出し側が名乗る値なので、穴を開けると取引ユニットは登録済みのどの用途でも要求でき、費用の帰属は自己申告になる（これを変えるのは本手順の外）。
     - 取引ユニットは REST だけを使う。gRPC（8081）は開けない。取引ユニットが gRPC の輸送を有効にするときは、この値では届かない（そのときは用途の形〔REST だけ〕を変える判断として改めて判断する）。
   - 認証基盤（`platform-infra`）への到達は本 chart の外である。
@@ -2160,6 +2161,10 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
   `node scripts/scripts.test.js` が CI で落とす）。設定の置き場・系列の確かめ方・意図的な発火の手順は
   [Runbook](llm-cost-monthly-review-runbook.md) §金額を設定する手順（所有者）が定める。
   **終了条件は「配備 かつ 配線 かつ 金額の設定」となり、残るのは金額だけである。**
+  🔴 **［2026-11-07 更新］金額を設定し、Runbook を終了した（`superseded`）。** 所有者が当日の費用の上限を裁定し
+  （クラウドの `deploy/cloud/values-cloud.yaml`。送る前に止める）、そこから導いた月次予算を `Llm:Budget:MonthlyLimits`
+  （`appsettings.json`）に置いた。**自動検知は働いている**: compose・経路B は `LlmMonthlyBudgetExceeded`（直近 30 日）、
+  クラウドは保持が 7 日なので `LlmMonthlyBudgetPaceExceeded`（直近 7 日の費用 ＞ 月次予算の 7/30）である。
 - **ピン留めモデルの版数移行と利用不能時の振る舞い**: 用途別にピン留めした LLM モデルの版数を上げる手順
   （**Stage 0 再検証が前提**）と、**モデルが使えないときは取引判断を実行せず発注もしない**（**障害ではなく
   設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587。報告書の種別別用途と取引判断モデルの改定を定めた実装 ADR の決定 3）。
@@ -2228,7 +2233,7 @@ effort だけである。ゲートウェイは設定 `Llm:PurposeEffort`（用�
 | **検索の再順位付けの有効時の目標が未確定** — ［2026-10-17 新設］ | ゲージ `search_rerank_enabled{job="…retrieval-service"}`（1 = `Rerank__Enabled=true`・0 = 無効） | 1 が 5 分 | Alertmanager（warning） | 有効時の検索 p95（**値は計画で未確定**） |
 | **RAG 初回応答（SLO 判定）** | aianalysis `/analysis/ask/stream` の**初回トークンまでの時間**（`rag_answer_first_token_duration_seconds_bucket`）p95。**窓は直近 6 時間**（［2026-10-30］下の注記） | > 5（**秒**）が 30 分 | Alertmanager（warning） | **RAG 初回応答 p95 5s** |
 | RAG 応答完了（**傾向の観察に留める**） | aianalysis `/analysis/ask`（一括経路）の応答完了 p95 | > 5（**秒**）が 10 分 | Alertmanager（warning） | — （**判定に用いない**） |
-| **LLM 費用（用途別の月次予算）** — ［2026-09-26 / #1111］ | 直近 30 日の `llm_cost_total` ＞ ゲージ `llm_budget_monthly_limit`（用途・通貨ごと） | 超過が 5 分（**金額は未設定＝不活性**） | Alertmanager（warning） | — （費用の統制。金額が設定されるまでは Runbook の月次確認） |
+| **LLM 費用（用途別の月次予算）** — ［2026-09-26 / #1111］ | 直近 30 日の `llm_cost_total` ＞ ゲージ `llm_budget_monthly_limit`（用途・通貨ごと） | 超過が 5 分（［2026-11-07］金額を設定した。クラウドは直近 7 日 ＞ 月次予算の 7/30 の `LlmMonthlyBudgetPaceExceeded`） | Alertmanager（warning） | — （費用の統制。Runbook の月次確認は終了した） |
 | **デッドレター到達** — ［2026-10-23 / #2043］ | `messaging_dead_letter_total` の直近 1 時間の前進、または 1 時間前に無かった系列の出現（サービス・メッセージ型・例外の型ごと） | > 0 が 5 分（**0 が正常**。自動再試行を使い切ったメッセージが DLQ へ入った） | Alertmanager（warning） | — （回復の取りこぼしの検出。§DLQ の扱い） |
 | **取り込みの総枠の使い切り** — ［2026-10-20 / #1991］ | `messaging_consumer_timeout_total{messaging_timeout_target=~"embedding-budget\|lexical-budget"}` の直近 1 時間の前進 | > 0 が 5 分（**0 が正常**。使い切った文書は一部の点だけが検索に現れ、デッドレターへ入る） | Alertmanager（warning） | — （索引の欠けの検出。§埋め込みプロバイダ） |
 | **パスワードリセット申請の床の器（全滅）** — ［2026-09-26 / #1544］ | `up{job="reset-floor"}`（収集器が器の **Service** の `/metrics` を 30 秒ごとに取る。準備のできた器が 0 なら届かず 0） | ==0 が 2 分（**器が 1 つでも準備完了なら鳴らない**） | Alertmanager（critical） | 検出 5 分以内・可用性 99.9% |
@@ -3104,7 +3109,9 @@ curl -sSI -H @<(printf 'Authorization: Bearer %s\n' "$TOKEN") \
   **受信先が設定されテスト通知が届いた時点で暫定経路を削除する**（併存させない。条件は同★）。**#546 で追跡している。**
   **［2026-10-22 更新 / #2044］経路B に受信先の器を置いた**（宛先は Secret `alertmanager-mail` の `to`。空なら `default-null`）。
   **残るのは PoC での宛先の投入と試験警報の到達の記録**であり、手順は [`alertmanager-mail-receiver-runbook.md`](alertmanager-mail-receiver-runbook.md)。
-- **LLM 費用の自動検知**: **配線はあるが、金額が未設定のため働いていない**（［2026-09-26 更新 / #1111］。
+- **LLM 費用の自動検知**: 🔴 **［2026-11-07 解消］金額を設定し、上限アラートが働いている。** 月次の手動確認の Runbook は終了した
+  （§監視・アラート の「LLM 費用の統制」）。以下は解消までの経緯である。
+  **配線はあるが、金額が未設定のため働いていない**（［2026-09-26 更新 / #1111］。
   従前ここは「無い」と書いていた。上限アラートは配線済みで、金額 `Llm:Budget:MonthlyLimits` は既定を持たず
   所有者が設定する。未設定のあいだアラートは評価対象を持たず発火しない。**残る未決は金額だけ**であり、
   設定する変更が同時に Runbook を `superseded` にする）。以下はそれ以前の経緯である。

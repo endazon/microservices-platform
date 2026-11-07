@@ -101,17 +101,20 @@ public class LlmBudgetMetricsTests(TestWebApplicationFactory factory) : IClassFi
 
         var items = Collect(HostMeter(host));
 
-        items.Where(m => m.Instrument == LlmBudgetMetrics.LimitGaugeName).Should().ContainSingle()
+        // ［2026-11-07 / IADR-0692］appsettings.json に金額があるので、上書きした用途（rag-answer）の 1 件で見る。
+        items.Where(m => m.Instrument == LlmBudgetMetrics.LimitGaugeName
+                         && m.Tags[LlmCompletionMetrics.PurposeTag] == "rag-answer").Should().ContainSingle()
             .Which.Should().Match<Measured>(m =>
                 m.Value == 42.5
-                && m.Tags[LlmCompletionMetrics.PurposeTag] == "rag-answer"
                 && m.Tags[LlmUsageMetrics.CurrencyTag] == "USD");
     }
 
-    // T-2e: 🔴 **陰性対照（ホスト）—— 既定の設定（appsettings.json は空）では計器はあるが値は 1 件も無い。**
-    // 本リポジトリの既定が「金額なし」であることの固定でもある。
+    // T-2e: 既定の設定（appsettings.json）のゲージは、設定した用途の金額だけを出す。
+    // ［2026-11-07 / IADR-0692］従前は「appsettings.json は空 → 値は 1 件も無い」を固定していた。所有者が当日の費用の上限を裁定し、
+    // そこから導いた月次予算を appsettings.json に置いたので、置いた用途と金額の集合を固定する（導き方は IADR-0692 決定 2。
+    // 割り当てとの一致は scripts/deploy-cloud.test.js が見る）。「未設定なら 1 件も出さない」は T-2b（設定なしの単体）が見る。
     [Fact]
-    public void 既定の設定ではゲージは値を1件も出さない()
+    public void 既定の設定ではゲージは設定した用途の金額だけを出す()
     {
         _ = factory.Services;
 
@@ -129,7 +132,15 @@ public class LlmBudgetMetricsTests(TestWebApplicationFactory factory) : IClassFi
         }
 
         published.Should().Contain(LlmBudgetMetrics.LimitGaugeName); // 計器はある（陽性対照）
-        Collect(meter).Where(m => m.Instrument == LlmBudgetMetrics.LimitGaugeName).Should().BeEmpty();
+        Collect(meter).Where(m => m.Instrument == LlmBudgetMetrics.LimitGaugeName)
+            .ToDictionary(m => m.Tags[LlmCompletionMetrics.PurposeTag], m => m.Value)
+            .Should().BeEquivalentTo(new Dictionary<string, double>
+            {
+                ["trade-decision"] = 135, ["trade-decision-screening"] = 30, ["report-daily"] = 30,
+                ["report-weekly"] = 22.5, ["report-monthly"] = 7.5,
+                ["rag-answer"] = 3.75, ["analysis"] = 3.75, ["graph-suggestion"] = 3.75, ["graph-cluster-summary"] = 3.75,
+                ["rerank"] = 7.5, ["diagram-coding"] = 7.5,
+            });
     }
 
     // T-2f: 未知の用途は起動時に落ちる（ValidateOnStart。黙って読み飛ばさない）。

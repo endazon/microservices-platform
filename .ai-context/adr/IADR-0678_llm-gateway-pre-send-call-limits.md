@@ -2,10 +2,10 @@
 title: IADR-0678 LLM ゲートウェイは送る前に、入力の上限と、呼び手ごと・呼び手×用途ごとの要求数と当日の費用（見込み額を含む）を 1 か所で判定する。段 1 は報告だけ、段 2 は設定の切り替えで Sent=false にする（#2404）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, NFR-21, FR-10, FR-11, ADR-0010, ADR-0044, IADR-0378, IADR-0400, IADR-0424, IADR-0466]
+related_ids: [NFR-18, NFR-21, FR-10, FR-11, ADR-0010, ADR-0044, IADR-0378, IADR-0400, IADR-0424, IADR-0466, IADR-0692]
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-07
 related_specs:
   - ../specs/20261105_2404_llm-gateway-call-limits.md
 ---
@@ -75,6 +75,8 @@ related_specs:
 - `Report`（段 1）: 判定し、計器 `llm.call_limit.exceeded.total` と Warning ログ（同じ種類・呼び手・用途は 5 分に 1 行）を出す。送信は止めない。
 - `Enforce`（段 2）: 超えた呼び出しは送らず、`Sent=false`・`FailureKind=limit_exceeded`（共有契約に足す）で返す。逐次は `done=true, sent=false` の 1 イベント。`llm.completion.total` にも `llm.result=limit_exceeded` で数える。
 - 段 2 では、拒否した呼び出しは要求数・費用の枠を消費しない。
+- ［2026-11-07 追記 / IADR-0692］**段 2 は `Default:DailyCostLimit` が無ければ起動しない**（`LlmCallLimitOptionsValidator`）。
+  金額の既定を置かない判断（決定 2）は変えない。金額の無い段 2 は費用を黙って無制限にするので、配備の失敗として表に出す。
 
 ### 決定 5 — 状態はプロセス内に持つ
 

@@ -277,6 +277,7 @@ networkPolicy:
     # LLM ゲートウェイ（ai-stock-trading-llm-caller・realm ロール platform-service）: 報告書の散文・取引判断（一次スクリーニング・本判断）の
     # 生成 → LlmGateway の REST（POST /complete）。AST は REST だけを使う（LlmGateway__Grpc は置いていない）ので gRPC 8081 は開けない。
     # 開ける前に AST の用途の月次予算の上限を設定すること（未設定のあいだ上限アラートは鳴らない。運用仕様書の「本番の前提」）。
+    # ［2026-11-07 / IADR-0692］AST の用途の月次予算は LlmGateway の appsettings.json に設定済み。
     llmGateway:
       enabled: false
       target: llmgateway

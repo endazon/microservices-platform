@@ -28,6 +28,13 @@ public sealed class LlmCallLimitOptionsValidator(IOptionsMonitor<LlmRoutingOptio
         if (options.UnknownModelPrice.InputPerMillionTokens <= 0m || options.UnknownModelPrice.OutputPerMillionTokens <= 0m)
             errors.Add($"{Section}:UnknownModelPrice の単価は正の値でなければなりません（0 にすると単価の無いモデルで費用の上限が効かない）。");
 
+        // NFR-18, IADR-0692: 段 2（Enforce）で既定の当日の費用の上限が無いまま起動しない（fail-closed）。
+        // 呼び手の項目は書かなかった値に Default を使うので、Default に金額があれば、どの呼び手にも金額が効く。
+        // 無ければ費用の判定は黙って働かず、「強制した」と読める設定のまま費用が無制限になる。0 以下は下の検査が落とす。
+        if (options.Mode == LlmCallLimitMode.Enforce && options.Default.DailyCostLimit is null)
+            errors.Add($"{Section}:Mode が Enforce なのに {Section}:Default:DailyCostLimit が設定されていません。"
+                + "段 2 では当日の費用の上限（全呼び手の既定）を正の値で設定してください（未設定のままでは費用が無制限になる）。");
+
         ValidateCaller($"{Section}:Default", options.Default, errors);
         foreach (var (caller, limits) in options.Callers)
         {

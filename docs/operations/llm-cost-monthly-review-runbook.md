@@ -1,20 +1,31 @@
 ---
 title: 運用 Runbook — LLM 費用の月次確認（上限アラートの金額が設定されるまでの暫定統制）
 type: runbook
-status: fixed
+status: superseded
 created: 2026-08-10
-updated: 2026-10-30
+updated: 2026-11-07
 author: claude
 ---
 <!-- trace:
 ids: [FR-11, NFR-21, SC-10]
 adrs: [ADR-0006, ADR-0038, ADR-0044]
-iadrs: [IADR-0110, IADR-0164, IADR-0265, IADR-0304, IADR-0322, IADR-0466, IADR-0531]
-specs: [20261030_2165_llm-usage-incomplete-panels, 20260810_issue-546_llm-cost-monthly-review, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models]
+iadrs: [IADR-0110, IADR-0164, IADR-0265, IADR-0304, IADR-0322, IADR-0466, IADR-0531, IADR-0692]
+specs: [20261107_cloud-llm-cost-cap-and-k3s-pin, 20261030_2165_llm-usage-incomplete-panels, 20260810_issue-546_llm-cost-monthly-review, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models]
 issues: [#2165, #440, #443, #546, #1090, #1111, #1741, #1875, planning#783]
 -->
 
 # Runbook: LLM 費用の月次確認
+
+> 🔴 **［2026-11-07 終了（superseded）］本 Runbook は終了した。後継は上限アラートである。**
+>
+> - 所有者が当日の費用の上限を裁定し（2026-11-07）、そこから導いた**月次予算の金額をゲートウェイの設定
+>   `Llm:Budget:MonthlyLimits`（`src/platform/backend/Services/LlmGateway/appsettings.json`）に置いた。**
+>   金額と導き方は設定のファイルと実装 ADR が持つ（本書は絶対額を書かない）。
+> - 後継: compose・経路B の **`LlmMonthlyBudgetExceeded`**（直近 30 日）と、クラウドの **`LlmMonthlyBudgetPaceExceeded`**
+>   （直近 7 日の費用を月次予算の 7/30 と比べる。クラウドの Prometheus の保持が 7 日であるため）。
+>   クラウドでは、送る前に止める**当日の費用の上限**（`deploy/cloud/values-cloud.yaml`）が別にある。
+> - 以下は終了時点の記録として残す（手動確認を併存させない。§終了条件）。前月比の推移を読む作業を続けるなら、
+>   統制ではなく分析として別の手順に置く。
 
 - **これは暫定の統制である。** 上限アラートに**月次予算の金額が設定された時点で**本 Runbook は**終了する**（§終了条件）。
 - 正は計画書 `06_technical/05_observability-ops.md` **§LLM 費用の上限アラートと暫定の統制**
@@ -259,6 +270,9 @@ kubectl -n platform-infra exec deploy/prometheus -- \
 > | Alertmanager が配備されている | **満たした**（compose・経路B の両方。発火が届くことを実測） |
 > | 上限アラートが配線されている | **満たした**（2026-09-26。4 か所に同じ式。金額はゲートウェイの設定から読む） |
 > | **月次予算の金額が設定されている** | **満たしていない。** 計画側で未確定であり、実装側で数字を決めない（計画 決定 41）。設定は所有者が §金額を設定する手順 で行う |
+>
+> **［2026-11-07］3 つ目の条件を満たした。** 所有者の裁定（当日の費用の上限）から導いた月次予算の金額を
+> `Llm:Budget:MonthlyLimits` に置き、同じ変更で本 Runbook を終了した（上の手順 2）。
 >
 > **条件を「かつ」で書いてある。配線だけで終了させないためである。**
 > **本書を終了するのは、金額を設定するのと同じ変更である**（上の手順 2。CI が食い違いを落とす）。

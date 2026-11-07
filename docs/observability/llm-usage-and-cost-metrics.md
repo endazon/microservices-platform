@@ -237,5 +237,9 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
   **［2026-09-26 更新 / #1111］上限アラートの配線は入った**（上の上限のゲージと `LlmMonthlyBudgetExceeded`）。
   本書が扱わないのは**金額**だけであり、金額は所有者が `Llm:Budget:MonthlyLimits` に設定する。
   **未設定のあいだアラートは発火せず、月次の手動確認（Runbook）が唯一の統制である。**
+  **［2026-11-07］金額を設定した。** 所有者が当日の費用の上限を裁定し、そこから導いた月次予算を
+  `Llm:Budget:MonthlyLimits`（ゲートウェイの `appsettings.json`）に置いた。上限アラートは評価対象を持ち、
+  月次の手動確認の Runbook は終了した。クラウドの Prometheus は保持が 7 日なので、直近 7 日の費用を月次予算の 7/30 と
+  比べる別名のアラート（`LlmMonthlyBudgetPaceExceeded`）を置いた。
 - **基盤と利用側プロジェクトの費用の合算**。合算するとどちらの予算を超過したのか判別できなくなるため、
   計画が明示的に禁じている。

@@ -6,6 +6,7 @@ namespace LlmGateway.Domain.Limits;
 // 送信を止めるのは Enforce へ設定で切り替えたときだけ（段 2）。稼働の呼び出しを報告なしで止めないためである。
 //
 // 🔴 **費用の上限に金額の既定は置かない**（IADR-0466 と同じ判断。金額は所有者が設定する）。
+// ［2026-11-07 / IADR-0692］ただし **Enforce では `Default.DailyCostLimit` が無いと起動しない**（LlmCallLimitOptionsValidator）。
 // 要求数・入力の上限は技術的な既定値を持つ（既知の呼び手の最大より上。IADR-0678 決定 2）。
 public sealed class LlmCallLimitOptions
 {
