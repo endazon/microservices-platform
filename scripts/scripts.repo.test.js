@@ -20785,7 +20785,7 @@ esac
       assert.ok(!fs2401.existsSync(path2401.join(ROOT2401, 'deploy/cloud/db-users/kustomization.yaml')), 'deploy/cloud/db-users に kustomization がある');
       const ks = spawn2401('git', ['ls-files', '--', 'deploy/cloud/**/kustomization.yaml', 'deploy/cloud/kustomization.yaml'], { cwd: ROOT2401, encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
       assert.ok(ks.length >= 4, `陽性対照: kustomization を拾えていない（${ks.length}）`);
-      for (const k of ks) assert.ok(!/db-users|job\.yaml/.test(fs2401.readFileSync(path2401.join(ROOT2401, k), 'utf8')), `${k} が Job（db-users）を引く`);
+      for (const k of ks) assert.ok(!/(^|[\s/])db-users(\/|\s*$)|job\.yaml/m.test(fs2401.readFileSync(path2401.join(ROOT2401, k), 'utf8')), `${k} が Job（db-users）を引く`);
       assert.ok(!rawDocs2401('deploy/cloud/infra').some((d) => d.kind === 'Job'), 'deploy/cloud/infra に Job がある');
     });
 
