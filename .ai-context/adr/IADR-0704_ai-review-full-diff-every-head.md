@@ -1,5 +1,5 @@
 ---
-title: IADR-0706 AI レビューは同じ PR への 2 回目以後の push でも、この head の全差分を読み直す。前回のレビューの結果を流用しない（prompt で定め、試験で固定する。検査器は緩めない）
+title: IADR-0704 AI レビューは同じ PR への 2 回目以後の push でも、この head の全差分を読み直す。前回のレビューの結果を流用しない（prompt で定め、試験で固定する。検査器は緩めない）
 type: impl-adr
 status: Accepted
 related_ids: [NFR, IADR-0538, IADR-0643]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261108_ai-review-full-diff-every-head.md
 ---
 
-# IADR-0706: 2 回目以後の push でも全差分を読み直す
+# IADR-0704: 2 回目以後の push でも全差分を読み直す
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

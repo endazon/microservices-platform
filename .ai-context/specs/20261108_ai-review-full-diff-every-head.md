@@ -2,7 +2,7 @@
 title: 作業仕様書 — AI レビューに、同じ PR への 2 回目以後の push でも、この head の全差分を読み直させる（前回のレビューの結果を流用させない）
 type: spec
 status: in-progress
-related_ids: [NFR, IADR-0706, IADR-0538]
+related_ids: [NFR, IADR-0704, IADR-0538]
 author: claude
 created: 2026-11-08
 updated: 2026-11-08
@@ -10,7 +10,7 @@ updated: 2026-11-08
 
 # 作業仕様書 — 2 回目以後の push でも全差分を読み直させる
 
-> 着手 2026-11-08（develop `95ace5d05`）。判断の記録は IADR-0706。
+> 着手 2026-11-08（develop `95ace5d05`）。判断の記録は IADR-0704。
 
 ## 起点
 
@@ -35,7 +35,7 @@ updated: 2026-11-08
   この head の `git diff origin/develop...HEAD` の全ファイルを読み直す。前回以後のコミットだけを読むのは下限を満たさない。
   過去のコメントは前回の指摘の解消を確かめる手掛かりにだけ使い、M・確認の根拠・未読の理由に使わない。M はこのセッションで読んだファイルだけ。
 - 経緯は送信されない YAML コメント側へ書く（prompt には指示だけ）。
-- 検査器は変えない（緩めない）。`track_progress` / `use_sticky_comment` も変えない（IADR-0706 の代替案）。
+- 検査器は変えない（緩めない）。`track_progress` / `use_sticky_comment` も変えない（IADR-0704 の代替案）。
 - 必須チェック名・起動条件は変えない。
 
 ## 母集合（規則 9・10）
@@ -48,7 +48,7 @@ updated: 2026-11-08
 
 | # | 基準 | 試験 |
 | --- | --- | --- |
-| AC1 | prompt の【検証の下限】節に、流用の禁止・push のたびの全ファイルの読み直し・前回以後だけの禁止・M の数え方がある | `scripts.repo.test.js`（IADR-0706） |
+| AC1 | prompt の【検証の下限】節に、流用の禁止・push のたびの全ファイルの読み直し・前回以後だけの禁止・M の数え方がある | `scripts.repo.test.js`（IADR-0704） |
 | AC2 | 陰性対照: それぞれの文を消す・節を消すと赤になる | 同 |
 | AC3 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が exit 0（IADR の欠番 0704・0705 は開いている PR が埋める。欠番の間の `check-adr-numbering` の赤は既知） | 手元・CI |
 | AC4 | ワークフローの YAML が構文として正しい（actionlint があれば使う） | 手元 |
