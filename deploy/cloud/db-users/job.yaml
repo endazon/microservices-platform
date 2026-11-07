@@ -2,8 +2,8 @@
 #   🔴 kustomize には入れない（Job は作り直さないと流れない）。deploy/cloud/db-users/ast-db-users.sh --live <段> が、段（args）を差し替えて作り、
 #      終わるまで待ち、ログを出し、成功したら消す。新しく作る構成も稼働中の構成も同じ Job を流す（README §3・手順書）。
 #   - 接続は超利用者（Secret postgres）で TLS（verify-full。CA は ConfigMap platform-infra-ca、名前は Service postgres）。
-#     NFR-18, IADR-0702: Postgres は超利用者の TCP を既定で拒む。ast-db-users.sh が Job の間だけゲートを開ける。
-#   - 段 platform（IADR-0702）: バックアップの利用者（Secret postgres-backup）を作って合わせ、Keycloak の DB の利用者（Secret keycloak-db）の
+#     NFR-18, IADR-0706: Postgres は超利用者の TCP を既定で拒む。ast-db-users.sh が Job の間だけゲートを開ける。
+#   - 段 platform（IADR-0706）: バックアップの利用者（Secret postgres-backup）を作って合わせ、Keycloak の DB の利用者（Secret keycloak-db）の
 #     パスワードを合わせる。ほかの段では読まない（optional。platform の段は無ければ止まる）。
 #   - 値は secretKeyRef だけで読む（このファイル・引数・ConfigMap に書かない）。サービスごとの資格は Secret ast-db-<サービス>（ESO が
 #     cloud/shared/ast-db-<サービス> から写す）。共有の利用者の名前は Secret ast-db（移行の間だけ。optional: 最終の段の後に消える）。

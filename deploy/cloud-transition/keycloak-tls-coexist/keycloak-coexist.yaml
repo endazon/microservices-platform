@@ -63,6 +63,9 @@ spec:
         # IADR-0700: 稼働中の realm へ機密クライアントを足す Job（最終の段の keycloak-ingress-clients と同じ）。
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
           podSelector: { matchLabels: { app: keycloak-add-clients } }
+        # IADR-0705: master realm の一時管理者を開け閉めする Job（最終の段の keycloak-ingress-clients と同じ）。
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: keycloak-master-admin } }
       ports:
         - { protocol: TCP, port: 8443 }
         - { protocol: TCP, port: 8080 }

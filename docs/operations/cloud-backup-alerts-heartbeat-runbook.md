@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0702, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697]
-specs: [20261107_cloud-data-broker-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
+iadrs: [IADR-0706, IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0705]
+specs: [20261107_cloud-data-broker-hardening, 20261107_backup-owner-ops-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat, 20261107_cloud-egress-audit-cert-expiry]
 issues: [#2471, #2402, #2401]
 -->
 
@@ -40,41 +40,79 @@ issues: [#2471, #2402, #2401]
 | 項目 | 内容 |
 | --- | --- |
 | 必要な権限 | クラウドのノードへの SSH（kubectl は SSH のトンネル越し）、Hetzner Console、Discord のサーバーの「ウェブフックの管理」、Healthchecks.io のアカウント |
-| 必要なツール | `kubectl`、`docker`（イメージのビルド）、`rclone` か `aws` CLI（バケットの設定とリストア試験）、`age`（リストア試験） |
-| 所要時間の目安 | 初回の準備 60 分、止め試験 20 分、リストア試験 30 分 |
+| 必要なツール | `kubectl`、`docker`（イメージのビルド）、`aws` CLI（バケットの設定と確かめ）、`rclone`（リストア試験）、`age`・`node`（鍵のファイルとリストア試験・確かめ） |
+| 所要時間の目安 | 初回の準備 60 分、止め試験 20 分、リストア試験 30 分、保持の設定の定期の確かめ 5 分 |
 
 🔴 **秘密の値（S3 の鍵・webhook の URL・ping の URL）をコマンドの引数・シェルの履歴・リポジトリに書かない。**
-下の手順はどれも、値を**手元のファイル**（`umask 077` で作り、使ったら消す）から読ませる。
+S3 の鍵は age で暗号化したファイルだけに持ち、`deploy/cloud/backup/s3-creds.sh run` が 1 つのコマンドの環境にだけ渡す（§1）。
+webhook と ping の URL は `read -rs` で読み、秘匿管理へパイプで流す（§3・§4）。
 
-## 1. オブジェクトストレージ（バケット・Object Lock・lifecycle）
+## 1. オブジェクトストレージ（バケット・Object Lock・lifecycle・鍵の分離）
+
+S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age で暗号化したファイルだけに持つ（平文のファイル・シェルの環境に置かない）。
+
+| 鍵 | 使うところ | 置き場所 |
+| --- | --- | --- |
+| 管理の鍵 | バケットの作成・Object Lock・lifecycle の設定と、その確かめ（§1 の 7） | 手元だけ（`<管理の鍵>.age`）。**クラスタへ入れない** |
+| 書き込みの鍵 | クラスタのバックアップの Job（§2）と、手元のリストア試験（§6） | OpenBao（`cloud/platform/platform-backup-s3`）と手元（`<書き込みの鍵>.age`） |
 
 1. Hetzner Console で、**バックアップ専用のプロジェクト**を作る（資格情報が届く範囲をこのバケットだけに閉じる）。
-2. そのプロジェクトで S3 の資格情報を作る。表示された鍵は手元のファイルへ写す（`~/.secrets/backup-s3.env`。`chmod 600`）:
-   ```text
-   AWS_ACCESS_KEY_ID=...
-   AWS_SECRET_ACCESS_KEY=...
-   ```
-3. バケットを **Object Lock を有効にして**作る（Object Lock は作成時にしか有効にできない）。リージョンはノードと同じにする。
-4. 既定の保持と lifecycle を当てる（`deploy/cloud/backup/` の JSON。接頭辞 `ast-poc/` は下の `dest` と揃える）:
+2. そのプロジェクトで S3 の資格情報を **2 つ**作る（管理の鍵と書き込みの鍵）。表示された鍵は、その場で age で暗号化したファイルへ入れる
+   （`s3-creds.sh store` が端末から伏せて読む。平文のファイルを作らない。受取人は秘匿管理と同じ age の受取人でよい）:
    ```bash
-   set -a; . ~/.secrets/backup-s3.env; set +a
+   bash deploy/cloud/backup/s3-creds.sh store --recipients <age の受取人のファイル> --out <管理の鍵>.age
+   bash deploy/cloud/backup/s3-creds.sh store --recipients <age の受取人のファイル> --out <書き込みの鍵>.age
+   ```
+   2 つのファイルは、秘匿管理のファイルと同じく別々の 2 か所に保管する（場所はリポジトリに書かない）。
+3. バケットを **Object Lock を有効にして**作る（Object Lock は作成時にしか有効にできない）。リージョンはノードと同じにする。
+4. 既定の保持と lifecycle を、**管理の鍵で**当てる（`deploy/cloud/backup/` の JSON。接頭辞 `ast-poc/` は下の `dest` と揃える）。
+   鍵は `s3-creds.sh run` が 1 つのコマンドの環境にだけ渡す（呼んだシェルには残らない）。手元の aws CLI は v2 の 2.13.0 以上
+   （v1 なら 1.29.0 以上）にする。古い版は宛先の環境変数を読まずに AWS の既定の宛先へ鍵で署名した要求を送るため、`s3-creds.sh run` は古い版を見ると鍵を渡さずに止まる。
+   🔴 **このページのコマンドは bash で流す。** `$A aws …`・`$W …` の形は bash の単語分割に頼る。zsh（macOS の既定）では `$A` が 1 語のまま渡り動かないので、
+   先に `bash` を起こしてから流す:
+   ```bash
    EP=https://fsn1.your-objectstorage.com   # リージョンのエンドポイント
-   aws --endpoint-url "$EP" s3api put-object-lock-configuration --bucket <バケット> \
+   A="bash deploy/cloud/backup/s3-creds.sh run --creds <管理の鍵>.age --identity <識別子のファイル> --endpoint $EP --"
+   $A aws s3api put-object-lock-configuration --bucket <バケット> \
      --object-lock-configuration file://deploy/cloud/backup/object-lock.json
-   aws --endpoint-url "$EP" s3api put-bucket-lifecycle-configuration --bucket <バケット> \
+   $A aws s3api put-bucket-lifecycle-configuration --bucket <バケット> \
      --lifecycle-configuration file://deploy/cloud/backup/bucket-lifecycle.json
    ```
 5. **確かめる**（消せないこと）: 試しの小さなオブジェクトを置き、版を指定して消せないこと（`AccessDenied`）を見る。
    ```bash
-   aws --endpoint-url "$EP" s3api put-object --bucket <バケット> --key lock-check.txt --body /etc/hostname
-   aws --endpoint-url "$EP" s3api list-object-versions --bucket <バケット> --prefix lock-check.txt
-   aws --endpoint-url "$EP" s3api delete-object --bucket <バケット> --key lock-check.txt --version-id <上の VersionId>   # 拒否されること
+   $A aws s3api put-object --bucket <バケット> --key lock-check.txt --body /etc/hostname
+   $A aws s3api list-object-versions --bucket <バケット> --prefix lock-check.txt
+   $A aws s3api delete-object --bucket <バケット> --key lock-check.txt --version-id <上の VersionId>   # 拒否されること
    ```
    拒否されないなら、Object Lock が効いていない。バケットを作り直す（効かないプロバイダなら、その旨を issue に記録する）。
+6. **書き込みの鍵を絞る**（保持の設定を変えられない鍵にする）。提供元がバケットのポリシー（鍵の主体ごとの許可）を受けるなら、
+   書き込みの鍵に許すのは、オブジェクトの書き込み・読み出し・一覧（`s3:PutObject`・`s3:GetObject`・`s3:ListBucket`・`s3:GetObjectVersion`・
+   `s3:ListBucketVersions`・`s3:AbortMultipartUpload`・`s3:ListMultipartUploadParts`）だけにし、少なくとも次を**拒む**: `s3:PutLifecycleConfiguration`・`s3:PutBucketObjectLockConfiguration`・`s3:PutBucketPolicy`・
+   `s3:DeleteBucketPolicy`・`s3:PutBucketVersioning`・`s3:DeleteObjectVersion`・`s3:BypassGovernanceRetention`。
+   ポリシーは管理の鍵で当てる（主体の書き方は提供元の文書に従う。ポリシーの本文はリポジトリに置かない）。
+   当てた後、**書き込みの鍵で**保持の設定を書けないことを確かめる。`probe-writer` は宣言の JSON を実際に書き込もうとするので、
+   書けてしまう鍵では、その時のバケットの設定が宣言で上書きされる（ずれていれば宣言に揃い、ずれの跡が消える）。
+   🔴 **先に管理の鍵で `verify` を流し、「宣言どおり」と出てから `probe-writer` を流す。** `probe-writer` も書く前に同じ突き合わせを行い、
+   ずれていれば（読めなければ）何も書かずに止まる。止まったら、ずれを管理の鍵で調べて直してから流し直す:
+   ```bash
+   $A bash deploy/cloud/backup/check-bucket.sh verify --bucket <バケット>   # 「宣言どおり」と出ること（出なければ先へ進まない）
+   W="bash deploy/cloud/backup/s3-creds.sh run --creds <書き込みの鍵>.age --identity <識別子のファイル> --endpoint $EP --"
+   $W bash deploy/cloud/backup/check-bucket.sh probe-writer --bucket <バケット>   # 「書けない（拒まれた）」が 2 行出ること
+   ```
+   - 絞った後は、§2 の 5 の手動の回が「完了」まで通ることを確かめる（通らなければ許可が足りない。ログの拒まれた操作を許可へ足す）。
+   - 「書けた」と出る（提供元が鍵ごとに絞れない）ときは、書き込みの鍵は保持の設定を変えられる。直近 28 日の回は Object Lock が守るが、
+     それより古い回は lifecycle の書き換えで早く消され得る。この場合は 7 の定期の確かめを**必ず**行い、絞れないことを運用の記録に残す。
+7. **保持の設定を定期に確かめる**（週に 1 度と、警報・障害・鍵の作り直しの後。クラスタの外から、管理の鍵で読むだけ）:
+   ```bash
+   $A bash deploy/cloud/backup/check-bucket.sh verify --bucket <バケット>   # 「宣言どおり」と出ること
+   ```
+   版の管理・Object Lock の既定の保持（COMPLIANCE・28 日）・lifecycle（日次 30 日・月次 365 日）のどれかが宣言と違えば、違う箇所を名指して 1 で終わる。
+   違っていたら、書き込みの鍵が漏れた前提で扱う: §1 の 4 を管理の鍵で当て直し、書き込みの鍵を作り直して（§2 の 1 を `--overwrite` で）、
+   古い鍵を Hetzner Console で消す。確かめた日と結果は運用の記録に残す。
 
 ## 2. クラスタへの投入（Secret・ConfigMap・イメージ）
 
-1. S3 の鍵と宛先。鍵は秘匿管理（OpenBao）の `cloud/platform/platform-backup-s3` に書き、ESO が Secret `platform-backup-s3` に写す
+1. S3 の鍵と宛先。**書き込みの鍵**（§1 の表。管理の鍵は入れない）を秘匿管理（OpenBao）の `cloud/platform/platform-backup-s3` に書き、ESO が Secret `platform-backup-s3` に写す
    （手で Secret を作らない。手順の前提は[秘匿管理の手順書](cloud-openbao-init-unseal-runbook.md)の「外から持ち込む値」）。
    宛先（ConfigMap `platform-backup-s3-target`）は秘密ではないので、そのまま作る:
    ```bash
@@ -85,6 +123,9 @@ issues: [#2471, #2402, #2401]
      --from-literal=endpoint=https://fsn1.your-objectstorage.com \
      --from-literal=dest=objstore:<バケット>/ast-poc
    ```
+   ［2026-11-07 追記］バックアップの Pod は、外の 443 へ外向きの中継を経て出る（直には出ない）。中継はこの ConfigMap の `endpoint` の名前を許可表に入れる（足す作業は要らない）。
+   heartbeat の宛先の名前（Healthchecks.io の ping の URL の名前の部分）は、オーナーが ConfigMap `egress-proxy-extra-hosts` に書く
+   （[外向きの中継の手順書](cloud-egress-proxy-runbook.md)の 1-1）。書かないと heartbeat が届かず、外の監視が知らせる。
 2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、バックアップの利用者の Secret `postgres-backup`（`username` / `password`）は、
    クラウドの最小構成の秘匿管理（OpenBao）の手順で作る（[手順書](cloud-openbao-init-unseal-runbook.md)）。手で作らない。
    ［2026-11-07］バックアップは超利用者で入らない。バックアップの利用者は全データを読めるだけで（書き込み・利用者の作成はできない）、
@@ -168,20 +209,21 @@ issues: [#2471, #2402, #2401]
 
 ## 6. リストア試験（オブジェクトストレージの回から）
 
-手元の PC で行う（秘密鍵はクラスタに置かない）。資格情報は rclone の env で渡す（引数に載せない）:
+手元の PC で行う（秘密鍵はクラスタに置かない）。S3 の鍵は**書き込みの鍵**を `s3-creds.sh run` が rclone の env へ渡す
+（1 つのコマンドの環境にだけ載る。平文のファイル・シェルの環境・引数に置かない）。§1 と同じく bash で流す（zsh では `$W` が分割されない）:
 
 ```bash
-set -a; . ~/.secrets/backup-s3.env; set +a
-export RCLONE_CONFIG_OBJSTORE_TYPE=s3 RCLONE_CONFIG_OBJSTORE_PROVIDER=Other \
-  RCLONE_CONFIG_OBJSTORE_ENDPOINT=https://fsn1.your-objectstorage.com \
-  RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"
-rclone lsf objstore:<バケット>/ast-poc/postgres/daily/          # 回の一覧
-bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/postgres/daily/<回> \
+EP=https://fsn1.your-objectstorage.com
+W="bash deploy/cloud/backup/s3-creds.sh run --creds <書き込みの鍵>.age --identity <識別子のファイル> --endpoint $EP --"
+$W rclone lsf objstore:<バケット>/ast-poc/postgres/daily/          # 回の一覧
+$W bash scripts/backup-restore-drill.sh --from-s3 objstore:<バケット>/ast-poc/postgres/daily/<回> \
   --identity <age の秘密鍵ファイル> --live-counts <稼働側の行数の TSV>
 ```
 
 - `COMPLETE` の無い回・`COMPLETE` が `SHA256SUMS` と合わない回は、書きかけとして戻さない（失敗で終わる）。
 - 稼働側の行数は、ノードで読み取り専用の psql を流して TSV にする（手順は [platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の「リストア試験」と同じ）。
+- 以前の手順で作った平文の鍵のファイル（`~/.secrets/backup-s3.env` など）が手元に残っていれば、§1 の 2 で暗号化したファイルへ移した後に消し、
+  その鍵は作り直す（平文で置かれていた鍵は漏れた前提で扱う）。
 
 ### 回を手動でやり直すとき（中途半端な回の扱い）
 

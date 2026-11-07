@@ -108,7 +108,7 @@ spec:
                   name: rabbitmq
                   key: password
           # NFR-16, IADR-0591: 5671 で TLS を受ける（設定は ConfigMap rabbitmq-tls の 20-tls.conf）。
-          # NFR-18, IADR-0702: クラウドは平文の 5672 を受けない（listeners.tcp = none）。管理（15672）・計測（15692）の受け口は
+          # NFR-18, IADR-0706: クラウドは平文の 5672 を受けない（listeners.tcp = none）。管理（15672）・計測（15692）の受け口は
           #   ループバックだけ（確かめは kubectl port-forward deploy/rabbitmq 15672）。Pod の外へ出す口は 5671 だけ。
           ports:
             - { containerPort: 5671, name: amqps }
@@ -169,7 +169,7 @@ spec:
 #   - 版は TLS 1.3 / 1.2 だけ。
 #   - クライアント証明書は求めない（fail_if_no_peer_cert = false）。名乗りはサービスごとのユーザー（IADR-0577）で行う。
 #     verify_peer は「クライアントが証明書を出したときはこの CA で検証する」の意で、クライアントからサーバへの検証とは別である。
-#   - NFR-18, IADR-0702: 平文の 5672 は受けない（listeners.tcp = none）。NetworkPolicy は #2401 から 5671 だけを通しており、
+#   - NFR-18, IADR-0706: 平文の 5672 は受けない（listeners.tcp = none）。NetworkPolicy は #2401 から 5671 だけを通しており、
 #     届いている通信は変わらない。管理（management）と計測（prometheus）の受け口はループバックだけに置く（Pod の外へ出さない）。
 apiVersion: v1
 kind: ConfigMap
@@ -262,7 +262,7 @@ data:
       n=$((n + 1))
     done
     log "サービスごとのユーザーを復元した: ${n} 件（失敗 ${failed} 件・権限 narrow）"
-    # NFR-18, IADR-0702: 揃わなかったときの扱いは段（ConfigMap rabbitmq-default-user の on-incomplete）。retain（既定・知らない値も）は
+    # NFR-18, IADR-0706: 揃わなかったときの扱いは段（ConfigMap rabbitmq-default-user の on-incomplete）。retain（既定・知らない値も）は
     #   従来どおり残し、残したことを WARN の行で出す。delete は揃わなくても消す（ブローカの操作は rabbitmqctl で、既定のユーザーを要らない）。
     ON_INCOMPLETE="$(cat "${RABBITMQ_BOOT_ON_INCOMPLETE:-/etc/rabbitmq-default-user/on-incomplete}" 2>/dev/null || true)"
     [ "$ON_INCOMPLETE" = delete ] || ON_INCOMPLETE=retain
@@ -288,7 +288,7 @@ metadata:
 spec:
   selector: { app: rabbitmq }
   ports:
-    # NFR-16, IADR-0591: TLS の受け口。NFR-18, IADR-0702: 平文（5672）・管理（15672）は出さない。
+    # NFR-16, IADR-0591: TLS の受け口。NFR-18, IADR-0706: 平文（5672）・管理（15672）は出さない。
     - { name: amqps, port: 5671, targetPort: 5671 }
 
 ---
@@ -301,6 +301,6 @@ metadata:
 data:
   # 起動時の復元（restore-users.sh）が読む印。true なら、サービスごとのユーザーが揃ったときに既定のユーザーを消す（IADR-0577 と同じ）。
   disabled: "true"
-  # NFR-18, IADR-0702: 揃わなかったときの扱い（段）。retain＝残して WARN の行を出す（既定）／delete＝揃わなくても消す。
+  # NFR-18, IADR-0706: 揃わなかったときの扱い（段）。retain＝残して WARN の行を出す（既定）／delete＝揃わなくても消す。
   #   稼働中の構成は、復元の行が「失敗 0 件」であることを確かめてから delete へ替える（手順書 cloud-credential-rotation-runbook.md §ブローカ）。
   on-incomplete: "retain"

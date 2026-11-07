@@ -7,7 +7,7 @@
 # - 保持: 日次 30 日・月次 12 か月。**削除はバケットの lifecycle**（bucket-lifecycle.json）が行い、スクリプトは消さない。
 #   バケットは Object Lock（object-lock.json。COMPLIANCE・28 日。日次の保持より短くし、期限の日の削除を拒ませない）で作る。
 # - 資格情報: S3 の鍵は Secret platform-backup-s3（キー access-key-id / secret-access-key）を rclone の env で渡す。
-#   ［2026-11-07 / IADR-0702］Postgres へはバックアップの利用者（超利用者でない。pg_read_all_data の一員・全 DB の CONNECT だけ）で入る。
+#   ［2026-11-07 / IADR-0706］Postgres へはバックアップの利用者（超利用者でない。pg_read_all_data の一員・全 DB の CONNECT だけ）で入る。
 #   名前とパスワードは Secret postgres-backup のキー username / password（OpenBao の中で乱数で作り、ESO が写す。利用者を作るのは
 #   deploy/cloud/db-users/ast-db-users.sh --live platform）。超利用者（Secret postgres）は読まない（超利用者の TCP は既定で拒まれる）。
 #   🔴 値をマニフェスト・引数に書かない。
@@ -73,6 +73,12 @@ spec:
                       name: platform-backup-s3-target
                       key: dest
                       optional: true
+                # NFR-18, IADR-0705: オブジェクトストレージへは外向きの中継（名前の許可表。保管先の名前は ConfigMap platform-backup-s3-target の
+                #   endpoint から中継が読む）を経る。rclone は HTTPS_PROXY に従う。Postgres（libpq）は中継を使わない。
+                - name: HTTPS_PROXY
+                  value: http://egress-proxy:3128
+                - name: NO_PROXY
+                  value: localhost,127.0.0.1,postgres,.svc,.cluster.local
                 - name: RCLONE_CONFIG_OBJSTORE_TYPE
                   value: s3
                 - name: RCLONE_CONFIG_OBJSTORE_PROVIDER

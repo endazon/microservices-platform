@@ -34,7 +34,7 @@ data:
 # 接続の受け入れ（pg_hba）。TCP は TLS（hostssl）だけを受け、平文の TCP（host・hostnossl）は書かない。
 # クラウドには平文で繋ぐ利用者がいない（取引ユニット・Keycloak・バックアップとも TLS）。ソケット（local）は初期化と pg_isready が使う。
 # 認証はどれも scram-sha-256（trust・password・md5 は書かない）。
-# NFR-18, IADR-0702: 超利用者（名前は Secret postgres の username を読み取り専用で置いたファイル。@ で読む）の TCP は既定で拒む（reject）。
+# NFR-18, IADR-0706: 超利用者（名前は Secret postgres の username を読み取り専用で置いたファイル。@ で読む）の TCP は既定で拒む（reject）。
 #   その手前の include_if_exists は Pod の中のメモリ（emptyDir）のファイルで、在る間だけ超利用者の TCP（TLS・scram）を受ける（ゲート）。
 #   ゲートを開け閉めするのは superuser-tcp-gate.sh（オーナーの手元の deploy/cloud/db-users/ast-db-users.sh --live が Job の前後に呼ぶ）だけ。
 #   Pod が作り直されれば閉じる（emptyDir）。バックアップは超利用者でなく、専用の利用者（Secret postgres-backup）で入る。
@@ -52,7 +52,7 @@ data:
     hostssl all  @/etc/postgres-superuser/username  ::/0       reject
     hostssl all  all  0.0.0.0/0     scram-sha-256
     hostssl all  all  ::/0          scram-sha-256
-  # NFR-18, IADR-0702: ゲートの開け閉め（Pod の中で uid 70 が走らせる。kubectl exec deploy/postgres -c postgres -- sh <この場所> open|close|status）。
+  # NFR-18, IADR-0706: ゲートの開け閉め（Pod の中で uid 70 が走らせる。kubectl exec deploy/postgres -c postgres -- sh <この場所> open|close|status）。
   #   開けると超利用者の TCP（TLS・scram）の行をゲートのファイルへ書き、閉じると消す。どちらも pg_ctl reload で読み直させる（作り直さない）。
   #   開いている時間には上限がある（PG_HBA_GATE_TTL_S。既定 900 秒＝利用者を作る Job の上限 600 秒＋余裕）。開けるときに Pod の中で
   #   閉じ手を切り離して起こし（setsid）、上限を過ぎてもその回のゲートが残っていれば閉じる（入口との通信が切れて close を流せないときの備え）。
@@ -198,10 +198,10 @@ spec:
             - { name: init, mountPath: /docker-entrypoint-initdb.d }
             - { name: tls, mountPath: /etc/postgres-tls, readOnly: true }
             - { name: hba, mountPath: /etc/postgres-hba, readOnly: true }
-            # NFR-18, IADR-0702: pg_hba が @ で読む超利用者の名前（username だけ。password は置かない）と、ゲートのファイルの置き場（メモリ）。
+            # NFR-18, IADR-0706: pg_hba が @ で読む超利用者の名前（username だけ。password は置かない）と、ゲートのファイルの置き場（メモリ）。
             - { name: superuser-name, mountPath: /etc/postgres-superuser, readOnly: true }
             - { name: hba-gate, mountPath: /run/postgres-hba-gate }
-            # NFR-18, IADR-0702: 超利用者のパスワードの今の値（Secret postgres の password）。env は起動の時の値のままなので、作り直しを
+            # NFR-18, IADR-0706: 超利用者のパスワードの今の値（Secret postgres の password）。env は起動の時の値のままなので、作り直しを
             #   合わせる手順（deploy/cloud/db-users/superuser-password.sh。Pod の中・ソケット）が新しい値をここから読む。
             - { name: superuser-secret, mountPath: /etc/postgres-superuser-secret, readOnly: true }
           readinessProbe:

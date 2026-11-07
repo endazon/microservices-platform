@@ -1,14 +1,18 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AwesomeAssertions;
 using LlmGateway.Tests.Grpc;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Ports;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Observability;
 
 namespace LlmGateway.Tests.Common.Observability;
@@ -79,9 +83,11 @@ public class LlmSyntheticUsageExclusionTests(TestWebApplicationFactory factory)
         public void Dispose() => _listener.Dispose();
     }
 
-    private WebApplicationFactory<Program> AppReturning(CompletionResult result) =>
+    private WebApplicationFactory<Program> AppReturning(CompletionResult result, params (string Key, string Value)[] settings) =>
         factory.WithWebHostBuilder(b =>
-            b.ConfigureServices(s =>
+            b.ConfigureAppConfiguration((_, cfg) =>
+                    cfg.AddInMemoryCollection(settings.ToDictionary(x => x.Key, x => (string?)x.Value)))
+             .ConfigureServices(s =>
             {
                 s.RemoveAll<ILlmProvider>();
                 var provider = new FixedResultProvider(result);
@@ -191,6 +197,86 @@ public class LlmSyntheticUsageExclusionTests(TestWebApplicationFactory factory)
             m => m.Tags.ContainsKey(LlmCompletionMetrics.PurposeTag)
                 && m.Tags[LlmCompletionMetrics.PurposeTag] == "他クラスの用途",
             "タグを保持しているので、混入は用途からも判別できる");
+    }
+
+    // ---- NFR-02, NFR-18, NFR-21, IADR-0702: 標識を引き継ぐ呼び手の許可集合（Llm:SyntheticMarker） -----------------------------
+
+    // 許可集合（既定 aianalysis-service・retrieval-service）の外の呼び手（取引ユニットの呼び手）として名乗るクライアント。
+    private static HttpClient Untrusted(WebApplicationFactory<Program> app)
+    {
+        var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", TestServiceTokens.IssueToken("service-account-ai-stock-trading-llm-caller", [PlatformAuthPolicies.ServiceRole]));
+        client.DefaultRequestHeaders.Add(SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
+        return client;
+    }
+
+    // 🔴 ★ 段 2: 許可集合の外の呼び手が付けた標識は無視し、実利用として費用に計上する（REST）。
+    // **変異試験の対象**: `Complete/Endpoint.cs` の markerPolicy を通さず標識をそのまま渡すと、ここが落ちる。
+    [Fact]
+    public async Task PostComplete_段2では許可集合の外の呼び手の標識を無視して費用に計上する()
+    {
+        var app = AppReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn),
+            ("Llm:SyntheticMarker:Mode", "Enforce"));
+        var client = Untrusted(app);
+        using var probe = new UsageProbe(app.Services);
+
+        var response = await client.PostAsJsonAsync("/complete", Request, TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        probe.Items.Should().Contain(m => m.Instrument == LlmUsageMetrics.TokensCounterName,
+            "許可集合の外の標識は引き継がない（費用の計上から外れない）");
+        probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.SyntheticExcludedCounterName);
+    }
+
+    // ★ 段 2 の陽性対照: 許可集合の呼び手（既定のクライアント＝retrieval-service）の標識は引き継ぐ。
+    [Fact]
+    public async Task PostComplete_段2でも許可集合の呼び手の標識は引き継ぐ()
+    {
+        var app = AppReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn),
+            ("Llm:SyntheticMarker:Mode", "Enforce"));
+        var client = app.CreateClient();
+        client.DefaultRequestHeaders.Add(SyntheticTraffic.HeaderName, SyntheticTraffic.HeaderValue);
+        using var probe = new UsageProbe(app.Services);
+
+        var response = await client.PostAsJsonAsync("/complete", Request, TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.TokensCounterName);
+        probe.Items.Should().ContainSingle(m => m.Instrument == LlmUsageMetrics.SyntheticExcludedCounterName);
+    }
+
+    // 段 1（既定）: 許可集合の外の呼び手の標識も従前どおり引き継ぐ（稼働の計上を報告なしで変えない）。
+    [Fact]
+    public async Task PostComplete_既定の段では許可集合の外の呼び手の標識も引き継ぐ()
+    {
+        var app = AppReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn));
+        var client = Untrusted(app);
+        using var probe = new UsageProbe(app.Services);
+
+        var response = await client.PostAsJsonAsync("/complete", Request, TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.TokensCounterName);
+        probe.Items.Should().ContainSingle(m => m.Instrument == LlmUsageMetrics.SyntheticExcludedCounterName);
+    }
+
+    // 🔴 ★ 段 2（gRPC の逐次）: REST と同じ判定器を通る。
+    // **変異試験の対象**: `Completions/GrpcService.cs` の IsSynthetic が markerPolicy を通さないと、ここが落ちる。
+    [Fact]
+    public async Task CompleteStream_段2では許可集合の外の呼び手の標識を無視して費用に計上する()
+    {
+        var app = AppReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn),
+            ("Llm:SyntheticMarker:Mode", "Enforce"));
+        var client = Untrusted(app);
+        using var probe = new UsageProbe(app.Services);
+
+        await client.CompleteStreamAsync(
+            new CompletionApiRequest("監視用の代表リクエスト", MaxTokens: 100, Confidentiality: "public", Purpose: "trade-decision"),
+            TestContext.Current.CancellationToken);
+
+        probe.Items.Should().Contain(m => m.Instrument == LlmUsageMetrics.TokensCounterName);
+        probe.Items.Should().NotContain(m => m.Instrument == LlmUsageMetrics.SyntheticExcludedCounterName);
     }
 
     private sealed class FixedResultProvider(CompletionResult result) : ILlmProvider

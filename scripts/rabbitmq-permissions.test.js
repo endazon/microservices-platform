@@ -680,7 +680,7 @@ function cloudBoot({ exchanges, importFails = false, flag = null, onIncomplete =
     const failImport = stderr
       ? `case "$*" in *import_definitions*) echo "STDOUT-SHOULD-NOT-APPEAR"; printf "${stderr}" 0 >&2; exit 2;; esac\n`
       : '';
-    // NFR-18, IADR-0702: 利用者の権限を当てられない（揃わない）形の模型。
+    // NFR-18, IADR-0706: 利用者の権限を当てられない（揃わない）形の模型。
     const failPerm = failPermissions ? 'case "$*" in *set_permissions*) exit 2;; esac\n' : '';
     fs.writeFileSync(path.join(bin, 'rabbitmqctl'), `#!/bin/sh\ncase "$1 $2" in "add_user "*|"change_password "*) cat >/dev/null;; esac\nprintf "%s\\n" "$*" >> "$STUB_H/calls"\n${failImport}${failPerm}exit 0\n`, { mode: 0o755 });
     fs.writeFileSync(path.join(H, 'calls'), '');
@@ -729,7 +729,7 @@ ok('クラウドの復元: exchanges.json を読み込めないときは、stder
   assert.ok(/^Error: 0+$/.test(long) && !/CUT-OFF/.test(long), `切り方が違う: ${long.slice(0, 80)}`);
 });
 
-ok('IADR-0702: クラウドの復元の既定のユーザー — 揃えば消す。揃わなければ retain（既定・キーが無い・知らない値）は残して WARN を出し、delete は消す。印が無ければ触らない', () => {
+ok('IADR-0706: クラウドの復元の既定のユーザー — 揃えば消す。揃わなければ retain（既定・キーが無い・知らない値）は残して WARN を出し、delete は消す。印が無ければ触らない', () => {
   const deleted = (r) => r.calls.some((c) => /^-q delete_user mqadmin_x$/.test(c));
   const full = cloudBoot({ exchanges: null, flag: 'true' });
   assert.strictEqual(full.status, 0);

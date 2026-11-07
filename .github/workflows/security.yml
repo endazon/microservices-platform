@@ -109,7 +109,7 @@ jobs:
       - name: Restore
         run: |
           for sln in $(find . -maxdepth 4 \( -name '*.slnx' -o -name '*.sln' \) -not -path '*/node_modules/*' -not -path './templates/*' | sort); do
-            dotnet restore "$sln"
+            dotnet restore "$sln" --locked-mode
           done
       - name: List vulnerable packages (incl. transitive)
         run: |

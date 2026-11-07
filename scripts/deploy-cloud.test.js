@@ -25,7 +25,7 @@
  *       描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）が 1 つも無い。
  *   AC11 Postgres は TCP を TLS（hostssl）でだけ受ける（pg_hba に host・hostnossl・trust・password・md5 が無い）。
  *   AC12 RabbitMQ はデータ（/var/lib/rabbitmq）を PVC に置き、ノード名を固定し、Recreate で替わる（再起動でキュー・メッセージを失わない）。
- *   IADR-0702（データとブローカの基盤の硬化）:
+ *   IADR-0706（データとブローカの基盤の硬化）:
  *     DB1 ブローカは平文を受けず（listeners.tcp = none）、管理・計測の受け口はループバックだけ。containerPort・Service は 5671 だけ。
  *         既定のユーザーの「揃わなかったときの扱い」は retain か delete（段）。
  *     DB2 Postgres の pg_hba は超利用者の TCP を reject し、その手前にゲート（emptyDir の中のファイル）の include_if_exists だけを置く。
@@ -153,7 +153,12 @@ function mspIngressProblems(docs) {
   const types = (d) => (d.spec.policyTypes || []).map(String);
   const deny = np.some((d) => JSON.stringify(d.spec.podSelector || {}) === '{}' && types(d).includes('Ingress') && !(d.spec.ingress || []).length);
   if (!deny) out.push(`infra: ${MSP_NS} の入りの既定拒否（podSelector が空・Ingress・規則なし）が無い`);
-  const ingressAllows = np.filter((d) => types(d).includes('Ingress') && (d.spec.ingress || []).length);
+  // IADR-0705: サーバ証明書の期限の測りの入り（platform-infra の測りの Pod から 8080 だけ）は別宣言。その形のときだけ数から外す。
+  const probe = np.find((d) => d.metadata.name === TLS_PROBE_INGRESS.llmgateway);
+  if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[['platform-infra', 'tls-cert-probe']], [`TCP/${LLM_GATEWAY_PORT}`]])) {
+    out.push(`infra: ${probe.metadata.name} が「platform-infra の測りの Pod から 8080 だけ」でない`);
+  }
+  const ingressAllows = np.filter((d) => types(d).includes('Ingress') && (d.spec.ingress || []).length && d !== probe);
   const gw = ingressAllows.filter((d) => JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'llmgateway-service' } }));
   if (gw.length !== 1) out.push(`infra: LLM ゲートウェイへの入りの許可がちょうど 1 枚でない（${gw.length}）`);
   for (const d of ingressAllows.filter((x) => !gw.includes(x))) out.push(`infra: ${MSP_NS} に LLM ゲートウェイ以外への入りの許可がある（${d.metadata.name}）`);
@@ -196,7 +201,7 @@ function postgresHbaProblems(docs) {
   if (!lines.some((l) => /^hostssl\s/.test(l))) out.push('infra: pg_hba に hostssl の行が無い');
   for (const l of lines) {
     const f = l.split(/\s+/);
-    // IADR-0702: ゲートの取り込み（include_if_exists）は superuserTcpProblems が形を見る。reject（拒む）は弱い認証ではない。
+    // IADR-0706: ゲートの取り込み（include_if_exists）は superuserTcpProblems が形を見る。reject（拒む）は弱い認証ではない。
     if (f[0] === 'include_if_exists') continue;
     if (!['local', 'hostssl'].includes(f[0])) out.push(`infra: pg_hba に TLS でない TCP の行がある（${f[0]}）`);
     if (!['scram-sha-256', 'reject'].includes(f[f.length - 1])) out.push(`infra: pg_hba の認証が scram-sha-256 でない（${f[f.length - 1]}）`);
@@ -205,7 +210,7 @@ function postgresHbaProblems(docs) {
 }
 
 /**
- * NFR-18, IADR-0702 DB2: 超利用者の TCP は既定で拒む。pg_hba は「ゲートの取り込み（emptyDir の中）→ 超利用者の reject（v4・v6）→ ほかの hostssl」の順。
+ * NFR-18, IADR-0706 DB2: 超利用者の TCP は既定で拒む。pg_hba は「ゲートの取り込み（emptyDir の中）→ 超利用者の reject（v4・v6）→ ほかの hostssl」の順。
  * 超利用者の名前のファイルは Secret postgres の username だけ。ゲートの手順は書く行が超利用者の TLS・scram だけ。
  * バックアップは超利用者（Secret postgres）を読まない。
  */
@@ -274,7 +279,7 @@ function rabbitmqPersistenceProblems(docs) {
   return out;
 }
 
-/** NFR-18, IADR-0702 DB1: ブローカは平文を受けず、管理・計測はループバックだけ。Pod の外へ出す口は 5671 だけ。既定のユーザーの扱いは段。 */
+/** NFR-18, IADR-0706 DB1: ブローカは平文を受けず、管理・計測はループバックだけ。Pod の外へ出す口は 5671 だけ。既定のユーザーの扱いは段。 */
 function brokerListenerProblems(docs) {
   const out = [];
   const mq = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'rabbitmq');
@@ -534,9 +539,25 @@ function cloudRealmAudienceProblems(realm) {
 /**
  * NFR-18, IADR-0689 決定 12: クラウドの段 2 の切り替え（ブローカの権限 narrow・LLM ゲートウェイの 3 つ）。
  *   - LLM ゲートウェイ: Llm__RouteValidation__Mode=Fail・Llm__CallerPolicy__Mode=Enforce・Llm__CallLimits__Mode=Enforce。
+ *     ［2026-11-07 / IADR-0702］埋め込みの許可表と上限（EmbeddingMode）・合成監視の標識の許可集合（SyntheticMarker__Mode）も Enforce。
  *   - ブローカ: 起動の直後の復元が vhost 全体（'.*' 3 つ）を当てず、生成物 rabbitmq-permissions の行だけを当てる。表は非 optional。
  */
-const STAGE2_LLM_ENV = Object.freeze({ Llm__RouteValidation__Mode: 'Fail', Llm__CallerPolicy__Mode: 'Enforce', Llm__CallLimits__Mode: 'Enforce' });
+const STAGE2_LLM_ENV = Object.freeze({
+  Llm__RouteValidation__Mode: 'Fail', Llm__CallerPolicy__Mode: 'Enforce', Llm__CallLimits__Mode: 'Enforce',
+  // IADR-0702
+  Llm__CallerPolicy__EmbeddingMode: 'Enforce', Llm__CallLimits__EmbeddingMode: 'Enforce', Llm__SyntheticMarker__Mode: 'Enforce',
+});
+
+/**
+ * NFR-18, IADR-0702: クラウドでは埋め込みを使わない。OpenBao の手順書は埋め込みの鍵（voyage-api-key）を案内しない。
+ */
+const CLOUD_OPENBAO_RUNBOOK = 'docs/operations/cloud-openbao-init-unseal-runbook.md';
+function cloudEmbeddingKeyProblems(runbookText) {
+  const out = [];
+  if (/voyage-api-key/.test(runbookText)) out.push('クラウドの手順書が埋め込みの鍵（voyage-api-key）を案内する');
+  if (/埋め込みを使うなら/.test(runbookText)) out.push('クラウドの手順書が埋め込みを使う前提の案内を持つ');
+  return out;
+}
 function llmGatewayEnv(docs) {
   const d = docs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name));
   const c = d ? (d.spec.template.spec.containers || [])[0] || {} : {};
@@ -707,6 +728,19 @@ const KEYCLOAK_AST_CALLERS = [
   'notification-service', 'order-execution-service', 'report-service', 'risk-management-service', 'trade-decision-service',
 ];
 const KEYCLOAK_HTTPS_PORT = 8443;
+/** IADR-0705: サーバ証明書の期限の測りの、受け口の側の入りの別宣言（deploy/cloud/tls-cert-probe）。形は scripts/deploy-cloud-egress-audit.test.js も固定する。 */
+const TLS_PROBE_INGRESS = Object.freeze({ keycloak: 'keycloak-ingress-tls-cert-probe', llmgateway: 'llmgateway-ingress-tls-cert-probe' });
+/** 入りの宣言の形（規則が 1 つ・送り元の [名前空間, app] の一覧・ポートの一覧）。キーの並びに依らない。 */
+function tlsProbeIngressShape(d) {
+  const rules = (d.spec && d.spec.ingress) || [];
+  if (rules.length !== 1) return `rules=${rules.length}`;
+  const from = (rules[0].from || []).map((f) => [
+    (f.namespaceSelector && f.namespaceSelector.matchLabels && f.namespaceSelector.matchLabels['kubernetes.io/metadata.name']) || (f.namespaceSelector ? '?' : null),
+    (f.podSelector && f.podSelector.matchLabels && f.podSelector.matchLabels.app) || '?',
+  ]);
+  if ((rules[0].from || []).some((f) => f.ipBlock || (f.podSelector && f.podSelector.matchExpressions))) return 'other';
+  return JSON.stringify([from, (rules[0].ports || []).map((x) => `${x.protocol || 'TCP'}/${x.port}`)]);
+}
 const KEYCLOAK_HTTP_PORT = 8080;
 const KEYCLOAK_ISSUER = 'https://keycloak:8443/realms/platform';
 
@@ -751,7 +785,12 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
   // 入り: Keycloak を選ぶ許可はちょうど 1 枚。各要素は名前空間 かつ Pod（AND）。名前空間だけの要素は名前空間の全 Pod へ開く。
   const isKc = (d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'platform-infra'
     && JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'keycloak' } }) && (d.spec.ingress || []).length;
-  const allows = docs.filter(isKc);
+  // IADR-0705: サーバ証明書の期限の測り（deploy/cloud/tls-cert-probe）の入りは別宣言。同じ名前空間の測りの Pod から 8443 だけ、の形のときだけ数から外す。
+  const probe = docs.find((d) => isKc(d) && d.metadata.name === TLS_PROBE_INGRESS.keycloak);
+  if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[[null, 'tls-cert-probe']], [`TCP/${KEYCLOAK_HTTPS_PORT}`]])) {
+    out.push(`infra: ${probe.metadata.name} が「測りの Pod から 8443 だけ」でない`);
+  }
+  const allows = docs.filter((d) => isKc(d) && d !== probe);
   if (allows.length !== 1) out.push(`infra: Keycloak への入りの許可がちょうど 1 枚でない（${allows.length}）`);
   for (const d of allows) {
     for (const rule of d.spec.ingress) {
@@ -768,7 +807,8 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
         seen[ns] = [...(seen[ns] || []), ...pods].sort();
       }
       // IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
-      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients'] };
+      // IADR-0705: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
+      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients', 'keycloak-master-admin'] };
       if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
         out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);
       }
@@ -1108,7 +1148,7 @@ function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
   return out;
 }
 
-module.exports = { superuserTcpProblems, brokerListenerProblems, cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+module.exports = { superuserTcpProblems, brokerListenerProblems, cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, cloudEmbeddingKeyProblems, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS, tlsProbeIngressShape, TLS_PROBE_INGRESS, WORKLOAD_KINDS, podSpec };
 
 if (require.main === module) {
   let failed = 0;
@@ -1335,7 +1375,15 @@ if (require.main === module) {
       .find((v) => v.configMap && v.configMap.name === 'rabbitmq-permissions').configMap.optional = true;
     const chart = renderChart(['--set', 'services.llmgateway.extraEnvAppend=null']);
     const p = stage2Problems(chart, infra);
-    for (const want of [/vhost 全体の権限/, /表を読まない/, /optional/, /RouteValidation__Mode/, /CallerPolicy__Mode/, /CallLimits__Mode/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    for (const want of [/vhost 全体の権限/, /表を読まない/, /optional/, /RouteValidation__Mode/, /CallerPolicy__Mode/, /CallLimits__Mode/,
+      /CallerPolicy__EmbeddingMode/, /CallLimits__EmbeddingMode/, /SyntheticMarker__Mode/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
+  ok('IADR-0702: クラウドの OpenBao の手順書は埋め込みの鍵を案内しない（クラウドでは埋め込みを使わない）', () => {
+    assert.deepStrictEqual(cloudEmbeddingKeyProblems(fs.readFileSync(path.join(REPO_ROOT, CLOUD_OPENBAO_RUNBOOK), 'utf8')), []);
+  });
+  ok('IADR-0702 陰性対照: 埋め込みの鍵の案内を検出する', () => {
+    const p = cloudEmbeddingKeyProblems('| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key`（埋め込みを使うなら `voyage-api-key` も） |');
+    assert.strictEqual(p.length, 2, p.join('\n'));
   });
   ok('IADR-0689: 秘匿管理の描画 — OpenBao は dev モードでなく、ローカルと同じ digest、raft・値を記録しない監査。受け口に入れるのは ESO の controller だけ。Secret・ClusterSecretStore を描かない', () => {
     assert.deepStrictEqual(vaultProblems(renderVault(), renderEso(), localVaultImage()), []);
@@ -1486,7 +1534,7 @@ if (require.main === module) {
     assert.strictEqual(c.image, podSpec(localJob).containers[0].image, 'ローカルの realm の後追いの Job と同じ digest でない');
     assert.match(c.image, /@sha256:[0-9a-f]{64}$/);
     assert.strictEqual(labelApp(job.spec.template), 'keycloak-add-clients');
-    // 入口は段の行を 1 つだけ差し替える（apply・check・sync-secrets〔IADR-0702〕のほかは受けない）
+    // 入口は段の行を 1 つだけ差し替える（apply・check・sync-secrets〔IADR-0706〕のほかは受けない）
     const sh = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/keycloak-clients.sh'), 'utf8');
     assert.match(sh, /^  apply \| check \| sync-secrets\) ;;$/m);
     assert.match(sh, /live_opt_in_require "keycloak-clients\.sh"/);
@@ -1749,10 +1797,10 @@ if (require.main === module) {
     const l = collectorLimitProblems(docs);
     for (const want of [/OtelCollectorRefusingData が無い/, /OtlpSendersMissing の閾値/, /OtlpSendersMissing の注釈の数（13）/, /gRPC の受け取りの上限/]) assert.ok(l.some((x) => want.test(x)), `${want} を検出しない:\n${l.join('\n')}`);
   });
-  ok('IADR-0702 DB2: 超利用者の TCP は既定で拒み（ゲートは emptyDir の中・名前のファイルは username だけ）、バックアップは専用の利用者で入る', () => {
+  ok('IADR-0706 DB2: 超利用者の TCP は既定で拒み（ゲートは emptyDir の中・名前のファイルは username だけ）、バックアップは専用の利用者で入る', () => {
     assert.deepStrictEqual(superuserTcpProblems(renderCloudAll()), []);
   });
-  ok('IADR-0702 DB2 陰性対照: reject の欠け・順の入れ替え・ゲートの置き場の永続化・名前のファイルに password・ゲートの行の緩め・バックアップの超利用者を検出する', () => {
+  ok('IADR-0706 DB2 陰性対照: reject の欠け・順の入れ替え・ゲートの置き場の永続化・名前のファイルに password・ゲートの行の緩め・バックアップの超利用者を検出する', () => {
     const fresh = () => JSON.parse(JSON.stringify(renderCloudAll()));
     const cm = (docs) => docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-hba');
     const pgSpec = (docs) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'postgres').spec.template.spec;
@@ -1778,7 +1826,7 @@ if (require.main === module) {
       ['postgres.yaml', '          securityContext:\n            allowPrivilegeEscalation: false\n            capabilities: { drop: [ALL] }\n          env:', '          env:', (d) => podHardeningProblems(d, 'm'), /postgres の postgres: allowPrivilegeEscalation/],
       ['rabbitmq.yaml', '            readOnlyRootFilesystem: true\n            capabilities: { drop: [ALL] }\n          volumeMounts:', '            readOnlyRootFilesystem: true\n          volumeMounts:', (d) => netRawHolders(d, 'm'), /rabbitmq の tls-files が NET_RAW/],
       ['rabbitmq.yaml', '      automountServiceAccountToken: false\n', '', (d) => podHardeningProblems(d, 'm'), /rabbitmq: ServiceAccount のトークン/],
-      // NFR-18, IADR-0702 DB1: 平文・管理の口を戻すと赤になる。
+      // NFR-18, IADR-0706 DB1: 平文・管理の口を戻すと赤になる。
       ['rabbitmq.yaml', '    listeners.tcp = none\n', '    listeners.tcp.default = 5672\n', brokerListenerProblems, /ブローカが平文を受ける/],
       ['rabbitmq.yaml', '    management.tcp.ip = 127.0.0.1\n', '', brokerListenerProblems, /management\.tcp\.ip がループバックでない/],
       ['rabbitmq.yaml', '            - { containerPort: 5671, name: amqps }\n', '            - { containerPort: 5671, name: amqps }\n            - { containerPort: 15672, name: management }\n', brokerListenerProblems, /containerPort が 5671 だけでない/],

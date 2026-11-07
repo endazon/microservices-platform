@@ -2,7 +2,7 @@
 title: IADR-0693 クラウドの認可サーバー（Keycloak）への通信を、OpenBao の PKI（DB・ブローカと同じ CA）が出す証明書の HTTPS にし、受け手は https を必須にしてシステムの信頼ストアに基盤の CA を足して検証する。平文と HTTPS の併存の段を経て平文を閉じる
 type: impl-adr
 status: Accepted
-related_ids: [NFR-16, NFR-18, NFR-05, IADR-0689, IADR-0674, IADR-0591, IADR-0086, IADR-0585]
+related_ids: [NFR-16, NFR-18, NFR-05, IADR-0689, IADR-0674, IADR-0591, IADR-0086, IADR-0585, IADR-0705]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -103,3 +103,8 @@ related_specs:
 2. 基盤の CA はシステムの信頼ストアに入る（決定 3 の引き換え）。CA に外の名前の role を書けるのは root だけで、root は使うたびに作り直して失効させる（IADR-0689 決定 2）。
 3. 併存の段の間は平文の口が開いたままで、発行元が要求の URL で決まる。移行の後に最終の段を当てたことを、Keycloak の Service のポートで確かめる（手順書）。
 4. クラスタでしか確かめられないこと（移行の門の条件 5 で確かめる）: ESO が `keycloak-tls` を書くこと・Keycloak の起動・受け手の鍵の取得。
+
+## ［2026-11-07 追記 / IADR-0705］残余 1 を閉じた
+
+- 証明書の期限の警報を置いた。測りの Pod（`deploy/cloud/tls-cert-probe/`）が 4 つの受け口の出している証明書の期限を系列にし、Prometheus の `cloud-tls-expiry` が鳴らす
+  （IADR-0705 決定 5）。blackbox の exporter と ESO のメトリクスの収集は採らなかった（新しいイメージ・ESO の名前空間への到達を要し、消費側の作り直しの漏れが見えない）。

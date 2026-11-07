@@ -11,11 +11,11 @@
  *   5. IADR-0695: ConfigMap postgres-ast-db-users の手順（Job が流すもの）を同じ Postgres に TLS で流す。apply が 7 人を作り、各 DB と中の物の
  *      OWNER を移し、各利用者は自分の DB にだけ入れる。移行の間も共有の利用者は読み書きできる。drop-shared は共有の利用者の接続が残れば止め、
  *      無ければ消す。どちらも冪等。値はログ・出力に出ない。変異（CONNECT を外さない・共有の利用者を役割の一員にしない）を検出する。
- *   6. IADR-0702: 超利用者は TCP（TLS）で入れない（ほかの利用者は入れる）。ゲート（superuser-tcp-gate.sh）を開けると入れ、閉じるとまた入れない。
+ *   6. IADR-0706: 超利用者は TCP（TLS）で入れない（ほかの利用者は入れる）。ゲート（superuser-tcp-gate.sh）を開けると入れ、閉じるとまた入れない。
  *      変異（reject の行を外す）で、超利用者が TCP で入れることを検出する。手順の Job（5）はゲートを開けた間だけ流れ、閉じれば流れない。
- *   7. IADR-0702: 段 platform がバックアップの利用者を作り、その利用者は globals と全 DB をダンプでき、書き込み・利用者の作成はできない。
+ *   7. IADR-0706: 段 platform がバックアップの利用者を作り、その利用者は globals と全 DB をダンプでき、書き込み・利用者の作成はできない。
  *      Keycloak の DB の利用者のパスワードを Secret の値（作り直した値）へ合わせる。冪等。値はログ・出力に出ない。
- *   8. IADR-0702: 超利用者の作り直しの手順（deploy/cloud/db-users/superuser-password.sh）は、Secret の値（Pod のファイル）が env と違えば
+ *   8. IADR-0706: 超利用者の作り直しの手順（deploy/cloud/db-users/superuser-password.sh）は、Secret の値（Pod のファイル）が env と違えば
  *      check が 3・apply が合わせて 0。どちらの値でも入れなければ 4 で何も変えない。冪等。値は出力・サーバのログに出ない。
  *
  * 証明書の鍵の所有者と mode は本番と同じ経路で作る: Secret の中身（試験だけの使い捨ての鍵）を kubelet と同じ形（root の所有・
@@ -165,7 +165,7 @@ function start(decl, label) {
 
     const rnd = (n) => crypto.randomBytes(n).toString('hex');
     const admin = `pgadmin_${rnd(3)}`;
-    // IADR-0702: 超利用者の名前のファイル（Secret postgres の username だけ。宣言の items・defaultMode のまま kubelet と同じ形で置く）。
+    // IADR-0706: 超利用者の名前のファイル（Secret postgres の username だけ。宣言の items・defaultMode のまま kubelet と同じ形で置く）。
     const suVol = (spec.volumes || []).find((v) => v.name === 'superuser-name' && v.secret);
     assert.ok(suVol && suVol.secret.secretName === 'postgres' && JSON.stringify(suVol.secret.items) === JSON.stringify([{ key: 'username', path: 'username' }]),
       '超利用者の名前のボリュームが Secret postgres の username だけでない');
@@ -181,11 +181,11 @@ function start(decl, label) {
       `AST_DB_USER=ast_${rnd(3)}`, `AST_DB_PASSWORD=${rnd(24)}`, `KEYCLOAK_DB_USER=kc_${rnd(3)}`, `KEYCLOAK_DB_PASSWORD=${rnd(24)}`,
       // IADR-0695: Job の env と同じ名前（seed-secrets.sh の形: ast_<サービス>_<乱数>・24 バイト）。初期化は読まない。
       ...AST_DB_SERVICES.flatMap((svc) => [`${envOf('USER', svc)}=ast_${svc.replace(/-/g, '_')}_${rnd(3)}`, `${envOf('PASSWORD', svc)}=${rnd(24)}`]),
-      // IADR-0702: 段 platform の env（Job と同じ名前。seed-secrets.sh の形）。作り直しの値（KEYCLOAK_DB_PASSWORD_NEW）は試験だけのもの。
+      // IADR-0706: 段 platform の env（Job と同じ名前。seed-secrets.sh の形）。作り直しの値（KEYCLOAK_DB_PASSWORD_NEW）は試験だけのもの。
       `POSTGRES_BACKUP_USER=pgbackup_${rnd(3)}`, `POSTGRES_BACKUP_PASSWORD=${rnd(24)}`, `KEYCLOAK_DB_PASSWORD_NEW=${rnd(24)}`, '',
     ].join('\n'), { mode: 0o600 });
 
-    // IADR-0702: Secret postgres の password を置いたファイル（作り直しの試験で書き換える。kubelet の書き換えの代わり）。
+    // IADR-0706: Secret postgres の password を置いたファイル（作り直しの試験で書き換える。kubelet の書き換えの代わり）。
     const adminPassword = fs.readFileSync(envFile, 'utf8').match(/^POSTGRES_PASSWORD=(.*)$/m)[1];
     fs.writeFileSync(path.join(supwDir, 'password'), adminPassword, { mode: 0o644 });
     const run = docker(['run', '-d', '--name', name, ...dockerSecurityArgs(spec, c), '--env-file', envFile,
@@ -256,7 +256,7 @@ function checkDeclared() {
 }
 
 /**
- * IADR-0702: 超利用者の TCP は既定で拒み、ゲートを開けた間だけ受ける。変異（reject の行を外す）を検出する。
+ * IADR-0706: 超利用者の TCP は既定で拒み、ゲートを開けた間だけ受ける。変異（reject の行を外す）を検出する。
  * ゲートは宣言の superuser-tcp-gate.sh を Pod の中（uid 70）で走らせる（ast-db-users.sh --live と同じ呼び方）。
  */
 const gateOf = (r) => (cmd) => docker(['exec', r.name, 'sh', r.gateScript, cmd]);
@@ -273,7 +273,7 @@ function checkSuperuserGate(r, sh, probe) {
   assert.strictEqual(gate('close').status, 0, 'ゲートを閉じられない');
   assert.ok(refused(), 'ゲートを閉じても超利用者が TCP で入れる');
   assert.strictEqual(gate('bogus').status, 2, '知らない操作を拒まない');
-  console.log('  ok  IADR-0702: 超利用者は TCP（TLS）で入れず、ゲートを開けた間だけ入れる（ほかの利用者は TLS で入れる。平文はどちらも拒む）');
+  console.log('  ok  IADR-0706: 超利用者は TCP（TLS）で入れず、ゲートを開けた間だけ入れる（ほかの利用者は TLS で入れる。平文はどちらも拒む）');
 
   // 上限: close を流せなくても（exec が終わった後でも）、上限を過ぎればその回の閉じ手が閉じる。後から開け直した回は前の回の閉じ手が閉じない。
   const gateTtl = (cmd, ttl) => docker(['exec', '-e', `PG_HBA_GATE_TTL_S=${ttl}`, r.name, 'sh', r.gateScript, cmd]);
@@ -286,7 +286,7 @@ function checkSuperuserGate(r, sh, probe) {
   assert.strictEqual(gateTtl('open', 60).status, 0); // 開け直し（前の回の閉じ手は 3 秒で起きる）
   spawnSync('sleep', ['8']);
   assert.match(gate('status').stdout.trim(), /^superuser-tcp: open/, '前の回の閉じ手が、開け直したゲートを閉じた');
-  console.log('  ok  IADR-0702: ゲートは上限を過ぎるとその回の閉じ手が閉じ（exec の後も）、開け直した回は前の回の閉じ手が閉じない');
+  console.log('  ok  IADR-0706: ゲートは上限を過ぎるとその回の閉じ手が閉じ（exec の後も）、開け直した回は前の回の閉じ手が閉じない');
 
   // Pod の作り直しの代わり（コンテナの再起動）: ゲートのファイル（メモリ）は消え、閉じた側へ戻る。
   const restart = docker(['restart', r.name], { timeout: 120000 });
@@ -295,7 +295,7 @@ function checkSuperuserGate(r, sh, probe) {
   while (Date.now() < end && sh('pg_isready -q -U "$POSTGRES_USER"').status !== 0) spawnSync('sleep', ['1']);
   assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '再起動の後もゲートが開いている');
   assert.ok(refused(), '再起動の後に超利用者が TCP で入れる');
-  console.log('  ok  IADR-0702: 開いたゲートは再起動で消え、閉じた側へ戻る（超利用者の TCP は拒まれる）');
+  console.log('  ok  IADR-0706: 開いたゲートは再起動で消え、閉じた側へ戻る（超利用者の TCP は拒まれる）');
 
   // 変異: reject の行を外すと、ゲートが閉じていても超利用者が入れる（判定が空振りしない）。宣言のファイルを写した場所で読み直させる。
   const hbaFile = path.join(r.hbaDir, path.posix.basename(r.hbaArg));
@@ -317,7 +317,7 @@ function checkSuperuserGate(r, sh, probe) {
 }
 
 /**
- * IADR-0702: 段 platform。バックアップの利用者を作り、その利用者は globals と全 DB をダンプでき、書き込み・利用者の作成はできない。
+ * IADR-0706: 段 platform。バックアップの利用者を作り、その利用者は globals と全 DB をダンプでき、書き込み・利用者の作成はできない。
  * Keycloak の DB の利用者のパスワードを Secret の値へ合わせる（作り直しの反映）。
  */
 function checkPlatformStage(r, sh) {
@@ -348,7 +348,7 @@ function checkPlatformStage(r, sh) {
   const kc = (pw) => sh(`PGPASSWORD="${pw}" PGSSLMODE=require psql -X -tA -U "$KEYCLOAK_DB_USER" -d keycloak -h 127.0.0.1 -w -c "select 1"`);
   assert.strictEqual(kc('$KEYCLOAK_DB_PASSWORD_NEW').status, 0, 'Keycloak の DB の利用者が作り直した値で入れない');
   assert.notStrictEqual(kc('$KEYCLOAK_DB_PASSWORD').status, 0, 'Keycloak の DB の利用者が古い値でも入れる');
-  console.log('  ok  IADR-0702 段 platform: ゲートが閉じていれば流れず、開ければバックアップの利用者を作る。Keycloak の DB の利用者を作り直した値へ合わせる。2 回目も通る');
+  console.log('  ok  IADR-0706 段 platform: ゲートが閉じていれば流れず、開ければバックアップの利用者を作る。Keycloak の DB の利用者を作り直した値へ合わせる。2 回目も通る');
 
   // バックアップの利用者（TCP・TLS。超利用者でない）: globals と全 DB をダンプでき、書けず、利用者を作れない。
   const BK = 'PGHOST=127.0.0.1 PGSSLMODE=require PGUSER="$POSTGRES_BACKUP_USER" PGPASSWORD="$POSTGRES_BACKUP_PASSWORD" PGDATABASE=postgres';
@@ -371,10 +371,10 @@ function checkPlatformStage(r, sh) {
     assert.notStrictEqual(x.status, 0, `バックアップの利用者が ${why}`);
     assert.match(x.stderr, /permission denied/, `${why} の拒み方が権限でない: ${x.stderr}`);
   }
-  console.log('  ok  IADR-0702: バックアップの利用者は globals と全 DB をダンプでき、書き込み・利用者と DB の作成は権限で拒まれる');
+  console.log('  ok  IADR-0706: バックアップの利用者は globals と全 DB をダンプでき、書き込み・利用者と DB の作成は権限で拒まれる');
 }
 
-/** IADR-0702: 超利用者の作り直し。手順は宣言のファイルを標準入力で Pod へ渡す（rotate-superuser.sh と同じ呼び方）。最後に流す（超利用者の値を変える）。 */
+/** IADR-0706: 超利用者の作り直し。手順は宣言のファイルを標準入力で Pod へ渡す（rotate-superuser.sh と同じ呼び方）。最後に流す（超利用者の値を変える）。 */
 function checkSuperuserRotation(r, sh) {
   const script = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/db-users/superuser-password.sh'), 'utf8');
   const step = (mode) => docker(['exec', '-i', r.name, 'sh', '-s', '--', mode], { input: script });
@@ -401,7 +401,7 @@ function checkSuperuserRotation(r, sh) {
   assert.strictEqual(step('bogus').status, 2, '知らない段を拒まない');
   const logs = docker(['logs', r.name]);
   for (const v of [v1, v2]) assert.ok(!`${logs.stdout}${logs.stderr}`.includes(v), 'Postgres のログに作り直した値が出た');
-  console.log('  ok  IADR-0702: 超利用者の作り直し — check は合っていれば 0・違えば 3、apply は合わせて 0（冪等）。どちらの値でも入れなければ 4 で何も変えない。値は出力・ログに出ない');
+  console.log('  ok  IADR-0706: 超利用者の作り直し — check は合っていれば 0・違えば 3、apply は合わせて 0（冪等）。どちらの値でも入れなければ 4 で何も変えない。値は出力・ログに出ない');
 }
 
 /**
@@ -409,7 +409,7 @@ function checkSuperuserRotation(r, sh) {
  * 試験の証明書は名前の照合ができない（CN=postgres を 127.0.0.1 で引く）ので sslmode は require（宣言の Job は verify-full。deploy-cloud.test.js が固定）。
  */
 function checkDbUsers(r, sh) {
-  // IADR-0702: Job は超利用者の TCP で流れる。ast-db-users.sh --live と同じく、流す間だけゲートを開ける。
+  // IADR-0706: Job は超利用者の TCP で流れる。ast-db-users.sh --live と同じく、流す間だけゲートを開ける。
   const gate = gateOf(r);
   assert.strictEqual(gate('open').status, 0, 'ゲートを開けられない');
   try {

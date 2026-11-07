@@ -294,7 +294,14 @@
     "統合後に `pnpm run build` → `--update` で再測すること（本項の A/B は差分の帰属を残すためのもの）。",
     "smallLazyChunks は A/B とも 6 を超えていた（A: 8 / B: 7）が、増分は HEAD 時点で他タスクが作ったものであり本タスクでは増えていない。"
   ],
-  "initialTotalBytes": 660917,
+  "initialTotalBytes": 661027,
+  "$comment_initialTotalBytes_20261107_deps-sonner-tailwind-merge": [
+    "［2026-11-07 / dependabot の 3 本（#2483・#2484・#2486）をまとめた PR］660,917 → 661,027 B（+0.11 kB）へ引き上げた。実測値である（rm -rf dist → pnpm run build → --require が超過を報告し、--update で床を更新した）。",
+    "増分の帰属（同一環境・同じ develop 44facea09 からのビルドで 1 本ずつ当てた A/B）: develop 単独 659,673 B。sonner 2.0.7 → 2.0.8 だけで 660,659 B（index-*.js 337,518 → 338,504 = +986 B。sonner は規則に当たらず入口チャンクへ入る）。",
+    "tailwind-merge 3.6.0 → 3.7.0 だけで 660,041 B（ui-*.js 78,539 → 78,907 = +368 B。cn() が使う）。両方で 661,027 B（+1,354 B）。@storybook/react-vite 10.6.5 と @babel/types の統一は成果物を変えない（両方の場合とハッシュまで同一）。",
+    "分割では減らない: sonner の Toaster は Layout.tsx（初期ロード）が静的に読み、tailwind-merge は ui チャンクの cn() が読む。別チャンクへ切り出しても index.html の modulepreload に載るので初期ロード合計は減らない。",
+    "1 本ずつなら develop の床に収まる（develop が床より 1,244 B 下にあった）が、2 本目のマージで 110 B 超える。smallLazyChunks は 13 のまま。"
+  ],
   "$comment_initialTotalBytes_20261031_2379_sc20-sync-pause": [
     "［2026-10-31 / #2379］658,882 → 660,917 B（+2.04 kB）へ引き上げた。実測値である（pnpm run build → 判定 3 が超過を報告し、--update で床を更新した）。",
     "増分の帰属: SC-20 の同期の一時停止の区画と同期履歴の停止期間の行で足した固定文言 16 個の ja / en の訳である（英訳も 16 件。最初の push の 12 件と、取得中・失敗・時刻なしの状態の 4 件）。Lingui のカタログ（locales/<locale>/messages.ts）は",

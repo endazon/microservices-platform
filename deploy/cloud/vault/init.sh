@@ -31,6 +31,7 @@ ob_readable "$RECIPIENTS" "age の受取人のファイル（--recipients）"
 ob_fresh "$OUT"
 live_opt_in_require "init.sh"
 ob_need kubectl age
+ct_require_target "init.sh"
 # 受取人で暗号化できることを先に確かめる（init の後で age が失敗すると、鍵を受け取れないまま初期化が済んでしまう）。
 printf 'probe' | age -R "$RECIPIENTS" >/dev/null || { echo "ERROR: 受取人のファイルで暗号化できない（age -R を確かめる）" >&2; exit 2; }
 

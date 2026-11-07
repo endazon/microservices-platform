@@ -1,5 +1,5 @@
 ---
-title: IADR-0702 クラウドの Postgres の超利用者の TCP は既定で拒み、利用者を作る Job の間だけ Pod の中のゲートで開ける。バックアップは全データを読めるだけの専用の利用者で入る。ブローカは平文と管理の口を Pod の外へ出さず、既定のユーザーの扱いを段にする。OpenBao の値の作り直しを消費側へ反映する手段を持つ
+title: IADR-0706 クラウドの Postgres の超利用者の TCP は既定で拒み、利用者を作る Job の間だけ Pod の中のゲートで開ける。バックアップは全データを読めるだけの専用の利用者で入る。ブローカは平文と管理の口を Pod の外へ出さず、既定のユーザーの扱いを段にする。OpenBao の値の作り直しを消費側へ反映する手段を持つ
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-05, IADR-0674, IADR-0689, IADR-0695, IADR-0697, IADR-0700, IADR-0591, IADR-0577]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_cloud-data-broker-hardening.md
 ---
 
-# IADR-0702: クラウドのデータとブローカの基盤の硬化
+# IADR-0706: クラウドのデータとブローカの基盤の硬化
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

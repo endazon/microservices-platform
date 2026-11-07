@@ -166,6 +166,15 @@ builder.Services.AddOptions<LlmCallerPolicyOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<LlmCallerPolicyOptions>, LlmCallerPolicyOptionsValidator>();
 builder.Services.AddSingleton<LlmCallerPolicy>();
+// ［2026-11-07 / IADR-0702］埋め込みも同じ表を見る（`AllowEmbedding`。段は `Llm:CallerPolicy:EmbeddingMode`。既定 Report）。
+
+// NFR-02, NFR-18, NFR-21, IADR-0378, IADR-0702: 合成監視の標識を引き継いでよい呼び手の許可集合（`Llm:SyntheticMarker`）。
+// 🔴 **既定の段は Report**（従前どおり引き継いで報告）。`Enforce` では許可集合の外の標識を無視して費用に計上する（送信は止めない）。
+builder.Services.AddOptions<LlmSyntheticMarkerOptions>()
+    .Bind(builder.Configuration.GetSection(LlmSyntheticMarkerOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<LlmSyntheticMarkerOptions>, LlmSyntheticMarkerOptionsValidator>();
+builder.Services.AddSingleton<LlmSyntheticMarkerPolicy>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
 // LLM 生成・埋め込みの合成可能ポート（機密区分ルーティングで複数プロバイダを束ねるルータ）を申告する。
@@ -189,7 +198,8 @@ app.Services.GetRequiredService<LlmGatewayStartMetrics>();
     var limiter = app.Services.GetRequiredService<LlmCallLimiter>();
     limiter.TryLoadState();
     var callLimits = app.Services.GetRequiredService<IOptions<LlmCallLimitOptions>>().Value;
-    if (callLimits.Mode == LlmCallLimitMode.Enforce && !app.Services.GetRequiredService<ILlmSpendStore>().IsDurable)
+    if ((callLimits.Mode == LlmCallLimitMode.Enforce || callLimits.EmbeddingMode == LlmGuardStage.Enforce)
+        && !app.Services.GetRequiredService<ILlmSpendStore>().IsDurable)
     {
         app.Services.GetRequiredService<ILoggerFactory>()
             .CreateLogger("LlmGateway.Startup")

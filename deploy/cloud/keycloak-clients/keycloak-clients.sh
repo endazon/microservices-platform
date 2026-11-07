@@ -5,7 +5,7 @@
 #   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check   # 読むだけ: 無いクライアント・足りないロールを名指す（在れば 3 で終わる）
 #   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live apply   # 無いクライアントを作り、サービスアカウントに無いロールを足す（在るものは触らない）
 #   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live sync-secrets
-#       # NFR-18, IADR-0702: 在る機密クライアントの secret を取り込み元の値（OpenBao で作り直した値）へ合わせる（違うものだけ。手順書
+#       # NFR-18, IADR-0706: 在る機密クライアントの secret を取り込み元の値（OpenBao で作り直した値）へ合わせる（違うものだけ。手順書
 #       #   docs/operations/cloud-credential-rotation-runbook.md）
 #
 # 手順の中身は add-clients.js（ConfigMap keycloak-add-clients に入れる）。ここは ConfigMap と Job を作り、終わるまで待ち、ログを出し、成功したら消すだけ。
@@ -32,6 +32,10 @@ TIMEOUT_S="${KEYCLOAK_CLIENTS_TIMEOUT_S:-300}"
 case "$TIMEOUT_S" in '' | *[!0-9]*) echo "ERROR: KEYCLOAK_CLIENTS_TIMEOUT_S は秒数（正の整数）" >&2; exit 2 ;; esac
 live_opt_in_require "keycloak-clients.sh"
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl が無い" >&2; exit 1; }
+# NFR-18, IADR-0703 決定 2: 宛先のクラスタを確かめ、以後の kubectl をその context に固定する。
+# shellcheck source=deploy/cloud/lib/target-cluster.sh
+. "$ROOT/deploy/cloud/lib/target-cluster.sh"
+ct_require_target "keycloak-clients.sh"
 
 # 段を差し替えた Job の宣言（印の行は 1 つだけ。在るはずの行が無ければ止める）
 manifest="$(awk -v stage="$STAGE" 'prev ~ /^            - name: MODE$/ && $0 ~ /^              value: "check"$/ { sub(/"check"/, "\"" stage "\"") } { print; prev = $0 }' "$HERE/job.yaml")"

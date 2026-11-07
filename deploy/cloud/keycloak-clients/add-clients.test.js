@@ -62,7 +62,7 @@ function fakeKeycloak({ clientIds = DECLARED_CLOUD_CLIENTS, scopes, roles } = {}
       const c = st.clients.find((x) => x.id === m[1]);
       return m[2] === 'service-account-user' ? st.sa.get(c.id) : (c.defaultClientScopes || []).filter((s) => st.scopes.includes(s)).map((name) => ({ name }));
     }
-    // IADR-0702: secret の読み書き（client-secret と、クライアントの表現の PUT）。
+    // IADR-0706: secret の読み書き（client-secret と、クライアントの表現の PUT）。
     m = p.match(/^\/admin\/realms\/platform\/clients\/([0-9a-f-]{36})(\/client-secret)?$/);
     if (m) {
       const c = st.clients.find((x) => x.id === m[1]);
@@ -185,7 +185,7 @@ test('陰性対照: 宛先のスコープ・ロールが稼働に無ければ、
   assert.deepStrictEqual(noRole.st.writes, []);
 });
 
-test('IADR-0702 sync-secrets: 取り込み元と違う secret だけを書き換え（ほかの設定は変えない）、同じものは書かず、無いクライアントは作らずに名指す。値は出力しない', async () => {
+test('IADR-0706 sync-secrets: 取り込み元と違う secret だけを書き換え（ほかの設定は変えない）、同じものは書かず、無いクライアントは作らずに名指す。値は出力しない', async () => {
   const kc = fakeKeycloak({ clientIds: CLOUD_CLIENTS });
   const rotated = SERVICE_CLIENTS[1];
   const stale = kc.st.clients.find((x) => x.clientId === rotated);

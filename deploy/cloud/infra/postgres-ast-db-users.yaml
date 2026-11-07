@@ -18,7 +18,7 @@ data:
     #   apply       … 7 人を作り（在ればパスワードを OpenBao の値に合わせる）、各 DB の OWNER と中の物の OWNER をその利用者へ移し、
     #                 接続を許す全 DB の CONNECT・TEMPORARY を PUBLIC から外す。移行の間は共有の利用者を各利用者の役割の一員にする。冪等。
     #   drop-shared … 共有の利用者の接続が無いことを確かめて、残りを移し、権限を外して消す（最終の段）。冪等。
-    #   platform    … NFR-18, IADR-0702: バックアップの利用者を作り（在ればパスワードを OpenBao の値に合わせ）、超利用者でなく
+    #   platform    … NFR-18, IADR-0706: バックアップの利用者を作り（在ればパスワードを OpenBao の値に合わせ）、超利用者でなく
     #                 pg_read_all_data の一員・全 DB の CONNECT だけにする。Keycloak の DB の利用者のパスワードを OpenBao の値に合わせる
     #                 （作り直しの反映。初期化は初回だけ）。冪等。
     # apply・drop-shared は最後に「どの利用者がどの DB に CONNECT できるか」と OWNER を確かめ、自分の DB の外に出れば失敗にする。

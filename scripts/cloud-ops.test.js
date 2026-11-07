@@ -422,12 +422,15 @@ t('T-2402-36 バックアップ: 保持（lifecycle）と Object Lock の日数�
   for (const r of lc.Rules) assert.ok(r.NoncurrentVersionExpiration, `${r.ID}: 古い版を消さないと容量が積み上がる`);
 });
 const np = find(bds, 'NetworkPolicy', 'platform-backup-egress') || EMPTY;
-t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・443 だけ。受けは無し）', () => {
+t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・外向きの中継〔IADR-0705。外の 443 へ直には出ない〕だけ。受けは無し）', () => {
   assert.ok(np.text, 'NetworkPolicy platform-backup-egress が無い');
   assert.deepStrictEqual(np.obj.spec.policyTypes, ['Egress']);
   const ports = new Set();
   for (const rule of np.obj.spec.egress) for (const p of rule.ports) ports.add(Number(p.port));
-  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 443, 5432]);
+  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 3128, 5432]);
+  const toProxy = np.obj.spec.egress.find((r) => r.ports.some((p) => Number(p.port) === 3128));
+  assert.deepStrictEqual(toProxy.to.map((x) => x.podSelector && x.podSelector.matchLabels && x.podSelector.matchLabels.app), ['egress-proxy'], '3128 の宛先が外向きの中継でない');
+  assert.ok(!np.obj.spec.egress.some((r) => (r.to || []).some((x) => x.ipBlock)), '外の範囲（ipBlock）へ直に出る規則が残っている');
 });
 
 // ---------------------------------------------------------------- 警報・heartbeat
@@ -616,7 +619,7 @@ t('T-2402-37 TLS: 名前の照合に使うホスト（PGHOST）は Postgres の 
   assert.strictEqual(((gen.obj.spec || {}).parameters || {}).common_name, host, 'Postgres の証明書（OpenBao の PKI）の名前が Service の短い名前でない');
   assert.ok((pgC.args || []).includes('ssl=on'), '#2401 の Postgres が TLS でない');
 });
-// ［2026-11-07 / IADR-0702］バックアップは超利用者でなく、専用の利用者（Secret postgres-backup。OpenBao の cloud/platform/postgres-backup）で入る。
+// ［2026-11-07 / IADR-0706］バックアップは超利用者でなく、専用の利用者（Secret postgres-backup。OpenBao の cloud/platform/postgres-backup）で入る。
 const backupCredProblems = (c) => {
   const out = [];
   for (const [envName, key] of [['PGUSER', 'username'], ['PGPASSWORD', 'password']]) {
@@ -628,7 +631,7 @@ const backupCredProblems = (c) => {
   }
   return out;
 };
-t('T-2402-37 資格情報: バックアップの名前とパスワードは専用の利用者の Secret postgres-backup の username / password から読み、超利用者の Secret postgres を読まない（IADR-0702）', () => {
+t('T-2402-37 資格情報: バックアップの名前とパスワードは専用の利用者の Secret postgres-backup の username / password から読み、超利用者の Secret postgres を読まない（IADR-0706）', () => {
   assert.deepStrictEqual(backupCredProblems(backupC), []);
   // 超利用者（#2401 の Secret postgres）は Postgres 本体だけが読む（突き合わせの相手が読めていることの陽性対照）。
   for (const [envName, key] of [['POSTGRES_USER', 'username'], ['POSTGRES_PASSWORD', 'password']]) {

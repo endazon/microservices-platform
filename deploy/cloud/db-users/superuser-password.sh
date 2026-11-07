@@ -1,5 +1,5 @@
 #!/bin/sh
-# NFR-18, NFR-05, IADR-0702: Postgres の Pod の中（postgres の利用者＝uid 70）で走らせる手順。超利用者のパスワードを、
+# NFR-18, NFR-05, IADR-0706: Postgres の Pod の中（postgres の利用者＝uid 70）で走らせる手順。超利用者のパスワードを、
 # OpenBao で作り直した値（Secret postgres の password。Pod にファイルで置いたもの。ESO と kubelet が書き換える）へ合わせる。
 # 手元の入口は rotate-superuser.sh（kubectl exec -i … sh -s -- <段> < このファイル）。
 #

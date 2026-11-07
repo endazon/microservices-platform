@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, NFR-05, IADR-0702: Postgres の超利用者のパスワードを、OpenBao で作り直した値へ合わせる（オーナーが手元から。kubectl は SSH のトンネル越し）。
+# NFR-18, NFR-05, IADR-0706: Postgres の超利用者のパスワードを、OpenBao で作り直した値へ合わせる（オーナーが手元から。kubectl は SSH のトンネル越し）。
 #
 #   bash deploy/cloud/db-users/rotate-superuser.sh --live check   # 読むだけ（0＝合っている・3＝合わせる前・4＝どちらの値でも入れない）
 #   bash deploy/cloud/db-users/rotate-superuser.sh --live apply   # 合わせる（Pod の中のソケットで ALTER ROLE。Postgres は作り直さない）
@@ -26,6 +26,10 @@ esac
 NS="${POSTGRES_NS:-platform-infra}"
 live_opt_in_require "rotate-superuser.sh"
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl が無い" >&2; exit 1; }
+# NFR-18, IADR-0703 決定 2: 宛先のクラスタを確かめ、以後の kubectl をその context に固定する。
+# shellcheck source=deploy/cloud/lib/target-cluster.sh
+. "$ROOT/deploy/cloud/lib/target-cluster.sh"
+ct_require_target "rotate-superuser.sh"
 
 echo "==> 超利用者のパスワードを Secret の値と突き合わせる（段: ${MODE}。値は表示しない）"
 set +e

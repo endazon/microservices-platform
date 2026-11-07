@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700]
-specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
+iadrs: [IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0705]
+specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->
 
@@ -40,6 +40,24 @@ issues: [#2471, #2401]
 
 - **どちらも、別々の 2 か所に保管する**（場所はリポジトリに書かない）。片方を失っても、もう片方から戻せる。
 - `<init>.age` を両方とも失うと、封印を開けられない。データを捨てて初期化からやり直す（§7）。
+
+## 識別子を守る（2 つのファイルは同じ識別子で開く）
+
+`<init>.age` と `<operator>.age` は、どちらもオーナーの同じ age の識別子で開く（鍵の保持はオーナーが持つ）。2 か所の保管は失くしたときの備えで、
+識別子が漏れれば両方が開く。そのため、**識別子そのものを平文で置かない**:
+
+- **パスフレーズで包む**（既定の形）。識別子を `age -p` で暗号化したファイルにし、平文の識別子は消す。手順は `--identity` に包んだファイルを与え、
+  復号のたびにパスフレーズを尋ねる（`root-token.sh` は 2 つのファイルを開くので 2 回尋ねる）:
+  ```sh
+  age -p -o <識別子>.age <識別子のファイル>     # パスフレーズは対話で入れる（引数に書かない）
+  age -d -i <識別子>.age <init>.age >/dev/null && echo OK   # 包んだ識別子で開けることを確かめる（中身は捨てる）
+  shred -u <識別子のファイル>                    # 平文の識別子を消す（包んだファイルを 2 か所に保管してから）
+  ```
+- **鍵の装置で持つ**（使えるとき）。age のプラグイン（例: YubiKey の PIV を使うもの）の識別子にし、受取人をその装置の受取人に替えて
+  `<init>.age`・`<operator>.age` を作り直す（§6 の rekey・rotate-operator の後に、新しい受取人で書き出す）。
+- 手順は、平文の識別子（`AGE-SECRET-KEY-1` で始まる行を持つファイル）を受け取ると警告を出す（中身は表示しない）。包んだ後は
+  `OB_IDENTITY_POLICY=enforce` を与えて流す（平文の識別子を受け取ると止まる）。
+- 手順は流す前に宛先のクラスタを確かめる（違えば外から持ち込む値を書かずに止まる）。印の記録は[宛先のクラスタの手順書](cloud-owner-target-cluster-runbook.md)。
 
 ## 1. 初期化（一度だけ）
 
@@ -127,12 +145,16 @@ openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       #
 
 - 書けるのは `cloud/ast`・`cloud/platform`・`cloud/msp` の下だけ（`cloud/shared` は §4 の `seed-secrets.sh` が作る）。
 - **キーが在れば止まる**（終了コード 5。何も変えない）。作り直すときだけ `--overwrite` を付ける（同じパスのほかのキーは残す）。
+- ［2026-11-07 追記］🔴 **Keycloak の管理者の値（`cloud/platform/keycloak-admin` の `username`・`password`）を `--overwrite` で替える前に、
+  `bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live close` を流して閉じた状態にする**（`… --live check` が 0 で終わることを確かめる）。
+  一時管理者の有無はその資格でトークンを取れるかで読むので、値を替えた後に `check`・`close` を流すと、前の値で作られた一時管理者を「無い」と読み、
+  消さずに残す（[一時管理者の手順書](cloud-keycloak-admin-runbook.md) §2）。閉じた状態なら master realm に一時管理者は在らず、替えた値は次の `open` で使われる。
 - 終了コード: 0 書いた・1 失敗（パスやキーの有無を読めないときも、書かずに 1）・2 引数の誤りか値が空・3 `--live` が無い・5 キーが在る。
 - 書いた後は ESO が 1 時間以内に写す。すぐに写すときは `kubectl -n <名前空間> annotate externalsecret <名前> force-sync="$(date +%s)" --overwrite`。
 
 | 値 | パス | キー | 写す先（名前空間 / Secret） |
 | --- | --- | --- | --- |
-| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key`（埋め込みを使うなら `voyage-api-key` も） | `microservices-platform` / `llm-provider-credentials` |
+| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key` だけ（クラウドでは埋め込みを使わない。埋め込みの鍵は置かない） | `microservices-platform` / `llm-provider-credentials` |
 | バックアップの保管先の鍵 | `cloud/platform/platform-backup-s3` | `access-key-id`・`secret-access-key` | `platform-infra` / `platform-backup-s3` |
 | 警報の Discord の webhook | `cloud/platform/alertmanager-discord` | `webhook-url` | `platform-infra` / `alertmanager-discord` |
 | 外の監視の ping の URL | `cloud/platform/alertmanager-heartbeat` | `ping-url`・`discord-ping-url`・`discord-fail-url` | `platform-infra` / `alertmanager-heartbeat` |

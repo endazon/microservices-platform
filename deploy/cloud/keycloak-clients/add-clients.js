@@ -13,7 +13,7 @@
  *   - 作ったクライアント（と在るクライアント）のサービスアカウントに、取り込み元の利用者の realm ロールのうち無いものだけを足す（外さない）。
  *   - クライアントの既定のスコープが稼働の realm に無ければ、何も書かずに止める（無いスコープは Keycloak が黙って捨て、トークンの宛先が欠ける）。
  *   - MODE=check は読むだけ（無いクライアント・足りないロールを名指しし、在れば 3 で終わる）。MODE=apply は書く。
- *   - NFR-18, IADR-0702: MODE=sync-secrets は、在る機密クライアントの secret を取り込み元の値（OpenBao で作り直した値）へ合わせる
+ *   - NFR-18, IADR-0706: MODE=sync-secrets は、在る機密クライアントの secret を取り込み元の値（OpenBao で作り直した値）へ合わせる
  *     （作り直しの反映。`--import-realm` は在る realm を取り込み直さない）。違うものだけを書き、同じものは書かない。無いクライアントは作らない
  *     （apply の役目。名指して 1 で終わる）。secret の値は比べるだけで出力しない。secret 以外の設定は変えない（読んだ表現に secret だけを差す）。
  *   - 値（secret・トークン・パスワード）は出力しない。出すのはクライアントの名前・ロールの名前・件数だけ。
@@ -106,7 +106,7 @@ async function reconcile(call, realmName, desired, { apply, log = console.log })
   return out;
 }
 
-/** IADR-0702: 在る機密クライアントの secret を取り込み元の値へ合わせる。戻り値は { synced, same, missing }。 */
+/** IADR-0706: 在る機密クライアントの secret を取り込み元の値へ合わせる。戻り値は { synced, same, missing }。 */
 async function syncSecrets(call, realmName, desired, { log = console.log } = {}) {
   const r = `/admin/realms/${encodeURIComponent(realmName)}`;
   const out = { synced: [], same: [], missing: [] };

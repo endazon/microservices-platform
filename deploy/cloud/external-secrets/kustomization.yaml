@@ -1,0 +1,7 @@
+# NFR-05, NFR-18, IADR-0705: ESO の名前空間（PSA restricted）と到達の制限。ESO の chart（helm）より先に当てる（README §3）。
+#   kubectl apply -k deploy/cloud/external-secrets
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml

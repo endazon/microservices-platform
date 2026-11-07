@@ -26,8 +26,10 @@ while [ "$#" -gt 0 ]; do
 done
 ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+ob_identity_guard "$IDENTITY"
 live_opt_in_require "unseal.sh"
 ob_need kubectl age node
+ct_require_target "unseal.sh"
 
 # 開けた後、書き込みを受ける状態（active）になるまで待ってから OK を出す（lib.sh の wait_active）。
 # 開けた直後の standby の間は読み取りだけが通り、続けて流す configure の失効・seed・put の書き込みが落ちるため。

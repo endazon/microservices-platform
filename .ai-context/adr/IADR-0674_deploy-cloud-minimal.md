@@ -2,10 +2,10 @@
 title: IADR-0674 取引ユニットをクラウドの単一ノードへ移すための MSP の最小構成を deploy/cloud に置く。基盤は変換を持たない kustomize、MSP は LLM ゲートウェイだけ、資格情報は初回に乱数で作り、秘匿管理（OpenBao）は最初の稼働では持ち込まない（#2401）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, NFR, ADR-0008, ADR-0124, IADR-0574, IADR-0591, IADR-0605, IADR-0672]
+related_ids: [NFR-18, NFR, ADR-0008, ADR-0124, IADR-0574, IADR-0591, IADR-0605, IADR-0672, IADR-0705]
 author: claude
 created: 2026-11-05
-updated: 2026-11-06
+updated: 2026-11-07
 related_specs:
   - ../specs/20261105_2401_deploy-cloud-minimal.md
 ---
@@ -139,3 +139,8 @@ related_specs:
 7. RabbitMQ の平文の 5672 は、ローカルの段 1 と同じくブローカでは開けたまま。届く範囲は NetworkPolicy が 5671（TLS）だけに絞る。
 8. 取引ユニットの側は、LLM ゲートウェイの接続先を https にし、CA（ConfigMap `platform-infra-ca`）で検証する必要がある（AST#1525）。揃うまで取引ユニットからの呼び出しは繋がらない（平文へは倒さない）。
 9. LLM ゲートウェイ → Keycloak（トークンの検証の鍵の取得）は、クラスタの中の http のまま。届く範囲は NetworkPolicy が絞る。
+
+## ［2026-11-07 追記 / IADR-0705］LLM ゲートウェイのクラスタの外の 443 を、外向きの中継へ移した
+
+- 「LLM ゲートウェイだけに … クラスタの外の 443 を許す」は改めた。クラスタの外の 443 へ宛先を名指して出るのは名前の許可表を持つ中継（`deploy/cloud/egress/`）だけで、
+  LLM ゲートウェイ・バックアップ・Alertmanager は中継の 3128 を経る（IADR-0705 決定 1。ESO・OpenBao の API サーバー向けのポートだけの出は宛先を問わない。IADR-0705 残余 5）。

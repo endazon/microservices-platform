@@ -2,17 +2,17 @@
 title: 作業仕様書 — クラウドの Postgres の超利用者の TCP の名乗りを既定で閉じ、ブローカの平文・管理の口を閉じ、資格の作り直しを消費側へ届ける
 type: spec
 status: done
-related_ids: [NFR-18, NFR-05, IADR-0702, IADR-0674, IADR-0689, IADR-0695, IADR-0697, IADR-0700, IADR-0591, IADR-0577]
+related_ids: [NFR-18, NFR-05, IADR-0706, IADR-0674, IADR-0689, IADR-0695, IADR-0697, IADR-0700, IADR-0591, IADR-0577]
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 related_specs:
   - 20261105_2401_deploy-cloud-minimal.md
 ---
 
 # 作業仕様書 — クラウドのデータとブローカの基盤の硬化
 
-> 着手 2026-11-07（develop `cc8f316f1`）。判断の記録は IADR-0702。稼働中のクラスタには何もしない。秘密の値は扱わない
+> 着手 2026-11-07（develop `cc8f316f1`）。判断の記録は IADR-0706。稼働中のクラスタには何もしない。秘密の値は扱わない
 > （作り直しは、オーナーが手元から流すスクリプトで行う）。
 
 ## 起点
@@ -43,7 +43,7 @@ related_specs:
   「NetworkPolicy が 5672 を通さない」を見るもので、受け口が閉じても成り立つ。`docs/operations/operations.md` の port-forward の記述はローカルの構成。
 - 資格の作り直しの記述: `git grep -n '作り直'` の `deploy/cloud/README.md`・各手順書。値の作り直しの手順は無い（証明書の作り直しだけ）。
 
-## 方針（決定は IADR-0702）
+## 方針（決定は IADR-0706）
 
 1. **超利用者の TCP は既定で拒む。開けるのはオーナーの手元のスクリプトが Job を流す間だけ**（ゲート）。
    - pg_hba の先頭近くに「超利用者の名前（Secret `postgres` の `username` を読み取り専用で置いたファイル）の TCP は reject」を置き、
@@ -101,4 +101,4 @@ related_specs:
 | AC7 | `openbao-scripts.test.sh`（実物の OpenBao 2.7.1 で rotate）・`add-clients.test.js`（sync-secrets）・`deploy-cloud-postgres.test.js`（段 platform の作り直し・超利用者の check/apply/4 で止まる） |
 | AC8 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（1290 件）・`deploy-cloud.test.js`・文書の検査（trace ブロック・リンク・参照の表記・計画 ID の修飾・必読の予算・知識グラフ・type の値域） |
 
-- `check-adr-numbering` は IADR-0701 の欠番を指す（本 IADR は仮の番号。0701 が先に入る前提）。手元では 0701 の仮のファイルを置いて全件を通した（コミットしていない）。
+- 採番: 着手の時は仮の番号で起こし、develop（0701〜0705 が先に入った）を取り込んだ後に最大＋1 の IADR-0706 へ改番した（2026-11-08。ファイル名・索引・本書・コード内コメント・trace ブロック・PR タイトル）。

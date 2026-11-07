@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0702, IADR-0689, IADR-0695, IADR-0700, IADR-0674, IADR-0577]
+iadrs: [IADR-0706, IADR-0689, IADR-0695, IADR-0700, IADR-0674, IADR-0577]
 specs: [20261107_cloud-data-broker-hardening]
 -->
 

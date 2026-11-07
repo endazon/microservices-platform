@@ -8,13 +8,13 @@
 #       → 指定のバイト数の乱数を**標準の base64**（パディングつき・1 行）で書く。キーが在れば止まる（上書きしない）。
 #         例（取引ユニットの手順書）: gen cloud/ast/ast-secrets order-approval-signing-key 32
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … rotate <cloud/パス> <キー>
-#       → NFR-18, IADR-0702: seed が作った値（下の表）の**在るキーだけ**を、Pod の中の乱数（24 バイト・16 進）で作り直す。ほかのキーは触らない。
+#       → NFR-18, IADR-0706: seed が作った値（下の表）の**在るキーだけ**を、Pod の中の乱数（24 バイト・16 進）で作り直す。ほかのキーは触らない。
 #         キーが無ければ止まる（作るのは seed）。userpass のパスは password だけ（利用者名は変えない）。消費側への反映は手順書
 #         docs/operations/cloud-credential-rotation-runbook.md（値を作り直しただけでは、Keycloak・Postgres の中の値は変わらない）。
 #
 # 作る 8 種（ADR-0080 決定 1 の区分 2。パスとキーは IADR-0689 決定 6）:
 #   cloud/platform/postgres・keycloak-db・keycloak-admin・rabbitmq  … username（乱数の接尾辞）・password
-#   cloud/platform/postgres-backup                                … username（pgbackup_<乱数>）・password（IADR-0702。バックアップの利用者）
+#   cloud/platform/postgres-backup                                … username（pgbackup_<乱数>）・password（IADR-0706。バックアップの利用者）
 #   cloud/shared/ast-db                                            … username・password（共有の利用者。移行の間だけ。IADR-0695）
 #   cloud/shared/ast-db-<サービス>（7 つ）                         … username（ast_<サービス>_<乱数>）・password（IADR-0695。サービスごとの DB の利用者）
 #   cloud/shared/ast-rabbitmq-users  … deploy/local/rabbitmq-setup/users.txt の取引ユニットの行の利用者名ごとのパスワード（perkey）
@@ -77,8 +77,10 @@ case "$CMD" in
 esac
 ob_readable "$OPERATOR_FILE" "configure.sh が書いたオーナー用の資格のファイル（--operator-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+ob_identity_guard "$IDENTITY"
 live_opt_in_require "seed-secrets.sh"
 ob_need kubectl age node
+ct_require_target "seed-secrets.sh"
 
 # Pod の中の共通の関数（値を持たない）
 # shellcheck disable=SC2016
@@ -130,7 +132,7 @@ perkey() {
   echo "    作った: cloud/$p（キー: $*）"
 }
 userpass platform/postgres pgadmin
-# IADR-0702: バックアップの利用者（超利用者でない。利用者は Job の段 platform が作る。手順書）
+# IADR-0706: バックアップの利用者（超利用者でない。利用者は Job の段 platform が作る。手順書）
 userpass platform/postgres-backup pgbackup
 userpass platform/keycloak-db keycloak
 userpass platform/keycloak-admin kcadmin

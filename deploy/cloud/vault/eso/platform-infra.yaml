@@ -51,7 +51,7 @@ spec:
     - secretKey: password
       remoteRef: { key: platform/postgres, property: password }
 ---
-# ［2026-11-07 / IADR-0702］バックアップの利用者（超利用者でない）。消費は CronJob platform-backup-postgres と Job postgres-ast-db-users（段 platform）。
+# ［2026-11-07 / IADR-0706］バックアップの利用者（超利用者でない）。消費は CronJob platform-backup-postgres と Job postgres-ast-db-users（段 platform）。
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
