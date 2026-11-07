@@ -110,4 +110,28 @@
   <PropertyGroup Condition="$(XUnit1051Migrated.Contains(';$(MSBuildProjectName);'))">
     <WarningsAsErrors>$(WarningsAsErrors);xUnit1051</WarningsAsErrors>
   </PropertyGroup>
+
+  <!--
+    NuGet の lock ファイル（NFR(セキュリティ) / IADR-0705）。
+
+    直接の依存は Central Package Management（Directory.Packages.props）で固定しているが、
+    推移的な依存の解決結果は固定していなかった。各プロジェクトの packages.lock.json に解決結果（版と
+    content hash）を記録し、CI では locked mode（dotnet restore の locked-mode 指定）で restore する。
+    lock ファイルと食い違えば restore が NU1004 で落ちる（黙って別の版を取らない）。
+
+    🔴 **対象は本リポジトリの 2 ユニット（platform/backend・knowledge/backend）の配下だけ**である。
+    本ファイルは import-chain で AST（src/ai-stock-trading）と雛形の試しビルド（src/.template-buildcheck-*）
+    にも届く。そちらへ lock ファイルを生ませない（AST の lock は AST 側が決める。雛形は複製のたびに作り直される）。
+
+    lock ファイルの更新: パッケージを足す・版を上げたら、手元で `dotnet restore src/<unit>/backend/backend.slnx`
+    を流し（locked mode ではない restore は lock を書き直す）、差分をコミットする。
+    Platform.Bff は AST の Bff を ProjectReference するため、submodule の bump で AST 側の依存が変われば
+    Platform.Bff の lock も書き直しが要る。
+  -->
+  <PropertyGroup>
+    <_MspLockFileRelativeDir>$([MSBuild]::MakeRelative('$(MSBuildThisFileDirectory)', '$(MSBuildProjectDirectory)').Replace('\', '/'))/</_MspLockFileRelativeDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="$(_MspLockFileRelativeDir.StartsWith('platform/backend/')) or $(_MspLockFileRelativeDir.StartsWith('knowledge/backend/'))">
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
 </Project>

@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:e70cdb7f80b0348f5cb85f19a8f670fca0
 WORKDIR /repo
 COPY src/Directory.Build.props src/Directory.Packages.props ./
 COPY src/platform/backend/ platform/backend/
-RUN dotnet restore platform/backend/Services/AuthorizationService/AuthorizationService.csproj
+RUN dotnet restore platform/backend/Services/AuthorizationService/AuthorizationService.csproj --locked-mode
 RUN dotnet publish platform/backend/Services/AuthorizationService/AuthorizationService.csproj \
     -c Release -o /app/publish --no-restore
 
