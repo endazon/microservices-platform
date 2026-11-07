@@ -784,3 +784,4 @@
 | [IADR-0704](./IADR-0704_ai-review-full-diff-every-head.md) | AI レビューは同じ PR への 2 回目以後の push でも、この head の全差分を読み直し、前回のレビューの結果を流用しない（prompt で定め、試験で固定する。検査器は緩めない） | Accepted |
 | [IADR-0705](./IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md) | クラウドの基盤の外向きの通信を名前の許可表を持つ中継 1 つに集め（report → enforce）、master realm の一時管理者を要る間だけ置き、ESO の名前空間を restricted と到達の制限で先に作り、k3s の API サーバーの監査の記録を足し、サーバ証明書の期限を受け口で測って警報にする | Accepted |
 | [IADR-0706](./IADR-0706_cloud-data-broker-hardening.md) | クラウドの Postgres の超利用者の TCP は既定で拒み、利用者を作る Job の間だけ Pod の中のゲートで開ける。バックアップは全データを読めるだけの専用の利用者で入る。ブローカは平文と管理の口を Pod の外へ出さず、既定のユーザーの扱いを段（retain → delete）にする。OpenBao の値の作り直しを消費側へ反映する手段を持つ | Accepted |
+| [IADR-0707](./IADR-0707_review-verdict-ignore-quotes-and-output-object.md) | 検証の下限の検査器は、レビュー本文の引用（引用ブロック・語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文を、下限の自己申告として数えない（狭く外し、下限は緩めない） | Accepted |

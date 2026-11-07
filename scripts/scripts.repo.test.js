@@ -18921,6 +18921,106 @@ server.listen(0, '127.0.0.1', async () => {
       }
     }
 
+    // IADR-0707: レビュー本文の引用（語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文で赤になった実本文（同型 2 回）。
+    // #2512 の 2 回目（run 42396353370）は語句の括弧の中の「前回以後だけは満たさない」で、AST#1597 の 3 回目（run 42382006516）は
+    // `helm template` の行の「他の Worker の出力は全行を読んでいない。」で落ちた。どちらも変更ファイルは全部読んでいた。
+    const review2512 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'pr2512-review2.txt'), 'utf8');
+    const changed2512 = [
+      ".ai-context/adr/IADR-0704_ai-review-full-diff-every-head.md",
+      ".ai-context/adr/README.md",
+      ".ai-context/specs/20261108_ai-review-full-diff-every-head.md",
+      ".github/workflows/claude-code-review.yml",
+      "scripts/scripts.repo.test.js",
+    ];
+    const review1597 = fsRvf.readFileSync(pathRvf.join(__dirname, 'fixtures', 'review-floor', 'ast1597-review3.txt'), 'utf8');
+    const changed1597 = [
+      ".ai-context/adr/IADR-0639_runtime-image-and-trust-hardening.md",
+      ".ai-context/adr/README.md",
+      ".ai-context/specs/20261107_runtime-image-and-trust-hardening.md",
+      ".github/dependabot.yml",
+      ".github/workflows/helm.yml",
+      "Directory.Build.props",
+      "backend/Dockerfile",
+      "backend/Services/NotificationService/Infrastructure/ExternalServices/DiscordOwnerAuthExtensions.cs",
+      "backend/Services/ReportService/Program.cs",
+      "backend/Services/ReportService/Tests/LlmGatewayInfraCaTrustWiringTests.cs",
+      "backend/Services/TradeDecisionService/Features/TradeDecision/ILlmCostHaltGate.cs",
+      "backend/Services/TradeDecisionService/Infrastructure/ExternalServices/FailClosedLlmCostHaltGate.cs",
+      "backend/Services/TradeDecisionService/Infrastructure/ExternalServices/GrpcLlmCostHaltGate.cs",
+      "backend/Services/TradeDecisionService/Infrastructure/ExternalServices/HttpLlmCostHaltGate.cs",
+      "backend/Services/TradeDecisionService/Program.cs",
+      "backend/Services/TradeDecisionService/Tests/Infrastructure/ExternalServices/CostControlHaltReadContractTests.cs",
+      "backend/Services/TradeDecisionService/Tests/Infrastructure/ExternalServices/FailClosedLlmCostHaltGateTests.cs",
+      "backend/Services/TradeDecisionService/Tests/LlmCostHaltUnavailableModeWiringTests.cs",
+      "backend/Services/TradeDecisionService/Tests/LlmGatewayInfraCaTrustWiringTests.cs",
+      "backend/Shared/AiStockTrading.Shared.Infrastructure/Composable/Http/PlatformInfraCaTrust.cs",
+      "backend/Shared/AiStockTrading.Shared.KnowledgeBase/Foundation/Extensions/KnowledgeBaseAuthExtensions.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim.Tests/PlatformInfraCaDestinationWiringTests.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim.Tests/PlatformInfraCaTrustLoadWarningTests.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim.Tests/PlatformInfraCaTrustTests.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim/Foundation/Auth/PlatformRealmAuthExtensions.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim/Foundation/Auth/ServiceAuthExtensions.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim/Foundation/Extensions/AuthExtensions.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim/Foundation/Extensions/WolverineExtensions.cs",
+      "backend/TestSupport/AiStockTrading.TestSupport.PlatformShim/Foundation/Tls/PlatformInfraCaTrust.cs",
+      "deploy/helm/ai-stock-trading/README.md",
+      "deploy/helm/ai-stock-trading/templates/deployment.yaml",
+      "deploy/helm/ai-stock-trading/values-cloud.yaml",
+      "deploy/helm/ai-stock-trading/values.yaml",
+      "deploy/opend/Dockerfile",
+      "deploy/opend/README.md",
+      "deploy/opend/opend-tarball.sha256",
+      "docker-compose.yml",
+      "docs/operations/cloud-keycloak-tls-runbook.md",
+      "docs/operations/cloud-single-node-migration-runbook.md",
+      "docs/security/security.md",
+      "scripts/helm-pod-security.test.js",
+      "scripts/opend-build.sh",
+      "scripts/scripts.repo.test.js",
+    ];
+    const from2512 = '前回以後だけは満たさない・M の数え方）は prompt に存在する。';
+    const from1597 = '他の Worker の出力は全行を読んでいない。';
+    ok('check-review-verdict[IADR-0707]: #2512 と AST#1597 の実本文は、引用・出力の文で赤にならない', () => {
+      assert.ok(review2512.includes(from2512) && review1597.includes(from1597), '実本文の該当の文が無い（fixture が変わった）');
+      assert.deepStrictEqual(floorRvf(review2512, changed2512, { scriptsTestsConclusion: 'success' }), []);
+      assert.deepStrictEqual(floorRvf(review1597, changed1597, { scriptsTestsConclusion: 'success' }), []);
+    });
+    ok('check-review-verdict[IADR-0707]: ★陽性対照 —— 同じ実本文でも、申告が括弧の外にあるか、文が変更ファイル・差分を指せば赤', () => {
+      for (const [body, changed, from, to, re] of [
+        [review2512, changed2512, from2512, '前回以後だけは満たさない・M の数え方）は prompt に存在する。ただし本レビューは下限を満たしていない。', /下限を満たしていないと書いている/],
+        [review1597, changed1597, from1597, '`deployment.yaml` の出力は全行を読んでいない。', /精読していないと書いている/],
+        [review1597, changed1597, from1597, '他の Worker の差分は全行を読んでいない。', /精読していないと書いている/],
+        [review1597, changed1597, from1597, '出力が大きく、全行は読んでいない。', /精読していないと書いている/],
+      ]) {
+        const v = floorRvf(body.replace(from, to), changed, { scriptsTestsConclusion: 'success' });
+        assert.strictEqual(v.length, 1, to);
+        assert.match(v[0], re, to);
+      }
+    });
+    {
+      // ★陰性対照（変異）: 直しを外した検査器では、2 本の実本文が赤に戻る（＝試験が直しを見ていることの固定）。
+      const SRC_RVF3 = fsRvf.readFileSync(pathRvf.join(__dirname, 'check-review-verdict.js'), 'utf8');
+      const mutate3 = (from, to) => {
+        assert.ok(SRC_RVF3.includes(from), `変異の置換元が無い（検査器の書き方が変わった）: ${from}`);
+        const file = pathRvf.join(__dirname, `.mutant-check-review-verdict-${process.pid}-${Math.random().toString(36).slice(2)}.js`);
+        fsRvf.writeFileSync(file, SRC_RVF3.replace(from, to));
+        try {
+          delete require.cache[file];
+          return require(file);
+        } finally {
+          fsRvf.rmSync(file, { force: true });
+        }
+      };
+      for (const c of [
+        { name: '語句を紹介する括弧の除外', from: ".replace(QUOTED_TERM, '$1')", to: '', body: review2512, changed: changed2512 },
+        { name: '出力そのものの除外', from: 'if (aboutOutputAsObject(bare, sentence, hits, changedFiles)) continue;', to: '', body: review1597, changed: changed1597 },
+      ]) {
+        ok(`check-review-verdict[IADR-0707]: ★変異 —— ${c.name}を外すと実本文が赤に戻る`, () => {
+          assert.strictEqual(mutate3(c.from, c.to).findFloorViolations(c.body, c.changed, { scriptsTestsConclusion: 'success' }).length, 1);
+        });
+      }
+    }
+
     // IADR-0643 (#2276): ★変異試験 —— 除外の 3 条件のそれぞれを外した検査器では、その条件だけが赤に保っている例が緑になる。
     // （＝自己試験と上の陽性対照が、条件を見ていることの固定。条件を黙って緩めると、ここではなく自己試験が赤になる）
     {
