@@ -104,7 +104,9 @@ async function main(env = process.env, log = console.log) {
   const out = await reconcile(call, env.REALM, desired, { apply: mode === 'apply', log });
   for (const p of out.problems) log(`ERROR: ${p}`);
   if (out.problems.length > 0) return 1;
-  log(`OK: 無かったクライアント ${out.missing.length} 件・作った ${out.created.length} 件・ロールを足した ${out.rolesAdded.length} 件`);
+  log(mode === 'apply'
+    ? `OK: 無かったクライアント ${out.missing.length} 件・作った ${out.created.length} 件・ロールを足した ${out.rolesAdded.length} 件`
+    : `OK: 無いクライアント ${out.missing.length} 件・ロールの足りないサービスアカウント ${out.rolesAdded.length} 件（読むだけ。書いていない）`);
   return mode === 'check' && (out.missing.length > 0 || out.rolesAdded.length > 0) ? 3 : 0;
 }
 

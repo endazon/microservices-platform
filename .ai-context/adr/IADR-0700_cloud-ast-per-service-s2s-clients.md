@@ -42,7 +42,11 @@ related_specs:
 ### 決定 2 — secret は OpenBao の中で作り、在るパスには無いキーだけを足す
 
 - `seed-secrets.sh` の `perkey` は、パスが在れば無いキーだけを `kv patch` で足す（在るキーの値は読まずに残す。有無を読めなければ書かずに止める）。
-  稼働中の構成（旧の 3 つだけ）へ 7 つを足せる。ESO の `keycloak-realm-import` は全キーを差し込むので宣言は変わらない。取引ユニットの名前空間は、その clientId の
+  稼働中の構成（旧の 3 つだけ）へ 7 つを足せる。
+- **意図して `perkey` の全体（`shared/ast-rabbitmq-users` と `shared/ast-client-secrets`）に及ぼす。** `deploy/local/rabbitmq-setup/users.txt` に取引ユニットの行が
+  増えたとき、稼働中の `shared/ast-rabbitmq-users` にもその利用者のキーが足される（以前は在るパスを触らず、足りないキーは手で作るしかなかった）。
+  `userpass`（`platform/*`・`shared/ast-db`・`shared/ast-db-<サービス>`）は従来どおりパスの単位で在れば触らない。
+- 扱うのは「キーが無い」だけで、**在るキーの値と稼働の側（Keycloak の client の secret・ブローカの利用者のパスワード）の不一致は見ない・直さない**（対の秘密の入れ替えは別の手順）。ESO の `keycloak-realm-import` は全キーを差し込むので宣言は変わらない。取引ユニットの名前空間は、その clientId の
   プロパティだけをサービスごとの Secret へ写す（取引ユニットの chart）。
 
 ### 決定 3 — 稼働中の realm へは、無い機密クライアントだけを作る Job で足す

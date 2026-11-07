@@ -46,6 +46,9 @@ bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --
 ```
 
 - 出力に `足した: cloud/shared/ast-client-secrets（在るキーは触らない。足したキー: …）` が出る（7 つの clientId）。在るキーの値は変わらない。
+- 同じ「無いキーだけを足す」は `cloud/shared/ast-rabbitmq-users` にも及ぶ。`deploy/local/rabbitmq-setup/users.txt` に取引ユニットの行が増えていれば、
+  その利用者のキーも足される（出力の `足した: cloud/shared/ast-rabbitmq-users`）。ブローカの側の利用者は従来のブローカの手順で作る。
+- 在るキーの値と稼働の側（Keycloak・ブローカ）の不一致は見ない・直さない。
 - ESO が `keycloak-realm-import` を作り直すのを待つ（`refreshInterval` は 1 時間。急ぐときは ExternalSecret を force-sync する。手順書の他の節と同じ）。
 
 ### 段 2: 稼働中の realm へ足す

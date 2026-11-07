@@ -230,7 +230,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - 取り込む realm は、宣言から取引ユニットの 3 つの機密クライアント（`ai-stock-trading-svc`・`-llm-caller`・`-owner`）と組み込みの
   クライアントだけを残し、人の利用者・試験の利用者・SMTP を外す（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
   加えて、取引ユニットのサービスごとの 7 つ（`ai-stock-trading-svc-<サービス>`。宣言の `ai-stock-trading-svc` と同じ作り・宛先は取引ユニットの API だけ）を組んで足す。
-- 在るパスには無いキーだけを足す（`seed-secrets.sh`。在るキーの値は触らない）。
+- 在るパスには無いキーだけを足す（`seed-secrets.sh` の `perkey`。機密クライアントの secret とブローカの利用者の両方に及ぶ。`users.txt` に行が増えれば稼働中の `ast-rabbitmq-users` にもキーが足される。在るキーの値は触らず、稼働の側との不一致は見ない。DB の `userpass` はパスが在れば触らない）。
 - Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
   ユーザーはサービスごとのユーザーが揃うと消える）。
 - 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）。
