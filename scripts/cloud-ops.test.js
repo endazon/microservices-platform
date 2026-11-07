@@ -344,7 +344,7 @@ t('T-2402-32 バックアップ: イメージは自製・pull しない・タグ
   assert.ok(String(backupC.image).startsWith(repo), 'イメージが microservices-platform/platform-backup-cloud でない');
   assert.strictEqual(backupC.imagePullPolicy, 'Never');
   const pg = /postgres:(\d+\.\d+)-alpine/.exec(dockerCloud)[1];
-  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'RCLONE_VERSION')}`);
+  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'APK_RCLONE_VERSION')}`);
 });
 t('T-2402-33 バックアップ: ベースと age の固定はローカルのイメージと同じ（片側だけ上げない）', () => {
   const from = (s) => s.split('\n').find((l) => l.startsWith('FROM '));
@@ -352,9 +352,24 @@ t('T-2402-33 バックアップ: ベースと age の固定はローカルのイ
   for (const n of ['BASE_REGISTRY', 'AGE_VERSION', 'AGE_APK_SHA256_X86_64', 'AGE_APK_SHA256_AARCH64', 'ALPINE_BRANCH']) {
     assert.strictEqual(argOf(dockerCloud, n), argOf(dockerLocal, n), n);
   }
-  assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
-  assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
   assert.ok(!dockerCloud.includes('--allow-untrusted'), '署名の検証を外している');
+});
+// NFR-21: ARG・ENV は RUN の環境変数になり、rclone は RCLONE_<旗> を自分の旗として読む（旧の ARG RCLONE_VERSION が --version と読まれ、
+// ビルドの中の `rclone version` が失敗した）。イメージの宣言に RCLONE_ で始まる ARG・ENV を置かない。
+/** Dockerfile の ARG・ENV の名前のうち、rclone が旗・設定として読む接頭辞（RCLONE_）で始まるもの（命令の大小は区別しない）。 */
+const rcloneEnvNames = (src) => src.split('\n')
+  .map((l) => /^\s*(ARG|ENV)\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(l))
+  .filter((m) => m && /^RCLONE_/i.test(m[2]))
+  .map((m) => `${m[1]} ${m[2]}`);
+t('NFR-21 バックアップ: イメージの宣言に RCLONE_ で始まる ARG・ENV が無い（rclone が自分の旗として読み、ビルドの rclone version が落ちる）', () => {
+  assert.deepStrictEqual(rcloneEnvNames(dockerCloud), []);
+  // 陽性対照: 版の ARG は在る（名前を変えただけで、固定は外していない）。
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_VERSION') || '', /^\d+\.\d+\.\d+-r\d+$/);
+  // 陰性対照: 旧の名前（ARG RCLONE_VERSION）と ENV・小文字の命令を検出する。
+  assert.deepStrictEqual(rcloneEnvNames('ARG RCLONE_VERSION=1.75.2-r0\nENV RCLONE_CONFIG_X=y\narg rclone_fast_list=1\nARG APK_RCLONE_VERSION=1'),
+    ['ARG RCLONE_VERSION', 'ENV RCLONE_CONFIG_X', 'arg rclone_fast_list']);
 });
 t('T-2402-34 バックアップ: 本体スクリプトはローカルと同じもの（二重に持たない）', () => {
   const cm = find(bds, 'ConfigMap', 'platform-backup-script');
