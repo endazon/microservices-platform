@@ -18,11 +18,15 @@ data:
     #   apply       … 7 人を作り（在ればパスワードを OpenBao の値に合わせる）、各 DB の OWNER と中の物の OWNER をその利用者へ移し、
     #                 接続を許す全 DB の CONNECT・TEMPORARY を PUBLIC から外す。移行の間は共有の利用者を各利用者の役割の一員にする。冪等。
     #   drop-shared … 共有の利用者の接続が無いことを確かめて、残りを移し、権限を外して消す（最終の段）。冪等。
-    # どちらも最後に「どの利用者がどの DB に CONNECT できるか」と OWNER を確かめ、自分の DB の外に出れば失敗にする。
+    #   platform    … NFR-18, IADR-0702: バックアップの利用者を作り（在ればパスワードを OpenBao の値に合わせ）、超利用者でなく
+    #                 pg_read_all_data の一員・全 DB の CONNECT だけにする。Keycloak の DB の利用者のパスワードを OpenBao の値に合わせる
+    #                 （作り直しの反映。初期化は初回だけ）。冪等。
+    # apply・drop-shared は最後に「どの利用者がどの DB に CONNECT できるか」と OWNER を確かめ、自分の DB の外に出れば失敗にする。
+    # platform は最後にバックアップの利用者の属性・一員・CONNECT を確かめる。
     # 出力にはサービスの名前と真偽だけを出す（利用者名・パスワードを出さない）。
     set -euo pipefail
     STAGE="${1:-}"
-    case "$STAGE" in apply | drop-shared) ;; *) echo "ERROR: 段は apply か drop-shared（値: ${STAGE:-（なし）}）" >&2; exit 2 ;; esac
+    case "$STAGE" in apply | drop-shared | platform) ;; *) echo "ERROR: 段は apply・drop-shared・platform のどれか（値: ${STAGE:-（なし）}）" >&2; exit 2 ;; esac
     # <サービス>:<DB>（取引ユニットの chart の services.<名前>.db と、01-create-databases.sh の 7 つの DB と 1 対 1。試験が突き合わせる）
     SERVICES="audit:audit_svc configuration:configuration_svc cost-control:cost_control_svc market-monitor:market_monitor_svc order-execution:order_execution_svc report:report_svc risk-management:risk_management_svc"
     export AST_DB_SHARED_USER="${AST_DB_SHARED_USER:-}"
@@ -44,6 +48,16 @@ data:
     done
     if [ -n "$AST_DB_SHARED_USER" ] && ! [[ "$AST_DB_SHARED_USER" =~ ^[a-z][a-z0-9_]{0,62}$ ]]; then
       echo "ERROR: 共有の利用者名（AST_DB_SHARED_USER）の形が違う" >&2; exit 2
+    fi
+    if [ "$STAGE" = platform ]; then
+      for n in POSTGRES_BACKUP KEYCLOAK_DB; do
+        u="$(printf '%s' "${n}_USER")" p="$(printf '%s' "${n}_PASSWORD")"
+        [[ "${!u:-}" =~ ^[a-z][a-z0-9_]{0,62}$ ]] || { echo "ERROR: ${u} が無いか、形が違う（Secret を確かめる）" >&2; exit 2; }
+        [ -n "${!p:-}" ] || { echo "ERROR: ${p} が無い" >&2; exit 2; }
+        case "$seen" in *" ${!u} "*) echo "ERROR: ${u} が、取引ユニットの利用者かほかの基盤の利用者と重なる" >&2; exit 2 ;; esac
+        [ "${!u}" != "${PGUSER:-}" ] || { echo "ERROR: ${u} が管理者と重なる" >&2; exit 2; }
+        seen="$seen${!u} "
+      done
     fi
 
     # psql の手順の前置き（値は持たない。\getenv で env から読む）
@@ -166,6 +180,40 @@ data:
             echo "    消した: 共有の利用者（残りの物は各サービスの利用者へ移した）"
           fi
         fi
+        ;;
+      platform)
+        {
+          printf '%s\n' "$QUIET"
+          printf '\\getenv bu POSTGRES_BACKUP_USER\n\\getenv bp POSTGRES_BACKUP_PASSWORD\n\\getenv ku KEYCLOAK_DB_USER\n\\getenv kp KEYCLOAK_DB_PASSWORD\n'
+          printf 'BEGIN;\n'
+          printf "SELECT NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'bu') AS missing \\\\gset\n"
+          printf '\\if :missing\nCREATE ROLE :"bu";\n\\endif\n'
+          printf 'ALTER ROLE :"bu" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD :'"'"'bp'"'"';\n'
+          printf 'GRANT pg_read_all_data TO :"bu";\n'
+          printf "SELECT format('GRANT CONNECT ON DATABASE %%I TO %%I', datname, :'bu') FROM pg_database WHERE datallowconn AND NOT datistemplate ORDER BY datname \\\\gexec\n"
+          printf "SELECT EXISTS (SELECT FROM pg_roles WHERE rolname = :'ku') AS has_kc \\\\gset\n"
+          printf '\\if :has_kc\nALTER ROLE :"ku" WITH PASSWORD :'"'"'kp'"'"';\n\\else\nDO $x$ BEGIN RAISE EXCEPTION '"'"'Keycloak の DB の利用者が無い'"'"'; END $x$;\n\\endif\n'
+          printf 'COMMIT;\n'
+        } | "${PSQL[@]}" -d postgres
+        echo "    合わせた: バックアップの利用者（在れば OpenBao の値へパスワードを合わせた）・Keycloak の DB の利用者のパスワード"
+        # 確かめ: バックアップの利用者は超利用者でなく、作れず、複製できず、RLS を越えられず、一員は pg_read_all_data だけで、
+        #   テンプレートでない接続できる全 DB に CONNECT できる。Keycloak の DB の利用者は超利用者でない。
+        out="$({
+          printf '%s\n' "$QUIET"
+          printf '\\getenv bu POSTGRES_BACKUP_USER\n\\getenv ku KEYCLOAK_DB_USER\n'
+          printf "SELECT 'attr', NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls) AND rolcanlogin FROM pg_roles WHERE rolname = :'bu';\n"
+          printf "SELECT 'member', coalesce(string_agg(g.rolname, ',' ORDER BY g.rolname), '') = 'pg_read_all_data' FROM pg_auth_members m JOIN pg_roles g ON g.oid = m.roleid WHERE m.member = to_regrole(:'bu')::oid;\n"
+          printf "SELECT 'connect', bool_and(has_database_privilege(:'bu', datname, 'CONNECT')) AND count(*) > 0 FROM pg_database WHERE datallowconn AND NOT datistemplate;\n"
+          printf "SELECT 'kc', NOT rolsuper FROM pg_roles WHERE rolname = :'ku';\n"
+        } | "${PSQL[@]}" -tA -F '|' -d postgres)"
+        bad=0
+        for want in attr member connect kc; do
+          grep -qx "${want}|t" <<< "$out" || { echo "NG: platform の確かめ（${want}）が偽" >&2; bad=1; }
+        done
+        [ "$bad" = 0 ] || { echo "ERROR: 確かめに失敗した（上の NG）" >&2; exit 1; }
+        echo "    確かめた: バックアップの利用者は超利用者でなく、pg_read_all_data の一員だけで、接続できる全 DB に CONNECT できる"
+        echo "OK: ${STAGE} を終えた（値は表示しない）"
+        exit 0
         ;;
     esac
     verify full

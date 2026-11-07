@@ -12,7 +12,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const { desiredFrom, reconcile, main, REPLACEABLE_CLIENT } = require('./add-clients.js');
+const { desiredFrom, reconcile, syncSecrets, main, REPLACEABLE_CLIENT } = require('./add-clients.js');
 const { buildCloudRealm, CLOUD_CLIENTS, SERVICE_CLIENTS, DECLARED_CLOUD_CLIENTS } = require('../realm-for-cloud.js');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -61,6 +61,14 @@ function fakeKeycloak({ clientIds = DECLARED_CLOUD_CLIENTS, scopes, roles } = {}
     if (method === 'GET' && m) {
       const c = st.clients.find((x) => x.id === m[1]);
       return m[2] === 'service-account-user' ? st.sa.get(c.id) : (c.defaultClientScopes || []).filter((s) => st.scopes.includes(s)).map((name) => ({ name }));
+    }
+    // IADR-0702: secret の読み書き（client-secret と、クライアントの表現の PUT）。
+    m = p.match(/^\/admin\/realms\/platform\/clients\/([0-9a-f-]{36})(\/client-secret)?$/);
+    if (m) {
+      const c = st.clients.find((x) => x.id === m[1]);
+      if (method === 'GET' && m[2]) return { type: 'secret', value: c.secret };
+      if (method === 'GET') return { ...c };
+      if (method === 'PUT' && !m[2]) { Object.assign(c, body); return null; }
     }
     m = p.match(/^\/admin\/realms\/platform\/users\/([0-9a-f-]{36})\/role-mappings\/realm$/);
     if (m && method === 'GET') return st.mappings.get(m[1]);
@@ -175,6 +183,33 @@ test('陰性対照: 宛先のスコープ・ロールが稼働に無ければ、
   const b = await reconcile(noRole.call, 'platform', desiredFrom(cloud), { apply: true, log: quiet });
   assert.ok(b.problems.some((p) => /trading-service が稼働の realm に無い/.test(p)));
   assert.deepStrictEqual(noRole.st.writes, []);
+});
+
+test('IADR-0702 sync-secrets: 取り込み元と違う secret だけを書き換え（ほかの設定は変えない）、同じものは書かず、無いクライアントは作らずに名指す。値は出力しない', async () => {
+  const kc = fakeKeycloak({ clientIds: CLOUD_CLIENTS });
+  const rotated = SERVICE_CLIENTS[1];
+  const stale = kc.st.clients.find((x) => x.clientId === rotated);
+  stale.secret = 'stale-secret-value-should-not-print';
+  stale.description = 'keep-me';
+  const logs = [];
+  const out = await syncSecrets(kc.call, 'platform', desiredFrom(cloud), { log: (l) => logs.push(l) });
+  assert.deepStrictEqual(out.synced, [rotated]);
+  assert.strictEqual(out.same.length, CLOUD_CLIENTS.length - 1);
+  assert.deepStrictEqual(out.missing, []);
+  assert.strictEqual(stale.secret, secretOf(rotated), '取り込み元の値に合わない');
+  assert.strictEqual(stale.description, 'keep-me', 'secret 以外の設定を変えた');
+  assert.deepStrictEqual(kc.st.writes, ['PUT /admin/realms/platform/clients/<id>'], `違うもの以外に書いた: ${kc.st.writes.join(', ')}`);
+  const text = logs.join('\n');
+  assert.ok(!text.includes('probe-') && !text.includes('stale-secret'), 'secret の値を出力した');
+  const before = kc.st.writes.length;
+  const again = await syncSecrets(kc.call, 'platform', desiredFrom(cloud), { log: quiet });
+  assert.deepStrictEqual(again.synced, []);
+  assert.strictEqual(kc.st.writes.length, before, '2 回目が書いた');
+  // 無いクライアント（サービスごとの 7 つが未作成）は作らない
+  const fresh = fakeKeycloak();
+  const miss = await syncSecrets(fresh.call, 'platform', desiredFrom(cloud), { log: quiet });
+  assert.deepStrictEqual(miss.missing.sort(), [...SERVICE_CLIENTS].sort());
+  assert.ok(!fresh.st.writes.some((w) => /^POST/.test(w)), 'sync-secrets がクライアントを作った');
 });
 
 test('main: 段・env・https・雛形（印の残り）の誤りは管理の API を呼ぶ前に止まる', async () => {

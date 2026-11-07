@@ -20848,7 +20848,7 @@ esac
     ok('IADR-0695 AC8: ast-db-users.sh は --live が無ければ何もせずに 3 で終わり、段の名前の外を受けず、値を引数・環境に置く形を持たない', () => {
       const f = path2401.join(ROOT2401, 'deploy/cloud/db-users/ast-db-users.sh');
       const env = { ...process.env, LIVE: '', PATH: '/usr/bin:/bin' };
-      for (const stage of ['apply', 'drop-shared']) {
+      for (const stage of ['apply', 'drop-shared', 'platform']) {
         const r = spawn2401('bash', [f, stage], { encoding: 'utf8', env });
         assert.strictEqual(r.status, 3, `${stage}: ${r.status} ${r.stderr}`);
       }
@@ -20867,6 +20867,45 @@ esac
       assert.ok(ks.length >= 4, `陽性対照: kustomization を拾えていない（${ks.length}）`);
       for (const k of ks) assert.ok(!/(^|[\s/])db-users(\/|\s*$)|job\.yaml/m.test(fs2401.readFileSync(path2401.join(ROOT2401, k), 'utf8')), `${k} が Job（db-users）を引く`);
       assert.ok(!rawDocs2401('deploy/cloud/infra').some((d) => d.kind === 'Job'), 'deploy/cloud/infra に Job がある');
+    });
+
+    ok('IADR-0702 AC4: ast-db-users.sh --live は Job を作る前に超利用者の TCP のゲートを開け、Job が成功しても失敗しても閉じて、閉じたことを確かめる', () => {
+      const f = path2401.join(ROOT2401, 'deploy/cloud/db-users/ast-db-users.sh');
+      const runWith = (jobState, statusAfterClose = 'closed') => {
+        const H = fs2401.mkdtempSync(path2401.join(os2401.tmpdir(), 'iadr0702-gate-'));
+        try {
+          const bin = path2401.join(H, 'bin');
+          fs2401.mkdirSync(bin);
+          fs2401.writeFileSync(path2401.join(bin, 'kubectl'), [
+            '#!/bin/bash',
+            'printf "%s\\n" "$*" >> "$H/calls"',
+            'case "$*" in',
+            '  *"superuser-tcp-gate.sh status"*) echo "superuser-tcp: $GATE_STATUS" ;;',
+            '  *"superuser-tcp-gate.sh "*) echo "superuser-tcp: ok" ;;',
+            '  *"get job"*) echo "$JOB_STATE" ;;',
+            '  *"create -f -"*) cat > /dev/null ;;',
+            'esac',
+            'exit 0', ''].join('\n'), { mode: 0o755 });
+          fs2401.writeFileSync(path2401.join(H, 'calls'), '');
+          const r = spawn2401('bash', [f, '--live', 'platform'], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, H, JOB_STATE: jobState, GATE_STATUS: statusAfterClose, AST_DB_USERS_TIMEOUT_S: '1' } });
+          return { status: r.status, stderr: r.stderr, calls: fs2401.readFileSync(path2401.join(H, 'calls'), 'utf8').split('\n').filter(Boolean) };
+        } finally {
+          fs2401.rmSync(H, { recursive: true, force: true });
+        }
+      };
+      const at = (calls, re) => calls.findIndex((c) => re.test(c));
+      for (const [state, want] of [['1/', 0], ['/1', 1]]) {
+        const r = runWith(state);
+        assert.strictEqual(r.status, want, `${state}: ${r.status} ${r.stderr}`);
+        const open = at(r.calls, /exec deploy\/postgres -c postgres -- sh \/etc\/postgres-hba\/superuser-tcp-gate\.sh open$/);
+        const create = at(r.calls, /create -f -/);
+        const close = at(r.calls, /superuser-tcp-gate\.sh close$/);
+        assert.ok(open >= 0 && create > open && close > create, `${state}: 開ける→Job→閉じるの順でない:\n${r.calls.join('\n')}`);
+        assert.ok(at(r.calls, /superuser-tcp-gate\.sh status$/) > close, `${state}: 閉じたことを確かめない`);
+      }
+      const notClosed = runWith('1/', 'open');
+      assert.strictEqual(notClosed.status, 1, '閉じたことを確かめられないのに成功で終わった');
+      assert.match(notClosed.stderr, /ゲートを閉じたことを確かめられない/);
     });
 
     ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {

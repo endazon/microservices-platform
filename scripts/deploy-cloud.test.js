@@ -25,6 +25,11 @@
  *       描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）が 1 つも無い。
  *   AC11 Postgres は TCP を TLS（hostssl）でだけ受ける（pg_hba に host・hostnossl・trust・password・md5 が無い）。
  *   AC12 RabbitMQ はデータ（/var/lib/rabbitmq）を PVC に置き、ノード名を固定し、Recreate で替わる（再起動でキュー・メッセージを失わない）。
+ *   IADR-0702（データとブローカの基盤の硬化）:
+ *     DB1 ブローカは平文を受けず（listeners.tcp = none）、管理・計測の受け口はループバックだけ。containerPort・Service は 5671 だけ。
+ *         既定のユーザーの「揃わなかったときの扱い」は retain か delete（段）。
+ *     DB2 Postgres の pg_hba は超利用者の TCP を reject し、その手前にゲート（emptyDir の中のファイル）の include_if_exists だけを置く。
+ *         超利用者の名前のファイルは Secret postgres の username だけ。バックアップは超利用者を読まず、専用の利用者（Secret postgres-backup）で入る。
  *   IADR-0693（認可サーバーへの通信の TLS）:
  *     KT1 Keycloak は HTTPS（8443）だけで受ける（KC_HOSTNAME は https・KC_HTTP_ENABLED=false・8080 の口が無い・証明書は Secret keycloak-tls
  *         を fsGroup で 0440・probe は HTTPS）。
@@ -191,8 +196,58 @@ function postgresHbaProblems(docs) {
   if (!lines.some((l) => /^hostssl\s/.test(l))) out.push('infra: pg_hba に hostssl の行が無い');
   for (const l of lines) {
     const f = l.split(/\s+/);
+    // IADR-0702: ゲートの取り込み（include_if_exists）は superuserTcpProblems が形を見る。reject（拒む）は弱い認証ではない。
+    if (f[0] === 'include_if_exists') continue;
     if (!['local', 'hostssl'].includes(f[0])) out.push(`infra: pg_hba に TLS でない TCP の行がある（${f[0]}）`);
-    if (f[f.length - 1] !== 'scram-sha-256') out.push(`infra: pg_hba の認証が scram-sha-256 でない（${f[f.length - 1]}）`);
+    if (!['scram-sha-256', 'reject'].includes(f[f.length - 1])) out.push(`infra: pg_hba の認証が scram-sha-256 でない（${f[f.length - 1]}）`);
+  }
+  return out;
+}
+
+/**
+ * NFR-18, IADR-0702 DB2: 超利用者の TCP は既定で拒む。pg_hba は「ゲートの取り込み（emptyDir の中）→ 超利用者の reject（v4・v6）→ ほかの hostssl」の順。
+ * 超利用者の名前のファイルは Secret postgres の username だけ。ゲートの手順は書く行が超利用者の TLS・scram だけ。
+ * バックアップは超利用者（Secret postgres）を読まない。
+ */
+function superuserTcpProblems(docs) {
+  const out = [];
+  const pg = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'postgres');
+  if (!pg) return ['DB2: Postgres の Deployment が無い'];
+  const spec = pg.spec.template.spec;
+  const c = spec.containers.find((x) => x.name === 'postgres') || spec.containers[0];
+  const mountOf = (name) => ((c.volumeMounts || []).find((m) => m.name === name) || {}).mountPath;
+  const vol = (name) => (spec.volumes || []).find((v) => v.name === name) || {};
+  const suDir = mountOf('superuser-name');
+  const su = vol('superuser-name').secret || {};
+  if (!suDir || su.secretName !== 'postgres' || JSON.stringify(su.items) !== JSON.stringify([{ key: 'username', path: 'username' }])) {
+    out.push('DB2: 超利用者の名前のファイルが Secret postgres の username だけでない（password を置かない）');
+  }
+  const gateDir = mountOf('hba-gate');
+  if (!gateDir || !vol('hba-gate').emptyDir) out.push('DB2: ゲートの置き場（hba-gate）が emptyDir でない（Pod の作り直しで閉じない）');
+  const hba = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-hba');
+  const lines = String((hba && hba.data && hba.data['pg_hba.conf']) || '').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean).map((l) => l.split(/\s+/));
+  const suRef = `@${suDir}/username`;
+  const idx = (pred) => lines.findIndex(pred);
+  const inc = idx((f) => f[0] === 'include_if_exists');
+  const incs = lines.filter((f) => /^include/.test(f[0]));
+  if (incs.length !== 1 || inc < 0 || !gateDir || !String(lines[inc][1]).startsWith(`${gateDir}/`)) out.push('DB2: pg_hba の取り込みがゲート（emptyDir の中のファイル）の include_if_exists 1 つでない');
+  const rejects = lines.map((f, i) => [f, i]).filter(([f]) => f[0] === 'hostssl' && f[2] === suRef && f[f.length - 1] === 'reject');
+  const nets = rejects.map(([f]) => f[3]).sort().join(',');
+  if (nets !== '0.0.0.0/0,::/0') out.push(`DB2: 超利用者の TCP の reject が v4・v6 の両方でない（${nets}）`);
+  const firstAllow = idx((f) => f[0] === 'hostssl' && f[f.length - 1] !== 'reject');
+  if (rejects.some(([, i]) => i < inc || (firstAllow >= 0 && i > firstAllow))) out.push('DB2: 超利用者の reject がゲートの取り込みの後・受ける行の前に無い');
+  const gate = String((hba && hba.data && hba.data['superuser-tcp-gate.sh']) || '');
+  const written = (gate.match(/printf '([^']*)'/) || [])[1] || '';
+  const wl = written.split('\\n').filter(Boolean);
+  if (!gate || wl.length !== 2 || !wl.every((l) => /^hostssl all @%s (0\.0\.0\.0\/0|::\/0) scram-sha-256$/.test(l))) out.push('DB2: ゲートが書く行が超利用者の hostssl・scram-sha-256（v4・v6）だけでない');
+  if (!gate.includes(`${gateDir}/superuser-tcp.conf`) || !gate.includes(`${suDir}/username`)) out.push('DB2: ゲートの手順のパスが宣言（置き場・名前のファイル）と食い違う');
+  const backup = docs.find((d) => d.kind === 'CronJob' && d.metadata.name === 'platform-backup-postgres');
+  if (backup) {
+    const env = backup.spec.jobTemplate.spec.template.spec.containers[0].env || [];
+    for (const k of ['PGUSER', 'PGPASSWORD']) {
+      const ref = ((env.find((e) => e.name === k) || {}).valueFrom || {}).secretKeyRef || {};
+      if (ref.name !== 'postgres-backup') out.push(`DB2: バックアップの ${k} が Secret postgres-backup から来ない（${ref.name}）`);
+    }
   }
   return out;
 }
@@ -215,6 +270,29 @@ function rabbitmqPersistenceProblems(docs) {
   return out;
 }
 
+/** NFR-18, IADR-0702 DB1: ブローカは平文を受けず、管理・計測はループバックだけ。Pod の外へ出す口は 5671 だけ。既定のユーザーの扱いは段。 */
+function brokerListenerProblems(docs) {
+  const out = [];
+  const mq = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'rabbitmq');
+  if (!mq) return out;
+  const conf = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'rabbitmq-tls');
+  const lines = String((conf && conf.data && conf.data['20-tls.conf']) || '').split('\n').map((l) => l.replace(/#.*/, '').trim()).filter(Boolean);
+  const kv = new Map(lines.map((l) => l.split(/\s*=\s*/)).map(([k, ...v]) => [k, v.join('=')]));
+  if (kv.get('listeners.tcp') !== 'none') out.push('infra: ブローカが平文を受ける（20-tls.conf に listeners.tcp = none が無い）');
+  for (const k of kv.keys()) if (/^listeners\.tcp\./.test(k)) out.push(`infra: ブローカの平文の受け口（${k}）がある`);
+  if (kv.get('listeners.ssl.default') !== '5671') out.push('infra: ブローカの TLS の受け口が 5671 でない');
+  for (const k of ['management.tcp.ip', 'prometheus.tcp.ip']) if (kv.get(k) !== '127.0.0.1') out.push(`infra: ブローカの ${k} がループバックでない（Pod の外で受ける）`);
+  const ports = (mq.spec.template.spec.containers || []).flatMap((c) => (c.ports || []).map((x) => Number(x.containerPort)));
+  if (JSON.stringify(ports) !== '[5671]') out.push(`infra: ブローカの containerPort が 5671 だけでない（${ports.join(', ')}）`);
+  const svc = docs.find((d) => d.kind === 'Service' && d.metadata.name === 'rabbitmq');
+  const sp = svc ? (svc.spec.ports || []).map((x) => `${x.port}>${x.targetPort}`) : [];
+  if (JSON.stringify(sp) !== '["5671>5671"]') out.push(`infra: ブローカの Service が 5671 だけでない（${sp.join(', ')}）`);
+  const du = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'rabbitmq-default-user');
+  const mode = du && du.data && du.data['on-incomplete'];
+  if (!['retain', 'delete'].includes(String(mode))) out.push(`infra: 既定のユーザーの揃わなかったときの扱い（on-incomplete）が retain か delete でない（${mode}）`);
+  return out;
+}
+
 /** 基盤の描画の判定（AC1〜AC6・AC11・AC12・AC15）。 */
 function infraProblems(docs, localDocs) {
   const out = commonProblems(docs, 'infra');
@@ -233,7 +311,7 @@ function infraProblems(docs, localDocs) {
   for (const want of ['postgres', 'rabbitmq', 'keycloak', 'otel-collector']) {
     if (!docs.some((d) => d.kind === 'Deployment' && d.metadata.name === want)) out.push(`infra: ${want} の Deployment が無い`);
   }
-  out.push(...mspIngressProblems(docs), ...postgresHbaProblems(docs), ...rabbitmqPersistenceProblems(docs));
+  out.push(...mspIngressProblems(docs), ...postgresHbaProblems(docs), ...rabbitmqPersistenceProblems(docs), ...brokerListenerProblems(docs));
   if (localDocs) {
     const imagesOf = (ds) => {
       const m = new Map();
@@ -1026,7 +1104,7 @@ function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
   return out;
 }
 
-module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+module.exports = { superuserTcpProblems, brokerListenerProblems, cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -1404,9 +1482,9 @@ if (require.main === module) {
     assert.strictEqual(c.image, podSpec(localJob).containers[0].image, 'ローカルの realm の後追いの Job と同じ digest でない');
     assert.match(c.image, /@sha256:[0-9a-f]{64}$/);
     assert.strictEqual(labelApp(job.spec.template), 'keycloak-add-clients');
-    // 入口は段の行を 1 つだけ差し替える（apply・check のほかは受けない）
+    // 入口は段の行を 1 つだけ差し替える（apply・check・sync-secrets〔IADR-0702〕のほかは受けない）
     const sh = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/keycloak-clients.sh'), 'utf8');
-    assert.match(sh, /apply \| check\) ;;/);
+    assert.match(sh, /^  apply \| check \| sync-secrets\) ;;$/m);
     assert.match(sh, /live_opt_in_require "keycloak-clients\.sh"/);
     assert.ok(!/--from-literal|echo "\$KC_ADMIN/.test(sh), '入口が値を扱う');
     const r = spawnSync('bash', [path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/keycloak-clients.sh'), 'apply'], { encoding: 'utf8' });
@@ -1667,11 +1745,39 @@ if (require.main === module) {
     const l = collectorLimitProblems(docs);
     for (const want of [/OtelCollectorRefusingData が無い/, /OtlpSendersMissing の閾値/, /OtlpSendersMissing の注釈の数（13）/, /gRPC の受け取りの上限/]) assert.ok(l.some((x) => want.test(x)), `${want} を検出しない:\n${l.join('\n')}`);
   });
+  ok('IADR-0702 DB2: 超利用者の TCP は既定で拒み（ゲートは emptyDir の中・名前のファイルは username だけ）、バックアップは専用の利用者で入る', () => {
+    assert.deepStrictEqual(superuserTcpProblems(renderCloudAll()), []);
+  });
+  ok('IADR-0702 DB2 陰性対照: reject の欠け・順の入れ替え・ゲートの置き場の永続化・名前のファイルに password・ゲートの行の緩め・バックアップの超利用者を検出する', () => {
+    const fresh = () => JSON.parse(JSON.stringify(renderCloudAll()));
+    const cm = (docs) => docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-hba');
+    const pgSpec = (docs) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'postgres').spec.template.spec;
+    const cases = [
+      [(d) => { cm(d).data['pg_hba.conf'] = cm(d).data['pg_hba.conf'].split('\n').filter((l) => !/::\/0\s+reject/.test(l)).join('\n'); }, /reject が v4・v6 の両方でない/],
+      [(d) => { const l = cm(d).data['pg_hba.conf'].split('\n'); const i = l.findIndex((x) => /0\.0\.0\.0\/0\s+reject/.test(x)); const [x] = l.splice(i, 1); l.push(x); cm(d).data['pg_hba.conf'] = l.join('\n'); }, /受ける行の前に無い/],
+      [(d) => { const v = pgSpec(d).volumes.find((x) => x.name === 'hba-gate'); delete v.emptyDir; v.persistentVolumeClaim = { claimName: 'postgres-data' }; }, /emptyDir でない/],
+      [(d) => { pgSpec(d).volumes.find((x) => x.name === 'superuser-name').secret.items.push({ key: 'password', path: 'password' }); }, /username だけでない/],
+      [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace("hostssl all @%s 0.0.0.0/0 scram-sha-256", 'host all @%s 0.0.0.0/0 trust'); }, /ゲートが書く行/],
+      [(d) => { d.find((x) => x.kind === 'CronJob' && x.metadata.name === 'platform-backup-postgres').spec.jobTemplate.spec.template.spec.containers[0].env.find((e) => e.name === 'PGPASSWORD').valueFrom.secretKeyRef.name = 'postgres'; }, /PGPASSWORD が Secret postgres-backup から来ない/],
+    ];
+    for (const [mutate, want] of cases) {
+      const d = fresh();
+      mutate(d);
+      const p = superuserTcpProblems(d);
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+  });
   ok('IADR-0697 変異: 宣言のファイルから securityContext・capability の全落とし・collector の Pod の名指しを外すと、描画の判定が赤になる', () => {
     const cases = [
       ['postgres.yaml', '          securityContext:\n            allowPrivilegeEscalation: false\n            capabilities: { drop: [ALL] }\n          env:', '          env:', (d) => podHardeningProblems(d, 'm'), /postgres の postgres: allowPrivilegeEscalation/],
       ['rabbitmq.yaml', '            readOnlyRootFilesystem: true\n            capabilities: { drop: [ALL] }\n          volumeMounts:', '            readOnlyRootFilesystem: true\n          volumeMounts:', (d) => netRawHolders(d, 'm'), /rabbitmq の tls-files が NET_RAW/],
       ['rabbitmq.yaml', '      automountServiceAccountToken: false\n', '', (d) => podHardeningProblems(d, 'm'), /rabbitmq: ServiceAccount のトークン/],
+      // NFR-18, IADR-0702 DB1: 平文・管理の口を戻すと赤になる。
+      ['rabbitmq.yaml', '    listeners.tcp = none\n', '    listeners.tcp.default = 5672\n', brokerListenerProblems, /ブローカが平文を受ける/],
+      ['rabbitmq.yaml', '    management.tcp.ip = 127.0.0.1\n', '', brokerListenerProblems, /management\.tcp\.ip がループバックでない/],
+      ['rabbitmq.yaml', '            - { containerPort: 5671, name: amqps }\n', '            - { containerPort: 5671, name: amqps }\n            - { containerPort: 15672, name: management }\n', brokerListenerProblems, /containerPort が 5671 だけでない/],
+      ['rabbitmq.yaml', '    - { name: amqps, port: 5671, targetPort: 5671 }\n', '    - { name: amqps, port: 5671, targetPort: 5671 }\n    - { name: amqp, port: 5672, targetPort: 5672 }\n', brokerListenerProblems, /Service が 5671 だけでない/],
+      ['rabbitmq.yaml', '  on-incomplete: "retain"\n', '', brokerListenerProblems, /on-incomplete/],
       ['namespaces.yaml', 'pod-security.kubernetes.io/enforce: restricted', 'pod-security.kubernetes.io/enforce: baseline', namespacePsaProblems, /enforce が restricted でない/],
       ['networkpolicy.yaml', '        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }\n          podSelector: { matchLabels: { app: llmgateway-service } }\n      ports:\n        - { protocol: TCP, port: 4317 }\n---', '        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }\n      ports:\n        - { protocol: TCP, port: 4317 }\n---', (d) => collectorIngressProblems([...d, ...renderCloudAll().filter((x) => x.kind === 'NetworkPolicy' && /otel-collector-ingress-prometheus/.test(x.metadata.name))]), /「名前空間 かつ Pod」でない送り元/],
     ];

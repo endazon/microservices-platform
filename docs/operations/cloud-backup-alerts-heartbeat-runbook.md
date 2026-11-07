@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697]
-specs: [20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
+iadrs: [IADR-0702, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697]
+specs: [20261107_cloud-data-broker-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat]
 issues: [#2471, #2402, #2401]
 -->
 
@@ -85,8 +85,11 @@ issues: [#2471, #2402, #2401]
      --from-literal=endpoint=https://fsn1.your-objectstorage.com \
      --from-literal=dest=objstore:<バケット>/ast-poc
    ```
-2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、超利用者の Secret `postgres`（`username` / `password`）は、
+2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、バックアップの利用者の Secret `postgres-backup`（`username` / `password`）は、
    クラウドの最小構成の秘匿管理（OpenBao）の手順で作る（[手順書](cloud-openbao-init-unseal-runbook.md)）。手で作らない。
+   ［2026-11-07］バックアップは超利用者で入らない。バックアップの利用者は全データを読めるだけで（書き込み・利用者の作成はできない）、
+   DB の中に作るのは `bash deploy/cloud/db-users/ast-db-users.sh --live platform` である（[資格の作り直しの手順書](cloud-credential-rotation-runbook.md) §1）。
+   globals の写しは従来どおり利用者とパスワードの検証子を含む（リストアの手順は変わらない）。
 3. age の公開鍵（ConfigMap `platform-backup-age-recipients`）はローカルと同じ手順で作る（[platform-infra-backup-runbook.md](platform-infra-backup-runbook.md) の準備）。秘密鍵はクラスタに置かない。
 4. バックアップのイメージ（レジストリへ置かない。手元でビルドしてノードへ取り込む）:
    ```bash

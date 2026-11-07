@@ -4,6 +4,9 @@
 #
 #   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check   # 読むだけ: 無いクライアント・足りないロールを名指す（在れば 3 で終わる）
 #   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live apply   # 無いクライアントを作り、サービスアカウントに無いロールを足す（在るものは触らない）
+#   bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live sync-secrets
+#       # NFR-18, IADR-0702: 在る機密クライアントの secret を取り込み元の値（OpenBao で作り直した値）へ合わせる（違うものだけ。手順書
+#       #   docs/operations/cloud-credential-rotation-runbook.md）
 #
 # 手順の中身は add-clients.js（ConfigMap keycloak-add-clients に入れる）。ここは ConfigMap と Job を作り、終わるまで待ち、ログを出し、成功したら消すだけ。
 # 🔴 値（secret・管理者のパスワード）は手元へ来ない（Job の Pod が Secret から読む）。引数に載るのは段の名前だけ。
@@ -19,8 +22,8 @@ set -- "${LIVE_REST[@]+"${LIVE_REST[@]}"}"
 
 STAGE="${1:-}"
 case "$STAGE" in
-  apply | check) ;;
-  *) echo "ERROR: 段を与える: check（読むだけ）か apply（無いクライアントを作る）" >&2; exit 2 ;;
+  apply | check | sync-secrets) ;;
+  *) echo "ERROR: 段を与える: check（読むだけ）・apply（無いクライアントを作る）・sync-secrets（secret を取り込み元へ合わせる）" >&2; exit 2 ;;
 esac
 [ "$#" -eq 1 ] || { echo "ERROR: 引数は段の名前 1 つだけ" >&2; exit 2; }
 NS="${KEYCLOAK_CLIENTS_NS:-platform-infra}"

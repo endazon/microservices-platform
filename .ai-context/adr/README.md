@@ -778,3 +778,4 @@
 | [IADR-0698](./IADR-0698_llm-daily-cost-state-persistence.md) | LLM ゲートウェイの当日の費用の枠を、置き場（クラウドでは PVC の上の 1 つのファイル）に残して再起動を越えて引き継ぐ。読めない・書けない間は段 2 で送らない。起動の時刻を計器に出し、短い間の再起動の繰り返しを警報にする | Accepted |
 | [IADR-0699](./IADR-0699_rabbitmq-per-service-dead-letter.md) | 取引ユニットのブローカの利用者から共有のデッドレター（`wolverine-dead-letter-queue`）の権限を外す。デッドレターはサービスごと（`<ServiceName>.dead-letter`・`<キュー>_error`）で、各サービスが自分の接頭辞の configure で宣言する。生成器は AST の共通配線を読み、無ければ止まる。取引ユニットのイメージの後に当てる | Accepted |
 | [IADR-0700](./IADR-0700_cloud-ast-per-service-s2s-clients.md) | クラウドの realm に取引ユニットのサービスごとの機密クライアント（ai-stock-trading-svc-<サービス>）を足し、secret は OpenBao の中で作り（在るパスには無いキーだけを足す）、稼働中の realm へは無い機密クライアントだけを作る Job で足す | Accepted |
+| [IADR-0702](./IADR-0702_cloud-data-broker-hardening.md) | クラウドの Postgres の超利用者の TCP は既定で拒み、利用者を作る Job の間だけ Pod の中のゲートで開ける。バックアップは全データを読めるだけの専用の利用者で入る。ブローカは平文と管理の口を Pod の外へ出さず、既定のユーザーの扱いを段（retain → delete）にする。OpenBao の値の作り直しを消費側へ反映する手段を持つ | Accepted |

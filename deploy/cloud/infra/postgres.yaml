@@ -34,6 +34,10 @@ data:
 # 接続の受け入れ（pg_hba）。TCP は TLS（hostssl）だけを受け、平文の TCP（host・hostnossl）は書かない。
 # クラウドには平文で繋ぐ利用者がいない（取引ユニット・Keycloak・バックアップとも TLS）。ソケット（local）は初期化と pg_isready が使う。
 # 認証はどれも scram-sha-256（trust・password・md5 は書かない）。
+# NFR-18, IADR-0702: 超利用者（名前は Secret postgres の username を読み取り専用で置いたファイル。@ で読む）の TCP は既定で拒む（reject）。
+#   その手前の include_if_exists は Pod の中のメモリ（emptyDir）のファイルで、在る間だけ超利用者の TCP（TLS・scram）を受ける（ゲート）。
+#   ゲートを開け閉めするのは superuser-tcp-gate.sh（オーナーの手元の deploy/cloud/db-users/ast-db-users.sh --live が Job の前後に呼ぶ）だけ。
+#   Pod が作り直されれば閉じる（emptyDir）。バックアップは超利用者でなく、専用の利用者（Secret postgres-backup）で入る。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -43,8 +47,34 @@ metadata:
 data:
   pg_hba.conf: |
     local   all  all                scram-sha-256
+    include_if_exists /run/postgres-hba-gate/superuser-tcp.conf
+    hostssl all  @/etc/postgres-superuser/username  0.0.0.0/0  reject
+    hostssl all  @/etc/postgres-superuser/username  ::/0       reject
     hostssl all  all  0.0.0.0/0     scram-sha-256
     hostssl all  all  ::/0          scram-sha-256
+  # NFR-18, IADR-0702: ゲートの開け閉め（Pod の中で uid 70 が走らせる。kubectl exec deploy/postgres -c postgres -- sh <この場所> open|close|status）。
+  #   開けると超利用者の TCP（TLS・scram）の行をゲートのファイルへ書き、閉じると消す。どちらも pg_ctl reload で読み直させる（作り直さない）。
+  #   値は扱わない（行に載るのは超利用者の名前のファイルのパスだけ）。
+  superuser-tcp-gate.sh: |
+    #!/bin/sh
+    set -eu
+    GATE="${PG_HBA_GATE:-/run/postgres-hba-gate/superuser-tcp.conf}"
+    SU_FILE="${PG_SUPERUSER_FILE:-/etc/postgres-superuser/username}"
+    case "${1:-}" in
+      open)
+        [ -s "$SU_FILE" ] || { echo "ERROR: 超利用者の名前のファイル（$SU_FILE）が無い" >&2; exit 1; }
+        umask 077
+        printf 'hostssl all @%s 0.0.0.0/0 scram-sha-256\nhostssl all @%s ::/0 scram-sha-256\n' "$SU_FILE" "$SU_FILE" > "$GATE.tmp"
+        mv "$GATE.tmp" "$GATE"
+        ;;
+      close) rm -f "$GATE" "$GATE.tmp" ;;
+      status) if [ -e "$GATE" ]; then echo "superuser-tcp: open"; else echo "superuser-tcp: closed"; fi; exit 0 ;;
+      *) echo "ERROR: open・close・status のどれか" >&2; exit 2 ;;
+    esac
+    pg_ctl reload -s -D "$PGDATA"
+    # 読み直しは postmaster が非同期に行う（新しい接続から効く）。
+    sleep "${PG_HBA_GATE_SETTLE_S:-2}"
+    echo "superuser-tcp: $1"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -152,6 +182,12 @@ spec:
             - { name: init, mountPath: /docker-entrypoint-initdb.d }
             - { name: tls, mountPath: /etc/postgres-tls, readOnly: true }
             - { name: hba, mountPath: /etc/postgres-hba, readOnly: true }
+            # NFR-18, IADR-0702: pg_hba が @ で読む超利用者の名前（username だけ。password は置かない）と、ゲートのファイルの置き場（メモリ）。
+            - { name: superuser-name, mountPath: /etc/postgres-superuser, readOnly: true }
+            - { name: hba-gate, mountPath: /run/postgres-hba-gate }
+            # NFR-18, IADR-0702: 超利用者のパスワードの今の値（Secret postgres の password）。env は起動の時の値のままなので、作り直しを
+            #   合わせる手順（deploy/cloud/db-users/superuser-password.sh。Pod の中・ソケット）が新しい値をここから読む。
+            - { name: superuser-secret, mountPath: /etc/postgres-superuser-secret, readOnly: true }
           readinessProbe:
             exec:
               command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\""]
@@ -167,6 +203,22 @@ spec:
           configMap: { name: postgres-init, defaultMode: 0755 }
         - name: hba
           configMap: { name: postgres-hba, defaultMode: 0444 }
+        # 名前だけを写す（Secret の password は Pod の env にだけ在る）。uid 70 が読めるよう 0444（名前は値ではない。描画には載らない）。
+        - name: superuser-name
+          secret:
+            secretName: postgres
+            defaultMode: 0444
+            items:
+              - { key: username, path: username }
+        - name: hba-gate
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+        # 0444: uid 70 が読む（fsGroup は置けない。上の注記）。このコンテナの利用者は同じ値を既に env に持つので、読める者は広がらない。
+        - name: superuser-secret
+          secret:
+            secretName: postgres
+            defaultMode: 0444
+            items:
+              - { key: password, path: password }
         - name: tls-src
           secret: { secretName: postgres-tls, defaultMode: 0440 }
         - name: tls
