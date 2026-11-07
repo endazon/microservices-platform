@@ -344,7 +344,7 @@ t('T-2402-32 バックアップ: イメージは自製・pull しない・タグ
   assert.ok(String(backupC.image).startsWith(repo), 'イメージが microservices-platform/platform-backup-cloud でない');
   assert.strictEqual(backupC.imagePullPolicy, 'Never');
   const pg = /postgres:(\d+\.\d+)-alpine/.exec(dockerCloud)[1];
-  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'RCLONE_VERSION')}`);
+  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'APK_RCLONE_VERSION')}`);
 });
 t('T-2402-33 バックアップ: ベースと age の固定はローカルのイメージと同じ（片側だけ上げない）', () => {
   const from = (s) => s.split('\n').find((l) => l.startsWith('FROM '));
@@ -352,9 +352,42 @@ t('T-2402-33 バックアップ: ベースと age の固定はローカルのイ
   for (const n of ['BASE_REGISTRY', 'AGE_VERSION', 'AGE_APK_SHA256_X86_64', 'AGE_APK_SHA256_AARCH64', 'ALPINE_BRANCH']) {
     assert.strictEqual(argOf(dockerCloud, n), argOf(dockerLocal, n), n);
   }
-  assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
-  assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
   assert.ok(!dockerCloud.includes('--allow-untrusted'), '署名の検証を外している');
+});
+// NFR-21: ARG・ENV は RUN の環境変数になり、rclone は RCLONE_<旗> を自分の旗として読む（旧の ARG RCLONE_VERSION が --version と読まれ、
+// ビルドの中の `rclone version` が失敗した）。イメージの宣言に RCLONE_ で始まる ARG・ENV を置かない。
+/** Dockerfile の ARG・ENV の名前のうち、rclone が旗・設定として読む接頭辞（RCLONE_）で始まるもの（命令の大小は区別しない）。 */
+const rcloneEnvNames = (src) => src.split('\n')
+  .map((l) => /^\s*(ARG|ENV)\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(l))
+  .filter((m) => m && /^RCLONE_/i.test(m[2]))
+  .map((m) => `${m[1]} ${m[2]}`);
+t('NFR-21 バックアップ: イメージの宣言に RCLONE_ で始まる ARG・ENV が無い（rclone が自分の旗として読み、ビルドの rclone version が落ちる）', () => {
+  assert.deepStrictEqual(rcloneEnvNames(dockerCloud), []);
+  // 陽性対照: 版の ARG は在る（名前を変えただけで、固定は外していない）。
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_VERSION') || '', /^\d+\.\d+\.\d+-r\d+$/);
+  // 陰性対照: 旧の名前（ARG RCLONE_VERSION）と ENV・小文字の命令を検出する。
+  assert.deepStrictEqual(rcloneEnvNames('ARG RCLONE_VERSION=1.75.2-r0\nENV RCLONE_CONFIG_X=y\narg rclone_fast_list=1\nARG APK_RCLONE_VERSION=1'),
+    ['ARG RCLONE_VERSION', 'ENV RCLONE_CONFIG_X', 'arg rclone_fast_list']);
+});
+// NFR-21: CI（images.yml）がクラウドのバックアップのイメージをビルドし、中の age・rclone・pg_dump をネット無しで確かめ、
+// 必須チェックの集約ジョブ image-build がその結果を拾う（ビルドできないイメージを見過ごさない）。
+t('NFR-21 バックアップ: CI の images.yml がクラウドのイメージをビルドして中身をネット無しで確かめ、image-build が結果を拾う', () => {
+  const yml = read('.github/workflows/images.yml');
+  const at = yml.indexOf('\n  build-cloud-backup:\n');
+  assert.ok(at >= 0, 'images.yml に build-cloud-backup のジョブが無い');
+  const job = yml.slice(at, yml.indexOf('\n  image-build:\n'));
+  assert.ok(job.includes('docker build --progress plain -f deploy/cloud/backup/image/Dockerfile -t platform-backup-cloud:ci deploy/cloud/backup/image'), 'クラウドのイメージをビルドしない');
+  assert.ok(!/docker push|push:\s*true/.test(job), 'push している');
+  for (const tool of ['--entrypoint age platform-backup-cloud:ci --version', '--entrypoint rclone platform-backup-cloud:ci version', '--entrypoint pg_dump platform-backup-cloud:ci --version']) {
+    assert.ok(job.includes(`docker run --rm --network none ${tool}`), `ネット無しの確かめが無い: ${tool}`);
+  }
+  assert.match(job, /if: needs\.changes\.outputs\.build == 'true'/, '起動の条件が build と同じでない');
+  assert.match(yml, /grep -Eq '[^']*\^deploy\/cloud\/backup\/image\/[^']*'/, '変更の判定に deploy/cloud/backup/image/ が無い');
+  const agg = yml.slice(yml.indexOf('\n  image-build:\n'));
+  assert.match(agg, /needs: \[[^\]]*build-cloud-backup[^\]]*\]/, 'image-build が build-cloud-backup を待たない');
+  assert.match(agg, /case "\$BUILD_CLOUD_BACKUP_RESULT" in\n\s+success \| skipped\) ;;\n\s+\*\)[\s\S]{0,200}exit 1/, 'image-build が失敗を拾わない');
 });
 t('T-2402-34 バックアップ: 本体スクリプトはローカルと同じもの（二重に持たない）', () => {
   const cm = find(bds, 'ConfigMap', 'platform-backup-script');
