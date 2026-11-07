@@ -48,7 +48,8 @@ close_gate() {
   trap - EXIT INT TERM
   echo "==> 超利用者の TCP のゲートを閉じる"
   if ! gate close >/dev/null || [ "$(gate status)" != "superuser-tcp: closed" ]; then
-    echo "ERROR: ゲートを閉じたことを確かめられない（kubectl -n ${NS} exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh close を流し直す）" >&2
+    echo "ERROR: ゲートを閉じたことを確かめられない（kubectl -n ${NS} exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh close を流し直す。" \
+      "届かなければ、上限（既定 900 秒）でゲートは閉じる。待てないときは kubectl -n ${NS} rollout restart deploy/postgres で閉じる。手順書 §1）" >&2
     exit 1
   fi
   exit "$rc"

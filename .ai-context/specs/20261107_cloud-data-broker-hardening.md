@@ -71,6 +71,8 @@ related_specs:
 - AC3（R2-L-03・実物）: 実物の Postgres で、ゲートが閉じていれば超利用者は TCP（TLS）で入れず、ほかの利用者は入れる。ゲートを開けると入れ、閉じると
   また入れない。バックアップの利用者は全 DB を `pg_dump` でき、globals も取れ、書き込み・超利用者の操作はできない。変異（reject の行を外す）で赤になる。
 - AC4（R2-L-03）: `ast-db-users.sh --live` は Job の前にゲートを開け、終われば（失敗でも）閉じる。
+- AC4b（R2-L-03・レビューの指摘）: ゲートは開けてから上限（既定 900 秒）を過ぎると Pod の中の閉じ手が閉じる（exec の後も）。開け直した回は前の回の閉じ手が閉じない。
+  Pod（コンテナ）の再起動でゲートは消えて閉じる。手順書に、閉じられないときに Pod を作り直す手順と `status` の確かめを置く。
 - AC5（R2-L-05）: ブローカの設定は平文を受けず（`listeners.tcp = none`）、管理・計測はループバックだけ。containerPort・Service に 5672・15672 が無い。
   実物のブローカで、5671 だけが Pod の外の宛先で受け、5672 は受けない。
 - AC6（R2-L-05）: 既定のユーザーは `on-incomplete: retain` で従来どおり残して警告を出し、`delete` なら揃わなくても消す。キーが無い・知らない値は `retain`。
@@ -93,6 +95,7 @@ related_specs:
 | AC2 | `deploy-cloud.test.js` の `superuserTcpProblems`（描画）と陰性対照 6 つ |
 | AC3 | `deploy-cloud-postgres.test.js`（実物の Postgres 16）: ゲートの開け閉め・reject を外す変異・段 platform・バックアップの利用者のダンプと拒み |
 | AC4 | `scripts.repo.test.js`（入口は Job の前に開け、成功・失敗とも閉じて確かめる）。trap を外す変異で閉じないことを手元で確かめた |
+| AC4b | `deploy-cloud-postgres.test.js` の「ゲートは上限を過ぎるとその回の閉じ手が閉じ…」「開いたゲートは再起動で消え、閉じた側へ戻る…」と、`deploy-cloud.test.js` の DB2（上限・閉じ手の変異）。閉じ手を外す変異で赤 |
 | AC5 | `deploy-cloud.test.js` の `brokerListenerProblems` と変異 5 つ。実物の RabbitMQ 3.13（宣言の digest）で、5671 だけが Pod の外の宛先で受け、15672・15692 はループバック、5672 は受けないことを確かめた |
 | AC6 | `rabbitmq-permissions.test.js`（retain・キーなし・知らない値・delete・印なし）。delete の分岐を外す変異で赤 |
 | AC7 | `openbao-scripts.test.sh`（実物の OpenBao 2.7.1 で rotate）・`add-clients.test.js`（sync-secrets）・`deploy-cloud-postgres.test.js`（段 platform の作り直し・超利用者の check/apply/4 で止まる） |

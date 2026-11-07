@@ -616,14 +616,39 @@ t('T-2402-37 TLS: 名前の照合に使うホスト（PGHOST）は Postgres の 
   assert.strictEqual(((gen.obj.spec || {}).parameters || {}).common_name, host, 'Postgres の証明書（OpenBao の PKI）の名前が Service の短い名前でない');
   assert.ok((pgC.args || []).includes('ssl=on'), '#2401 の Postgres が TLS でない');
 });
-t('T-2402-37 資格情報: 超利用者の名前とパスワードは #2401 の Secret postgres の username / password から読む', () => {
+// ［2026-11-07 / IADR-0702］バックアップは超利用者でなく、専用の利用者（Secret postgres-backup。OpenBao の cloud/platform/postgres-backup）で入る。
+const backupCredProblems = (c) => {
+  const out = [];
   for (const [envName, key] of [['PGUSER', 'username'], ['PGPASSWORD', 'password']]) {
-    const ref = (((envOf(backupC, envName) || {}).valueFrom || {}).secretKeyRef) || {};
-    assert.deepStrictEqual([ref.name, ref.key], ['postgres', key], envName);
-    const pgRef = (((envOf(pgC, envName === 'PGUSER' ? 'POSTGRES_USER' : 'POSTGRES_PASSWORD') || {}).valueFrom || {}).secretKeyRef) || {};
-    assert.deepStrictEqual([pgRef.name, pgRef.key], ['postgres', key], `#2401 の Postgres の ${key} と違う`);
+    const e = envOf(c, envName) || {};
+    const ref = ((e.valueFrom || {}).secretKeyRef) || {};
+    if (e.value !== undefined) out.push(`${envName} を直書きしている`);
+    if (ref.name === 'postgres') out.push(`${envName} が超利用者の Secret postgres を読む`);
+    else if (ref.name !== 'postgres-backup' || ref.key !== key) out.push(`${envName} が Secret postgres-backup の ${key} でない（${ref.name}/${ref.key}）`);
   }
-  assert.strictEqual((envOf(backupC, 'PGUSER') || {}).value, undefined, 'PGUSER を直書きしている');
+  return out;
+};
+t('T-2402-37 資格情報: バックアップの名前とパスワードは専用の利用者の Secret postgres-backup の username / password から読み、超利用者の Secret postgres を読まない（IADR-0702）', () => {
+  assert.deepStrictEqual(backupCredProblems(backupC), []);
+  // 超利用者（#2401 の Secret postgres）は Postgres 本体だけが読む（突き合わせの相手が読めていることの陽性対照）。
+  for (const [envName, key] of [['POSTGRES_USER', 'username'], ['POSTGRES_PASSWORD', 'password']]) {
+    const pgRef = (((envOf(pgC, envName) || {}).valueFrom || {}).secretKeyRef) || {};
+    assert.deepStrictEqual([pgRef.name, pgRef.key], ['postgres', key], `#2401 の Postgres の ${key} が Secret postgres でない`);
+  }
+  assert.ok(!JSON.stringify(backupC.env || []).includes('"name":"postgres"'), 'バックアップのどこかが Secret postgres を読む');
+  // ESO が写す（OpenBao の中で作る値。IADR-0689）。
+  const eso = fs.existsSync(path.join(REPO_ROOT, 'deploy/cloud/vault/eso/platform-infra.yaml')) ? read('deploy/cloud/vault/eso/platform-infra.yaml') : '';
+  assert.ok(/kind: ExternalSecret\nmetadata:\n  name: postgres-backup\n/.test(eso), 'ExternalSecret postgres-backup が無い');
+  assert.ok(eso.includes('remoteRef: { key: platform/postgres-backup, property: password }'), 'postgres-backup が OpenBao の platform/postgres-backup から写らない');
+});
+t('T-2402-37 陰性対照: バックアップを超利用者の Secret へ戻す・直書きにすると判定が赤になる', () => {
+  const mutate = (fn) => { const c = JSON.parse(JSON.stringify(backupC)); fn(c); return backupCredProblems(c); };
+  for (const k of ['PGUSER', 'PGPASSWORD']) {
+    const p = mutate((c) => { envOf(c, k).valueFrom.secretKeyRef.name = 'postgres'; });
+    assert.ok(p.some((x) => x === `${k} が超利用者の Secret postgres を読む`), `${k} を超利用者へ戻した変異を捕まえない: ${p.join(' / ')}`);
+  }
+  const lit = mutate((c) => { const e = envOf(c, 'PGUSER'); delete e.valueFrom; e.value = 'x'; });
+  assert.ok(lit.some((x) => /PGUSER を直書き/.test(x)), lit.join(' / '));
 });
 const ingressFrom = (ds, name) => {
   const p = find(ds, 'NetworkPolicy', name) || EMPTY;

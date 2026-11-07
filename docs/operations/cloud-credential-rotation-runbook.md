@@ -74,7 +74,26 @@ kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres pla
   - `kubectl -n platform-infra exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh status` が `superuser-tcp: closed`。
   - `kubectl -n platform-infra logs deploy/rabbitmq | grep rabbitmq-boot` の「サービスごとのユーザーを復元した: 11 件（失敗 0 件…）」。
   - 取引ユニットの全サービスが Ready（ブローカ・DB へ繋ぎ直している）。
-- ゲートが開いたままに見えたら（入口が途中で切れた）、`… superuser-tcp-gate.sh close` を流す。Postgres を作り直しても閉じる。
+- **ゲートの開閉の確かめと、閉じられないとき**:
+  - ゲートは開けてから上限（既定 900 秒＝利用者を作る Job の上限 600 秒＋余裕）を過ぎると、Pod の中の閉じ手が閉じる（入口との通信が切れても閉じる）。
+  - 入口（`ast-db-users.sh --live`）は終わりに閉じて `status` で確かめる。確かめられなかったときは `ERROR: ゲートを閉じたことを確かめられない` で 1 を返す。
+    そのときは、届くようになってから次を流す:
+
+    ```sh
+    kubectl -n platform-infra exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh close
+    kubectl -n platform-infra exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh status   # superuser-tcp: closed
+    ```
+
+  - `kubectl exec` が通らないまま上限を待てないときは、Postgres の Pod を作り直す（ゲートのファイルはメモリ〔emptyDir〕に在り、作り直すと消えて閉じる。
+    場の時間外に。取引ユニットは繋ぎ直すまで待つ）:
+
+    ```sh
+    kubectl -n platform-infra rollout restart deploy/postgres
+    kubectl -n platform-infra rollout status deploy/postgres --timeout=600s
+    kubectl -n platform-infra exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh status   # superuser-tcp: closed
+    ```
+
+  - 開いている間の `status` は `superuser-tcp: open（残り N 秒）` を返す。作り直し（§3）の作業の後と、日々の点検で `closed` であることを確かめる。
 - 戻すときは前の版の `deploy/cloud` を当てる（Postgres・RabbitMQ は作り直される）。前の版のバックアップは超利用者で入る。
 
 ## 2. 新しく作る構成

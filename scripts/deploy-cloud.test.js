@@ -238,9 +238,13 @@ function superuserTcpProblems(docs) {
   if (rejects.some(([, i]) => i < inc || (firstAllow >= 0 && i > firstAllow))) out.push('DB2: 超利用者の reject がゲートの取り込みの後・受ける行の前に無い');
   const gate = String((hba && hba.data && hba.data['superuser-tcp-gate.sh']) || '');
   const written = (gate.match(/printf '([^']*)'/) || [])[1] || '';
-  const wl = written.split('\\n').filter(Boolean);
+  const wl = written.split('\\n').filter((l) => l && !l.startsWith('#'));
   if (!gate || wl.length !== 2 || !wl.every((l) => /^hostssl all @%s (0\.0\.0\.0\/0|::\/0) scram-sha-256$/.test(l))) out.push('DB2: ゲートが書く行が超利用者の hostssl・scram-sha-256（v4・v6）だけでない');
   if (!gate.includes(`${gateDir}/superuser-tcp.conf`) || !gate.includes(`${suDir}/username`)) out.push('DB2: ゲートの手順のパスが宣言（置き場・名前のファイル）と食い違う');
+  // 開いている時間の上限（入口が close を流せないときの備え）。閉じ手は切り離して起こし、その回の印のときだけ閉じる。
+  const ttl = Number((gate.match(/PG_HBA_GATE_TTL_S:-(\d+)/) || [])[1]);
+  if (!(ttl > 0 && ttl <= 1800)) out.push(`DB2: ゲートの開いている時間の上限が 1〜1800 秒でない（${ttl}）`);
+  if (!/setsid sh -c 'sleep "\$1"; if grep -q "\^# token=\$2 "/.test(gate)) out.push('DB2: ゲートの上限の閉じ手（setsid・回の印）が無い');
   const backup = docs.find((d) => d.kind === 'CronJob' && d.metadata.name === 'platform-backup-postgres');
   if (backup) {
     const env = backup.spec.jobTemplate.spec.template.spec.containers[0].env || [];
@@ -1758,6 +1762,8 @@ if (require.main === module) {
       [(d) => { const v = pgSpec(d).volumes.find((x) => x.name === 'hba-gate'); delete v.emptyDir; v.persistentVolumeClaim = { claimName: 'postgres-data' }; }, /emptyDir でない/],
       [(d) => { pgSpec(d).volumes.find((x) => x.name === 'superuser-name').secret.items.push({ key: 'password', path: 'password' }); }, /username だけでない/],
       [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace("hostssl all @%s 0.0.0.0/0 scram-sha-256", 'host all @%s 0.0.0.0/0 trust'); }, /ゲートが書く行/],
+      [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace('PG_HBA_GATE_TTL_S:-900', 'PG_HBA_GATE_TTL_S:-86400'); }, /上限が 1〜1800 秒でない/],
+      [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace(/ *setsid sh -c [^\n]*\n[^\n]*\n/, ''); }, /上限の閉じ手/],
       [(d) => { d.find((x) => x.kind === 'CronJob' && x.metadata.name === 'platform-backup-postgres').spec.jobTemplate.spec.template.spec.containers[0].env.find((e) => e.name === 'PGPASSWORD').valueFrom.secretKeyRef.name = 'postgres'; }, /PGPASSWORD が Secret postgres-backup から来ない/],
     ];
     for (const [mutate, want] of cases) {

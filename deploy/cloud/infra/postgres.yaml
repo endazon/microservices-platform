@@ -54,27 +54,43 @@ data:
     hostssl all  all  ::/0          scram-sha-256
   # NFR-18, IADR-0702: ゲートの開け閉め（Pod の中で uid 70 が走らせる。kubectl exec deploy/postgres -c postgres -- sh <この場所> open|close|status）。
   #   開けると超利用者の TCP（TLS・scram）の行をゲートのファイルへ書き、閉じると消す。どちらも pg_ctl reload で読み直させる（作り直さない）。
+  #   開いている時間には上限がある（PG_HBA_GATE_TTL_S。既定 900 秒＝利用者を作る Job の上限 600 秒＋余裕）。開けるときに Pod の中で
+  #   閉じ手を切り離して起こし（setsid）、上限を過ぎてもその回のゲートが残っていれば閉じる（入口との通信が切れて close を流せないときの備え）。
+  #   回ごとの印（token）で、後から開け直したゲートを前の回の閉じ手が閉じない。Pod が作り直されればファイルは消えて閉じる（emptyDir）。
   #   値は扱わない（行に載るのは超利用者の名前のファイルのパスだけ）。
   superuser-tcp-gate.sh: |
     #!/bin/sh
     set -eu
     GATE="${PG_HBA_GATE:-/run/postgres-hba-gate/superuser-tcp.conf}"
     SU_FILE="${PG_SUPERUSER_FILE:-/etc/postgres-superuser/username}"
+    TTL="${PG_HBA_GATE_TTL_S:-900}"
+    case "$TTL" in '' | *[!0-9]*) echo "ERROR: PG_HBA_GATE_TTL_S は秒数" >&2; exit 2 ;; esac
+    reload() { pg_ctl reload -s -D "$PGDATA"; sleep "${PG_HBA_GATE_SETTLE_S:-2}"; }
     case "${1:-}" in
       open)
         [ -s "$SU_FILE" ] || { echo "ERROR: 超利用者の名前のファイル（$SU_FILE）が無い" >&2; exit 1; }
         umask 077
-        printf 'hostssl all @%s 0.0.0.0/0 scram-sha-256\nhostssl all @%s ::/0 scram-sha-256\n' "$SU_FILE" "$SU_FILE" > "$GATE.tmp"
+        token="$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+        until_s=$(( $(date +%s) + TTL ))
+        printf '# token=%s until=%s\nhostssl all @%s 0.0.0.0/0 scram-sha-256\nhostssl all @%s ::/0 scram-sha-256\n' "$token" "$until_s" "$SU_FILE" "$SU_FILE" > "$GATE.tmp"
         mv "$GATE.tmp" "$GATE"
+        reload
+        # 上限の閉じ手（exec の終わりで止まらないよう切り離す）。その回の印のまま残っていれば閉じる。
+        setsid sh -c 'sleep "$1"; if grep -q "^# token=$2 " "$3" 2>/dev/null; then rm -f "$3"; pg_ctl reload -s -D "$PGDATA"; fi' \
+          gate-closer "$TTL" "$token" "$GATE" </dev/null >/dev/null 2>&1 &
+        echo "superuser-tcp: open（上限 ${TTL} 秒）"
         ;;
-      close) rm -f "$GATE" "$GATE.tmp" ;;
-      status) if [ -e "$GATE" ]; then echo "superuser-tcp: open"; else echo "superuser-tcp: closed"; fi; exit 0 ;;
+      close) rm -f "$GATE" "$GATE.tmp"; reload; echo "superuser-tcp: close" ;;
+      status)
+        if [ -e "$GATE" ]; then
+          u="$(sed -n 's/^# token=[0-9a-f]* until=\([0-9]*\)$/\1/p' "$GATE" | head -n 1)"
+          echo "superuser-tcp: open（残り $(( ${u:-0} - $(date +%s) )) 秒）"
+        else
+          echo "superuser-tcp: closed"
+        fi
+        ;;
       *) echo "ERROR: open・close・status のどれか" >&2; exit 2 ;;
     esac
-    pg_ctl reload -s -D "$PGDATA"
-    # 読み直しは postmaster が非同期に行う（新しい接続から効く）。
-    sleep "${PG_HBA_GATE_SETTLE_S:-2}"
-    echo "superuser-tcp: $1"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

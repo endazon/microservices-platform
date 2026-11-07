@@ -267,13 +267,35 @@ function checkSuperuserGate(r, sh, probe) {
   assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '起動の直後にゲートが閉じていない');
   assert.ok(refused(), `ゲートが閉じているのに超利用者が TCP で入れた:\n${suTcp().stderr}`);
   assert.strictEqual(gate('open').status, 0, 'ゲートを開けられない');
-  assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: open');
+  assert.match(gate('status').stdout.trim(), /^superuser-tcp: open（残り (8\d\d|900) 秒）$/, '開けたゲートの残りが上限（既定 900 秒）でない');
   assert.strictEqual(suTcp().status, 0, `ゲートを開けても超利用者が TCP（TLS）で入れない:\n${suTcp().stderr}`);
   assert.notStrictEqual(probe('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=disable', '127.0.0.1').status, 0, 'ゲートを開けると超利用者の平文の TCP を受けた');
   assert.strictEqual(gate('close').status, 0, 'ゲートを閉じられない');
   assert.ok(refused(), 'ゲートを閉じても超利用者が TCP で入れる');
   assert.strictEqual(gate('bogus').status, 2, '知らない操作を拒まない');
   console.log('  ok  IADR-0702: 超利用者は TCP（TLS）で入れず、ゲートを開けた間だけ入れる（ほかの利用者は TLS で入れる。平文はどちらも拒む）');
+
+  // 上限: close を流せなくても（exec が終わった後でも）、上限を過ぎればその回の閉じ手が閉じる。後から開け直した回は前の回の閉じ手が閉じない。
+  const gateTtl = (cmd, ttl) => docker(['exec', '-e', `PG_HBA_GATE_TTL_S=${ttl}`, r.name, 'sh', r.gateScript, cmd]);
+  const waitClosed = (ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (gate('status').stdout.trim() === 'superuser-tcp: closed') return true; spawnSync('sleep', ['1']); } return false; };
+  assert.strictEqual(gateTtl('open', 4).status, 0);
+  assert.ok(waitClosed(20000), '上限（4 秒）を過ぎてもゲートが閉じない（閉じ手が exec の終わりで止まった）');
+  spawnSync('sleep', ['2']);
+  assert.ok(refused(), '上限で閉じた後も超利用者が TCP で入れる（読み直していない）');
+  assert.strictEqual(gateTtl('open', 3).status, 0);
+  assert.strictEqual(gateTtl('open', 60).status, 0); // 開け直し（前の回の閉じ手は 3 秒で起きる）
+  spawnSync('sleep', ['8']);
+  assert.match(gate('status').stdout.trim(), /^superuser-tcp: open/, '前の回の閉じ手が、開け直したゲートを閉じた');
+  console.log('  ok  IADR-0702: ゲートは上限を過ぎるとその回の閉じ手が閉じ（exec の後も）、開け直した回は前の回の閉じ手が閉じない');
+
+  // Pod の作り直しの代わり（コンテナの再起動）: ゲートのファイル（メモリ）は消え、閉じた側へ戻る。
+  const restart = docker(['restart', r.name], { timeout: 120000 });
+  assert.strictEqual(restart.status, 0, restart.stderr);
+  const end = Date.now() + 60000;
+  while (Date.now() < end && sh('pg_isready -q -U "$POSTGRES_USER"').status !== 0) spawnSync('sleep', ['1']);
+  assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '再起動の後もゲートが開いている');
+  assert.ok(refused(), '再起動の後に超利用者が TCP で入れる');
+  console.log('  ok  IADR-0702: 開いたゲートは再起動で消え、閉じた側へ戻る（超利用者の TCP は拒まれる）');
 
   // 変異: reject の行を外すと、ゲートが閉じていても超利用者が入れる（判定が空振りしない）。宣言のファイルを写した場所で読み直させる。
   const hbaFile = path.join(r.hbaDir, path.posix.basename(r.hbaArg));
