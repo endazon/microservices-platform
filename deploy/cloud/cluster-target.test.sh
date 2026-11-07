@@ -116,7 +116,8 @@ ok "確かめた後の kubectl は、途中で現在の context が替わって�
 target ctx-a "https://127.0.0.1:6443" "$UID_A"
 set +e; OB_IDENTITY_POLICY=enforce bash "$HERE/vault/unseal.sh" --live --init-file "$W/f.age" --identity "$W/id.txt" >"$W/out" 2>&1; rc=$?; set -e
 [ "$rc" -eq 2 ] && [ "$(acts)" = 0 ] && grep -q '平文の秘密鍵のまま' "$W/out" || ng "enforce で平文の識別子を拒まない（rc=$rc）"
-grep -q 'AGE-SECRET-KEY-1' "$W/out" && ng "識別子の中身を表示した"
+AGE_PREFIX='AGE-SECRET-'; AGE_PREFIX+='KEY-1'   # 分けて組み立てる（deploy/ に秘密鍵らしき字面を置かない）
+grep -q "$AGE_PREFIX" "$W/out" && ng "識別子の中身を表示した"
 : > "$KLOG"
 set +e; bash "$HERE/vault/unseal.sh" --live --init-file "$W/f.age" --identity "$W/id.txt" >"$W/out" 2>&1; set -e
 grep -q '^WARN: age の識別子' "$W/out" && [ "$(acts)" -ge 1 ] || ng "warn（既定）で警告して進まない"
