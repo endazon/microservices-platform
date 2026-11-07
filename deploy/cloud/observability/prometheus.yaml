@@ -202,7 +202,7 @@ data:
             labels: { severity: warning }
             annotations:
               summary: "{{ $labels.target }} の受け口の証明書を基盤の CA で確かめられない"
-              description: "測りの Pod から {{ $labels.target }} へ届かないか、証明書の鎖・名前・期限が合わない。kubectl -n platform-infra logs deploy/tls-cert-probe で理由を読む。"
+              description: "測りの Pod から {{ $labels.target }} へ届かないか、証明書の鎖・名前・期限が合わない。種類は tls_probe_verify_error の reason（CERT_HAS_EXPIRED・UNABLE_TO_VERIFY_LEAF_SIGNATURE・ERR_TLS_CERT_ALTNAME_INVALID など）。kubectl -n platform-infra logs deploy/tls-cert-probe で理由を読む。"
           # 測りが止まった・4 つの受け口のどれかの系列が無い（黙らない）。
           - alert: TlsServerCertProbeMissing
             expr: (count(tls_probe_up == 1) or vector(0)) < 4

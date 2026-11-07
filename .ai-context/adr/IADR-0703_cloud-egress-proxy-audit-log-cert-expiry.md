@@ -95,7 +95,10 @@ ESO の ClusterRole（全名前空間の Secret を書ける）は変えない�
 ### 決定 5 — サーバ証明書の期限は、受け口が出している証明書を測って警報にする。OpenBao の受け口は CA から導く
 
 - 測り `tls-cert-probe`（`deploy/cloud/tls-cert-probe/`。Node 標準だけ）が 10 分ごとに 4 つの受け口へ TLS で繋ぎ（Postgres は SSLRequest の後）、出している証明書の
-  notAfter を読み、基盤の CA で鎖・名前・期限を確かめる。Secret を読まない（鍵に触れない）。宛先は PKI の role（`lib.sh` の `OB_PKI_ROLES`）と同じ 4 つで、
+  検証を切らずに（`rejectUnauthorized: true`・基盤の CA・宛先の名前）握手し、通ったときだけ検証を通った証明書の notAfter を出す。握手が検証で落ちたら、その種類
+  （`CERT_HAS_EXPIRED`・`UNABLE_TO_VERIFY_LEAF_SIGNATURE`・`ERR_TLS_CERT_ALTNAME_INVALID` など）を `tls_probe_verify_error` に出す。期限切れは notAfter を
+  測った時刻（残り 0）とみなし、危急の警報を鳴らす。検証を切った接続で証明書を読むことはしない（期限切れ以外の検証の失敗では残りの日数は出ず、
+  `TlsServerCertNotVerified` だけが鳴る）。Secret を読まない（鍵に触れない）。宛先は PKI の role（`lib.sh` の `OB_PKI_ROLES`）と同じ 4 つで、
   名前は ESO の証明書の common_name と同じ（試験が突き合わせる）。
 - 受け口を測る理由: Secret を読むと、消費側の作り直しの漏れ（README §6）が見えない。受け口を測れば、ESO の止まり（封印のまま）・発行の失敗・作り直しの漏れの
   どれでも、出している証明書の残りの減りとして見える。

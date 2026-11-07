@@ -71,7 +71,7 @@ IADR-0703 の決定 1〜5 のとおり。
 | N3 | 監査の方針は本文を残さず Secret 等を必ず残し、記録は暗号化した領域。手順書が導入の前に置く | N3 | RequestResponse・置き場・順を崩すと赤 |
 | C1 | 測りの宛先は PKI の role の 4 つで名前は ESO と同じ。受け口の入りは測りの Pod から TLS の口だけ | C1・`deploy-cloud.test.js` KT1〜KT3・AC6 | 宛先を外す・名前を変える・送り元を広げると赤 |
 | C2 | 期限・検証・不在・CA・OpenBao の受け口の警報。閾値は作り直しの周期と期限の間。OpenBao は CA − 365 日 | C2（promtool の単体試験） | 日数・周期を変えると赤。残り 200 日で鳴ると期待すると promtool が落ちる |
-| C3 | 測りは TLS・Postgres の SSLRequest の後に読み、検証の失敗でも notAfter を出す | `probe.test.js` | SSLRequest なしでは読めない |
+| C3 | 測りは TLS・Postgres の SSLRequest の後に、検証を切らずに握手する。正しい証明書は notAfter を読み、期限切れは CERT_HAS_EXPIRED（残り 0）、別の CA・名前違いは検証の失敗として出す（検証を通らない証明書の notAfter は出さない） | `probe.test.js` C1〜C3・C5 | SSLRequest なしでは読めない。出した CA を信頼すると通る・CA を渡さないと正しい証明書も通らない。期限内の証明書は期限切れにならない |
 
 試験を外したとき赤になることは、修正前の宣言（develop の `keycloak.yaml`・`backup/networkpolicy.yaml`・`external-secrets-values.yaml`）へ戻して確かめた
 （K1・E1〜E3・N2 が赤）。
