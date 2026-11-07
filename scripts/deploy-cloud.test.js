@@ -249,6 +249,15 @@ function superuserTcpProblems(docs) {
   // 開いている時間の上限（入口が close を流せないときの備え）。閉じ手は切り離して起こし、その回の印のときだけ閉じる。
   const ttl = Number((gate.match(/PG_HBA_GATE_TTL_S:-(\d+)/) || [])[1]);
   if (!(ttl > 0 && ttl <= 1800)) out.push(`DB2: ゲートの開いている時間の上限が 1〜1800 秒でない（${ttl}）`);
+  // コンテナの再起動（emptyDir は残る）でも閉じた側から始まる: 起動の頭でゲートのファイルを消してから、イメージの起動器へ exec する。
+  const hbaMount = mountOf('hba');
+  const startKey = String(((c.command || [])[1]) || '').startsWith(`${hbaMount}/`) ? String(c.command[1]).slice(hbaMount.length + 1) : '';
+  const startScript = String((hba && hba.data && startKey && hba.data[startKey]) || '');
+  const rmAt = startScript.search(/^rm -f "\$GATE" "\$GATE\.tmp"$/m);
+  const execAt = startScript.search(/^exec docker-entrypoint\.sh "\$@"$/m);
+  if (!((c.command || []).length === 2 && c.command[0] === '/bin/sh' && startScript.includes(`${gateDir}/superuser-tcp.conf`) && rmAt >= 0 && execAt > rmAt && /exit 1/.test(startScript.slice(rmAt, execAt)))) {
+    out.push('DB2: Postgres の起動の頭でゲートのファイルを消してから起動器へ exec していない（コンテナの再起動でゲートが残る）');
+  }
   if (!/setsid sh -c 'sleep "\$1"; if grep -q "\^# token=\$2 "/.test(gate)) out.push('DB2: ゲートの上限の閉じ手（setsid・回の印）が無い');
   const backup = docs.find((d) => d.kind === 'CronJob' && d.metadata.name === 'platform-backup-postgres');
   if (backup) {
@@ -1811,6 +1820,8 @@ if (require.main === module) {
       [(d) => { pgSpec(d).volumes.find((x) => x.name === 'superuser-name').secret.items.push({ key: 'password', path: 'password' }); }, /username だけでない/],
       [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace("hostssl all @%s 0.0.0.0/0 scram-sha-256", 'host all @%s 0.0.0.0/0 trust'); }, /ゲートが書く行/],
       [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace('PG_HBA_GATE_TTL_S:-900', 'PG_HBA_GATE_TTL_S:-86400'); }, /上限が 1〜1800 秒でない/],
+      [(d) => { delete pgSpec(d).containers[0].command; }, /起動の頭でゲートのファイルを消して/],
+      [(d) => { cm(d).data['postgres-start.sh'] = cm(d).data['postgres-start.sh'].replace(/^rm -f "\$GATE".*$/m, ''); }, /起動の頭でゲートのファイルを消して/],
       [(d) => { cm(d).data['superuser-tcp-gate.sh'] = cm(d).data['superuser-tcp-gate.sh'].replace(/ *setsid sh -c [^\n]*\n[^\n]*\n/, ''); }, /上限の閉じ手/],
       [(d) => { d.find((x) => x.kind === 'CronJob' && x.metadata.name === 'platform-backup-postgres').spec.jobTemplate.spec.template.spec.containers[0].env.find((e) => e.name === 'PGPASSWORD').valueFrom.secretKeyRef.name = 'postgres'; }, /PGPASSWORD が Secret postgres-backup から来ない/],
     ];

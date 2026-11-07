@@ -4,7 +4,7 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
@@ -49,7 +49,7 @@ specs: [20261107_cloud-data-broker-hardening]
 この版は次の 3 つを変える。どれも、取引ユニットとの間で届いている通信は変えない。
 
 - Postgres の超利用者は TCP で名乗れない（既定で拒む）。超利用者で TCP から入るのは、利用者を作る Job だけで、その入口（`ast-db-users.sh --live`）が
-  Job の間だけ受け付けを開ける（Pod の中のゲート。Pod が作り直されれば閉じる）。バックアップは専用の利用者（全データを読めるだけ）で入る。
+  Job の間だけ受け付けを開ける（Pod の中のゲート。Postgres のコンテナが起動するたびに、起動の頭で閉じる）。バックアップは専用の利用者（全データを読めるだけ）で入る。
 - ブローカは平文（5672）を受けず、管理（15672）と計測（15692）の受け口は Pod の中（ループバック）だけ。
   入りの制限（NetworkPolicy）は以前から TLS（5671）だけを通している。管理の画面を開くときは `kubectl -n platform-infra port-forward deploy/rabbitmq 15672`。
 - ブローカの既定のユーザーの「揃わなかったときの扱い」を段にした（§4）。この版の既定は従来どおり（残して警告の行を出す）。
@@ -84,7 +84,7 @@ kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres pla
     kubectl -n platform-infra exec deploy/postgres -c postgres -- sh /etc/postgres-hba/superuser-tcp-gate.sh status   # superuser-tcp: closed
     ```
 
-  - `kubectl exec` が通らないまま上限を待てないときは、Postgres の Pod を作り直す（ゲートのファイルはメモリ〔emptyDir〕に在り、作り直すと消えて閉じる。
+  - `kubectl exec` が通らないまま上限を待てないときは、Postgres の Pod を作り直す（コンテナは起動の頭でゲートのファイルを消すので、作り直すと閉じる。
     場の時間外に。取引ユニットは繋ぎ直すまで待つ）:
 
     ```sh

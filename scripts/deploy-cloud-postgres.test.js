@@ -104,12 +104,18 @@ function start(decl, label) {
   const tlsVolume = `deploy-cloud-pg-tls-${label}-${tag}`;
   const secretVolume = `deploy-cloud-pg-secret-${label}-${tag}`;
   const suVolume = `deploy-cloud-pg-su-${label}-${tag}`;
+  // IADR-0706: データとゲートの置き場は名前つきのボリューム（Kubernetes の PVC と emptyDir の代わり）。コンテナを再起動しても中身が残る
+  //   （docker の --tmpfs は停止で消えるので、Kubernetes のコンテナの再起動と違う形になる）。
+  const dataVolume = `deploy-cloud-pg-data-${label}-${tag}`;
+  const gateVolume = `deploy-cloud-pg-gate-${label}-${tag}`;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-pg-'));
   const cleanup = () => {
     docker(['rm', '-f', name]);
     docker(['volume', 'rm', '-f', tlsVolume]);
     docker(['volume', 'rm', '-f', secretVolume]);
     docker(['volume', 'rm', '-f', suVolume]);
+    docker(['volume', 'rm', '-f', dataVolume]);
+    docker(['volume', 'rm', '-f', gateVolume]);
     fs.rmSync(dir, { recursive: true, force: true });
   };
   try {
@@ -152,6 +158,10 @@ function start(decl, label) {
     assert.strictEqual(docker(['volume', 'create', tlsVolume]).status, 0, 'ボリュームを作れない');
     assert.strictEqual(docker(['volume', 'create', secretVolume]).status, 0, 'ボリュームを作れない');
     assert.strictEqual(docker(['volume', 'create', suVolume]).status, 0, 'ボリュームを作れない');
+    for (const v of [dataVolume, gateVolume]) assert.strictEqual(docker(['volume', 'create', v]).status, 0, 'ボリュームを作れない');
+    // PVC（local-path）と emptyDir の代わり: データは uid 70 の所有、ゲートの置き場は 0777（emptyDir の既定）。
+    const volPrep = docker(['run', '--rm', '--user', '0:0', '-v', `${dataVolume}:/d`, '-v', `${gateVolume}:/g`, '--entrypoint', 'sh', image, '-c', 'chown 70:70 /d && chmod 0700 /d && chmod 0777 /g']);
+    assert.strictEqual(volPrep.status, 0, `ボリュームを整えられない: ${volPrep.stderr}`);
     // kubelet の代わり（試験の足場。宣言ではない）: Secret のボリューム（root の所有・宣言の defaultMode）と emptyDir（0777）を root で整える。
     const secretVol = (spec.volumes || []).find((v) => v.name === 'tls-src' && v.secret);
     assert.ok(secretVol && secretVol.secret.defaultMode !== undefined, '写し元（tls-src）が defaultMode を持つ Secret でない');
@@ -190,8 +200,10 @@ function start(decl, label) {
     fs.writeFileSync(path.join(supwDir, 'password'), adminPassword, { mode: 0o644 });
     const run = docker(['run', '-d', '--name', name, ...dockerSecurityArgs(spec, c), '--env-file', envFile,
       '-v', `${initDir}:/docker-entrypoint-initdb.d:ro`, '-v', `${usersDir}:/opt/ast-db-users:ro`, '-v', `${hbaDir}:${hbaMount}:ro`, '-v', `${tlsVolume}:${tlsMount}:ro`,
-      '-v', `${suVolume}:${mountOf(c, 'superuser-name')}:ro`, '--tmpfs', `${mountOf(c, 'hba-gate')}:mode=0777`, '-v', `${supwDir}:${mountOf(c, 'superuser-secret')}:ro`,
-      '--tmpfs', '/var/lib/postgresql/data', image, ...args]);
+      '-v', `${suVolume}:${mountOf(c, 'superuser-name')}:ro`, '-v', `${gateVolume}:${mountOf(c, 'hba-gate')}`, '-v', `${supwDir}:${mountOf(c, 'superuser-secret')}:ro`,
+      '-v', `${dataVolume}:${mountOf(c, 'data')}`,
+      // 宣言の command（起動の頭でゲートを消してから起動器へ exec）があればそれで、無ければイメージの起動器で起こす。
+      ...(c.command ? ['--entrypoint', String(c.command[0]), image, ...c.command.slice(1).map(String)] : [image]), ...args]);
     assert.strictEqual(run.status, 0, `起動できない: ${run.stderr}`);
 
     // 初期化が終わり、本番の起動まで進む（initdb の後の一時サーバと本番で「ready」が 2 回出る）か、止まるまで待つ。
@@ -203,7 +215,7 @@ function start(decl, label) {
       logs = `${l.stdout}${l.stderr}`;
       state = docker(['inspect', '-f', '{{.State.Status}}', name]).stdout.trim();
       const ready = /PostgreSQL init process complete/.test(logs) && (logs.match(/ready to accept connections/g) || []).length >= 2;
-      if (ready) return { ready: true, logs, name, hbaArg, cleanup, envFile, hbaDir, supwDir, gateScript: `${hbaMount}/superuser-tcp-gate.sh` };
+      if (ready) return { ready: true, logs, name, hbaArg, cleanup, envFile, hbaDir, supwDir, gateScript: `${hbaMount}/superuser-tcp-gate.sh`, gateFile: `${mountOf(c, 'hba-gate')}/superuser-tcp.conf` };
       if (state !== 'running' || Date.now() > deadline) return { ready: false, logs, state, name, hbaArg, cleanup };
       spawnSync('sleep', ['1']);
     }
@@ -288,14 +300,11 @@ function checkSuperuserGate(r, sh, probe) {
   assert.match(gate('status').stdout.trim(), /^superuser-tcp: open/, '前の回の閉じ手が、開け直したゲートを閉じた');
   console.log('  ok  IADR-0706: ゲートは上限を過ぎるとその回の閉じ手が閉じ（exec の後も）、開け直した回は前の回の閉じ手が閉じない');
 
-  // Pod の作り直しの代わり（コンテナの再起動）: ゲートのファイル（メモリ）は消え、閉じた側へ戻る。
-  const restart = docker(['restart', r.name], { timeout: 120000 });
-  assert.strictEqual(restart.status, 0, restart.stderr);
-  const end = Date.now() + 60000;
-  while (Date.now() < end && sh('pg_isready -q -U "$POSTGRES_USER"').status !== 0) spawnSync('sleep', ['1']);
-  assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '再起動の後もゲートが開いている');
+  // コンテナだけの再起動（Kubernetes の OOM・クラッシュの再起動の代わり。データとゲートの置き場は残る）: 起動の頭でゲートを消し、閉じた側から始まる。
+  restartWithGateOpen(r, sh, gate);
+  assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '再起動の後もゲートが開いている（起動の頭で消していない）');
   assert.ok(refused(), '再起動の後に超利用者が TCP で入れる');
-  console.log('  ok  IADR-0706: 開いたゲートは再起動で消え、閉じた側へ戻る（超利用者の TCP は拒まれる）');
+  console.log('  ok  IADR-0706: コンテナが再起動すると（ゲートの置き場は残る）、起動の頭でゲートを消し、閉じた側から始まる（超利用者の TCP は拒まれる。データは残る）');
 
   // 変異: reject の行を外すと、ゲートが閉じていても超利用者が入れる（判定が空振りしない）。宣言のファイルを写した場所で読み直させる。
   const hbaFile = path.join(r.hbaDir, path.posix.basename(r.hbaArg));
@@ -314,6 +323,27 @@ function checkSuperuserGate(r, sh, probe) {
   }
   assert.ok(refused(), '変異を戻した後に超利用者が拒まれない');
   console.log('  ok  変異: reject の行を外すと、ゲートが閉じていても超利用者が TCP で入れる（検出する）');
+}
+
+/** ゲートを開けたままコンテナを再起動し、Postgres が受け付けるまで待つ。再起動の前にファイルが在り、置き場が残ることを確かめる（陽性対照）。 */
+function restartWithGateOpen(r, sh, gate) {
+  assert.strictEqual(gate('open').status, 0, 'ゲートを開けられない');
+  assert.strictEqual(sh(`test -s ${r.gateFile}`).status, 0, '再起動の前にゲートのファイルが無い（試験の前提）');
+  const lb = docker(['logs', r.name]);
+  const before = (`${lb.stdout}${lb.stderr}`.match(/ready to accept connections/g) || []).length;
+  const restart = docker(['restart', r.name], { timeout: 120000 });
+  assert.strictEqual(restart.status, 0, restart.stderr);
+  const end = Date.now() + 90000;
+  for (;;) {
+    const l = docker(['logs', r.name]);
+    const n = (`${l.stdout}${l.stderr}`.match(/ready to accept connections/g) || []).length;
+    if (n > before && sh('pg_isready -q -U "$POSTGRES_USER"').status === 0) break;
+    assert.ok(Date.now() < end, `再起動の後に Postgres が受け付けない:\n${tailOf(`${l.stdout}${l.stderr}`)}`);
+    spawnSync('sleep', ['1']);
+  }
+  spawnSync('sleep', ['1']);
+  const dbs = sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -tA -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "select count(*) from pg_database where datname = \'keycloak\'"');
+  assert.strictEqual(dbs.stdout.trim(), '1', `再起動の後にデータが残っていない（PVC の代わりになっていない）: ${dbs.stderr}`);
 }
 
 /**
@@ -546,9 +576,32 @@ function checkMutation() {
   }
 }
 
+/** 変異: 起動の頭の消去を外すと（イメージの起動器のまま起こすと）、コンテナの再起動の後もゲートが開いたまま残る（判定が空振りしない）。 */
+function checkGateRestartMutation() {
+  const decl = loadDeclaration();
+  const hba = decl.docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-hba');
+  assert.ok(Array.isArray(decl.c.command) && /^rm -f "\$GATE"/m.test(String(hba.data['postgres-start.sh'] || '')), '宣言の command（起動の頭）にゲートの消去が無い');
+  decl.c = { ...decl.c };
+  delete decl.c.command;
+  const r = start(decl, 'gatemut');
+  try {
+    if (!r.ready) throw new Error(`変異の構成が起動しない:\n${tailOf(r.logs)}`);
+    const sh = (script) => docker(['exec', r.name, 'sh', '-c', script]);
+    const gate = gateOf(r);
+    restartWithGateOpen(r, sh, gate);
+    assert.match(gate('status').stdout.trim(), /^superuser-tcp: open/, '変異: 起動の頭の消去を外したのに、再起動でゲートが閉じた（判定が空振りしている）');
+    const x = sh('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=require psql -X -tA -U "$POSTGRES_USER" -d postgres -h 127.0.0.1 -w -c "select 1"');
+    assert.strictEqual(x.status, 0, '変異: ゲートが残ったのに超利用者が TCP で入れない（試験の前提が崩れている）');
+    console.log('  ok  変異: 起動の頭の消去を外すと、コンテナの再起動の後もゲートが開いたまま残り、超利用者が TCP で入れる（検出する）');
+  } finally {
+    r.cleanup();
+  }
+}
+
 try {
   checkDeclared();
   checkMutation();
+  checkGateRestartMutation();
   console.log('✓ deploy/cloud の Postgres は空のボリュームから起動し、pg_hba と鍵の扱いが宣言どおりに効く');
 } catch (e) {
   console.error(`✗ ${e.message}`);

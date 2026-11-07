@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, NFR-05, IADR-0674, IADR-0689, IADR-0695, IADR-0697, IADR-0700, IADR-0591, IADR-0577]
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 related_specs:
   - ../specs/20261107_cloud-data-broker-hardening.md
 ---
@@ -41,7 +41,9 @@ related_specs:
   `username` だけを読み取り専用で置いたファイルを `@` で読む（描画に名前を載せない。password は置かない）。
 - ゲートは Pod の中のメモリ（emptyDir）のファイルで、在る間だけ超利用者の TLS・scram の行を足す。開け閉めは ConfigMap `postgres-hba` の
   `superuser-tcp-gate.sh`（uid 70 が `pg_ctl reload`。Postgres を作り直さない）。呼ぶのはオーナーの手元の `ast-db-users.sh --live` だけで、
-  Job の前に開け、終われば（成功・失敗・時間切れ・中断）閉じて、閉じたことを確かめる。Pod が作り直されれば閉じる。
+  Job の前に開け、終われば（成功・失敗・時間切れ・中断）閉じて、閉じたことを確かめる。
+- Postgres のコンテナが起動するたびに（Pod の作り直しでも、コンテナだけの再起動でも）起動の頭でゲートのファイルを消すので閉じる。emptyDir の寿命は Pod で、コンテナだけの再起動（OOM・クラッシュ）ではファイルが残り、上限の閉じ手（コンテナのプロセス）は消えるため、
+  Postgres のコンテナの command を「ゲートのファイルを消す → 消せなければ起動しない → イメージの起動器へ exec」にした（initContainer は Pod の作り直しにしか効かない）。
 - 開いている時間に上限を置く（既定 900 秒＝Job の上限 600 秒＋余裕）。開けるときに Pod の中で閉じ手を切り離して起こし（setsid）、上限を過ぎてもその回のゲートが
   残っていれば閉じる（入口との通信が切れて close を流せないときの備え）。回ごとの印で、開け直した回を前の回の閉じ手が閉じない。Postgres は計測を出しておらず
   警報の形は取れないため、上限で閉じる形にした（確かめは `status`。手順書 §1）。

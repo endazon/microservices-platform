@@ -37,7 +37,7 @@ data:
 # NFR-18, IADR-0706: 超利用者（名前は Secret postgres の username を読み取り専用で置いたファイル。@ で読む）の TCP は既定で拒む（reject）。
 #   その手前の include_if_exists は Pod の中のメモリ（emptyDir）のファイルで、在る間だけ超利用者の TCP（TLS・scram）を受ける（ゲート）。
 #   ゲートを開け閉めするのは superuser-tcp-gate.sh（オーナーの手元の deploy/cloud/db-users/ast-db-users.sh --live が Job の前後に呼ぶ）だけ。
-#   Pod が作り直されれば閉じる（emptyDir）。バックアップは超利用者でなく、専用の利用者（Secret postgres-backup）で入る。
+#   Postgres のコンテナは起動の頭でゲートのファイルを消す（コンテナの再起動でも閉じる）。バックアップは超利用者でなく、専用の利用者（Secret postgres-backup）で入る。
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -56,8 +56,20 @@ data:
   #   開けると超利用者の TCP（TLS・scram）の行をゲートのファイルへ書き、閉じると消す。どちらも pg_ctl reload で読み直させる（作り直さない）。
   #   開いている時間には上限がある（PG_HBA_GATE_TTL_S。既定 900 秒＝利用者を作る Job の上限 600 秒＋余裕）。開けるときに Pod の中で
   #   閉じ手を切り離して起こし（setsid）、上限を過ぎてもその回のゲートが残っていれば閉じる（入口との通信が切れて close を流せないときの備え）。
-  #   回ごとの印（token）で、後から開け直したゲートを前の回の閉じ手が閉じない。Pod が作り直されればファイルは消えて閉じる（emptyDir）。
+  #   回ごとの印（token）で、後から開け直したゲートを前の回の閉じ手が閉じない。コンテナが起動するたびに、起動の頭でファイルを消す（下の command）。
   #   値は扱わない（行に載るのは超利用者の名前のファイルのパスだけ）。
+  # NFR-18, IADR-0706: Postgres のコンテナの起動の頭（command）。ゲートのファイルを消し（消せなければ起動しない＝閉じた側に倒す）、
+  #   イメージの起動器（docker-entrypoint.sh）へ引数（args）のまま exec する。コンテナの再起動のたびに効く（initContainer は Pod の作り直しにしか効かない）。
+  postgres-start.sh: |
+    #!/bin/sh
+    set -eu
+    GATE="${PG_HBA_GATE:-/run/postgres-hba-gate/superuser-tcp.conf}"
+    rm -f "$GATE" "$GATE.tmp"
+    if [ -e "$GATE" ] || [ -e "$GATE.tmp" ]; then
+      echo "postgres-start: ゲートのファイルを消せない。起動しない" >&2
+      exit 1
+    fi
+    exec docker-entrypoint.sh "$@"
   superuser-tcp-gate.sh: |
     #!/bin/sh
     set -eu
@@ -158,6 +170,10 @@ spec:
       containers:
         - name: postgres
           image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+          # NFR-18, IADR-0706: 起動の頭で、超利用者の TCP のゲートのファイルを必ず消してから、イメージの起動器（docker-entrypoint.sh）へ
+          #   exec する。emptyDir の寿命は Pod なので、コンテナだけの再起動（OOM・クラッシュ）ではファイルが残り、上限の閉じ手（コンテナの
+          #   プロセス）は消える。起動のたびに消して、閉じた側から始める（fail-closed: 消せなければ起動しない）。下の args は起動器へそのまま渡る。
+          command: ["/bin/sh", "/etc/postgres-hba/postgres-start.sh"]
           args:
             - -c
             - ssl=on
