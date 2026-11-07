@@ -1,4 +1,4 @@
-# NFR-18, IADR-0674 (#2401): MSP の名前空間から基盤を短い名前で引く（chart の既定 global.auth.authority=http://keycloak:8080/realms/platform・
+# NFR-18, IADR-0674 (#2401): MSP の名前空間から基盤を短い名前で引く（values-cloud の global.auth.authority=https://keycloak:8443/realms/platform〔IADR-0693〕・
 # global.otel.endpoint=http://otel-collector:4317 のまま使う）。Keycloak の hostname（KC_HOSTNAME）も同じ名前なので、トークンの iss が揃う。
 # 取引ユニットの名前空間の同じ別名は、取引ユニットの側が置く（AST#1525）。
 apiVersion: v1

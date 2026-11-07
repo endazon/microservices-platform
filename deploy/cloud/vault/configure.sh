@@ -9,7 +9,8 @@
 # 設定するもの（どれも在れば作り直さない）:
 #   - KV v2 `cloud/`（値の置き場。パスの規則は IADR-0689 決定 6）
 #   - PKI `pki_cloud/`（基盤との通信の CA。**CA の鍵は OpenBao の外へ出さない**〔internal〕）と、サーバ証明書の role
-#     （postgres・rabbitmq・llmgateway-service。SAN は名指しの 4 つだけ・発行した証明書を保存しない）
+#     （lib.sh の OB_PKI_ROLES: postgres・rabbitmq・keycloak・llmgateway-service。SAN は名指しの 4 つだけ・発行した証明書を保存しない。
+#     稼働中の構成へ role を足すときは root-token.sh apply-pki-roles。IADR-0693）
 #   - policy（deploy/cloud/vault/policies/*.hcl）と kubernetes 認証の role（ESO の 3 つの ServiceAccount）
 #   - オーナー用の AppRole `cloud-operator`（ループバックからだけ入れる。トークンは 15 分）
 # オーナー用の資格（role_id・secret_id）は Pod の中から手元の `age -R` へだけ流し、--operator-out に暗号化して書く。
@@ -96,13 +97,6 @@ live_opt_in_require "configure.sh"
 ob_need kubectl age node
 printf 'probe' | age -R "$RECIPIENTS" >/dev/null || { echo "ERROR: 受取人のファイルで暗号化できない" >&2; exit 2; }
 
-# サーバ証明書の role と、許す名前（短い名前・名前空間つき・.svc・.svc.cluster.local。従来の SAN と同じ）
-pki_role() {
-  local svc="$1" ns="$2"
-  printf 'b write pki_cloud/roles/%s allowed_domains="%s,%s.%s,%s.%s.svc,%s.%s.svc.cluster.local" ' "$svc" "$svc" "$svc" "$ns" "$svc" "$ns" "$svc" "$ns"
-  printf 'allow_bare_domains=true allow_subdomains=false allow_glob_domains=false allow_wildcard_certificates=false allow_localhost=false allow_ip_sans=false '
-  printf 'server_flag=true client_flag=false key_type=rsa key_bits=3072 max_ttl=8760h no_store=true >/dev/null\n'
-}
 policy_write() {
   local name="$1"
   printf "b policy write %s - >/dev/null <<'__HCL__'\n" "$name"
@@ -169,7 +163,7 @@ EOF
 )"
 # bash 5.2 の置換は既定で & を一致した字面に読み替える（patsub_replacement）。差し込む手順を字面のまま入れる。
 shopt -u patsub_replacement 2>/dev/null || true
-roles="$(pki_role postgres platform-infra; pki_role rabbitmq platform-infra; pki_role llmgateway-service microservices-platform)"
+roles="$(ob_pki_roles b)"
 policies="$(for p in platform-infra-eso msp-eso ast-eso cloud-operator; do policy_write "$p"; done)"
 POD="${POD/__PKI_ROLES__/$roles}"
 POD="${POD/__POLICIES__/$policies}"

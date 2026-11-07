@@ -30,6 +30,7 @@ const CATEGORY = Object.freeze({
   'platform-infra/keycloak-realm-import': 2,
   'platform-infra/postgres-tls': 3,
   'platform-infra/rabbitmq-tls': 3,
+  'platform-infra/keycloak-tls': 3,
   'microservices-platform/llmgateway-tls': 3,
   'microservices-platform/llm-provider-credentials': 1,
   'platform-infra/platform-backup-s3': 1,

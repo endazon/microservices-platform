@@ -1,8 +1,12 @@
 # NFR-18, IADR-0674 (#2401): 認可サーバ（Keycloak）を**本番モード（start）**で動かす。deploy/local/infra/keycloak.yaml との違い:
 #   - start-dev ではなく start。DB は共有 Postgres（TLS・サーバ証明書を検証する）。利用者名・パスワードは Secret keycloak-db から読む。
 #   - 管理者は Secret keycloak-admin から読む（OpenBao の中で乱数で作り、ESO が写す。IADR-0689）。
-#   - hostname はクラスタの中の名前だけ（画面を公開しないので、外向きのホストと証明書を持たない）。HTTP はクラスタの中だけで受ける
+#   - hostname はクラスタの中の名前だけ（画面を公開しないので、外向きのホストを持たない）。クラスタの中だけで受ける
 #     （Service は ClusterIP。外への口は描かない。到達は networkpolicy.yaml が絞る）。
+#   - NFR-16, NFR-18, IADR-0693: 受け口は HTTPS（8443）だけ。平文（8080）は開けない。サーバ証明書は OpenBao の PKI（pki_cloud。
+#     DB・ブローカと同じ CA）が発行し、ESO が Secret keycloak-tls に写す（vault/eso/tls-platform-infra.yaml）。トークンの発行元（iss）は
+#     https://keycloak:8443/realms/platform。管理の口（9000。health）も同じ証明書の TLS になるので、probe は HTTPS で測る。
+#     平文と HTTPS の併存の段は deploy/cloud-transition/keycloak-tls-coexist（稼働中の構成を移すときだけ。手順書）。
 #   - realm の取り込み元は Secret keycloak-realm-import（ESO が組む。雛形は deploy/cloud/realm-for-cloud.js --template が宣言から作り、
 #     取引ユニットの 3 つの機密クライアントの secret だけを OpenBao から差し込む。人の利用者は持ち込まない。IADR-0689）。
 #   - キャッシュは単一ノードの local（クラスタの探索をしない）。ヒープは 8 GB のノードに収まるよう、メモリの上限の半分まで。
@@ -23,6 +27,8 @@ spec:
       labels: { app: keycloak }
     spec:
       automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:26.7.4@sha256:82a77884f3af238beab1e7afd63b5f530e1b5c0590bd7aa60b40a40463e29b2c
@@ -41,9 +47,18 @@ spec:
             - name: KC_DB_PASSWORD
               valueFrom: { secretKeyRef: { name: keycloak-db, key: password } }
             - name: KC_HOSTNAME
-              value: http://keycloak:8080
+              value: https://keycloak:8443
             - name: KC_HTTP_ENABLED
-              value: "true"
+              value: "false"
+            - name: KC_HTTPS_PORT
+              value: "8443"
+            - name: KC_HTTPS_CERTIFICATE_FILE
+              value: /etc/keycloak-tls/tls.crt
+            - name: KC_HTTPS_CERTIFICATE_KEY_FILE
+              value: /etc/keycloak-tls/tls.key
+            # ESO が半年ごとに作り直した証明書を、1 時間以内に読み直す（作り直しの後に Pod を作り直さなくてよい）。
+            - name: KC_HTTPS_CERTIFICATES_RELOAD_PERIOD
+              value: 1h
             - name: KC_HEALTH_ENABLED
               value: "true"
             - name: KC_CACHE
@@ -51,29 +66,31 @@ spec:
             - name: JAVA_OPTS_KC_HEAP
               value: "-XX:MaxRAMPercentage=50 -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=20"
           ports:
-            - containerPort: 8080
+            - name: https
+              containerPort: 8443
             - name: management
               containerPort: 9000
           # NFR-18, IADR-0675: 起動（realm の取り込みを含む）は startupProbe が最長 10 分まで待ち、その間は liveness を測らない。
           # 起動の後にハングしたら liveness が作り直す（単一ノードで人がすぐ気付けないため）。
           startupProbe:
-            httpGet: { path: /health/started, port: 9000 }
+            httpGet: { path: /health/started, port: 9000, scheme: HTTPS }
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 60
           livenessProbe:
-            httpGet: { path: /health/live, port: 9000 }
+            httpGet: { path: /health/live, port: 9000, scheme: HTTPS }
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet: { path: /health/ready, port: 9000 }
+            httpGet: { path: /health/ready, port: 9000, scheme: HTTPS }
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
           volumeMounts:
             - { name: realms, mountPath: /opt/keycloak/data/import, readOnly: true }
             - { name: infra-ca, mountPath: /etc/platform-infra-ca, readOnly: true }
+            - { name: tls, mountPath: /etc/keycloak-tls, readOnly: true }
           resources:
             requests: { cpu: 200m, memory: 512Mi }
             limits: { cpu: "1", memory: 1Gi }
@@ -82,6 +99,15 @@ spec:
           secret: { secretName: keycloak-realm-import }
         - name: infra-ca
           configMap: { name: platform-infra-ca }
+        # 受け口の証明書と鍵（tls.crt・tls.key だけ）。Keycloak の利用者（uid 1000・gid 0）は Secret のボリュームの root の所有の
+        # ファイルを読めないので、fsGroup（1000）の補助グループで 0440 を読ませる（鍵をほかの利用者へ開けない）。
+        - name: tls
+          secret:
+            secretName: keycloak-tls
+            defaultMode: 0440
+            items:
+              - { key: tls.crt, path: tls.crt }
+              - { key: tls.key, path: tls.key }
 ---
 apiVersion: v1
 kind: Service
@@ -94,5 +120,6 @@ spec:
   type: ClusterIP
   selector: { app: keycloak }
   ports:
-    - port: 8080
-      targetPort: 8080
+    - name: https
+      port: 8443
+      targetPort: 8443

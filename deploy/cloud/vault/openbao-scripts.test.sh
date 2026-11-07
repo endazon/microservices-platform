@@ -308,6 +308,9 @@ TP="$(tok platform-infra-eso)" TM="$(tok msp-eso)" TA="$(tok ast-eso)"
 for p in ast-db ast-rabbitmq-users ast-client-secrets platform-infra-ca; do [ "$(cap "$TA" "cloud/data/shared/$p")" = read ] || ng "取引ユニットの側が cloud/shared/$p を読めない"; done
 [ "$(cap "$TA" cloud/data/shared/other)" = deny ] || ng "取引ユニットの側が名指しの外の cloud/shared を読める"
 [ "$(cap "$TM" pki_cloud/issue/llmgateway-service)" = update ] && [ "$(cap "$TM" pki_cloud/issue/postgres)" = deny ] || ng "MSP の側の発行の範囲が違う"
+# IADR-0693: 認可サーバーの証明書は基盤の側だけが発行する。MSP・取引ユニットの側は発行できない（取引ユニットは CA の証明書を KV で読むだけ）。
+[ "$(cap "$TP" pki_cloud/issue/keycloak)" = update ] || ng "基盤の側が keycloak の証明書を発行できない"
+[ "$(cap "$TM" pki_cloud/issue/keycloak)" = deny ] && [ "$(cap "$TA" pki_cloud/issue/keycloak)" = deny ] || ng "基盤の外の側が keycloak の証明書を発行できる"
 for p in platform-backup-s3 alertmanager-discord alertmanager-heartbeat; do [ "$(cap "$TP" "cloud/data/platform/$p")" = read ] || ng "基盤の側が cloud/platform/$p を読めない"; done
 [ "$(cap "$TM" cloud/data/msp/llm-provider-credentials)" = read ] || ng "MSP の側が LLM の鍵を読めない"
 [ "$(cap "$TP" cloud/data/msp/llm-provider-credentials)" = deny ] && [ "$(cap "$TA" cloud/data/msp/llm-provider-credentials)" = deny ] || ng "MSP の外の側が LLM の鍵を読める"
@@ -322,7 +325,16 @@ set +e; BAO_TOKEN="$TP" B write pki_cloud/issue/postgres common_name=evil.exampl
 [ "$rc" -ne 0 ] || ng "名指しの外の名前を発行した"
 set +e; BAO_TOKEN="$R1" B read pki_cloud/issuer/default/json >/dev/null 2>&1; BAO_TOKEN="$R1" B read -field=private_key pki_cloud/key/default >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -ne 0 ] || ng "CA の鍵を読み出せる"
-ok "PKI: role は名指しの名前だけを発行し、CA の鍵は OpenBao の外へ出ない（internal）"
+TKC="$(BAO_TOKEN="$TP" B write -format=json pki_cloud/issue/keycloak common_name=keycloak alt_names=keycloak.platform-infra,keycloak.platform-infra.svc,keycloak.platform-infra.svc.cluster.local ttl=8760h)"
+[[ "$TKC" == *"PRIVATE KEY"* ]] || ng "keycloak の証明書を発行できない（IADR-0693）"
+printf '%s' "$TKC" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.parse(s).data.certificate))' > "$W/kc.crt"
+BAO_TOKEN="$R1" B read -field=certificate pki_cloud/cert/ca > "$W/ca.crt"
+openssl verify -CAfile "$W/ca.crt" "$W/kc.crt" >/dev/null || ng "keycloak の証明書が CA（ConfigMap platform-infra-ca に置くもの）で検証できない"
+[[ "$(openssl x509 -in "$W/kc.crt" -noout -ext subjectAltName)" == *"DNS:keycloak,"* ]] || ng "keycloak の証明書の SAN に短い名前 keycloak が無い（受け手の URL の名前）"
+rm -f "$W/kc.crt"; unset TKC
+set +e; BAO_TOKEN="$TP" B write pki_cloud/issue/keycloak common_name=postgres >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -ne 0 ] || ng "keycloak の role が別の名前（postgres）を発行した"
+ok "PKI: role は名指しの名前だけを発行し、CA の鍵は OpenBao の外へ出ない（internal）。keycloak の証明書は CA で検証できる"
 BAO_TOKEN="$R1" B token revoke -self >/dev/null
 
 # --- root-token.sh: 作り直して操作し、失効させる ---
@@ -332,6 +344,19 @@ set +e; printf '{"role_id":"%s","secret_id":"%s"}' "$(dec "$W/operator.age" role
 [ "$rc" -ne 0 ] || ng "作り直した後も古い secret_id で入れる"
 cp "$W/operator2.age" "$W/operator.age"; OPT="$(login)"; [ -n "$OPT" ] || ng "新しい資格で入れない"
 ok "root-token: 作り直した root で policy を当て直し、オーナーの secret_id を回す（古いものは入れない）"
+# IADR-0693: 稼働中の構成（configure の後・root は失効済み）へ role を足す口。keycloak の role が無い状態から作り直す。
+#   基盤の側のトークンは親の root の失効で消えないよう orphan で作る（上の TP は R1 の失効と一緒に消えている）。
+R3="$(mkroot)"; BAO_TOKEN="$R3" B delete pki_cloud/roles/keycloak >/dev/null
+TPX="$(BAO_TOKEN="$R3" B token create -orphan -ttl=10m -policy=platform-infra-eso -no-default-policy -field=token)"
+BAO_TOKEN="$R3" B token revoke -self >/dev/null
+set +e; BAO_TOKEN="$TPX" B write pki_cloud/issue/keycloak common_name=keycloak >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -ne 0 ] || ng "陽性対照: role を消したのに keycloak の証明書を発行できる"
+run root-token.sh --init-file "$W/init.age" --operator-file "$W/operator.age" --identity "$W/id.txt" apply-pki-roles >"$W/rt.log" 2>&1 || { cat "$W/rt.log" >&2; ng "apply-pki-roles が失敗した"; }
+grep -q '書いた: PKI の role keycloak' "$W/rt.log" || ng "apply-pki-roles が keycloak の role を書いたと言わない"
+grep -q '作り直した root を失効させた' "$W/rt.log" || ng "apply-pki-roles の後に root を失効させない"
+BAO_TOKEN="$TPX" B write pki_cloud/issue/keycloak common_name=keycloak >/dev/null 2>&1 || ng "apply-pki-roles の後に keycloak の証明書を発行できない"
+unset TPX   # 10 分で切れる（default の policy を持たないので自分では失効できない）
+ok "root-token apply-pki-roles: 稼働中の構成へ lib.sh の role の一覧を書き、root を失効させる（IADR-0693）"
 
 # --- 値が引数・ディスクに残らない ---
 R2="$(mkroot)"

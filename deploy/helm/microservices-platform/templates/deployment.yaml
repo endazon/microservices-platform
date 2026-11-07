@@ -17,7 +17,19 @@
        /etc/platform-infra-ca へマウントする。検証を緩める形（Require 等の SSL Mode・名前の照合を外す等）は描かない。 */}}
 {{- $dbTls := and $svc.database $.Values.global.db.tls $.Values.global.db.tls.enabled }}
 {{- $mqTls := and $svc.messaging $.Values.global.messaging.tls $.Values.global.messaging.tls.enabled }}
-{{- $infraCaMount := or $dbTls $mqTls }}
+{{- /* NFR-16, NFR-18, IADR-0693: 認可サーバーへの通信を TLS で検証する（global.auth.tls.enabled。opt-in）。CA は基盤と同じ global.infraCa。 */}}
+{{- $authTls := and $.Values.global.auth.tls $.Values.global.auth.tls.enabled }}
+{{- if $authTls }}
+{{- if not (hasPrefix "https://" ($.Values.global.auth.authority | toString)) }}
+{{- fail (printf "global.auth.tls.enabled のとき global.auth.authority は https:// で始めてください（%s。IADR-0693）" $.Values.global.auth.authority) }}
+{{- end }}
+{{- if and $.Values.global.auth.metadataAddress (not (hasPrefix "https://" ($.Values.global.auth.metadataAddress | toString))) }}
+{{- fail (printf "global.auth.tls.enabled のとき global.auth.metadataAddress は https:// で始めてください（%s。IADR-0693）" $.Values.global.auth.metadataAddress) }}
+{{- end }}
+{{- end }}
+{{- $infraCaMount := or $dbTls $mqTls $authTls }}
+{{- /* 信頼ストア（既定の /etc/ssl/certs を先に残し、基盤の CA の置き場を足す）。ブローカ・認可サーバーの検証が同じ 1 つを使う。 */}}
+{{- $infraCaCertDir := "/etc/ssl/certs:/etc/platform-infra-ca" }}
 {{- /* NFR-16, NFR-18, IADR-0674 (#2409): メッシュの無い配備（deploy/cloud）でサービスの受け口を TLS にする（opt-in。既定は描かない）。
        services.<名>.tls.secretName の Secret（tls.crt・tls.key）を /etc/msp-service-tls へ置き、Kestrel を https の 1 つの受け口にする
        （ASPNETCORE_URLS が基盤のイメージの ASPNETCORE_HTTP_PORTS に代わる）。probe は HTTPS。平文の受け口は残さない。
@@ -189,6 +201,16 @@ spec:
           {{- end }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
+          {{- if $authTls }}
+            # NFR-16, NFR-18, IADR-0693: https でない取得先（Authority・MetadataAddress）をアプリが起動で拒む。CA は信頼ストアへ足す
+            # （ブローカへ繋ぐサービスは下の amqps の段が同じ SSL_CERT_DIR を描くので、ここでは描かない）。
+            - name: Auth__RequireHttpsMetadata
+              value: "true"
+          {{- if not $mqTls }}
+            - name: SSL_CERT_DIR
+              value: {{ $infraCaCertDir | quote }}
+          {{- end }}
+          {{- end }}
           {{- if $.Values.global.auth.metadataAddress }}
             # Issue #314, IADR-0076 手順B, IADR-0086: OIDC metadata 取得先（in-cluster）を issuer 検証値と分離する。
             # 設定時のみ描画＝既定（空）は現行 manifest とバイト等価。分離時 backend は Authority に代えてこれを使う。
@@ -388,7 +410,7 @@ spec:
             - name: RabbitMq__ConnectionString
               value: {{ printf "amqps://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.tls.port | quote }}
             - name: SSL_CERT_DIR
-              value: "/etc/ssl/certs:/etc/platform-infra-ca"
+              value: {{ $infraCaCertDir | quote }}
             {{- else }}
             - name: RabbitMq__ConnectionString
               value: {{ printf "amqp://%s%s:$(RABBITMQ_PASSWORD)@%s:%v" $mq.usernamePrefix $name $mq.host $mq.port | quote }}

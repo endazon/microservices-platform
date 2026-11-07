@@ -4,6 +4,8 @@
 #   SAN は従来（IADR-0674 決定 3）と同じ（短い名前・名前空間つき・.svc・.svc.cluster.local）。
 #   postgres-tls は tls.crt・tls.key だけを持つ（従来どおり）。Postgres はクライアントの証明書を検めないので CA を読まない。
 #   rabbitmq-tls は ca.crt も持つ（RabbitMQ の ssl_options.cacertfile が読む。従来どおり）。CA の公開の配り先は ConfigMap platform-infra-ca。
+#   ［2026-11-07 / IADR-0693］keycloak-tls（認可サーバーの受け口。tls.crt・tls.key だけ）。Keycloak は 1 時間ごとに証明書のファイルを
+#   読み直すので、作り直しの後に作り直す（rollout restart）必要は無い（infra/keycloak.yaml の KC_HTTPS_CERTIFICATES_RELOAD_PERIOD）。
 apiVersion: generators.external-secrets.io/v1alpha1
 kind: VaultDynamicSecret
 metadata:
@@ -104,3 +106,53 @@ spec:
           apiVersion: generators.external-secrets.io/v1alpha1
           kind: VaultDynamicSecret
           name: rabbitmq-tls
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: keycloak-tls
+  namespace: platform-infra
+spec:
+  method: POST
+  path: pki_cloud/issue/keycloak
+  parameters:
+    common_name: keycloak
+    alt_names: "keycloak.platform-infra,keycloak.platform-infra.svc,keycloak.platform-infra.svc.cluster.local"
+    ttl: 8760h
+  resultType: Data
+  provider:
+    server: http://openbao.openbao.svc:8200
+    auth:
+      kubernetes:
+        mountPath: kubernetes
+        role: platform-infra-eso
+        # NFR-18, IADR-0585: 受ける側の role は audience=vault を要求する（configure.sh）。名乗る側も明示する。
+        serviceAccountRef:
+          name: eso-openbao
+          audiences:
+            - vault
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: keycloak-tls
+  namespace: platform-infra
+spec:
+  # 発行は 1 年（ttl）。半年ごとに作り直す（Keycloak は 1 時間以内に読み直す。README §6）。
+  refreshInterval: 4380h
+  target:
+    name: keycloak-tls
+    creationPolicy: Owner
+    deletionPolicy: Retain
+    template:
+      engineVersion: v2
+      type: Opaque
+      data:
+        tls.crt: "{{ .certificate }}"
+        tls.key: "{{ .private_key }}"
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: keycloak-tls

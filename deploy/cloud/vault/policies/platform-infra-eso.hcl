@@ -14,3 +14,5 @@ path "cloud/data/platform/alertmanager-heartbeat" { capabilities = ["read"] }
 # TLS の鍵（IADR-0689 決定 4）。発行だけ（role の外の名前は PKI の role が拒む）。
 path "pki_cloud/issue/postgres" { capabilities = ["update"] }
 path "pki_cloud/issue/rabbitmq" { capabilities = ["update"] }
+# ［2026-11-07 / IADR-0693］認可サーバー（Keycloak）のサーバ証明書。稼働中の構成へは root-token.sh apply-pki-roles と apply-policies で足す。
+path "pki_cloud/issue/keycloak" { capabilities = ["update"] }
