@@ -190,7 +190,7 @@ jobs:
             found=$((found + 1))
             unit=$(echo "$slnx" | cut -d/ -f2)
             echo "::group::$slnx"
-            if dotnet restore "$slnx" \
+            if dotnet restore "$slnx" --locked-mode \
               && dotnet build "$slnx" --no-restore --configuration Release \
               && dotnet test "$slnx" --no-build --configuration Release \
                    --collect:"XPlat Code Coverage" --logger trx --verbosity normal \

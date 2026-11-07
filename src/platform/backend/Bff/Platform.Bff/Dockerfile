@@ -14,7 +14,7 @@ COPY src/ai-stock-trading/backend/Bff/ ai-stock-trading/backend/Bff/
 # 剥がして /repo 直下へ置いているので、同じ相対位置は /deploy/bootstrap/ になる。**無いと publish が
 # 同梱できず、BFF は起動時に落ちる**（fail-closed）。
 COPY deploy/bootstrap/sc22-secret-items.json /deploy/bootstrap/sc22-secret-items.json
-RUN dotnet restore platform/backend/Bff/Platform.Bff/Platform.Bff.csproj
+RUN dotnet restore platform/backend/Bff/Platform.Bff/Platform.Bff.csproj --locked-mode
 RUN dotnet publish platform/backend/Bff/Platform.Bff/Platform.Bff.csproj \
     -c Release -o /app/publish --no-restore
 

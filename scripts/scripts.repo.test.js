@@ -361,7 +361,8 @@ module.exports = ({ ok, assert }) => {
       const vbc = code(vb);
       assert.match(vbc, /^    needs: discover-units$/m, 'backend-verify-build が discover-units 以外を待っている（脚と並列に走らず律速の経路が延びる）');
       assert.match(vbc, /unit: \$\{\{ fromJSON\(needs\.discover-units\.outputs\.units\) \}\}/, 'backend-verify-build の行列がユニット（units）から取られていない');
-      assert.match(vbc, /dotnet restore "\$slnx"\n\s*dotnet build "\$slnx" --no-restore --configuration Release/, 'backend-verify-build が backend.slnx 全体を restore / build していない');
+      // IADR-0701: restore は locked mode。restore と build の間に lock ファイルの差分の検査が入る（中身は IADR-0701 の節が見る）。
+      assert.match(vbc, /dotnet restore "\$slnx" --locked-mode\n[\s\S]*?\n\s*dotnet build "\$slnx" --no-restore --configuration Release/, 'backend-verify-build が backend.slnx 全体を restore / build していない');
       assert.match(vbc, /slnx="src\/\$\{UNIT\}\/backend\/backend\.slnx"/, 'backend-verify-build の対象が backend.slnx でない');
       assert.ok(!/backend-verify-build/.test(code(bb)), 'backend-build（脚）が backend-verify-build を待っている（直列になり律速の経路が延びる）');
       // 脚は閉包のパッケージしか restore しないので、同じキーで保存すると中身の足りないキャッシュが残る。脚は復元だけ。
@@ -435,7 +436,7 @@ module.exports = ({ ok, assert }) => {
         assert.strictEqual(r.status, 0, r.stderr);
         const calls = fs.readFileSync(log, 'utf8').trim().split('\n');
         // 2026-10-02 再裁定: シャードの脚は一時の slnx（試験プロジェクトの閉包）を restore / build し、建てたものだけを --no-build で試す。
-        assert.match(calls[0], /^restore src\/u\/backend\/ci-test-shard\.slnx$/, `シャードの脚の restore が一時の slnx でない: ${calls[0]}`);
+        assert.match(calls[0], /^restore src\/u\/backend\/ci-test-shard\.slnx --locked-mode$/, `シャードの脚の restore が一時の slnx でない: ${calls[0]}`);
         assert.match(calls[1], /^build src\/u\/backend\/ci-test-shard\.slnx --no-restore --configuration Release -p:ShouldUnsetParentConfigurationAndPlatform=false$/, `シャードの脚の build が一時の slnx でない（または閉包が Debug で建つ）: ${calls[1]}`);
         assert.match(calls[2], /^test src\/u\/backend\/ci-test-shard\.slnx --no-build .*--filter Category!=Integration/,
           `シャードの脚が一時の slnx へ絞ってテストしていない: ${calls[2]}`);
@@ -444,7 +445,7 @@ module.exports = ({ ok, assert }) => {
         r = run('');
         assert.strictEqual(r.status, 0, r.stderr);
         const whole = fs.readFileSync(log, 'utf8');
-        assert.match(whole, /^restore src\/u\/backend\/backend\.slnx$/m, 'シャードしない脚が backend.slnx 全体を restore していない');
+        assert.match(whole, /^restore src\/u\/backend\/backend\.slnx --locked-mode$/m, 'シャードしない脚が backend.slnx 全体を restore していない');
         assert.match(whole, /^build src\/u\/backend\/backend\.slnx /m, 'シャードしない脚が backend.slnx 全体を build していない');
         assert.match(whole, /^test src\/u\/backend\/backend\.slnx --no-build/m, 'シャードしない脚が backend.slnx 全体を試していない');
         r = run('A/A.Tests.csproj;Z/Missing.Tests.csproj');
@@ -21034,4 +21035,119 @@ esac
       assert.ok(has([['x.yml', '  K3D_VERSION: v5.8.3\n  K3D_SHA256: ' + 'a'.repeat(64) + '\njobs:\n  j:\n    steps:\n      - name: Install k3d\n        run: |\n          bash <(curl -fsSL https://example.invalid/i.sh)\n']], /照合せずに実行/));
     });
   }
+
+  // --- NFR(セキュリティ) / IADR-0701: NuGet の推移的な依存を lock ファイルで固定し、CI とイメージのビルドは locked mode で restore する ---
+  // 本リポジトリの 2 ユニット（platform・knowledge）の全 .csproj が追跡下の packages.lock.json を持ち、
+  // ワークフローとイメージの dotnet restore がすべて --locked-mode を付けることを固定する。
+  // locked mode は lock の無いプロジェクトでは落ちずに新しく作るため（実測）、ここと backend-verify-build の差分検査で塞ぐ。
+  {
+    const fs0701 = require('fs');
+    const path0701 = require('path');
+    const { execFileSync: exec0701 } = require('child_process');
+    const ROOT0701 = path0701.join(__dirname, '..');
+    const read0701 = (rel) => fs0701.readFileSync(path0701.join(ROOT0701, rel), 'utf8').replace(/\r\n/g, '\n');
+    const UNIT_RE0701 = /^src\/(platform|knowledge)\/backend\//;
+    // tracked: 追跡下のパスの一覧。props: src/Directory.Build.props の本文。restores: [名前, 本文] の組（ワークフローと Dockerfile）。
+    const issues0701 = ({ tracked, props, restores, ci }) => {
+      const out = [];
+      const set = new Set(tracked);
+      const projs = tracked.filter((f) => UNIT_RE0701.test(f) && f.endsWith('.csproj'));
+      if (projs.length === 0) out.push('ユニットの .csproj が 1 つも見つからない（何も検査していない）');
+      for (const c of projs) {
+        const lock = path0701.posix.join(path0701.posix.dirname(c), 'packages.lock.json');
+        if (!set.has(lock)) out.push(`${c}: packages.lock.json が追跡下に無い`);
+      }
+      for (const f of tracked) if (f.endsWith('/packages.lock.json') && !UNIT_RE0701.test(f) && !f.startsWith('src/ai-stock-trading/')) out.push(`${f}: ユニットの外に lock ファイルがある`);
+      const body = props.replace(/<!--[\s\S]*?-->/g, '');
+      if (!/<PropertyGroup Condition="\$\(_MspLockFileRelativeDir\.StartsWith\('platform\/backend\/'\)\) or \$\(_MspLockFileRelativeDir\.StartsWith\('knowledge\/backend\/'\)\)">\s*<RestorePackagesWithLockFile>true<\/RestorePackagesWithLockFile>/.test(body)) {
+        out.push('src/Directory.Build.props: RestorePackagesWithLockFile が 2 ユニットに限って有効になっていない');
+      }
+      if (/<RestorePackagesWithLockFile>true<\/RestorePackagesWithLockFile>/.test(body.replace(/<PropertyGroup Condition="\$\(_MspLockFileRelativeDir[^"]*">[\s\S]*?<\/PropertyGroup>/g, ''))) {
+        out.push('src/Directory.Build.props: RestorePackagesWithLockFile が条件なしで有効（AST・雛形へ届く）');
+      }
+      for (const [name, text] of restores) {
+        const lines = text.split('\n').filter((l) => !/^\s*#/.test(l) && /\bdotnet restore\b/.test(l) && !/--allowedTools|`dotnet restore`|echo /.test(l));
+        if (lines.length === 0) out.push(`${name}: dotnet restore が見つからない（検査の対象を取り違えている）`);
+        for (const l of lines) if (!/--locked-mode\b/.test(l)) out.push(`${name}: --locked-mode の無い restore（${l.trim().slice(0, 80)}）`);
+      }
+      const job = (ci.split(/\n(?= {2}[a-z][a-z0-9-]*:\n)/).find((j) => /^ {2}backend-verify-build:\n/.test(j.replace(/^\n/, ''))) || '');
+      // 範囲は実体のユニットだけ: src/*/backend の lock から、.gitmodules の submodule の path を外す（ユニット名は書かない）。
+      const DRIFT0701 = `drift="$(git status --porcelain --untracked-files=all -- ':(glob)src/*/backend/**/packages.lock.json' "\${excl[@]}")"`;
+      const EXCL0701 = `while read -r _ sub; do excl+=(":(exclude)\${sub}"); done < <(git config --file .gitmodules --get-regexp '^submodule\\..*\\.path$' || true)`;
+      if (!job.includes(DRIFT0701)) out.push('ci.yml backend-verify-build: restore の後に lock ファイルの差分を見ていない');
+      else if (!job.includes(EXCL0701) || job.indexOf(EXCL0701) > job.indexOf(DRIFT0701)) out.push('ci.yml backend-verify-build: lock の差分の範囲から submodule のユニットを外していない');
+      return out;
+    };
+    const current0701 = () => {
+      const tracked = exec0701('git', ['ls-files'], { cwd: ROOT0701, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n').filter(Boolean);
+      const dockerfiles = tracked.filter((f) => UNIT_RE0701.test(f) && /(^|\/)Dockerfile$/.test(f));
+      const restores = [
+        ...['ci.yml', 'integration.yml', 'security.yml'].map((n) => [n, read0701(`.github/workflows/${n}`)]),
+        ...dockerfiles.map((f) => [f, read0701(f)]),
+      ];
+      return { tracked, props: read0701('src/Directory.Build.props'), restores, ci: read0701('.github/workflows/ci.yml'), dockerfiles };
+    };
+
+    ok('IADR-0701: 2 ユニットの全 .csproj が lock ファイルを持ち、CI とイメージの restore は --locked-mode を付け、backend-verify-build が lock の差分を見る', () => {
+      const cur = current0701();
+      assert.ok(cur.dockerfiles.length >= 15, `ユニットの Dockerfile が ${cur.dockerfiles.length} 本しか見つからない`);
+      assert.deepStrictEqual(issues0701(cur), []);
+    });
+
+    ok('IADR-0701 陰性対照: lock を外す・--locked-mode を外す・条件なしで有効にする・差分の検査を外すと赤', () => {
+      const cur = current0701();
+      const has = (x, re) => issues0701(x).some((e) => re.test(e));
+      const lock = 'src/platform/backend/Services/LlmGateway/packages.lock.json';
+      assert.ok(cur.tracked.includes(lock));
+      assert.ok(has({ ...cur, tracked: cur.tracked.filter((f) => f !== lock) }, /LlmGateway\.csproj: packages\.lock\.json が追跡下に無い/));
+      const dropFlag = (n) => ({ ...cur, restores: cur.restores.map(([k, t]) => [k, k === n ? t.replace(/ --locked-mode/g, '') : t]) });
+      assert.ok(has(dropFlag('src/platform/backend/Services/LlmGateway/Dockerfile'), /LlmGateway\/Dockerfile: --locked-mode の無い restore/));
+      assert.ok(has(dropFlag('ci.yml'), /ci\.yml: --locked-mode の無い restore/));
+      assert.ok(has(dropFlag('integration.yml'), /integration\.yml: --locked-mode の無い restore/));
+      assert.ok(has(dropFlag('security.yml'), /security\.yml: --locked-mode の無い restore/));
+      assert.ok(has({ ...cur, props: cur.props.replace('</Project>', '<PropertyGroup><RestorePackagesWithLockFile>true</RestorePackagesWithLockFile></PropertyGroup>\n</Project>') }, /条件なしで有効/));
+      assert.ok(has({ ...cur, props: cur.props.replace(/<RestorePackagesWithLockFile>true<\/RestorePackagesWithLockFile>/, '') }, /2 ユニットに限って有効になっていない/));
+      const driftLine = /drift="\$\(git status [^\n]*\)"/;
+      assert.ok(driftLine.test(cur.ci));
+      assert.ok(has({ ...cur, ci: cur.ci.replace(driftLine, 'drift=""') }, /lock ファイルの差分を見ていない/));
+      const exclLine = /while read -r _ sub; do excl\+=[^\n]*\n/;
+      assert.ok(exclLine.test(cur.ci));
+      assert.ok(has({ ...cur, ci: cur.ci.replace(exclLine, '') }, /submodule のユニットを外していない/));
+      assert.ok(has({ ...cur, tracked: [...cur.tracked, 'templates/unit-template/backend/Services/SampleService/packages.lock.json'] }, /ユニットの外に lock ファイル/));
+    });
+  }
+
+  // --- NFR(セキュリティ) / IADR-0701: PR の CI へ計画リポジトリを読むトークンを渡さない ---
+  // ci.yml は pull_request でも動く。PLANNING_REPO_TOKEN は develop / main への push のときだけ式で渡し、
+  // PR では空（検査器は unverified・scanned: 0 の exit 0）にする。ジョブ名・起動条件は変えない。
+  {
+    const fsL15 = require('fs');
+    const pathL15 = require('path');
+    const readCiL15 = () => fsL15.readFileSync(pathL15.join(__dirname, '..', '.github/workflows/ci.yml'), 'utf8').replace(/\r\n/g, '\n');
+    const issuesL15 = (text) => {
+      const out = [];
+      const lines = text.split('\n').filter((l) => !/^\s*#/.test(l) && /secrets\.PLANNING_REPO_TOKEN/.test(l));
+      if (lines.length === 0) out.push('ci.yml が PLANNING_REPO_TOKEN を参照していない（push の突合が動かない）');
+      for (const l of lines) {
+        if (!/^\s+PLANNING_REPO_TOKEN: \$\{\{ github\.event_name == 'push' && secrets\.PLANNING_REPO_TOKEN \|\| '' \}\}\s*$/.test(l)) out.push(`ci.yml: push に限らずトークンを渡している（${l.trim()}）`);
+      }
+      const on = (/^on:\n([\s\S]*?)\n(?=\S)/m.exec(text) || [])[1] || '';
+      if (/pull_request_target/.test(on)) out.push('ci.yml: pull_request_target で起動している');
+      return out;
+    };
+
+    ok('IADR-0701: ci.yml は PLANNING_REPO_TOKEN を push のときだけ渡す（PR の CI には渡らない）', () => {
+      assert.deepStrictEqual(issuesL15(readCiL15()), []);
+    });
+
+    ok('IADR-0701 陰性対照: 条件なしで渡す・pull_request でも渡す・pull_request_target で起動すると赤', () => {
+      const text = readCiL15();
+      const cond = "${{ github.event_name == 'push' && secrets.PLANNING_REPO_TOKEN || '' }}";
+      assert.ok(text.includes(cond));
+      assert.ok(issuesL15(text.replace(cond, '${{ secrets.PLANNING_REPO_TOKEN }}')).some((e) => /push に限らず/.test(e)));
+      assert.ok(issuesL15(text.replace(cond, "${{ github.event_name != 'push' && secrets.PLANNING_REPO_TOKEN || '' }}")).some((e) => /push に限らず/.test(e)));
+      assert.ok(issuesL15(text.replace(/^on:\n/m, 'on:\n  pull_request_target:\n')).some((e) => /pull_request_target/.test(e)));
+    });
+  }
+
 };
