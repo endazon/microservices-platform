@@ -344,7 +344,7 @@ t('T-2402-32 バックアップ: イメージは自製・pull しない・タグ
   assert.ok(String(backupC.image).startsWith(repo), 'イメージが microservices-platform/platform-backup-cloud でない');
   assert.strictEqual(backupC.imagePullPolicy, 'Never');
   const pg = /postgres:(\d+\.\d+)-alpine/.exec(dockerCloud)[1];
-  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'RCLONE_VERSION')}`);
+  assert.strictEqual(String(backupC.image).slice(repo.length), `pg${pg}-age${argOf(dockerCloud, 'AGE_VERSION')}-rclone${argOf(dockerCloud, 'APK_RCLONE_VERSION')}`);
 });
 t('T-2402-33 バックアップ: ベースと age の固定はローカルのイメージと同じ（片側だけ上げない）', () => {
   const from = (s) => s.split('\n').find((l) => l.startsWith('FROM '));
@@ -352,9 +352,42 @@ t('T-2402-33 バックアップ: ベースと age の固定はローカルのイ
   for (const n of ['BASE_REGISTRY', 'AGE_VERSION', 'AGE_APK_SHA256_X86_64', 'AGE_APK_SHA256_AARCH64', 'ALPINE_BRANCH']) {
     assert.strictEqual(argOf(dockerCloud, n), argOf(dockerLocal, n), n);
   }
-  assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
-  assert.match(argOf(dockerCloud, 'RCLONE_APK_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_SHA256_X86_64') || '', /^[0-9a-f]{64}$/);
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_SHA256_AARCH64') || '', /^[0-9a-f]{64}$/);
   assert.ok(!dockerCloud.includes('--allow-untrusted'), '署名の検証を外している');
+});
+// NFR-21: ARG・ENV は RUN の環境変数になり、rclone は RCLONE_<旗> を自分の旗として読む（旧の ARG RCLONE_VERSION が --version と読まれ、
+// ビルドの中の `rclone version` が失敗した）。イメージの宣言に RCLONE_ で始まる ARG・ENV を置かない。
+/** Dockerfile の ARG・ENV の名前のうち、rclone が旗・設定として読む接頭辞（RCLONE_）で始まるもの（命令の大小は区別しない）。 */
+const rcloneEnvNames = (src) => src.split('\n')
+  .map((l) => /^\s*(ARG|ENV)\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(l))
+  .filter((m) => m && /^RCLONE_/i.test(m[2]))
+  .map((m) => `${m[1]} ${m[2]}`);
+t('NFR-21 バックアップ: イメージの宣言に RCLONE_ で始まる ARG・ENV が無い（rclone が自分の旗として読み、ビルドの rclone version が落ちる）', () => {
+  assert.deepStrictEqual(rcloneEnvNames(dockerCloud), []);
+  // 陽性対照: 版の ARG は在る（名前を変えただけで、固定は外していない）。
+  assert.match(argOf(dockerCloud, 'APK_RCLONE_VERSION') || '', /^\d+\.\d+\.\d+-r\d+$/);
+  // 陰性対照: 旧の名前（ARG RCLONE_VERSION）と ENV・小文字の命令を検出する。
+  assert.deepStrictEqual(rcloneEnvNames('ARG RCLONE_VERSION=1.75.2-r0\nENV RCLONE_CONFIG_X=y\narg rclone_fast_list=1\nARG APK_RCLONE_VERSION=1'),
+    ['ARG RCLONE_VERSION', 'ENV RCLONE_CONFIG_X', 'arg rclone_fast_list']);
+});
+// NFR-21: CI（images.yml）がクラウドのバックアップのイメージをビルドし、中の age・rclone・pg_dump をネット無しで確かめ、
+// 必須チェックの集約ジョブ image-build がその結果を拾う（ビルドできないイメージを見過ごさない）。
+t('NFR-21 バックアップ: CI の images.yml がクラウドのイメージをビルドして中身をネット無しで確かめ、image-build が結果を拾う', () => {
+  const yml = read('.github/workflows/images.yml');
+  const at = yml.indexOf('\n  build-cloud-backup:\n');
+  assert.ok(at >= 0, 'images.yml に build-cloud-backup のジョブが無い');
+  const job = yml.slice(at, yml.indexOf('\n  image-build:\n'));
+  assert.ok(job.includes('docker build --progress plain -f deploy/cloud/backup/image/Dockerfile -t platform-backup-cloud:ci deploy/cloud/backup/image'), 'クラウドのイメージをビルドしない');
+  assert.ok(!/docker push|push:\s*true/.test(job), 'push している');
+  for (const tool of ['--entrypoint age platform-backup-cloud:ci --version', '--entrypoint rclone platform-backup-cloud:ci version', '--entrypoint pg_dump platform-backup-cloud:ci --version']) {
+    assert.ok(job.includes(`docker run --rm --network none ${tool}`), `ネット無しの確かめが無い: ${tool}`);
+  }
+  assert.match(job, /if: needs\.changes\.outputs\.build == 'true'/, '起動の条件が build と同じでない');
+  assert.match(yml, /grep -Eq '[^']*\^deploy\/cloud\/backup\/image\/[^']*'/, '変更の判定に deploy/cloud/backup/image/ が無い');
+  const agg = yml.slice(yml.indexOf('\n  image-build:\n'));
+  assert.match(agg, /needs: \[[^\]]*build-cloud-backup[^\]]*\]/, 'image-build が build-cloud-backup を待たない');
+  assert.match(agg, /case "\$BUILD_CLOUD_BACKUP_RESULT" in\n\s+success \| skipped\) ;;\n\s+\*\)[\s\S]{0,200}exit 1/, 'image-build が失敗を拾わない');
 });
 t('T-2402-34 バックアップ: 本体スクリプトはローカルと同じもの（二重に持たない）', () => {
   const cm = find(bds, 'ConfigMap', 'platform-backup-script');
@@ -759,6 +792,79 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   fs.writeFileSync(tf, test.replace(/exp_alerts:\n[\s\S]*$/, 'exp_alerts: []\n'));
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
+});
+// NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動の繰り返しと、当日の費用の枠の置き場の障害の警報。
+const LLM_RESTART_EXPR = 'changes(max(llm_gateway_start_time_seconds)[30m:1m]) >= 3';
+const LLM_COST_STATE_EXPR = '(sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} offset 10m) > 0)';
+t('IADR-0698 LLM ゲートウェイの再起動の繰り返し（起動の時刻のゲージの変わった回数）と、当日の費用の枠の置き場の障害の警報がある', () => {
+  assert.strictEqual(ruleOf('LlmGatewayRestartLoop').expr, LLM_RESTART_EXPR);
+  assert.match(rules, /alert: LlmGatewayRestartLoop[\s\S]{0,200}labels: \{ severity: warning \}/, '再起動の繰り返しの重大度が warning でない');
+  assert.strictEqual(ruleOf('LlmCostStateUnavailable').expr, LLM_COST_STATE_EXPR);
+  assert.match(rules, /alert: LlmCostStateUnavailable[\s\S]{0,400}labels: \{ severity: critical \}/, '置き場の障害の重大度が critical でない');
+  // ゲージの名前はゲートウェイの定数と同じ（Prometheus 側の名前。{…} の単位は接尾辞にならない）。
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'src/platform/backend/Services/LlmGateway/Common/Observability/LlmGatewayStartMetrics.cs'), 'utf8');
+  assert.match(src, /StartTimeGaugeName = "llm\.gateway\.start_time_seconds"/, 'ゲートウェイのゲージの名前が警報の式と違う');
+  assert.match(src, /unit: "\{unix_second\}"/, 'ゲージの単位が注記（{…}）でない（Prometheus 側の名前に接尾辞が付く）');
+  const limiter = fs.readFileSync(path.join(REPO_ROOT, 'src/platform/backend/Services/LlmGateway/Domain/Limits/LlmCallLimiter.cs'), 'utf8');
+  assert.match(limiter, /KindCostState = "cost_state"/, '判定器の種類の綴りが警報の式と違う');
+});
+t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分に 3 回の再起動で鳴り 2 回では鳴らない・ラベルが変わらなくても数える・置き場の障害だけで鳴る）', () => {
+  need('promtool');
+  const f = path.join(sandbox, 'llm-gateway-state-rules.yml');
+  fs.writeFileSync(f, `groups:\n  - name: llm-gateway-state\n    rules:\n`
+    + `      - alert: LlmGatewayRestartLoop\n        expr: ${JSON.stringify(ruleOf('LlmGatewayRestartLoop').expr)}\n        labels: { severity: warning }\n`
+    + `      - alert: LlmCostStateUnavailable\n        expr: ${JSON.stringify(ruleOf('LlmCostStateUnavailable').expr)}\n        labels: { severity: critical }\n`);
+  // プロセスごとに別のラベル（service.instance.id はプロセスごと）。5 分ずつ動いて替わる。起動の時刻は替わるたびに大きくなる。
+  const proc = (i, from, value) => `      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", instance="p${i}"}'\n        values: '${'_ '.repeat(from)}${value}x4'\n`;
+  const group = (n, alerts) => `  - interval: 1m\n    input_series:\n`
+    + Array.from({ length: n }, (_, i) => proc(i, i * 5, 1000 + i * 300)).join('')
+    + `    alert_rule_test:\n      - eval_time: ${n * 5 - 1}m\n        alertname: LlmGatewayRestartLoop\n        exp_alerts:${alerts}\n`;
+  const fire = '\n          - exp_labels: { severity: warning }';
+  const test = `rule_files:\n  - ${f}\nevaluation_interval: 1m\ntests:\n`
+    + group(4, fire) // 4 回の起動 ＝ 3 回の再起動
+    + group(3, ' []') // 3 回の起動 ＝ 2 回の再起動
+    // ラベルが変わらない（同じ系列の値が替わる）形でも数える。
+    + `  - interval: 1m\n    input_series:\n      - series: 'llm_gateway_start_time_seconds{job="llm-gateway"}'\n        values: '1000x4 1300x4 1600x4 1900x4'\n`
+    + `    alert_rule_test:\n      - eval_time: 19m\n        alertname: LlmGatewayRestartLoop\n        exp_alerts:${fire}\n`
+    // 起動し直さないプロセスは 1 時間動いても鳴らない。
+    + `  - interval: 1m\n    input_series:\n      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", instance="p0"}'\n        values: '1000x60'\n`
+    + `    alert_rule_test:\n      - eval_time: 60m\n        alertname: LlmGatewayRestartLoop\n        exp_alerts: []\n`
+    // 置き場の障害（cost_state）で送らなかった呼び出しがあれば鳴り、費用の上限そのもの（caller_cost）では鳴らない。
+    + `  - interval: 1m\n    input_series:\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
+    + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n`
+    + `  - interval: 1m\n    input_series:\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
+    + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`
+    // 起動の直後の最初の 1 件: 系列が 0 から現れずに 1 で現れ、以後増えない（increase だけでは数えない形）。
+    + `  - interval: 1m\n    input_series:\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", instance="p1"}'\n        values: '_ _ _ _ _ 1x30'\n`
+    + `    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n`
+    // その 1 件のまま 10 分を過ぎ、増えなければ収まる（恒常発火しない）。
+    + `      - eval_time: 30m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`;
+  const tf = path.join(sandbox, 'llm-gateway-state.test.yml');
+  fs.writeFileSync(tf, test);
+  const ok = run('promtool', ['test', 'rules', tf]);
+  assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+  // 陰性対照: 閾値を 1 つ下げた式（2 回の再起動で鳴る）では、2 回の群が落ちる（試験が閾値を見ている）。
+  const rulesText = fs.readFileSync(f, 'utf8');
+  fs.writeFileSync(f, rulesText.replace('>= 3', '>= 2'));
+  const ng = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng.status, 0, '閾値を下げても promtool が通る');
+  // 陰性対照: 初回を拾う右の項を外した式（increase だけ）では、最初の 1 件の群が落ちる。
+  const increaseOnly = 'sum(increase(llm_call_limit_exceeded_total{llm_limit_kind=\\"cost_state\\"}[10m])) > 0';
+  const swapped = rulesText.replace(JSON.stringify(ruleOf('LlmCostStateUnavailable').expr).slice(1, -1), increaseOnly);
+  assert.notStrictEqual(swapped, rulesText, '陰性対照の置換元が無い');
+  fs.writeFileSync(f, swapped);
+  const ng2 = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng2.status, 0, '初回を拾わない式でも promtool が通る');
+  // 陰性対照: 最初の 1 件の期待を反転すると赤になる。
+  fs.writeFileSync(f, rulesText);
+  fs.writeFileSync(tf, test.replace("values: '_ _ _ _ _ 1x30'\n    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n",
+    "values: '_ _ _ _ _ 1x30'\n    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n"));
+  const ng3 = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng3.status, 0, '最初の 1 件の期待を反転しても promtool が通る');
 });
 // NFR-21, IADR-0697: collector が受け取りを拒む・remote write が失敗する・受け取りが 0・送り手が欠ける・系列が多すぎるときの警報。
 const PIPELINE_ALERTS = ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'PrometheusHeadSeriesHigh'];

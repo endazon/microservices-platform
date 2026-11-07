@@ -17,7 +17,11 @@
  *     shim の UseAiStockTradingRabbitMq（Wolverine の規約ルーティング）で、キュー名は `<ServiceName>.<型名>`、
  *     デッドレターは `<キュー>_error`、exchange 名は型の完全名。購読はハンドラ（Wolverine のハンドラ発見の規則）から、
  *     発行は「メッセージ型をそのサービスのコードが作る（new T）」から読む（過大側に倒す。漏れは下の突き合わせで止める）。
- *   - 両方に共通の Wolverine の名前: 共有のデッドレター `wolverine-dead-letter-queue`・応答キュー `wolverine.response.<Guid>`
+ *     NFR-18, IADR-0699: transport の既定のデッドレターも**サービスごと**（`<ServiceName>.dead-letter`。shim の
+ *     ServiceDeadLetterQueueNameFor と CustomizeDeadLetterQueueing。AST:IADR-0636）。キュー・exchange・束ねとも自分の接頭辞の中なので、
+ *     取引ユニットの利用者には共有のデッドレターの権限を与えない（他のサービスの死んだメッセージを読めない・宣言／削除できない）。
+ *   - 基盤（MSP）の Wolverine の名前: 共有のデッドレター `wolverine-dead-letter-queue`（基盤のサービスだけ。ローカルの行）。
+ *   - 両方に共通の Wolverine の名前: 応答キュー `wolverine.response.<Guid>`
  *     （Wolverine が `Guid.NewGuid()` の既定の書式で名付ける。正規表現も Guid の形だけに当てる）・
  *     既定の exchange `amq.default`（リスナーの停止のときに受け取り済みの未処理のメッセージをキューへ戻す送り先。
  *     書けないと戻しが失敗し、取りこぼしが出ることを実ブローカで確かめた）。
@@ -46,8 +50,9 @@ const AST_SHIM_REL = 'backend/TestSupport/AiStockTrading.TestSupport.PlatformShi
 const AST_PIPELINE_REL = 'deploy/helm/ai-stock-trading/files/pipeline.json';
 const AST_CONTRACT_NS = 'AiStockTrading.Shared.Contracts.Events';
 
-// Wolverine が全サービスで宣言・使用する名前（上の注記）。
+// Wolverine が宣言・使用する名前（上の注記）。共有のデッドレターは基盤のサービスだけ（取引ユニットはサービスごと。IADR-0699）。
 const DEAD_LETTER = 'wolverine-dead-letter-queue';
+const AST_SERVICE_DEAD_LETTER_SUFFIX = '.dead-letter';
 const RESPONSE_PREFIX = 'wolverine.response.';
 const DEFAULT_EXCHANGE = 'amq.default';
 // NFR-18, IADR-0691: 応答キューの名前の正規表現。Wolverine（RabbitMqTransport.tryBuildSystemEndpoints）は
@@ -155,6 +160,7 @@ function deriveMsp(row, repoRoot) {
     source: rel,
     queuePrefix: `${row.app}.`,
     deadLetterQueues: false,
+    serviceDeadLetter: null,
     hasListener,
     subscribe: [...listens].sort(),
     publish: [...routes].sort(),
@@ -175,7 +181,14 @@ function assertAstNamingRules(root) {
   const src = fs.readFileSync(path.join(root, AST_SHIM_REL), 'utf8');
   if (!src.includes('return $"{serviceName}.{messageType.Name}";')) fail(`AST ${AST_SHIM_REL}: キュー名の規則（<ServiceName>.<型名>）の字面が見当たらない。導出を見直す`);
   if (!src.includes('return $"{queueName}_error";')) fail(`AST ${AST_SHIM_REL}: デッドレターの規則（<キュー>_error）の字面が見当たらない。導出を見直す`);
+  if (!src.includes(`return $"{serviceName}${AST_SERVICE_DEAD_LETTER_SUFFIX}";`)) {
+    fail(`AST ${AST_SHIM_REL}: サービスごとの既定のデッドレターの規則（<ServiceName>${AST_SERVICE_DEAD_LETTER_SUFFIX}）の字面が見当たらない。導出を見直す`);
+  }
   const code = stripComments(src);
+  // NFR-18, IADR-0699: 規則の関数が在るだけでなく、transport の既定のデッドレターへ実際に当てている（外すと共有の名前を宣言する）。
+  if (!/\.CustomizeDeadLetterQueueing\(\s*new DeadLetterQueue\(\s*ServiceDeadLetterQueueNameFor\(\s*serviceName\s*\)\s*\)\s*\)/.test(code)) {
+    fail(`AST ${AST_SHIM_REL}: transport の既定のデッドレターをサービスごとの名前にしていない（CustomizeDeadLetterQueueing が無い）。共有の名前の権限が要る配線である`);
+  }
   if (!/\.UseConventionalRouting\(/.test(code) || /ExchangeNameForSending|PrefixIdentifiers|IdentifierPrefix/.test(code)) {
     fail(`AST ${AST_SHIM_REL}: exchange 名の規則（規約ルーティングの既定＝型の完全名）が変わった。導出を見直す`);
   }
@@ -405,6 +418,8 @@ function deriveAst(rows, root) {
       source: toPosix(path.relative(root, s.dir)),
       queuePrefix: `${s.serviceName}.`,
       deadLetterQueues: true,
+      // NFR-18, IADR-0699: transport の既定のデッドレター（キュー・同名の exchange）。接頭辞の中にある。
+      serviceDeadLetter: `${s.serviceName}${AST_SERVICE_DEAD_LETTER_SUFFIX}`,
       // 規約ルーティングはハンドラの受ける型ごとにリスナーを立てる。ハンドラが無ければ受信キューも無い。
       hasListener: s.handled.size > 0,
       subscribe: [...s.handled.keys()].sort(),
@@ -428,18 +443,23 @@ function patternsFor(d, { cloud = false } = {}) {
   const q = `${reEscape(d.queuePrefix)}.*`;
   const ex = (xs) => xs.map(reEscape);
   const both = [...new Set([...d.subscribe, ...d.publish])].sort();
+  const shared = d.serviceDeadLetter ? [] : [reEscape(DEAD_LETTER)];
+  if (d.serviceDeadLetter && !d.serviceDeadLetter.startsWith(d.queuePrefix)) {
+    fail(`${d.user}: サービスごとのデッドレター ${d.serviceDeadLetter} が自分の接頭辞 ${d.queuePrefix} の外にある`);
+  }
   return {
-    // 宣言（キュー・exchange）: 自分のキュー・応答キュー・共有のデッドレター・購読と発行の exchange。
+    // 宣言（キュー・exchange）: 自分のキュー・応答キュー・（基盤のサービスだけ）共有のデッドレター・購読と発行の exchange。
+    //   NFR-18, IADR-0699: 取引ユニットのデッドレターはサービスごと（<ServiceName>.dead-letter・<キュー>_error）で、自分のキューの接頭辞に入る。
     //   購読の exchange を含めるのは、購読側の Wolverine が起動時に exchange を passive でなく宣言するためである
     //   （基盤の BindPlatformQueue の DeclareExchange・取引ユニットの規約ルーティング。AutoProvision）。RabbitMQ は在る
     //   exchange の宣言し直しにも configure を求める（実ブローカで確かめた。IADR-0691）。ローカルの行はこのまま。
     //   NFR-18, IADR-0694: クラウドの写しでは購読側が受動で宣言する（AST の IADR-0628）ので、発行する exchange だけにする。
-    configure: alt([q, RESPONSE_PATTERN, reEscape(DEAD_LETTER), ...ex(cloud ? d.publish : both)]),
+    configure: alt([q, RESPONSE_PATTERN, ...shared, ...ex(cloud ? d.publish : both)]),
     // 書く: 自分のキュー（束ねる側）・共有のデッドレター（宣言の x-dead-letter-exchange と束ね）・発行の exchange・
     //   既定の exchange（戻し。NFR-18, IADR-0691: 受信キューを持つ利用者だけ）。
-    write: alt([q, reEscape(DEAD_LETTER), ...(d.hasListener ? [reEscape(DEFAULT_EXCHANGE)] : []), ...ex(d.publish)]),
+    write: alt([q, ...shared, ...(d.hasListener ? [reEscape(DEFAULT_EXCHANGE)] : []), ...ex(d.publish)]),
     // 読む: 自分のキュー（購読）・応答キュー・共有のデッドレター（束ね）・購読の exchange（束ね）。
-    read: alt([q, RESPONSE_PATTERN, reEscape(DEAD_LETTER), ...ex(d.subscribe)]),
+    read: alt([q, RESPONSE_PATTERN, ...shared, ...ex(d.subscribe)]),
   };
 }
 
@@ -464,7 +484,7 @@ function requiredAccess(d, { cloud = false } = {}) {
       add('configure', `${q}_error`, `${t} のデッドレターキューの宣言`);
       add('write', `${q}_error`, `${t} のデッドレター（x-dead-letter-exchange・束ね）`);
       add('read', `${q}_error`, `${t} のデッドレターキューの束ね`);
-    } else {
+    } else if (!d.serviceDeadLetter) {
       add('write', DEAD_LETTER, `${t} の受信キューの x-dead-letter-exchange`);
     }
   }
@@ -472,9 +492,12 @@ function requiredAccess(d, { cloud = false } = {}) {
     add('configure', t, `${t} の exchange の宣言`);
     add('write', t, `${t} の発行`);
   }
-  add('configure', DEAD_LETTER, '共有のデッドレターの宣言');
-  add('write', DEAD_LETTER, '共有のデッドレターの束ね');
-  add('read', DEAD_LETTER, '共有のデッドレターの束ね');
+  // transport の既定のデッドレター（キュー・同名の exchange・束ね）。取引ユニットはサービスごと（IADR-0699）、基盤は共有。
+  const dl = d.serviceDeadLetter || DEAD_LETTER;
+  const which = d.serviceDeadLetter ? 'サービスごとの' : '共有の';
+  add('configure', dl, `${which}デッドレターの宣言`);
+  add('write', dl, `${which}デッドレターの束ね`);
+  add('read', dl, `${which}デッドレターの束ね`);
   add('configure', `${RESPONSE_PREFIX}00000000-0000-0000-0000-000000000000`, '応答キューの宣言');
   add('read', `${RESPONSE_PREFIX}00000000-0000-0000-0000-000000000000`, '応答キューの購読');
   if (d.hasListener) add('write', DEFAULT_EXCHANGE, 'リスナーの停止のときの戻し（既定の exchange）');
@@ -525,22 +548,26 @@ const unEscape = (s) => s.replace(/\\(.)/g, '$1');
 
 /**
  * NFR-18, IADR-0694: ローカルの行（permissions.txt）からクラウドの行を作る。configure の exchange を発行するもの（write に在る exchange）だけにする。
- * 行の形は patternsFor が決める: configure = [キューの接頭辞, 応答キュー, 共有のデッドレター, …exchange]、write = [キューの接頭辞, 共有のデッドレター,
- * (既定の exchange), …発行の exchange]。行だけから作るので、AST の写しが無い checkout でも照合できる（導出からの値との一致は試験が固定する）。
+ * 行の形は patternsFor が決める: configure = [キューの接頭辞, 応答キュー, …exchange]、write = [キューの接頭辞, (既定の exchange), …発行の exchange]。
+ * 取引ユニットの行は共有のデッドレターを持たない（NFR-18, IADR-0699。デッドレターはサービスごとで接頭辞の中）。持っていれば止める。
+ * 行だけから作るので、AST の写しが無い checkout でも照合できる（導出からの値との一致は試験が固定する）。
  */
 function cloudRow(row) {
   const conf = alternatives(row.configure);
   const write = new Set(alternatives(row.write));
-  const fixed = conf.slice(0, 3);
-  if (!fixed[0].endsWith('\\..*') || fixed[1] !== RESPONSE_PATTERN || fixed[2] !== reEscape(DEAD_LETTER)) {
-    fail(`${row.user}: configure の先頭が（キューの接頭辞・応答キュー・共有のデッドレター）でない。cloudRow を見直す`);
+  for (const [k, xs] of [['configure', conf], ['write', [...write]], ['read', alternatives(row.read)]]) {
+    if (xs.includes(reEscape(DEAD_LETTER))) fail(`${row.user}: ${k} に共有のデッドレターがある（取引ユニットのデッドレターはサービスごと。IADR-0699）`);
   }
-  return { ...row, configure: alt([...fixed, ...conf.slice(3).filter((x) => write.has(x))]) };
+  const fixed = conf.slice(0, 2);
+  if (!fixed[0].endsWith('\\..*') || fixed[1] !== RESPONSE_PATTERN) {
+    fail(`${row.user}: configure の先頭が（キューの接頭辞・応答キュー）でない。cloudRow を見直す`);
+  }
+  return { ...row, configure: alt([...fixed, ...conf.slice(2).filter((x) => write.has(x))]) };
 }
 
-/** NFR-18, IADR-0694: 購読される exchange（クラウドの行の read の exchange。キュー・応答キュー・共有のデッドレターを除く）。 */
+/** NFR-18, IADR-0694: 購読される exchange（クラウドの行の read の exchange。キューの接頭辞・応答キューを除く）。 */
 function subscribedExchanges(row) {
-  return alternatives(row.read).slice(3).map(unEscape);
+  return alternatives(row.read).slice(2).map(unEscape);
 }
 
 /**
@@ -565,6 +592,7 @@ function renderCloud(rows, users) {
     '# クラウドのブローカは段 2（narrow）だけで動く。行の無いユーザーには権限を付けない（vhost 全体へ倒さない）。',
     '# NFR-18, IADR-0694: クラウドでは購読側が購読の exchange を宣言しないので、configure の exchange は発行するものだけ（ローカルの行との違い）。',
     '#   exchanges.json は、起動の直後の初期化が利用者の権限を当てる前に宣言する exchange（購読される exchange の和）。',
+    '# NFR-18, IADR-0699: デッドレターはサービスごと（<ServiceName>.dead-letter・<キュー>_error。接頭辞の中）。共有のデッドレターの権限は誰にも無い。',
     'apiVersion: v1',
     'kind: ConfigMap',
     'metadata:',
@@ -652,7 +680,7 @@ function main(argv) {
 if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = {
-  GenError, derive, generate, patternsFor, requiredAccess, readPermissions, readUsers, render, stripComments, cloudRow, subscribedExchanges,
+  GenError, derive, generate, patternsFor, requiredAccess, assertAstNamingRules, AST_SHIM_REL, readPermissions, readUsers, render, stripComments, cloudRow, subscribedExchanges,
   cloudExchangeDefinitions,
-  DEAD_LETTER, RESPONSE_PREFIX, RESPONSE_PATTERN, DEFAULT_EXCHANGE, PERMS_REL, USERS_REL, CLOUD_PERMS_REL, renderCloud,
+  DEAD_LETTER, AST_SERVICE_DEAD_LETTER_SUFFIX, RESPONSE_PREFIX, RESPONSE_PATTERN, DEFAULT_EXCHANGE, PERMS_REL, USERS_REL, CLOUD_PERMS_REL, renderCloud,
 };

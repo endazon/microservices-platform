@@ -12,6 +12,7 @@
 | 稼働中の realm へ、取り込み元に在って稼働に無い機密クライアントだけを足す Job（[IADR-0700](../../.ai-context/adr/IADR-0700_cloud-ast-per-service-s2s-clients.md)） | `keycloak-clients/` |
 | OpenTelemetry の collector（メトリクスは Prometheus へ。受けるのは OTLP を送る Pod だけ・gRPC だけ。[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
+| LLM ゲートウェイの当日の費用の枠（再起動を越えて残す。PVC `llmgateway-service-state`。[IADR-0698](../../.ai-context/adr/IADR-0698_llm-daily-cost-state-persistence.md)） | `values-cloud.yaml`（`services.llmgateway.persistence`） |
 | 秘匿管理（OpenBao。本番の init・raft）と、OpenBao から Secret へ写す ESO | `vault/`（`vault/eso/`・`vault/*.sh`） |
 | 到達の制限（入り・出の既定拒否と要る組だけの許可） | `infra/networkpolicy.yaml`（MSP の名前空間の入り・出も。chart は NetworkPolicy を描かない） |
 
@@ -154,6 +155,14 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 
 ## 3. 配備の順序
 
+### 前提条件（稼働の前にオーナーが行う）
+
+- 🔴 **LLM の提供元のコンソールで、組織（API キーの属するワークスペース）の支出上限を設定する。** ゲートウェイの当日の費用の上限
+  （§4「段 2 の切り替え」）はゲートウェイを通る呼び出しにしか効かず、ゲートウェイの不具合・鍵の漏れ・単価表の誤りには効かない。
+  提供元の支出上限は、それらに対する最後の歯止めである。**値はオーナーが決める**（ここには書かない）。設定したこと（日付・設定した人）は運用の記録に残す。
+  支出上限に達すると提供元が呼び出しを拒むので、ゲートウェイは上流の失敗として `Sent=false` を返す。
+- 設定するまで、クラウドの LLM ゲートウェイを稼働させない（API キーを OpenBao へ入れない）。
+
 手順の詳細（鍵の受け渡し・再起動・作り直し）は[秘匿管理の手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md)。
 スクリプトはどれも `--live` が無ければ何もしない。**秘密の値を引数・環境変数・ディスクに置かない**（age の復号はパイプで Pod の標準入力へだけ流す）。
 
@@ -180,6 +189,7 @@ kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ�
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
 bash deploy/cloud/db-users/ast-db-users.sh --live apply              # 取引ユニットの DB のサービスごとの利用者（Job。値は手元へ来ない）
+. scripts/lib/recreate-strategy.sh && reconcile_recreate_strategy microservices-platform llmgateway-service   # 既存の RollingUpdate の値を消す（冪等。新規は何もしない）
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
@@ -246,12 +256,18 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | LLM ゲートウェイの経路の設定の検査 | `Llm__RouteValidation__Mode=Fail`（不足があれば起動しない） | `values-cloud.yaml` |
 | LLM ゲートウェイの呼び手ごとの許可表 | `Llm__CallerPolicy__Mode=Enforce`（表の外は 403） | 同上 |
 | LLM ゲートウェイの入力・要求数・費用の上限 | `Llm__CallLimits__Mode=Enforce`（超えたら送らない）。当日の費用の上限は全呼び手の合計で 1 日 20 USD（取引ユニットの呼び手 18・既定 0.5。UTC の日）。既定の金額が無ければ起動しない | 同上 |
+| LLM ゲートウェイの当日の費用の枠の置き場 | `Llm__CallLimits__SpendStore__Path`（PVC `llmgateway-service-state` の上のファイル。再起動の後は前回の値を読み込んでから判定する。読めない・書けない間は費用を数える呼び出しを送らない）。1 レプリカ・Recreate | 同上 |
 
 - 既定の描画とローカル（`values-local.yaml`・`deploy/local`）は段 1 のまま（`scripts/deploy-cloud.test.js` が固定する）。
 - 🔴 **購読側の exchange の configure を外した表の適用の順序**: 取引ユニットの「購読側は購読の exchange を受動で宣言する」変更
   （取引ユニットの chart の `global.rabbitmq.subscribedExchanges: Passive`）のマージと、**取引ユニットのイメージの更新の後に**、
   ConfigMap `rabbitmq-permissions`・`rabbitmq-boot` を当ててブローカを作り直す（`kubectl -n platform-infra rollout restart deploy/rabbitmq`）。
   先に当てると、従来の（非受動で宣言する）購読側の Pod は起動できない（configure が拒まれる）。戻すときは、この表を前の版へ戻してブローカを作り直す。
+- 🔴 **共有のデッドレターを外した表の適用の順序**（[IADR-0699](../../.ai-context/adr/IADR-0699_rabbitmq-per-service-dead-letter.md)）: 取引ユニットの
+  「デッドレターをサービスごと（`<ServiceName>.dead-letter`）にする」変更を含むイメージを**全 11 サービスに当てた後に**、同じ手順で表を当ててブローカを作り直す。
+  先に当てると、旧のイメージの Pod は共有のデッドレター（`wolverine-dead-letter-queue`）の宣言が拒まれ、起動できない。デッドレターは各サービスが自分の
+  接頭辞の中で宣言する（定義で先に作らない）。旧の共有のデッドレターのキューの扱い（件数を読みだけで確かめ、空なら消す）は取引ユニットの手順書
+  （`docs/operations/broker-per-service-dead-letter-runbook.md`）。戻すときは、この表を前の版へ戻してブローカを作り直す。
 
 ## 5. 確かめ方（クラスタに触れない）
 

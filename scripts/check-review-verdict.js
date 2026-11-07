@@ -331,10 +331,13 @@ const NOT_READ_NEGATED = /^(?:の)?(?:ファイル|もの|箇所|部分|項目)?
 /**
  * 生成物の名前（除外してよいもの）。プロンプトの【検証の下限】の例と対にして直す。
  * 本リポの生成物: orval の生成物（`src/<unit>/frontend/src/lib/api/generated/` 配下）・Lingui のカタログ（`messages.ts` / `messages.po`）・
- * `pnpm-lock.yaml`・`CHANGELOG.md`・EF マイグレーションの `*.Designer.cs` / `*ModelSnapshot.cs`・`docs/api/openapi.yaml`。
+ * `pnpm-lock.yaml`・`CHANGELOG.md`・EF マイグレーションの `*.Designer.cs` / `*ModelSnapshot.cs`・`docs/api/openapi.yaml`・
+ * ブローカの権限の表（`deploy/local/rabbitmq-setup/permissions.txt`・`deploy/cloud/infra/rabbitmq-permissions.yaml`）。
+ * NFR-18, IADR-0699: 権限の表は `gen-rabbitmq-permissions.js --write` の生成物で、1 行が数千字の正規表現になる（行単位で読み切れない）。
+ * 中身は CI の一致検査（同じ生成器の既定の照合と rabbitmq-permissions.test.js）がコードからの導出と突き合わせて守る。パスを名指しで足す（広げない）。
  */
 const GENERATED_TOKENS =
-  /[\w.*/-]*Designer\.cs|[\w.*/-]*ModelSnapshot(?:\.cs)?|messages\.(?:ts|po)|CHANGELOG\.md|pnpm-lock\.yaml|openapi\.yaml|[\w.*/-]*api\/generated\/[\w.*/-]*/g;
+  /[\w.*/-]*Designer\.cs|[\w.*/-]*ModelSnapshot(?:\.cs)?|messages\.(?:ts|po)|CHANGELOG\.md|pnpm-lock\.yaml|openapi\.yaml|[\w.*/-]*api\/generated\/[\w.*/-]*|(?:deploy\/local\/)?rabbitmq-setup\/permissions\.txt|(?:deploy\/cloud\/infra\/)?rabbitmq-permissions\.yaml/g;
 const GENERATED_WORD = /生成物|自動生成|Designer|ModelSnapshot|orval/;
 /** 生成物の名前を除いた後に残っていれば「生成物以外も並べた文」と読む語（テスト・文書・本体など）。 */
 const NON_GENERATED_TARGET = /テスト|Tests?\b|docs|文書|仕様|IADR|ADR|本体|README|helm|workflow|ワークフロー|\.(?:cs|tsx?|jsx?|ya?ml|md|json|sh)\b/i;
@@ -875,6 +878,16 @@ function selfTest() {
     const line = '`Designer.cs` と `ModelSnapshot` は生成物なので読んでいない。要点だけ確認した `Designer.cs` もある。';
     assert.deepStrictEqual(findFloorViolations(review(`変更 5 ファイル中 3 ファイルを読んだ（生成物 2 ファイルを除外）。${line}`), []), []);
     assert.strictEqual(findFloorViolations(review(`変更 5 ファイル中 5 ファイルを読んだ（生成物の除外なし）。${line}`), []).length, 1);
+  });
+
+  T('下限: ブローカの権限の表（生成物）だけを読み切れない文は K>0 の申告があれば緑、K の申告が無ければ赤（IADR-0699）', () => {
+    const line = '`deploy/local/rabbitmq-setup/permissions.txt` と `deploy/cloud/infra/rabbitmq-permissions.yaml` は生成物なので差分の全行は読んでいない。';
+    assert.deepStrictEqual(findFloorViolations(review(`変更 9 ファイル中 7 ファイルを読んだ（生成物 2 ファイルを除外: 権限の表）。${line}`), []), []);
+    assert.strictEqual(findFloorViolations(review(`変更 9 ファイル中 9 ファイルを読んだ（生成物の除外なし）。${line}`), []).length, 1);
+    // 名指しのパスだけ。似た名前の別ファイル（権限の生成器・試験）は生成物に当たらない。
+    const g = new RegExp(`^(?:${GENERATED_TOKENS.source})$`);
+    for (const f of ['deploy/local/rabbitmq-setup/permissions.txt', 'deploy/cloud/infra/rabbitmq-permissions.yaml']) assert.ok(g.test(f), f);
+    for (const f of ['scripts/gen-rabbitmq-permissions.js', 'scripts/rabbitmq-permissions.test.js', 'deploy/cloud/infra/rabbitmq.yaml', 'deploy/local/rabbitmq-setup/users.txt']) assert.ok(!g.test(f), f);
   });
 
   T('下限: 作業ツリーが PR 版と違い、同じ head の CI scripts-tests が success なら scripts.test.js の記載が無くても緑（#2184）', () => {

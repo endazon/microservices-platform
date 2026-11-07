@@ -18636,7 +18636,7 @@ server.listen(0, '127.0.0.1', async () => {
       for (const word of ['変更 N ファイル中 M ファイルを読んだ', '生成物 K ファイルを除外', 'check-review-verdict.js', '「読んだ」の定義', '確認できたこと', '🔍 実行できなかったこと', 'バイナリ（PNG などの画像）', '「画像」「PNG」「バイナリ」']) {
         if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
       }
-      for (const gen of ['pnpm-lock.yaml', 'messages.po', 'CHANGELOG.md', '*.Designer.cs', '*ModelSnapshot.cs', 'src/<unit>/frontend/src/lib/api/generated/']) {
+      for (const gen of ['pnpm-lock.yaml', 'messages.po', 'CHANGELOG.md', '*.Designer.cs', '*ModelSnapshot.cs', 'src/<unit>/frontend/src/lib/api/generated/', 'deploy/local/rabbitmq-setup/permissions.txt', 'deploy/cloud/infra/rabbitmq-permissions.yaml']) {
         if (!block.includes(gen)) problems.push(`【検証の下限】節の生成物の例に「${gen}」が無い`);
         else if (!new RegExp(GENERATED_TOKENS.source).test(gen.replace('<unit>', 'platform') + 'x.ts')) problems.push(`生成物「${gen}」が検査器の GENERATED_TOKENS に当たらない`);
       }

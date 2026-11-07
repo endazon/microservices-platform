@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-18, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0692, IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677, IADR-0678]
-specs: [20261107_cloud-llm-cost-cap-and-k3s-pin, 20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check, 20261105_2404_llm-gateway-call-limits]
+iadrs: [IADR-0698, IADR-0692, IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677, IADR-0678]
+specs: [20261107_llm-cost-cap-persistence, 20261107_cloud-llm-cost-cap-and-k3s-pin, 20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check, 20261105_2404_llm-gateway-call-limits]
 issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, #2411, #2404, planning#783]
 -->
 
@@ -41,6 +41,8 @@ issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #211
 | `llm.budget.monthly_limit` | 観測ゲージ | `{currency}` | `llm_budget_monthly_limit` | **用途別の月次予算の上限**（設定 `Llm:Budget:MonthlyLimits`。**既定なし**。設定された用途だけが系列を持つ） |
 | `llm.call_limit.exceeded.total` | Counter | `{completion}` | `llm_call_limit_exceeded_total` | **送る前の上限を超えた呼び出し**（§送る前の上限。`report` は送った・`enforce` は送らなかった） |
 | `llm.call_limit.unpriced_estimate.total` | Counter | `{completion}` | `llm_call_limit_unpriced_estimate_total` | **費用の上限の判定で、単価表に無いモデルを表に無いモデル用の単価で見積もった件数**（0 が正常） |
+| `llm.call_limit.state_save.duration` | Histogram | `s` | `llm_call_limit_state_save_duration_seconds` | **当日の費用の枠を置き場へ書いた所要時間**（`llm.result=ok` / `error`。判定の錠の中で同期に走るので p99 を見る。置き場がプロセス内だけなら出さない） |
+| `llm.gateway.start_time_seconds` | 観測ゲージ | `{unix_second}` | `llm_gateway_start_time_seconds` | **ゲートウェイのプロセスが起動した時刻**（UNIX 秒）。値の変わった回数が起動の回数（短い間の再起動の繰り返しの警報に使う）。起動の直後に 1 回送り出す |
 
 🔴 **上限のゲージは金額を設定しない限り系列を持たない。** 金額は所有者が決める値であり、実装は既定を置かない。
 上限アラート `LlmMonthlyBudgetExceeded` は直近 30 日の `llm_cost_total` をこのゲージと用途・通貨で比べるため、
@@ -204,6 +206,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 | `purpose_rate` | 呼び手×用途の直近 60 秒の件数が `PurposeRequestsPerMinute` 未満 | 120 |
 | `caller_cost` | 呼び手の当日（UTC）の費用＋その呼び出しの見込み額が `DailyCostLimit` 以下 | **なし**（所有者が設定） |
 | `purpose_cost` | 呼び手×用途の当日の費用＋見込み額が `PurposeDailyCostLimits[用途]` 以下 | **なし**（所有者が設定） |
+| `cost_state` | 当日の費用の枠を置き場から読めた・置き場へ書けた（費用の上限を持つ呼び手だけ） | — |
 
 - 呼び手は**検証済みのトークンのクライアント識別子**（`llm_caller`）、用途は本書の属性と同じ正規化（未知は `other`）で数える。
 - 合成監視の呼び出しも上限には数える（費用の計上から外すこととは別である）。
@@ -213,7 +216,12 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 - 🔴 **段**（`Llm:CallLimits:Mode`）: 既定 `Report` は判定して数えるだけで**送信を止めない**。`Enforce` は超えた呼び出しを送らず、
   `Sent=false`・`FailureKind=limit_exceeded` で返す（`llm_completion_total{llm_result="limit_exceeded"}` にも数える）。
   **`Enforce` へ切り替える前に、`llm_call_limit_exceeded_total{llm_limit_mode="report"}` が想定外の呼び手で増えていないことを確かめる。**
-- 状態はレプリカごと・プロセス内である（再起動で当日の費用の枠は 0 に戻る）。HPA の既定では 2〜4 レプリカで動くので、実効の上限は設定値のレプリカ数倍になる。
+- 要求数の窓はレプリカごと・プロセス内である（再起動で 0 に戻る）。HPA の既定では 2〜4 レプリカで動くので、実効の上限は設定値のレプリカ数倍になる。
+- 🔴 **当日の費用の枠は、置き場（`Llm:CallLimits:SpendStore:Path`）を与えるとそのファイルに残り、再起動を越えて引き継ぐ**
+  （［2026-11-07］。クラウドは PVC の上。与えなければ従来どおりプロセス内で、再起動で 0 に戻る）。
+  - 起動の後は前回の値を読み込んでから判定する。**読めない・書けない間、`Enforce` は費用の上限を持つ呼び手の呼び出しを送らない**
+    （種類 `cost_state`。黙って枠を 0 に戻す側へは倒さない）。`Report` は送って数える。
+  - 書き手は 1 つだけ（ファイルの排他の鍵）。置き場を持つ構成は 1 レプリカ・Recreate に限る（chart が描画で止める）。
 
 ## 監視観点
 
@@ -225,6 +233,9 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 | モデル構成の変化 | モデル別の費用 | 上位モデルの比率が上がると回数が同じでも費用は増える |
 | 用途の定義漏れ | `llm_purpose="other"` の増加 | 定義していない用途が来ている（ルーティングが既定へ落ちている） |
 | 送る前の上限 | `llm_call_limit_exceeded_total` の増加 | `report` なら「止めていたら止まった」呼び出し。呼び手・種類ごとに、上限が低すぎるのか呼び出しが多すぎるのかを見分ける |
+| 費用の枠の置き場 | `llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}` > 0 | 置き場を扱えず、`Enforce` では呼び出しを送っていない。ゲートウェイのログと置き場のボリュームを見る |
+| 費用の枠の保存の遅さ | `histogram_quantile(0.99, sum by (le) (rate(llm_call_limit_state_save_duration_seconds_bucket[1h])))` | 0.1 秒を超えたら、警報を足すか書き込みを錠の外へ出すかを判断する（今は警報を置かない） |
+| 再起動の繰り返し | `changes(max(llm_gateway_start_time_seconds)[30m:1m])` | 短い間に何度も起動し直している（起動で止まる理由をログで見る） |
 
 ## 本仕様書が扱わないこと
 

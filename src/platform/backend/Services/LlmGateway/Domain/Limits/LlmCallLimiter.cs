@@ -1,4 +1,5 @@
 using LlmGateway.Common.Observability;
+using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Pricing;
 using LlmGateway.Domain.Routing;
 using Microsoft.Extensions.Options;
@@ -15,7 +16,11 @@ namespace LlmGateway.Domain.Limits;
 // 🔴 **合成監視の標識が付いた呼び出しも数える。** 費用の計上から外すこと（IADR-0378）と上限から外すことは別である。
 // 🔴 **段 1（Report）は送信を止めない。** 止めるのは Enforce のときだけ（IADR-0678 決定 4）。
 //
-// 状態はプロセス内（IADR-0678 決定 5・残余 1）。鍵の数は「呼び手 × 正規化した用途」で閉じる。
+// 要求数の窓はプロセス内（IADR-0678 決定 5）。鍵の数は「呼び手 × 正規化した用途」で閉じる。
+// 🔴 NFR-18, NFR-21, IADR-0698: **当日の費用の枠は置き場（ILlmSpendStore）に残し、再起動を越えて引き継ぐ。**
+//   - 前回の値を読めるまでは、費用の上限を持つ呼び手の呼び出しを段 2 で送らない（種類 cost_state。fail-closed）。
+//   - 見込み額の予約を置き場へ書けなければ、段 2 では予約を戻して送らない（送ってから書けないと、再起動で消える消費が生まれる）。
+//   - 実額への置き換え・戻しを書けなかったときは、手元の値は正しいまま次の書き込みで追いつく（置き場には予約が残る＝多めの側）。
 public sealed class LlmCallLimiter(
     IOptionsMonitor<LlmCallLimitOptions> options,
     IOptionsMonitor<LlmRoutingOptions> routing,
@@ -23,17 +28,20 @@ public sealed class LlmCallLimiter(
     TimeProvider clock,
     LlmCallLimitMetrics metrics,
     LogOccurrenceThrottle logThrottle,
-    ILogger<LlmCallLimiter> logger)
+    ILogger<LlmCallLimiter> logger,
+    ILlmSpendStore store)
 {
     public const string UnknownCaller = "unknown";
 
-    // 種類（llm.limit.kind）の値域。6 値で閉じる。
+    // 種類（llm.limit.kind）の値域。7 値で閉じる（cost_state は IADR-0698）。
     public const string KindMaxTokens = "max_tokens";
     public const string KindPromptLength = "prompt_length";
     public const string KindCallerRate = "caller_rate";
     public const string KindPurposeRate = "purpose_rate";
     public const string KindCallerCost = "caller_cost";
     public const string KindPurposeCost = "purpose_cost";
+    // 当日の費用の枠を置き場から読めない・置き場へ書けない（IADR-0698。段 2 では送らない）。
+    public const string KindCostState = "cost_state";
 
     public const string ModeReport = "report";
     public const string ModeEnforce = "enforce";
@@ -43,6 +51,8 @@ public sealed class LlmCallLimiter(
     private readonly object _gate = new();
     private readonly Dictionary<string, Queue<DateTimeOffset>> _rate = new(StringComparer.Ordinal);
     private readonly Dictionary<string, CostBucket> _cost = new(StringComparer.Ordinal);
+    // 置き場の前回の値を読み込んだか（読み込むまでは置き場へ書かない。書くと前回の値を消してしまう）。
+    private bool _stateLoaded;
 
     private sealed class CostBucket
     {
@@ -81,12 +91,16 @@ public sealed class LlmCallLimiter(
         var enforce = o.Mode == LlmCallLimitMode.Enforce;
         lock (_gate)
         {
+            // IADR-0698: 費用を数える呼び出しは、前回の値を読めるまで判定できない（読めない＝段 2 では送らない）。
+            var stateReady = estimate is null || EnsureStateLoaded(today);
+            if (!stateReady) exceeded.Add(KindCostState);
+
             if (limits.RequestsPerMinute is { } callerRpm && CountRecent(callerKey, now) >= callerRpm)
                 exceeded.Add(KindCallerRate);
             if (limits.PurposeRequestsPerMinute is { } purposeRpm && CountRecent(purposeKey, now) >= purposeRpm)
                 exceeded.Add(KindPurposeRate);
 
-            if (estimate is { } est)
+            if (estimate is { } est && stateReady)
             {
                 if (limits.DailyCostLimit is { } callerCap && Spent(callerKey, today) + est > callerCap)
                     exceeded.Add(KindCallerCost);
@@ -96,15 +110,25 @@ public sealed class LlmCallLimiter(
             }
 
             // 段 2 で止めた呼び出しは枠を消費しない（IADR-0678 決定 4）。
+            if (!(enforce && exceeded.Count > 0) && estimate is { } reserve)
+            {
+                AddCost(callerKey, today, reserve);
+                AddCost(purposeKey, today, reserve);
+                // IADR-0698: 送る前に予約を置き場へ書く。書けなければ段 2 では予約を戻して送らない。
+                if (stateReady && !TryPersist(today))
+                {
+                    exceeded.Add(KindCostState);
+                    if (enforce)
+                    {
+                        AddCost(callerKey, today, -reserve);
+                        AddCost(purposeKey, today, -reserve);
+                    }
+                }
+            }
             if (!(enforce && exceeded.Count > 0))
             {
                 Enqueue(callerKey, now);
                 Enqueue(purposeKey, now);
-                if (estimate is { } reserve)
-                {
-                    AddCost(callerKey, today, reserve);
-                    AddCost(purposeKey, today, reserve);
-                }
             }
         }
 
@@ -160,7 +184,71 @@ public sealed class LlmCallLimiter(
                 var delta = admission.ReservedDay == today ? actual - reserved : actual;
                 AddCost(key, today, delta);
             }
+            // IADR-0698: 書けなくても手元の値は正しい。置き場には予約が残り（多めの側）、次の書き込みで追いつく。
+            if (_stateLoaded) TryPersist(today);
         }
+    }
+
+    // IADR-0698: 起動の直後に前回の値を読む（読めなくても起動は止めない。読めるまで段 2 は費用を数える呼び出しを送らない）。
+    public bool TryLoadState()
+    {
+        lock (_gate) return EnsureStateLoaded(DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime));
+    }
+
+    // 真なら置き場の前回の値を読み込み済み（以後は手元の値が正）。_gate の内側で呼ぶ。
+    private bool EnsureStateLoaded(DateOnly today)
+    {
+        if (_stateLoaded) return true;
+        try
+        {
+            var snapshot = store.Load();
+            // 前回の値は当日の分だけを引き継ぐ（前の日の値は新しい日の枠に入らない）。読む前に手元で数えた分（段 1）は足し合わせる。
+            if (snapshot is { } s && s.Day == today)
+                foreach (var (key, total) in s.Totals)
+                    AddCost(key, today, total);
+            _stateLoaded = true;
+            logger.LogInformation(
+                "LLM の当日の費用の枠を読み込んだ（durable={Durable} day={Day} keys={Keys}。IADR-0698）",
+                store.IsDurable, today, snapshot is { } loaded && loaded.Day == today ? loaded.Totals.Count : 0);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogStateFailure("load", ex);
+            return false;
+        }
+    }
+
+    // 当日の値を丸ごと置き場へ書く。_gate の内側で呼ぶ。
+    private bool TryPersist(DateOnly today)
+    {
+        var started = clock.GetTimestamp();
+        try
+        {
+            var totals = new Dictionary<string, decimal>(StringComparer.Ordinal);
+            foreach (var (key, bucket) in _cost)
+                if (bucket.Day == today && bucket.Total > 0m)
+                    totals[key] = bucket.Total;
+            store.Save(new LlmSpendSnapshot(today, totals));
+            if (store.IsDurable) metrics.RecordStateSave(clock.GetElapsedTime(started).TotalSeconds, ok: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            if (store.IsDurable) metrics.RecordStateSave(clock.GetElapsedTime(started).TotalSeconds, ok: false);
+            LogStateFailure("save", ex);
+            return false;
+        }
+    }
+
+    private void LogStateFailure(string operation, Exception ex)
+    {
+        if (!logThrottle.ShouldLog($"call-limit-state|{operation}", out var suppressed))
+            return;
+        logger.LogError(
+            "LLM の当日の費用の枠を置き場で扱えない: operation={Operation} error={ErrorType} suppressedSinceLast={Suppressed} "
+            + "（段 2 では費用の上限を持つ呼び手の呼び出しを送らない。IADR-0698）: {Message}",
+            operation, ex.GetType().Name, suppressed, LlmRouter.Sanitize(ex.Message));
     }
 
     private int CountRecent(string key, DateTimeOffset now)

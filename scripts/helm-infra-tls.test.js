@@ -184,7 +184,8 @@ ok('変異: 検証の部分を外す・既定のストアを落とす・マウ�
   assert.ok(mutate('"/etc/ssl/certs:/etc/platform-infra-ca"', '"/etc/platform-infra-ca"').some((v) => /SSL_CERT_DIR/.test(v)), '既定のストアを落とした変異を捕まえない');
   // ［2026-11-05 / #2401］条件にサービスの受け口の証明書（$tlsListen）と読み取り専用のルート（$roRoot）が加わった。
   //   この試験の描画（既定の values）はどちらも書かないので、CA の条件を外せば従来どおりマウントが消える（同じ意味の変異）。
-  assert.ok(mutate('{{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot }}\n          volumeMounts:', '{{- if or $pipelineMount $vaultToken $mcpPublication $tlsListen $roRoot }}\n          volumeMounts:')
+  // ［2026-11-07 / IADR-0698］状態のボリューム（$persist）も加わった。既定の values は書かないので、同じ意味の変異のまま。
+  assert.ok(mutate('{{- if or $pipelineMount $vaultToken $infraCaMount $mcpPublication $tlsListen $roRoot $persist }}\n          volumeMounts:', '{{- if or $pipelineMount $vaultToken $mcpPublication $tlsListen $roRoot $persist }}\n          volumeMounts:')
     .some((v) => /マウントしない/.test(v)), 'マウントを外した変異を捕まえない');
 });
 

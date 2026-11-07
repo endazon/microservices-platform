@@ -6447,6 +6447,10 @@ function chartRecreateDeployments() {
     for (const doc of readAt(tplDir, name).split(/^---\s*$/m)) {
       if (!/^kind:\s*Deployment\s*$/m.test(doc)) continue;
       if (!/^\s{2}strategy:\s*\n(?:\s{4}#.*\n)*\s{4}type:\s*Recreate\s*$/m.test(doc)) continue;
+      // IADR-0698: サービスの汎用の Deployment は services.<名>.persistence のときだけ Recreate になる（名前は描画で決まる）。
+      //   ローカル（values-local）は persistence を書かないので起動器の列挙の外（下の試験が values-local を突き合わせる）。
+      //   クラウドは手順書（deploy/cloud/README.md §3）が同じ lib で寄せる。
+      if (name === 'deployment.yaml' && /\{\{- if \$persist \}\}\s*\n(?:\s*#.*\n)*\s{2}strategy:/.test(doc)) continue;
       names.push((/^metadata:\s*\n\s+name:\s*(\S+)/m.exec(doc) || [])[1] || `?(${name})`);
     }
   }
@@ -6467,6 +6471,15 @@ ok('#1688: 起動器の列挙（RECREATE_DEPLOYMENTS）はチャートで Recrea
     '起動器の列挙がチャートの Recreate 全件と一致しない。Recreate を足した Deployment を列挙し忘れると、' +
       '既存リリースへの upgrade が rollingUpdate の残りで落ちる（#1688）',
   );
+});
+
+ok('IADR-0698: ローカル（values-local）はサービスの persistence を書かない（書くと汎用の Deployment が Recreate になり、起動器の列挙の外で upgrade が落ちる）。クラウドの手順書は helm の前に同じ lib で寄せる', () => {
+  assert.ok(!/^\s+persistence:/m.test(readAt(REPO_ROOT, 'deploy', 'local', 'values-local.yaml')), 'values-local.yaml に persistence がある（起動器の RECREATE_DEPLOYMENTS に足す）');
+  const readme = readAt(REPO_ROOT, 'deploy', 'cloud', 'README.md');
+  const at = (re) => readme.split('\n').findIndex((l) => re.test(l));
+  const reconcile = at(/reconcile_recreate_strategy microservices-platform llmgateway-service/);
+  const upgrade = at(/^helm upgrade --install msp /);
+  assert.ok(reconcile >= 0 && upgrade > reconcile, 'クラウドの手順書が helm upgrade の前に llmgateway-service の strategy を寄せない');
 });
 
 ok('#1688: チャートは `rollingUpdate: null` に頼らない（SSA では既存の値を消さないことを実測済み）', () => {
