@@ -772,3 +772,4 @@
 | [IADR-0692](./IADR-0692_cloud-llm-daily-cost-cap-monthly-budget-and-k3s-pin.md) | クラウドの LLM ゲートウェイの当日の費用の上限を合計 1 日 20 USD（取引ユニットが主）とし、そこから用途別の月次予算を導いて全経路に置く。段 2 は金額が無ければ起動しない。クラウドの k3s は版を固定し sha256 で照合して入れる | Accepted |
 | [IADR-0693](./IADR-0693_cloud-keycloak-tls-openbao-pki.md) | クラウドの認可サーバー（Keycloak）を OpenBao の PKI（DB・ブローカと同じ CA）の証明書で HTTPS だけにし、受け手は https を必須にしてシステムの信頼ストアに基盤の CA を足して検証する。稼働中の構成は併存の段を経て平文を閉じる | Accepted |
 | [IADR-0694](./IADR-0694_rabbitmq-cloud-subscriber-no-exchange-configure.md) | クラウドのブローカの権限から、購読する（自分が発行しない）exchange の configure を外す。購読される exchange はブローカの起動の直後の初期化が、利用者の権限を当てる前に宣言する。ローカルの権限は変えない | Accepted |
+| [IADR-0695](./IADR-0695_cloud-db-per-service-users.md) | クラウドの取引ユニットの DB の利用者をサービスごとに分け、各利用者が自分の DB だけを OWNER で持ち、他の DB へは CONNECT できないようにする。利用者は OpenBao の中で作った値で Job が作り、稼働中の構成は共有の利用者を残す 3 段で移す。監査の DB の追記だけの権限は別の作業 | Accepted |

@@ -217,14 +217,22 @@ for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform
   get "$p" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);if(Object.keys(d).sort().join()!=="password,username"||!/^[a-z]+_[0-9a-f]{6}$/.test(d.username)||!/^[0-9a-f]{48}$/.test(d.password))process.exit(1);})' \
     || ng "cloud/$p の形が違う"
 done
+# IADR-0695: 取引ユニットの DB のサービスごとの 7 組（利用者名は ast_<サービス>_<乱数>。サービスの - は _）
+AST_DB_SVCS="audit configuration cost-control market-monitor order-execution report risk-management"
+for s in $AST_DB_SVCS; do
+  get "shared/ast-db-$s" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);if(Object.keys(d).sort().join()!=="password,username"||d.username!==`ast_${process.argv[1]}_${d.username.slice(-6)}`||!/_[0-9a-f]{6}$/.test(d.username)||!/^[0-9a-f]{48}$/.test(d.password))process.exit(1);})' "${s//-/_}" \
+    || ng "cloud/shared/ast-db-$s の形が違う"
+done
+[ "$(for s in $AST_DB_SVCS; do get "shared/ast-db-$s" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);console.log(d.username);console.log(d.password)})'; done | sort -u | wc -l)" -eq 14 ] \
+  || ng "サービスごとの DB の利用者名・パスワードが互いに違わない"
 users="$(grep -v '^[[:space:]]*#' "$HERE/../../local/rabbitmq-setup/users.txt" | awk 'NF >= 2 && $2 == "ai-stock-trading" { print $1 }' | sort | tr '\n' ',')"
 [ "$(get shared/ast-rabbitmq-users | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")+","))')" = "$users" ] || ng "ブローカの利用者の集合が users.txt の取引ユニットの行と違う"
 [ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")))')" = "ai-stock-trading-llm-caller,ai-stock-trading-owner,ai-stock-trading-svc" ] || ng "client の secret のキーが 3 つの clientId でない"
-before="$(for p in platform/postgres shared/ast-db shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
+before="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/ast-db-risk-management shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" >/dev/null
-after="$(for p in platform/postgres shared/ast-db shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
+after="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/ast-db-risk-management shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
 [ "$before" = "$after" ] || ng "2 回目の seed が値を変えた"
-ok "seed: 7 種を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 3 つ）、2 回目は何も変えない"
+ok "seed: 7 種とサービスごとの DB の 7 組を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 3 つ）、2 回目は何も変えない"
 
 # --- gen ---
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" gen cloud/ast/ast-secrets order-approval-signing-key 32 >/dev/null
@@ -307,6 +315,12 @@ TP="$(tok platform-infra-eso)" TM="$(tok msp-eso)" TA="$(tok ast-eso)"
 [ "$(cap "$TA" cloud/data/platform/postgres)" = deny ] || ng "取引ユニットの側が cloud/platform を読める"
 for p in ast-db ast-rabbitmq-users ast-client-secrets platform-infra-ca; do [ "$(cap "$TA" "cloud/data/shared/$p")" = read ] || ng "取引ユニットの側が cloud/shared/$p を読めない"; done
 [ "$(cap "$TA" cloud/data/shared/other)" = deny ] || ng "取引ユニットの側が名指しの外の cloud/shared を読める"
+# IADR-0695: サービスごとの DB の利用者は、基盤の側（Postgres の利用者を作る Job）と取引ユニットの側の両方が名指しで読める。MSP の側は読めない。
+for s in $AST_DB_SVCS; do
+  [ "$(cap "$TA" "cloud/data/shared/ast-db-$s")" = read ] && [ "$(cap "$TP" "cloud/data/shared/ast-db-$s")" = read ] || ng "cloud/shared/ast-db-$s を名指しで読めない"
+  [ "$(cap "$TM" "cloud/data/shared/ast-db-$s")" = deny ] || ng "MSP の側が cloud/shared/ast-db-$s を読める"
+done
+[ "$(cap "$TA" cloud/data/shared/ast-db-other)" = deny ] && [ "$(cap "$TP" cloud/data/shared/ast-db-other)" = deny ] || ng "名指しの外の ast-db-* を読める（ワイルドカード）"
 [ "$(cap "$TM" pki_cloud/issue/llmgateway-service)" = update ] && [ "$(cap "$TM" pki_cloud/issue/postgres)" = deny ] || ng "MSP の側の発行の範囲が違う"
 # IADR-0693: 認可サーバーの証明書は基盤の側だけが発行する。MSP・取引ユニットの側は発行できない（取引ユニットは CA の証明書を KV で読むだけ）。
 [ "$(cap "$TP" pki_cloud/issue/keycloak)" = update ] || ng "基盤の側が keycloak の証明書を発行できない"
@@ -360,7 +374,7 @@ ok "root-token apply-pki-roles: 稼働中の構成へ lib.sh の role の一覧�
 
 # --- 値が引数・ディスクに残らない ---
 R2="$(mkroot)"
-vals="$(for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db shared/ast-rabbitmq-users shared/ast-client-secrets ast/ast-secrets msp/llm-provider-credentials ast/moomoo-rsa ast/ast-owner-totp; do
+vals="$(for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db $(for s in $AST_DB_SVCS; do printf 'shared/ast-db-%s ' "$s"; done) shared/ast-rabbitmq-users shared/ast-client-secrets ast/ast-secrets msp/llm-provider-credentials ast/moomoo-rsa ast/ast-owner-totp; do
   BAO_TOKEN="$R2" B kv get -mount=cloud -format=json "$p" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{for(const v of Object.values(JSON.parse(s).data.data))if(!/^[a-z]+_[0-9a-f]{6}$/.test(v))console.log(v)})'; done
   dec "$W/init.age" unseal_keys_b64; echo; dec "$W/operator.age" secret_id; echo)"
 BAO_TOKEN="$R2" B token revoke -self >/dev/null

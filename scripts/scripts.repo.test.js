@@ -20746,7 +20746,10 @@ esac
       assert.ok(!paths('platform-infra-eso').some((p) => p.includes('*')), '基盤の側の policy にワイルドカードがある');
       assert.ok(!paths('ast-eso').some((p) => p.startsWith('cloud/data/platform')), '取引ユニットの側が cloud/platform を読める');
       assert.deepStrictEqual(paths('ast-eso').filter((p) => p.startsWith('cloud/data/shared/')).sort(),
-        ['cloud/data/shared/ast-client-secrets', 'cloud/data/shared/ast-db', 'cloud/data/shared/ast-rabbitmq-users', 'cloud/data/shared/platform-infra-ca']);
+        ['cloud/data/shared/ast-client-secrets', 'cloud/data/shared/ast-db',
+          // ［2026-11-07 / IADR-0695］サービスごとの DB の利用者（名指しの 7 つ）
+          ...['audit', 'configuration', 'cost-control', 'market-monitor', 'order-execution', 'report', 'risk-management'].map((x) => `cloud/data/shared/ast-db-${x}`),
+          'cloud/data/shared/ast-rabbitmq-users', 'cloud/data/shared/platform-infra-ca']);
       for (const p of paths('cloud-operator')) assert.ok(!/^sys\/(policy|policies|auth|mounts)/.test(p) && !/^auth\//.test(p), `オーナー用の資格が ${p} に触れる`);
       for (const n of ['platform-infra-eso', 'msp-eso', 'ast-eso']) assert.ok(!/"(create|update|patch|delete)"/.test(pol(n).replace(/path\s+"pki_cloud\/issue\/[^"]+"\s*\{[^}]*\}/g, '')), `${n} が KV へ書ける`);
     });
@@ -20760,6 +20763,30 @@ esac
       }
       const r = spawn2401('bash', [path2401.join(ROOT2401, 'deploy/cloud/vault/init.sh'), '--recipients', '/etc/hostname', '--out', path2401.join(os2401.tmpdir(), `iadr0689-${process.pid}.age`)], { encoding: 'utf8', env: { ...process.env, LIVE: '' } });
       assert.strictEqual(r.status, 3, r.stderr);
+    });
+
+    ok('IADR-0695 AC8: ast-db-users.sh は --live が無ければ何もせずに 3 で終わり、段の名前の外を受けず、値を引数・環境に置く形を持たない', () => {
+      const f = path2401.join(ROOT2401, 'deploy/cloud/db-users/ast-db-users.sh');
+      const env = { ...process.env, LIVE: '', PATH: '/usr/bin:/bin' };
+      for (const stage of ['apply', 'drop-shared']) {
+        const r = spawn2401('bash', [f, stage], { encoding: 'utf8', env });
+        assert.strictEqual(r.status, 3, `${stage}: ${r.status} ${r.stderr}`);
+      }
+      for (const bad of [[], ['drop'], ['apply', 'x']]) {
+        const r = spawn2401('bash', [f, '--live', ...bad], { encoding: 'utf8', env });
+        assert.strictEqual(r.status, 2, `${bad.join(' ')}: ${r.status} ${r.stderr}`);
+      }
+      const src = fs2401.readFileSync(f, 'utf8');
+      assert.ok(!/--from-literal|secret\s+generic|get\s+secret|PGPASSWORD=|jsonpath='\{\.data/.test(src), 'ast-db-users.sh が値を手元へ読む・引数に置く形を持つ');
+      // 段の差し替えの印の行が job.yaml に 1 つだけ在る（無ければ sed が空振りし、apply のまま流れる）
+      const job = fs2401.readFileSync(path2401.join(ROOT2401, 'deploy/cloud/db-users/job.yaml'), 'utf8');
+      assert.strictEqual((job.match(/^ {10}args: \["apply"\]$/gm) || []).length, 1, 'job.yaml の段の行（args）が 1 つでない');
+      // kustomize に Job を入れない（作り直さないと流れない。段を取り違えて当てない）: db-users に kustomization が無く、どの kustomization も db-users を引かない
+      assert.ok(!fs2401.existsSync(path2401.join(ROOT2401, 'deploy/cloud/db-users/kustomization.yaml')), 'deploy/cloud/db-users に kustomization がある');
+      const ks = spawn2401('git', ['ls-files', '--', 'deploy/cloud/**/kustomization.yaml', 'deploy/cloud/kustomization.yaml'], { cwd: ROOT2401, encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+      assert.ok(ks.length >= 4, `陽性対照: kustomization を拾えていない（${ks.length}）`);
+      for (const k of ks) assert.ok(!/(^|[\s/])db-users(\/|\s*$)|job\.yaml/m.test(fs2401.readFileSync(path2401.join(ROOT2401, k), 'utf8')), `${k} が Job（db-users）を引く`);
+      assert.ok(!rawDocs2401('deploy/cloud/infra').some((d) => d.kind === 'Job'), 'deploy/cloud/infra に Job がある');
     });
 
     ok('IADR-0674: ノードの準備の手順書に、ファイアウォール・k3s のフラグ・データの暗号化・時刻同期・更新の時間帯・イメージの digest がある', () => {
