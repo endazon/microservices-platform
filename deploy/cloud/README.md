@@ -187,6 +187,7 @@ kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ�
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
 bash deploy/cloud/db-users/ast-db-users.sh --live apply              # 取引ユニットの DB のサービスごとの利用者（Job。値は手元へ来ない）
+. scripts/lib/recreate-strategy.sh && reconcile_recreate_strategy microservices-platform llmgateway-service   # 既存の RollingUpdate の値を消す（冪等。新規は何もしない）
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
