@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525]
-specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso]
+iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693]
+specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls]
 issues: [#2471, #2401]
 -->
 
@@ -148,12 +148,15 @@ node deploy/cloud/secret-inventory.js --strict
 
 ```sh
 bash deploy/cloud/vault/root-token.sh --live --init-file <init>.age --operator-file <operator>.age --identity <識別子のファイル> apply-policies
+bash deploy/cloud/vault/root-token.sh --live --init-file <init>.age --operator-file <operator>.age --identity <識別子のファイル> apply-pki-roles
 bash deploy/cloud/vault/root-token.sh --live --init-file <init>.age --operator-file <operator>.age --identity <識別子のファイル> \
   rotate-operator --recipients <受取人のファイル> --operator-out <新しい operator>.age
 ```
 
 - OpenBao 2.x の root の作り直しには認証が要る。オーナー用の資格で入り、unseal の鍵を加えて作る。作った root は操作の後に失効させる。
 - `apply-policies`: policy（`deploy/cloud/vault/policies/`）を改めたときに当て直す。
+- `apply-pki-roles`: PKI のサーバ証明書の role（`deploy/cloud/vault/lib.sh` の `OB_PKI_ROLES`）を足したときに書き直す。在る role は同じ値で書き直されるだけ。
+  role を足したら、発行を許す policy も `apply-policies` で当て直す（例: [認可サーバーの TLS の手順書](cloud-keycloak-tls-runbook.md)の段 0）。
 - `rotate-operator`: オーナー用の資格のファイルを失った・漏れた疑いのときに作り直す。古い資格はすべて消える。2 か所の保管を差し替える。
 
 ## 7. 初期化からやり直す（鍵を失ったとき）

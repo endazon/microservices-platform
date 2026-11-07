@@ -1,0 +1,17 @@
+# NFR-16, NFR-18, IADR-0693: 稼働中のクラウドの構成で、Keycloak を平文（8080）から HTTPS（8443）へ移す間だけ当てる**併存の段**。
+#   kubectl apply -k deploy/cloud-transition/keycloak-tls-coexist
+# deploy/cloud（最終の段: HTTPS だけ）に重ね（deploy/cloud の下に置くと kustomize が循環として拒むので、隣に置く）、次だけを変える:
+#   - 平文の 8080 も受ける（KC_HTTP_ENABLED=true・Service と NetworkPolicy の 8080）。送り元は最終の段と同じ Pod だけ。
+#   - hostname を固定しない（KC_HOSTNAME を外し、KC_HOSTNAME_STRICT=false）。トークンの発行元（iss）は要求の URL から決まる
+#     （https://keycloak:8443 で引けば https、http://keycloak:8080 で引けば http。Keycloak 26.7.4 で確かめた）。
+#     呼び手は切り替えた順に https へ移り、受け手は移る間だけ両方の発行元を受ける（Auth__ValidIssuers。手順書）。
+# 🔴 全ての呼び手と受け手が https へ移ったら、deploy/cloud（最終の段）を当てて平文の口を閉じる。この重ねを残さない。
+#    手順: docs/operations/cloud-keycloak-tls-runbook.md
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../cloud
+
+patches:
+  - path: keycloak-coexist.yaml

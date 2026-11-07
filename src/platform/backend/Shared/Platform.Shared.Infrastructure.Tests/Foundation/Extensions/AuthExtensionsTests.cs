@@ -64,11 +64,77 @@ public class AuthExtensionsTests
     }
 
     [Fact]
-    public void RequireHttpsMetadataは無効である_クラスタ内はHTTP()
+    public void RequireHttpsMetadataは既定で無効である_クラスタ内はHTTP()
     {
         var options = BuildJwtBearerOptions([]);
 
         options.RequireHttpsMetadata.Should().BeFalse();
+    }
+
+    // NFR-16, NFR-18, [[IADR-0693]]: クラウドは Auth:RequireHttpsMetadata=true と https の Authority を与える（chart の global.auth.tls）。
+    [Theory]
+    [InlineData("false", false)]
+    [InlineData("False", false)]
+    [InlineData("true", true)]
+    [InlineData("True", true)]
+    public void Auth_RequireHttpsMetadataを与えるとそれが使われる(string raw, bool expected)
+    {
+        var options = BuildJwtBearerOptions(new Dictionary<string, string?>
+        {
+            ["Auth:Authority"] = "https://keycloak:8443/realms/platform",
+            ["Auth:RequireHttpsMetadata"] = raw,
+        });
+
+        options.RequireHttpsMetadata.Should().Be(expected);
+        options.Authority.Should().Be("https://keycloak:8443/realms/platform");
+    }
+
+    // [[IADR-0693]]: https を求めたのに取得先が https でなければ、登録の時点（サービスの起動）で止まる。平文へ黙って倒さない。
+    [Theory]
+    [InlineData("http://keycloak:8080/realms/platform", null)]
+    [InlineData(null, null)]
+    [InlineData("https://keycloak:8443/realms/platform", "http://keycloak:8080/realms/platform/.well-known/openid-configuration")]
+    [InlineData("not a url", null)]
+    public void Auth_RequireHttpsMetadataがtrueで取得先がhttpsでなければ起動で止まる(string? authority, string? metadataAddress)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Auth:Authority"] = authority,
+            ["Auth:MetadataAddress"] = metadataAddress,
+            ["Auth:RequireHttpsMetadata"] = "true",
+        }).Build();
+
+        var act = () => new ServiceCollection().AddPlatformAuth(config);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*https*IADR-0693*");
+    }
+
+    [Fact]
+    public void Auth_RequireHttpsMetadataがtrueでMetadataAddressがhttpsなら通る()
+    {
+        var options = BuildJwtBearerOptions(new Dictionary<string, string?>
+        {
+            ["Auth:Authority"] = "http://unused/realms/platform",
+            ["Auth:MetadataAddress"] = "https://keycloak:8443/realms/platform/.well-known/openid-configuration",
+            ["Auth:RequireHttpsMetadata"] = "true",
+        });
+
+        options.RequireHttpsMetadata.Should().BeTrue();
+        options.MetadataAddress.Should().Be("https://keycloak:8443/realms/platform/.well-known/openid-configuration");
+    }
+
+    [Fact]
+    public void Auth_RequireHttpsMetadataが真偽値でなければ起動で止まる()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Auth:Authority"] = "https://keycloak:8443/realms/platform",
+            ["Auth:RequireHttpsMetadata"] = "yes",
+        }).Build();
+
+        var act = () => new ServiceCollection().AddPlatformAuth(config);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*true か false*");
     }
 
     // NFR-09, 計画 ADR-0036, [[IADR-0523]] (#1846 / planning#770。利用者裁定 2026-10-09 の方式 C):

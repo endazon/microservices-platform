@@ -21,6 +21,15 @@
  *       描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）が 1 つも無い。
  *   AC11 Postgres は TCP を TLS（hostssl）でだけ受ける（pg_hba に host・hostnossl・trust・password・md5 が無い）。
  *   AC12 RabbitMQ はデータ（/var/lib/rabbitmq）を PVC に置き、ノード名を固定し、Recreate で替わる（再起動でキュー・メッセージを失わない）。
+ *   IADR-0693（認可サーバーへの通信の TLS）:
+ *     KT1 Keycloak は HTTPS（8443）だけで受ける（KC_HOSTNAME は https・KC_HTTP_ENABLED=false・8080 の口が無い・証明書は Secret keycloak-tls
+ *         を fsGroup で 0440・probe は HTTPS）。
+ *     KT2 Keycloak の入りは TCP/8443 だけで、送り元は取引ユニットの Keycloak を呼ぶ Pod（名前空間 かつ Pod）と LLM ゲートウェイだけ。
+ *         LLM ゲートウェイの出も 8443 だけ。
+ *     KT3 併存の重ね（deploy/cloud-transition/keycloak-tls-coexist）は 8080 と 8443 を受け、hostname を固定しない。既定の描画には無い。
+ *     KT4 クラウドの chart の受け手は Authority が https・Auth__RequireHttpsMetadata=true・CA を信頼ストアに足す。既定・ローカルは変えない。
+ *     KT5 global.auth.tls.enabled で Authority が https でなければ描画で止まる。
+ *     KT6 PKI の role・ESO・policy（keycloak の発行は基盤の側だけ。取引ユニットは CA の証明書だけを読む）。
  *
  * kubectl / helm が無ければ失敗にする（fail-closed。CI の static-checks は両方を持つ。check-deploy-manifests と同じ）。
  * 判定の関数は export し、scripts/scripts.repo.test.js が宣言そのもの（kustomize は resources だけで変換を持たない）にも当てる。
@@ -469,7 +478,133 @@ function k3sInstallProblems(readme, pinnedLib) {
   return out;
 }
 
-module.exports = { k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+
+/** IADR-0693: Keycloak を呼ぶ取引ユニットの Pod（取引ユニットの chart の values-cloud の描画で Keycloak の URL を持つ Deployment）。 */
+const KEYCLOAK_AST_CALLERS = [
+  'audit-service', 'backtest-service', 'configuration-service', 'cost-control-service', 'information-collection-service', 'market-monitor-service',
+  'notification-service', 'order-execution-service', 'report-service', 'risk-management-service', 'trade-decision-service',
+];
+const KEYCLOAK_HTTPS_PORT = 8443;
+const KEYCLOAK_HTTP_PORT = 8080;
+const KEYCLOAK_ISSUER = 'https://keycloak:8443/realms/platform';
+
+/** KT1〜KT3: Keycloak の受け口・Service・入りと LLM ゲートウェイの出。coexist は併存の重ねの描画を見るとき。 */
+function keycloakTlsProblems(docs, { coexist = false } = {}) {
+  const out = [];
+  const kc = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'keycloak');
+  if (!kc) return ['infra: Keycloak の Deployment が無い'];
+  const spec = kc.spec.template.spec;
+  const c = spec.containers.find((x) => x.name === 'keycloak') || spec.containers[0];
+  const env = Object.fromEntries((c.env || []).map((e) => [e.name, e.value === undefined ? undefined : String(e.value)]));
+  if (coexist) {
+    if ('KC_HOSTNAME' in env) out.push('併存: hostname を固定している（KC_HOSTNAME。http で引いた呼び手の発行元が合わない）');
+    if (env.KC_HOSTNAME_STRICT !== 'false') out.push('併存: KC_HOSTNAME_STRICT が false でない');
+    if (env.KC_HTTP_ENABLED !== 'true') out.push('併存: KC_HTTP_ENABLED が true でない');
+  } else {
+    if (`${env.KC_HOSTNAME}/realms/platform` !== KEYCLOAK_ISSUER) out.push(`infra: Keycloak の KC_HOSTNAME が https://keycloak:8443 でない（${env.KC_HOSTNAME}）`);
+    if (env.KC_HTTP_ENABLED !== 'false') out.push(`infra: Keycloak の平文の口が閉じていない（KC_HTTP_ENABLED=${env.KC_HTTP_ENABLED}）`);
+    if ('KC_HOSTNAME_STRICT' in env) out.push('infra: Keycloak の hostname の固定を緩めている（KC_HOSTNAME_STRICT。併存の段の形）');
+  }
+  const tlsVol = (spec.volumes || []).find((v) => v.secret && v.secret.secretName === 'keycloak-tls');
+  const tlsMount = tlsVol && (c.volumeMounts || []).find((m) => m.name === tlsVol.name);
+  if (!tlsMount) out.push('infra: Keycloak の証明書が Secret keycloak-tls から来ない');
+  else {
+    const dir = String(tlsMount.mountPath).replace(/\/$/, '');
+    for (const k of ['KC_HTTPS_CERTIFICATE_FILE', 'KC_HTTPS_CERTIFICATE_KEY_FILE']) {
+      if (!String(env[k] || '').startsWith(`${dir}/`)) out.push(`infra: Keycloak の ${k} が Secret keycloak-tls のマウントを指さない`);
+    }
+    if (String(tlsMount.readOnly) !== 'true') out.push('infra: Keycloak の証明書のマウントが読み取り専用でない');
+    if (!['288', '0440', '440'].includes(String(tlsVol.secret.defaultMode))) out.push(`infra: Keycloak の鍵のファイルが 0440 でない（${tlsVol.secret.defaultMode}）`);
+    if (!(spec.securityContext && String(spec.securityContext.fsGroup) === '1000')) out.push('infra: Keycloak の Pod に fsGroup 1000 が無い（0440 の鍵を読めない）');
+  }
+  for (const pr of ['startupProbe', 'livenessProbe', 'readinessProbe']) {
+    if (!(c[pr] && c[pr].httpGet && c[pr].httpGet.scheme === 'HTTPS')) out.push(`infra: Keycloak の ${pr} が HTTPS でない（管理の口も TLS になる）`);
+  }
+  const want = coexist ? [KEYCLOAK_HTTP_PORT, KEYCLOAK_HTTPS_PORT] : [KEYCLOAK_HTTPS_PORT];
+  const cports = (c.ports || []).map((p) => Number(p.containerPort)).filter((p) => p !== 9000).sort((a, b) => a - b);
+  if (JSON.stringify(cports) !== JSON.stringify(want)) out.push(`infra: Keycloak の受け口が ${want.join('・')} だけでない（${cports.join(', ')}）`);
+  const svc = docs.find((d) => d.kind === 'Service' && d.metadata.name === 'keycloak' && d.metadata.namespace === 'platform-infra');
+  const sports = svc ? (svc.spec.ports || []).map((p) => Number(p.targetPort || p.port)).sort((a, b) => a - b) : [];
+  if (JSON.stringify(sports) !== JSON.stringify(want)) out.push(`infra: Keycloak の Service のポートが ${want.join('・')} だけでない（${sports.join(', ')}）`);
+  // 入り: Keycloak を選ぶ許可はちょうど 1 枚。各要素は名前空間 かつ Pod（AND）。名前空間だけの要素は名前空間の全 Pod へ開く。
+  const isKc = (d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'platform-infra'
+    && JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'keycloak' } }) && (d.spec.ingress || []).length;
+  const allows = docs.filter(isKc);
+  if (allows.length !== 1) out.push(`infra: Keycloak への入りの許可がちょうど 1 枚でない（${allows.length}）`);
+  for (const d of allows) {
+    for (const rule of d.spec.ingress) {
+      const seen = {};
+      for (const f of rule.from || []) {
+        const ns = f.namespaceSelector && f.namespaceSelector.matchLabels && f.namespaceSelector.matchLabels['kubernetes.io/metadata.name'];
+        const pods = f.podSelector && f.podSelector.matchLabels && f.podSelector.matchLabels.app
+          ? [String(f.podSelector.matchLabels.app)]
+          : ((f.podSelector && f.podSelector.matchExpressions) || []).filter((e) => e.key === 'app' && e.operator === 'In').flatMap((e) => e.values.map(String));
+        if (!ns || !f.podSelector || !pods.length) {
+          out.push(`infra: ${d.metadata.name} に「名前空間 かつ Pod」でない送り元がある（${JSON.stringify(f)}）`);
+          continue;
+        }
+        seen[ns] = [...(seen[ns] || []), ...pods].sort();
+      }
+      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'] };
+      if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
+        out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);
+      }
+      const ports = (rule.ports || []).map((x) => Number(x.port)).sort((a, b) => a - b);
+      if (JSON.stringify(ports) !== JSON.stringify(want)) out.push(`infra: ${d.metadata.name} のポートが ${want.join('・')} だけでない（${ports.join(', ')}）`);
+    }
+  }
+  const egress = docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'llmgateway-egress');
+  const toKc = egress ? (egress.spec.egress || []).filter((r) => (r.to || []).some((t) => t.podSelector && t.podSelector.matchLabels && t.podSelector.matchLabels.app === 'keycloak')) : [];
+  const eports = toKc.flatMap((r) => (r.ports || []).map((x) => Number(x.port))).sort((a, b) => a - b);
+  if (JSON.stringify(eports) !== JSON.stringify([KEYCLOAK_HTTPS_PORT])) out.push(`infra: LLM ゲートウェイから Keycloak への出が 8443 だけでない（${eports.join(', ')}）`);
+  return out;
+}
+
+/** KT4: クラウドの chart の受け手（LLM ゲートウェイ）は https の Authority を検証つきで使う。 */
+function authTlsProblems(docs) {
+  const out = [];
+  const dep = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'llmgateway-service');
+  if (!dep) return ['chart: LLM ゲートウェイの Deployment が無い'];
+  const spec = dep.spec.template.spec;
+  const c = spec.containers[0];
+  const env = Object.fromEntries((c.env || []).map((e) => [e.name, e.value === undefined ? undefined : String(e.value)]));
+  if (env.Auth__Authority !== KEYCLOAK_ISSUER) out.push(`chart: Auth__Authority が ${KEYCLOAK_ISSUER} でない（${env.Auth__Authority}）`);
+  if ('Auth__MetadataAddress' in env && !/^https:\/\//.test(String(env.Auth__MetadataAddress))) out.push('chart: Auth__MetadataAddress が https でない');
+  if (env.Auth__RequireHttpsMetadata !== 'true') out.push(`chart: Auth__RequireHttpsMetadata が true でない（${env.Auth__RequireHttpsMetadata}）`);
+  if (String(env.Auth__ValidIssuers || '').split(/[\s,]+/).some((x) => /^http:\/\//.test(x))) out.push('chart: Auth__ValidIssuers に平文の発行元がある（移す間だけ --set-string で足す）');
+  if (env.SSL_CERT_DIR !== '/etc/ssl/certs:/etc/platform-infra-ca') out.push(`chart: SSL_CERT_DIR が既定のストア ＋ 基盤の CA でない（${env.SSL_CERT_DIR}）`);
+  const caMount = (c.volumeMounts || []).find((m) => m.mountPath === '/etc/platform-infra-ca');
+  const caVol = caMount && (spec.volumes || []).find((v) => v.name === caMount.name);
+  if (!(caVol && caVol.configMap && caVol.configMap.name === 'platform-infra-ca')) out.push('chart: 基盤の CA（ConfigMap platform-infra-ca）をマウントしていない');
+  return out;
+}
+
+/** KT6: PKI の role・ESO・policy。texts は { lib, platformInfraEso, mspEso, astEso, configure }。 */
+function keycloakPkiProblems(esoDocs, texts) {
+  const out = [];
+  const gen = esoDocs.find((d) => d.kind === 'VaultDynamicSecret' && d.metadata.name === 'keycloak-tls');
+  if (!gen) out.push('eso: VaultDynamicSecret keycloak-tls が無い');
+  else {
+    if (gen.metadata.namespace !== 'platform-infra') out.push('eso: keycloak-tls の発行が platform-infra の名前空間でない');
+    if (gen.spec.path !== 'pki_cloud/issue/keycloak') out.push(`eso: keycloak-tls の発行の口が pki_cloud/issue/keycloak でない（${gen.spec.path}）`);
+    const p = gen.spec.parameters || {};
+    if (p.common_name !== 'keycloak' || p.alt_names !== 'keycloak.platform-infra,keycloak.platform-infra.svc,keycloak.platform-infra.svc.cluster.local') out.push('eso: keycloak-tls の名前が従来の 4 つの形でない');
+    if (gen.spec.provider.auth.kubernetes.role !== 'platform-infra-eso') out.push('eso: keycloak-tls を基盤の側の role 以外で発行する');
+  }
+  const es = esoDocs.find((d) => d.kind === 'ExternalSecret' && d.metadata.name === 'keycloak-tls');
+  const data = es && es.spec.target.template && es.spec.target.template.data;
+  if (!es || !data || JSON.stringify(Object.keys(data).sort()) !== JSON.stringify(['tls.crt', 'tls.key'])) out.push('eso: ExternalSecret keycloak-tls が tls.crt・tls.key だけを写さない');
+  if (!/(^|\s|")keycloak:platform-infra(\s|"|$)/.test((texts.lib.match(/^OB_PKI_ROLES="([^"]*)"/m) || [])[0] || '')) out.push('vault: lib.sh の OB_PKI_ROLES に keycloak:platform-infra が無い');
+  if (!/ob_pki_roles b/.test(texts.configure)) out.push('vault: configure.sh が lib.sh の role の一覧を書かない');
+  const issues = (t) => [...t.matchAll(/^path\s+"pki_cloud\/issue\/([^"]+)"/gm)].map((m) => m[1]).sort();
+  if (JSON.stringify(issues(texts.platformInfraEso)) !== JSON.stringify(['keycloak', 'postgres', 'rabbitmq'])) out.push(`vault: 基盤の側の発行の範囲が postgres・rabbitmq・keycloak でない（${issues(texts.platformInfraEso).join(', ')}）`);
+  if (issues(texts.mspEso).includes('keycloak')) out.push('vault: MSP の側が keycloak の証明書を発行できる');
+  if (/pki_cloud\//.test(texts.astEso)) out.push('vault: 取引ユニットの側が PKI に触れる（CA の証明書は KV の cloud/shared/platform-infra-ca で読む）');
+  if (!/^path\s+"cloud\/data\/shared\/platform-infra-ca"\s+\{\s*capabilities\s*=\s*\["read"\]\s*\}/m.test(texts.astEso)) out.push('vault: 取引ユニットの側が CA の証明書（cloud/shared/platform-infra-ca）を読めない');
+  return out;
+}
+
+module.exports = { keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -692,6 +827,113 @@ if (require.main === module) {
     docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'postgres').spec.template.spec.containers[0].env.push({ name: 'POSTGRES_PASSWORD', value: 'x' });
     const p = infraProblems(docs, null);
     for (const want of [/start-dev/, /LoadBalancer/, /POSTGRES_PASSWORD が字面/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
+  const renderCoexist = () => docsOf(run('kubectl', ['kustomize', 'deploy/cloud-transition/keycloak-tls-coexist']));
+  const pkiTexts = () => ({
+    lib: fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault/lib.sh'), 'utf8'),
+    configure: fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault/configure.sh'), 'utf8'),
+    platformInfraEso: fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault/policies/platform-infra-eso.hcl'), 'utf8'),
+    mspEso: fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault/policies/msp-eso.hcl'), 'utf8'),
+    astEso: fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault/policies/ast-eso.hcl'), 'utf8'),
+  });
+  ok('IADR-0693 KT1・KT2: Keycloak は HTTPS（8443）だけで受け、入りは取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイの 8443 だけ', () => {
+    assert.deepStrictEqual(keycloakTlsProblems(renderInfra()), []);
+    // deploy/cloud（全体）でも同じ（infra だけを当てる形に依らない）
+    assert.deepStrictEqual(keycloakTlsProblems(docsOf(run('kubectl', ['kustomize', 'deploy/cloud']))), []);
+  });
+  ok('IADR-0693 KT3: 併存の重ねは 8080 と 8443 を受けて hostname を固定せず、それ以外は最終の段と同じ（基盤の判定も通る）', () => {
+    const co = renderCoexist();
+    assert.deepStrictEqual(keycloakTlsProblems(co, { coexist: true }), []);
+    // 陰性対照: 最終の段の判定に当てると、平文の口と hostname の緩みで落ちる（既定の描画に併存の形が無いことの裏）
+    const p = keycloakTlsProblems(co);
+    for (const want of [/KC_HOSTNAME が https/, /平文の口が閉じていない/, /hostname の固定を緩めている/, /受け口が 8443 だけでない/, /Service のポートが 8443 だけでない/, /keycloak-ingress-clients のポートが 8443 だけでない/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    // 重ねは deploy/cloud（観測を含む）に重なるので、観測の Prometheus（infra だけの判定では持ち込まない名前）だけを除いて当てる。
+    assert.deepStrictEqual(infraProblems(co, null).filter((x) => !/持ち込まない資源（prometheus）/.test(x)), []);
+  });
+  ok('IADR-0693 KT1・KT2 陰性対照: 平文の口・http の hostname・証明書の欠落・HTTP の probe・名前空間だけの送り元・8080 の出を検出する', () => {
+    const docs = JSON.parse(JSON.stringify(renderInfra()));
+    const kc = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'keycloak');
+    const c = kc.spec.template.spec.containers[0];
+    c.env.find((e) => e.name === 'KC_HTTP_ENABLED').value = 'true';
+    c.env.find((e) => e.name === 'KC_HOSTNAME').value = 'http://keycloak:8080';
+    c.ports.push({ containerPort: 8080 });
+    c.readinessProbe.httpGet.scheme = 'HTTP';
+    kc.spec.template.spec.volumes = kc.spec.template.spec.volumes.filter((v) => !(v.secret && v.secret.secretName === 'keycloak-tls'));
+    const np = docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'keycloak-ingress-clients');
+    np.spec.ingress[0].from.push({ namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': AST_NS } } });
+    np.spec.ingress[0].from[0].podSelector.matchExpressions[0].values.push('opend');
+    docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'llmgateway-egress').spec.egress[1].ports = [{ protocol: 'TCP', port: 8080 }];
+    const p = keycloakTlsProblems(docs);
+    for (const want of [/平文の口が閉じていない/, /KC_HOSTNAME が https/, /受け口が 8443 だけでない/, /readinessProbe が HTTPS でない/, /Secret keycloak-tls から来ない/, /「名前空間 かつ Pod」でない送り元/, /Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない/, /Keycloak への出が 8443 だけでない/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+  });
+  ok('IADR-0693 KT4: クラウドの chart の LLM ゲートウェイは https の Authority・RequireHttpsMetadata・基盤の CA を持つ。既定・ローカルの描画は変えない', () => {
+    assert.deepStrictEqual(authTlsProblems(renderChart()), []);
+    const infraHost = renderInfra().find((d) => d.kind === 'Deployment' && d.metadata.name === 'keycloak').spec.template.spec.containers[0].env.find((e) => e.name === 'KC_HOSTNAME').value;
+    assert.strictEqual(`${infraHost}/realms/platform`, llmGatewayEnv(renderChart()).Auth__Authority, '受け手の Authority と Keycloak の発行元がずれる');
+    const deployments = (extra) => docsOf(run('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', ...extra, '-s', 'templates/deployment.yaml', '--set-string', `global.image.tag=${IMAGE_TAG}`]));
+    for (const [name, docs] of [['既定', deployments([])], ['ローカル', deployments(['-f', 'deploy/local/values-local.yaml'])]]) {
+      const ds = docs.filter((d) => d.kind === 'Deployment');
+      assert.ok(ds.length > 0, `陽性対照: ${name}の描画に Deployment が無い`);
+      for (const d of ds) {
+        const env = Object.fromEntries((d.spec.template.spec.containers[0].env || []).map((e) => [e.name, e.value]));
+        assert.strictEqual(env.Auth__RequireHttpsMetadata, undefined, `${name}の ${d.metadata.name} に Auth__RequireHttpsMetadata がある（変えない）`);
+        if ('Auth__Authority' in env) assert.match(String(env.Auth__Authority), /^http:\/\/keycloak:8080\//, `${name}の ${d.metadata.name} の Authority が変わった`);
+      }
+    }
+  });
+  ok('IADR-0693 KT4・KT5 陰性対照: RequireHttpsMetadata・CA・https の欠落と平文の発行元の併記を検出し、https でない Authority は描画で止まる', () => {
+    const plain = authTlsProblems(renderChart(['--set', 'global.auth.tls.enabled=false', '--set-string', 'global.auth.authority=http://keycloak:8080/realms/platform']));
+    for (const want of [/Auth__Authority が/, /RequireHttpsMetadata が true でない/, /SSL_CERT_DIR/, /platform-infra-ca/]) {
+      assert.ok(plain.some((p) => want.test(p)), `${want} を検出しない:\n${plain.join('\n')}`);
+    }
+    const both = authTlsProblems(renderChart(['--set-string', 'global.auth.validIssuers=http://keycloak:8080/realms/platform']));
+    assert.ok(both.some((p) => /平文の発行元/.test(p)), '移す間の併記が既定に残ったことを検出しない');
+    for (const bad of [['global.auth.authority', 'http://keycloak:8080/realms/platform', /authority は https/], ['global.auth.metadataAddress', 'http://keycloak:8080/realms/platform/.well-known/openid-configuration', /metadataAddress は https/]]) {
+      const r = spawnSync('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', '-f', 'deploy/cloud/values-cloud.yaml',
+        '--set-string', `global.image.tag=${IMAGE_TAG}`, '--set-string', `${bad[0]}=${bad[1]}`], { cwd: REPO_ROOT, encoding: 'utf8' });
+      assert.notStrictEqual(r.status, 0, `${bad[0]} が http なのに描画が止まらない`);
+      assert.match(r.stderr, bad[2]);
+    }
+  });
+  ok('IADR-0693 変異（KT4）: chart の RequireHttpsMetadata・CA のマウント・SSL_CERT_DIR を外すと判定が赤になる', () => {
+    const src = fs.readFileSync(path.join(REPO_ROOT, CHART, 'templates', 'deployment.yaml'), 'utf8');
+    const cases = [
+      ['            - name: Auth__RequireHttpsMetadata\n              value: "true"', '            - name: Auth__RequireHttpsMetadata\n              value: "false"', /RequireHttpsMetadata が true でない/],
+      ['{{- $infraCaMount := or $dbTls $mqTls $authTls }}', '{{- $infraCaMount := or $dbTls $mqTls }}', /platform-infra-ca/],
+      ['          {{- if not $mqTls }}\n            - name: SSL_CERT_DIR', '          {{- if false }}\n            - name: SSL_CERT_DIR', /SSL_CERT_DIR/],
+    ];
+    for (const [from, to, want] of cases) {
+      assert.ok(src.includes(from), `変異の置換元が無い（試験が古い）: ${from}`);
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-kt-'));
+      try {
+        fs.cpSync(path.join(REPO_ROOT, CHART), dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'templates', 'deployment.yaml'), src.replace(from, to));
+        const p = authTlsProblems(renderChart([], dir));
+        assert.ok(p.some((x) => want.test(x)), `${want} の変異を捕まえない:\n${p.join('\n')}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+  ok('IADR-0693 KT6: keycloak の証明書は基盤の側だけが PKI の role keycloak で発行し、取引ユニットは CA の証明書だけを読む', () => {
+    assert.deepStrictEqual(keycloakPkiProblems(renderEso(), pkiTexts()), []);
+    const t = pkiTexts();
+    const e = JSON.parse(JSON.stringify(renderEso()));
+    e.find((d) => d.kind === 'VaultDynamicSecret' && d.metadata.name === 'keycloak-tls').spec.path = 'pki_cloud/issue/postgres';
+    const p = keycloakPkiProblems(e, {
+      ...t,
+      lib: t.lib.replace('keycloak:platform-infra ', ''),
+      platformInfraEso: t.platformInfraEso.replace('path "pki_cloud/issue/keycloak"', '# x'),
+      mspEso: `${t.mspEso}\npath "pki_cloud/issue/keycloak" { capabilities = ["update"] }\n`,
+      astEso: `${t.astEso}\npath "pki_cloud/issue/keycloak" { capabilities = ["update"] }\n`,
+    });
+    for (const want of [/発行の口が pki_cloud\/issue\/keycloak でない/, /OB_PKI_ROLES に keycloak/, /基盤の側の発行の範囲/, /MSP の側が keycloak/, /取引ユニットの側が PKI/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
   });
   if (failed) {
     console.error(`✗ ${failed} 件が失敗した`);
