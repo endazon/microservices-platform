@@ -213,7 +213,7 @@ bash deploy/cloud/vault/init.sh --live --recipients <age の受取人> --out <in
 bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <age の識別子>
 bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <age の識別子> \
   --recipients <age の受取人> --operator-out <operator>.age          # 初回の root は最後に失効する
-bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <age の識別子>   # 7 種（DB はサービスごとの 7 組も）を OpenBao の中で作る
+bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <age の識別子>   # 8 種（DB はサービスごとの 7 組も）を OpenBao の中で作る
 . scripts/lib/pinned-artifacts.sh && pinned_work_init
 kubectl apply -k deploy/cloud/external-secrets                       # ESO の名前空間（PSA restricted・到達の制限）を chart より先に作る
 helm upgrade --install external-secrets "$(pinned_chart external-secrets 2.8.0 "$PINNED_WORK")" \
@@ -229,6 +229,7 @@ kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ�
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
 bash deploy/cloud/db-users/ast-db-users.sh --live apply              # 取引ユニットの DB のサービスごとの利用者（Job。値は手元へ来ない）
+bash deploy/cloud/db-users/ast-db-users.sh --live platform           # バックアップの利用者（超利用者でない）と Keycloak の DB の利用者のパスワード（IADR-0706）
 . scripts/lib/recreate-strategy.sh && reconcile_recreate_strategy microservices-platform llmgateway-service   # 既存の RollingUpdate の値を消す（冪等。新規は何もしない）
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
@@ -281,13 +282,19 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | 値 | 作り手 | OpenBao | 写す先 |
 | --- | --- | --- | --- |
 | DB の管理者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー | `seed-secrets.sh`（Pod の中の乱数。利用者名も乱数の接尾辞） | `cloud/platform/*` | `platform-infra` の Secret `postgres`・`keycloak-db`・`keycloak-admin`・`rabbitmq` |
+| バックアップの利用者（超利用者でない。全データを読めるだけ） | 同上（利用者名は `pgbackup_<乱数>`。DB の中の利用者は `ast-db-users.sh --live platform` が作る） | `cloud/platform/postgres-backup` | `platform-infra` の Secret `postgres-backup`（CronJob `platform-backup-postgres` が読む） |
 | 取引ユニットの DB の利用者・ブローカの 11 ユーザー・10 の機密クライアント（宣言の 3 つとサービスごとの 7 つ）の secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
 | 取引ユニットの DB のサービスごとの利用者（7 組。共有の `ast-db` は移行の後に外す） | 同上（利用者名は `ast_<サービス>_<乱数>`） | `cloud/shared/ast-db-<サービス>` | `platform-infra` の `ast-db-<サービス>`（利用者を作る Job が読む）。取引ユニットの側も同じパスを読む |
 | サーバ証明書と鍵（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない。role の一覧は `vault/lib.sh` の `OB_PKI_ROLES`） | — | `postgres-tls`・`rabbitmq-tls`・`keycloak-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
 | CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
 | OpenBao 自身の受け口の証明書と鍵 | `vault/tls-cert.sh`（オーナーの手元。OpenBao を開ける側の値なので OpenBao の外。CA の鍵は署名の後に捨てる） | — | Secret `openbao/openbao-tls`。CA の証明書（公開してよい）は ConfigMap `openbao-ca`（基盤の 2 つと取引ユニットの名前空間。ESO のストアが検証に使う） |
 
-- 在る値は作り直さない（`seed-secrets.sh` の 2 回目は何も変えない）。
+- 在る値は作り直さない（`seed-secrets.sh` の 2 回目は何も変えない）。作り直すとき（定期・漏れた疑い）は `seed-secrets.sh … rotate <cloud/パス> <キー>` で
+  OpenBao の値を作り直し、**消費側（Keycloak・Postgres の中の値）へ反映する手順と対で流す**（[資格の作り直しの手順書](../../docs/operations/cloud-credential-rotation-runbook.md)。
+  OpenBao の値を替えただけでは、Keycloak のクライアントの secret・Keycloak の DB の利用者・Postgres の超利用者は変わらない）。
+- Postgres の超利用者は TCP で名乗れない（pg_hba が拒む）。`ast-db-users.sh --live` が Job の間だけ受け付けを開け（Pod の中のゲート）、終われば閉じる
+  （[IADR-0706](../../.ai-context/adr/IADR-0706_cloud-data-broker-hardening.md)）。ブローカは平文（5672）を受けず、管理（15672）はループバックだけ
+  （確かめは `kubectl -n platform-infra port-forward deploy/rabbitmq 15672`）。
 - 取り込む realm は、宣言から取引ユニットの 3 つの機密クライアント（`ai-stock-trading-svc`・`-llm-caller`・`-owner`）と組み込みの
   クライアントだけを残し、人の利用者・試験の利用者・SMTP を外す（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
   加えて、取引ユニットのサービスごとの 7 つ（`ai-stock-trading-svc-<サービス>`。宣言の `ai-stock-trading-svc` と同じ作り・宛先は取引ユニットの API だけ）を組んで足す。

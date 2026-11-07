@@ -51,6 +51,25 @@ spec:
     - secretKey: password
       remoteRef: { key: platform/postgres, property: password }
 ---
+# ［2026-11-07 / IADR-0706］バックアップの利用者（超利用者でない）。消費は CronJob platform-backup-postgres と Job postgres-ast-db-users（段 platform）。
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: postgres-backup
+  namespace: platform-infra
+spec:
+  refreshInterval: 1h
+  secretStoreRef: { kind: SecretStore, name: openbao }
+  target:
+    name: postgres-backup
+    creationPolicy: Owner
+    deletionPolicy: Retain
+  data:
+    - secretKey: username
+      remoteRef: { key: platform/postgres-backup, property: username }
+    - secretKey: password
+      remoteRef: { key: platform/postgres-backup, property: password }
+---
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:

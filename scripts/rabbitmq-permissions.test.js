@@ -661,7 +661,7 @@ const CLOUD_BOOT = (() => {
   assert.ok(m, 'クラウドの rabbitmq.yaml に restore-users.sh が無い');
   return m[1].split('\n').map((l) => l.replace(/^    /, '')).join('\n');
 })();
-function cloudBoot({ exchanges, importFails = false }) {
+function cloudBoot({ exchanges, importFails = false, flag = null, onIncomplete = null, failPermissions = false }) {
   const H = fs.mkdtempSync(path.join(os.tmpdir(), 'rmqperm-cloudboot-'));
   try {
     const bin = path.join(H, 'bin');
@@ -671,6 +671,8 @@ function cloudBoot({ exchanges, importFails = false }) {
     fs.writeFileSync(path.join(dir, 'ast-a'), 'pa');
     fs.writeFileSync(path.join(pdir, 'permissions.txt'), 'ast-a ^(a\\..*)$ ^(a\\..*)$ ^(a\\..*|EvA)$\n');
     if (exchanges) fs.writeFileSync(path.join(pdir, 'exchanges.json'), exchanges);
+    if (flag !== null) fs.writeFileSync(path.join(H, 'flag'), flag);
+    if (onIncomplete !== null) fs.writeFileSync(path.join(H, 'on-incomplete'), onIncomplete);
     fs.writeFileSync(path.join(H, 'cookie'), 'c');
     fs.writeFileSync(path.join(H, 'boot.sh'), CLOUD_BOOT);
     // 読み込みの失敗の模型（rabbitmqctl の実際の形: 「Error:」の次の行に詳細）。標準出力に出すものは捨てられるべき。
@@ -678,7 +680,9 @@ function cloudBoot({ exchanges, importFails = false }) {
     const failImport = stderr
       ? `case "$*" in *import_definitions*) echo "STDOUT-SHOULD-NOT-APPEAR"; printf "${stderr}" 0 >&2; exit 2;; esac\n`
       : '';
-    fs.writeFileSync(path.join(bin, 'rabbitmqctl'), `#!/bin/sh\ncase "$1 $2" in "add_user "*|"change_password "*) cat >/dev/null;; esac\nprintf "%s\\n" "$*" >> "$STUB_H/calls"\n${failImport}exit 0\n`, { mode: 0o755 });
+    // NFR-18, IADR-0706: 利用者の権限を当てられない（揃わない）形の模型。
+    const failPerm = failPermissions ? 'case "$*" in *set_permissions*) exit 2;; esac\n' : '';
+    fs.writeFileSync(path.join(bin, 'rabbitmqctl'), `#!/bin/sh\ncase "$1 $2" in "add_user "*|"change_password "*) cat >/dev/null;; esac\nprintf "%s\\n" "$*" >> "$STUB_H/calls"\n${failImport}${failPerm}exit 0\n`, { mode: 0o755 });
     fs.writeFileSync(path.join(H, 'calls'), '');
     // 記録は 1 回ずつ開き直して上書きで出る（PID 1 の標準出力の模型）。全行を受けるため FIFO へ書かせ、読み手が集める
     // （書き手を 1 つ開いたままにして、読み手が途中で EOF にならないようにする）。
@@ -686,7 +690,7 @@ function cloudBoot({ exchanges, importFails = false }) {
     const wrapper = `mkfifo "${fifo}" && { cat "${fifo}" > "${path.join(H, 'boot.log')}" & } && exec 3>"${fifo}" && sh "${path.join(H, 'boot.sh')}"; rc=$?; exec 3>&-; wait; exit $rc`;
     const r = spawnSync('sh', ['-c', wrapper], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H,
       RABBITMQ_BOOT_USERS_DIR: dir, RABBITMQ_BOOT_PERMISSIONS_DIR: pdir, RABBITMQ_BOOT_FLAG: path.join(H, 'flag'), RABBITMQ_BOOT_TRIES: '2',
-      RABBITMQ_BOOT_COOKIE: path.join(H, 'cookie'), RABBITMQ_BOOT_LOG: fifo } });
+      RABBITMQ_BOOT_COOKIE: path.join(H, 'cookie'), RABBITMQ_BOOT_LOG: fifo, RABBITMQ_BOOT_ON_INCOMPLETE: path.join(H, 'on-incomplete'), RABBITMQ_DEFAULT_USER: 'mqadmin_x' } });
     return { status: r.status, calls: fs.readFileSync(path.join(H, 'calls'), 'utf8').split('\n').filter(Boolean), pdir,
       log: fs.existsSync(path.join(H, 'boot.log')) ? fs.readFileSync(path.join(H, 'boot.log'), 'utf8') : '' };
   } finally {
@@ -723,6 +727,26 @@ ok('クラウドの復元: exchanges.json を読み込めないときは、stder
   const long = reasonOf(cloudBoot({ exchanges: '{"exchanges":[]}', importFails: 'long' }));
   assert.strictEqual(long.length, 200, `理由を 200 字に切っていない（${long.length}）`);
   assert.ok(/^Error: 0+$/.test(long) && !/CUT-OFF/.test(long), `切り方が違う: ${long.slice(0, 80)}`);
+});
+
+ok('IADR-0706: クラウドの復元の既定のユーザー — 揃えば消す。揃わなければ retain（既定・キーが無い・知らない値）は残して WARN を出し、delete は消す。印が無ければ触らない', () => {
+  const deleted = (r) => r.calls.some((c) => /^-q delete_user mqadmin_x$/.test(c));
+  const full = cloudBoot({ exchanges: null, flag: 'true' });
+  assert.strictEqual(full.status, 0);
+  assert.ok(deleted(full), `揃ったのに既定のユーザーを消さない:\n${full.calls.join('\n')}`);
+  for (const mode of [null, 'retain', 'bogus']) {
+    const r = cloudBoot({ exchanges: null, flag: 'true', onIncomplete: mode, failPermissions: true });
+    assert.strictEqual(r.status, 0, '揃わないときにコンテナを止めた');
+    assert.ok(!deleted(r), `揃わない・${mode} で既定のユーザーを消した`);
+    assert.ok(/WARN: 既定のユーザーを残した/.test(r.log), `残したことを WARN で出さない（${mode}）:\n${r.log}`);
+  }
+  const del = cloudBoot({ exchanges: null, flag: 'true', onIncomplete: 'delete', failPermissions: true });
+  assert.strictEqual(del.status, 0);
+  assert.ok(deleted(del), `delete なのに揃わないときに消さない:\n${del.calls.join('\n')}`);
+  assert.ok(/既定のユーザーを消した（無効化の印に従う。揃わなかったときの扱い: delete）/.test(del.log), del.log);
+  const noFlag = cloudBoot({ exchanges: null, onIncomplete: 'delete', failPermissions: true });
+  assert.ok(!deleted(noFlag), '無効化の印が無いのに消した');
+  assert.ok(/mountPath: \/etc\/rabbitmq-default-user/.test(CLOUD_BROKER) && /\n  on-incomplete: "retain"\n/.test(CLOUD_BROKER), '段のキーの既定（retain）とマウント先が食い違う');
 });
 
 process.stdout.write(`rabbitmq-permissions.test.js: ${passed} passed\n`);

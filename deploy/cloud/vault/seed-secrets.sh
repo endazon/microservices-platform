@@ -2,14 +2,19 @@
 # NFR-05, NFR-18, IADR-0689 決定 6・決定 7: クラスタの中で使う資格情報を、**OpenBao の Pod の中で**乱数から作る（オーナーが手元から流す）。
 #
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <configure.sh のファイル>.age --identity <age の識別子>
-#       → 7 種（下の表。取引ユニットの DB はサービスごとの 7 組も）を作る。在る値は触らない（作り直しで稼働中の値と食い違わせない）。
+#       → 8 種（下の表。取引ユニットの DB はサービスごとの 7 組も）を作る。在る値は触らない（作り直しで稼働中の値と食い違わせない）。
 #         username・password の組（userpass）はパスが在れば触らない。キーごとの表（perkey）は在るパスに無いキーだけを足す（IADR-0700）。
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … gen <cloud/パス> <キー> <バイト数>
 #       → 指定のバイト数の乱数を**標準の base64**（パディングつき・1 行）で書く。キーが在れば止まる（上書きしない）。
 #         例（取引ユニットの手順書）: gen cloud/ast/ast-secrets order-approval-signing-key 32
+#   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … rotate <cloud/パス> <キー>
+#       → NFR-18, IADR-0706: seed が作った値（下の表）の**在るキーだけ**を、Pod の中の乱数（24 バイト・16 進）で作り直す。ほかのキーは触らない。
+#         キーが無ければ止まる（作るのは seed）。userpass のパスは password だけ（利用者名は変えない）。消費側への反映は手順書
+#         docs/operations/cloud-credential-rotation-runbook.md（値を作り直しただけでは、Keycloak・Postgres の中の値は変わらない）。
 #
-# 作る 7 種（ADR-0080 決定 1 の区分 2。パスとキーは IADR-0689 決定 6）:
+# 作る 8 種（ADR-0080 決定 1 の区分 2。パスとキーは IADR-0689 決定 6）:
 #   cloud/platform/postgres・keycloak-db・keycloak-admin・rabbitmq  … username（乱数の接尾辞）・password
+#   cloud/platform/postgres-backup                                … username（pgbackup_<乱数>）・password（IADR-0706。バックアップの利用者）
 #   cloud/shared/ast-db                                            … username・password（共有の利用者。移行の間だけ。IADR-0695）
 #   cloud/shared/ast-db-<サービス>（7 つ）                         … username（ast_<サービス>_<乱数>）・password（IADR-0695。サービスごとの DB の利用者）
 #   cloud/shared/ast-rabbitmq-users  … deploy/local/rabbitmq-setup/users.txt の取引ユニットの行の利用者名ごとのパスワード（perkey）
@@ -37,8 +42,8 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --operator-file) OPERATOR_FILE="${2:-}"; shift 2 ;;
     --identity) IDENTITY="${2:-}"; shift 2 ;;
-    gen) CMD="$1"; shift; ARGS=("$@"); break ;;
-    *) echo "ERROR: 未知の引数: $1（受け付けるのは --live・--operator-file・--identity と、gen）" >&2; exit 2 ;;
+    gen | rotate) CMD="$1"; shift; ARGS=("$@"); break ;;
+    *) echo "ERROR: 未知の引数: $1（受け付けるのは --live・--operator-file・--identity と、gen・rotate）" >&2; exit 2 ;;
   esac
 done
 
@@ -56,6 +61,18 @@ case "$CMD" in
     seed_key_ok "${ARGS[1]}" || { echo "ERROR: キーは英数字と . _ - だけ: ${ARGS[1]}" >&2; exit 2; }
     [[ "${ARGS[2]}" =~ ^[0-9]+$ ]] && [ "${ARGS[2]}" -ge 16 ] && [ "${ARGS[2]}" -le 1024 ] \
       || { echo "ERROR: バイト数は 16〜1024: ${ARGS[2]}" >&2; exit 2; }
+    ;;
+  rotate)
+    [ "${#ARGS[@]}" -eq 2 ] || { echo "ERROR: rotate <cloud/パス> <キー>" >&2; exit 2; }
+    # seed が作る値だけ（gen の値・外から持ち込む値は形が違うので、ここでは作り直さない）。
+    case "${ARGS[0]}" in
+      cloud/platform/postgres | cloud/platform/postgres-backup | cloud/platform/keycloak-db | cloud/platform/keycloak-admin | cloud/platform/rabbitmq | cloud/shared/ast-db | cloud/shared/ast-db-*)
+        [ "${ARGS[1]}" = password ] || { echo "ERROR: ${ARGS[0]} で作り直せるのは password だけ（利用者名は変えない）" >&2; exit 2; } ;;
+      cloud/shared/ast-rabbitmq-users | cloud/shared/ast-client-secrets) ;;
+      *) echo "ERROR: rotate は seed が作る値だけ（cloud/platform/{postgres,postgres-backup,keycloak-db,keycloak-admin,rabbitmq}・cloud/shared/ast-db*・ast-rabbitmq-users・ast-client-secrets）: ${ARGS[0]}" >&2; exit 2 ;;
+    esac
+    seed_path_ok "${ARGS[0]}" || { echo "ERROR: パスの形が違う: ${ARGS[0]}" >&2; exit 2; }
+    seed_key_ok "${ARGS[1]}" || { echo "ERROR: キーは英数字と . _ - だけ: ${ARGS[1]}" >&2; exit 2; }
     ;;
 esac
 ob_readable "$OPERATOR_FILE" "configure.sh が書いたオーナー用の資格のファイル（--operator-file）"
@@ -115,6 +132,8 @@ perkey() {
   echo "    作った: cloud/$p（キー: $*）"
 }
 userpass platform/postgres pgadmin
+# IADR-0706: バックアップの利用者（超利用者でない。利用者は Job の段 platform が作る。手順書）
+userpass platform/postgres-backup pgbackup
 userpass platform/keycloak-db keycloak
 userpass platform/keycloak-admin kcadmin
 userpass platform/rabbitmq mqadmin
@@ -154,6 +173,23 @@ echo "    書いた: cloud/$p の $k（$n バイトの乱数・標準の base64�
 '
     POD_GEN="${POD_GEN/__REL__/$REL}"; POD_GEN="${POD_GEN/__KEY__/$KEY}"; POD_GEN="${POD_GEN/__BYTES__/$BYTES}"
     ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${OB_POD_KV_STATE}${POD_FN}${POD_GEN}"
+    ;;
+  rotate)
+    REL="${ARGS[0]#cloud/}" KEY="${ARGS[1]}"
+    # shellcheck disable=SC2016
+    POD_ROTATE='
+p="__REL__"; k="__KEY__"
+case "$(key_state "$p" "$k")" in
+  present) ;;
+  absent) echo "ERROR: cloud/$p の $k が無い（作るのは seed）。作り直さない" >&2; exit 5 ;;
+  *) echo "ERROR: cloud/$p の $k の有無を読めない（権限・通信・封印）。書かずに止める" >&2; exit 1 ;;
+esac
+printf "{\"%s\":\"%s\"}" "$k" "$(hex 24)" | b kv patch -mount=cloud "$p" - >/dev/null
+echo "    作り直した: cloud/$p の $k（24 バイトの乱数。ほかのキーは触らない。値は表示しない）"
+'
+    POD_ROTATE="${POD_ROTATE/__REL__/$REL}"; POD_ROTATE="${POD_ROTATE/__KEY__/$KEY}"
+    echo "==> cloud/${REL} の ${KEY} を OpenBao の中で作り直す（値は表示しない。消費側への反映は手順書）"
+    ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${OB_POD_KV_STATE}${POD_FN}${POD_ROTATE}"
     ;;
 esac
 echo "OK: ${CMD} を終えた（値は表示しない）"

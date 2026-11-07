@@ -11,6 +11,12 @@
  *   5. IADR-0695: ConfigMap postgres-ast-db-users の手順（Job が流すもの）を同じ Postgres に TLS で流す。apply が 7 人を作り、各 DB と中の物の
  *      OWNER を移し、各利用者は自分の DB にだけ入れる。移行の間も共有の利用者は読み書きできる。drop-shared は共有の利用者の接続が残れば止め、
  *      無ければ消す。どちらも冪等。値はログ・出力に出ない。変異（CONNECT を外さない・共有の利用者を役割の一員にしない）を検出する。
+ *   6. IADR-0706: 超利用者は TCP（TLS）で入れない（ほかの利用者は入れる）。ゲート（superuser-tcp-gate.sh）を開けると入れ、閉じるとまた入れない。
+ *      変異（reject の行を外す）で、超利用者が TCP で入れることを検出する。手順の Job（5）はゲートを開けた間だけ流れ、閉じれば流れない。
+ *   7. IADR-0706: 段 platform がバックアップの利用者を作り、その利用者は globals と全 DB をダンプでき、書き込み・利用者の作成はできない。
+ *      Keycloak の DB の利用者のパスワードを Secret の値（作り直した値）へ合わせる。冪等。値はログ・出力に出ない。
+ *   8. IADR-0706: 超利用者の作り直しの手順（deploy/cloud/db-users/superuser-password.sh）は、Secret の値（Pod のファイル）が env と違えば
+ *      check が 3・apply が合わせて 0。どちらの値でも入れなければ 4 で何も変えない。冪等。値は出力・サーバのログに出ない。
  *
  * 証明書の鍵の所有者と mode は本番と同じ経路で作る: Secret の中身（試験だけの使い捨ての鍵）を kubelet と同じ形（root の所有・
  * 宣言の defaultMode）のボリュームに置いて読み取り専用で渡し、宣言の initContainer の command を宣言の securityContext（利用者・
@@ -97,11 +103,19 @@ function start(decl, label) {
   const name = `deploy-cloud-pg-${label}-${tag}`;
   const tlsVolume = `deploy-cloud-pg-tls-${label}-${tag}`;
   const secretVolume = `deploy-cloud-pg-secret-${label}-${tag}`;
+  const suVolume = `deploy-cloud-pg-su-${label}-${tag}`;
+  // IADR-0706: データとゲートの置き場は名前つきのボリューム（Kubernetes の PVC と emptyDir の代わり）。コンテナを再起動しても中身が残る
+  //   （docker の --tmpfs は停止で消えるので、Kubernetes のコンテナの再起動と違う形になる）。
+  const dataVolume = `deploy-cloud-pg-data-${label}-${tag}`;
+  const gateVolume = `deploy-cloud-pg-gate-${label}-${tag}`;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-pg-'));
   const cleanup = () => {
     docker(['rm', '-f', name]);
     docker(['volume', 'rm', '-f', tlsVolume]);
     docker(['volume', 'rm', '-f', secretVolume]);
+    docker(['volume', 'rm', '-f', suVolume]);
+    docker(['volume', 'rm', '-f', dataVolume]);
+    docker(['volume', 'rm', '-f', gateVolume]);
     fs.rmSync(dir, { recursive: true, force: true });
   };
   try {
@@ -143,6 +157,11 @@ function start(decl, label) {
     }
     assert.strictEqual(docker(['volume', 'create', tlsVolume]).status, 0, 'ボリュームを作れない');
     assert.strictEqual(docker(['volume', 'create', secretVolume]).status, 0, 'ボリュームを作れない');
+    assert.strictEqual(docker(['volume', 'create', suVolume]).status, 0, 'ボリュームを作れない');
+    for (const v of [dataVolume, gateVolume]) assert.strictEqual(docker(['volume', 'create', v]).status, 0, 'ボリュームを作れない');
+    // PVC（local-path）と emptyDir の代わり: データは uid 70 の所有、ゲートの置き場は 0777（emptyDir の既定）。
+    const volPrep = docker(['run', '--rm', '--user', '0:0', '-v', `${dataVolume}:/d`, '-v', `${gateVolume}:/g`, '--entrypoint', 'sh', image, '-c', 'chown 70:70 /d && chmod 0700 /d && chmod 0777 /g']);
+    assert.strictEqual(volPrep.status, 0, `ボリュームを整えられない: ${volPrep.stderr}`);
     // kubelet の代わり（試験の足場。宣言ではない）: Secret のボリューム（root の所有・宣言の defaultMode）と emptyDir（0777）を root で整える。
     const secretVol = (spec.volumes || []).find((v) => v.name === 'tls-src' && v.secret);
     assert.ok(secretVol && secretVol.secret.defaultMode !== undefined, '写し元（tls-src）が defaultMode を持つ Secret でない');
@@ -156,17 +175,35 @@ function start(decl, label) {
 
     const rnd = (n) => crypto.randomBytes(n).toString('hex');
     const admin = `pgadmin_${rnd(3)}`;
+    // IADR-0706: 超利用者の名前のファイル（Secret postgres の username だけ。宣言の items・defaultMode のまま kubelet と同じ形で置く）。
+    const suVol = (spec.volumes || []).find((v) => v.name === 'superuser-name' && v.secret);
+    assert.ok(suVol && suVol.secret.secretName === 'postgres' && JSON.stringify(suVol.secret.items) === JSON.stringify([{ key: 'username', path: 'username' }]),
+      '超利用者の名前のボリュームが Secret postgres の username だけでない');
+    const suPrep = docker(['run', '--rm', '-i', '--user', '0:0', '-v', `${suVolume}:/s`, '--entrypoint', 'sh', image, '-c',
+      `cat > /s/username && chown 0:0 /s/username && chmod ${modeOf(suVol.secret.defaultMode)} /s/username`], { input: admin });
+    assert.strictEqual(suPrep.status, 0, `超利用者の名前のボリュームを整えられない: ${suPrep.stderr}`);
+    const gateVol = (spec.volumes || []).find((v) => v.name === 'hba-gate');
+    assert.ok(gateVol && gateVol.emptyDir, 'ゲートの置き場（hba-gate）が emptyDir でない');
     const envFile = path.join(dir, 'env');
+    const supwDir = sub('superuser-secret');
     fs.writeFileSync(envFile, [
       `POSTGRES_USER=${admin}`, `POSTGRES_PASSWORD=${rnd(24)}`, `POSTGRES_DB=${admin}`, 'PGDATA=/var/lib/postgresql/data/pgdata',
       `AST_DB_USER=ast_${rnd(3)}`, `AST_DB_PASSWORD=${rnd(24)}`, `KEYCLOAK_DB_USER=kc_${rnd(3)}`, `KEYCLOAK_DB_PASSWORD=${rnd(24)}`,
       // IADR-0695: Job の env と同じ名前（seed-secrets.sh の形: ast_<サービス>_<乱数>・24 バイト）。初期化は読まない。
-      ...AST_DB_SERVICES.flatMap((svc) => [`${envOf('USER', svc)}=ast_${svc.replace(/-/g, '_')}_${rnd(3)}`, `${envOf('PASSWORD', svc)}=${rnd(24)}`]), '',
+      ...AST_DB_SERVICES.flatMap((svc) => [`${envOf('USER', svc)}=ast_${svc.replace(/-/g, '_')}_${rnd(3)}`, `${envOf('PASSWORD', svc)}=${rnd(24)}`]),
+      // IADR-0706: 段 platform の env（Job と同じ名前。seed-secrets.sh の形）。作り直しの値（KEYCLOAK_DB_PASSWORD_NEW）は試験だけのもの。
+      `POSTGRES_BACKUP_USER=pgbackup_${rnd(3)}`, `POSTGRES_BACKUP_PASSWORD=${rnd(24)}`, `KEYCLOAK_DB_PASSWORD_NEW=${rnd(24)}`, '',
     ].join('\n'), { mode: 0o600 });
 
+    // IADR-0706: Secret postgres の password を置いたファイル（作り直しの試験で書き換える。kubelet の書き換えの代わり）。
+    const adminPassword = fs.readFileSync(envFile, 'utf8').match(/^POSTGRES_PASSWORD=(.*)$/m)[1];
+    fs.writeFileSync(path.join(supwDir, 'password'), adminPassword, { mode: 0o644 });
     const run = docker(['run', '-d', '--name', name, ...dockerSecurityArgs(spec, c), '--env-file', envFile,
       '-v', `${initDir}:/docker-entrypoint-initdb.d:ro`, '-v', `${usersDir}:/opt/ast-db-users:ro`, '-v', `${hbaDir}:${hbaMount}:ro`, '-v', `${tlsVolume}:${tlsMount}:ro`,
-      '--tmpfs', '/var/lib/postgresql/data', image, ...args]);
+      '-v', `${suVolume}:${mountOf(c, 'superuser-name')}:ro`, '-v', `${gateVolume}:${mountOf(c, 'hba-gate')}`, '-v', `${supwDir}:${mountOf(c, 'superuser-secret')}:ro`,
+      '-v', `${dataVolume}:${mountOf(c, 'data')}`,
+      // 宣言の command（起動の頭でゲートを消してから起動器へ exec）があればそれで、無ければイメージの起動器で起こす。
+      ...(c.command ? ['--entrypoint', String(c.command[0]), image, ...c.command.slice(1).map(String)] : [image]), ...args]);
     assert.strictEqual(run.status, 0, `起動できない: ${run.stderr}`);
 
     // 初期化が終わり、本番の起動まで進む（initdb の後の一時サーバと本番で「ready」が 2 回出る）か、止まるまで待つ。
@@ -178,7 +215,7 @@ function start(decl, label) {
       logs = `${l.stdout}${l.stderr}`;
       state = docker(['inspect', '-f', '{{.State.Status}}', name]).stdout.trim();
       const ready = /PostgreSQL init process complete/.test(logs) && (logs.match(/ready to accept connections/g) || []).length >= 2;
-      if (ready) return { ready: true, logs, name, hbaArg, cleanup, envFile };
+      if (ready) return { ready: true, logs, name, hbaArg, cleanup, envFile, hbaDir, supwDir, gateScript: `${hbaMount}/superuser-tcp-gate.sh`, gateFile: `${mountOf(c, 'hba-gate')}/superuser-tcp.conf` };
       if (state !== 'running' || Date.now() > deadline) return { ready: false, logs, state, name, hbaArg, cleanup };
       spawnSync('sleep', ['1']);
     }
@@ -212,18 +249,189 @@ function checkDeclared() {
     const probe = (env, host) => sh(`${env} psql -X -tA -U "$POSTGRES_USER" -d postgres -h ${host} -w -c "select 1"`);
     assert.notStrictEqual(probe('PGPASSWORD=', '/var/run/postgresql').status, 0, 'ソケットにパスワードなしで入れた（local が scram-sha-256 でない）');
     assert.strictEqual(probe('PGPASSWORD="$POSTGRES_PASSWORD"', '/var/run/postgresql').status, 0, 'ソケットにパスワードで入れない');
-    const plain = probe('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=disable', '127.0.0.1');
+    const kcProbe = (env) => sh(`${env} psql -X -tA -U "$KEYCLOAK_DB_USER" -d keycloak -h 127.0.0.1 -w -c "select 1"`);
+    const plain = kcProbe('PGPASSWORD="$KEYCLOAK_DB_PASSWORD" PGSSLMODE=disable');
     assert.notStrictEqual(plain.status, 0, 'TCP の平文を受けた（hostssl だけでない）');
     assert.match(plain.stderr, /no pg_hba\.conf entry/);
-    assert.strictEqual(probe('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=require', '127.0.0.1').status, 0, 'TCP の TLS を受けない');
+    assert.strictEqual(kcProbe('PGPASSWORD="$KEYCLOAK_DB_PASSWORD" PGSSLMODE=require').status, 0, 'TCP の TLS を受けない（超利用者でない利用者）');
+    checkSuperuserGate(r, sh, probe);
     const hba = sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -tA -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "show hba_file"');
     assert.strictEqual(hba.stdout.trim(), r.hbaArg.slice('hba_file='.length), '宣言の hba_file が効いていない');
     assert.strictEqual(sh('pg_isready -U "$POSTGRES_USER"').status, 0, 'pg_isready（readiness）が通らない');
     console.log('  ok  pg_hba が効く（ソケットはパスワード必須・TCP の平文は拒む・TLS は受ける・pg_isready は通る）');
     checkDbUsers(r, sh);
+    checkPlatformStage(r, sh);
+    checkSuperuserRotation(r, sh);
   } finally {
     r.cleanup();
   }
+}
+
+/**
+ * IADR-0706: 超利用者の TCP は既定で拒み、ゲートを開けた間だけ受ける。変異（reject の行を外す）を検出する。
+ * ゲートは宣言の superuser-tcp-gate.sh を Pod の中（uid 70）で走らせる（ast-db-users.sh --live と同じ呼び方）。
+ */
+const gateOf = (r) => (cmd) => docker(['exec', r.name, 'sh', r.gateScript, cmd]);
+function checkSuperuserGate(r, sh, probe) {
+  const gate = gateOf(r);
+  const suTcp = () => probe('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=require', '127.0.0.1');
+  const refused = () => { const x = suTcp(); return x.status !== 0 && /rejects connection/.test(x.stderr); };
+  assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '起動の直後にゲートが閉じていない');
+  assert.ok(refused(), `ゲートが閉じているのに超利用者が TCP で入れた:\n${suTcp().stderr}`);
+  assert.strictEqual(gate('open').status, 0, 'ゲートを開けられない');
+  assert.match(gate('status').stdout.trim(), /^superuser-tcp: open（残り (8\d\d|900) 秒）$/, '開けたゲートの残りが上限（既定 900 秒）でない');
+  assert.strictEqual(suTcp().status, 0, `ゲートを開けても超利用者が TCP（TLS）で入れない:\n${suTcp().stderr}`);
+  assert.notStrictEqual(probe('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=disable', '127.0.0.1').status, 0, 'ゲートを開けると超利用者の平文の TCP を受けた');
+  assert.strictEqual(gate('close').status, 0, 'ゲートを閉じられない');
+  assert.ok(refused(), 'ゲートを閉じても超利用者が TCP で入れる');
+  assert.strictEqual(gate('bogus').status, 2, '知らない操作を拒まない');
+  console.log('  ok  IADR-0706: 超利用者は TCP（TLS）で入れず、ゲートを開けた間だけ入れる（ほかの利用者は TLS で入れる。平文はどちらも拒む）');
+
+  // 上限: close を流せなくても（exec が終わった後でも）、上限を過ぎればその回の閉じ手が閉じる。後から開け直した回は前の回の閉じ手が閉じない。
+  const gateTtl = (cmd, ttl) => docker(['exec', '-e', `PG_HBA_GATE_TTL_S=${ttl}`, r.name, 'sh', r.gateScript, cmd]);
+  const waitClosed = (ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (gate('status').stdout.trim() === 'superuser-tcp: closed') return true; spawnSync('sleep', ['1']); } return false; };
+  assert.strictEqual(gateTtl('open', 4).status, 0);
+  assert.ok(waitClosed(20000), '上限（4 秒）を過ぎてもゲートが閉じない（閉じ手が exec の終わりで止まった）');
+  spawnSync('sleep', ['2']);
+  assert.ok(refused(), '上限で閉じた後も超利用者が TCP で入れる（読み直していない）');
+  assert.strictEqual(gateTtl('open', 3).status, 0);
+  assert.strictEqual(gateTtl('open', 60).status, 0); // 開け直し（前の回の閉じ手は 3 秒で起きる）
+  spawnSync('sleep', ['8']);
+  assert.match(gate('status').stdout.trim(), /^superuser-tcp: open/, '前の回の閉じ手が、開け直したゲートを閉じた');
+  console.log('  ok  IADR-0706: ゲートは上限を過ぎるとその回の閉じ手が閉じ（exec の後も）、開け直した回は前の回の閉じ手が閉じない');
+
+  // コンテナだけの再起動（Kubernetes の OOM・クラッシュの再起動の代わり。データとゲートの置き場は残る）: 起動の頭でゲートを消し、閉じた側から始まる。
+  restartWithGateOpen(r, sh, gate);
+  assert.strictEqual(gate('status').stdout.trim(), 'superuser-tcp: closed', '再起動の後もゲートが開いている（起動の頭で消していない）');
+  assert.ok(refused(), '再起動の後に超利用者が TCP で入れる');
+  console.log('  ok  IADR-0706: コンテナが再起動すると（ゲートの置き場は残る）、起動の頭でゲートを消し、閉じた側から始まる（超利用者の TCP は拒まれる。データは残る）');
+
+  // 変異: reject の行を外すと、ゲートが閉じていても超利用者が入れる（判定が空振りしない）。宣言のファイルを写した場所で読み直させる。
+  const hbaFile = path.join(r.hbaDir, path.posix.basename(r.hbaArg));
+  const src = fs.readFileSync(hbaFile, 'utf8');
+  const mutated = src.split('\n').filter((l) => !/\sreject\s*$/.test(l)).join('\n');
+  assert.notStrictEqual(mutated, src, '変異の置換元（reject の行）が無い（試験が古い）');
+  try {
+    fs.writeFileSync(hbaFile, mutated);
+    assert.strictEqual(sh('pg_ctl reload -s -D "$PGDATA"').status, 0);
+    spawnSync('sleep', ['2']);
+    assert.ok(!refused(), '変異: reject の行を外したのに超利用者が拒まれた（判定が空振りしている）');
+  } finally {
+    fs.writeFileSync(hbaFile, src);
+    sh('pg_ctl reload -s -D "$PGDATA"');
+    spawnSync('sleep', ['2']);
+  }
+  assert.ok(refused(), '変異を戻した後に超利用者が拒まれない');
+  console.log('  ok  変異: reject の行を外すと、ゲートが閉じていても超利用者が TCP で入れる（検出する）');
+}
+
+/** ゲートを開けたままコンテナを再起動し、Postgres が受け付けるまで待つ。再起動の前にファイルが在り、置き場が残ることを確かめる（陽性対照）。 */
+function restartWithGateOpen(r, sh, gate) {
+  assert.strictEqual(gate('open').status, 0, 'ゲートを開けられない');
+  assert.strictEqual(sh(`test -s ${r.gateFile}`).status, 0, '再起動の前にゲートのファイルが無い（試験の前提）');
+  const lb = docker(['logs', r.name]);
+  const before = (`${lb.stdout}${lb.stderr}`.match(/ready to accept connections/g) || []).length;
+  const restart = docker(['restart', r.name], { timeout: 120000 });
+  assert.strictEqual(restart.status, 0, restart.stderr);
+  const end = Date.now() + 90000;
+  for (;;) {
+    const l = docker(['logs', r.name]);
+    const n = (`${l.stdout}${l.stderr}`.match(/ready to accept connections/g) || []).length;
+    if (n > before && sh('pg_isready -q -U "$POSTGRES_USER"').status === 0) break;
+    assert.ok(Date.now() < end, `再起動の後に Postgres が受け付けない:\n${tailOf(`${l.stdout}${l.stderr}`)}`);
+    spawnSync('sleep', ['1']);
+  }
+  spawnSync('sleep', ['1']);
+  const dbs = sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -tA -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "select count(*) from pg_database where datname = \'keycloak\'"');
+  assert.strictEqual(dbs.stdout.trim(), '1', `再起動の後にデータが残っていない（PVC の代わりになっていない）: ${dbs.stderr}`);
+}
+
+/**
+ * IADR-0706: 段 platform。バックアップの利用者を作り、その利用者は globals と全 DB をダンプでき、書き込み・利用者の作成はできない。
+ * Keycloak の DB の利用者のパスワードを Secret の値へ合わせる（作り直しの反映）。
+ */
+function checkPlatformStage(r, sh) {
+  const gate = gateOf(r);
+  const values = fs.readFileSync(r.envFile, 'utf8').split('\n').filter((l) => /^(POSTGRES_BACKUP_|KEYCLOAK_DB_|POSTGRES_PASSWORD)/.test(l)).map((l) => l.slice(l.indexOf('=') + 1)).filter((v) => v.length >= 6);
+  const noValues = (text, what) => { for (const v of values) assert.ok(!text.includes(v), `${what} に値（利用者名かパスワード）が出た`); };
+  const JOB_ENV = 'PGHOST=127.0.0.1 PGSSLMODE=require PGDATABASE=postgres PGUSER="$POSTGRES_USER" PGPASSWORD="$POSTGRES_PASSWORD" AST_DB_SHARED_USER=';
+  const job = (extra = '') => {
+    const x = sh(`${JOB_ENV} ${extra} bash /opt/ast-db-users/ast-db-users.sh platform`);
+    noValues(`${x.stdout}${x.stderr}`, 'platform の出力');
+    return x;
+  };
+  // ゲートが閉じていれば流れない（超利用者の TCP は拒まれる）。
+  const shut = job();
+  assert.notStrictEqual(shut.status, 0, 'ゲートが閉じているのに Job（超利用者の TCP）が流れた');
+  gate('open');
+  try {
+    const p1 = job();
+    assert.strictEqual(p1.status, 0, `platform が失敗した:\n${p1.stdout}${p1.stderr}`);
+    assert.match(p1.stdout, /確かめた: バックアップの利用者は超利用者でなく/);
+    assert.strictEqual(job().status, 0, '2 回目の platform が失敗した（冪等でない）');
+    // 作り直し: Secret の値（env）を替えて流すと、Keycloak の DB の利用者のパスワードが新しい値になる。
+    const p2 = job('KEYCLOAK_DB_PASSWORD="$KEYCLOAK_DB_PASSWORD_NEW"');
+    assert.strictEqual(p2.status, 0, `作り直しの platform が失敗した:\n${p2.stderr}`);
+  } finally {
+    gate('close');
+  }
+  const kc = (pw) => sh(`PGPASSWORD="${pw}" PGSSLMODE=require psql -X -tA -U "$KEYCLOAK_DB_USER" -d keycloak -h 127.0.0.1 -w -c "select 1"`);
+  assert.strictEqual(kc('$KEYCLOAK_DB_PASSWORD_NEW').status, 0, 'Keycloak の DB の利用者が作り直した値で入れない');
+  assert.notStrictEqual(kc('$KEYCLOAK_DB_PASSWORD').status, 0, 'Keycloak の DB の利用者が古い値でも入れる');
+  console.log('  ok  IADR-0706 段 platform: ゲートが閉じていれば流れず、開ければバックアップの利用者を作る。Keycloak の DB の利用者を作り直した値へ合わせる。2 回目も通る');
+
+  // バックアップの利用者（TCP・TLS。超利用者でない）: globals と全 DB をダンプでき、書けず、利用者を作れない。
+  const BK = 'PGHOST=127.0.0.1 PGSSLMODE=require PGUSER="$POSTGRES_BACKUP_USER" PGPASSWORD="$POSTGRES_BACKUP_PASSWORD" PGDATABASE=postgres';
+  const g = sh(`${BK} pg_dumpall --globals-only | grep -c '^CREATE ROLE'`);
+  assert.strictEqual(g.status, 0, `バックアップの利用者で globals を取れない: ${g.stderr}`);
+  assert.ok(Number(g.stdout.trim()) >= 3, `globals の利用者が少ない（${g.stdout.trim()}）`);
+  const dbs = sh(`${BK} psql -X -tA -c "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY datname"`);
+  assert.strictEqual(dbs.status, 0, dbs.stderr);
+  const list = dbs.stdout.split('\n').map((x) => x.trim()).filter(Boolean);
+  assert.ok(list.length >= WANT_DBS.length + 1, `ダンプの対象が少ない（${list.length}）`);
+  for (const db of list) {
+    const d = sh(`${BK} pg_dump -Fc -d ${db} | wc -c`);
+    assert.strictEqual(d.status, 0, `バックアップの利用者で ${db} をダンプできない: ${d.stderr}`);
+    assert.ok(Number(d.stdout.trim()) > 0, `${db} のダンプが空`);
+  }
+  const t = sh(`${BK} pg_dump -Fc -d audit_svc -t t | wc -c`);
+  assert.strictEqual(t.status, 0, `表（取引ユニットの物）をダンプできない: ${t.stderr}`);
+  for (const [db, sql, why] of [['audit_svc', 'insert into t(v) values (9)', '書けた'], ['postgres', 'create role x_backup_probe', '利用者を作れた'], ['postgres', 'create database x_backup_probe', 'DB を作れた']]) {
+    const x = sh(`${BK} PGDATABASE=${db} psql -X -tA -v ON_ERROR_STOP=1 -c "${sql}"`);
+    assert.notStrictEqual(x.status, 0, `バックアップの利用者が ${why}`);
+    assert.match(x.stderr, /permission denied/, `${why} の拒み方が権限でない: ${x.stderr}`);
+  }
+  console.log('  ok  IADR-0706: バックアップの利用者は globals と全 DB をダンプでき、書き込み・利用者と DB の作成は権限で拒まれる');
+}
+
+/** IADR-0706: 超利用者の作り直し。手順は宣言のファイルを標準入力で Pod へ渡す（rotate-superuser.sh と同じ呼び方）。最後に流す（超利用者の値を変える）。 */
+function checkSuperuserRotation(r, sh) {
+  const script = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/db-users/superuser-password.sh'), 'utf8');
+  const step = (mode) => docker(['exec', '-i', r.name, 'sh', '-s', '--', mode], { input: script });
+  const file = path.join(r.supwDir, 'password');
+  const rnd = () => crypto.randomBytes(24).toString('hex');
+  const login = (pw) => docker(['exec', '-i', r.name, 'sh', '-c', 'PGPASSWORD="$(cat)" psql -X -tA -h /var/run/postgresql -U "$POSTGRES_USER" -d postgres -w -c "select 1"'], { input: pw }).status === 0;
+  const old = fs.readFileSync(file, 'utf8');
+  const seen = [];
+  const noValues = (x) => { for (const v of [old, ...seen]) assert.ok(!`${x.stdout}${x.stderr}`.includes(v), '作り直しの出力に値が出た'); return x; };
+  assert.strictEqual(noValues(step('check')).status, 0, '合っているのに check が 0 でない');
+  const v1 = rnd(); seen.push(v1);
+  fs.writeFileSync(file, v1);
+  assert.strictEqual(noValues(step('check')).status, 3, 'Secret の値が違うのに check が 3 でない');
+  assert.ok(login(old) && !login(v1), 'check が書いた');
+  const a = noValues(step('apply'));
+  assert.strictEqual(a.status, 0, `apply が失敗した: ${a.stderr}`);
+  assert.ok(login(v1) && !login(old), 'apply の後に新しい値で入れない（または古い値で入れる）');
+  assert.strictEqual(noValues(step('apply')).status, 0, '2 回目の apply が 0 でない（冪等でない）');
+  // env（起動の時の値）が古いまま、もう一度作り直すと、どちらの値でも入れない → 4 で何も変えない。
+  const v2 = rnd(); seen.push(v2);
+  fs.writeFileSync(file, v2);
+  for (const mode of ['check', 'apply']) assert.strictEqual(noValues(step(mode)).status, 4, `どちらの値でも入れないのに ${mode} が 4 でない`);
+  assert.ok(login(v1) && !login(v2), 'どちらの値でも入れないのに書いた');
+  assert.strictEqual(step('bogus').status, 2, '知らない段を拒まない');
+  const logs = docker(['logs', r.name]);
+  for (const v of [v1, v2]) assert.ok(!`${logs.stdout}${logs.stderr}`.includes(v), 'Postgres のログに作り直した値が出た');
+  console.log('  ok  IADR-0706: 超利用者の作り直し — check は合っていれば 0・違えば 3、apply は合わせて 0（冪等）。どちらの値でも入れなければ 4 で何も変えない。値は出力・ログに出ない');
 }
 
 /**
@@ -231,6 +439,17 @@ function checkDeclared() {
  * 試験の証明書は名前の照合ができない（CN=postgres を 127.0.0.1 で引く）ので sslmode は require（宣言の Job は verify-full。deploy-cloud.test.js が固定）。
  */
 function checkDbUsers(r, sh) {
+  // IADR-0706: Job は超利用者の TCP で流れる。ast-db-users.sh --live と同じく、流す間だけゲートを開ける。
+  const gate = gateOf(r);
+  assert.strictEqual(gate('open').status, 0, 'ゲートを開けられない');
+  try {
+    checkDbUsersOpen(r, sh);
+  } finally {
+    gate('close');
+  }
+}
+
+function checkDbUsersOpen(r, sh) {
   const values = fs.readFileSync(r.envFile, 'utf8').split('\n').filter((l) => /^(AST_DB_|KEYCLOAK_DB_|POSTGRES_PASSWORD)/.test(l)).map((l) => l.slice(l.indexOf('=') + 1)).filter((v) => v.length >= 6);
   assert.ok(values.length >= 18, `陽性対照: 確かめる値が少ない（${values.length}）`);
   const noValues = (text, what) => { for (const v of values) assert.ok(!text.includes(v), `${what} に値（利用者名かパスワード）が出た`); };
@@ -357,9 +576,32 @@ function checkMutation() {
   }
 }
 
+/** 変異: 起動の頭の消去を外すと（イメージの起動器のまま起こすと）、コンテナの再起動の後もゲートが開いたまま残る（判定が空振りしない）。 */
+function checkGateRestartMutation() {
+  const decl = loadDeclaration();
+  const hba = decl.docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'postgres-hba');
+  assert.ok(Array.isArray(decl.c.command) && /^rm -f "\$GATE"/m.test(String(hba.data['postgres-start.sh'] || '')), '宣言の command（起動の頭）にゲートの消去が無い');
+  decl.c = { ...decl.c };
+  delete decl.c.command;
+  const r = start(decl, 'gatemut');
+  try {
+    if (!r.ready) throw new Error(`変異の構成が起動しない:\n${tailOf(r.logs)}`);
+    const sh = (script) => docker(['exec', r.name, 'sh', '-c', script]);
+    const gate = gateOf(r);
+    restartWithGateOpen(r, sh, gate);
+    assert.match(gate('status').stdout.trim(), /^superuser-tcp: open/, '変異: 起動の頭の消去を外したのに、再起動でゲートが閉じた（判定が空振りしている）');
+    const x = sh('PGPASSWORD="$POSTGRES_PASSWORD" PGSSLMODE=require psql -X -tA -U "$POSTGRES_USER" -d postgres -h 127.0.0.1 -w -c "select 1"');
+    assert.strictEqual(x.status, 0, '変異: ゲートが残ったのに超利用者が TCP で入れない（試験の前提が崩れている）');
+    console.log('  ok  変異: 起動の頭の消去を外すと、コンテナの再起動の後もゲートが開いたまま残り、超利用者が TCP で入れる（検出する）');
+  } finally {
+    r.cleanup();
+  }
+}
+
 try {
   checkDeclared();
   checkMutation();
+  checkGateRestartMutation();
   console.log('✓ deploy/cloud の Postgres は空のボリュームから起動し、pg_hba と鍵の扱いが宣言どおりに効く');
 } catch (e) {
   console.error(`✗ ${e.message}`);

@@ -22,6 +22,7 @@ const CLOUD = path.join(ROOT, 'deploy', 'cloud');
 /** ADR-0080 決定 1 の区分。1 = 外から持ち込む・2 = クラスタの中で作る・3 = TLS の秘密鍵。 */
 const CATEGORY = Object.freeze({
   'platform-infra/postgres': 2,
+  'platform-infra/postgres-backup': 2,
   'platform-infra/ast-db': 2,
   'platform-infra/ast-db-audit': 2,
   'platform-infra/ast-db-configuration': 2,

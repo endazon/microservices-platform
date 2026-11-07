@@ -13,6 +13,9 @@
  *   - 作ったクライアント（と在るクライアント）のサービスアカウントに、取り込み元の利用者の realm ロールのうち無いものだけを足す（外さない）。
  *   - クライアントの既定のスコープが稼働の realm に無ければ、何も書かずに止める（無いスコープは Keycloak が黙って捨て、トークンの宛先が欠ける）。
  *   - MODE=check は読むだけ（無いクライアント・足りないロールを名指しし、在れば 3 で終わる）。MODE=apply は書く。
+ *   - NFR-18, IADR-0706: MODE=sync-secrets は、在る機密クライアントの secret を取り込み元の値（OpenBao で作り直した値）へ合わせる
+ *     （作り直しの反映。`--import-realm` は在る realm を取り込み直さない）。違うものだけを書き、同じものは書かない。無いクライアントは作らない
+ *     （apply の役目。名指して 1 で終わる）。secret の値は比べるだけで出力しない。secret 以外の設定は変えない（読んだ表現に secret だけを差す）。
  *   - 値（secret・トークン・パスワード）は出力しない。出すのはクライアントの名前・ロールの名前・件数だけ。
  *
  * Job（deploy/cloud/keycloak-clients/job.yaml）の中で node:22-alpine が実行する。手元の入口は keycloak-clients.sh。外部依存なし（Node 標準の fetch・fs）。
@@ -103,9 +106,29 @@ async function reconcile(call, realmName, desired, { apply, log = console.log })
   return out;
 }
 
+/** IADR-0706: 在る機密クライアントの secret を取り込み元の値へ合わせる。戻り値は { synced, same, missing }。 */
+async function syncSecrets(call, realmName, desired, { log = console.log } = {}) {
+  const r = `/admin/realms/${encodeURIComponent(realmName)}`;
+  const out = { synced: [], same: [], missing: [] };
+  for (const { client } of desired) {
+    const id = client.clientId;
+    const live = ((await call('GET', `${r}/clients?clientId=${encodeURIComponent(id)}`)) || []).find((c) => c.clientId === id);
+    if (!live) { out.missing.push(id); log(`    無い: クライアント ${id}（作るのは apply）`); continue; }
+    const cur = (await call('GET', `${r}/clients/${live.id}/client-secret`)) || {};
+    if (cur.value === client.secret) { out.same.push(id); log(`    同じ: クライアント ${id} の secret（書かない）`); continue; }
+    const rep = await call('GET', `${r}/clients/${live.id}`);
+    await call('PUT', `${r}/clients/${live.id}`, { ...rep, secret: client.secret });
+    const after = (await call('GET', `${r}/clients/${live.id}/client-secret`)) || {};
+    if (after.value !== client.secret) throw new Error(`クライアント ${id} の secret を合わせた後に読むと違う`);
+    out.synced.push(id);
+    log(`    合わせた: クライアント ${id} の secret（取り込み元の値。値は表示しない）`);
+  }
+  return out;
+}
+
 async function main(env = process.env, log = console.log) {
   const mode = env.MODE || 'check';
-  if (!['apply', 'check'].includes(mode)) { log(`ERROR: MODE は apply か check（${mode}）`); return 2; }
+  if (!['apply', 'check', 'sync-secrets'].includes(mode)) { log(`ERROR: MODE は apply・check・sync-secrets のどれか（${mode}）`); return 2; }
   for (const k of ['KC_URL', 'REALM', 'REALM_FILE', 'KC_ADMIN_USER', 'KC_ADMIN_PASSWORD']) if (!env[k]) { log(`ERROR: env ${k} が無い`); return 2; }
   if (!/^https:\/\//.test(env.KC_URL)) { log('ERROR: KC_URL は https（基盤の CA で検証する）'); return 2; }
   const realm = JSON.parse(fs.readFileSync(env.REALM_FILE, 'utf8'));
@@ -114,6 +137,11 @@ async function main(env = process.env, log = console.log) {
   const desired = desiredFrom(realm);
   log(`==> realm ${env.REALM}: 取り込み元の機密クライアント ${desired.length} 件（${desired.map((d) => d.client.clientId).join(', ')}）を稼働と突き合わせる（${mode}）`);
   const call = makeAdmin(env.KC_URL.replace(/\/$/, ''), await adminToken(env.KC_URL.replace(/\/$/, ''), env.KC_ADMIN_USER, env.KC_ADMIN_PASSWORD));
+  if (mode === 'sync-secrets') {
+    const s = await syncSecrets(call, env.REALM, desired, { log });
+    log(`OK: secret を合わせた ${s.synced.length} 件・同じ ${s.same.length} 件・無いクライアント ${s.missing.length} 件`);
+    return s.missing.length > 0 ? 1 : 0;
+  }
   const out = await reconcile(call, env.REALM, desired, { apply: mode === 'apply', log });
   for (const p of out.problems) log(`ERROR: ${p}`);
   if (out.problems.length > 0) return 1;
@@ -123,7 +151,7 @@ async function main(env = process.env, log = console.log) {
   return mode === 'check' && (out.missing.length > 0 || out.rolesLacking.length > 0) ? 3 : 0;
 }
 
-module.exports = { desiredFrom, reconcile, main, REPLACEABLE_CLIENT };
+module.exports = { desiredFrom, reconcile, syncSecrets, main, REPLACEABLE_CLIENT };
 if (require.main === module) {
   main().then((code) => process.exit(code), (e) => { console.log(`ERROR: ${e.message}`); process.exit(1); });
 }

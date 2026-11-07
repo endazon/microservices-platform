@@ -29,6 +29,9 @@ echo "ACT $*" >> "$KLOG"
 case "$*" in
   *"get job "*"-o jsonpath={.status.succeeded}/{.status.failed}") echo "1/" ;;
   *"get secret openbao-tls --ignore-not-found -o name"*) ;;
+  # IADR-0706: 超利用者の TCP のゲート（ast-db-users.sh は閉じたことを status で確かめる）。超利用者の突き合わせ（rotate-superuser.sh）は合っている形。
+  *"superuser-tcp-gate.sh status") echo "superuser-tcp: closed" ;;
+  *"exec -i deploy/postgres -c postgres -- sh -s -- "*) cat >/dev/null 2>&1 || true; echo "superuser: Secret の値で入れる" ;;
   *) cat >/dev/null 2>&1 || true ;;
 esac
 exit 0
@@ -59,6 +62,7 @@ entries=(
   "keycloak-clients/keycloak-clients.sh --live check"
   "keycloak-admin/keycloak-admin.sh --live check"
   "db-users/ast-db-users.sh --live apply"
+  "db-users/rotate-superuser.sh --live check"
 )
 
 # --- 記録（record）---
@@ -113,6 +117,11 @@ for e in "keycloak-clients/keycloak-clients.sh --live check" "keycloak-admin/key
   [ "$n" -ge 3 ] || ng "${e%% *} の作業の呼び出しが記録されない（陽性対照）"
   [ "$(grep '^ACT ' "$KLOG" | grep -vc '^ACT --context ctx-a ' || true)" = 0 ] || ng "${e%% *} の kubectl が確かめた context（ctx-a）に固定されていない"
 done
+# IADR-0706: 超利用者の突き合わせ（rotate-superuser.sh）は kubectl を 1 回だけ呼ぶ（Pod の中の手順へ標準入力で渡す）。その 1 回も固定される。
+target ctx-a "https://127.0.0.1:6443" "$UID_A"
+STUB_SWITCH_TO=ctx-b bash "$HERE/db-users/rotate-superuser.sh" --live check >/dev/null 2>&1 || ng "rotate-superuser.sh が一致の宛先で通らない"
+[ "$(acts)" = 1 ] && grep -q '^ACT --context ctx-a -n platform-infra exec -i deploy/postgres -c postgres -- sh -s -- check$' "$KLOG" \
+  || ng "rotate-superuser.sh の kubectl が確かめた context（ctx-a）に固定されていない"
 ok "確かめた後の kubectl は、途中で現在の context が替わっても、確かめた context に固定される"
 
 # --- age の識別子（ob_identity_guard） ---

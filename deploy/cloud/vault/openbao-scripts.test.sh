@@ -151,6 +151,10 @@ bash "$HERE/init.sh" --recipients "$W/recipients.txt" --out "$W/x.age" >/dev/nul
 run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen cloud/../x k 32 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen は cloud/ の外のパスを拒む"
 run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen cloud/ast/a 'k;x' 32 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen はキーの形の外を拒む"
 run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" gen cloud/ast/a k 8 >/dev/null 2>&1; [ $? -eq 2 ] || ng "gen は 16 バイト未満を拒む"
+# IADR-0706: rotate は seed が作る値だけ・userpass は password だけ
+run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" rotate cloud/platform/postgres username >/dev/null 2>&1; [ $? -eq 2 ] || ng "rotate は利用者名を作り直す"
+run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" rotate cloud/ast/ast-secrets order-approval-signing-key >/dev/null 2>&1; [ $? -eq 2 ] || ng "rotate は seed の外（gen の値）を受ける"
+run seed-secrets.sh --operator-file "$W/none" --identity "$W/id.txt" rotate cloud/platform/postgres >/dev/null 2>&1; [ $? -eq 2 ] || ng "rotate はキーが無くても受ける"
 set -e
 ok "明示の指定（--live）が無ければ何もせず、引数の形の外（cloud/ の外・キーの字・バイト数）を拒む"
 
@@ -260,7 +264,7 @@ mkroot() {
 # --- seed ---
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" >/dev/null
 get() { BAO_TOKEN="$OPT" B kv get -mount=cloud -format=json "$1" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s).data.data)))'; }
-for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db; do
+for p in platform/postgres platform/postgres-backup platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db; do
   get "$p" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);if(Object.keys(d).sort().join()!=="password,username"||!/^[a-z]+_[0-9a-f]{6}$/.test(d.username)||!/^[0-9a-f]{48}$/.test(d.password))process.exit(1);})' \
     || ng "cloud/$p の形が違う"
 done
@@ -283,7 +287,7 @@ before="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/as
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" >/dev/null
 after="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/ast-db-risk-management shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
 [ "$before" = "$after" ] || ng "2 回目の seed が値を変えた"
-ok "seed: 7 種とサービスごとの DB の 7 組を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 10）、2 回目は何も変えない"
+ok "seed: 8 種とサービスごとの DB の 7 組を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 10）、2 回目は何も変えない"
 
 # IADR-0700: 在るパス（稼働中の構成。旧の 3 つの client だけ）には、無いキーだけを足す。在るキーの値は変えない。
 old3="$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);const o={};for(const k of ["ai-stock-trading-svc","ai-stock-trading-llm-caller","ai-stock-trading-owner"])o[k]=d[k];process.stdout.write(JSON.stringify(o));})')"
@@ -311,6 +315,25 @@ run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" gen
 set +e; run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" gen cloud/ast/ast-secrets order-approval-signing-key 32 >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -ne 0 ] && [ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field=order-approval-signing-key ast/ast-secrets)" = "$v" ] || ng "在るキーへの gen が止まらない（上書きした）"
 ok "gen: 指定のバイト数の乱数を標準の base64 で書き、在るパスでは patch（ほかのキーを残す）、在るキーは上書きしない"
+
+# --- rotate（IADR-0706）: 在るキーだけを作り直し、ほかのキー（利用者名・ほかのクライアント）は触らない。値は表示しない ---
+for target in "platform/postgres password" "platform/postgres-backup password" "platform/keycloak-db password" "shared/ast-client-secrets ai-stock-trading-svc-report"; do
+  set -- $target
+  before_all="$(get "$1")"
+  old="$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field="$2" "$1")"
+  out="$(run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" rotate "cloud/$1" "$2")"
+  new="$(BAO_TOKEN="$OPT" B kv get -mount=cloud -field="$2" "$1")"
+  [[ "$new" =~ ^[0-9a-f]{48}$ ]] && [ "$new" != "$old" ] || ng "rotate が cloud/$1 の $2 を 24 バイトの乱数で作り直さない"
+  [[ "$out" != *"$new"* && "$out" != *"$old"* ]] || ng "rotate が値を出力した"
+  printf '%s' "$before_all" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const b=JSON.parse(s),a=JSON.parse(process.argv[1]),k=process.argv[2];if(Object.keys(a).sort().join()!==Object.keys(b).sort().join())process.exit(1);for(const x of Object.keys(b))if(x!==k&&a[x]!==b[x])process.exit(1);})' "$(get "$1")" "$2" \
+    || ng "rotate が cloud/$1 のほかのキーを変えた・消した"
+done
+set +e; run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" rotate cloud/shared/ast-client-secrets no-such-client >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 5 ] || ng "rotate が無いキーを作った（または 5 で止まらない: $rc）"
+[ "$(BAO_TOKEN="$OPT" B kv get -mount=cloud -format=json shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(String("no-such-client" in JSON.parse(s).data.data)))')" = false ] || ng "rotate が無いキーを足した"
+unset old new before_all
+set --
+ok "rotate: seed が作った値の在るキーだけを 24 バイトの乱数で作り直し（利用者名・ほかのキーは触らない）、無いキーは作らずに止める。値は表示しない"
 
 # --- put-external-secret.sh: 外から持ち込む値を標準入力からだけ受けて書く ---
 put() { run put-external-secret.sh --operator-file "$W/operator.age" --identity "$W/id.txt" "$@"; }
@@ -507,7 +530,7 @@ ok "受け口の鍵は kubectl の引数にも、手元の作業場・ConfigMap 
 
 # --- 値が引数・ディスクに残らない ---
 R2="$(mkroot)"
-vals="$(for p in platform/postgres platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db $(for s in $AST_DB_SVCS; do printf 'shared/ast-db-%s ' "$s"; done) shared/ast-rabbitmq-users shared/ast-client-secrets ast/ast-secrets msp/llm-provider-credentials ast/moomoo-rsa ast/ast-owner-totp; do
+vals="$(for p in platform/postgres platform/postgres-backup platform/keycloak-db platform/keycloak-admin platform/rabbitmq shared/ast-db $(for s in $AST_DB_SVCS; do printf 'shared/ast-db-%s ' "$s"; done) shared/ast-rabbitmq-users shared/ast-client-secrets ast/ast-secrets msp/llm-provider-credentials ast/moomoo-rsa ast/ast-owner-totp; do
   BAO_TOKEN="$R2" B kv get -mount=cloud -format=json "$p" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{for(const v of Object.values(JSON.parse(s).data.data))if(!/^[a-z]+_[0-9a-f]{6}$/.test(v))console.log(v)})'; done
   dec "$W/init.age" unseal_keys_b64; echo; dec "$W/operator.age" secret_id; echo)"
 BAO_TOKEN="$R2" B token revoke -self >/dev/null
