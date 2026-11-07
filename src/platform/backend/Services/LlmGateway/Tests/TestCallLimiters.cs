@@ -1,6 +1,7 @@
 using System.Diagnostics.Metrics;
 using LlmGateway.Common.Observability;
 using LlmGateway.Domain.Limits;
+using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Pricing;
 using LlmGateway.Domain.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -13,10 +14,10 @@ internal static class TestCallLimiters
 {
     public static LlmCallLimiter Create(
         IMeterFactory meterFactory, LlmRoutingOptions routing, ModelPriceTable prices, TimeProvider time,
-        LlmCallLimitOptions? options = null)
+        LlmCallLimitOptions? options = null, ILlmSpendStore? store = null)
         => new(
             new TestClaudeProviders.StaticOptionsMonitor<LlmCallLimitOptions>(options ?? new LlmCallLimitOptions()),
             new TestClaudeProviders.StaticOptionsMonitor<LlmRoutingOptions>(routing),
             prices, time, new LlmCallLimitMetrics(meterFactory), new LogOccurrenceThrottle(time),
-            NullLogger<LlmCallLimiter>.Instance);
+            NullLogger<LlmCallLimiter>.Instance, store ?? new ProcessLocalLlmSpendStore());
 }
