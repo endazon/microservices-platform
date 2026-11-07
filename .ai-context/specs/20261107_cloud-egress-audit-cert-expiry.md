@@ -1,11 +1,11 @@
 ---
 title: 作業仕様書 — クラウドの外向きの通信を中継へ集め、Keycloak の一時管理者を要る間だけ置き、ESO の名前空間と API の監査を足し、サーバ証明書の期限を警報にする
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0704, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700]
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 related_specs:
   - 20261107_cloud-infra-pod-hardening.md
   - 20261107_cloud-openbao-tls.md
@@ -81,3 +81,11 @@ IADR-0704 の決定 1〜5 のとおり。
 - 稼働中の構成: `docs/operations/cloud-egress-proxy-runbook.md`（移す段 → 最終の段）、`cloud-keycloak-admin-runbook.md` §3（残っている一時管理者を消す）、
   `cloud-eso-namespace-runbook.md`（名前空間のラベルと到達の制限）、`cloud-apiserver-audit-log-runbook.md`（稼働中のノードへ監査を足す）。
 - heartbeat の宛先の名前を ConfigMap `egress-proxy-extra-hosts` に書く（設定に無い宛先）。
+
+## ［2026-11-08 追記］状態と、レビューの後の変更
+
+- 状態を `done` にした（リポジトリの中の実装・試験・手順書は揃った。クラスタでしか確かめられないことは IADR-0704 残余 4・5 に残し、移行の門で確かめる）。
+- 改番: 仮の IADR-0703 を IADR-0704 にした（IADR-0703 は先にマージされた MSP#2508 が確保した。番号は develop の最大＋1）。本文の「IADR-0703」の記述は改番の前のもの。
+- レビューの後に変えたこと（受け入れ基準の表は改めてある）: 中継は引いた番地を順に試す（E5）。ESO・OpenBao の API サーバー向けの出は宛先を問わないことを
+  残余 5 に明記し、E1 を ipBlock に限った。測りは検証を切らずに握手し、検証の失敗の種類を出す（C3）。close は流し直せる（K2）。
+  `keycloak-admin.sh` は MSP#2508 の `deploy/cloud/lib/target-cluster.sh` で宛先のクラスタを確かめてから kubectl を使う（`cluster-target.test.sh` の入口に足した）。

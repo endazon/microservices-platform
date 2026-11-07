@@ -23,6 +23,9 @@ const ROOT = path.resolve(HERE, '..', '..', '..');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'keycloak-admin-'));
 const STATE = path.join(dir, 'state.json');
 const PASSWORD = ['probe', 'pw', 'k'.repeat(24)].join('-');
+const CLUSTER_UID = '11111111-2222-4333-8444-555555555555';
+const MARK = path.join(dir, 'cloud-cluster-mark');
+fs.writeFileSync(MARK, `${CLUSTER_UID}\n`, { mode: 0o600 });
 
 // ---- Keycloak の偽物（Job の中の master-admin.js の fetch を差し替える。node --require で読む）
 const FAKE_FETCH = path.join(dir, 'fake-fetch.js');
@@ -58,6 +61,12 @@ const { spawnSync } = require('child_process');
 const load = () => JSON.parse(fs.readFileSync(process.env.FAKE_STATE, 'utf8'));
 const save = (s) => { const t = process.env.FAKE_STATE + '.' + process.pid; fs.writeFileSync(t, JSON.stringify(s)); fs.renameSync(t, process.env.FAKE_STATE); }; // 半端なファイルを読ませない（パイプの両端が同時に動く）
 let a = process.argv.slice(2);
+// 宛先の確かめ（deploy/cloud/lib/target-cluster.sh）: context・API の宛先（トンネル）・クラスタの印に答える
+if (a.join(' ') === 'config current-context') { process.stdout.write('ctx-cloud\\n'); process.exit(0); }
+if (a[0] === 'config' && a[1] === 'view') { process.stdout.write('https://127.0.0.1:6443'); process.exit(0); }
+if (a[0] === '--context' && a[2] === 'get' && a[3] === 'namespace' && a[4] === 'kube-system') { process.stdout.write(process.env.FAKE_CLUSTER_UID); process.exit(0); }
+// 確かめた後の呼び出しは、確かめた context に固定される
+if (a[0] === '--context') { if (a[1] !== 'ctx-cloud') { process.stderr.write('fake kubectl: 確かめていない context: ' + a[1] + '\\n'); process.exit(9); } a = a.slice(2); }
 if (a[0] === '-n') a = a.slice(2);
 const s = load();
 const line = a.join(' ');
@@ -114,7 +123,7 @@ const state = () => JSON.parse(fs.readFileSync(STATE, 'utf8'));
 function runStage(stage, script = path.join(HERE, 'keycloak-admin.sh')) {
   const r = spawnSync('bash', [script, '--live', stage], {
     encoding: 'utf8',
-    env: { PATH: `${BIN}:${process.env.PATH}`, FAKE_STATE: STATE, FAKE_FETCH, MASTER_ADMIN_JS: path.join(HERE, 'master-admin.js'), KEYCLOAK_ADMIN_TIMEOUT_S: '30' },
+    env: { PATH: `${BIN}:${process.env.PATH}`, HOME: dir, CLOUD_CLUSTER_MARK_FILE: MARK, FAKE_CLUSTER_UID: CLUSTER_UID, FAKE_STATE: STATE, FAKE_FETCH, MASTER_ADMIN_JS: path.join(HERE, 'master-admin.js'), KEYCLOAK_ADMIN_TIMEOUT_S: '30' },
   });
   return { status: r.status, out: r.stdout + r.stderr };
 }
@@ -185,6 +194,8 @@ ok('陰性対照: close が有無を見ずに retire を流す形（前の版）
   const t = path.join(dir, 'mut');
   fs.mkdirSync(path.join(t, 'deploy/cloud/keycloak-admin'), { recursive: true });
   fs.mkdirSync(path.join(t, 'scripts/lib'), { recursive: true });
+  fs.mkdirSync(path.join(t, 'deploy/cloud/lib'), { recursive: true });
+  fs.copyFileSync(path.join(ROOT, 'deploy/cloud/lib/target-cluster.sh'), path.join(t, 'deploy/cloud/lib/target-cluster.sh'));
   for (const f of ['job.yaml', 'master-admin.js']) fs.copyFileSync(path.join(HERE, f), path.join(t, 'deploy/cloud/keycloak-admin', f));
   fs.copyFileSync(path.join(ROOT, 'scripts/lib/live-opt-in.sh'), path.join(t, 'scripts/lib/live-opt-in.sh'));
   const sh = fs.readFileSync(path.join(HERE, 'keycloak-admin.sh'), 'utf8');

@@ -2,10 +2,10 @@
 title: IADR-0704 クラウドの基盤の外向きの通信を名前の許可表を持つ中継 1 つに集め、master realm の一時管理者を要る間だけ置き、ESO の名前空間を restricted と到達の制限で先に作り、k3s の API サーバーの監査の記録を足し、サーバ証明書の期限を受け口で測って警報にする
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700]
+related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700, IADR-0703]
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 related_specs:
   - ../specs/20261107_cloud-egress-audit-cert-expiry.md
 ---
@@ -71,6 +71,8 @@ OpenBao の出（API サーバーの TokenReview。443・6443 のポートだけ
   取れないことを確かめる → env を外して作り直す → 在らないことを確かめる）。閉じる段は始めに env と一時管理者の有無を読み、在る分だけ消すので、
   途中で落ちても流し直せる（一時管理者が既に無いことでは止まらず、有無を確かめられないときだけ止まる）。`check` は閉じ忘れを 3、確かめられないことを 1 で知らせる。
 - master realm の総当たりの検知は platform realm の宣言と同じ値（試験が突き合わせる）。
+- ［2026-11-08 追記］`keycloak-admin.sh` は、ほかのオーナーの手順と同じく `deploy/cloud/lib/target-cluster.sh`（IADR-0703 決定 2）で宛先のクラスタを確かめてから
+  kubectl を使い、以後は確かめた context に固定する（`cluster-target.test.sh` の入口に足した）。
 - 管理の面へ届く Pod の範囲（取引ユニットの 11 の Pod・LLM ゲートウェイ）は変えない。管理者が在らない間は、届いても認証が通る資格が無い。
 
 採らなかった: **常設の管理者を別に作る**（資格が常に在る形は変わらない）。**管理の API の機能を切る**（稼働中の realm へ足す Job が使えなくなる）。

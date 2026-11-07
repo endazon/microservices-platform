@@ -4,17 +4,19 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-18]
-iadrs: [IADR-0704, IADR-0674, IADR-0689, IADR-0693, IADR-0700]
+iadrs: [IADR-0704, IADR-0674, IADR-0689, IADR-0693, IADR-0700, IADR-0703]
 specs: [20261107_cloud-egress-audit-cert-expiry]
 -->
 
 # 運用 Runbook: Keycloak の master realm の一時管理者
 
 > 対象はクラウドの最小構成の Keycloak（`deploy/cloud/infra/keycloak.yaml`）。入口は `deploy/cloud/keycloak-admin/keycloak-admin.sh`（`--live` が無ければ何もしない）。
+> 入口は、ほかのオーナーの手順と同じく、宛先のクラスタ（記録したクラスタの印）を確かめてから kubectl を使う。違えば何もせずに 4 で終わる
+> （[宛先のクラスタの手順書](cloud-owner-target-cluster-runbook.md)）。
 > 🔴 **本書の手順はすべてオーナーが行う。** 管理者のパスワードは手元へ出さない（Job の Pod が Secret `keycloak-admin` から読む。
 > `kubectl set env --from=secret` は Secret への参照を足すだけで、値を読まない）。
 >

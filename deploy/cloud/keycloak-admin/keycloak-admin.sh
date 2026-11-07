@@ -33,6 +33,10 @@ TIMEOUT_S="${KEYCLOAK_ADMIN_TIMEOUT_S:-300}"
 case "$TIMEOUT_S" in '' | *[!0-9]*) echo "ERROR: KEYCLOAK_ADMIN_TIMEOUT_S は秒数（正の整数）" >&2; exit 2 ;; esac
 live_opt_in_require "keycloak-admin.sh"
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl が無い" >&2; exit 1; }
+# 宛先のクラスタを確かめてから kubectl を使い、以後は確かめた context に固定する（IADR-0703 決定 2。違えば何もせずに 4）
+# shellcheck source=deploy/cloud/lib/target-cluster.sh
+. "$ROOT/deploy/cloud/lib/target-cluster.sh"
+ct_require_target "keycloak-admin.sh"
 
 # Deployment が KC_BOOTSTRAP_ADMIN_* を持つか（名前だけを読む。値は secretKeyRef なので持たない）
 bootstrap_env_names() {
