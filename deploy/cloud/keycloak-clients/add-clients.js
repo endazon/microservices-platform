@@ -47,12 +47,12 @@ async function adminToken(baseUrl, user, password) {
   return (await res.json()).access_token;
 }
 
-/** 稼働の realm と突き合わせ、無いクライアントを作り、サービスアカウントへ無いロールを足す。戻り値は { missing, created, rolesAdded, problems }。 */
+/** 稼働の realm と突き合わせ、無いクライアントを作り、サービスアカウントへ無いロールを足す。戻り値は { missing, created, rolesLacking（check で足りない）, rolesAdded（apply で足した）, problems }。 */
 async function reconcile(call, realmName, desired, { apply, log = console.log }) {
   const r = `/admin/realms/${encodeURIComponent(realmName)}`;
   const scopes = new Set(((await call('GET', `${r}/client-scopes`)) || []).map((s) => s.name));
   const roles = new Set(((await call('GET', `${r}/roles`)) || []).map((x) => x.name));
-  const out = { missing: [], created: [], rolesAdded: [], problems: [] };
+  const out = { missing: [], created: [], rolesLacking: [], rolesAdded: [], problems: [] };
   for (const { client, roles: want } of desired) {
     for (const s of client.defaultClientScopes || []) if (!scopes.has(s)) out.problems.push(`${client.clientId} の既定のスコープ ${s} が稼働の realm に無い`);
     for (const x of want) if (!roles.has(x)) out.problems.push(`${client.clientId} のサービスアカウントの realm ロール ${x} が稼働の realm に無い`);
@@ -71,16 +71,20 @@ async function reconcile(call, realmName, desired, { apply, log = console.log })
       if (!live) throw new Error(`クライアント ${id} を作った後に読めない`);
       out.created.push(id);
       log(`    作った: クライアント ${id}（サービスアカウントだけ。secret は取り込み元の値）`);
-      const got = new Set(((await call('GET', `${r}/clients/${live.id}/default-client-scopes`)) || []).map((s) => s.name));
-      for (const s of client.defaultClientScopes || []) if (!got.has(s)) out.problems.push(`${id} に既定のスコープ ${s} が付かない`);
     } else {
       log(`    在る: クライアント ${id}（触らない）`);
+    }
+    // 作ったものも在るものも、既定のスコープ（取引ユニットの宛先 aud を載せるもの）が付いているかを読んで確かめる。足しはしない
+    // （在るものは触らない）。欠けていれば失敗にする（流し直しで「在る」として素通りし、宛先の無いクライアントが残るのを防ぐ）。
+    const got = new Set(((await call('GET', `${r}/clients/${live.id}/default-client-scopes`)) || []).map((x) => x.name));
+    for (const sc of client.defaultClientScopes || []) {
+      if (!got.has(sc)) out.problems.push(`${id} に既定のスコープ ${sc} が付いていない（クライアントを消してから流し直す）`);
     }
     const sa = await call('GET', `${r}/clients/${live.id}/service-account-user`);
     const has = new Set(((await call('GET', `${r}/users/${sa.id}/role-mappings/realm`)) || []).map((x) => x.name));
     const lack = want.filter((x) => !has.has(x));
     if (lack.length === 0) continue;
-    if (!apply) { out.rolesAdded.push(`${id}:${lack.join('+')}`); log(`    足りない: ${id} のサービスアカウントのロール ${lack.join(', ')}`); continue; }
+    if (!apply) { out.rolesLacking.push(`${id}:${lack.join('+')}`); log(`    足りない: ${id} のサービスアカウントのロール ${lack.join(', ')}`); continue; }
     const reps = [];
     for (const x of lack) reps.push(await call('GET', `${r}/roles/${encodeURIComponent(x)}`));
     await call('POST', `${r}/users/${sa.id}/role-mappings/realm`, reps);
@@ -106,8 +110,8 @@ async function main(env = process.env, log = console.log) {
   if (out.problems.length > 0) return 1;
   log(mode === 'apply'
     ? `OK: 無かったクライアント ${out.missing.length} 件・作った ${out.created.length} 件・ロールを足した ${out.rolesAdded.length} 件`
-    : `OK: 無いクライアント ${out.missing.length} 件・ロールの足りないサービスアカウント ${out.rolesAdded.length} 件（読むだけ。書いていない）`);
-  return mode === 'check' && (out.missing.length > 0 || out.rolesAdded.length > 0) ? 3 : 0;
+    : `OK: 無いクライアント ${out.missing.length} 件・ロールの足りないサービスアカウント ${out.rolesLacking.length} 件（読むだけ。書いていない）`);
+  return mode === 'check' && (out.missing.length > 0 || out.rolesLacking.length > 0) ? 3 : 0;
 }
 
 module.exports = { desiredFrom, reconcile, main };

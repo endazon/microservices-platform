@@ -66,6 +66,8 @@ bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check        # 「
 - 雛形を当てた後、`keycloak-realm-import` が 10 の secret で作り直されたことを確かめてから `apply` する（古い取り込み元には 7 つが無い。`check` が名指さない）。
 - Job は在るクライアントを読まず・書かない。既定のスコープ（`ai-stock-trading-api-audience`）か `trading-service` が稼働の realm に無ければ、何も書かずに失敗する
   （ログの理由を読む。宛先のスコープが無い realm は、前の段の取り込みの手順に戻る）。
+- `… に既定のスコープ ai-stock-trading-api-audience が付いていない` で失敗したら（作った直後か、前の回に作ったクライアント）、Job はそのクライアントを直さない。
+  管理の画面でそのクライアントを消してから `apply` を流し直す（作り直したクライアントの secret は取り込み元の値で、OpenBao の値と同じ）。
 - Keycloak の Pod の再起動は要らない。
 
 ### 段 3: 取引ユニットを入れる

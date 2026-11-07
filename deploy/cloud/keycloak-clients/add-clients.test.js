@@ -118,8 +118,39 @@ test('在るクライアントのサービスアカウントに足りないロ�
   kc.st.mappings.set(kc.st.sa.get(c.id).id, [{ name: 'offline_access' }]);
   const out = await reconcile(kc.call, 'platform', desiredFrom(cloud), { apply: true, log: quiet });
   assert.deepStrictEqual(out.rolesAdded, [`${SERVICE_CLIENTS[0]}:trading-service`]);
+  assert.deepStrictEqual(out.rolesLacking, []);
   assert.deepStrictEqual(kc.st.mappings.get(kc.st.sa.get(c.id).id).map((r) => r.name), ['offline_access', 'trading-service']);
   assert.ok(!kc.st.writes.includes('POST /admin/realms/platform/clients'));
+});
+
+test('在るクライアントに既定のスコープ（宛先）が欠けていれば、足さずに失敗にする（apply・check とも。流し直しで素通りしない）', async () => {
+  for (const apply of [true, false]) {
+    const kc = fakeKeycloak({ clientIds: CLOUD_CLIENTS });
+    const c = kc.st.clients.find((x) => x.clientId === SERVICE_CLIENTS[2]);
+    c.defaultClientScopes = c.defaultClientScopes.filter((x) => x !== 'ai-stock-trading-api-audience');
+    const out = await reconcile(kc.call, 'platform', desiredFrom(cloud), { apply, log: quiet });
+    assert.deepStrictEqual(out.problems, [`${SERVICE_CLIENTS[2]} に既定のスコープ ai-stock-trading-api-audience が付いていない（クライアントを消してから流し直す）`]);
+    assert.deepStrictEqual(kc.st.writes, [], '在るクライアントに書いた（スコープを足した）');
+  }
+  // 陰性対照: スコープが揃っていれば問題は出ない（同じ在る 10 のクライアント）
+  const ok = fakeKeycloak({ clientIds: CLOUD_CLIENTS });
+  assert.deepStrictEqual((await reconcile(ok.call, 'platform', desiredFrom(cloud), { apply: true, log: quiet })).problems, []);
+});
+
+test('作った直後に既定のスコープが付かなければ失敗にする', async () => {
+  const kc = fakeKeycloak();
+  const orig = kc.call;
+  const call = async (method, p, body) => {
+    if (method === 'POST' && p === '/admin/realms/platform/clients') body = { ...body, defaultClientScopes: ['roles'] }; // Keycloak が黙って捨てた形
+    return orig(method, p, body);
+  };
+  const out = await reconcile(call, 'platform', desiredFrom(cloud), { apply: true, log: quiet });
+  assert.strictEqual(out.problems.length, SERVICE_CLIENTS.length);
+  assert.ok(out.problems.every((x) => /ai-stock-trading-api-audience が付いていない/.test(x)), out.problems.join('\n'));
+  // 流し直しても素通りしない（在るクライアントとして同じ失敗）
+  const again = await reconcile(call, 'platform', desiredFrom(cloud), { apply: true, log: quiet });
+  assert.strictEqual(again.created.length, 0);
+  assert.strictEqual(again.problems.length, SERVICE_CLIENTS.length);
 });
 
 test('陰性対照: 宛先のスコープ・ロールが稼働に無ければ、何も書かずに止める', async () => {

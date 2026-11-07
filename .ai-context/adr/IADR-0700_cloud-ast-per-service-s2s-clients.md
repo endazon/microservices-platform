@@ -54,6 +54,8 @@ related_specs:
 - `deploy/cloud/keycloak-clients/`（`keycloak-clients.sh --live check|apply`・`job.yaml`・`add-clients.js`）。取り込み元（Secret `keycloak-realm-import`）の
   機密クライアントのうち稼働に無いものだけを管理の API で作り（secret は取り込み元の値）、サービスアカウントに無いロールだけを足す。在るものは読まず・書かない。
   既定のスコープ・ロールが稼働に無ければ何も書かずに止める（無いスコープを Keycloak が黙って捨てると宛先が欠ける）。値は Pod の外へ出ない。
+- 作ったクライアントも在るクライアントも、既定のスコープ（宛先を載せるもの）が付いているかを読んで確かめ、欠けていれば失敗にする（足しはしない。在るものは触らない）。
+  流し直しで「在る」として素通りし、宛先の無いクライアントが残るのを防ぐ。直し方はそのクライアントを消してから流し直す（手順書）。
 - Keycloak の入り（`keycloak-ingress-clients` と併存の重ね）に、Job の Pod（`platform-infra` の `app=keycloak-add-clients`）の 8443 を足す。
 
 ## 結果
