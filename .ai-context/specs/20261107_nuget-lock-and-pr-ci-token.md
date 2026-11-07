@@ -2,7 +2,7 @@
 title: 作業仕様書 — NuGet の推移的な依存を lock ファイルで固定し、PR の CI へ計画リポジトリを読むトークンを渡さない
 type: spec
 status: done
-related_ids: [NFR, IADR-0705, IADR-0232, IADR-0423]
+related_ids: [NFR, IADR-0701, IADR-0232, IADR-0423]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -17,7 +17,7 @@ plan_refs: []
 
 - 非機能要件: NFR（供給網と CI の統制。該当する採番が無いため無採番）。
 - 機能要求（FR）・ユースケース（UC）・画面（SC）: なし。
-- 関連 IADR: IADR-0232（CI の構成・NuGet のキャッシュ）、IADR-0423（計画 ID レンジの突合）。本作業の決定は IADR-0705。
+- 関連 IADR: IADR-0232（CI の構成・NuGet のキャッシュ）、IADR-0423（計画 ID レンジの突合）。本作業の決定は IADR-0701。
 
 ## 目的・背景
 
@@ -52,7 +52,7 @@ plan_refs: []
 - AC3: `ci.yml`・`integration.yml`・`security.yml` と 2 ユニットの Dockerfile の `dotnet restore` がすべて `--locked-mode` を付ける。
 - AC4: `backend-verify-build` が restore の後に lock の差分を見て、あれば落とす。
 - AC5: `ci.yml` の `PLANNING_REPO_TOKEN` は push のときだけ渡る。`on:` に `pull_request_target` が無い。必須チェックの名前は変わらない。
-- 各 AC は `scripts/scripts.repo.test.js` の IADR-0705 の節で固定し、陰性対照（lock を外す・フラグを外す・条件なしで有効・差分の検査を外す・
+- 各 AC は `scripts/scripts.repo.test.js` の IADR-0701 の節で固定し、陰性対照（lock を外す・フラグを外す・条件なしで有効・差分の検査を外す・
   条件なしでトークンを渡す）で赤になることを確かめる。
 
 ## 母集合（規則 9・10）

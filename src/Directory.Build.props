@@ -112,7 +112,7 @@
   </PropertyGroup>
 
   <!--
-    NuGet の lock ファイル（NFR(セキュリティ) / IADR-0705）。
+    NuGet の lock ファイル（NFR(セキュリティ) / IADR-0701）。
 
     直接の依存は Central Package Management（Directory.Packages.props）で固定しているが、
     推移的な依存の解決結果は固定していなかった。各プロジェクトの packages.lock.json に解決結果（版と

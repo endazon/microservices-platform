@@ -1,5 +1,5 @@
 ---
-title: IADR-0705 本リポジトリの 2 ユニットの NuGet の推移的な依存を lock ファイルで固定し、CI とイメージのビルドは locked mode で restore する。PR の CI へ計画リポジトリを読むトークンを渡さない
+title: IADR-0701 本リポジトリの 2 ユニットの NuGet の推移的な依存を lock ファイルで固定し、CI とイメージのビルドは locked mode で restore する。PR の CI へ計画リポジトリを読むトークンを渡さない
 type: impl-adr
 status: Accepted
 related_ids: [NFR, IADR-0232, IADR-0423, IADR-0581]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_nuget-lock-and-pr-ci-token.md
 ---
 
-# IADR-0705: NuGet の lock ファイルと PR の CI のトークン
+# IADR-0701: NuGet の lock ファイルと PR の CI のトークン
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

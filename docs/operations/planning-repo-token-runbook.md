@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR]
-iadrs: [IADR-0705, IADR-0423]
+iadrs: [IADR-0701, IADR-0423]
 specs: [20261107_nuget-lock-and-pr-ci-token]
 -->
 
