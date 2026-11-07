@@ -35,7 +35,7 @@ const envOf = (kind, svc) => `AST_DB_${kind}_${svc.replace(/-/g, '_').toUpperCas
 const WANT_DBS = ['audit_svc', 'configuration_svc', 'cost_control_svc', 'market_monitor_svc', 'order_execution_svc', 'report_svc', 'risk_management_svc', 'keycloak'];
 
 function docker(args, opts = {}) {
-  const r = spawnSync('docker', args, { encoding: 'utf8', timeout: opts.timeout || 120000, maxBuffer: 16 * 1024 * 1024 });
+  const r = spawnSync('docker', args, { encoding: 'utf8', timeout: opts.timeout || 120000, maxBuffer: 16 * 1024 * 1024, input: opts.input });
   if (r.error) throw new Error(`docker が使えない（PATH・デーモンを確かめる）: ${r.error.message}`);
   return r;
 }
@@ -198,8 +198,11 @@ function checkDbUsers(r, sh) {
     noValues(`${x.stdout}${x.stderr}`, `${stage} の出力`);
     return x;
   };
-  // psql で <利用者>（env の名前）として <DB> に入って SQL を流す。値は env から（引数に載せない）。
-  const as = (userEnv, passEnv, db, sql) => sh(`PGPASSWORD="$${passEnv}" psql -X -q -tA -v ON_ERROR_STOP=1 -h 127.0.0.1 "sslmode=require dbname=${db} user=$${userEnv}" -c "${sql.replace(/"/g, '\\"')}"`);
+  // psql で <利用者>（env の名前）として <DB> に入って SQL を流す。値は env から、SQL は標準入力から（どちらもシェルの文字列・引数に載せない）。
+  const psqlIn = (conn, sql) => docker(['exec', '-i', r.name, 'sh', '-c', `${conn} psql -X -q -tA -v ON_ERROR_STOP=1 -f -`], { input: sql });
+  const as = (userEnv, passEnv, db, sql) => psqlIn(`PGPASSWORD="$${passEnv}" PGHOST=127.0.0.1 PGSSLMODE=require PGDATABASE=${db} PGUSER="$${userEnv}"`, sql);
+  // 超利用者（ソケット）。共有の利用者の名前は env から psql の変数（:'shared'）で読む。
+  const asAdmin = (sql) => psqlIn('PGPASSWORD="$POSTGRES_PASSWORD" PGHOST=/var/run/postgresql PGDATABASE=postgres PGUSER="$POSTGRES_USER"', `\\getenv shared AST_DB_USER\n${sql}`);
   const asShared = (db, sql) => as('AST_DB_USER', 'AST_DB_PASSWORD', db, sql);
   const asSvc = (svc, db, sql) => as(envOf('USER', svc), envOf('PASSWORD', svc), db, sql);
 
@@ -241,7 +244,7 @@ function checkDbUsers(r, sh) {
     const shared = asShared(dbOf(svc), 'insert into t(v) values (3); select count(*) from t');
     assert.strictEqual(shared.status, 0, `移行の間に共有の利用者が ${dbOf(svc)} を読み書きできない: ${shared.stderr}`);
   }
-  const kc = sh('PGPASSWORD="$KEYCLOAK_DB_PASSWORD" psql -X -tA -h 127.0.0.1 "sslmode=require dbname=keycloak user=$KEYCLOAK_DB_USER" -c "select 1"');
+  const kc = as('KEYCLOAK_DB_USER', 'KEYCLOAK_DB_PASSWORD', 'keycloak', 'select 1;');
   assert.strictEqual(kc.status, 0, `Keycloak の利用者が自分の DB に入れなくなった: ${kc.stderr}`);
   const a2 = job('apply');
   assert.strictEqual(a2.status, 0, `2 回目の apply が失敗した（冪等でない）:\n${a2.stdout}${a2.stderr}`);
@@ -250,7 +253,7 @@ function checkDbUsers(r, sh) {
   // 変異 A: CONNECT を PUBLIC から外さないと、確かめ（CONNECT の表）が赤になる。PUBLIC に戻した DB の上で流す。
   const noRevoke = src.replace(/^.*REVOKE CONNECT, TEMPORARY ON DATABASE.*$/m, '');
   assert.notStrictEqual(noRevoke, src, '変異の置換元（REVOKE CONNECT）が無い（試験が古い）');
-  assert.strictEqual(sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "GRANT CONNECT ON DATABASE configuration_svc TO PUBLIC"').status, 0);
+  assert.strictEqual(asAdmin('GRANT CONNECT ON DATABASE configuration_svc TO PUBLIC;').status, 0);
   const ma = job('apply', write('mut-norevoke.sh', noRevoke));
   assert.notStrictEqual(ma.status, 0, '変異 A: CONNECT を外さないのに apply が通った（確かめが空振りしている）');
   assert.match(ma.stderr, /NG: .* が configuration_svc に CONNECT できる/);
@@ -258,11 +261,11 @@ function checkDbUsers(r, sh) {
   console.log('  ok  変異: PUBLIC の CONNECT を外さないと、確かめが他の DB への CONNECT を検出して失敗する');
 
   // drop-shared: 共有の利用者の接続が残っていれば止める（消さない）。
-  const hold = docker(['exec', '-d', r.name, 'sh', '-c', 'PGPASSWORD="$AST_DB_PASSWORD" psql -X -h 127.0.0.1 "sslmode=require dbname=audit_svc user=$AST_DB_USER" -c "select pg_sleep(20)"']);
+  const hold = docker(['exec', '-d', r.name, 'sh', '-c', 'PGPASSWORD="$AST_DB_PASSWORD" PGHOST=127.0.0.1 PGSSLMODE=require PGDATABASE=audit_svc PGUSER="$AST_DB_USER" psql -X -c "select pg_sleep(20)"']);
   assert.strictEqual(hold.status, 0);
   const deadline = Date.now() + 10000;
   for (;;) {
-    const n = sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -tA -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "select count(*) from pg_stat_activity where usename = \'"$AST_DB_USER"\'"');
+    const n = asAdmin("select count(*) from pg_stat_activity where usename = :'shared';");
     if (n.stdout.trim() === '1') break;
     assert.ok(Date.now() < deadline, '共有の利用者の接続を張れない（試験の前提）');
     spawnSync('sleep', ['0.5']);
@@ -270,7 +273,7 @@ function checkDbUsers(r, sh) {
   const busy = job('drop-shared');
   assert.strictEqual(busy.status, 4, `共有の利用者の接続が残るのに drop-shared が 4 で止まらない（${busy.status}）:\n${busy.stderr}`);
   assert.match(busy.stderr, /共有の利用者の接続が 1 本ある/);
-  sh('PGPASSWORD="$POSTGRES_PASSWORD" psql -X -q -U "$POSTGRES_USER" -d postgres -h /var/run/postgresql -c "select pg_terminate_backend(pid) from pg_stat_activity where usename = \'"$AST_DB_USER"\'"');
+  asAdmin("select pg_terminate_backend(pid) from pg_stat_activity where usename = :'shared';");
   assert.strictEqual(asShared('audit_svc', 'select 1').status, 0, '止まった drop-shared の後に、共有の利用者が入れない（消さずに止まっていない）');
 
   // drop-shared: 移行の間に共有の利用者が作った物も各サービスの利用者へ移して、共有の利用者を消す。
