@@ -72,6 +72,7 @@ related_specs:
 ### 決定 4 — 書き手は 1 つ（1 レプリカ・Recreate・ファイルの排他の鍵）
 
 - chart は `persistence` を持つサービスを Recreate で入れ替え、2 レプリカ以上・HPA（`scaling.services`）との併記を描画で止める。
+  稼働中の Deployment（RollingUpdate の既定値を持つ）を `helm upgrade` で替えられるよう、`rollingUpdate: null` を併せて描く。
 - ゲートウェイは置き場の隣の `.lock` を排他で開いたまま持つ（.NET は Unix で `flock(LOCK_EX|LOCK_NB)` を取る）。2 つ目のプロセスは鍵を取れず、
   `cost_state` で送らない。前のプロセスが終われば鍵が離れ、次の呼び出しで前回の値を読む。
 - 🔴 **1 レプリカ・単一ノードが前提である。** 複数レプリカへ広げるときは、共有の置き場（決定 1 で退けた Postgres・Valkey）へ移す判断が要る。

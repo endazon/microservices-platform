@@ -118,8 +118,11 @@ spec:
   {{- end }}
   {{- if $persist }}
   # NFR-18, IADR-0698: 1 つの PVC を 1 つの Pod だけが書く。RollingUpdate だと新旧の Pod が重なり、新しい側は置き場を開けない。
+  # rollingUpdate: null は、稼働中の Deployment（RollingUpdate の既定値を持つ）を helm upgrade で Recreate へ替えるときに既定値を消すため
+  # （残ると API が「Recreate では rollingUpdate を書けない」で拒む）。
   strategy:
     type: Recreate
+    rollingUpdate: null
   {{- end }}
   selector:
     matchLabels:
