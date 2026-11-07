@@ -371,6 +371,24 @@ t('NFR-21 バックアップ: イメージの宣言に RCLONE_ で始まる ARG�
   assert.deepStrictEqual(rcloneEnvNames('ARG RCLONE_VERSION=1.75.2-r0\nENV RCLONE_CONFIG_X=y\narg rclone_fast_list=1\nARG APK_RCLONE_VERSION=1'),
     ['ARG RCLONE_VERSION', 'ENV RCLONE_CONFIG_X', 'arg rclone_fast_list']);
 });
+// NFR-21: CI（images.yml）がクラウドのバックアップのイメージをビルドし、中の age・rclone・pg_dump をネット無しで確かめ、
+// 必須チェックの集約ジョブ image-build がその結果を拾う（ビルドできないイメージを見過ごさない）。
+t('NFR-21 バックアップ: CI の images.yml がクラウドのイメージをビルドして中身をネット無しで確かめ、image-build が結果を拾う', () => {
+  const yml = read('.github/workflows/images.yml');
+  const at = yml.indexOf('\n  build-cloud-backup:\n');
+  assert.ok(at >= 0, 'images.yml に build-cloud-backup のジョブが無い');
+  const job = yml.slice(at, yml.indexOf('\n  image-build:\n'));
+  assert.ok(job.includes('docker build --progress plain -f deploy/cloud/backup/image/Dockerfile -t platform-backup-cloud:ci deploy/cloud/backup/image'), 'クラウドのイメージをビルドしない');
+  assert.ok(!/docker push|push:\s*true/.test(job), 'push している');
+  for (const tool of ['--entrypoint age platform-backup-cloud:ci --version', '--entrypoint rclone platform-backup-cloud:ci version', '--entrypoint pg_dump platform-backup-cloud:ci --version']) {
+    assert.ok(job.includes(`docker run --rm --network none ${tool}`), `ネット無しの確かめが無い: ${tool}`);
+  }
+  assert.match(job, /if: needs\.changes\.outputs\.build == 'true'/, '起動の条件が build と同じでない');
+  assert.match(yml, /grep -Eq '[^']*\^deploy\/cloud\/backup\/image\/[^']*'/, '変更の判定に deploy/cloud/backup/image/ が無い');
+  const agg = yml.slice(yml.indexOf('\n  image-build:\n'));
+  assert.match(agg, /needs: \[[^\]]*build-cloud-backup[^\]]*\]/, 'image-build が build-cloud-backup を待たない');
+  assert.match(agg, /case "\$BUILD_CLOUD_BACKUP_RESULT" in\n\s+success \| skipped\) ;;\n\s+\*\)[\s\S]{0,200}exit 1/, 'image-build が失敗を拾わない');
+});
 t('T-2402-34 バックアップ: 本体スクリプトはローカルと同じもの（二重に持たない）', () => {
   const cm = find(bds, 'ConfigMap', 'platform-backup-script');
   assert.ok(cm, 'ConfigMap platform-backup-script が無い');
