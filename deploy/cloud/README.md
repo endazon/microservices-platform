@@ -208,7 +208,8 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 
 - `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言、
   外向きの中継（`egress/`）・証明書の期限の測り（`tls-cert-probe/`）が入らない。
-- **クラスタの外の 443 へ出るのは外向きの中継（`egress/`。[IADR-0703](../../.ai-context/adr/IADR-0703_cloud-egress-proxy-audit-log-cert-expiry.md)）だけ**。
+- **クラスタの外の 443 へ宛先を名指して出るのは外向きの中継（`egress/`。[IADR-0703](../../.ai-context/adr/IADR-0703_cloud-egress-proxy-audit-log-cert-expiry.md)）だけ**
+  （ESO・OpenBao の API サーバー向けの出はポートだけで、宛先を問わず 443・6443 へ出られる。同 IADR の残余 5）。
   LLM ゲートウェイ・バックアップ・Alertmanager は中継を HTTPS_PROXY として使い、中継は名前の許可表に在る宛先の 443 だけへ繋ぐ。
   許可表は宣言（LLM の提供元・Discord）・バックアップの保管先（ConfigMap `platform-backup-s3-target` の `endpoint`）・オーナーが埋める表
   （ConfigMap `egress-proxy-extra-hosts`。heartbeat の宛先など）の和。**新しく作る構成では `kubectl apply -k deploy/cloud` の前に**

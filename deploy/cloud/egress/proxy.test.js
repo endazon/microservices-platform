@@ -9,6 +9,7 @@
  *   E3 どちらの段でも、引いた先が私設・ループバック・リンクローカル・CGNAT の範囲なら拒む（クラスタの中へ回り込ませない）。
  *   E4 許可表は宣言・オーナーの表・バックアップの endpoint の和で、不正な行・https でない endpoint は入れない。
  *   E5 件数（/metrics）は判定ごとに数え、段を出す。
+ *   E6 引いた番地を順に試す（1 件目が繋がらない・応答しないとき 2 件目へ。全部だめなら 502）。名前を引く間に閉じたクライアントのためには繋がない。
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -52,6 +53,34 @@ function connectVia(port, authority, { method = 'CONNECT' } = {}) {
     sock.on('error', reject);
     setTimeout(() => { sock.destroy(); resolve({ status: Number((/^HTTP\/1\.1 (\d{3})/.exec(buf) || [])[1] || 0), echoed: false, timeout: true }); }, 3000);
   });
+}
+
+/** 試す番地ごとに繋ぎ先を変える中継（connect の呼ばれ方を記録する）。plan[addr] = 'echo' | 'refused' | 'blackhole'。 */
+async function withPlannedProxy(addrs, plan, fn, { lookupDelayMs = 0 } = {}) {
+  const echo = await echoServer();
+  const tried = [];
+  const closed = await new Promise((r) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const port = s.address().port; s.close(() => r(port)); }); });
+  const prox = p.createProxy({
+    mode: 'enforce',
+    allow: () => new Set(['api.anthropic.com']),
+    lookup: async () => { if (lookupDelayMs) await new Promise((r) => setTimeout(r, lookupDelayMs)); return addrs; },
+    connectTimeoutMs: 300,
+    connect: (addr) => {
+      tried.push(addr);
+      if (plan[addr] === 'echo') return net.connect(echo.address().port, '127.0.0.1');
+      if (plan[addr] === 'refused') return net.connect(closed, '127.0.0.1');
+      // blackhole: 繋がりの応答が返らない（経路の無い番地の代わり）。connect を出さない socket。
+      return new net.Socket();
+    },
+    log: () => {},
+  });
+  await new Promise((r) => prox.server.listen(0, '127.0.0.1', r));
+  try {
+    return await fn(prox.server.address().port, tried);
+  } finally {
+    prox.server.close();
+    echo.close();
+  }
 }
 
 async function withProxy(mode, allow, resolved, fn) {
@@ -137,6 +166,37 @@ ok('E5 件数は判定ごとに数え、段を出す', async () => {
     assert.match(m, /egress_proxy_requests_total\{decision="deny"\} 1/);
     assert.match(m, /egress_proxy_enforcing 1/);
   });
+});
+
+ok('E6 引いた番地を順に試す: 1 件目が拒む・応答しないとき 2 件目で繋がる。全部だめなら 502。閉じたクライアントのためには繋がない', async () => {
+  // IPv6 が先に返り、ノードに IPv6 の経路が無い（拒まれる）場合
+  await withPlannedProxy(['2001:db8::10', '203.0.113.10'], { '2001:db8::10': 'refused', '203.0.113.10': 'echo' }, async (port, tried) => {
+    assert.deepStrictEqual(await connectVia(port, 'api.anthropic.com:443'), { status: 200, echoed: true });
+    assert.deepStrictEqual(tried, ['2001:db8::10', '203.0.113.10']);
+  });
+  // 1 件目が応答しない（経路の先で捨てられる）場合も、待つ上限の後に 2 件目へ
+  await withPlannedProxy(['2001:db8::10', '203.0.113.10'], { '2001:db8::10': 'blackhole', '203.0.113.10': 'echo' }, async (port, tried) => {
+    assert.deepStrictEqual(await connectVia(port, 'api.anthropic.com:443'), { status: 200, echoed: true });
+    assert.deepStrictEqual(tried, ['2001:db8::10', '203.0.113.10']);
+  });
+  // 陰性対照: 1 件目しか試さない形なら繋がらない（全部だめなら 502）
+  await withPlannedProxy(['2001:db8::10', '203.0.113.11'], { '2001:db8::10': 'refused', '203.0.113.11': 'refused' }, async (port, tried) => {
+    assert.strictEqual((await connectVia(port, 'api.anthropic.com:443')).status, 502);
+    assert.deepStrictEqual(tried, ['2001:db8::10', '203.0.113.11']);
+  });
+  // 名前を引く間にクライアントが閉じたら、外へ繋がない
+  await withPlannedProxy(['203.0.113.10'], { '203.0.113.10': 'echo' }, async (port, tried) => {
+    await new Promise((resolve) => {
+      const sock = net.connect(port, '127.0.0.1', () => {
+        sock.write('CONNECT api.anthropic.com:443 HTTP/1.1\r\nHost: api.anthropic.com:443\r\n\r\n');
+        setTimeout(() => sock.destroy(), 50);
+      });
+      sock.on('error', () => {});
+      sock.on('close', resolve);
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.deepStrictEqual(tried, [], '閉じたクライアントのために外へ繋いだ');
+  }, { lookupDelayMs: 200 });
 });
 
 ok('陰性対照: 判定の関数は、表を空にすると enforce で通さず、report で通す（判定が空回りしていない）', () => {

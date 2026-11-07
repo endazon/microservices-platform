@@ -46,7 +46,7 @@ spec:
           podSelector: { matchLabels: { app: openbao } }
       ports:
         - { protocol: TCP, port: 8443 }
-    # API サーバー（ポートだけ。上の注記）。
+    # API サーバー（ポートだけ。上の注記）。🔴 宛先を問わず 443・6443 へ出られる（IADR-0703 残余 5。宛先で絞るのは移行の門で測ってから）。
     - ports:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 6443 }

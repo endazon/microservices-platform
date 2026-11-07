@@ -23,11 +23,11 @@ specs: [20261107_cloud-egress-audit-cert-expiry]
 
 | 項目 | 旧 | 新 |
 | --- | --- | --- |
-| クラスタの外の 443 へ出る Pod | LLM ゲートウェイ・バックアップ・Alertmanager（宛先は絞らない） | 外向きの中継（`egress-proxy`）だけ |
+| クラスタの外の 443 へ宛先を名指して出る Pod | LLM ゲートウェイ・バックアップ・Alertmanager（宛先は絞らない） | 外向きの中継（`egress-proxy`）だけ |
 | 3 つの Pod の外への通信 | 直に外の 443 | 中継の 3128 を HTTPS_PROXY として使う（TLS は端から端まで。中継は中身を読まない） |
 | 宛先 | 絞らない | 中継の名前の許可表に在る名前の 443 だけ |
 
-OpenBao の出（API サーバーの確かめ）は中継を通らない（宛先がクラスタの外ではない）。
+OpenBao と ESO の出（API サーバー）は中継を通らない。🔴 この 2 つはポートだけで許すので、宛先を問わず 443・6443 へ出られる（宛先で絞れるかは移行の門で測る）。
 
 ## 1. 許可表
 
@@ -67,7 +67,16 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
    ```sh
    kubectl apply -k deploy/cloud-transition/egress-proxy-report
    kubectl -n platform-infra rollout status deploy/egress-proxy deploy/alertmanager --timeout=300s
+   kubectl -n platform-infra rollout status deploy/keycloak --timeout=660s
    ```
+
+   🔴 この重ねは `deploy/cloud` 全体を含むので、中継のほかに次も同時に起きる。米国の場の時間外に流す。
+   - **Keycloak の作り直し**（宣言から一時管理者の env が消える。作り直しは Recreate）: 古い Pod が止まってから新しい Pod が Ready になるまで、
+     **トークンの発行と検証の鍵の取得が止まる**。目安は通常数分（起動と realm の取り込み）、上限は startupProbe の 10 分。止まっている間、
+     取引ユニットのサービス間の呼び出しとログインは失敗する。作り直しの後に、残っている一時管理者を
+     [一時管理者の手順書](cloud-keycloak-admin-runbook.md) §3 で消す。
+   - **証明書の期限の測り（`tls-cert-probe`）の作成**: 新しい Pod が 1 つ起き、4 つの受け口へ 10 分ごとに繋ぐ（受け口は止まらない）。
+     起きるまでに 30 分を越えると警報 `TlsServerCertProbeMissing` が出る（`for: 30m`）。
 
 3. LLM ゲートウェイを当て直す（HTTPS_PROXY が足される。`deploy/cloud/README.md` §3 の `helm upgrade`）。
 4. 少なくとも 1 回のバックアップ（日次）と、Watchdog の heartbeat（5 分ごと）と、LLM の呼び出しが流れるまで待ち、report の行を読む:

@@ -47,7 +47,7 @@ related_specs:
   ② バックアップの保管先（オーナーが作る ConfigMap `platform-backup-s3-target` の `endpoint` の名前）、③ オーナーが埋める表（ConfigMap `egress-proxy-extra-hosts`。
   heartbeat の宛先など、値が Secret の中にあって設定に無いもの）。
 - 3 つの Pod は中継を使う（LLM ゲートウェイ・バックアップは `HTTPS_PROXY`、Alertmanager は `global.http_config.proxy_url`）。出の NetworkPolicy は外の 443 を
-  外し、中継の 3128 だけを許す。外の範囲への出は中継の Pod だけが持つ（試験が描画で固定する）。
+  外し、中継の 3128 だけを許す。`ipBlock` で外の範囲を名指す出は中継の Pod だけが持つ（試験が描画で固定する。宛先を問わないポートだけの出は残余 5）。
 - 段: 最終の段（`deploy/cloud`）は enforce。稼働中の構成へ入れる間は重ね `deploy/cloud-transition/egress-proxy-report`（中継は report・3 つの直の 443 を戻す）を経る。
   report の行で表の不足を埋めてから最終の段を当てる。重ねが 14 日を過ぎて残れば警報 `EgressProxyReportMode`、enforce で拒めば `EgressProxyDenied`。
 
@@ -60,7 +60,8 @@ related_specs:
 - **受容のまま記録だけする**: 所有者の裁定は稼働の前に直すこと。
 
 OpenBao の出（API サーバーの TokenReview。443・6443 のポートだけ）は中継を通さない。宛先はクラスタの外ではなく、API サーバーの IP をノードのループバックで
-名指せない事情（IADR-0689 残余 2）は変わらない（受容のまま）。
+名指せない事情（IADR-0689 残余 2）は変わらない（受容のまま）。ESO の名前空間の API サーバー向けの出も同じ形（決定 3）で、
+どちらも宛先を問わず 443・6443 へ出られる（残余 5）。
 
 ### 決定 2 — master realm の一時管理者は、要る間だけ置く。master realm の総当たりの検知を有効にする
 
@@ -110,6 +111,7 @@ ESO の ClusterRole（全名前空間の Secret を書ける）は変えない�
   広がる先が OpenBao と API サーバーに絞られ、API サーバーの操作の追跡ができる。証明書の期限切れの前に警報が出る。
 - 悪い影響: 中継が止まると外への通信が全部止まる（警報 `EgressProxyDown`・heartbeat の停止で気付く）。宛先を足すときに許可表の更新が要る。一時管理者を開け閉めする
   たびに Keycloak の作り直しが 2 回ある。測りの接続が受け口のログ（RabbitMQ の接続の閉じ）を 10 分ごとに 1 行増やす。
+  中継が止まると Alertmanager も Discord へ届かないので、警報 `EgressProxyDown` 自体は Discord に出ない（知らせは heartbeat の停止による外の監視だけになる）。
 
 ## 残余
 
@@ -118,3 +120,15 @@ ESO の ClusterRole（全名前空間の Secret を書ける）は変えない�
 3. API サーバーの監査の記録はノードの上にだけ在る（外へ送らない）。ノードの root は消せる。
 4. クラスタでしか確かめられないこと（移行の門で確かめる）: 中継を経た 3 つの Pod の外への通信、`kubectl set env --from=secret` で Keycloak が一時管理者を作ること、
    API サーバーが設定の追加を読むこと、ESO の webhook が API サーバーから届くこと、測りが 4 つの受け口へ届くこと。
+5. **ESO・OpenBao の出はポートだけで、宛先を問わず 443・6443 へ出られる**（API サーバー向けの規則が `to` を持たない）。ESO は全名前空間の Secret を書けるので
+   （残余 2）、侵害された ESO の Pod はクラスタの外の 443・6443 へも出られる。試験 E1 が見るのは `ipBlock` で宛先を名指す出だけで、この 2 つの規則は
+   「ポートだけの出はこの 2 つだけ」と固定するに留まる（増えれば赤になるが、2 つの中身は絞らない）。
+   - 宛先で絞れるかの確かめ（2026-11-07）: k3s の NetworkPolicy の実装（kube-router。iptables の形）は、Pod の出の chain を filter の表の INPUT・FORWARD・OUTPUT から
+     呼ぶ（kube-router の `pkg/controllers/netpol/pod.go` の `interceptPodOutboundTraffic`、`npc_iptables.go`。HEAD `6e325beb` で読んだ）。filter の表は kube-proxy の
+     DNAT（nat の PREROUTING）の後なので、判定は DNAT の後の宛先で行われると読める。一方、本構成の API サーバーはループバックに bind し
+     `--advertise-address 127.0.0.1`（README §1-4）で、DNAT の後の宛先は `127.0.0.1:6443` になる。ループバックの宛先を `ipBlock` で名指して効くこと、
+     Pod から API サーバーへ届くこと（IADR-0689 残余 1）は、どちらもクラスタでしか確かめられず、Kubernetes の文書も DNAT の前後のどちらで判定するかを
+     定めていない。誤ると ESO の同期が全部止まるので、確かめないまま絞らない。
+   - 移行の門で測る候補: 2 つの規則の `to` を `ipBlock: { cidr: 127.0.0.1/32 }`・ポート 6443 だけにし、SecretStore が Ready のままか、
+     ESO の Pod から外の 443 へ届かないかを見る。効けば、この残余を閉じる改定で宣言を絞る（値は README §1-4 の `--advertise-address` と同じなので、
+     利用者が埋める値は要らない）。

@@ -85,7 +85,7 @@ issues: [#2471, #2402, #2401]
      --from-literal=endpoint=https://fsn1.your-objectstorage.com \
      --from-literal=dest=objstore:<バケット>/ast-poc
    ```
-   ［2026-11-07 追記］クラスタの外の 443 へは外向きの中継だけが出る。中継はこの ConfigMap の `endpoint` の名前を許可表に入れる（足す作業は要らない）。
+   ［2026-11-07 追記］バックアップの Pod は、外の 443 へ外向きの中継を経て出る（直には出ない）。中継はこの ConfigMap の `endpoint` の名前を許可表に入れる（足す作業は要らない）。
    heartbeat の宛先の名前（Healthchecks.io の ping の URL の名前の部分）は、オーナーが ConfigMap `egress-proxy-extra-hosts` に書く
    （[外向きの中継の手順書](cloud-egress-proxy-runbook.md)の 1-1）。書かないと heartbeat が届かず、外の監視が知らせる。
 2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、超利用者の Secret `postgres`（`username` / `password`）は、

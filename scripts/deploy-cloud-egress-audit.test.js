@@ -8,7 +8,9 @@
  *     K1 Keycloak の Deployment は KC_BOOTSTRAP_ADMIN_* を持たない（一時管理者を常に置かない）。
  *     K2 開け閉めの Job と入口の形（Secret への参照だけ・段は open / close / check・--live が無ければ動かない・値を扱わない）と、手順の試験。
  *   E（外向きの通信）
- *     E1 クラスタの外の範囲（ipBlock）へ出る許可は外向きの中継の Pod だけ（基盤・chart の描画）。OpenBao の出は宛先の外の範囲を持たない（ポートだけ）。
+ *     E1 宛先を ipBlock で名指して出る許可は外向きの中継の Pod だけ（基盤・chart・vault・ESO の名前空間の描画）。
+ *        🔴 この検査は ipBlock だけを見る。宛先（to）を持たずポートだけで許す出は宛先を問わず出られ、ここでは止まらない。その出は
+ *        OpenBao と ESO の API サーバー向け（443・6443）の 2 つだけであることを固定する（増えたら赤。IADR-0703 残余 5）。
  *     E2 外の 443 を使う 3 つ（LLM ゲートウェイ・バックアップ・Alertmanager）は中継の 3128 へ出て、中継を使う設定を持つ。
  *     E3 中継は最終の段で enforce。移す間の重ね（cloud-transition/egress-proxy-report）は report で、3 つの直の 443 を戻す。
  *     E4 許可表は設定に在る宛先（LLM の提供元の BaseUrl・Alertmanager の Discord の形）を全部持ち、中継の入りは 3 つと Prometheus だけ。
@@ -67,6 +69,15 @@ function keycloakBootstrapProblems(docs) {
 }
 
 // ---------------------------------------------------------------- E
+/** 宛先を問わない出（to を持たずポートだけで許す規則）。ipBlock の検査（directEgressProblems）が見ない範囲。 */
+function portsOnlyEgress(docs) {
+  const out = [];
+  for (const d of docs.filter((x) => x.kind === 'NetworkPolicy')) {
+    for (const r of d.spec.egress || []) if (!(r.to || []).length) out.push(`${d.metadata.namespace}/${d.metadata.name} ${portsOf(r).join(',') || '(全ポート)'}`);
+  }
+  return out.sort();
+}
+
 /** クラスタの外の範囲（ipBlock）へ出る許可を持つ NetworkPolicy のうち、外向きの中継の Pod 以外を選ぶもの。 */
 function directEgressProblems(docs, where) {
   const out = [];
@@ -361,7 +372,7 @@ function promtoolCertAlertTest(cloudDocs) {
   }
 }
 
-module.exports = { keycloakBootstrapProblems, directEgressProblems, externalClientProblems, proxyProblems, allowlistProblems, esoNamespaceProblems, restrictedPodProblems, auditProblems, probeTargetProblems, certAlertProblems };
+module.exports = { keycloakBootstrapProblems, directEgressProblems, portsOnlyEgress, externalClientProblems, proxyProblems, allowlistProblems, esoNamespaceProblems, restrictedPodProblems, auditProblems, probeTargetProblems, certAlertProblems };
 
 if (require.main === module) {
   let failed = 0;
@@ -421,10 +432,18 @@ if (require.main === module) {
     child('deploy/cloud/keycloak-admin/master-admin.test.js');
   });
 
-  ok('E1: クラスタの外の範囲へ出る許可は外向きの中継だけ（基盤・chart）。OpenBao の出は外の範囲を名指さない', () => {
+  ok('E1: ipBlock で宛先を名指す出は外向きの中継だけ（基盤・chart・vault・ESO）。ポートだけの出は OpenBao と ESO の API サーバー向けの 2 つだけ', () => {
+    const vault = kustomize('deploy/cloud/vault');
     assert.deepStrictEqual(directEgressProblems(cloud, 'deploy/cloud'), []);
     assert.deepStrictEqual(directEgressProblems(chart, 'chart'), []);
-    assert.deepStrictEqual(directEgressProblems(kustomize('deploy/cloud/vault'), 'vault'), []);
+    assert.deepStrictEqual(directEgressProblems(vault, 'vault'), []);
+    assert.deepStrictEqual(directEgressProblems(esoNs, 'external-secrets'), []);
+    // ipBlock の検査が見ない範囲（宛先を問わない出）を名指して固定する（IADR-0703 残余 5）
+    const portsOnly = [...new Set([cloud, chart, vault, esoNs].flatMap(portsOnlyEgress))].sort();
+    assert.deepStrictEqual(portsOnly, ['external-secrets/eso-egress-dns-openbao-apiserver TCP/443,TCP/6443', 'openbao/openbao-egress-dns-and-apiserver TCP/443,TCP/6443'].sort(), `宛先を問わない出が想定の 2 つと違う:\n${portsOnly.join('\n')}`);
+    const extra = clone(cloud);
+    find(extra, 'NetworkPolicy', 'platform-backup-egress').spec.egress.push({ ports: [{ protocol: 'TCP', port: 443 }] });
+    assert.ok(portsOnlyEgress(extra).some((x) => /platform-backup-egress/.test(x)), '陰性対照: ポートだけの出の追加を拾わない');
     assert.ok(cloud.some((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'egress-proxy'), '陽性対照: 中継の NetworkPolicy が描画に無い');
     const bad = clone(cloud);
     find(bad, 'NetworkPolicy', 'platform-backup-egress').spec.egress.push({ to: [{ ipBlock: { cidr: '0.0.0.0/0' } }], ports: [{ protocol: 'TCP', port: 443 }] });

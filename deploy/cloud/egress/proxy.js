@@ -100,12 +100,14 @@ function readAllowFiles(files) {
  *   lookup: (host) => Promise<string[]>（名前を引く。既定は dns.promises.lookup の全件）
  *   connect: (address, port) => net.Socket（外へ繋ぐ。既定は net.connect）
  *   log: (line) => void
+ *   connectTimeoutMs: 番地ごとに繋がるのを待つ上限（既定 10 秒。過ぎたら次の番地へ）
  */
 function createProxy(opts) {
   const mode = opts.mode === 'report' ? 'report' : 'enforce';
   const lookup = opts.lookup || (async (h) => (await dns.promises.lookup(h, { all: true, verbatim: true })).map((x) => x.address));
   const connect = opts.connect || ((address, port) => net.connect({ host: address, port }));
   const log = opts.log || ((l) => console.log(l));
+  const connectTimeoutMs = opts.connectTimeoutMs || 10 * 1000;
   const counts = { allow: 0, report: 0, deny: 0 };
   const server = http.createServer((req, res) => {
     counts.deny += 1;
@@ -131,19 +133,42 @@ function createProxy(opts) {
       return;
     }
     if (!addrs.length || addrs.some(isPrivateAddress)) { refuse(403, '引いた先が私設・ループバック・リンクローカルの範囲'); return; }
+    // 名前を引く間にクライアントが閉じていたら、外へ繋がない（http の受け口の socket は半開きを許すので、読みの終わりも見る）。
+    const gone = () => client.destroyed || client.readableEnded;
+    if (gone()) { client.destroy(); return; }
     counts[d.decision] += 1;
     log(`${d.decision}: ${target.host}:${target.port}${d.decision === 'report' ? ` ${d.reason}` : ''}`);
-    const upstream = connect(addrs[0], target.port);
-    upstream.setTimeout(10 * 60 * 1000, () => upstream.destroy());
     client.setTimeout(10 * 60 * 1000, () => client.destroy());
-    upstream.on('error', () => client.destroy());
-    upstream.once('connect', () => {
-      client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
-      if (head && head.length) upstream.write(head);
-      upstream.pipe(client);
-      client.pipe(upstream);
-    });
-    client.on('close', () => upstream.destroy());
+    let upstream = null;
+    client.on('close', () => { if (upstream) upstream.destroy(); });
+    // 引いた番地（どれも私設の範囲の外であることは上で確かめた）を順に試す。IPv6 が先に返り、ノードに IPv6 の経路が無くても、
+    // IPv4 へ繋がるように。繋がる前の失敗・応答の無さ（connectTimeoutMs）だけを次へ回し、繋がった後の失敗はそのまま閉じる。
+    const attempt = (i) => {
+      if (gone()) { client.destroy(); return; }
+      if (i >= addrs.length) { refuse(502, `外へ繋がらない（${addrs.length} 件の番地のどれにも）`); return; }
+      const sock = connect(addrs[i], target.port);
+      upstream = sock;
+      let state = 'trying'; // trying → connected / skipped
+      const next = () => {
+        if (state !== 'trying') return;
+        state = 'skipped';
+        sock.destroy();
+        attempt(i + 1);
+      };
+      sock.setTimeout(connectTimeoutMs, next);
+      sock.on('error', () => { if (state === 'connected') client.destroy(); else next(); });
+      sock.once('connect', () => {
+        if (state !== 'trying') { sock.destroy(); return; }
+        state = 'connected';
+        if (gone()) { sock.destroy(); client.destroy(); return; }
+        sock.setTimeout(10 * 60 * 1000, () => sock.destroy());
+        client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head && head.length) sock.write(head);
+        sock.pipe(client);
+        client.pipe(sock);
+      });
+    };
+    attempt(0);
   });
   server.maxConnections = 256;
   const metrics = () => [
