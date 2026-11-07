@@ -16,7 +16,11 @@
  *   AC6 MSP の描画は LLM ゲートウェイの Deployment だけで、NetworkPolicy を描かない。MSP の名前空間の入りは既定で拒否し、
  *       LLM ゲートウェイへは取引ユニットの呼び出し元（名前空間 かつ Pod。AND）の 8080 だけを許す（deploy/cloud/infra が持つ）。
  *   AC13 LLM ゲートウェイの受け口は TLS だけ（ASPNETCORE_URLS が https・証明書は Secret llmgateway-tls・probe は HTTPS・gRPC の h2c の受け口が無い）。
- *   AC14 LLM ゲートウェイはルートのファイルシステムを読み取り専用にし、書き込みは /tmp の emptyDir だけ。
+ *   AC14 LLM ゲートウェイはルートのファイルシステムを読み取り専用にし、書き込みは /tmp の emptyDir と、当日の費用の枠の PVC
+ *        （llmgateway-service-state。IADR-0698）だけ。
+ *   IADR-0698（当日の費用の枠を再起動を越えて残す）:
+ *     SP1 置き場のパス（Llm__CallLimits__SpendStore__Path）は PVC のマウントの直下で、PVC は ReadWriteOnce・chart を消しても残す。
+ *     SP2 1 レプリカ・Recreate（新旧の Pod が重ならない）・HPA を描かない。chart は 2 レプリカ・HPA との併記を描画で止める。
  *   AC15 Keycloak（管理の面を持つ）はクラスタの中だけ: 基盤の Service は ClusterIP と明示し、別名は ExternalName だけ。
  *       描画（基盤・chart）にエッジの資源（Ingress・Gateway・HTTPRoute ほか）が 1 つも無い。
  *   AC11 Postgres は TCP を TLS（hostssl）でだけ受ける（pg_hba に host・hostnossl・trust・password・md5 が無い）。
@@ -281,7 +285,9 @@ function gatewayListenerProblems(docs) {
   if (!(tmpVol && tmpVol.emptyDir)) out.push('chart: LLM ゲートウェイの /tmp が emptyDir でない');
   for (const m of c.volumeMounts || []) {
     const v = (spec.volumes || []).find((x) => x.name === m.name);
-    if (v && !v.emptyDir && String(m.readOnly) !== 'true') out.push(`chart: LLM ゲートウェイの ${m.mountPath} が読み取り専用でない（書き込みは emptyDir だけ）`);
+    // IADR-0698: 当日の費用の枠の PVC だけは書ける（cloudSpendStateProblems が置き場のパスと突き合わせる）。
+    const spendState = v && v.persistentVolumeClaim && v.persistentVolumeClaim.claimName === SPEND_STATE_PVC;
+    if (v && !v.emptyDir && !spendState && String(m.readOnly) !== 'true') out.push(`chart: LLM ゲートウェイの ${m.mountPath} が読み取り専用でない（書き込みは emptyDir だけ）`);
   }
   return out;
 }
@@ -497,6 +503,42 @@ function cloudCostLimitProblems(chartDocs) {
   const d = chartDocs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name));
   if (!d || Number(d.spec.replicas) !== 1) out.push(`LLM ゲートウェイが 1 レプリカでない（上限はプロセスごと。${d ? d.spec.replicas : '描かれない'}）`);
   if (chartDocs.some((x) => x.kind === 'HorizontalPodAutoscaler')) out.push('HPA を描いている（上限がレプリカ数倍になる）');
+  return out;
+}
+
+/**
+ * NFR-18, NFR-21, IADR-0698: 当日の費用の枠を再起動を越えて残す（所有者の裁定 2026-11-07「再起動しても残るように直す」）。
+ *   - 置き場のパス（Llm__CallLimits__SpendStore__Path）は PVC llmgateway-service-state のマウントの直下にある（パスがずれると
+ *     ゲートウェイは消える場所を探し、読めずに止める＝送らない。黙って枠が戻る形にはならないが、稼働が止まる）。
+ *   - PVC は ReadWriteOnce・chart を消しても残す（helm.sh/resource-policy: keep）。
+ *   - 1 レプリカ・Recreate（新旧の Pod が同じ置き場を開かない）。
+ */
+const SPEND_STATE_PVC = 'llmgateway-service-state';
+const SPEND_STORE_ENV = 'Llm__CallLimits__SpendStore__Path';
+function cloudSpendStateProblems(chartDocs) {
+  const out = [];
+  const d = chartDocs.find((x) => x.kind === 'Deployment' && x.metadata.name === 'llmgateway-service');
+  if (!d) return ['LLM ゲートウェイの Deployment が無い'];
+  const spec = d.spec.template.spec;
+  const c = (spec.containers || [])[0] || {};
+  const file = llmGatewayEnv(chartDocs)[SPEND_STORE_ENV];
+  if (!file) out.push(`当日の費用の枠の置き場（${SPEND_STORE_ENV}）が無い（再起動で枠が 0 に戻る）`);
+  const vol = (spec.volumes || []).find((v) => v.persistentVolumeClaim && v.persistentVolumeClaim.claimName === SPEND_STATE_PVC);
+  const mount = vol && (c.volumeMounts || []).find((m) => m.name === vol.name);
+  if (!vol || !mount) out.push(`PVC ${SPEND_STATE_PVC} をマウントしない`);
+  else {
+    if (String(mount.readOnly) === 'true') out.push('当日の費用の枠の PVC が読み取り専用（書けない）');
+    if (file && path.posix.dirname(String(file)) !== String(mount.mountPath)) out.push(`置き場のパス（${file}）が PVC のマウント（${mount.mountPath}）の直下でない`);
+  }
+  const pvc = chartDocs.find((x) => x.kind === 'PersistentVolumeClaim' && x.metadata.name === SPEND_STATE_PVC);
+  if (!pvc) out.push(`PVC ${SPEND_STATE_PVC} を描かない`);
+  else {
+    if (JSON.stringify(pvc.spec.accessModes) !== '["ReadWriteOnce"]') out.push(`PVC の accessModes が ReadWriteOnce だけでない（${JSON.stringify(pvc.spec.accessModes)}）`);
+    if (((pvc.metadata.annotations || {})['helm.sh/resource-policy']) !== 'keep') out.push('PVC が chart を消すと一緒に消える（helm.sh/resource-policy: keep が無い）');
+  }
+  if (Number(d.spec.replicas) !== 1) out.push(`LLM ゲートウェイが 1 レプリカでない（${d.spec.replicas}）`);
+  if (!(d.spec.strategy && d.spec.strategy.type === 'Recreate')) out.push('LLM ゲートウェイが Recreate でない（新旧の Pod が同じ置き場を開く）');
+  if (chartDocs.some((x) => x.kind === 'HorizontalPodAutoscaler')) out.push('HPA を描いている');
   return out;
 }
 
@@ -980,7 +1022,7 @@ function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
   return out;
 }
 
-module.exports = { openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -1068,6 +1110,50 @@ if (require.main === module) {
       const costKeys = Object.keys(env).filter((k) => /^Llm__CallLimits__/i.test(k));
       assert.deepStrictEqual(costKeys, [], `既定・ローカルの描画に LLM の上限の env がある（変えない）: ${costKeys.join(', ')}`);
     }
+  });
+  ok('IADR-0698 SP1・SP2: クラウドの描画は当日の費用の枠を PVC の上に残し（置き場のパスはマウントの直下）、1 レプリカ・Recreate。既定とローカルの描画は PVC を描かない', () => {
+    assert.deepStrictEqual(cloudSpendStateProblems(renderChart()), []);
+    for (const extra of [[], ['-f', 'deploy/local/values-local.yaml']]) {
+      const docs = docsOf(run('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', ...extra, '-s', 'templates/deployment.yaml', '--set-string', `global.image.tag=${IMAGE_TAG}`]));
+      assert.ok(docs.some((x) => x.kind === 'Deployment'), '陽性対照: 既定・ローカルの描画を読めていない');
+      assert.ok(!docs.some((x) => x.kind === 'PersistentVolumeClaim' && /-service-state$/.test(x.metadata.name)), '既定・ローカルの描画に状態の PVC がある（変えない）');
+    }
+  });
+  ok('IADR-0698 陰性対照: 置き場の欠落・マウントの外のパス・読み取り専用・PVC の欠落と消える設定・2 レプリカ・RollingUpdate を検出し、chart は 2 レプリカ・HPA との併記を描画で止める', () => {
+    const fresh = () => {
+      const docs = JSON.parse(JSON.stringify(renderChart()));
+      const dep = docs.find((x) => x.kind === 'Deployment' && x.metadata.name === 'llmgateway-service');
+      return { docs, dep, c: dep.spec.template.spec.containers[0] };
+    };
+    const expectProblem = (mutate, want) => {
+      const f = fresh();
+      mutate(f);
+      const p = cloudSpendStateProblems(f.docs);
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    };
+    expectProblem((f) => { f.c.env = f.c.env.filter((e) => e.name !== SPEND_STORE_ENV); }, /置き場/);
+    expectProblem((f) => { f.c.env.find((e) => e.name === SPEND_STORE_ENV).value = '/tmp/daily-spend.json'; }, /直下でない/);
+    expectProblem((f) => { f.c.volumeMounts.find((m) => m.name === 'state').readOnly = true; }, /読み取り専用/);
+    expectProblem((f) => { f.docs.splice(f.docs.findIndex((x) => x.kind === 'PersistentVolumeClaim'), 1); }, /を描かない/);
+    expectProblem((f) => { delete f.docs.find((x) => x.kind === 'PersistentVolumeClaim').metadata.annotations; }, /resource-policy/);
+    expectProblem((f) => { f.docs.find((x) => x.kind === 'PersistentVolumeClaim').spec.accessModes = ['ReadWriteMany']; }, /ReadWriteOnce/);
+    expectProblem((f) => { f.dep.spec.replicas = 2; }, /1 レプリカでない/);
+    expectProblem((f) => { delete f.dep.spec.strategy; }, /Recreate でない/);
+    // AC14: 状態の PVC 以外の書けるボリュームは引き続き検出する（例外を広げていない）。
+    const g = fresh();
+    g.dep.spec.template.spec.volumes.push({ name: 'other', persistentVolumeClaim: { claimName: 'other' } });
+    g.c.volumeMounts.push({ name: 'other', mountPath: '/var/other' });
+    assert.ok(gatewayListenerProblems(g.docs).some((x) => /\/var\/other が読み取り専用でない/.test(x)), '状態の PVC 以外の書けるマウントを検出しない');
+    // chart の描画の止め（2 レプリカ・HPA・mountPath が相対）。
+    const renderFails = (extra, want) => {
+      const r = spawnSync('helm', ['template', 'msp', CHART, '-n', 'microservices-platform', '-f', 'deploy/cloud/values-cloud.yaml',
+        '--set-string', `global.image.tag=${IMAGE_TAG}`, ...extra], { cwd: REPO_ROOT, encoding: 'utf8' });
+      assert.notStrictEqual(r.status, 0, `描画が止まらない: ${extra.join(' ')}`);
+      assert.match(r.stderr, want);
+    };
+    renderFails(['--set', 'services.llmgateway.replicas=2'], /1 レプリカにだけ/);
+    renderFails(['--set', 'scaling.enabled=true', '--set', 'scaling.services={llmgateway}'], /HPA/);
+    renderFails(['--set', 'services.llmgateway.persistence.mountPath=state'], /絶対パス/);
   });
   ok('IADR-0692: 月次予算（用途別）は当日の費用の上限の割り当てから導いた値で、割り当ての合計は呼び手ごとの日の上限に等しい', () => {
     const app = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'src/platform/backend/Services/LlmGateway/appsettings.json'), 'utf8'));

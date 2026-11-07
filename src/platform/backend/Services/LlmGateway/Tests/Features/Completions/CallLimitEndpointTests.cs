@@ -259,4 +259,51 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
         ShouldBeLimited(await PostAsync(client, maxTokens: 1_000_000), "caller_cost");
         ShouldBeSent(await PostAsync(client, maxTokens: 100));
     }
+    // ---- NFR-18, NFR-21, IADR-0698: 当日の費用の枠は再起動を越えて残る ---------------------------------
+
+    [Fact]
+    public async Task 置き場を与えると_ゲートウェイを作り直しても当日の費用の枠を引き継ぐ()
+    {
+        var dir = Directory.CreateTempSubdirectory("llm-spend-endpoint-");
+        try
+        {
+            var path = Path.Combine(dir.FullName, "spend.json");
+            (string, string)[] settings =
+            [
+                ("Llm:CallLimits:Callers:retrieval-service:DailyCostLimit", "0.001"),
+                ("Llm:CallLimits:SpendStore:Path", path),
+            ];
+
+            // 1 つ目のプロセス: 当日の枠が埋まるまで送る（スタブの実額で埋まる）。
+            using (var first = Enforce(settings))
+            {
+                var client = As(first, "service-account-retrieval-service");
+                var sent = 0;
+                while (sent < 50 && (await PostAsync(client, maxTokens: 10)).Sent) sent++;
+                sent.Should().BeInRange(1, 49, "枠の中で送れ、やがて枠が埋まる");
+            }
+
+            // 作り直したプロセス: 前回の消費を引き継ぐので、最初の 1 件から止まる。
+            using (var restarted = Enforce(settings))
+                ShouldBeLimited(await PostAsync(As(restarted, "service-account-retrieval-service"), maxTokens: 10), "caller_cost");
+
+            // 陽性対照: 置き場が別（＝前回の消費が無い）なら同じ呼び出しは送れる。
+            using (var fresh = Enforce(
+                ("Llm:CallLimits:Callers:retrieval-service:DailyCostLimit", "0.001"),
+                ("Llm:CallLimits:SpendStore:Path", Path.Combine(dir.FullName, "other.json"))))
+                ShouldBeSent(await PostAsync(As(fresh, "service-account-retrieval-service"), maxTokens: 10));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task 置き場のディレクトリが無ければ起動はするが段2では費用を数える呼び出しを送らない()
+    {
+        using var app = Enforce(("Llm:CallLimits:SpendStore:Path", Path.Combine(Path.GetTempPath(), "llm-spend-missing-" + Guid.NewGuid().ToString("N"), "spend.json")));
+
+        ShouldBeLimited(await PostAsync(As(app, "service-account-retrieval-service")), "cost_state");
+    }
 }

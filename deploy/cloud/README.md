@@ -11,6 +11,7 @@
 | Keycloak（本番モード `start`・realm `platform`・HTTPS 8443 だけ。[IADR-0693](../../.ai-context/adr/IADR-0693_cloud-keycloak-tls-openbao-pki.md)） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
 | OpenTelemetry の collector（メトリクスは Prometheus へ。受けるのは OTLP を送る Pod だけ・gRPC だけ。[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
+| LLM ゲートウェイの当日の費用の枠（再起動を越えて残す。PVC `llmgateway-service-state`。[IADR-0698](../../.ai-context/adr/IADR-0698_llm-daily-cost-state-persistence.md)） | `values-cloud.yaml`（`services.llmgateway.persistence`） |
 | 秘匿管理（OpenBao。本番の init・raft）と、OpenBao から Secret へ写す ESO | `vault/`（`vault/eso/`・`vault/*.sh`） |
 | 到達の制限（入り・出の既定拒否と要る組だけの許可） | `infra/networkpolicy.yaml`（MSP の名前空間の入り・出も。chart は NetworkPolicy を描かない） |
 
@@ -153,6 +154,14 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 
 ## 3. 配備の順序
 
+### 前提条件（稼働の前にオーナーが行う）
+
+- 🔴 **LLM の提供元のコンソールで、組織（API キーの属するワークスペース）の支出上限を設定する。** ゲートウェイの当日の費用の上限
+  （§4「段 2 の切り替え」）はゲートウェイを通る呼び出しにしか効かず、ゲートウェイの不具合・鍵の漏れ・単価表の誤りには効かない。
+  提供元の支出上限は、それらに対する最後の歯止めである。**値はオーナーが決める**（ここには書かない）。設定したこと（日付・設定した人）は運用の記録に残す。
+  支出上限に達すると提供元が呼び出しを拒むので、ゲートウェイは上流の失敗として `Sent=false` を返す。
+- 設定するまで、クラウドの LLM ゲートウェイを稼働させない（API キーを OpenBao へ入れない）。
+
 手順の詳細（鍵の受け渡し・再起動・作り直し）は[秘匿管理の手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md)。
 スクリプトはどれも `--live` が無ければ何もしない。**秘密の値を引数・環境変数・ディスクに置かない**（age の復号はパイプで Pod の標準入力へだけ流す）。
 
@@ -179,6 +188,7 @@ kubectl apply -k deploy/cloud          # 基盤（infra）・バックアップ�
 kubectl -n platform-infra rollout status deploy/postgres deploy/rabbitmq deploy/keycloak deploy/otel-collector --timeout=600s
 kubectl -n platform-infra wait --for=condition=Ready pod -l app=keycloak --timeout=600s   # realm の取り込みが終わるまで Ready にならない
 bash deploy/cloud/db-users/ast-db-users.sh --live apply              # 取引ユニットの DB のサービスごとの利用者（Job。値は手元へ来ない）
+. scripts/lib/recreate-strategy.sh && reconcile_recreate_strategy microservices-platform llmgateway-service   # 既存の RollingUpdate の値を消す（冪等。新規は何もしない）
 helm upgrade --install msp deploy/helm/microservices-platform -n microservices-platform \
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
@@ -240,6 +250,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | LLM ゲートウェイの経路の設定の検査 | `Llm__RouteValidation__Mode=Fail`（不足があれば起動しない） | `values-cloud.yaml` |
 | LLM ゲートウェイの呼び手ごとの許可表 | `Llm__CallerPolicy__Mode=Enforce`（表の外は 403） | 同上 |
 | LLM ゲートウェイの入力・要求数・費用の上限 | `Llm__CallLimits__Mode=Enforce`（超えたら送らない）。当日の費用の上限は全呼び手の合計で 1 日 20 USD（取引ユニットの呼び手 18・既定 0.5。UTC の日）。既定の金額が無ければ起動しない | 同上 |
+| LLM ゲートウェイの当日の費用の枠の置き場 | `Llm__CallLimits__SpendStore__Path`（PVC `llmgateway-service-state` の上のファイル。再起動の後は前回の値を読み込んでから判定する。読めない・書けない間は費用を数える呼び出しを送らない）。1 レプリカ・Recreate | 同上 |
 
 - 既定の描画とローカル（`values-local.yaml`・`deploy/local`）は段 1 のまま（`scripts/deploy-cloud.test.js` が固定する）。
 - 🔴 **購読側の exchange の configure を外した表の適用の順序**: 取引ユニットの「購読側は購読の exchange を受動で宣言する」変更
