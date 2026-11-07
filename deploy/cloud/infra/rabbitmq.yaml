@@ -97,6 +97,7 @@ spec:
             - { name: users, mountPath: /etc/rabbitmq-users, readOnly: true }
             - { name: default-user-flag, mountPath: /etc/rabbitmq-default-user, readOnly: true }
             # NFR-18, IADR-0681, IADR-0689 決定 12: 絞った権限（段 2）。行の無いユーザーには権限を付けない。
+            #   IADR-0693: 同じ ConfigMap の exchanges.json（購読される exchange）を、権限を当てる前に宣言する。
             - { name: permissions, mountPath: /etc/rabbitmq-permissions, readOnly: true }
             # IADR-0591: conf.d へ 1 ファイルだけ足す（subPath。イメージの 10-defaults.conf を隠さない）。
             - { name: tls-conf, mountPath: /etc/rabbitmq/conf.d/20-tls.conf, subPath: 20-tls.conf, readOnly: true }
@@ -190,6 +191,18 @@ data:
       if [ "$tries" -le 0 ]; then log "ノードの起動を待てない。ユーザーを復元しない"; exit 0; fi
       sleep 2
     done
+    # NFR-18, IADR-0693: 購読される exchange を、利用者の権限を当てる前に宣言する（購読側は購読の exchange を受動で確かめるだけで、
+    #   宣言の configure を持たない。AST の IADR-0628）。表は生成物（ConfigMap rabbitmq-permissions の exchanges.json）。追加だけで、
+    #   在る exchange・利用者・権限は変えない（冪等）。宣言できなくても利用者の復元は続ける（購読側は起動の再試行で待つ）。
+    if [ -f "$PERMS_DIR/exchanges.json" ]; then
+      if rabbitmqctl -q import_definitions "$PERMS_DIR/exchanges.json" >/dev/null 2>&1; then
+        log "購読される exchange を宣言した"
+      else
+        log "購読される exchange を宣言できない（購読側は exchange が現れるまで起動を待つ）"
+      fi
+    else
+      log "購読される exchange の表が無い（宣言しない）"
+    fi
     n=0
     failed=0
     for f in "$USERS_DIR"/*; do

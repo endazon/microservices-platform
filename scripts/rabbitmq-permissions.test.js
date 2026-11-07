@@ -20,6 +20,9 @@
  *   6. 合わせ（reconcile-users.sh）: 既定（段 1）は vhost 全体のまま、narrow（段 2）は生成物の行を当てる。行の欠け・届かないものが
  *      あれば何も変えずに止まる。--permissions-report は何も書かない。当てた段を ConfigMap に写す。
  *   7. 起動の直後の復元（rabbitmq.yaml の restore-users.sh）は ConfigMap の段に従い、行の無いユーザーへ vhost 全体を付けない。
+ *   8. クラウドの写し（NFR-18, IADR-0693）: 購読する（発行しない）exchange の configure を与えない。それ以外はローカルの行と同じ。
+ *      購読に要る操作（受動の宣言・束ね）は当たり、変異（購読の exchange の configure を戻す）で陰性対照が赤になる。
+ *      exchanges.json は購読される exchange の和で、Wolverine の宣言と同じ形。クラウドの復元は利用者の権限を当てる前にそれを宣言する。
  *
  * 外部依存ゼロ（Node 標準モジュール ＋ bash / sh / awk）。実行: node scripts/rabbitmq-permissions.test.js
  */
@@ -470,6 +473,131 @@ ok('ブローカの manifest は ConfigMap rabbitmq-permissions を optional で
   assert.ok(/name: permissions\n\s*configMap: \{ name: rabbitmq-permissions, optional: true \}/.test(BROKER), 'optional でマウントしていない');
   assert.ok(/mountPath: \/etc\/rabbitmq-permissions/.test(BROKER) && /\/etc\/rabbitmq-permissions/.test(BOOT), 'マウントのパスが食い違う');
   assert.ok(/PERMS_CM="\$\{RABBITMQ_PERMISSIONS_CONFIGMAP:-rabbitmq-permissions\}"/.test(fs.readFileSync(RECONCILE, 'utf8')), '合わせの ConfigMap の名前が食い違う');
+});
+
+// --- 8 ----------------------------------------------------------------------------------------------------------
+// NFR-18, IADR-0693: クラウドの写し。取引ユニットはクラウドで購読の exchange を受動で宣言する（AST の IADR-0628）。
+const CLOUD_TEXT = fs.readFileSync(path.join(REPO_ROOT, gen.CLOUD_PERMS_REL), 'utf8');
+const cloudRows = (() => {
+  const m = CLOUD_TEXT.match(/\n  permissions\.txt: \|\n((?:    .*\n)+)/);
+  assert.ok(m, 'rabbitmq-permissions.yaml に permissions.txt が無い');
+  return new Map(m[1].trim().split('\n').map((l) => l.trim().split(/\s+/)).map(([user, configure, write, read]) => [user, { user, configure, write, read }]));
+})();
+const astUsers = users.filter((u) => u.namespace === 'ai-stock-trading').map((u) => u.user);
+const astDerived = G.derived.filter((d) => d.unit === 'ai-stock-trading');
+
+ok('クラウドの写し: 取引ユニットの行だけを持ち、configure の exchange は発行するものだけ（write・read はローカルの行と同じ）', () => {
+  assert.deepStrictEqual([...cloudRows.keys()], astUsers);
+  for (const u of astUsers) {
+    const local = committed.get(u);
+    const cloud = cloudRows.get(u);
+    assert.strictEqual(cloud.write, local.write, `${u} の write`);
+    assert.strictEqual(cloud.read, local.read, `${u} の read`);
+    assert.deepStrictEqual(cloud, gen.cloudRow(local), `${u} の行がローカルの行から作った値と違う`);
+  }
+  for (const d of astDerived) {
+    const p = gen.patternsFor(d, { cloud: true });
+    assert.deepStrictEqual(cloudRows.get(d.user), { user: d.user, ...p }, `${d.user}: 行から作った値が導出から作った値と違う`);
+  }
+});
+
+ok('クラウドの写し（欠け）: 購読に要る操作（受動の宣言・束ね）と発行に要る操作は、すべてその権限に当たる', () => {
+  for (const d of astDerived) {
+    const miss = gen.requiredAccess(d, { cloud: true }).filter((a) => !rx(cloudRows.get(d.user)[a.perm]).test(a.name));
+    assert.deepStrictEqual(miss, [], `${d.user} のクラウドの権限が欠ける:\n  ${miss.map((a) => `${a.perm} ${a.name}（${a.why}）`).join('\n  ')}`);
+  }
+});
+
+/** クラウドで拒まれるべき操作: ローカルの陰性対照に、購読する（発行しない）exchange の configure（宣言・削除）を足す。 */
+function forbiddenInCloud(d) {
+  return [...forbiddenAccess(d), ...d.subscribe.filter((ex) => !d.publish.includes(ex))
+    .map((ex) => ({ perm: 'configure', name: ex, why: '購読する（発行しない）exchange の宣言・削除（クラウドは受動の宣言）' }))];
+}
+const cloudViolations = (d, row) => forbiddenInCloud(d).filter((a) => rx(row[a.perm]).test(a.name)).map((a) => `${a.perm} ${a.name}（${a.why}）`);
+
+ok('クラウドの写し（陰性対照）: 購読する（発行しない）exchange の configure は誰も持たない。発行する exchange の configure は残る', () => {
+  let subOnly = 0;
+  for (const d of astDerived) {
+    const v = cloudViolations(d, cloudRows.get(d.user));
+    assert.deepStrictEqual(v, [], `${d.user} がクラウドで拒まれるべき操作を許す:\n  ${v.join('\n  ')}`);
+    for (const ex of d.publish) assert.ok(rx(cloudRows.get(d.user).configure).test(ex), `${d.user}: 発行する ${ex} の configure が無い（発行側の宣言が拒まれる）`);
+    subOnly += d.subscribe.filter((ex) => !d.publish.includes(ex)).length;
+  }
+  if (hasAst) assert.ok(subOnly >= 20, `購読だけの exchange が少なすぎる（${subOnly}。陰性対照が痩せた）`);
+  // 行だけ（AST の写しが無くても）で読める形: configure の exchange ⊆ write の exchange。
+  for (const [u, r] of cloudRows) {
+    const write = new Set(r.write.slice(2, -2).split('|'));
+    const extra = r.configure.slice(2, -2).split('|').slice(3).filter((x) => !write.has(x));
+    assert.deepStrictEqual(extra, [], `${u}: 発行しない exchange の configure がある`);
+  }
+});
+
+ok('クラウドの写し（変異）: 購読の exchange の configure を戻す（ローカルの行のまま写す）と、陰性対照が必ず赤になる', () => {
+  if (!hasAst) return;
+  const caught = astDerived.filter((d) => d.subscribe.some((ex) => !d.publish.includes(ex)))
+    .map((d) => [d.user, cloudViolations(d, committed.get(d.user)).length > 0]);
+  assert.ok(caught.length >= 5, `購読だけの exchange を持つ利用者が少なすぎる（${caught.length}）`);
+  for (const [u, hit] of caught) assert.ok(hit, `${u}: ローカルの行（購読の exchange の configure あり）を陰性対照が検出しない`);
+});
+
+ok('クラウドの写し: exchanges.json は購読される exchange の和で、Wolverine の宣言と同じ形（fanout・durable・自動削除しない・引数なし）', () => {
+  const m = CLOUD_TEXT.match(/\n  exchanges\.json: '(.*)'\n/);
+  assert.ok(m, 'rabbitmq-permissions.yaml に exchanges.json が無い');
+  const defs = JSON.parse(m[1]);
+  assert.deepStrictEqual(Object.keys(defs), ['exchanges'], 'exchange 以外（利用者・権限・キュー）を持ち込まない');
+  const names = defs.exchanges.map((e) => e.name);
+  assert.deepStrictEqual(names, [...names].sort(), '並びが決まっていない');
+  for (const e of defs.exchanges) {
+    assert.deepStrictEqual(e, { name: e.name, vhost: '/', type: 'fanout', durable: true, auto_delete: false, internal: false, arguments: {} });
+  }
+  const want = [...new Set([...cloudRows.values()].flatMap(gen.subscribedExchanges))].sort();
+  assert.deepStrictEqual(names, want);
+  if (hasAst) assert.deepStrictEqual(names, [...new Set(astDerived.flatMap((d) => d.subscribe))].sort(), '導出の購読の和と違う');
+  assert.ok(names.length >= 20, `購読される exchange が少なすぎる（${names.length}）`);
+});
+
+const CLOUD_BROKER = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/infra/rabbitmq.yaml'), 'utf8');
+const CLOUD_BOOT = (() => {
+  const m = CLOUD_BROKER.match(/\n  restore-users\.sh: \|\n((?:    .*\n|\n)+)/);
+  assert.ok(m, 'クラウドの rabbitmq.yaml に restore-users.sh が無い');
+  return m[1].split('\n').map((l) => l.replace(/^    /, '')).join('\n');
+})();
+function cloudBoot({ exchanges }) {
+  const H = fs.mkdtempSync(path.join(os.tmpdir(), 'rmqperm-cloudboot-'));
+  try {
+    const bin = path.join(H, 'bin');
+    const dir = path.join(H, 'users');
+    const pdir = path.join(H, 'perms');
+    fs.mkdirSync(bin); fs.mkdirSync(dir); fs.mkdirSync(pdir);
+    fs.writeFileSync(path.join(dir, 'ast-a'), 'pa');
+    fs.writeFileSync(path.join(pdir, 'permissions.txt'), 'ast-a ^(a\\..*)$ ^(a\\..*)$ ^(a\\..*|EvA)$\n');
+    if (exchanges) fs.writeFileSync(path.join(pdir, 'exchanges.json'), exchanges);
+    fs.writeFileSync(path.join(H, 'cookie'), 'c');
+    fs.writeFileSync(path.join(H, 'boot.sh'), CLOUD_BOOT);
+    fs.writeFileSync(path.join(bin, 'rabbitmqctl'), '#!/bin/sh\ncase "$1 $2" in "add_user "*|"change_password "*) cat >/dev/null;; esac\nprintf "%s\\n" "$*" >> "$STUB_H/calls"\nexit 0\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(H, 'calls'), '');
+    const r = spawnSync('sh', [path.join(H, 'boot.sh')], { encoding: 'utf8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STUB_H: H,
+      RABBITMQ_BOOT_USERS_DIR: dir, RABBITMQ_BOOT_PERMISSIONS_DIR: pdir, RABBITMQ_BOOT_FLAG: path.join(H, 'flag'), RABBITMQ_BOOT_TRIES: '2',
+      RABBITMQ_BOOT_COOKIE: path.join(H, 'cookie'), RABBITMQ_BOOT_LOG: path.join(H, 'boot.log') } });
+    return { status: r.status, calls: fs.readFileSync(path.join(H, 'calls'), 'utf8').split('\n').filter(Boolean), pdir,
+      log: fs.existsSync(path.join(H, 'boot.log')) ? fs.readFileSync(path.join(H, 'boot.log'), 'utf8') : '' };
+  } finally {
+    fs.rmSync(H, { recursive: true, force: true });
+  }
+}
+
+ok('クラウドの復元: 利用者の権限を当てる前に exchanges.json を宣言する（表が無ければ宣言せず、利用者の復元は続ける）', () => {
+  const r = cloudBoot({ exchanges: '{"exchanges":[]}' });
+  assert.strictEqual(r.status, 0);
+  const imp = r.calls.findIndex((c) => /^-q import_definitions .*\/perms\/exchanges\.json$/.test(c));
+  const set = r.calls.findIndex((c) => / set_permissions /.test(c));
+  assert.ok(imp >= 0, `import_definitions を呼ばない:\n${r.calls.join('\n')}`);
+  assert.ok(set > imp, `権限を当てた後に宣言した:\n${r.calls.join('\n')}`);
+  const none = cloudBoot({ exchanges: null });
+  assert.strictEqual(none.status, 0);
+  assert.ok(!none.calls.some((c) => /import_definitions/.test(c)), '表が無いのに宣言した');
+  assert.ok(none.calls.some((c) => / set_permissions /.test(c)), '表が無いと利用者の権限を当てない');
+  assert.ok(/mountPath: \/etc\/rabbitmq-permissions/.test(CLOUD_BROKER), '表のマウント先が食い違う');
 });
 
 process.stdout.write(`rabbitmq-permissions.test.js: ${passed} passed\n`);

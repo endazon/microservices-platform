@@ -209,12 +209,16 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 
 | 切り替え | 値 | 置き場 |
 | --- | --- | --- |
-| ブローカの権限 | narrow（生成物 `infra/rabbitmq-permissions.yaml` の行だけ。行の無いユーザーには権限を付けない） | `infra/rabbitmq.yaml` の起動の直後の復元 |
+| ブローカの権限 | narrow（生成物 `infra/rabbitmq-permissions.yaml` の行だけ。行の無いユーザーには権限を付けない）。購読側には購読する（自分が発行しない）exchange の configure を与えず、購読される exchange は同じ表の `exchanges.json` を利用者の権限より先に宣言する | `infra/rabbitmq.yaml` の起動の直後の復元 |
 | LLM ゲートウェイの経路の設定の検査 | `Llm__RouteValidation__Mode=Fail`（不足があれば起動しない） | `values-cloud.yaml` |
 | LLM ゲートウェイの呼び手ごとの許可表 | `Llm__CallerPolicy__Mode=Enforce`（表の外は 403） | 同上 |
 | LLM ゲートウェイの入力・要求数・費用の上限 | `Llm__CallLimits__Mode=Enforce`（超えたら送らない）。当日の費用の上限は全呼び手の合計で 1 日 20 USD（取引ユニットの呼び手 18・既定 0.5。UTC の日）。既定の金額が無ければ起動しない | 同上 |
 
 - 既定の描画とローカル（`values-local.yaml`・`deploy/local`）は段 1 のまま（`scripts/deploy-cloud.test.js` が固定する）。
+- 🔴 **購読側の exchange の configure を外した表の適用の順序**: 取引ユニットの「購読側は購読の exchange を受動で宣言する」変更
+  （取引ユニットの chart の `global.rabbitmq.subscribedExchanges: Passive`）のマージと、**取引ユニットのイメージの更新の後に**、
+  ConfigMap `rabbitmq-permissions`・`rabbitmq-boot` を当ててブローカを作り直す（`kubectl -n platform-infra rollout restart deploy/rabbitmq`）。
+  先に当てると、従来の（非受動で宣言する）購読側の Pod は起動できない（configure が拒まれる）。戻すときは、この表を前の版へ戻してブローカを作り直す。
 
 ## 5. 確かめ方（クラスタに触れない）
 
