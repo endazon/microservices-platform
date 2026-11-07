@@ -31,7 +31,7 @@ public static class CompleteEndpoint
 
             // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視のトラフィックか。
             // 標識は外周（BFF）が検証済み JWT の主体から決めて付けたヘッダで、標識の有無の判定は単一情報源（SyntheticTraffic）にある。
-            // ［2026-11-07 / IADR-0701］🔴 **標識を引き継ぐのは、検証済みのトークンの主体が許可集合（Llm:SyntheticMarker）に在るときだけ**
+            // ［2026-11-07 / IADR-0702］🔴 **標識を引き継ぐのは、検証済みのトークンの主体が許可集合（Llm:SyntheticMarker）に在るときだけ**
             // （段 2。段 1 は引き継いで報告する）。メッシュの無い構成でも、許可集合の外の呼び手は費用の計上から外れない。
             // gRPC 面も同じ 2 つの関数を ServerCallContext.GetHttpContext() から呼ぶ。
             var caller = MachinePrincipal.ClientIdOf(http.User);

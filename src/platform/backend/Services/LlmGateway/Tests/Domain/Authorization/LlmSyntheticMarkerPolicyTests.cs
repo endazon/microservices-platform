@@ -8,7 +8,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace LlmGateway.Tests.Domain.Authorization;
 
-// NFR-02, NFR-18, NFR-21, IADR-0378, IADR-0701: 合成監視の標識を引き継いでよい呼び手の許可集合（Llm:SyntheticMarker）の単体試験。
+// NFR-02, NFR-18, NFR-21, IADR-0378, IADR-0702: 合成監視の標識を引き継いでよい呼び手の許可集合（Llm:SyntheticMarker）の単体試験。
 [Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Unit")]
 public sealed class LlmSyntheticMarkerPolicyTests : IDisposable

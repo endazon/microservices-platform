@@ -18,7 +18,7 @@ namespace LlmGateway.Features.Embeddings.Embed;
 // 縮退はすべて `Embedded=false` の**応答**で表す（例外にしない）。REST では 200 ＋ Embedded=false、
 // gRPC では OK ＋ embedded=false であり、意味は同じである。
 //
-// 🔴 NFR-18, NFR-21, IADR-0701: **送る直前に送る前の上限（LlmCallLimiter.AdmitEmbedding）を通す**（補完と同じ 1 つの判定器）。
+// 🔴 NFR-18, NFR-21, IADR-0702: **送る直前に送る前の上限（LlmCallLimiter.AdmitEmbedding）を通す**（補完と同じ 1 つの判定器）。
 // 段 2 で上限を超えた呼び出しは送らず Embedded=false で返す（入力の長さは再試行で解消しないので Retryable=false、ほかは true）。
 // `caller` は輸送が検証済みのトークンから決めて渡す。
 public sealed class EmbedUseCase(
@@ -64,7 +64,7 @@ public sealed class EmbedUseCase(
                 Retryable: false);
         }
 
-        // NFR-18, NFR-21, IADR-0701: 送る前の上限。外へ出ない経路（ティア A）は費用を数えない（要求数と長さは見る）。
+        // NFR-18, NFR-21, IADR-0702: 送る前の上限。外へ出ない経路（ティア A）は費用を数えない（要求数と長さは見る）。
         var textChars = req.Text.Length;
         var admission = limiter.AdmitEmbedding(
             caller, decision.Model, textChars, billable: decision.Tier is not ProtectionTier.A);
@@ -137,7 +137,7 @@ public sealed class EmbedUseCase(
         }
         finally
         {
-            // IADR-0678・IADR-0701: 送れなかった（鍵なし・上流の失敗・取り消し）ときは見込みを戻す。Settle の後の Release は何もしない。
+            // IADR-0678・IADR-0702: 送れなかった（鍵なし・上流の失敗・取り消し）ときは見込みを戻す。Settle の後の Release は何もしない。
             admission.Release();
         }
     }

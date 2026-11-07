@@ -17,7 +17,7 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace LlmGateway.Tests.Features.Embeddings.Embed;
 
-// NFR-18, NFR-21, FR-02, IADR-0684, IADR-0678, IADR-0701: 埋め込みの gRPC 面（LlmEmbedding/Embed）に、呼び手ごとの許可表と
+// NFR-18, NFR-21, FR-02, IADR-0684, IADR-0678, IADR-0702: 埋め込みの gRPC 面（LlmEmbedding/Embed）に、呼び手ごとの許可表と
 // 送る前の上限が掛かることを固定する。プロバイダへ届いたかは、呼び出し回数を数えるスパイで見る。
 // 値は文字列で書く（設定キーは配備が読む外部の契約であるため、定数を引かずに綴りを固定する）。
 [Collection(SharedMeterCollection.Name)]

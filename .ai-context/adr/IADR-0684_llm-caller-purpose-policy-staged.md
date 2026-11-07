@@ -2,7 +2,7 @@
 title: IADR-0684 LLM ゲートウェイの補完は、呼び手ごとの許可表（用途・モデルの明示の指定）を REST と gRPC の両面で 1 つの判定器が見る。段 1 は報告、段 2 は 403 / PERMISSION_DENIED（#2417）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, ADR-0010, IADR-0379, IADR-0424, IADR-0701]
+related_ids: [NFR-18, NFR-09, FR-11, ADR-0084, ADR-0010, IADR-0379, IADR-0424, IADR-0702]
 author: claude
 created: 2026-11-06
 updated: 2026-11-07
@@ -58,4 +58,4 @@ related_specs:
 1. 段 1 のあいだは、許可表の外の呼び出しも通る。段 2 へ切り替える前に、計器で `llm_policy_mode="report"` の違反が想定外の呼び手から出ていないことを確かめる。
 2. 呼び手が用途を足すときは、この表も同じ PR で足す必要がある（足さないと段 2 で拒まれる）。
 3. 埋め込みの面は射程外。
-   ［2026-11-07 追記 / IADR-0701］埋め込みの面も同じ表を通すようにした（呼び手の項目 `AllowEmbedding`・段は `Llm:CallerPolicy:EmbeddingMode`。違反の種類 `embedding_not_allowed` を足し 4 値）。
+   ［2026-11-07 追記 / IADR-0702］埋め込みの面も同じ表を通すようにした（呼び手の項目 `AllowEmbedding`・段は `Llm:CallerPolicy:EmbeddingMode`。違反の種類 `embedding_not_allowed` を足し 4 値）。

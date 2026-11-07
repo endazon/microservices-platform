@@ -17,7 +17,7 @@ public sealed class LlmCallerPolicyOptions
 
     public LlmCallerPolicyMode Mode { get; set; } = LlmCallerPolicyMode.Report;
 
-    // NFR-18, IADR-0701: 埋め込み（gRPC `LlmEmbedding/Embed`）の許可の段。補完の段（Mode）とは別に切り替える。
+    // NFR-18, IADR-0702: 埋め込み（gRPC `LlmEmbedding/Embed`）の許可の段。補完の段（Mode）とは別に切り替える。
     // 🔴 既定は Report（判定して報告だけ）。Off は判定しない（従前の挙動）。拒むのは Enforce のときだけ。
     public LlmGuardStage EmbeddingMode { get; set; } = LlmGuardStage.Report;
 
@@ -31,7 +31,7 @@ public enum LlmCallerPolicyMode
     Enforce,
 }
 
-// NFR-18, IADR-0701: 埋め込みの許可・上限の段（3 段）。Off は判定しない、Report は判定して報告だけ、Enforce は止める。
+// NFR-18, IADR-0702: 埋め込みの許可・上限の段（3 段）。Off は判定しない、Report は判定して報告だけ、Enforce は止める。
 public enum LlmGuardStage
 {
     Off,
@@ -47,7 +47,7 @@ public sealed class LlmCallerGrant
     // 要求でモデルを明示してよいか（既定は不可。用途ごとの割当に従う）。
     public bool AllowModelOverride { get; set; }
 
-    // NFR-18, IADR-0701: 埋め込み（gRPC `LlmEmbedding/Embed`）を呼んでよいか（既定は不可）。
+    // NFR-18, IADR-0702: 埋め込み（gRPC `LlmEmbedding/Embed`）を呼んでよいか（既定は不可）。
     public bool AllowEmbedding { get; set; }
 }
 
@@ -75,7 +75,7 @@ public sealed class LlmCallerPolicyOptionsValidator : IValidateOptions<LlmCaller
 public sealed record LlmCallerDecision(bool Allowed, IReadOnlyList<string> Violations);
 
 // 🔴 **判定の唯一の点。** REST（/complete）と gRPC（Complete・CompleteStream）の両方の面が、判定器（CompletionUseCase）を呼ぶ前にここを呼ぶ。
-// ［2026-11-07 / IADR-0701］埋め込み（gRPC Embed）も、判定器（EmbedUseCase）を呼ぶ前に EvaluateEmbedding を呼ぶ。
+// ［2026-11-07 / IADR-0702］埋め込み（gRPC Embed）も、判定器（EmbedUseCase）を呼ぶ前に EvaluateEmbedding を呼ぶ。
 public sealed class LlmCallerPolicy
 {
     public const string UnknownCaller = "unknown";
@@ -83,13 +83,13 @@ public sealed class LlmCallerPolicy
     // 計器の属性と抑止の鍵に使う、許可表に無い呼び手の集約先（値域を閉じる。用途の other と同じ扱い）。
     public const string OtherCaller = "other";
 
-    // 違反の種類（llm.policy.kind）。4 値で閉じる（embedding_not_allowed は IADR-0701）。
+    // 違反の種類（llm.policy.kind）。4 値で閉じる（embedding_not_allowed は IADR-0702）。
     public const string KindUnknownCaller = "unknown_caller";
     public const string KindPurposeNotAllowed = "purpose_not_allowed";
     public const string KindModelOverride = "model_override_not_allowed";
     public const string KindEmbeddingNotAllowed = "embedding_not_allowed";
 
-    // 埋め込みの違反を計器へ載せるときの用途（固定の値。補完の用途の値域と混ざらない。IADR-0701）。
+    // 埋め込みの違反を計器へ載せるときの用途（固定の値。補完の用途の値域と混ざらない。IADR-0702）。
     public const string EmbeddingPurpose = "embedding";
 
     public const string ViolationCounterName = "llm.caller_policy.violation.total";
@@ -149,7 +149,7 @@ public sealed class LlmCallerPolicy
         return new LlmCallerDecision(!(enforce && violations.Count > 0), violations);
     }
 
-    // NFR-18, IADR-0701: 埋め込みの許可。表に無い呼び手（unknown_caller）と、表に在るが AllowEmbedding が偽の呼び手（embedding_not_allowed）。
+    // NFR-18, IADR-0702: 埋め込みの許可。表に無い呼び手（unknown_caller）と、表に在るが AllowEmbedding が偽の呼び手（embedding_not_allowed）。
     // 段は EmbeddingMode（Off は判定しない＝違反なしで通す）。
     public LlmCallerDecision EvaluateEmbedding(string? caller)
     {

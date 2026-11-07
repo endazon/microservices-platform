@@ -199,7 +199,7 @@ public class LlmSyntheticUsageExclusionTests(TestWebApplicationFactory factory)
             "タグを保持しているので、混入は用途からも判別できる");
     }
 
-    // ---- NFR-02, NFR-18, NFR-21, IADR-0701: 標識を引き継ぐ呼び手の許可集合（Llm:SyntheticMarker） -----------------------------
+    // ---- NFR-02, NFR-18, NFR-21, IADR-0702: 標識を引き継ぐ呼び手の許可集合（Llm:SyntheticMarker） -----------------------------
 
     // 許可集合（既定 aianalysis-service・retrieval-service）の外の呼び手（取引ユニットの呼び手）として名乗るクライアント。
     private static HttpClient Untrusted(WebApplicationFactory<Program> app)

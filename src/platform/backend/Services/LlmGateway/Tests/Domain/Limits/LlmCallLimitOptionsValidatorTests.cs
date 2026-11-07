@@ -141,7 +141,7 @@ public class LlmCallLimitOptionsValidatorTests
         Validator().Validate(null, new LlmCallLimitOptions { Mode = LlmCallLimitMode.Report }).Succeeded.Should().BeTrue();
     }
 
-    // ---- NFR-18, IADR-0701: 埋め込みの段・用途・単価 ----------------------------------------------------
+    // ---- NFR-18, IADR-0702: 埋め込みの段・用途・単価 ----------------------------------------------------
 
     [Fact]
     public void 埋め込みの段の既定はReportで_段2も既定の当日の費用の上限が無いと失敗する()

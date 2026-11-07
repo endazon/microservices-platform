@@ -11,7 +11,7 @@ using Microsoft.Extensions.Time.Testing;
 
 namespace LlmGateway.Tests.Domain.Limits;
 
-// NFR-18, NFR-21, ADR-0044, IADR-0678, IADR-0701: 埋め込みの送る前の上限（LlmCallLimiter.AdmitEmbedding）の単体試験。
+// NFR-18, NFR-21, ADR-0044, IADR-0678, IADR-0702: 埋め込みの送る前の上限（LlmCallLimiter.AdmitEmbedding）の単体試験。
 // 埋め込みも補完と同じ判定器を通り、呼び手の要求数・当日の費用の枠を補完と合算する（用途の枠は固定の embedding）。
 [Collection(SharedMeterCollection.Name)]
 [Trait("TestKind", "Unit")]

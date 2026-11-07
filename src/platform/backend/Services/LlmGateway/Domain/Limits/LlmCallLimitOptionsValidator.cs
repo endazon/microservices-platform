@@ -32,7 +32,7 @@ public sealed class LlmCallLimitOptionsValidator(IOptionsMonitor<LlmRoutingOptio
         if (options.UnknownModelPrice.InputPerMillionTokens <= 0m || options.UnknownModelPrice.OutputPerMillionTokens <= 0m)
             errors.Add($"{Section}:UnknownModelPrice の単価は正の値でなければなりません（0 にすると単価の無いモデルで費用の上限が効かない）。");
 
-        // NFR-18, IADR-0701: 埋め込みの計上単価も 0 以下にしない（0 だと埋め込みで費用の上限が黙って効かない）。
+        // NFR-18, IADR-0702: 埋め込みの計上単価も 0 以下にしない（0 だと埋め込みで費用の上限が黙って効かない）。
         foreach (var (model, price) in options.EmbeddingPrices)
             if (string.IsNullOrWhiteSpace(model) || price <= 0m)
                 errors.Add($"{Section}:EmbeddingPrices:{model} の単価は正の値でなければなりません（{price}）。");
@@ -43,7 +43,7 @@ public sealed class LlmCallLimitOptionsValidator(IOptionsMonitor<LlmRoutingOptio
         if (options.Mode == LlmCallLimitMode.Enforce && options.Default.DailyCostLimit is null)
             errors.Add($"{Section}:Mode が Enforce なのに {Section}:Default:DailyCostLimit が設定されていません。"
                 + "段 2 では当日の費用の上限（全呼び手の既定）を正の値で設定してください（未設定のままでは費用が無制限になる）。");
-        // NFR-18, IADR-0701: 埋め込みの段 2 も同じ（金額が無いと、埋め込みの費用の判定が黙って働かない）。
+        // NFR-18, IADR-0702: 埋め込みの段 2 も同じ（金額が無いと、埋め込みの費用の判定が黙って働かない）。
         if (options.EmbeddingMode == LlmGuardStage.Enforce && options.Default.DailyCostLimit is null)
             errors.Add($"{Section}:EmbeddingMode が Enforce なのに {Section}:Default:DailyCostLimit が設定されていません。"
                 + "段 2 では当日の費用の上限（全呼び手の既定）を正の値で設定してください（未設定のままでは費用が無制限になる）。");

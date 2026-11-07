@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace LlmGateway.Domain.Authorization;
 
-// NFR-02, NFR-18, NFR-21, ADR-0044, ADR-0076 決定 4, IADR-0378, IADR-0701: 合成監視の標識（`X-Synthetic-Traffic`）を
+// NFR-02, NFR-18, NFR-21, ADR-0044, ADR-0076 決定 4, IADR-0378, IADR-0702: 合成監視の標識（`X-Synthetic-Traffic`）を
 // **引き継いでよい呼び手**の許可集合（`Llm:SyntheticMarker`）。
 //
 // 標識の付いた補完は費用の計上（`llm.cost.total`・月次予算の警報の元）から外れる。標識を外周から運ぶ正規の呼び手は限られるので、

@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-10, SC-10]
 adrs: [ADR-0006, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0079]
-iadrs: [IADR-0701, IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533, IADR-0654]
+iadrs: [IADR-0702, IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533, IADR-0654]
 specs: [20261107_llm-gateway-embed-limits-synthetic-marker, 20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue, 20261030_2335_llm-slo-synthetic-probe]
 issues: [#1203, #1202, #1204, #1111, #1902, #2335, planning#524, planning#538]
 -->

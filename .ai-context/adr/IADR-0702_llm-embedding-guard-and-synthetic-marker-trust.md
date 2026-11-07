@@ -1,5 +1,5 @@
 ---
-title: IADR-0701 LLM ゲートウェイの埋め込みの面にも呼び手ごとの許可表と送る前の上限を掛け（費用は補完と同じ呼び手の枠に合算）、合成監視の標識を引き継ぐ呼び手を許可集合に限る。どちらも段（Off／Report／Enforce）を持ち、クラウドだけを段 2 にする
+title: IADR-0702 LLM ゲートウェイの埋め込みの面にも呼び手ごとの許可表と送る前の上限を掛け（費用は補完と同じ呼び手の枠に合算）、合成監視の標識を引き継ぐ呼び手を許可集合に限る。どちらも段（Off／Report／Enforce）を持ち、クラウドだけを段 2 にする
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-21, NFR-02, FR-02, FR-11, ADR-0044, ADR-0076, ADR-0138, IADR-0678, IADR-0684, IADR-0692, IADR-0698, IADR-0378, IADR-0689]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_llm-gateway-embed-limits-synthetic-marker.md
 ---
 
-# IADR-0701: LLM ゲートウェイの埋め込みの面の統制と、合成監視の標識の引き継ぎ手の限定
+# IADR-0702: LLM ゲートウェイの埋め込みの面の統制と、合成監視の標識の引き継ぎ手の限定
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

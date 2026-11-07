@@ -2,7 +2,7 @@
 title: 作業仕様書 — LLM ゲートウェイの埋め込みの面に呼び手の許可表と送る前の上限を掛け、合成監視の標識を引き継ぐ呼び手を許可集合に限る（どちらも段つき）
 type: spec
 status: done
-related_ids: [NFR-18, NFR-21, NFR-02, FR-02, FR-11, ADR-0044, ADR-0076, IADR-0678, IADR-0684, IADR-0692, IADR-0698, IADR-0378, IADR-0701]
+related_ids: [NFR-18, NFR-21, NFR-02, FR-02, FR-11, ADR-0044, ADR-0076, IADR-0678, IADR-0684, IADR-0692, IADR-0698, IADR-0378, IADR-0702]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -11,7 +11,7 @@ plan_refs: []
 
 # 作業仕様書 — LLM ゲートウェイの埋め込みの面の統制と、合成監視の標識の引き継ぎ手の限定
 
-> 本仕様書は、実装の前に作成した（着手 2026-11-07。develop `cc8f316f1`）。決定は IADR-0701（仮の番号）。
+> 本仕様書は、実装の前に作成した（着手 2026-11-07。develop `cc8f316f1`）。決定は IADR-0702（仮の番号。組 E の IADR-0701 との衝突で 0701 から改番）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -33,7 +33,7 @@ plan_refs: []
   （`git grep -n "SyntheticTraffic.PropagateTo" -- 'src/*/backend/Services'`）。取引ユニットは標識を使わない（AST の木を走査して 0 件）。
 - クラウドは補完の許可表・上限とも段 2（`Enforce`）。既定とローカルの描画は段 1（`Report`）。
 
-## 決定の要旨（詳細は IADR-0701）
+## 決定の要旨（詳細は IADR-0702）
 
 1. 埋め込みの面も、補完と同じ 1 つの許可表と 1 つの上限の判定器を通す（判定器を 2 つにしない）。
    - 許可表: 呼び手の項目に `AllowEmbedding`（既定 false）。段は `Llm:CallerPolicy:EmbeddingMode`（Off / Report / Enforce。既定 Report）。

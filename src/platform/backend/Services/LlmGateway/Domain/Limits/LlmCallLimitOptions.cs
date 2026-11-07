@@ -16,7 +16,7 @@ public sealed class LlmCallLimitOptions
 
     public LlmCallLimitMode Mode { get; set; } = LlmCallLimitMode.Report;
 
-    // NFR-18, NFR-21, IADR-0701: 埋め込み（gRPC `LlmEmbedding/Embed`）の上限の段。補完の段（Mode）とは別に切り替える。
+    // NFR-18, NFR-21, IADR-0702: 埋め込み（gRPC `LlmEmbedding/Embed`）の上限の段。補完の段（Mode）とは別に切り替える。
     // 🔴 既定は Report（判定して報告だけ）。Off は判定も計上もしない（従前の挙動）。止めるのは Enforce のときだけ。
     // 判定するとき（Report・Enforce）は、補完と同じ呼び手の要求数・当日の費用の枠に数える（用途の枠は固定の `embedding`）。
     public LlmGuardStage EmbeddingMode { get; set; } = LlmGuardStage.Report;
@@ -39,7 +39,7 @@ public sealed class LlmCallLimitOptions
     // （AST の「表に無いモデルの計上単価」の既定と同じ値。多めに見積もる側へ倒す。IADR-0678 決定 2）。
     public LlmUnknownModelPrice UnknownModelPrice { get; set; } = new();
 
-    // NFR-18, NFR-21, IADR-0701: 埋め込みのモデル → 入力の百万トークンあたりの計上単価（単価表の通貨）。
+    // NFR-18, NFR-21, IADR-0702: 埋め込みのモデル → 入力の百万トークンあたりの計上単価（単価表の通貨）。
     // 補完の単価表（Llm:Pricing:Models）は補完のモデルだけを持つ（計画 ADR-0138 決定 7）ので、埋め込みの単価はここに置く。
     // 🔴 ここに無いモデルは 0 にせず UnknownModelPrice の入力単価で数える（多めの側）。外へ出ない経路（ティア A）は費用を数えない。
     public Dictionary<string, decimal> EmbeddingPrices { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -75,7 +75,7 @@ public sealed class LlmCallerLimits
     // 呼び手の UTC の当日の費用の上限（単価表の通貨。全用途の合計）。
     public decimal? DailyCostLimit { get; set; }
 
-    // 用途 → 呼び手 × 用途の UTC の当日の費用の上限。キーは既知の用途・default・other・embedding（埋め込み。IADR-0701）。
+    // 用途 → 呼び手 × 用途の UTC の当日の費用の上限。キーは既知の用途・default・other・embedding（埋め込み。IADR-0702）。
     public Dictionary<string, decimal> PurposeDailyCostLimits { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

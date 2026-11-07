@@ -90,7 +90,7 @@ public sealed class LlmCompletionGrpcService(
     // NFR-02, ADR-0076 決定 4, IADR-0378, IADR-0400 決定 3: 合成監視の標識は**メタデータ**で運ぶ。
     // ASP.NET Core gRPC では `GetHttpContext().Request` が REST と同じ `HttpRequest` なので、
     // **判定は既存の単一情報源をそのまま呼ぶ**（定義を 2 つにしない）。
-    // ［2026-11-07 / IADR-0701］標識を引き継ぐのは、呼び手が許可集合（Llm:SyntheticMarker）に在るときだけ（REST と同じ判定器）。
+    // ［2026-11-07 / IADR-0702］標識を引き継ぐのは、呼び手が許可集合（Llm:SyntheticMarker）に在るときだけ（REST と同じ判定器）。
     private bool IsSynthetic(ServerCallContext context) =>
         markerPolicy.IsSynthetic(
             Caller(context), SyntheticTraffic.IsSyntheticInternalRequest(context.GetHttpContext().Request));

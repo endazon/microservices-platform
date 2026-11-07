@@ -105,7 +105,7 @@ public sealed class LlmCallerPolicyTests : IDisposable
         warnings[0].Values["Caller"].Should().Be("stranger-0", "ログの本文には実名を出す");
     }
 
-    // ---- NFR-18, IADR-0701: 埋め込みの許可（AllowEmbedding・段は EmbeddingMode） -------------------------------
+    // ---- NFR-18, IADR-0702: 埋め込みの許可（AllowEmbedding・段は EmbeddingMode） -------------------------------
 
     [Fact]
     public void 埋め込みの許可がある呼び手は違反なし_段の既定はReportである()

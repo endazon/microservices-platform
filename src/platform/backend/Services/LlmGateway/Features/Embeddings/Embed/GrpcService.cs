@@ -28,7 +28,7 @@ namespace LlmGateway.Features.Embeddings.Embed;
 // `embedded=false` の**応答**で返す（REST の 200 ＋ Embedded=false と同値）。RpcException になるのは
 // s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）と輸送不達（UNAVAILABLE）だけである。
 //
-// 🔴 NFR-18, IADR-0701: **判定器へ入る前に呼び手ごとの許可表（LlmCallerPolicy.EvaluateEmbedding）を見る**（補完と同じ 1 つの表）。
+// 🔴 NFR-18, IADR-0702: **判定器へ入る前に呼び手ごとの許可表（LlmCallerPolicy.EvaluateEmbedding）を見る**（補完と同じ 1 つの表）。
 // 段 2 で許可の無い呼び手は PERMISSION_DENIED。送る前の上限は判定器（EmbedUseCase）の中で掛かる。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
 public sealed class LlmEmbeddingGrpcService(EmbedUseCase useCase, LlmCallerPolicy callerPolicy) : Pb.LlmEmbedding.LlmEmbeddingBase

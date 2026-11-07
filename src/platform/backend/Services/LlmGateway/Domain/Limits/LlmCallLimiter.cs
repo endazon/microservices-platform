@@ -22,7 +22,7 @@ namespace LlmGateway.Domain.Limits;
 //   - 前回の値を読めるまでは、費用の上限を持つ呼び手の呼び出しを段 2 で送らない（種類 cost_state。fail-closed）。
 //   - 見込み額の予約を置き場へ書けなければ、段 2 では予約を戻して送らない（送ってから書けないと、再起動で消える消費が生まれる）。
 //   - 実額への置き換え・戻しを書けなかったときは、手元の値は正しいまま次の書き込みで追いつく（置き場には予約が残る＝多めの側）。
-// 🔴 NFR-18, NFR-21, IADR-0701: **埋め込み（EmbedUseCase）も同じ判定器を通る**（AdmitEmbedding）。呼び手の要求数・当日の費用の枠は
+// 🔴 NFR-18, NFR-21, IADR-0702: **埋め込み（EmbedUseCase）も同じ判定器を通る**（AdmitEmbedding）。呼び手の要求数・当日の費用の枠は
 //   補完と同じ鍵に数え（呼び手の合計に埋め込みも入る）、用途の枠は固定の `embedding`。段は `EmbeddingMode`（Off は判定しない）。
 public sealed class LlmCallLimiter(
     IOptionsMonitor<LlmCallLimitOptions> options,
@@ -49,7 +49,7 @@ public sealed class LlmCallLimiter(
     public const string ModeReport = "report";
     public const string ModeEnforce = "enforce";
 
-    // NFR-18, IADR-0701: 埋め込みの用途の枠（固定の値。計器の llm.purpose にもこの値で載る）。
+    // NFR-18, IADR-0702: 埋め込みの用途の枠（固定の値。計器の llm.purpose にもこの値で載る）。
     public const string EmbeddingPurpose = "embedding";
 
     private static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(1);
@@ -78,7 +78,7 @@ public sealed class LlmCallLimiter(
             embedding: false, priced: true, enforce: o.Mode == LlmCallLimitMode.Enforce);
     }
 
-    // NFR-18, NFR-21, IADR-0701: 埋め込みを送る直前に 1 回呼ぶ（戻り値の扱いは Admit と同じ）。
+    // NFR-18, NFR-21, IADR-0702: 埋め込みを送る直前に 1 回呼ぶ（戻り値の扱いは Admit と同じ）。
     // textChars は入力の文字数（入力トークンとみなす。出力は 0）。billable が偽（外へ出ない経路）なら費用を数えず、要求数と長さだけを見る。
     // 段（EmbeddingMode）が Off なら判定も計上もしない。
     public LlmCallAdmission AdmitEmbedding(string? caller, string? model, int textChars, bool billable)
@@ -209,7 +209,7 @@ public sealed class LlmCallLimiter(
              + outputTokens * o.UnknownModelPrice.OutputPerMillionTokens / PerMillion;
     }
 
-    // NFR-18, IADR-0701: 埋め込みの金額（入力だけ）。EmbeddingPrices に無いモデルは UnknownModelPrice の入力単価（多めの側）。
+    // NFR-18, IADR-0702: 埋め込みの金額（入力だけ）。EmbeddingPrices に無いモデルは UnknownModelPrice の入力単価（多めの側）。
     private static decimal EmbeddingCostOf(LlmCallLimitOptions o, string? model, long inputTokens)
     {
         const decimal PerMillion = 1_000_000m;
