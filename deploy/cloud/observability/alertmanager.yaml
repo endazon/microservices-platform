@@ -137,10 +137,22 @@ spec:
       labels: { app: alertmanager }
     spec:
       automountServiceAccountToken: false
+      # NFR-18, IADR-0697: 基盤の Pod の権限を最小にする。イメージの利用者（nobody＝uid 65534。名前の利用者は runAsNonRoot で検められないので
+      #   数で書く）のまま root でなく、capability を全部落とし（受け口は 9093 で 1024 より上）、権限の昇格を許さず、
+      #   ルートのファイルシステムは読み取り専用（書くのは emptyDir だけ）。seccomp は RuntimeDefault。
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
         - name: render-config
           image: prom/alertmanager:v0.27.0@sha256:e13b6ed5cb929eeaee733479dce55e10eb3bc2e9c4586c705a4e8da41e5eacf5
           command: ["/bin/sh", "/config-src/render.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           env:
             - { name: RENDER_SRC, value: /config-src }
             - { name: RENDER_OUT, value: /etc/alertmanager }
@@ -162,6 +174,10 @@ spec:
           args:
             - "--config.file=/etc/alertmanager/alertmanager.yml"
             - "--storage.path=/alertmanager"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
           ports:
             - { containerPort: 9093, name: http }
           volumeMounts:

@@ -9,7 +9,7 @@
 | 取引ユニットの DB のサービスごとの利用者（各利用者が自分の DB だけを持つ。[IADR-0695](../../.ai-context/adr/IADR-0695_cloud-db-per-service-users.md)） | `infra/postgres-ast-db-users.yaml`・`db-users/` |
 | RabbitMQ（取引ユニットのサービスごとのユーザー。TLS） | `infra/rabbitmq.yaml` |
 | Keycloak（本番モード `start`・realm `platform`・HTTPS 8443 だけ。[IADR-0693](../../.ai-context/adr/IADR-0693_cloud-keycloak-tls-openbao-pki.md)） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
-| OpenTelemetry の collector（受けて捨てる） | `infra/otel-collector.yaml` |
+| OpenTelemetry の collector（メトリクスは Prometheus へ。受けるのは OTLP を送る Pod だけ・gRPC だけ。[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
 | 秘匿管理（OpenBao。本番の init・raft）と、OpenBao から Secret へ写す ESO | `vault/`（`vault/eso/`・`vault/*.sh`） |
 | 到達の制限（入り・出の既定拒否と要る組だけの許可） | `infra/networkpolicy.yaml`（MSP の名前空間の入り・出も。chart は NetworkPolicy を描かない） |
@@ -183,6 +183,20 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 ```
 
 - `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言が入らない。
+- 基盤の Pod はどれも root でなく capability を持たない（[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)）。
+  名前空間 `platform-infra`・`microservices-platform` の Pod Security は restricted で、宣言の外の Pod（`kubectl run` ほか）は受け付けで拒まれる。
+  **稼働中の構成へ初めて当てるとき**（前の宣言は root の起動器で動いていた）は、当てる前に、データの PVC に root の所有の物が無いことを読みだけで確かめる
+  （出力が空でなければ当てない。新しい宣言は所有を付け替えないので、その物を読めずに起動が止まる）:
+
+  ```sh
+  kubectl -n platform-infra exec deploy/postgres -- find /var/lib/postgresql/data/pgdata ! -user postgres
+  kubectl -n platform-infra exec deploy/rabbitmq -- find /var/lib/rabbitmq ! -user rabbitmq
+  ```
+
+  当てると Postgres・RabbitMQ・Keycloak・Prometheus は作り直される（Recreate。取引ユニットは繋ぎ直すまで止まる。Prometheus の保持の値は消える）。
+  米国の場の時間外に当て、`rollout status`（上）と、RabbitMQ の起動の直後の復元の行（`kubectl -n platform-infra logs deploy/rabbitmq | grep rabbitmq-boot`）を確かめる。
+  15 分の後に警報 `OtlpSendersMissing` が出ていなければ、取引ユニットの 11 のサービスと LLM ゲートウェイの系列が届いている。
+  戻すときは前の版の `deploy/cloud` を当てる（名前空間の Pod Security も baseline へ戻る）。
   バックアップの保管先・Discord・heartbeat の資格情報は、[運用手順書](../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md)の準備で作る（作るまで Alertmanager は起動しない）。
 - **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。
 - Keycloak は HTTPS（8443）だけで受ける（証明書は ESO が写す `keycloak-tls`。発行元は `https://keycloak:8443/realms/platform`）。LLM ゲートウェイは

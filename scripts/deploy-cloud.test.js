@@ -673,7 +673,161 @@ function astDbUsersProblems(infraDocs, esoDocs, job, policies) {
   return out;
 }
 
-module.exports = { astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+/**
+ * NFR-18, IADR-0697: 基盤の Pod の権限を最小にする（クラウドの描画のすべての Pod）。
+ *   - どのコンテナ（initContainer を含む）も root でない（runAsNonRoot と、0 でない数の runAsUser。Pod かコンテナのどちらか。コンテナの側が勝つ）。
+ *   - allowPrivilegeEscalation=false・capabilities.drop に ALL・足すものは HARDENING_ALLOWED_CAPS の中だけ（今は空）・privileged でない。
+ *   - seccomp は RuntimeDefault（Pod かコンテナ）。ServiceAccount のトークンを載せない（基盤の Pod はどれも API サーバーを呼ばない）。
+ *   - hostPID・hostIPC・hostNetwork を持たない。
+ */
+const WORKLOAD_KINDS = ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet', 'Pod'];
+/** 足してよい capability（理由つき）。今は無い（どのイメージも 1024 より上で受け、所有の付け替えも要らない＝実測。IADR-0697）。 */
+const HARDENING_ALLOWED_CAPS = Object.freeze({});
+const podSpecOf = (d) => (d.kind === 'Pod' ? d.spec : podSpec(d));
+function podHardeningProblems(docs, where) {
+  const out = [];
+  for (const d of docs.filter((x) => WORKLOAD_KINDS.includes(x.kind))) {
+    const id = `${where}: ${d.kind}/${d.metadata && d.metadata.name}`;
+    const ps = podSpecOf(d);
+    if (!ps) { out.push(`${id}: Pod の宣言が読めない`); continue; }
+    const psc = ps.securityContext || {};
+    if (String(ps.automountServiceAccountToken) !== 'false') out.push(`${id}: ServiceAccount のトークンを載せる（automountServiceAccountToken: false が無い）`);
+    for (const k of ['hostPID', 'hostIPC', 'hostNetwork']) if (String(ps[k]) === 'true') out.push(`${id}: ${k}`);
+    for (const c of [...(ps.initContainers || []), ...(ps.containers || [])]) {
+      const sc = c.securityContext || {};
+      const pick = (k) => (sc[k] !== undefined ? sc[k] : psc[k]);
+      const cid = `${id} の ${c.name}`;
+      if (String(pick('runAsNonRoot')) !== 'true') out.push(`${cid}: runAsNonRoot が true でない`);
+      const uid = pick('runAsUser');
+      if (uid === undefined || !/^[0-9]+$/.test(String(uid)) || String(uid) === '0') out.push(`${cid}: runAsUser が 0 でない数で書かれていない（${uid}。名前の利用者は runAsNonRoot で検められない）`);
+      if (String(sc.allowPrivilegeEscalation) !== 'false') out.push(`${cid}: allowPrivilegeEscalation が false でない`);
+      if (String(sc.privileged) === 'true') out.push(`${cid}: privileged`);
+      const caps = sc.capabilities || {};
+      if (!(caps.drop || []).map(String).includes('ALL')) out.push(`${cid}: capabilities.drop に ALL が無い`);
+      for (const a of (caps.add || []).map(String)) if (!Object.prototype.hasOwnProperty.call(HARDENING_ALLOWED_CAPS, a)) out.push(`${cid}: capability ${a} を足している（理由つきの許可に無い）`);
+      const seccomp = (sc.seccompProfile && sc.seccompProfile.type) || (psc.seccompProfile && psc.seccompProfile.type);
+      if (seccomp !== 'RuntimeDefault') out.push(`${cid}: seccompProfile が RuntimeDefault でない（${seccomp || '未指定'}）`);
+    }
+  }
+  return out;
+}
+
+/**
+ * NFR-18, IADR-0697: NET_RAW を持つコンテナ（実行時の既定の capability に NET_RAW が含まれる）。
+ * drop に ALL か NET_RAW があり、add に NET_RAW・ALL が無いときだけ持たない。privileged は持つ。
+ */
+function netRawHolders(docs, where) {
+  const out = [];
+  for (const d of docs.filter((x) => WORKLOAD_KINDS.includes(x.kind))) {
+    const ps = podSpecOf(d) || {};
+    for (const c of [...(ps.initContainers || []), ...(ps.containers || [])]) {
+      const sc = c.securityContext || {};
+      const caps = sc.capabilities || {};
+      const drop = (caps.drop || []).map(String);
+      const add = (caps.add || []).map(String);
+      const dropped = drop.includes('ALL') || drop.includes('NET_RAW');
+      if (String(sc.privileged) === 'true' || !dropped || add.includes('NET_RAW') || add.includes('ALL')) out.push(`${where}: ${d.kind}/${d.metadata.name} の ${c.name} が NET_RAW を持つ`);
+    }
+  }
+  return out;
+}
+
+/** NFR-18, IADR-0697: 基盤と MSP の名前空間の Pod Security Admission は enforce・warn・audit とも restricted。 */
+const PSA_RESTRICTED_NAMESPACES = ['platform-infra', 'microservices-platform'];
+function namespacePsaProblems(docs) {
+  const out = [];
+  for (const name of PSA_RESTRICTED_NAMESPACES) {
+    const ns = docs.find((d) => d.kind === 'Namespace' && d.metadata.name === name);
+    if (!ns) { out.push(`Namespace ${name} が無い`); continue; }
+    const labels = ns.metadata.labels || {};
+    for (const mode of ['enforce', 'warn', 'audit']) {
+      const v = labels[`pod-security.kubernetes.io/${mode}`];
+      if (v !== 'restricted') out.push(`Namespace ${name} の Pod Security の ${mode} が restricted でない（${v}）`);
+    }
+  }
+  return out;
+}
+
+/**
+ * NFR-18, NFR-21, IADR-0697: collector（otel-collector）の OTLP の入りの送り元。取引ユニットの chart の values-cloud の描画で
+ * OTLP の宛先の env（Otlp__Endpoint）を持つ Deployment（OpenD は持たない）と、MSP の LLM ゲートウェイ。宛先はどれも gRPC（4317）。
+ */
+const OTLP_AST_SENDERS = [
+  'audit-service', 'backtest-service', 'configuration-service', 'cost-control-service', 'information-collection-service', 'market-monitor-service',
+  'notification-service', 'order-execution-service', 'report-service', 'risk-management-service', 'trade-decision-service',
+];
+const OTLP_MSP_SENDERS = ['llmgateway-service'];
+const OTLP_GRPC_PORT = 4317;
+function collectorIngressProblems(docs) {
+  const out = [];
+  const isCollector = (d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'platform-infra'
+    && JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'otel-collector' } }) && (d.spec.ingress || []).length;
+  const allows = docs.filter(isCollector);
+  const seen = {};
+  const otlpPorts = new Set();
+  for (const d of allows) {
+    for (const rule of d.spec.ingress) {
+      const ports = (rule.ports || []).map((x) => Number(x.port));
+      if (!ports.length) out.push(`infra: ${d.metadata.name} がポートを絞っていない`);
+      if (!(rule.from || []).length) out.push(`infra: ${d.metadata.name} が送り元を絞っていない`);
+      // Prometheus（同じ名前空間）の自己テレメトリの収集（8888）だけは別の許可。ほかの口は OTLP の送り手の規則として数える。
+      const selfScrape = JSON.stringify(ports) === '[8888]' && (rule.from || []).every((f) => !f.namespaceSelector && JSON.stringify(f.podSelector) === JSON.stringify({ matchLabels: { app: 'prometheus' } }));
+      if (selfScrape) continue;
+      for (const p of ports) otlpPorts.add(p);
+      for (const f of rule.from || []) {
+        const ns = f.namespaceSelector && f.namespaceSelector.matchLabels && f.namespaceSelector.matchLabels['kubernetes.io/metadata.name'];
+        const pods = f.podSelector && f.podSelector.matchLabels && f.podSelector.matchLabels.app
+          ? [String(f.podSelector.matchLabels.app)]
+          : ((f.podSelector && f.podSelector.matchExpressions) || []).filter((e) => e.key === 'app' && e.operator === 'In').flatMap((e) => e.values.map(String));
+        const others = f.podSelector && Object.keys(f.podSelector.matchLabels || {}).filter((k) => k !== 'app').length;
+        if (!ns || !f.podSelector || !pods.length || others || f.ipBlock) {
+          out.push(`infra: ${d.metadata.name} に「名前空間 かつ Pod」でない送り元がある（${JSON.stringify(f)}）`);
+          continue;
+        }
+        seen[ns] = [...new Set([...(seen[ns] || []), ...pods])].sort();
+      }
+    }
+  }
+  const expected = { [AST_NS]: [...OTLP_AST_SENDERS].sort(), [MSP_NS]: [...OTLP_MSP_SENDERS].sort() };
+  const norm = (o) => JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
+  if (norm(seen) !== norm(expected)) out.push(`infra: collector の OTLP の送り元が一覧（取引ユニットの OTLP を送る Pod と LLM ゲートウェイ）と一致しない（${JSON.stringify(seen)}）`);
+  if (JSON.stringify([...otlpPorts].sort((a, b) => a - b)) !== JSON.stringify([OTLP_GRPC_PORT])) out.push(`infra: collector の OTLP の入りのポートが ${OTLP_GRPC_PORT} だけでない（${[...otlpPorts].join(', ')}）`);
+  // 出の側: LLM ゲートウェイから collector へも 4317 だけ（送り元の一覧と同じ口）。
+  const egress = docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'llmgateway-egress');
+  const toCol = egress ? (egress.spec.egress || []).filter((r) => (r.to || []).some((t) => t.podSelector && t.podSelector.matchLabels && t.podSelector.matchLabels.app === 'otel-collector')) : [];
+  const eports = toCol.flatMap((r) => (r.ports || []).map((x) => Number(x.port)));
+  if (JSON.stringify(eports) !== JSON.stringify([OTLP_GRPC_PORT])) out.push(`infra: LLM ゲートウェイから collector への出が ${OTLP_GRPC_PORT} だけでない（${eports.join(', ')}）`);
+  return out;
+}
+
+/**
+ * NFR-21, IADR-0697: collector の受け取りの上限と、受け取りを拒んだ・系列が途絶えたときの警報。
+ *   - receiver の gRPC に 1 回の大きさ・同時の流れの上限、memory_limiter（上限と spike）が pipeline の先頭。
+ *   - 警報 OtelCollectorRefusingData・OtelCollectorExportFailing・OtlpMetricsPipelineSilent・OtlpSendersMissing・PrometheusHeadSeriesHigh が在り、
+ *     OtlpSendersMissing の閾値は送り元の一覧の数と同じ。
+ */
+function collectorLimitProblems(docs) {
+  const out = [];
+  const cm = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'otel-collector-config');
+  const cfg = cm ? String(cm.data['config.yaml']) : '';
+  if (!/grpc:\n\s+endpoint: 0\.0\.0\.0:4317\n\s+max_recv_msg_size_mib: \d+\n\s+max_concurrent_streams: \d+/.test(cfg)) out.push('collector: gRPC の受け取りの上限（max_recv_msg_size_mib・max_concurrent_streams）が無い');
+  if (!/memory_limiter:\n\s+check_interval: \S+\n\s+limit_mib: \d+\n\s+spike_limit_mib: \d+/.test(cfg)) out.push('collector: memory_limiter の上限（limit_mib・spike_limit_mib）が無い');
+  for (const sig of ['traces', 'metrics', 'logs']) {
+    if (!new RegExp(`${sig}:\\n\\s+receivers: \\[otlp\\]\\n\\s+processors: \\[memory_limiter,`).test(cfg)) out.push(`collector: ${sig} の pipeline の先頭が memory_limiter でない`);
+  }
+  const prom = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'prometheus-cloud-config');
+  const rules = prom ? String(prom.data['platform-rules.yml']) : '';
+  for (const a of ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'PrometheusHeadSeriesHigh']) {
+    if (!new RegExp(`- alert: ${a}\\n`).test(rules)) out.push(`警報 ${a} が無い`);
+  }
+  for (const m of ['otelcol_receiver_refused_metric_points', 'otelcol_receiver_refused_spans', 'otelcol_receiver_refused_log_records']) if (!rules.includes(m)) out.push(`警報が ${m} を見ない`);
+  const senders = OTLP_AST_SENDERS.length + OTLP_MSP_SENDERS.length;
+  const th = /- alert: OtlpSendersMissing\n\s+expr: .*target_info.*< (\d+)\n/.exec(rules);
+  if (!th || Number(th[1]) !== senders) out.push(`警報 OtlpSendersMissing の閾値が送り元の数（${senders}）でない（${th ? th[1] : '読めない'}）`);
+  return out;
+}
+
+module.exports = { podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -1038,6 +1192,94 @@ if (require.main === module) {
     });
     for (const want of [/発行の口が pki_cloud\/issue\/keycloak でない/, /OB_PKI_ROLES に keycloak/, /基盤の側の発行の範囲/, /MSP の側が keycloak/, /取引ユニットの側が PKI/]) {
       assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+  });
+  // NFR-18, NFR-21, IADR-0697: 基盤の Pod の権限の最小化と、collector の受け口の絞り。
+  const renderCloudAll = () => docsOf(run('kubectl', ['kustomize', 'deploy/cloud']));
+  const dbUsersJob = () => docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/db-users/job.yaml'), 'utf8'));
+  const allPodRenders = () => [
+    ['deploy/cloud', renderCloudAll()],
+    ['deploy/cloud/db-users', dbUsersJob()],
+    ['chart', renderChart()],
+    ['keycloak-tls-coexist', docsOf(run('kubectl', ['kustomize', 'deploy/cloud-transition/keycloak-tls-coexist']))],
+  ];
+  ok('IADR-0697 H1: クラウドの描画の全 Pod（initContainer を含む）が root でなく、capability を全部落とし（足す物なし）、権限の昇格を許さず、seccomp は RuntimeDefault、SA のトークンを載せない', () => {
+    let n = 0;
+    for (const [where, docs] of allPodRenders()) {
+      n += docs.filter((d) => WORKLOAD_KINDS.includes(d.kind)).length;
+      assert.deepStrictEqual(podHardeningProblems(docs, where), []);
+    }
+    // 陽性対照: 基盤の 7 つ（Postgres・RabbitMQ・Keycloak・collector・Prometheus・Alertmanager・バックアップ）＋ db-users の Job ＋ LLM ゲートウェイ ＋ 併存の重ねの 7 つ
+    assert.ok(n >= 16, `陽性対照: 数えた Pod の宣言が少ない（${n}）`);
+  });
+  ok('IADR-0697 H2: NET_RAW を持つ Pod が無い（クラウドの描画の全コンテナ）', () => {
+    for (const [where, docs] of allPodRenders()) assert.deepStrictEqual(netRawHolders(docs, where), []);
+  });
+  ok('IADR-0697 H3: 基盤と MSP の名前空間の Pod Security Admission は enforce・warn・audit とも restricted', () => {
+    assert.deepStrictEqual(namespacePsaProblems(renderInfra()), []);
+  });
+  ok('IADR-0697 H4: collector の OTLP の入りは、取引ユニットの OTLP を送る 11 個の Pod と LLM ゲートウェイだけ（名前空間 かつ Pod）・gRPC の 4317 だけ。OpenD は入らない', () => {
+    const docs = renderCloudAll();
+    assert.deepStrictEqual(collectorIngressProblems(docs), []);
+    assert.ok(!OTLP_AST_SENDERS.includes('opend'), 'OpenD を送り元に入れている');
+  });
+  ok('IADR-0697 H5: collector の受け取りの上限（gRPC・memory_limiter）と、受け取りの拒否・系列の途絶え・系列の数の警報が在る（送り手の数の閾値は一覧と同じ）', () => {
+    assert.deepStrictEqual(collectorLimitProblems(renderCloudAll()), []);
+  });
+  ok('IADR-0697 陰性対照: securityContext を外す・NET_RAW を足す・root で走らせる・SA のトークンを載せる・PSA を緩める・collector の入りを名前空間だけへ広げる・OpenD を足す・4318 を開ける・警報を外すと、判定が赤になる', () => {
+    const clone = (x) => JSON.parse(JSON.stringify(x));
+    const docs = clone(renderCloudAll());
+    const dep = (n) => docs.find((d) => d.kind === 'Deployment' && d.metadata.name === n);
+    delete dep('postgres').spec.template.spec.containers[0].securityContext;
+    dep('rabbitmq').spec.template.spec.initContainers[0].securityContext.capabilities.add = ['NET_RAW'];
+    dep('keycloak').spec.template.spec.securityContext.runAsUser = 0;
+    dep('otel-collector').spec.template.spec.automountServiceAccountToken = true;
+    delete dep('prometheus').spec.template.spec.securityContext.seccompProfile;
+    const cj = docs.find((d) => d.kind === 'CronJob');
+    cj.spec.jobTemplate.spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation = true;
+    const p = podHardeningProblems(docs, 'x');
+    for (const want of [/postgres の postgres: allowPrivilegeEscalation/, /postgres の postgres: capabilities\.drop に ALL が無い/, /rabbitmq の tls-files: capability NET_RAW/, /keycloak の keycloak: runAsUser/, /otel-collector: ServiceAccount のトークン/, /prometheus の prometheus: seccompProfile/, /platform-backup-postgres の backup: allowPrivilegeEscalation/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    const nr = netRawHolders(docs, 'x');
+    for (const want of [/postgres の postgres が NET_RAW/, /rabbitmq の tls-files が NET_RAW/]) assert.ok(nr.some((x) => want.test(x)), `${want} を検出しない:\n${nr.join('\n')}`);
+    const ns = clone(renderInfra());
+    ns.find((d) => d.kind === 'Namespace' && d.metadata.name === 'platform-infra').metadata.labels['pod-security.kubernetes.io/enforce'] = 'baseline';
+    assert.ok(namespacePsaProblems(ns).some((x) => /platform-infra の Pod Security の enforce が restricted でない/.test(x)), 'PSA の緩めを検出しない');
+    const np = docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'otel-collector-ingress-clients');
+    np.spec.ingress[0].from.push({ namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': AST_NS } } });
+    np.spec.ingress[0].from[0].podSelector.matchExpressions[0].values.push('opend');
+    np.spec.ingress[0].ports.push({ protocol: 'TCP', port: 4318 });
+    const c = collectorIngressProblems(docs);
+    for (const want of [/「名前空間 かつ Pod」でない送り元/, /一覧.*と一致しない/, /ポートが 4317 だけでない/]) assert.ok(c.some((x) => want.test(x)), `${want} を検出しない:\n${c.join('\n')}`);
+    const prom = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'prometheus-cloud-config');
+    prom.data['platform-rules.yml'] = String(prom.data['platform-rules.yml']).replace('- alert: OtelCollectorRefusingData', '- alert: X').replace(/(target_info\[10m\]\)\)\) or vector\(0\)\) < )12/, '$111');
+    const col = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'otel-collector-config');
+    col.data['config.yaml'] = String(col.data['config.yaml']).replace(/\n\s+max_recv_msg_size_mib: \d+/, '');
+    const l = collectorLimitProblems(docs);
+    for (const want of [/OtelCollectorRefusingData が無い/, /OtlpSendersMissing の閾値/, /gRPC の受け取りの上限/]) assert.ok(l.some((x) => want.test(x)), `${want} を検出しない:\n${l.join('\n')}`);
+  });
+  ok('IADR-0697 変異: 宣言のファイルから securityContext・capability の全落とし・collector の Pod の名指しを外すと、描画の判定が赤になる', () => {
+    const cases = [
+      ['postgres.yaml', '          securityContext:\n            allowPrivilegeEscalation: false\n            capabilities: { drop: [ALL] }\n          env:', '          env:', (d) => podHardeningProblems(d, 'm'), /postgres の postgres: allowPrivilegeEscalation/],
+      ['rabbitmq.yaml', '            readOnlyRootFilesystem: true\n            capabilities: { drop: [ALL] }\n          volumeMounts:', '            readOnlyRootFilesystem: true\n          volumeMounts:', (d) => netRawHolders(d, 'm'), /rabbitmq の tls-files が NET_RAW/],
+      ['rabbitmq.yaml', '      automountServiceAccountToken: false\n', '', (d) => podHardeningProblems(d, 'm'), /rabbitmq: ServiceAccount のトークン/],
+      ['namespaces.yaml', 'pod-security.kubernetes.io/enforce: restricted', 'pod-security.kubernetes.io/enforce: baseline', namespacePsaProblems, /enforce が restricted でない/],
+      ['networkpolicy.yaml', '        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }\n          podSelector: { matchLabels: { app: llmgateway-service } }\n      ports:\n        - { protocol: TCP, port: 4317 }\n---', '        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }\n      ports:\n        - { protocol: TCP, port: 4317 }\n---', (d) => collectorIngressProblems([...d, ...renderCloudAll().filter((x) => x.kind === 'NetworkPolicy' && /otel-collector-ingress-prometheus/.test(x.metadata.name))]), /「名前空間 かつ Pod」でない送り元/],
+    ];
+    for (const [file, from, to, judge, want] of cases) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deploy-cloud-harden-'));
+      try {
+        fs.cpSync(path.join(REPO_ROOT, 'deploy/cloud/infra'), dir, { recursive: true });
+        const f = path.join(dir, file);
+        const src = fs.readFileSync(f, 'utf8');
+        assert.ok(src.includes(from), `変異の置換元が無い（試験が古い）: ${file}: ${from}`);
+        fs.writeFileSync(f, src.replace(from, to));
+        const p = judge(docsOf(run('kubectl', ['kustomize', dir])));
+        assert.ok(p.some((x) => want.test(x)), `${file} の変異（${want}）を捕まえない:\n${p.join('\n')}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     }
   });
   if (failed) {
