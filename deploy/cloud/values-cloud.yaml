@@ -14,7 +14,7 @@ global:
   # NFR-16, NFR-18, IADR-0693: 認可サーバー（Keycloak）へは HTTPS（8443）で繋ぎ、サーバ証明書を基盤の CA（ConfigMap platform-infra-ca）で検証する。
   #   Keycloak は平文の口を持たない（infra/keycloak.yaml）。https でない取得先はアプリが起動で拒む（Auth__RequireHttpsMetadata=true）。
   #   トークンの発行元（iss）は KC_HOSTNAME と同じ https://keycloak:8443/realms/platform（MSP の名前空間の別名 keycloak で引く）。
-  #   稼働中の構成を移す間だけ、旧の発行元を --set-string global.auth.validIssuers=http://keycloak:8080/realms/platform で足す（手順書）。
+  #   稼働中の構成を移す間の旧の発行元の扱いは、手順書 docs/operations/cloud-keycloak-tls-runbook.md の段 3・段 6 に 1 か所で持つ（ここに書かない）。
   auth:
     authority: https://keycloak:8443/realms/platform
     tls:

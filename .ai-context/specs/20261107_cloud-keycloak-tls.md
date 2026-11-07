@@ -46,7 +46,7 @@ related_specs:
 2. ESO: `VaultDynamicSecret`/`ExternalSecret` `keycloak-tls`（platform-infra）。既存の 3 つと同じ型（1 年・半年ごとに作り直す）。
 3. Keycloak: HTTPS（8443）で受け、`KC_HOSTNAME=https://keycloak:8443`・`KC_HTTP_ENABLED=false`。証明書は Secret `keycloak-tls` を fsGroup で読む（0440）。管理の口（9000）も TLS になるので probe は HTTPS。証明書は 1 時間ごとに読み直す（`KC_HTTPS_CERTIFICATES_RELOAD_PERIOD`）。
 4. NetworkPolicy: Keycloak の入りは 8443 だけ、送り元は取引ユニットの 11 個の Pod（名前空間 かつ Pod）と LLM ゲートウェイ。LLM ゲートウェイの出も 8443。
-5. 併存の段: `deploy/cloud-transition/keycloak-tls-coexist`（kustomize の重ね。deploy/cloud の下は循環として拒まれるので隣に置く）。8080 と 8443 を両方受け、hostname を固定しない（`KC_HOSTNAME_STRICT=false`。発行元は要求の URL から決まる）。クラウドの既定の描画は最終の段。
+5. 併存の段: `deploy/cloud-transition/keycloak-tls-coexist`（kustomize の重ね。deploy/cloud の下は循環として拒まれるので隣に置く）。8080 と 8443 を両方受け、hostname を固定しない（`KC_HOSTNAME_STRICT=false`。発行元は要求の URL から決まる）。LLM ゲートウェイの出も 8080 と 8443（レビューの指摘で追加）。クラウドの既定の描画は最終の段。
 6. MSP の受け手: chart に `global.auth.tls.enabled`（既定 false）。有効なら Authority（と MetadataAddress）が https でなければ描画で止め、`Auth__RequireHttpsMetadata=true` を渡し、CA（ConfigMap `platform-infra-ca`）をマウントして `SSL_CERT_DIR` に足す。アプリは `Auth:RequireHttpsMetadata`（既定 false）を読み、true なのに https でなければ起動で止まる。values-cloud は Authority を `https://keycloak:8443/realms/platform` にして有効にする。
 7. 取引ユニットへの CA の配布: 既存の `cloud/shared/platform-infra-ca`（policy `ast-eso` が読める）をそのまま使う（同じ CA なので新しい配布は要らない）。受け取り方は手順書に書く。
 8. 証明書の更新: 手順書と README §6。警報は置かない（理由は IADR-0693 §残余）。
@@ -57,7 +57,7 @@ related_specs:
 | --- | --- | --- |
 | AC1 | クラウドの描画の Keycloak は https（8443）だけで受け、`KC_HOSTNAME` は https、平文の受け口（8080・`KC_HTTP_ENABLED=true`）が無い。証明書は Secret `keycloak-tls`、probe は HTTPS | `deploy-cloud.test.js` |
 | AC2 | Keycloak の入りは TCP/8443 だけ、送り元は取引ユニットの 11 個の Pod（同じ要素で AND）と LLM ゲートウェイだけ。LLM ゲートウェイの出も 8443 だけ | 同上 |
-| AC3 | 併存の重ねは 8080 と 8443 の両方を受け、hostname を固定しない。既定の描画には併存の形が無い | 同上 |
+| AC3 | 併存の重ねは 8080 と 8443 の両方を受け（LLM ゲートウェイの出も両方）、hostname を固定しない。既定の描画には併存の形が無い | 同上 |
 | AC4 | クラウドの chart の LLM ゲートウェイは Authority が https、`Auth__RequireHttpsMetadata=true`、CA を信頼ストアに足す。既定・ローカルの描画は変わらない（RequireHttpsMetadata を描かない・Authority は http のまま） | 同上 |
 | AC5 | `global.auth.tls.enabled` で Authority / MetadataAddress が https でなければ描画で止まる | 同上 |
 | AC6 | `Auth:RequireHttpsMetadata` は既定 false。true なら JwtBearer の RequireHttpsMetadata が true。true で Authority / MetadataAddress が https でなければ例外（起動で止まる） | `AuthExtensionsTests` |

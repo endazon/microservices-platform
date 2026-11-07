@@ -26,7 +26,8 @@
  *         を fsGroup で 0440・probe は HTTPS）。
  *     KT2 Keycloak の入りは TCP/8443 だけで、送り元は取引ユニットの Keycloak を呼ぶ Pod（名前空間 かつ Pod）と LLM ゲートウェイだけ。
  *         LLM ゲートウェイの出も 8443 だけ。
- *     KT3 併存の重ね（deploy/cloud-transition/keycloak-tls-coexist）は 8080 と 8443 を受け、hostname を固定しない。既定の描画には無い。
+ *     KT3 併存の重ね（deploy/cloud-transition/keycloak-tls-coexist）は 8080 と 8443 を受け（LLM ゲートウェイの出も両方）、hostname を固定しない。
+ *         既定の描画には無い。
  *     KT4 クラウドの chart の受け手は Authority が https・Auth__RequireHttpsMetadata=true・CA を信頼ストアに足す。既定・ローカルは変えない。
  *     KT5 global.auth.tls.enabled で Authority が https でなければ描画で止まる。
  *     KT6 PKI の role・ESO・policy（keycloak の発行は基盤の側だけ。取引ユニットは CA の証明書だけを読む）。
@@ -556,7 +557,8 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
   const egress = docs.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'llmgateway-egress');
   const toKc = egress ? (egress.spec.egress || []).filter((r) => (r.to || []).some((t) => t.podSelector && t.podSelector.matchLabels && t.podSelector.matchLabels.app === 'keycloak')) : [];
   const eports = toKc.flatMap((r) => (r.ports || []).map((x) => Number(x.port))).sort((a, b) => a - b);
-  if (JSON.stringify(eports) !== JSON.stringify([KEYCLOAK_HTTPS_PORT])) out.push(`infra: LLM ゲートウェイから Keycloak への出が 8443 だけでない（${eports.join(', ')}）`);
+  // 併存の間は、まだ平文の構成で動く（か切り戻した）LLM ゲートウェイも鍵・トークンを取れるよう、出も 8080 と 8443 の両方。
+  if (JSON.stringify(eports) !== JSON.stringify(want)) out.push(`infra: LLM ゲートウェイから Keycloak への出が ${want.join('・')} だけでない（${eports.join(', ')}）`);
   return out;
 }
 
@@ -846,9 +848,15 @@ if (require.main === module) {
     assert.deepStrictEqual(keycloakTlsProblems(co, { coexist: true }), []);
     // 陰性対照: 最終の段の判定に当てると、平文の口と hostname の緩みで落ちる（既定の描画に併存の形が無いことの裏）
     const p = keycloakTlsProblems(co);
-    for (const want of [/KC_HOSTNAME が https/, /平文の口が閉じていない/, /hostname の固定を緩めている/, /受け口が 8443 だけでない/, /Service のポートが 8443 だけでない/, /keycloak-ingress-clients のポートが 8443 だけでない/]) {
+    for (const want of [/KC_HOSTNAME が https/, /平文の口が閉じていない/, /hostname の固定を緩めている/, /受け口が 8443 だけでない/, /Service のポートが 8443 だけでない/, /keycloak-ingress-clients のポートが 8443 だけでない/, /Keycloak への出が 8443 だけでない/]) {
       assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
     }
+    // 陰性対照: 併存の判定に最終の段を当てると、出の 8080 の欠落（平文の呼び手が鍵を取れない形）で落ちる。
+    assert.ok(keycloakTlsProblems(renderInfra(), { coexist: true }).some((x) => /Keycloak への出が 8080・8443 だけでない/.test(x)), '併存の段の出の 8080 の欠落を検出しない');
+    // LLM ゲートウェイの出のうち Keycloak への規則のほか（名前解決・collector・提供元の API）は、最終の段と同じ（重ねが変えない）。
+    const otherEgress = (ds) => ds.find((d) => d.kind === 'NetworkPolicy' && d.metadata.name === 'llmgateway-egress').spec.egress
+      .filter((r) => !(r.to || []).some((t) => t.podSelector && t.podSelector.matchLabels && t.podSelector.matchLabels.app === 'keycloak'));
+    assert.deepStrictEqual(otherEgress(co), otherEgress(renderInfra()), '併存の重ねが LLM ゲートウェイの Keycloak 以外への出を変えた');
     // 重ねは deploy/cloud（観測を含む）に重なるので、観測の Prometheus（infra だけの判定では持ち込まない名前）だけを除いて当てる。
     assert.deepStrictEqual(infraProblems(co, null).filter((x) => !/持ち込まない資源（prometheus）/.test(x)), []);
   });

@@ -66,6 +66,9 @@ kubectl -n platform-infra get secret keycloak-tls -o jsonpath='{.data.tls\.crt}'
 
 ### 段 2: Keycloak を併存にする（8080 と 8443 の両方）
 
+併存の重ねは、Keycloak の受け口（入り）と、LLM ゲートウェイから Keycloak への出の両方を 8080 と 8443 にする。
+そのため段 2 の後も、まだ平文の構成で動く LLM ゲートウェイは鍵・トークンを取れる（段 3 まで止まらない）。
+
 ```sh
 kubectl apply -k deploy/cloud-transition/keycloak-tls-coexist
 kubectl -n platform-infra rollout status deploy/keycloak --timeout=600s
@@ -113,8 +116,17 @@ kubectl -n platform-infra get svc keycloak -o jsonpath='{.spec.ports[*].port}'  
 
 ### 切り戻し
 
-- 段 2〜4 の間: 受け手を平文の構成へ戻す（段 3 を `values-cloud.yaml` の前の版で流す）。Keycloak は併存のままなので、平文の呼び手はそのまま動く。
-- 段 5 の後: `kubectl apply -k deploy/cloud-transition/keycloak-tls-coexist` で併存へ戻し、原因を直してから段 5 を流し直す。平文だけの構成へは戻さない。
+切り戻しで効くのは「併存の重ねが当たっているかどうか」である。到達の許可（NetworkPolicy）は helm ではなく `deploy/cloud`・
+併存の重ね（kustomize）が持つので、helm を前の版で流し直しても NetworkPolicy は戻らない。
+
+| いつ | 戻し方 | 戻した後の形 |
+| --- | --- | --- |
+| 段 0・段 1 の後 | 戻さなくてよい（role・policy・Secret が増えただけで、動いている受け手は何も変わらない） | 平文の構成のまま |
+| 段 2〜4 の間（併存の重ねが当たっている） | 戻したい受け手だけを平文の構成で流し直す（MSP は段 3 の helm を `values-cloud.yaml` の前の版で流す。取引ユニットは取引ユニットの手順） | Keycloak は 8080 と 8443 の両方を受け、LLM ゲートウェイの出も両方が開いているので、平文に戻した受け手も https の受け手も動く。発行元は呼び手が引いた URL で決まるので、戻した受け手が受け取るトークンを出す呼び手も平文へ戻すか、受け手に `validIssuers` で両方の発行元を足しておく（段 3） |
+| 段 5 の後（最終の段） | まず `kubectl apply -k deploy/cloud-transition/keycloak-tls-coexist` で併存へ戻す（平文の入りと LLM ゲートウェイの出の 8080 が開き、hostname の固定が外れる）。そのうえで上の行のとおり受け手を戻す | 併存の形。原因を直してから段 5 を流し直す |
+
+- 🔴 **最終の段のまま受け手だけを平文へ戻さない。** Keycloak も NetworkPolicy も 8080 を閉じているので、戻した受け手は鍵・トークンを取れずに 401 を返す。
+- 平文だけの構成（旧）へ Keycloak を戻すことは手順に置かない。併存の段がその役を兼ねる。
 
 ## 3. 取引ユニットの受け取り方
 
@@ -132,7 +144,10 @@ kubectl -n platform-infra get svc keycloak -o jsonpath='{.spec.ports[*].port}'  
 1. Keycloak を呼ぶ全ての Pod（上の 11 個。DB・ブローカを使わない Pod も含む）に CA をマウントし、信頼ストアへ足す（`SSL_CERT_DIR=/etc/ssl/certs:<CA のディレクトリ>`。既定のストアを先に残す）。
 2. Authority を https にし、受け手のメタデータの取得に https を必須にする（MSP の共有の基盤を使うサービスは `Auth__RequireHttpsMetadata=true`）。
 3. 移す間だけ、受け手は旧の発行元 `http://keycloak:8080/realms/platform` も受ける（段 6 で外す）。
-4. 取引ユニットの名前空間に Keycloak への出の NetworkPolicy があるなら、宛先のポートを 8443 にする。
+4. 取引ユニットの名前空間の出の NetworkPolicy: 取引ユニットの develop（2026-11-07 時点）のクラウドの描画には、出を絞る NetworkPolicy が無い
+   （OpenD の入りの 1 枚だけ）。そのため併存の段でも最終の段でも、取引ユニットの側の出は Keycloak の 8080・8443 のどちらも妨げない。
+   **出を絞る NetworkPolicy を足すなら**、併存の段（段 2〜5）の間は Keycloak への出を 8080 と 8443 の両方にし、段 5 の後に 8443 だけへ絞る。
+   8443 だけにしてから段 4 を済ませると、まだ平文の Pod と、平文へ切り戻した Pod が鍵・トークンを取れなくなる（MSP の LLM ゲートウェイの出と同じ形）。
 5. Keycloak を呼ぶサービスを足したら、MSP の `deploy/cloud/infra/networkpolicy.yaml` の一覧にも足すよう MSP へ依頼する（足さなければそのサービスの呼び出しが落ちる）。
 
 ## 4. 証明書の更新と期限

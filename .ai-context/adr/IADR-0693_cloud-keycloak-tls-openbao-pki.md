@@ -74,7 +74,8 @@ related_specs:
 ### 決定 4 — 稼働中の構成は「併存 → 平文を閉じる」の 2 段で移す。クラウドの描画は最終の段を既定にする
 
 - 併存の段は `deploy/cloud-transition/keycloak-tls-coexist`（`deploy/cloud` に重ねる kustomize。`deploy/cloud` の下に置くと kustomize が循環として拒むので隣に置く）。
-  8080 と 8443 を両方受け、hostname を固定しない（実測 2）。送り元は最終の段と同じ Pod だけ。
+  8080 と 8443 を両方受け、hostname を固定しない（実測 2）。送り元は最終の段と同じ Pod だけ。LLM ゲートウェイから Keycloak への出も 8080 と 8443 の両方にする
+  （到達の許可は helm ではなく kustomize が持つので、平文の構成で動く・切り戻した LLM ゲートウェイが鍵を取れるのは、この重ねが出も開くときだけ）。
 - 移す順（手順書 `docs/operations/cloud-keycloak-tls-runbook.md`）: PKI の role と policy → ESO → 併存の段 → MSP の受け手（https。移す間だけ旧の発行元を
   `global.auth.validIssuers` で足す）→ 取引ユニット（同じく）→ 最終の段（平文を閉じる）→ 旧の発行元の併記を外す。
 - 新しく作る構成は最初から最終の段（README §3 の順）。

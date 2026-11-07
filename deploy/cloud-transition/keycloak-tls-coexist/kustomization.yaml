@@ -2,6 +2,7 @@
 #   kubectl apply -k deploy/cloud-transition/keycloak-tls-coexist
 # deploy/cloud（最終の段: HTTPS だけ）に重ね（deploy/cloud の下に置くと kustomize が循環として拒むので、隣に置く）、次だけを変える:
 #   - 平文の 8080 も受ける（KC_HTTP_ENABLED=true・Service と NetworkPolicy の 8080）。送り元は最終の段と同じ Pod だけ。
+#     LLM ゲートウェイから Keycloak への出も 8080 と 8443 の両方にする（下の 2 つ目の patch）。
 #   - hostname を固定しない（KC_HOSTNAME を外し、KC_HOSTNAME_STRICT=false）。トークンの発行元（iss）は要求の URL から決まる
 #     （https://keycloak:8443 で引けば https、http://keycloak:8080 で引けば http。Keycloak 26.7.4 で確かめた）。
 #     呼び手は切り替えた順に https へ移り、受け手は移る間だけ両方の発行元を受ける（Auth__ValidIssuers。手順書）。
@@ -15,3 +16,14 @@ resources:
 
 patches:
   - path: keycloak-coexist.yaml
+  # LLM ゲートウェイから Keycloak への出にも 8080 を足す（併存の間に、まだ平文の構成で動く LLM ゲートウェイ・切り戻した
+  # LLM ゲートウェイが鍵・トークンを取れるように）。出の規則は順序のあるリストなので、宛先が keycloak であることを test で
+  # 確かめてから足す（並びが変われば描画が止まる。黙って別の規則へ足さない）。
+  - target: { kind: NetworkPolicy, name: llmgateway-egress, namespace: microservices-platform }
+    patch: |-
+      - op: test
+        path: /spec/egress/1/to/0/podSelector/matchLabels/app
+        value: keycloak
+      - op: add
+        path: /spec/egress/1/ports/-
+        value: { protocol: TCP, port: 8080 }
