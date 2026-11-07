@@ -2,7 +2,7 @@
 #   - クラスタの外の 443 へ出る Pod（LLM ゲートウェイ・バックアップ・Alertmanager）は、直に外へ出ず、この中継を HTTPS_PROXY として使う。
 #     それらの Pod の出の NetworkPolicy は、外の 443 ではなくこの中継の 3128 だけを許す（infra/networkpolicy.yaml・backup/・observability/）。
 #   - 中継は CONNECT <名前>:443 だけを受け、名前の許可表に在る宛先へだけ繋ぐ（proxy.js。TLS は端から端まで。中身を読まない）。
-#   - 許可表は 3 つの和（30 秒ごとに読み直す）:
+#   - 許可表は 3 つの和（最後に読んでから 30 秒を過ぎた後の要求で読み直す。ConfigMap が届くまでの kubelet の同期の間は別）:
 #       1. 下の ConfigMap egress-proxy-hosts（設定に在る宛先: LLM の提供元〔LlmGateway の appsettings の BaseUrl と Anthropic の SDK の既定〕・Discord〔Alertmanager の受信先の形〕）
 #       2. ConfigMap egress-proxy-extra-hosts（kustomize の外。オーナーが埋める: heartbeat の宛先など、値が Secret の中にあり設定に無いもの）
 #       3. ConfigMap platform-backup-s3-target の endpoint の名前（バックアップの保管先。オーナーが作る。運用手順書）

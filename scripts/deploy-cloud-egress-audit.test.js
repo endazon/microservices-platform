@@ -7,6 +7,7 @@
  *   K（一時管理者）
  *     K1 Keycloak の Deployment は KC_BOOTSTRAP_ADMIN_* を持たない（一時管理者を常に置かない）。
  *     K2 開け閉めの Job と入口の形（Secret への参照だけ・段は open / close / check・--live が無ければ動かない・値を扱わない）と、手順の試験。
+ *        入口の振る舞い（close は流し直せる・Keycloak に繋がらなければ止まる）は keycloak-admin.test.js が kubectl と Job のスタブで確かめる。
  *   E（外向きの通信）
  *     E1 宛先を ipBlock で名指して出る許可は外向きの中継の Pod だけ（基盤・chart・vault・ESO の名前空間の描画）。
  *        🔴 この検査は ipBlock だけを見る。宛先（to）を持たずポートだけで許す出は宛先を問わず出られ、ここでは止まらない。その出は
@@ -405,7 +406,7 @@ if (require.main === module) {
     find(bad, 'Deployment', 'keycloak').spec.template.spec.containers[0].env.push({ name: 'KC_BOOTSTRAP_ADMIN_PASSWORD', valueFrom: { secretKeyRef: { name: 'keycloak-admin', key: 'password' } } });
     assert.ok(keycloakBootstrapProblems(bad).length === 1, '陰性対照: 一時管理者の env を検出しない');
   });
-  ok('K2: 開け閉めの Job と入口の形（Secret への参照だけ・3 つの段・--live 必須・値を扱わない）と、手順の試験', () => {
+  ok('K2: 開け閉めの Job と入口の形（Secret への参照だけ・3 つの段・--live 必須・値を扱わない）と、手順と入口の振る舞いの試験', () => {
     const job = docsOf(read('deploy/cloud/keycloak-admin/job.yaml'))[0];
     const pod = dc.podSpec(job);
     const c = pod.containers[0];
@@ -424,12 +425,11 @@ if (require.main === module) {
     assert.match(sh, /set env deploy\/keycloak --from=secret\/keycloak-admin --keys=username,password --prefix=KC_BOOTSTRAP_ADMIN_/);
     assert.match(sh, /set env deploy\/keycloak KC_BOOTSTRAP_ADMIN_USERNAME- KC_BOOTSTRAP_ADMIN_PASSWORD-/);
     assert.ok(!/--from-literal|get secret[^\n]*-o|base64 -d|\$KC_ADMIN_PASSWORD/.test(sh), '入口が値を扱う');
-    // close は retire → 外す → check の順
-    const close = sh.slice(sh.indexOf('  close)'), sh.indexOf('  check)\n    names'));
-    assert.ok(close.indexOf('run_job retire') < close.indexOf('KC_BOOTSTRAP_ADMIN_USERNAME-') && close.indexOf('KC_BOOTSTRAP_ADMIN_USERNAME-') < close.indexOf('run_job check'), 'close の順が retire → 外す → check でない');
     const r = spawnSync('bash', [path.join(ROOT, 'deploy/cloud/keycloak-admin/keycloak-admin.sh'), 'open'], { encoding: 'utf8', env: { PATH: process.env.PATH } });
     assert.strictEqual(r.status, 3, '--live なしで動いた');
     child('deploy/cloud/keycloak-admin/master-admin.test.js');
+    // 入口の振る舞い（open → close・close の流し直し・本当の失敗との区別）は kubectl と Job のスタブで確かめる
+    child('deploy/cloud/keycloak-admin/keycloak-admin.test.js');
   });
 
   ok('E1: ipBlock で宛先を名指す出は外向きの中継だけ（基盤・chart・vault・ESO）。ポートだけの出は OpenBao と ESO の API サーバー向けの 2 つだけ', () => {

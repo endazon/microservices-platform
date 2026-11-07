@@ -11,7 +11,7 @@
  *       1. 宣言の表（ConfigMap egress-proxy-hosts の hosts。設定に在る宛先: LLM の提供元・Discord）
  *       2. オーナーが埋める表（ConfigMap egress-proxy-extra-hosts の hosts。無くてもよい。heartbeat の宛先など設定に無いもの）
  *       3. バックアップの保管先（ConfigMap platform-backup-s3-target の endpoint の URL の名前。無くてもよい）
- *     30 秒ごとに読み直す（ConfigMap の差し替えで Pod を作り直さなくてよい）。
+ *     最後に読んでから 30 秒を過ぎた後の最初の要求で読み直す（ConfigMap の差し替えで Pod を作り直さなくてよい。届くまでの kubelet の同期の間は別）。
  *   - 段（EGRESS_PROXY_MODE）: enforce は表に無い宛先を 403。report は通して `report:` の行を出す（移す間だけ。手順書）。
  *   - どちらの段でも、名前を引いた先が私設・ループバック・リンクローカル・CGNAT の範囲なら 403（クラスタの中へ回り込ませない）。
  *   - ログに出すのは判定・宛先の名前・ポートだけ（中身・要求の頭は出さない）。/metrics は判定ごとの件数（別のポート）。

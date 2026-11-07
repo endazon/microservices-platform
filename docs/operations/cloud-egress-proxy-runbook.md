@@ -31,7 +31,8 @@ OpenBao と ESO の出（API サーバー）は中継を通らない。🔴 こ�
 
 ## 1. 許可表
 
-許可表は次の 3 つの和で、中継が 30 秒ごとに読み直す（Pod を作り直さなくてよい）。
+許可表は次の 3 つの和で、中継は最後に読んでから 30 秒を過ぎた後の最初の要求のときに読み直す（Pod を作り直さなくてよい）。
+ConfigMap の変更が Pod のファイルへ届くまでに kubelet の同期の間（通常 1 分前後）がかかるので、足した宛先が効くまでの目安は 1〜2 分である。
 
 | 表 | 置き場 | 持つ宛先 | 誰が埋めるか |
 | --- | --- | --- | --- |
@@ -101,7 +102,7 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
 ## 4. 運用
 
 - 警報 `EgressProxyDenied`（直近 15 分に拒んだ）: `kubectl -n platform-infra logs deploy/egress-proxy | grep '^deny:'` で宛先を読む。
-  要る宛先なら 1-1 の表に足す（30 秒以内に効く）。
+  要る宛先なら 1-1 の表に足す（効くまでの目安は 1〜2 分。§1）。
 - 警報 `EgressProxyDown`: 中継が止まると、LLM の提供元・バックアップの保管先・Discord・heartbeat へ届かない（heartbeat が止まり、外の監視も知らせる）。
   `kubectl -n platform-infra describe pod -l app=egress-proxy` と `logs` で理由を読む。
 - 警報 `EgressProxyReportMode`: 移す段が 14 日を過ぎて残っている。3 の 4・5 を行う。

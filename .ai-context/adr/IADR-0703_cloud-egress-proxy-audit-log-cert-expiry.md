@@ -43,7 +43,7 @@ related_specs:
 - 中継 `egress-proxy`（`deploy/cloud/egress/`。Node 標準だけの CONNECT の中継。既存の `node:22-alpine` の digest）を `platform-infra` に置く。
   受けるのは `CONNECT <名前>:443` だけ。IP の字面・443 でないポート・ほかの方法は拒む。TLS は端から端まで（中継は中身を読まない）。
   名前を引いた先が私設・ループバック・リンクローカル・CGNAT の範囲なら、どちらの段でも拒む。
-- 許可表は 3 つの和（30 秒ごとに読み直す）: ① 宣言（設定に在る宛先: LLM の提供元〔appsettings の BaseUrl・Anthropic の SDK の既定〕と Discord〔受信先の形〕）、
+- 許可表は 3 つの和（最後に読んでから 30 秒を過ぎた後の要求で読み直す）: ① 宣言（設定に在る宛先: LLM の提供元〔appsettings の BaseUrl・Anthropic の SDK の既定〕と Discord〔受信先の形〕）、
   ② バックアップの保管先（オーナーが作る ConfigMap `platform-backup-s3-target` の `endpoint` の名前）、③ オーナーが埋める表（ConfigMap `egress-proxy-extra-hosts`。
   heartbeat の宛先など、値が Secret の中にあって設定に無いもの）。
 - 3 つの Pod は中継を使う（LLM ゲートウェイ・バックアップは `HTTPS_PROXY`、Alertmanager は `global.http_config.proxy_url`）。出の NetworkPolicy は外の 443 を
@@ -68,7 +68,8 @@ OpenBao の出（API サーバーの TokenReview。443・6443 のポートだけ
 - `infra/keycloak.yaml` は `KC_BOOTSTRAP_ADMIN_*` を持たない（realm の取り込みに管理者は要らない）。
 - 稼働中の realm へ手を入れるときだけ `deploy/cloud/keycloak-admin/keycloak-admin.sh` で開く（`kubectl set env --from=secret/keycloak-admin` で Secret への参照を足して
   作り直す → master に管理者が居なければ Keycloak が作る → Job が総当たりの検知を有効にする）。作業の後に閉じる（Job が一時管理者を消し、その資格でトークンを
-  取れないことを確かめる → env を外して作り直す → 在らないことを確かめる）。`check` は閉じ忘れを 3 で知らせる。
+  取れないことを確かめる → env を外して作り直す → 在らないことを確かめる）。閉じる段は始めに env と一時管理者の有無を読み、在る分だけ消すので、
+  途中で落ちても流し直せる（一時管理者が既に無いことでは止まらず、有無を確かめられないときだけ止まる）。`check` は閉じ忘れを 3、確かめられないことを 1 で知らせる。
 - master realm の総当たりの検知は platform realm の宣言と同じ値（試験が突き合わせる）。
 - 管理の面へ届く Pod の範囲（取引ユニットの 11 の Pod・LLM ゲートウェイ）は変えない。管理者が在らない間は、届いても認証が通る資格が無い。
 

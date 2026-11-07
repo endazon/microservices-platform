@@ -60,7 +60,7 @@ IADR-0703 の決定 1〜5 のとおり。
 | # | 基準 | 試験 | 陰性対照 |
 | --- | --- | --- | --- |
 | K1 | Keycloak の Deployment は `KC_BOOTSTRAP_ADMIN_*` を持たない | K1 | env を足すと赤 |
-| K2 | 開け閉めの Job・入口（Secret への参照だけ・open/close/check・`--live` 必須・値を扱わない・close は retire → 外す → check）。手順は総当たりの検知を platform realm と同じ値で有効にし、一時管理者を消して資格が通らないことを確かめる | K2・`master-admin.test.js` | 開いていない retire は書かない・閉じ忘れは 3 |
+| K2 | 開け閉めの Job・入口（Secret への参照だけ・open/close/check・`--live` 必須・値を扱わない）。close は有無を読んで在る分だけ消し、流し直せる（retire の後に作り直しが落ちても、env を外す操作が落ちても、もう一度流せば閉じる）。Keycloak に繋がらなければ何も変えずに 1 で止まる。手順は総当たりの検知を platform realm と同じ値で有効にし、一時管理者を消して資格が通らないことを確かめる | K2・`master-admin.test.js`・`keycloak-admin.test.js`（kubectl と Job のスタブ） | 開いていない retire は書かない・閉じ忘れは 3。有無を見ずに retire を流す形（前の版）へ戻すと流し直しが止まる |
 | E1 | ipBlock で宛先を名指す出は中継の Pod だけ（基盤・chart・vault・ESO の描画）。宛先を問わない出（ポートだけ）は OpenBao と ESO の API サーバー向けの 2 つだけ（中身は絞らない。IADR-0703 残余 5） | E1 | ポートだけの出を足すと赤。バックアップへ直の 443 を足すと赤 |
 | E2 | 3 つの Pod は中継の 3128 へ出て中継を使う設定を持つ（NO_PROXY にクラスタの中） | E2・`cloud-ops.test.js` T-2402-38 | proxy_url・HTTPS_PROXY を外すと赤 |
 | E3 | 最終の段は enforce。移す段は report で直の 443 を戻し、ほかは最終の段と同じ | E3 | 移す段を enforce の判定に当てると赤 |
