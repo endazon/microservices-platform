@@ -1,4 +1,5 @@
 using LlmGateway.Common.Observability;
+using LlmGateway.Domain.Limits;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Routing;
 using Platform.Shared.Contracts.Dtos;
@@ -16,15 +17,20 @@ namespace LlmGateway.Features.Embeddings.Embed;
 //
 // 縮退はすべて `Embedded=false` の**応答**で表す（例外にしない）。REST では 200 ＋ Embedded=false、
 // gRPC では OK ＋ embedded=false であり、意味は同じである。
+//
+// 🔴 NFR-18, NFR-21, IADR-0702: **送る直前に送る前の上限（LlmCallLimiter.AdmitEmbedding）を通す**（補完と同じ 1 つの判定器）。
+// 段 2 で上限を超えた呼び出しは送らず Embedded=false で返す（入力の長さは再試行で解消しないので Retryable=false、ほかは true）。
+// `caller` は輸送が検証済みのトークンから決めて渡す。
 public sealed class EmbedUseCase(
     IEmbeddingRouter router,
     IServiceProvider services,
     ILoggerFactory loggerFactory,
-    LogOccurrenceThrottle logThrottle)
+    LogOccurrenceThrottle logThrottle,
+    LlmCallLimiter limiter)
 {
     public const string LoggerCategory = "LlmGateway.Embed";
 
-    public async Task<EmbedApiResponse> ExecuteAsync(EmbedApiRequest req, CancellationToken ct)
+    public async Task<EmbedApiResponse> ExecuteAsync(EmbedApiRequest req, CancellationToken ct, string? caller = null)
     {
         var logger = loggerFactory.CreateLogger(LoggerCategory);
 
@@ -58,9 +64,24 @@ public sealed class EmbedUseCase(
                 Retryable: false);
         }
 
+        // NFR-18, NFR-21, IADR-0702: 送る前の上限。外へ出ない経路（ティア A）は費用を数えない（要求数と長さは見る）。
+        var textChars = req.Text.Length;
+        var admission = limiter.AdmitEmbedding(
+            caller, decision.Model, textChars, billable: decision.Tier is not ProtectionTier.A);
+        if (admission.Denied)
+        {
+            return new EmbedApiResponse(
+                Vector: [], Dimensions: 0, Model: decision.Model, Collection: decision.Collection,
+                Embedded: false, Endpoint: decision.EndpointName,
+                RoutingReason: $"呼び出しの上限を超えたため送らなかった（{string.Join(", ", admission.Exceeded)}）。",
+                Retryable: !admission.Exceeded.Contains(LlmCallLimiter.KindPromptLength));
+        }
+
         try
         {
             var vector = await provider.EmbedAsync(req.Text, decision.Model, decision.Dimensions, purpose, ct);
+            // 送った（提供元は課金し得る）。実額は応答のトークン数ではなく、見込みと同じ文字数で置き換える（多めの側）。
+            admission.Settle(decision.Model, textChars, 0);
 
             // FR-02: 次元不整合のベクトルはモデル別コレクションの次元と一致しないため索引しない（fail-closed）。
             // 次元不整合はモデル/設定の不一致であり自動リトライで解消しないため恒久扱い（Retryable=false）。
@@ -113,6 +134,11 @@ public sealed class EmbedUseCase(
                 Vector: [], Dimensions: 0, Model: decision.Model, Collection: decision.Collection,
                 Embedded: false, Endpoint: decision.EndpointName,
                 RoutingReason: $"送信先 {decision.EndpointName} が現在利用できません。", Retryable: true);
+        }
+        finally
+        {
+            // IADR-0678・IADR-0702: 送れなかった（鍵なし・上流の失敗・取り消し）ときは見込みを戻す。Settle の後の Release は何もしない。
+            admission.Release();
         }
     }
 }

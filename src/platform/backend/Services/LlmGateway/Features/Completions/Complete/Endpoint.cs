@@ -19,6 +19,7 @@ public static class CompleteEndpoint
             CompletionApiRequest req,
             CompletionUseCase useCase,
             LlmCallerPolicy callerPolicy,
+            LlmSyntheticMarkerPolicy markerPolicy,
             HttpContext http,
             CancellationToken ct) =>
         {
@@ -29,13 +30,14 @@ public static class CompleteEndpoint
                     title: "この呼び手には、要求した用途（またはモデルの指定）が許可されていない。");
 
             // NFR-02, ADR-0044, ADR-0076 決定 4, [[IADR-0378]] (#1203): 合成監視のトラフィックか。
-            // 🔴 **本サービスはメッシュ内部の面である**（外部から到達しない）。標識は外周（BFF）が
-            // 検証済み JWT の主体から決めて付けたヘッダであり、ここでは引き継ぐだけである。
-            // 判定は単一情報源（SyntheticTraffic）にあり、gRPC 面は同じ関数を
-            // ServerCallContext.GetHttpContext().Request から呼ぶ。
-            var isSynthetic = SyntheticTraffic.IsSyntheticInternalRequest(http.Request);
+            // 標識は外周（BFF）が検証済み JWT の主体から決めて付けたヘッダで、標識の有無の判定は単一情報源（SyntheticTraffic）にある。
+            // ［2026-11-07 / IADR-0702］🔴 **標識を引き継ぐのは、検証済みのトークンの主体が許可集合（Llm:SyntheticMarker）に在るときだけ**
+            // （段 2。段 1 は引き継いで報告する）。メッシュの無い構成でも、許可集合の外の呼び手は費用の計上から外れない。
+            // gRPC 面も同じ 2 つの関数を ServerCallContext.GetHttpContext() から呼ぶ。
+            var caller = MachinePrincipal.ClientIdOf(http.User);
+            var isSynthetic = markerPolicy.IsSynthetic(caller, SyntheticTraffic.IsSyntheticInternalRequest(http.Request));
             // NFR-18, IADR-0678 決定 3 (#2404): 上限を数える呼び手は**検証済みのトークンの主体**から決める。
-            return Results.Ok(await useCase.ExecuteAsync(req, isSynthetic, ct, MachinePrincipal.ClientIdOf(http.User)));
+            return Results.Ok(await useCase.ExecuteAsync(req, isSynthetic, ct, caller));
         })
             .WithName("Complete")
             .Produces<CompletionApiResponse>()
