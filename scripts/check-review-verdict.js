@@ -403,6 +403,36 @@ function mentionsChangedFile(line, changedFiles) {
   });
 }
 
+/**
+ * 「読めていない」が、実行の結果（試験・CI・ログの出力）を指す文（#2496 の追随 / IADR-0643 の 2026-11-07 追記）。
+ *
+ * #2496 の 1 回目の AI レビュー（head 49bdba0d）は 18/18 を申告し、変更ファイルは読んでいた。落ちたのは
+ * 「出力は途中で切り捨てられ、失敗した試験の一覧は読めていない。」（scripts.test.js の実行の出力）と
+ * 「`scripts.test.js` の中で実行された範囲の成否は上のとおり読めていない）。」（🔍 の節。同じ行に変更ファイルの名前が並ぶ）で、
+ * どちらも試験の出力が読めないという意味だった。上の #2276 の除外は「行」に試験・`.js`・変更ファイルの名前があると外れる。
+ *
+ * 🔴 **下限を緩めないため、狭く外す**。次を**すべて**満たす文だけを外す。
+ *   1. 当たった型が「読めていない」（READ_UNABLE）だけ（全行・行単位・精読・未読 等の型に当たれば数える）。
+ *   2. 文（引用を外す）が RUN_RESULT_OBJECT（出力・結果・成否・ログ・一覧・結論）を含む。
+ *   3. 文（引用を外す）が FILE_READ_CONTEXT（差分・ファイル・全文・本文・コード・行単位・精読・文書・仕様）を含まない。
+ *   4. 文（引用の中も含む。行ではなく文）が、変更ファイルのパスも名前も含まない。
+ * 判定の単位を行ではなく文にするのは、🔍 の節が 1 行に「実走していない物」と「読めていない結果」を並べて書くため。
+ */
+const READ_UNABLE = NOT_READ_PATTERNS[9];
+const RUN_RESULT_OBJECT = /出力|実行結果|結果|成否|ログ|一覧|結論/;
+const FILE_READ_CONTEXT = /差分|diff|変更ファイル|ファイル|全文|本文|コード|行単位|精読|文書|仕様/i;
+
+/** 未精読の型に当たった文が、実行の結果だけを指す「読めていない」か（上の 4 条件）。 */
+function aboutRunResultOnly(bareSentence, rawSentence, hitPatterns, changedFiles) {
+  return (
+    hitPatterns.length > 0 &&
+    hitPatterns.every((re) => re === READ_UNABLE) &&
+    RUN_RESULT_OBJECT.test(bareSentence) &&
+    !FILE_READ_CONTEXT.test(bareSentence) &&
+    !mentionsChangedFile(rawSentence, changedFiles)
+  );
+}
+
 /** 未精読の型に当たった文が、変更ファイル以外の対象についての文か（上の 3 条件）。 */
 function aboutNonFileObject(bareSentence, rawLine, changedFiles) {
   return (
@@ -447,11 +477,11 @@ function findNotReadAdmissions(text, decl, changedFiles = null) {
   for (const { sentence, line, patterns } of sentences) {
     if (!sentence) continue;
     const bare = stripQuotes(sentence);
-    const hit = patterns.some((re) => {
+    const hits = patterns.filter((re) => {
       const m = re.exec(bare);
       return m && !NOT_READ_NEGATED.test(bare.slice(m.index + m[0].length));
     });
-    if (!hit) continue;
+    if (!hits.length) continue;
     // 計画書は読む対象のファイルではない（🔍 の「計画書は未検証」と同じ扱い）。ただし計画書とテスト等を並べた文は数える
     // （生成物と同じ規則。AST#1346 の AI レビュー 🟢）
     if (
@@ -461,6 +491,8 @@ function findNotReadAdmissions(text, decl, changedFiles = null) {
       continue;
     // #2276 / IADR-0643: コマンドの出力・CI の一覧など、変更ファイル以外の対象についての文は数えない（3 条件。上の注記）
     if (aboutNonFileObject(bare, line, changedFiles)) continue;
+    // #2496 の追随 / IADR-0643 追記: 試験・CI・ログの出力（実行の結果）が読めないという「読めていない」は数えない（4 条件。上の注記）
+    if (aboutRunResultOnly(bare, sentence, hits, changedFiles)) continue;
     // #2039 / IADR-0661: 行単位の差分が無いバイナリ（画像）を読めないと書いた文は数えない（3 条件。上の注記）
     if (aboutBinaryOnly(sentence, line, changedFiles)) continue;
     const generated = GENERATED_WORD.test(sentence) || new RegExp(GENERATED_TOKENS.source).test(sentence);
