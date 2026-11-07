@@ -1,4 +1,4 @@
-# NFR-18, IADR-0704: k3s の API サーバーの監査の方針（ノードの /var/lib/rancher/k3s/server/audit-policy.yaml に置く。README §1-4）。
+# NFR-18, IADR-0705: k3s の API サーバーの監査の方針（ノードの /var/lib/rancher/k3s/server/audit-policy.yaml に置く。README §1-4）。
 #   - 記録は Metadata（誰が・いつ・どの資源に・何をしたか）まで。要求・応答の本文は残さない（Secret・ConfigMap・トークンの値を記録に載せない）。
 #   - 量の多い読みだけの雑音（健康の確かめ・リース・イベント・ノードと kubelet の定常の読み）は残さない。
 #   - Secret・ServiceAccount のトークン・TokenReview・exec / attach / port-forward・RBAC の変更は必ず残す（下の None より先に書く）。

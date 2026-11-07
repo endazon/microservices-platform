@@ -20,7 +20,7 @@ metadata:
 data:
   # `__DISCORD_WEBHOOK_URL__` を render.sh が置き換える。
   alertmanager.yml.tmpl: |
-    # NFR-18, IADR-0704: 受信先（Discord・heartbeat）へは外向きの中継（名前の許可表）を経る。外の 443 へ直には出ない（NetworkPolicy）。
+    # NFR-18, IADR-0705: 受信先（Discord・heartbeat）へは外向きの中継（名前の許可表）を経る。外の 443 へ直には出ない（NetworkPolicy）。
     global:
       http_config:
         proxy_url: http://egress-proxy:3128

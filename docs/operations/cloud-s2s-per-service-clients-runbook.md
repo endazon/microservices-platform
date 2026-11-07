@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637, IADR-0704]
+iadrs: [IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637, IADR-0705]
 specs: [20261107_s2s-per-service-clients, 20261107_cloud-egress-audit-cert-expiry]
 -->
 

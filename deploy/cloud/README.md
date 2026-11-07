@@ -148,7 +148,7 @@ systemctl disable k3s      # 起動時に自動で起こさない。マウント
 
 - `--disable traefik --disable servicelb`: 入口（Ingress・LoadBalancer）を持たない。描画にも LoadBalancer の Service と hostPort は無い（試験で固定）。
 - `--secrets-encryption`: Secret を保存時に暗号化する（`k3s secrets-encrypt status` で確かめる）。
-- **API サーバーの監査の記録**（[IADR-0704](../../.ai-context/adr/IADR-0704_cloud-egress-proxy-audit-log-cert-expiry.md)）: `deploy/cloud/k3s/config.yaml.d/20-apiserver-audit.yaml`
+- **API サーバーの監査の記録**（[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）: `deploy/cloud/k3s/config.yaml.d/20-apiserver-audit.yaml`
   （`kube-apiserver-arg`）を k3s が起動の引数と同じに読む。方針 `deploy/cloud/k3s/audit-policy.yaml` は Metadata まで（要求・応答の本文を残さない）で、
   Secret・トークン・exec・RBAC の操作は必ず残す。方針と記録は `/var/lib/rancher` の下（暗号化した領域）。インストーラは k3s を起こすので、
   **方針と設定の追加はインストーラの前に置く**。稼働中のノードへ足すときは[手順書](../../docs/operations/cloud-apiserver-audit-log-runbook.md)。
@@ -236,7 +236,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 
 - `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言、
   外向きの中継（`egress/`）・証明書の期限の測り（`tls-cert-probe/`）が入らない。
-- **クラスタの外の 443 へ宛先を名指して出るのは外向きの中継（`egress/`。[IADR-0704](../../.ai-context/adr/IADR-0704_cloud-egress-proxy-audit-log-cert-expiry.md)）だけ**
+- **クラスタの外の 443 へ宛先を名指して出るのは外向きの中継（`egress/`。[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）だけ**
   （ESO・OpenBao の API サーバー向けの出はポートだけで、宛先を問わず 443・6443 へ出られる。同 IADR の残余 5）。
   LLM ゲートウェイ・バックアップ・Alertmanager は中継を HTTPS_PROXY として使い、中継は名前の許可表に在る宛先の 443 だけへ繋ぐ。
   許可表は宣言（LLM の提供元・Discord）・バックアップの保管先（ConfigMap `platform-backup-s3-target` の `endpoint`）・オーナーが埋める表
@@ -337,7 +337,7 @@ node scripts/deploy-cloud.test.js    # 上の 2 つを描いて、持ち込ま�
   （証明書の公開の部分だけを読む。鍵 `tls.key` は読まない）と、CA（10 年）は
   `kubectl -n platform-infra get configmap platform-infra-ca -o jsonpath='{.data.ca\.crt}' | openssl x509 -noout -enddate`。
 - すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret postgres-tls force-sync="$(date +%s)" --overwrite`（RabbitMQ・Keycloak・LLM ゲートウェイも同じ）の後に消費側を作り直す。
-- **期限の警報**（[IADR-0704](../../.ai-context/adr/IADR-0704_cloud-egress-proxy-audit-log-cert-expiry.md)）: `tls-cert-probe/` が 4 つの受け口の**出している**証明書の
+- **期限の警報**（[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）: `tls-cert-probe/` が 4 つの受け口の**出している**証明書の
   期限を 10 分ごとに測り、Prometheus の `cloud-tls-expiry` が鳴らす（残り 150 日で warning・30 日で critical。作り直しの漏れも、消費側の作り直しの漏れも
   残りの減りとして見える）。CA（`platform-infra-ca`）の残り 400 日と、OpenBao の受け口の証明書（`openbao-ca` の notAfter − 365 日で導く）の残り 150 日も鳴らす。
 - **封印のあいだは発行できない。** 作り直しは unseal の後に行う。

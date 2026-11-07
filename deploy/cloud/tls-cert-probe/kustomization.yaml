@@ -1,4 +1,4 @@
-# NFR-16, NFR-21, IADR-0704: クラウドの基盤のサーバ証明書の期限の測り（受け口が出している証明書を読む。警報は observability/prometheus.yaml）。
+# NFR-16, NFR-21, IADR-0705: クラウドの基盤のサーバ証明書の期限の測り（受け口が出している証明書を読む。警報は observability/prometheus.yaml）。
 # deploy/cloud の kustomization が resources に入れる（単独では当てない）。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

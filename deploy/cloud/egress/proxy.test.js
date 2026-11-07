@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, IADR-0704: 外向きの中継（proxy.js）の試験。外へは出ない —— 名前を引く関数と外へ繋ぐ関数を差し替え、手元の echo の受け口へ繋ぐ。
+ * NFR-18, IADR-0705: 外向きの中継（proxy.js）の試験。外へは出ない —— 名前を引く関数と外へ繋ぐ関数を差し替え、手元の echo の受け口へ繋ぐ。
  * scripts/deploy-cloud-egress-audit.test.js が子のプロセスで走らせる（node deploy/cloud/egress/proxy.test.js でも）。
  *
  *   E1 enforce: 許可表の宛先の 443 だけを通し（200 のあと端から端まで流れる）、表に無い宛先・443 でない・IP の字面・CONNECT でない方法は拒む。

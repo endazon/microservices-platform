@@ -1,4 +1,4 @@
-# NFR-18, IADR-0704: クラウドの基盤の外向きの中継（platform-infra）。
+# NFR-18, IADR-0705: クラウドの基盤の外向きの中継（platform-infra）。
 #   - クラスタの外の 443 へ出る Pod（LLM ゲートウェイ・バックアップ・Alertmanager）は、直に外へ出ず、この中継を HTTPS_PROXY として使う。
 #     それらの Pod の出の NetworkPolicy は、外の 443 ではなくこの中継の 3128 だけを許す（infra/networkpolicy.yaml・backup/・observability/）。
 #   - 中継は CONNECT <名前>:443 だけを受け、名前の許可表に在る宛先へだけ繋ぐ（proxy.js。TLS は端から端まで。中身を読まない）。
@@ -89,7 +89,7 @@ spec:
         - name: backup
           configMap: { name: platform-backup-s3-target, optional: true, items: [{ key: endpoint, path: endpoint }] }
         # report の段に入った日時（移す段を当てる前にオーナーが作る。kustomize の外。当て直しで日時が書き換わらないように）。
-        # 中継は report の段のときだけ読んで計器に出す。無ければ 0（警報 EgressProxyReportMode が鳴る側）。IADR-0704 決定 1。
+        # 中継は report の段のときだけ読んで計器に出す。無ければ 0（警報 EgressProxyReportMode が鳴る側）。IADR-0705 決定 1。
         - name: report-since
           configMap: { name: egress-proxy-report-since, optional: true, items: [{ key: since, path: since }] }
 ---

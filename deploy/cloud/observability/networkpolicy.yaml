@@ -2,7 +2,7 @@
 # - Alertmanager: 受けは Prometheus からの :9093 だけ。外へは名前解決と HTTPS（Discord・Healthchecks.io）だけ。
 # - Prometheus: 受けは otel-collector からの remote write（:9090）だけ。外へは制限しない（クラスタ内を収集する）。
 # - otel-collector: Prometheus からの :8888（自己テレメトリの収集）を足す。
-# 🔴 HTTPS は外向きの中継（egress-proxy）だけを経て出す。中継は名前の許可表に在る宛先の 443 だけへ繋ぐ（IADR-0704）。
+# 🔴 HTTPS は外向きの中継（egress-proxy）だけを経て出す。中継は名前の許可表に在る宛先の 443 だけへ繋ぐ（IADR-0705）。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -28,7 +28,7 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
-    # IADR-0704: クラスタの外の HTTPS は外向きの中継（egress-proxy。名前の許可表で宛先を絞る）を経る。外の 443 へ直には出さない。
+    # IADR-0705: クラスタの外の HTTPS は外向きの中継（egress-proxy。名前の許可表で宛先を絞る）を経る。外の 443 へ直には出さない。
     - to:
         - podSelector:
             matchLabels: { app: egress-proxy }

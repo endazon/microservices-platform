@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, IADR-0704: クラウドの Keycloak の master realm の一時管理者を、要る間だけ置く（オーナーが手元から。kubectl は SSH のトンネル越し）。
+# NFR-18, IADR-0705: クラウドの Keycloak の master realm の一時管理者を、要る間だけ置く（オーナーが手元から。kubectl は SSH のトンネル越し）。
 #
 #   bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live open    # 開く: Deployment に KC_BOOTSTRAP_ADMIN_* を足して作り直す（master に管理者が
 #                                                                      #   居なければ Keycloak が Secret keycloak-admin の資格で作る）→ 総当たりの検知を有効にする

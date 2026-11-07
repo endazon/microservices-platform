@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, IADR-0704: クラウドの基盤の外向きの中継（HTTPS の CONNECT だけを、名前の許可表に在る宛先の 443 へだけ通す）。
+ * NFR-18, IADR-0705: クラウドの基盤の外向きの中継（HTTPS の CONNECT だけを、名前の許可表に在る宛先の 443 へだけ通す）。
  *
  * クラスタの外の 443 へ出る Pod（LLM ゲートウェイ・バックアップ・Alertmanager）は、直に外へ出ず、この中継を HTTPS_PROXY として使う
  * （NetworkPolicy はこの中継の Pod だけに外の 443 を許す。deploy/cloud/egress/egress-proxy.yaml）。

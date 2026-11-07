@@ -9,7 +9,7 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0704]
+iadrs: [IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0705]
 specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->

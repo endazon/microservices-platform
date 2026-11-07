@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-16, NFR-21, IADR-0704: サーバ証明書の期限の測り（probe.js）の試験。手元に試験の CA と証明書（openssl。その場で作り、試験の後に消す）で
+ * NFR-16, NFR-21, IADR-0705: サーバ証明書の期限の測り（probe.js）の試験。手元に試験の CA と証明書（openssl。その場で作り、試験の後に消す）で
  * TLS の受け口と Postgres の形の受け口（SSLRequest → 'S' → TLS）を立て、測った値を確かめる。
  * scripts/deploy-cloud-egress-audit.test.js が子のプロセスで走らせる（node deploy/cloud/tls-cert-probe/probe.test.js でも。要 openssl）。
  *

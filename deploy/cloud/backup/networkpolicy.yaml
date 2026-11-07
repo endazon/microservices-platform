@@ -1,6 +1,6 @@
 # NFR-21, NFR-18, IADR-0675 (#2402): バックアップの Pod の外向きの通信を、名前解決・Postgres・HTTPS（オブジェクトストレージ）に絞る。
 # 受けは持たない（Ingress の規則を書かない ＝ policyTypes に Ingress を入れない。受け口を増やさない）。
-# 🔴 HTTPS は外向きの中継（egress-proxy）だけを経て出す。中継は名前の許可表に在る宛先の 443 だけへ繋ぐ（IADR-0704）。
+# 🔴 HTTPS は外向きの中継（egress-proxy）だけを経て出す。中継は名前の許可表に在る宛先の 443 だけへ繋ぐ（IADR-0705）。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -26,7 +26,7 @@ spec:
             matchLabels: { app: postgres }
       ports:
         - { protocol: TCP, port: 5432 }
-    # IADR-0704: クラスタの外の HTTPS は外向きの中継（egress-proxy。名前の許可表で宛先を絞る）を経る。外の 443 へ直には出さない。
+    # IADR-0705: クラスタの外の HTTPS は外向きの中継（egress-proxy。名前の許可表で宛先を絞る）を経る。外の 443 へ直には出さない。
     - to:
         - podSelector:
             matchLabels: { app: egress-proxy }

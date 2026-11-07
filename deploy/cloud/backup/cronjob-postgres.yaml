@@ -71,7 +71,7 @@ spec:
                       name: platform-backup-s3-target
                       key: dest
                       optional: true
-                # NFR-18, IADR-0704: オブジェクトストレージへは外向きの中継（名前の許可表。保管先の名前は ConfigMap platform-backup-s3-target の
+                # NFR-18, IADR-0705: オブジェクトストレージへは外向きの中継（名前の許可表。保管先の名前は ConfigMap platform-backup-s3-target の
                 #   endpoint から中継が読む）を経る。rclone は HTTPS_PROXY に従う。Postgres（libpq）は中継を使わない。
                 - name: HTTPS_PROXY
                   value: http://egress-proxy:3128

@@ -1,6 +1,6 @@
 # NFR-21, NFR-03, ADR-0006, IADR-0675 (#2402): クラウドの最小構成の Prometheus（platform-infra）。
 # - 8 GB のノード向けに絞る: 保持 7 日・1GB、メモリの上限 768Mi、データは emptyDir（2Gi。再起動で消えるのは受け入れる）。
-# - 収集: 自分・Alertmanager・otel-collector の自己テレメトリ（:8888）・証明書の期限の測り・外向きの中継（IADR-0704）。アプリのメトリクスは otel-collector の remote write で受ける。
+# - 収集: 自分・Alertmanager・otel-collector の自己テレメトリ（:8888）・証明書の期限の測り・外向きの中継（IADR-0705）。アプリのメトリクスは otel-collector の remote write で受ける。
 # - 規則: 下の platform-rules.yml（heartbeat・Discord の到達と失敗・AST の規則の不在・collector の停止）と、AST の PrometheusRule。
 #   🔴 AST の PrometheusRule は ConfigMap `ast-prometheus-rules`（kustomize の外。AST の YAML をそのまま入れる）を
 #   initContainer が `spec` だけ取り出し、promtool check rules を通してから読む（Prometheus Operator を持ち込まない）。
@@ -34,7 +34,7 @@ data:
       - job_name: otel-collector
         static_configs:
           - targets: ['otel-collector:8888']
-      # IADR-0704: サーバ証明書の期限の測り（受け口が出している証明書）と、外向きの中継の判定の件数。
+      # IADR-0705: サーバ証明書の期限の測り（受け口が出している証明書）と、外向きの中継の判定の件数。
       - job_name: tls-cert-probe
         static_configs:
           - targets: ['tls-cert-probe:9465']
@@ -173,7 +173,7 @@ data:
             annotations:
               summary: "LLM ゲートウェイが当日の費用の枠の置き場を扱えず、呼び出しを送っていない"
               description: "直近 10 分に、当日の費用の枠を読めない・書けないため送らなかった呼び出しがある。ゲートウェイのログ（当日の費用の枠を置き場で扱えない）と PVC llmgateway-service-state を確かめる。"
-      # NFR-16, NFR-21, IADR-0704: サーバ証明書の期限（受け口が出している証明書。deploy/cloud/tls-cert-probe）。
+      # NFR-16, NFR-21, IADR-0705: サーバ証明書の期限（受け口が出している証明書。deploy/cloud/tls-cert-probe）。
       # ESO は 1 年（8760h）の証明書を半年（4380h）ごとに作り直す。作り直しの後に消費側（Postgres・RabbitMQ・LLM ゲートウェイ）を
       #   作り直せば、出している証明書の残りは 1 年に戻る。残りが 150 日を切るのは、作り直し（ESO の止まり・封印のまま）か消費側の作り直しが
       #   約 1 か月漏れている。30 日を切ったら止まる前に直す（期限が切れると接続は平文へ倒れず止まる）。
@@ -232,7 +232,7 @@ data:
             annotations:
               summary: "CA の証明書（ConfigMap platform-infra-ca・openbao-ca）の期限を読めない"
               description: "測りの Pod が CA の ConfigMap を読めないか、止まっている。CA と OpenBao の受け口の期限の警報が黙り得る。"
-      # NFR-18, IADR-0704: 外向きの中継（deploy/cloud/egress）。enforce の段で表に無い宛先を拒んだ（宛先の追加漏れか、想定外の持ち出し）。
+      # NFR-18, IADR-0705: 外向きの中継（deploy/cloud/egress）。enforce の段で表に無い宛先を拒んだ（宛先の追加漏れか、想定外の持ち出し）。
       - name: cloud-egress
         rules:
           - alert: EgressProxyDenied

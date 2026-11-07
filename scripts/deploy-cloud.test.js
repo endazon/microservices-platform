@@ -148,7 +148,7 @@ function mspIngressProblems(docs) {
   const types = (d) => (d.spec.policyTypes || []).map(String);
   const deny = np.some((d) => JSON.stringify(d.spec.podSelector || {}) === '{}' && types(d).includes('Ingress') && !(d.spec.ingress || []).length);
   if (!deny) out.push(`infra: ${MSP_NS} の入りの既定拒否（podSelector が空・Ingress・規則なし）が無い`);
-  // IADR-0704: サーバ証明書の期限の測りの入り（platform-infra の測りの Pod から 8080 だけ）は別宣言。その形のときだけ数から外す。
+  // IADR-0705: サーバ証明書の期限の測りの入り（platform-infra の測りの Pod から 8080 だけ）は別宣言。その形のときだけ数から外す。
   const probe = np.find((d) => d.metadata.name === TLS_PROBE_INGRESS.llmgateway);
   if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[['platform-infra', 'tls-cert-probe']], [`TCP/${LLM_GATEWAY_PORT}`]])) {
     out.push(`infra: ${probe.metadata.name} が「platform-infra の測りの Pod から 8080 だけ」でない`);
@@ -646,7 +646,7 @@ const KEYCLOAK_AST_CALLERS = [
   'notification-service', 'order-execution-service', 'report-service', 'risk-management-service', 'trade-decision-service',
 ];
 const KEYCLOAK_HTTPS_PORT = 8443;
-/** IADR-0704: サーバ証明書の期限の測りの、受け口の側の入りの別宣言（deploy/cloud/tls-cert-probe）。形は scripts/deploy-cloud-egress-audit.test.js も固定する。 */
+/** IADR-0705: サーバ証明書の期限の測りの、受け口の側の入りの別宣言（deploy/cloud/tls-cert-probe）。形は scripts/deploy-cloud-egress-audit.test.js も固定する。 */
 const TLS_PROBE_INGRESS = Object.freeze({ keycloak: 'keycloak-ingress-tls-cert-probe', llmgateway: 'llmgateway-ingress-tls-cert-probe' });
 /** 入りの宣言の形（規則が 1 つ・送り元の [名前空間, app] の一覧・ポートの一覧）。キーの並びに依らない。 */
 function tlsProbeIngressShape(d) {
@@ -703,7 +703,7 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
   // 入り: Keycloak を選ぶ許可はちょうど 1 枚。各要素は名前空間 かつ Pod（AND）。名前空間だけの要素は名前空間の全 Pod へ開く。
   const isKc = (d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'platform-infra'
     && JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'keycloak' } }) && (d.spec.ingress || []).length;
-  // IADR-0704: サーバ証明書の期限の測り（deploy/cloud/tls-cert-probe）の入りは別宣言。同じ名前空間の測りの Pod から 8443 だけ、の形のときだけ数から外す。
+  // IADR-0705: サーバ証明書の期限の測り（deploy/cloud/tls-cert-probe）の入りは別宣言。同じ名前空間の測りの Pod から 8443 だけ、の形のときだけ数から外す。
   const probe = docs.find((d) => isKc(d) && d.metadata.name === TLS_PROBE_INGRESS.keycloak);
   if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[[null, 'tls-cert-probe']], [`TCP/${KEYCLOAK_HTTPS_PORT}`]])) {
     out.push(`infra: ${probe.metadata.name} が「測りの Pod から 8443 だけ」でない`);
@@ -725,7 +725,7 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
         seen[ns] = [...(seen[ns] || []), ...pods].sort();
       }
       // IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
-      // IADR-0704: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
+      // IADR-0705: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
       const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients', 'keycloak-master-admin'] };
       if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
         out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);

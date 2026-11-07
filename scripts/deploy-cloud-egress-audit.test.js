@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * NFR-18, NFR-16, NFR-21, NFR-05, IADR-0704: クラウドの最小構成（deploy/cloud）の、外向きの通信・Keycloak の一時管理者・ESO の名前空間・
+ * NFR-18, NFR-16, NFR-21, NFR-05, IADR-0705: クラウドの最小構成（deploy/cloud）の、外向きの通信・Keycloak の一時管理者・ESO の名前空間・
  * API サーバーの監査・サーバ証明書の期限の警報を、宣言と描画で固定する（クラスタに触れない）。
  *
  *   K（一時管理者）
@@ -11,7 +11,7 @@
  *   E（外向きの通信）
  *     E1 宛先を ipBlock で名指して出る許可は外向きの中継の Pod だけ（基盤・chart・vault・ESO の名前空間の描画）。
  *        🔴 この検査は ipBlock だけを見る。宛先（to）を持たずポートだけで許す出は宛先を問わず出られ、ここでは止まらない。その出は
- *        OpenBao と ESO の API サーバー向け（443・6443）の 2 つだけであることを固定する（増えたら赤。IADR-0704 残余 5）。
+ *        OpenBao と ESO の API サーバー向け（443・6443）の 2 つだけであることを固定する（増えたら赤。IADR-0705 残余 5）。
  *     E2 外の 443 を使う 3 つ（LLM ゲートウェイ・バックアップ・Alertmanager）は中継の 3128 へ出て、中継を使う設定を持つ。
  *     E3 中継は最終の段で enforce。移す間の重ね（cloud-transition/egress-proxy-report）は report で、3 つの直の 443 を戻す。
  *     E4 許可表は設定に在る宛先（LLM の提供元の BaseUrl・Alertmanager の Discord の形）を全部持ち、中継の入りは 3 つと Prometheus だけ。
@@ -479,7 +479,7 @@ if (require.main === module) {
     assert.deepStrictEqual(directEgressProblems(chart, 'chart'), []);
     assert.deepStrictEqual(directEgressProblems(vault, 'vault'), []);
     assert.deepStrictEqual(directEgressProblems(esoNs, 'external-secrets'), []);
-    // ipBlock の検査が見ない範囲（宛先を問わない出）を名指して固定する（IADR-0704 残余 5）
+    // ipBlock の検査が見ない範囲（宛先を問わない出）を名指して固定する（IADR-0705 残余 5）
     const portsOnly = [...new Set([cloud, chart, vault, esoNs].flatMap(portsOnlyEgress))].sort();
     assert.deepStrictEqual(portsOnly, ['external-secrets/eso-egress-dns-openbao-apiserver TCP/443,TCP/6443', 'openbao/openbao-egress-dns-and-apiserver TCP/443,TCP/6443'].sort(), `宛先を問わない出が想定の 2 つと違う:\n${portsOnly.join('\n')}`);
     const extra = clone(cloud);

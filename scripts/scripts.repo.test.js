@@ -18617,6 +18617,42 @@ server.listen(0, '127.0.0.1', async () => {
     });
   }
 
+  // --- NFR, IADR-0704: 2 回目以後の push でも、この head の全差分を読み直させる ---
+  // track_progress: true の組み込みプロンプトは過去の AI レビュー本文を <comments> に載せる。2 回目以後の push で
+  // レビューが前回以後のコミットだけを読み、下限を割り続けた（#2509 で 5 回）。【検証の下限】節から、前回の結果を
+  // 流用しない・head の全ファイルを読み直す・前回以後だけは下限を満たさない、の 3 つが消えたら止める。
+  {
+    const fs0704 = require('fs');
+    const path0704 = require('path');
+    const wf0704 = fs0704.readFileSync(path0704.resolve(__dirname, '../.github/workflows/claude-code-review.yml'), 'utf8');
+    const rereadProblems0704 = (text) => {
+      const start = text.indexOf('          prompt: |\n');
+      assert.ok(start >= 0, 'claude-code-review.yml から prompt: | を切り出せない（書式が変わったら本試験を直す）');
+      const i = text.indexOf('【検証の下限・最重要】', start);
+      if (i < 0) return ['prompt に【検証の下限・最重要】節が無い'];
+      const j = text.indexOf('\n\n', i);
+      const block = text.slice(i, j < 0 ? undefined : j).replace(/\n +/g, ''); // 折り返しを繋いで読む
+      const problems = [];
+      for (const word of ['前回のレビュー（スティッキーコメント・過去のコメント）の結果を流用しない',
+        'push のたびに', 'この head の `git diff origin/develop...HEAD` の全ファイルを読み直す',
+        '前回以後のコミットだけを読むのは下限を満たさない', 'M に数えるのは、このセッションで読んだファイルだけ']) {
+        if (!block.includes(word)) problems.push(`【検証の下限】節に「${word}」が無い`);
+      }
+      return problems;
+    };
+    ok('claude-code-review.yml[IADR-0704]: 【検証の下限】節が、push のたびに head の全差分を読み直させ、前回の結果の流用を禁じる', () => {
+      assert.deepStrictEqual(rereadProblems0704(wf0704), []);
+    });
+    ok('claude-code-review.yml[IADR-0704]: 陰性対照（流用の禁止・読み直し・前回以後だけの禁止・M の数え方を消す）はそれぞれ赤になる', () => {
+      assert.match(rereadProblems0704(wf0704.replace('の結果を流用しない。**', '。**')).join('\n'), /流用しない/);
+      assert.match(rereadProblems0704(wf0704.replace('の全ファイルを読み直す。', 'を読む。')).join('\n'), /読み直す/);
+      assert.match(rereadProblems0704(wf0704.replace('前回以後のコミットだけを読むのは', '前回以後のコミットを読むのは')).join('\n'), /前回以後/);
+      assert.match(rereadProblems0704(wf0704.replace('M に数えるのは、このセッションで読んだファイルだけである。', '')).join('\n'), /このセッション/);
+      // 節の外（YAML コメント）へ移しても赤になる（送信される prompt の節の中にあることを要る）
+      assert.match(rereadProblems0704(wf0704.replace('【検証の下限・最重要】', '【削除】')).join('\n'), /節が無い/);
+    });
+  }
+
   // --- NFR, IADR-0538: 【検証の下限】と check-review-verdict.js の対を固定する ---
   // 検査器は prompt が書かせる申告（「変更 N ファイル中 M ファイルを読んだ」・生成物 K・節）を読む。片方だけ変えると
   // 恒久的な偽陽性か素通りになる。prompt の生成物の例が検査器の GENERATED_TOKENS に当たること、判定のステップが

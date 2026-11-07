@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, IADR-0704: クラウドの Keycloak の master realm の一時管理者（KC_BOOTSTRAP_ADMIN_* で作られる管理者）を、要る間だけ置く。
+ * NFR-18, IADR-0705: クラウドの Keycloak の master realm の一時管理者（KC_BOOTSTRAP_ADMIN_* で作られる管理者）を、要る間だけ置く。
  *
  * 一時管理者は realm の取り込み（--import-realm）に要らない。要るのは、稼働中の realm へ手を入れるとき（keycloak-clients の Job など）だけである。
  * keycloak-admin.sh が、開く（Deployment に KC_BOOTSTRAP_ADMIN_* を足して作り直す → この手順の harden）→ 作業 → 閉じる（この手順の retire →

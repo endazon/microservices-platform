@@ -9,7 +9,7 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0704]
+iadrs: [IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0705]
 specs: [20261107_backup-owner-ops-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat, 20261107_cloud-egress-audit-cert-expiry]
 issues: [#2471, #2402, #2401]
 -->

@@ -2,7 +2,7 @@
 title: 作業仕様書 — クラウドの外向きの通信を中継へ集め、Keycloak の一時管理者を要る間だけ置き、ESO の名前空間と API の監査を足し、サーバ証明書の期限を警報にする
 type: spec
 status: done
-related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0704, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700]
+related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0705, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -14,7 +14,7 @@ related_specs:
 
 # 作業仕様書 — クラウドの外向きの中継・一時管理者・ESO の名前空間・API の監査・証明書の期限
 
-> 着手 2026-11-07（develop `cc8f316f1`）。判断の記録は IADR-0704。稼働中のクラスタ・ノード・外部のサービスには何もしない。秘密の値は扱わない
+> 着手 2026-11-07（develop `cc8f316f1`）。判断の記録は IADR-0705。稼働中のクラスタ・ノード・外部のサービスには何もしない。秘密の値は扱わない
 > （手元の試験の値・証明書はその場で作り、表示せず、試験の後に消す）。
 
 ## 起点
@@ -53,7 +53,7 @@ related_specs:
 
 ## 方式
 
-IADR-0704 の決定 1〜5 のとおり。
+IADR-0705 の決定 1〜5 のとおり。
 
 ## 受け入れ基準と試験（`scripts/deploy-cloud-egress-audit.test.js` ほか）
 
@@ -61,7 +61,7 @@ IADR-0704 の決定 1〜5 のとおり。
 | --- | --- | --- | --- |
 | K1 | Keycloak の Deployment は `KC_BOOTSTRAP_ADMIN_*` を持たない | K1 | env を足すと赤 |
 | K2 | 開け閉めの Job・入口（Secret への参照だけ・open/close/check・`--live` 必須・値を扱わない）。close は有無を読んで在る分だけ消し、流し直せる（retire の後に作り直しが落ちても、env を外す操作が落ちても、もう一度流せば閉じる）。Keycloak に繋がらなければ何も変えずに 1 で止まる。手順は総当たりの検知を platform realm と同じ値で有効にし、一時管理者を消して資格が通らないことを確かめる | K2・`master-admin.test.js`・`keycloak-admin.test.js`（kubectl と Job のスタブ） | 開いていない retire は書かない・閉じ忘れは 3。有無を見ずに retire を流す形（前の版）へ戻すと流し直しが止まる |
-| E1 | ipBlock で宛先を名指す出は中継の Pod だけ（基盤・chart・vault・ESO の描画）。宛先を問わない出（ポートだけ）は OpenBao と ESO の API サーバー向けの 2 つだけ（中身は絞らない。IADR-0704 残余 5） | E1 | ポートだけの出を足すと赤。バックアップへ直の 443 を足すと赤 |
+| E1 | ipBlock で宛先を名指す出は中継の Pod だけ（基盤・chart・vault・ESO の描画）。宛先を問わない出（ポートだけ）は OpenBao と ESO の API サーバー向けの 2 つだけ（中身は絞らない。IADR-0705 残余 5） | E1 | ポートだけの出を足すと赤。バックアップへ直の 443 を足すと赤 |
 | E2 | 3 つの Pod は中継の 3128 へ出て中継を使う設定を持つ（NO_PROXY にクラスタの中） | E2・`cloud-ops.test.js` T-2402-38 | proxy_url・HTTPS_PROXY を外すと赤 |
 | E3 | 最終の段は enforce。移す段は report で直の 443 を戻し、ほかは最終の段と同じ | E3 | 移す段を enforce の判定に当てると赤 |
 | E4 | 許可表は設定に在る宛先を全部持つ。中継の入りは 3 つの呼び手と Prometheus だけ | E4 | 提供元を外す・送り元を足すと赤 |
@@ -84,8 +84,9 @@ IADR-0704 の決定 1〜5 のとおり。
 
 ## ［2026-11-07 追記］状態と、レビューの後の変更
 
-- 状態を `done` にした（リポジトリの中の実装・試験・手順書は揃った。クラスタでしか確かめられないことは IADR-0704 残余 4・5 に残し、移行の門で確かめる）。
-- 改番: 仮の IADR-0703 を IADR-0704 にした（IADR-0703 は先にマージされた MSP#2508 が確保した。番号は develop の最大＋1）。本文の「IADR-0703」の記述は改番の前のもの。
+- 状態を `done` にした（リポジトリの中の実装・試験・手順書は揃った。クラスタでしか確かめられないことは IADR-0705 残余 4・5 に残し、移行の門で確かめる）。
+- 改番: 仮の IADR-0703 を IADR-0704 にし（IADR-0703 は先にマージされた MSP#2508 が確保）、さらに IADR-0705 にした（IADR-0704 は先にマージされた
+  MSP#2512 が確保）。どちらも develop の最大＋1。本文の番号はすべて IADR-0705 に追随させた。
 - レビューの後に変えたこと（受け入れ基準の表は改めてある）: 中継は引いた番地を順に試す（E5）。ESO・OpenBao の API サーバー向けの出は宛先を問わないことを
   残余 5 に明記し、E1 を ipBlock に限った。測りは検証を切らずに握手し、検証の失敗の種類を出す（C3）。close は流し直せる（K2）。
   `keycloak-admin.sh` は MSP#2508 の `deploy/cloud/lib/target-cluster.sh` で宛先のクラスタを確かめてから kubectl を使う（`cluster-target.test.sh` の入口に足した）。
