@@ -433,7 +433,9 @@ function monthlyBudgetProblems(appsettings, env) {
  */
 const K3S_FLAGS = Object.freeze(['server', '--disable traefik', '--disable servicelb', '--secrets-encryption',
   '--bind-address 127.0.0.1', '--advertise-address 127.0.0.1', '--node-ip 127.0.0.1', '--write-kubeconfig-mode 0600']);
-const PIPE_TO_SHELL = /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*(?:sh|bash|zsh)\b/;
+const PIPE_TO_SHELL = /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s"']\S*)\s+)*(?:sh|bash|zsh)\b/;
+// 🔴 代入の値の 3 つの選択肢は互いに重ならない（引用符で始まる値は引用の形だけが当たる）。重なると、代入を長く並べた行で
+//   繰り返し（`(…\s+)*`）と掛け合わさって指数的に戻る（下の試験が、病的な入力ですぐ返ることを見る）。
 function pipeToShellProblems(files) {
   const out = [];
   for (const { rel, text } of files) {
@@ -598,6 +600,18 @@ if (require.main === module) {
       assert.strictEqual(pipeToShellProblems([{ rel: 'x', text: bad }]).length, 1, bad);
     }
     assert.strictEqual(pipeToShellProblems([{ rel: 'x', text: 'curl -s https://x | jq .' }]).length, 0);
+  });
+  ok('IADR-0692: 取得物をシェルへ流す形の検出は、代入を長く並べた病的な行でもすぐ返る（指数的な戻りが無い）', () => {
+    for (const sep of [' ', '\t']) {
+      const line = `curl x | ${'A=""'.concat(sep).repeat(5000)}`;
+      for (const tail of ['', 'x', 'sh -']) {
+        const t0 = process.hrtime.bigint();
+        const n = pipeToShellProblems([{ rel: 'x', text: line + tail }]).length;
+        const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+        assert.ok(ms < 1000, `病的な入力で ${ms.toFixed(0)} ms かかった（sep=${JSON.stringify(sep)} tail=${tail}）`);
+        assert.strictEqual(n, tail === 'sh -' ? 1 : 0, `病的な入力の判定が違う（tail=${tail}）`);
+      }
+    }
   });
   ok('IADR-0692 陰性対照: 上限の欠落・既定の欠落・合計のずれ・ナレッジの呼び手の項目・2 レプリカ・HPA を検出する', () => {
     const drop = (name) => {

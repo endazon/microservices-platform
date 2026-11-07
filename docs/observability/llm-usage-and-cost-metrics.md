@@ -4,7 +4,7 @@ type: observability-spec
 status: in-progress
 author: claude
 created: 2026-08-23
-updated: 2026-11-05
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-18, NFR-21, UC-05, SC-10]
