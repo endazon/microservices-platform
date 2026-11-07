@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, IADR-0703: keycloak-admin.sh（master realm の一時管理者を開け閉めする入口）の振る舞いの試験。稼働のクラスタの代わりに、
+ * NFR-18, IADR-0704: keycloak-admin.sh（master realm の一時管理者を開け閉めする入口）の振る舞いの試験。稼働のクラスタの代わりに、
  * kubectl のスタブ（Deployment の env・Job・作り直しを状態のファイルで持つ）と、Job の中で本物の master-admin.js が呼ぶ Keycloak の偽物
  * （fetch の差し替え）を当てる。scripts/deploy-cloud-egress-audit.test.js が子のプロセスで走らせる（node deploy/cloud/keycloak-admin/keycloak-admin.test.js でも）。
  *

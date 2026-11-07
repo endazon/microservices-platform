@@ -148,7 +148,7 @@ function mspIngressProblems(docs) {
   const types = (d) => (d.spec.policyTypes || []).map(String);
   const deny = np.some((d) => JSON.stringify(d.spec.podSelector || {}) === '{}' && types(d).includes('Ingress') && !(d.spec.ingress || []).length);
   if (!deny) out.push(`infra: ${MSP_NS} の入りの既定拒否（podSelector が空・Ingress・規則なし）が無い`);
-  // IADR-0703: サーバ証明書の期限の測りの入り（platform-infra の測りの Pod から 8080 だけ）は別宣言。その形のときだけ数から外す。
+  // IADR-0704: サーバ証明書の期限の測りの入り（platform-infra の測りの Pod から 8080 だけ）は別宣言。その形のときだけ数から外す。
   const probe = np.find((d) => d.metadata.name === TLS_PROBE_INGRESS.llmgateway);
   if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[['platform-infra', 'tls-cert-probe']], [`TCP/${LLM_GATEWAY_PORT}`]])) {
     out.push(`infra: ${probe.metadata.name} が「platform-infra の測りの Pod から 8080 だけ」でない`);
@@ -457,9 +457,25 @@ function cloudRealmAudienceProblems(realm) {
 /**
  * NFR-18, IADR-0689 決定 12: クラウドの段 2 の切り替え（ブローカの権限 narrow・LLM ゲートウェイの 3 つ）。
  *   - LLM ゲートウェイ: Llm__RouteValidation__Mode=Fail・Llm__CallerPolicy__Mode=Enforce・Llm__CallLimits__Mode=Enforce。
+ *     ［2026-11-07 / IADR-0702］埋め込みの許可表と上限（EmbeddingMode）・合成監視の標識の許可集合（SyntheticMarker__Mode）も Enforce。
  *   - ブローカ: 起動の直後の復元が vhost 全体（'.*' 3 つ）を当てず、生成物 rabbitmq-permissions の行だけを当てる。表は非 optional。
  */
-const STAGE2_LLM_ENV = Object.freeze({ Llm__RouteValidation__Mode: 'Fail', Llm__CallerPolicy__Mode: 'Enforce', Llm__CallLimits__Mode: 'Enforce' });
+const STAGE2_LLM_ENV = Object.freeze({
+  Llm__RouteValidation__Mode: 'Fail', Llm__CallerPolicy__Mode: 'Enforce', Llm__CallLimits__Mode: 'Enforce',
+  // IADR-0702
+  Llm__CallerPolicy__EmbeddingMode: 'Enforce', Llm__CallLimits__EmbeddingMode: 'Enforce', Llm__SyntheticMarker__Mode: 'Enforce',
+});
+
+/**
+ * NFR-18, IADR-0702: クラウドでは埋め込みを使わない。OpenBao の手順書は埋め込みの鍵（voyage-api-key）を案内しない。
+ */
+const CLOUD_OPENBAO_RUNBOOK = 'docs/operations/cloud-openbao-init-unseal-runbook.md';
+function cloudEmbeddingKeyProblems(runbookText) {
+  const out = [];
+  if (/voyage-api-key/.test(runbookText)) out.push('クラウドの手順書が埋め込みの鍵（voyage-api-key）を案内する');
+  if (/埋め込みを使うなら/.test(runbookText)) out.push('クラウドの手順書が埋め込みを使う前提の案内を持つ');
+  return out;
+}
 function llmGatewayEnv(docs) {
   const d = docs.find((x) => x.kind === 'Deployment' && /llmgateway/.test(x.metadata.name));
   const c = d ? (d.spec.template.spec.containers || [])[0] || {} : {};
@@ -630,7 +646,7 @@ const KEYCLOAK_AST_CALLERS = [
   'notification-service', 'order-execution-service', 'report-service', 'risk-management-service', 'trade-decision-service',
 ];
 const KEYCLOAK_HTTPS_PORT = 8443;
-/** IADR-0703: サーバ証明書の期限の測りの、受け口の側の入りの別宣言（deploy/cloud/tls-cert-probe）。形は scripts/deploy-cloud-egress-audit.test.js も固定する。 */
+/** IADR-0704: サーバ証明書の期限の測りの、受け口の側の入りの別宣言（deploy/cloud/tls-cert-probe）。形は scripts/deploy-cloud-egress-audit.test.js も固定する。 */
 const TLS_PROBE_INGRESS = Object.freeze({ keycloak: 'keycloak-ingress-tls-cert-probe', llmgateway: 'llmgateway-ingress-tls-cert-probe' });
 /** 入りの宣言の形（規則が 1 つ・送り元の [名前空間, app] の一覧・ポートの一覧）。キーの並びに依らない。 */
 function tlsProbeIngressShape(d) {
@@ -687,7 +703,7 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
   // 入り: Keycloak を選ぶ許可はちょうど 1 枚。各要素は名前空間 かつ Pod（AND）。名前空間だけの要素は名前空間の全 Pod へ開く。
   const isKc = (d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'platform-infra'
     && JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'keycloak' } }) && (d.spec.ingress || []).length;
-  // IADR-0703: サーバ証明書の期限の測り（deploy/cloud/tls-cert-probe）の入りは別宣言。同じ名前空間の測りの Pod から 8443 だけ、の形のときだけ数から外す。
+  // IADR-0704: サーバ証明書の期限の測り（deploy/cloud/tls-cert-probe）の入りは別宣言。同じ名前空間の測りの Pod から 8443 だけ、の形のときだけ数から外す。
   const probe = docs.find((d) => isKc(d) && d.metadata.name === TLS_PROBE_INGRESS.keycloak);
   if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[[null, 'tls-cert-probe']], [`TCP/${KEYCLOAK_HTTPS_PORT}`]])) {
     out.push(`infra: ${probe.metadata.name} が「測りの Pod から 8443 だけ」でない`);
@@ -709,7 +725,7 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
         seen[ns] = [...(seen[ns] || []), ...pods].sort();
       }
       // IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
-      // IADR-0703: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
+      // IADR-0704: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
       const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients', 'keycloak-master-admin'] };
       if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
         out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);
@@ -1050,7 +1066,7 @@ function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
   return out;
 }
 
-module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS, tlsProbeIngressShape, TLS_PROBE_INGRESS, WORKLOAD_KINDS, podSpec };
+module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, cloudEmbeddingKeyProblems, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS, tlsProbeIngressShape, TLS_PROBE_INGRESS, WORKLOAD_KINDS, podSpec };
 
 if (require.main === module) {
   let failed = 0;
@@ -1277,7 +1293,15 @@ if (require.main === module) {
       .find((v) => v.configMap && v.configMap.name === 'rabbitmq-permissions').configMap.optional = true;
     const chart = renderChart(['--set', 'services.llmgateway.extraEnvAppend=null']);
     const p = stage2Problems(chart, infra);
-    for (const want of [/vhost 全体の権限/, /表を読まない/, /optional/, /RouteValidation__Mode/, /CallerPolicy__Mode/, /CallLimits__Mode/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    for (const want of [/vhost 全体の権限/, /表を読まない/, /optional/, /RouteValidation__Mode/, /CallerPolicy__Mode/, /CallLimits__Mode/,
+      /CallerPolicy__EmbeddingMode/, /CallLimits__EmbeddingMode/, /SyntheticMarker__Mode/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
+  ok('IADR-0702: クラウドの OpenBao の手順書は埋め込みの鍵を案内しない（クラウドでは埋め込みを使わない）', () => {
+    assert.deepStrictEqual(cloudEmbeddingKeyProblems(fs.readFileSync(path.join(REPO_ROOT, CLOUD_OPENBAO_RUNBOOK), 'utf8')), []);
+  });
+  ok('IADR-0702 陰性対照: 埋め込みの鍵の案内を検出する', () => {
+    const p = cloudEmbeddingKeyProblems('| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key`（埋め込みを使うなら `voyage-api-key` も） |');
+    assert.strictEqual(p.length, 2, p.join('\n'));
   });
   ok('IADR-0689: 秘匿管理の描画 — OpenBao は dev モードでなく、ローカルと同じ digest、raft・値を記録しない監査。受け口に入れるのは ESO の controller だけ。Secret・ClusterSecretStore を描かない', () => {
     assert.deepStrictEqual(vaultProblems(renderVault(), renderEso(), localVaultImage()), []);

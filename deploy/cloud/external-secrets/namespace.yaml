@@ -1,4 +1,4 @@
-# NFR-05, NFR-18, IADR-0703: ESO（External Secrets Operator。helm の chart 2.8.0）の名前空間を、chart より先に宣言で作る
+# NFR-05, NFR-18, IADR-0704: ESO（External Secrets Operator。helm の chart 2.8.0）の名前空間を、chart より先に宣言で作る
 #   （kubectl apply -k deploy/cloud/external-secrets。README §3 は helm に名前空間を作らせない）。ESO は OpenBao の値を Secret へ写す（全名前空間の Secret を書ける。chart の ClusterRole）ので、
 #   その Pod が侵害されたときに広がる先と、受け付ける Pod を先に絞る。
 #   - Pod Security Admission は enforce・warn・audit とも restricted（chart 2.8.0 の 3 つの Pod は root でなく、capability を全部落とし、
@@ -46,7 +46,7 @@ spec:
           podSelector: { matchLabels: { app: openbao } }
       ports:
         - { protocol: TCP, port: 8443 }
-    # API サーバー（ポートだけ。上の注記）。🔴 宛先を問わず 443・6443 へ出られる（IADR-0703 残余 5。宛先で絞るのは移行の門で測ってから）。
+    # API サーバー（ポートだけ。上の注記）。🔴 宛先を問わず 443・6443 へ出られる（IADR-0704 残余 5。宛先で絞るのは移行の門で測ってから）。
     - ports:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 6443 }

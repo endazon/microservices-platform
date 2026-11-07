@@ -1,5 +1,5 @@
 ---
-title: IADR-0703 クラウドの基盤の外向きの通信を名前の許可表を持つ中継 1 つに集め、master realm の一時管理者を要る間だけ置き、ESO の名前空間を restricted と到達の制限で先に作り、k3s の API サーバーの監査の記録を足し、サーバ証明書の期限を受け口で測って警報にする
+title: IADR-0704 クラウドの基盤の外向きの通信を名前の許可表を持つ中継 1 つに集め、master realm の一時管理者を要る間だけ置き、ESO の名前空間を restricted と到達の制限で先に作り、k3s の API サーバーの監査の記録を足し、サーバ証明書の期限を受け口で測って警報にする
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_cloud-egress-audit-cert-expiry.md
 ---
 
-# IADR-0703: クラウドの外向きの中継・一時管理者・ESO の名前空間・API の監査・証明書の期限
+# IADR-0704: クラウドの外向きの中継・一時管理者・ESO の名前空間・API の監査・証明書の期限
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定（クラウドの最小構成の稼働前の硬化の 1 組）。
 

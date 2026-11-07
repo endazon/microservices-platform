@@ -29,6 +29,10 @@ TIMEOUT_S="${AST_DB_USERS_TIMEOUT_S:-600}"
 case "$TIMEOUT_S" in '' | *[!0-9]*) echo "ERROR: AST_DB_USERS_TIMEOUT_S は秒数（正の整数）" >&2; exit 2 ;; esac
 live_opt_in_require "ast-db-users.sh"
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl が無い" >&2; exit 1; }
+# NFR-18, IADR-0703 決定 2: 宛先のクラスタを確かめ、以後の kubectl をその context に固定する。
+# shellcheck source=deploy/cloud/lib/target-cluster.sh
+. "$ROOT/deploy/cloud/lib/target-cluster.sh"
+ct_require_target "ast-db-users.sh"
 
 # 段を差し替えた Job の宣言（印の行は 1 つだけ。在るはずの行が無ければ止める）
 manifest="$(sed "s/^\(          args: \)\[\"apply\"\]$/\1[\"${STAGE}\"]/" "$HERE/job.yaml")"

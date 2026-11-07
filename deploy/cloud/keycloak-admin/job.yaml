@@ -1,4 +1,4 @@
-# NFR-18, IADR-0703: master realm の一時管理者の手順（master-admin.js）を流す Job。
+# NFR-18, IADR-0704: master realm の一時管理者の手順（master-admin.js）を流す Job。
 #   🔴 kustomize には入れない（Job は作り直さないと流れない）。deploy/cloud/keycloak-admin/keycloak-admin.sh --live <段> が、段（MODE）を差し替えて作り、
 #      終わるまで待ち、ログを出し、成功したら消す。
 #   - 管理者は Secret keycloak-admin（secretKeyRef だけで読む）。宛先は https://keycloak:8443 で、基盤の CA（ConfigMap platform-infra-ca）で検証する。

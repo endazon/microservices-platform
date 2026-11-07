@@ -422,7 +422,7 @@ t('T-2402-36 バックアップ: 保持（lifecycle）と Object Lock の日数�
   for (const r of lc.Rules) assert.ok(r.NoncurrentVersionExpiration, `${r.ID}: 古い版を消さないと容量が積み上がる`);
 });
 const np = find(bds, 'NetworkPolicy', 'platform-backup-egress') || EMPTY;
-t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・外向きの中継〔IADR-0703。外の 443 へ直には出ない〕だけ。受けは無し）', () => {
+t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・外向きの中継〔IADR-0704。外の 443 へ直には出ない〕だけ。受けは無し）', () => {
   assert.ok(np.text, 'NetworkPolicy platform-backup-egress が無い');
   assert.deepStrictEqual(np.obj.spec.policyTypes, ['Egress']);
   const ports = new Set();

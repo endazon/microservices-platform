@@ -5,10 +5,10 @@
 #   - 入り・出とも既定で拒否する。出は名前解決と同じ名前空間（Keycloak → Postgres）だけ。
 #   - Postgres ← 取引ユニットの DB を持つサービス・Keycloak。ブローカ ← 取引ユニットのブローカを使うサービス（users.txt の AST の行）。
 #   - Keycloak ← 取引ユニットの Keycloak を呼ぶ 11 個の Pod・MSP の LLM ゲートウェイ（トークンの発行・鍵の取得）・稼働中の realm へ
-#     機密クライアントを足す Job（IADR-0700。流すときだけ）・master realm の一時管理者を開け閉めする Job（IADR-0703。流すときだけ）。HTTPS（8443）だけ
+#     機密クライアントを足す Job（IADR-0700。流すときだけ）・master realm の一時管理者を開け閉めする Job（IADR-0704。流すときだけ）。HTTPS（8443）だけ
 #     （IADR-0693。OpenD は Keycloak を呼ばないので入れない）。collector ← 取引ユニットの OTLP を送る 11 個の Pod・LLM ゲートウェイ（gRPC の 4317 だけ。IADR-0697）。
 # microservices-platform（MSP は LLM ゲートウェイだけ）:
-#   - 出は既定で拒否する。LLM ゲートウェイだけに、名前解決・Keycloak（8443）・collector・外向きの中継（3128。提供元の API は中継が名前の許可表で絞る。IADR-0703）を許す。
+#   - 出は既定で拒否する。LLM ゲートウェイだけに、名前解決・Keycloak（8443）・collector・外向きの中継（3128。提供元の API は中継が名前の許可表で絞る。IADR-0704）を許す。
 #   - 入りも既定で拒否する。LLM ゲートウェイへは、取引ユニットの呼び出し元（報告書・取引判断）の 8080（REST）だけを許す。
 #     chart の fromAst の規則は networkPolicy.enabled の内側にあり、それを有効にすると chart の出の既定拒否も外せない
 #     （values-cloud.yaml は chart の NetworkPolicy を描かない）ので、入りもここで持つ。送り元と行き先は chart の fromAst.llmGateway と同じ。
@@ -130,7 +130,7 @@ spec:
         # IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る。管理の API を 8443 で呼ぶ）。
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
           podSelector: { matchLabels: { app: keycloak-add-clients } }
-        # IADR-0703: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
+        # IADR-0704: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
           podSelector: { matchLabels: { app: keycloak-master-admin } }
       ports:
@@ -236,7 +236,7 @@ spec:
       ports:
         - { protocol: TCP, port: 4317 }
     # 提供元の API（HTTPS）は外向きの中継（platform-infra の egress-proxy。名前の許可表で宛先を絞る）を経る。外の 443 へ直には出さない
-    #   （IADR-0703。HTTPS_PROXY は values-cloud.yaml）。
+    #   （IADR-0704。HTTPS_PROXY は values-cloud.yaml）。
     - to:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
           podSelector: { matchLabels: { app: egress-proxy } }

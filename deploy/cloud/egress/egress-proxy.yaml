@@ -1,4 +1,4 @@
-# NFR-18, IADR-0703: クラウドの基盤の外向きの中継（platform-infra）。
+# NFR-18, IADR-0704: クラウドの基盤の外向きの中継（platform-infra）。
 #   - クラスタの外の 443 へ出る Pod（LLM ゲートウェイ・バックアップ・Alertmanager）は、直に外へ出ず、この中継を HTTPS_PROXY として使う。
 #     それらの Pod の出の NetworkPolicy は、外の 443 ではなくこの中継の 3128 だけを許す（infra/networkpolicy.yaml・backup/・observability/）。
 #   - 中継は CONNECT <名前>:443 だけを受け、名前の許可表に在る宛先へだけ繋ぐ（proxy.js。TLS は端から端まで。中身を読まない）。

@@ -103,7 +103,7 @@ public class VoyageEmbeddingKeyTests
             Allowed: true, EndpointName: "voyage-managed", Provider: "voyage", Tier: ProtectionTier.B,
             Model: "voyage-3.5", Dimensions: 1024, Collection: "knowledge_chunks_voyage_3_5", Reason: "test");
         var useCase = new EmbedUseCase(new FixedRouter(decision), services, NullLoggerFactory.Instance,
-            new LogOccurrenceThrottle(TimeProvider.System));
+            new LogOccurrenceThrottle(TimeProvider.System), TestCallLimiters.Default());
 
         var resp = await useCase.ExecuteAsync(
             new EmbedApiRequest("本文", "internal", EmbedPurpose.Index), TestContext.Current.CancellationToken);
@@ -137,7 +137,7 @@ public class VoyageEmbeddingKeyTests
         IEmbeddingProvider provider, RecordingLoggerFactory logs, TimeProvider time)
         => new(new FixedRouter(VoyageRoute),
             new ServiceCollection().AddKeyedSingleton("voyage", provider).BuildServiceProvider(),
-            logs, new LogOccurrenceThrottle(time));
+            logs, new LogOccurrenceThrottle(time), TestCallLimiters.Default(time));
 
     // PoC では取り込みの再試行のたびに鍵未設定の失敗がスタック付きで記録され（1,146 回）、他の行を押し出した。
     // 何回呼んでも Warning 1 行（スタックなし）であり、応答（一時障害）は変わらない。

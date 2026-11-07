@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-16, NFR-21, IADR-0703: クラウドの基盤のサーバ証明書（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ）の**受け口が実際に出している**証明書の
+ * NFR-16, NFR-21, IADR-0704: クラウドの基盤のサーバ証明書（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ）の**受け口が実際に出している**証明書の
  * 期限を測り、Prometheus へ系列として出す（警報は observability/prometheus.yaml の cloud-tls-expiry）。
  *
  * なぜ受け口を測るか: ESO は半年ごとに Secret を作り直すが、Postgres・RabbitMQ・LLM ゲートウェイは作り直す（rollout restart）まで古い証明書を出し続ける

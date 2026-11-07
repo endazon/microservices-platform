@@ -1,4 +1,4 @@
-# NFR-16, NFR-21, IADR-0703: サーバ証明書（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ）の期限の測り（platform-infra）。
+# NFR-16, NFR-21, IADR-0704: サーバ証明書（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ）の期限の測り（platform-infra）。
 #   - 受け口へ TLS で繋いで出している証明書の notAfter を読み（Postgres は SSLRequest の後）、基盤の CA（ConfigMap platform-infra-ca）で鎖と名前を確かめる。
 #     中身は送らない。Secret を読まない（鍵に触れない）。ServiceAccount のトークンも持たない。10 分ごと。
 #   - CA の期限: platform-infra-ca（OpenBao の PKI の CA）と openbao-ca（OpenBao の受け口の CA。IADR-0696。受け口の証明書の期限は CA から導く）。

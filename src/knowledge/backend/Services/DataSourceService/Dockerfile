@@ -3,7 +3,7 @@ WORKDIR /repo
 COPY src/Directory.Build.props src/Directory.Packages.props ./
 COPY src/platform/backend/ platform/backend/
 COPY src/knowledge/backend/ knowledge/backend/
-RUN dotnet restore knowledge/backend/Services/DataSourceService/DataSourceService.csproj
+RUN dotnet restore knowledge/backend/Services/DataSourceService/DataSourceService.csproj --locked-mode
 RUN dotnet publish knowledge/backend/Services/DataSourceService/DataSourceService.csproj \
     -c Release -o /app/publish --no-restore
 

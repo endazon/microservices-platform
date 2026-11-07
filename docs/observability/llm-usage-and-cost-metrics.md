@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [FR-10, FR-11, NFR, NFR-18, NFR-21, UC-05, SC-10]
 adrs: [ADR-0006, ADR-0010, ADR-0022, ADR-0025, ADR-0038, ADR-0044, ADR-0076]
-iadrs: [IADR-0698, IADR-0692, IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677, IADR-0678]
-specs: [20261107_llm-cost-cap-persistence, 20261107_cloud-llm-cost-cap-and-k3s-pin, 20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check, 20261105_2404_llm-gateway-call-limits]
+iadrs: [IADR-0702, IADR-0698, IADR-0692, IADR-0110, IADR-0164, IADR-0212, IADR-0225, IADR-0265, IADR-0304, IADR-0322, IADR-0378, IADR-0466, IADR-0531, IADR-0533, IADR-0601, IADR-0671, IADR-0677, IADR-0678]
+specs: [20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_llm-cost-cap-persistence, 20261107_cloud-llm-cost-cap-and-k3s-pin, 20261030_2165_llm-usage-incomplete-panels, 20260823_issue-443_llm-usage-metrics-and-pricing, 20260905_issue-1203_synthetic-monitoring-marker-and-exclusion, 20260926_issue-1111_llm-budget-alert-configurable, 20261005_1741_sonnet5-price-correction, 20261010_1875_claude-5-5-models, 20261015_1902_east-west-rest-residue, 20261023_2116_llm-stream-usage-on-abort, 20261105_2396_llm-gateway-prompt-caching, 20261105_2411_llm-route-startup-check, 20261105_2404_llm-gateway-call-limits]
 issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #2116, #2396, #2411, #2404, planning#783]
 -->
 
@@ -222,6 +222,16 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
   - 起動の後は前回の値を読み込んでから判定する。**読めない・書けない間、`Enforce` は費用の上限を持つ呼び手の呼び出しを送らない**
     （種類 `cost_state`。黙って枠を 0 に戻す側へは倒さない）。`Report` は送って数える。
   - 書き手は 1 つだけ（ファイルの排他の鍵）。置き場を持つ構成は 1 レプリカ・Recreate に限る（chart が描画で止める）。
+- 🔴 **埋め込み（gRPC `LlmEmbedding/Embed`）も同じ判定器を通る**（［2026-11-07］）。
+  - 呼び手の要求数（`caller_rate`）と当日の費用（`caller_cost`）は補完と**同じ呼び手の枠に合算する**（呼び手の日の上限は補完と埋め込みの合計）。
+    用途の枠は固定の `embedding`（`llm_purpose="embedding"`。`purpose_rate`・`purpose_cost` のキーにも書ける）。入力の長さは `prompt_length` で見る。
+  - 見込み額・実額は入力の文字数を入力トークンとみなし、`Llm:CallLimits:EmbeddingPrices`（モデル → 百万トークンあたりの単価）で換算する。
+    表に無いモデルは 0 にせず `UnknownModelPrice` の入力単価で数える。外へ出ない経路（ティア A）は費用を数えない（要求数と長さは見る）。
+  - 段は補完とは別の `Llm:CallLimits:EmbeddingMode`（`Off`＝判定も計上もしない／`Report`＝既定／`Enforce`）。`Enforce` で超えた呼び出しは送らず
+    `Embedded=false` で返す（長さは再試行しない、ほかは再試行できる）。`Enforce` は既定の当日の費用の上限が無いと起動しない。
+- 🔴 **合成監視の標識を引き継ぐ呼び手は許可集合 `Llm:SyntheticMarker:TrustedCallers` に限る**（［2026-11-07］。既定は AI 分析・検索の 2 呼び手）。
+  段 `Llm:SyntheticMarker:Mode` の既定 `Report` は従前どおり引き継ぎ、許可集合の外の呼び手が付けた標識を `llm_synthetic_marker_untrusted_total` に数える。
+  `Enforce` は許可集合の外の標識を無視し、実利用として費用に計上する（送信は段に依らず止めない）。
 
 ## 監視観点
 
@@ -233,6 +243,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 | モデル構成の変化 | モデル別の費用 | 上位モデルの比率が上がると回数が同じでも費用は増える |
 | 用途の定義漏れ | `llm_purpose="other"` の増加 | 定義していない用途が来ている（ルーティングが既定へ落ちている） |
 | 送る前の上限 | `llm_call_limit_exceeded_total` の増加 | `report` なら「止めていたら止まった」呼び出し。呼び手・種類ごとに、上限が低すぎるのか呼び出しが多すぎるのかを見分ける |
+| 合成の標識の出所 | `llm_synthetic_marker_untrusted_total` の増加 | 許可集合の外の呼び手が合成の標識を付けている。`report` では費用から外れている（過小）。呼び手を確かめ、正規なら許可集合へ足し、そうでなければ `Enforce` にする |
 | 費用の枠の置き場 | `llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}` > 0 | 置き場を扱えず、`Enforce` では呼び出しを送っていない。ゲートウェイのログと置き場のボリュームを見る |
 | 費用の枠の保存の遅さ | `histogram_quantile(0.99, sum by (le) (rate(llm_call_limit_state_save_duration_seconds_bucket[1h])))` | 0.1 秒を超えたら、警報を足すか書き込みを錠の外へ出すかを判断する（今は警報を置かない） |
 | 再起動の繰り返し | `changes(max(llm_gateway_start_time_seconds)[30m:1m])` | 短い間に何度も起動し直している（起動で止まる理由をログで見る） |

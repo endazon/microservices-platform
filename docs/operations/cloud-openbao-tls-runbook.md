@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-16, NFR-05, NFR-18]
-iadrs: [IADR-0696, IADR-0689, IADR-0693, IADR-0682, IADR-0703]
+iadrs: [IADR-0696, IADR-0689, IADR-0693, IADR-0682, IADR-0704]
 specs: [20261107_cloud-openbao-tls]
 -->
 

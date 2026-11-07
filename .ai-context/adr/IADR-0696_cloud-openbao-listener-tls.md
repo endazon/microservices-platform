@@ -2,7 +2,7 @@
 title: IADR-0696 クラウドの秘匿管理（OpenBao）の受け口を TLS の 8443 だけにする。受け口の証明書は OpenBao の外でオーナーが流すスクリプトが作り（CA の鍵は署名の後に捨てる）、ESO とオーナーの手順は CA で検証する。稼働中の構成は併存の段を経て平文を閉じる（IADR-0689 決定 3 を改める）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-16, NFR-05, NFR-18, IADR-0689, IADR-0693, IADR-0682, IADR-0525, IADR-0703]
+related_ids: [NFR-16, NFR-05, NFR-18, IADR-0689, IADR-0693, IADR-0682, IADR-0525, IADR-0704]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -106,8 +106,8 @@ related_specs:
 3. ESO の名前空間（`external-secrets`）に NetworkPolicy を置いていない（IADR-0689 残余 4 のまま）。
 4. `tls-cert.sh` は署名の後に CA の鍵の変数を空にするが、シェル（bash）はメモリ上からの消去を保証しない（鍵はプロセスが終わるまでそのメモリに残り得る。ディスク・引数・環境には出ない）。
 
-## ［2026-11-07 追記 / IADR-0703］残余 2・3 を閉じた
+## ［2026-11-07 追記 / IADR-0704］残余 2・3 を閉じた
 
 - 残余 2: 受け口の証明書の期限の警報 `OpenBaoListenerCertExpiringSoon` を置いた。受け口は ESO だけが届くので測りに行かず、決定 1 の `issue`・`renew` が同じ回に作る
-  CA（2 年）と受け口の証明書（1 年）の関係から、ConfigMap `openbao-ca` の最新の CA の notAfter − 365 日で導く（IADR-0703 決定 5。日数は試験が突き合わせる）。
-- 残余 3: IADR-0689 残余 4 と同じく閉じた（IADR-0703 決定 3）。
+  CA（2 年）と受け口の証明書（1 年）の関係から、ConfigMap `openbao-ca` の最新の CA の notAfter − 365 日で導く（IADR-0704 決定 5。日数は試験が突き合わせる）。
+- 残余 3: IADR-0689 残余 4 と同じく閉じた（IADR-0704 決定 3）。

@@ -60,8 +60,10 @@ case "$CMD" in
 esac
 ob_readable "$OPERATOR_FILE" "configure.sh が書いたオーナー用の資格のファイル（--operator-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+ob_identity_guard "$IDENTITY"
 live_opt_in_require "seed-secrets.sh"
 ob_need kubectl age node
+ct_require_target "seed-secrets.sh"
 
 # Pod の中の共通の関数（値を持たない）
 # shellcheck disable=SC2016

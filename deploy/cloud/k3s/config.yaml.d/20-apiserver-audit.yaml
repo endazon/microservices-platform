@@ -1,4 +1,4 @@
-# NFR-18, IADR-0703: k3s の API サーバーの監査の記録（ノードの /etc/rancher/k3s/config.yaml.d/20-apiserver-audit.yaml に置く。README §1-4）。
+# NFR-18, IADR-0704: k3s の API サーバーの監査の記録（ノードの /etc/rancher/k3s/config.yaml.d/20-apiserver-audit.yaml に置く。README §1-4）。
 #   起動の引数（INSTALL_K3S_EXEC）と同じ扱いで k3s が読む（config.yaml.d の追加の設定。キーの + は前の設定に足す）。
 #   記録と方針はどちらも /var/lib/rancher の下（LUKS で暗号化した領域。README §1-2）。暗号化した領域をマウントする前に k3s は起動しない（drop-in）。
 kube-apiserver-arg+:

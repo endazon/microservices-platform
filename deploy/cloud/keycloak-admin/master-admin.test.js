@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * NFR-18, IADR-0703: master-admin.js（master realm の一時管理者を要る間だけ置く）の試験。稼働の Keycloak の代わりに、トークンの口と管理の API を
+ * NFR-18, IADR-0704: master-admin.js（master realm の一時管理者を要る間だけ置く）の試験。稼働の Keycloak の代わりに、トークンの口と管理の API を
  * 記録する偽物（fetch の差し替え）を当てる。scripts/deploy-cloud-egress-audit.test.js が子のプロセスで走らせる。
  *
  *   A1 harden: master realm の総当たりの検知を platform realm と同じ値で有効にし、2 回目は書かない。

@@ -83,6 +83,9 @@ services:
     #   - 経路の設定の不足は起動で止める（IADR-0677）
     #   - 呼び手ごとの許可表に無い用途・モデルは 403（IADR-0684。取引ユニットの呼び手は既定の表に在る）
     #   - 入力の上限と要求数・当日の費用の上限を超えたら送らない（IADR-0678。入力と要求数の上限は既定の値）
+    # NFR-18, NFR-21, IADR-0702（2026-11-07）: 埋め込み（gRPC Embed）も同じ許可表と上限を段 2 で通す。クラウドでは埋め込みを使わないので、
+    #   許可のある呼び手は描かれず（取り込み・検索はクラウドに無い）、取引ユニットの呼び手には許可が無い＝埋め込みは呼べない。
+    #   合成監視の標識は許可集合（AI 分析・検索。クラウドに無い）の呼び手からだけ引き継ぐ（段 2。外の呼び手の標識は費用に計上する）。
     # NFR-18, NFR-21, IADR-0692（2026-11-07 の所有者の裁定）: 当日の費用の上限は、全呼び手の合計で 1 日 20 USD。
     #   - 通貨は単価表の通貨（Llm:Pricing:Currency＝USD）。日の区切りは UTC の 0 時（ゲートウェイの判定器が固定で持つ）。
     #   - 取引ユニットの呼び手が主（18 USD）。既定（0.5 USD）は呼び手の項目が無い呼び手のそれぞれに効く ——
@@ -102,10 +105,13 @@ services:
       - { name: Llm__RouteValidation__Mode, value: "Fail" }
       - { name: Llm__CallerPolicy__Mode, value: "Enforce" }
       - { name: Llm__CallLimits__Mode, value: "Enforce" }
+      - { name: Llm__CallerPolicy__EmbeddingMode, value: "Enforce" }
+      - { name: Llm__CallLimits__EmbeddingMode, value: "Enforce" }
+      - { name: Llm__SyntheticMarker__Mode, value: "Enforce" }
       - { name: Llm__CallLimits__Default__DailyCostLimit, value: "0.5" }
       - { name: Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit, value: "18" }
       - { name: Llm__CallLimits__SpendStore__Path, value: "/var/lib/llm-gateway/daily-spend.json" }
-      # NFR-18, IADR-0703: 提供元の API へは外向きの中継（platform-infra の egress-proxy。名前の許可表）を経る（外の 443 へ直には出さない。
+      # NFR-18, IADR-0704: 提供元の API へは外向きの中継（platform-infra の egress-proxy。名前の許可表）を経る（外の 443 へ直には出さない。
       #   infra/networkpolicy.yaml の llmgateway-egress）。Keycloak（https）・collector（http）はクラスタの中なので中継を経ない（NO_PROXY）。
       - { name: HTTPS_PROXY, value: "http://egress-proxy.platform-infra.svc.cluster.local:3128" }
       - { name: NO_PROXY, value: "localhost,127.0.0.1,keycloak,otel-collector,.svc,.cluster.local" }

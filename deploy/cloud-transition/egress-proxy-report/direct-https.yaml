@@ -1,4 +1,4 @@
-# NFR-18, IADR-0703: 移す間だけ残す、外の 443 への直の出（最終の段の前の形と同じ。私設・リンクローカル・CGNAT の範囲を除く）。
+# NFR-18, IADR-0704: 移す間だけ残す、外の 443 への直の出（最終の段の前の形と同じ。私設・リンクローカル・CGNAT の範囲を除く）。
 #   名前は *-egress-direct-https-transition（最終の段の宣言には無い。手順書の最後の段で名指しで消す）。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

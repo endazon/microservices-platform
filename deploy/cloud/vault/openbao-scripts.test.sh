@@ -13,6 +13,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BAO="${BAO_BIN:-$(command -v bao || true)}"
 [ -n "$BAO" ] && [ -x "$BAO" ] || { echo "✗ bao が無い。本試験は実物の OpenBao で通すことが目的であり、飛ばさない（fail-closed）" >&2; exit 1; }
+# 絶対のパスにする（スタブの kubectl は Pod の作業場へ cd してから bao を呼ぶので、相対のパスでは見つからず「状態を読めない」で落ちる）。
+BAO="$(cd "$(dirname "$BAO")" && pwd)/$(basename "$BAO")"
 for t in age age-keygen node openssl; do command -v "$t" >/dev/null || { echo "✗ $t が無い" >&2; exit 1; }; done
 [[ "$("$BAO" version)" == *"OpenBao v2.7.1"* ]] || { echo "✗ bao の版が宣言（2.7.1）と違う: $("$BAO" version)" >&2; exit 1; }
 
@@ -51,6 +53,14 @@ chmod +x "$W/bin/bao"
 cat > "$W/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$KLOG"
+# IADR-0703 決定 2: 宛先のクラスタの確かめ（lib/target-cluster.sh）に答え、以後の呼び出しは確かめた context に固定されていることを求める。
+case "$*" in
+  "config current-context") echo cloud-test; exit 0 ;;
+  "config view --minify --context cloud-test -o jsonpath={.clusters[0].cluster.server}") echo "https://127.0.0.1:6443"; exit 0 ;;
+  "--context cloud-test get namespace kube-system -o jsonpath={.metadata.uid}") echo "$STUB_CLUSTER_UID"; exit 0 ;;
+esac
+[ "${1:-}" = --context ] && [ "${2:-}" = cloud-test ] || { echo "stub: context に固定されていない呼び出し: $*" >&2; exit 9; }
+shift 2
 # 試験の差し込み（1 回だけ）: KUBECTL_FAIL_ON は走らせずに落とす。KUBECTL_FAIL_AFTER は走らせてから落とす（効いたのに結果が届かない形）。
 if [ -n "${KUBECTL_FAIL_ON:-}" ] && [[ "$*" == *"$KUBECTL_FAIL_ON"* ]] && [ ! -e "$FAIL_DONE" ]; then
   : > "$FAIL_DONE"; echo "injected failure (before): $KUBECTL_FAIL_ON" >&2; exit 1
@@ -92,6 +102,9 @@ esac
 EOF
 chmod +x "$W/bin/kubectl"
 export FAIL_DONE="$W/fail.done" KLOG="$W/kubectl.log" POD_HOME="$W/pod" CM_DIR="$W/cm" STUB_BIN="$W/bin" PATH="$W/bin:$PATH"
+# IADR-0703 決定 2: 手元に記録したクラスタの印（スタブが答える UID と同じ）。
+export STUB_CLUSTER_UID="0b6c2f4e-1d3a-4c5b-9e8f-7a6b5c4d3e2f" CLOUD_CLUSTER_MARK_FILE="$W/cluster-mark"
+printf '%s\n' "$STUB_CLUSTER_UID" > "$CLOUD_CLUSTER_MARK_FILE"
 export TLS_DIR="$W/tls" K8S_NAMESPACES="openbao platform-infra microservices-platform ai-stock-trading"
 # Pod の中の環境に置く宛先は平文（手順の側が TLS の宛先と CA を明示しなければ届かない）。手順の宛先は試験の OpenBao の TLS の口。
 export POD_BAO_ADDR="http://127.0.0.1:${PORT}" OB_POD_ADDR="$TEST_BAO_ADDR" OB_POD_TLS_DIR="$W/tls" OB_TLS_SYNC_WAIT_S=10

@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-16, NFR-18, NFR-05]
-iadrs: [IADR-0693, IADR-0689, IADR-0674, IADR-0591, IADR-0086, IADR-0703]
+iadrs: [IADR-0693, IADR-0689, IADR-0674, IADR-0591, IADR-0086, IADR-0704]
 specs: [20261107_cloud-keycloak-tls]
 -->
 

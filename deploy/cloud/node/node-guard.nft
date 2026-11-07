@@ -1,0 +1,25 @@
+#!/usr/sbin/nft -f
+# NFR-18, IADR-0703 決定 4: クラウドのノードの中の 2 枚目の防御（提供元のファイアウォールの内側）。入りだけを絞る（転送・出は触らない）。
+# 受けるもの: ループバック・確立済みの戻り・ICMP（v4/v6。v6 の近隣探索に要る）・SSH（22）・DHCP の応答（v4 の 68・v6 の 546）・
+#             Pod からノードへ（cni0・flannel.1。Pod から API サーバーへの経路を含む）。それ以外は guard_tail へ。
+# 段: このファイルだけを当てると「報告」（落とさずに数えて記録する）。数えた中身を確かめてから node-guard-enforce.nft で「落とす」へ替える。
+# 🔴 自分の表（inet node_guard）だけを作り直す。`flush ruleset` を使わない（k3s・flannel・kube-router の表を消すと Pod の通信が止まる）。
+# 手順は docs/operations/cloud-node-hardening-runbook.md。
+table inet node_guard {}
+delete table inet node_guard
+table inet node_guard {
+  chain input {
+    type filter hook input priority filter; policy accept;
+    iif "lo" accept
+    ct state established,related accept
+    meta l4proto { icmp, ipv6-icmp } accept
+    tcp dport 22 accept
+    udp dport { 68, 546 } accept
+    iifname { "cni0", "flannel.1" } accept
+    jump guard_tail
+  }
+  chain guard_tail {
+    limit rate 10/minute log prefix "node-guard would-drop: " level info
+    counter
+  }
+}
