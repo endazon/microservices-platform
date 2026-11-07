@@ -65,7 +65,7 @@ findmnt -T /etc/rancher; findmnt -T /var/log/pods                 # どちらも
 ```
 
 - 再起動の後は `cryptsetup open` と `mount`（と 2 つの bind mount）を人が行い、それから k3s を起こす（パスフレーズはノードに置かない。手順は 1-5）。
-- 既に動いているノードを移す手順（止めて写し、管理者の資格を作り直す）は[ノードの防御の手順書](../../docs/operations/cloud-node-hardening-runbook.md) §1。
+- 既に動いているノードを移す手順（止めて写し、クラスタの CA ごと作り直して古い管理者の資格を無効にする）は[ノードの防御の手順書](../../docs/operations/cloud-node-hardening-runbook.md) §1。
 - **k3s は暗号化した領域をマウントする前に起動させない**（起動すると `/var/lib/rancher` がルートのディスクの上に平文で作られる）。1-4 の drop-in と `systemctl disable k3s` で止める。
 
 ### 1-3. 時刻同期・更新の時間帯

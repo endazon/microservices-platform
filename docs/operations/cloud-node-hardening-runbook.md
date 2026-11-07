@@ -39,7 +39,7 @@ specs: [20261107_backup-owner-ops-hardening]
 | 必要なツール | ノードの `nftables`（`apt-get install -y nftables`）、`cryptsetup`、手元の `scp` |
 | 時間帯 | §1 は k3s を止める。米国の場の時間外（JST 07:00〜21:00）に行う。§2・§3 は止めないが、締め出しの備え（下）を必ず置く |
 | 締め出しの備え | Hetzner Console の画面（コンソール）から root で入れることを先に確かめる（SSH を誤って閉じたときの戻り道） |
-| 所要時間の目安 | §1 は 30 分（止める時間を含む）、§2 は 2 日（報告の段で数える期間）＋ 15 分、§3 は 15 分 |
+| 所要時間の目安 | §1 は 60 分（止める時間と、OpenBao の unseal を含む）、§2 は 2 日（報告の段で数える期間）＋ 15 分、§3 は 15 分 |
 
 ## 1. 管理者の kubeconfig と Pod のログを暗号化した領域へ寄せる（既に動いているノード）
 
@@ -61,18 +61,69 @@ specs: [20261107_backup-owner-ops-hardening]
    mount --bind /var/lib/rancher/etc-rancher /etc/rancher
    mount --bind /var/lib/rancher/pod-logs /var/log/pods
    ```
-   消してもディスクの上の領域は上書きされるまで残り得る。**管理者の資格は平文で置かれていた前提で作り直す**（次の 4）。
+   消してもディスクの上の領域は上書きされるまで残り得る。**管理者の資格は平文で置かれていた前提で無効にする**（下の 6）。
 4. k3s の drop-in（`/etc/systemd/system/k3s.service.d/10-require-encrypted-data.conf`）を `deploy/cloud/README.md` §1-4 の形にする
    （3 つのマウントを起動の条件にする）。`systemctl daemon-reload`。
-5. 管理者の資格を作り直してから起こす:
+5. k3s を起こす（次の 6 が動いている k3s へ新しい CA を渡すため）:
    ```sh
-   k3s certificate rotate                                        # 止めたまま流す（クライアントの証明書を作り直す）
    systemctl start k3s && systemctl is-active k3s
    kubectl -n platform-infra get pods                            # すべてが Ready に戻るまで見る
    ```
-   手元の kubeconfig を、新しい `/etc/rancher/k3s/k3s.yaml` から作り直す（`scp` で運び、`server:` を `https://127.0.0.1:6443` にする）。
-   古い kubeconfig で入れないこと（`kubectl get nodes` が拒まれること）を確かめる。
-6. 再起動の後の手順は `deploy/cloud/README.md` §1-5（2 つの bind mount を足した形）になる。
+6. **管理者の資格を無効にする（クラスタの CA ごと作り直す）。**
+   `k3s certificate rotate` は葉の証明書を作り直すだけで CA を変えない。Kubernetes は証明書の失効の一覧（CRL）を使わないので、
+   平文で置かれていた kubeconfig の client 証明書は、同じ client CA が信頼される限り期限まで通る。k3s の公式の文書
+   （<https://docs.k3s.io/cli/certificate> の「Certificate Authority (CA) Certificates」）は、漏れた管理者の kubeconfig を失効させるには
+   クラスタの CA を丸ごと置き換えるしかない、としている。
+   🔴 同じ文書の `rotate-default-ca-certs.sh` は新しい root を古い root で交差署名し、古い root を CA の束に残す。**古い証明書が通り続けるので、ここでは使わない。**
+   古い CA と関係のない CA を `generate-custom-ca-certs.sh` で作り、`--force` で入れる。
+   - **止まる範囲**: API とすべての Pod が再起動の間（10 分ほど）止まる。OpenBao は再起動で sealed になるので unseal する（OpenBao の初期化と unseal の手順書）。
+     単一ノードでエージェントは無いので、ノードの参加のやり直しは要らない。サービスアカウントのトークンは、今の署名の鍵を新しい鍵の後ろに残すので無効にならない。
+   1. 古い資格で今は入れることを確かめ、比べるための写しを取る（どれも暗号化した領域の中に置く）:
+      ```sh
+      install -d -m 0700 /var/lib/rancher/ca-check /var/lib/rancher/ca-old/server
+      cp -a /var/lib/rancher/k3s/server/tls /var/lib/rancher/ca-old/server/        # 戻し方（下）のための今の CA
+      grep client-certificate-data /etc/rancher/k3s/k3s.yaml | awk '{print $2}' | base64 -d > /var/lib/rancher/ca-check/old.crt
+      grep client-key-data /etc/rancher/k3s/k3s.yaml | awk '{print $2}' | base64 -d > /var/lib/rancher/ca-check/old.key
+      chmod 0600 /var/lib/rancher/ca-check/*
+      curl -s -o /dev/null -w '%{http_code}\n' --cacert /var/lib/rancher/k3s/server/tls/server-ca.crt \
+        --cert /var/lib/rancher/ca-check/old.crt --key /var/lib/rancher/ca-check/old.key https://127.0.0.1:6443/api   # 200 であること
+      ```
+   2. 新しい CA を作る。スクリプトは動いている k3s の版のタグから取り、中身を読んでから流す:
+      ```sh
+      k3s --version                                                  # 例: v1.33.5+k3s1 → タグの + は %2B と書く
+      curl -fsSL -o /root/generate-custom-ca-certs.sh \
+        https://raw.githubusercontent.com/k3s-io/k3s/<タグ>/contrib/util/generate-custom-ca-certs.sh
+      less /root/generate-custom-ca-certs.sh
+      install -d -m 0700 /var/lib/rancher/ca-new/server/tls
+      cp /var/lib/rancher/k3s/server/tls/service.key /var/lib/rancher/ca-new/server/tls/   # トークンの署名の鍵を残す
+      DATA_DIR=/var/lib/rancher/ca-new bash /root/generate-custom-ca-certs.sh
+      ```
+      空のディレクトリで流すので、root と中間の CA は新しく作られ、古い root はどの束にも入らない。
+   3. 入れて起こし直す（新しい root は古い root と交差署名していないので `--force` が要る）:
+      ```sh
+      k3s certificate rotate-ca --path=/var/lib/rancher/ca-new/server --force
+      systemctl restart k3s && systemctl is-active k3s
+      for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
+        kubectl -n "$ns" rollout restart deploy,sts,ds 2>/dev/null   # Pod が新しい root を信頼するよう、すべて起こし直す
+      done
+      kubectl get pods -A                                            # すべてが Ready に戻るまで見る（OpenBao は unseal の後）
+      ```
+   4. **古い資格が拒まれることを確かめる。** 古い kubeconfig をそのまま使うと、古い server CA でサーバを確かめられずに手元で失敗し、
+      client 証明書を拒まれたのかが分からない。**新しい server CA でサーバを確かめ、古い client 証明書だけを出す**:
+      ```sh
+      curl -s -o /dev/null -w '%{http_code}\n' --cacert /var/lib/rancher/k3s/server/tls/server-ca.crt \
+        --cert /var/lib/rancher/ca-check/old.crt --key /var/lib/rancher/ca-check/old.key https://127.0.0.1:6443/api   # 401 であること
+      kubectl get nodes                                              # 新しい /etc/rancher/k3s/k3s.yaml では入れること
+      ```
+      新しい `k3s.yaml` で入れないとき（x509 の誤り）は、葉の証明書を新しい CA で作り直す: `systemctl stop k3s && k3s certificate rotate && systemctl start k3s`。
+      1 で 200、ここで 401 なら、同じ client 証明書が CA の入れ替えで拒まれるようになった。200 のままなら止めて、2 で古い root が束に入っていないか
+      （`grep -c 'END CERTIFICATE' /var/lib/rancher/k3s/server/tls/client-ca.crt` と `openssl` で各証明書の subject を見る）を確かめる。
+   5. 片付ける: `rm -rf /var/lib/rancher/ca-check /var/lib/rancher/ca-new /var/lib/rancher/ca-old /root/generate-custom-ca-certs.sh`。
+      手元の kubeconfig を、新しい `/etc/rancher/k3s/k3s.yaml` から作り直す（`scp` で運び、`server:` を `https://127.0.0.1:6443` にする）。古いものは消す。
+   - **戻し方**: `rotate-ca` が確かめで失敗したときは何も替わらない。替えた後に起動しない・Pod が戻らないときは、1 で取った CA を戻す:
+     `k3s certificate rotate-ca --path=/var/lib/rancher/ca-old/server --force && systemctl restart k3s`（Pod も 3 と同じく起こし直す）。
+     戻すと古い資格がまた通るので、原因を直してから 6 をやり直す。片付け（5）は、替えた後にすべてが戻ったことを見てから行う。
+7. 再起動の後の手順は `deploy/cloud/README.md` §1-5（2 つの bind mount を足した形）になる。
 
 ## 2. ノードの中の 2 枚目の防御（nftables。段 1 で報告、段 2 で落とす）
 

@@ -39,10 +39,15 @@ related_specs:
 
 - 鍵は「管理」（バケットの設定・確かめ。手元だけ）と「書き込み」（クラスタの Job とリストア試験。OpenBao へ）の 2 組にする。
 - 書き込みの鍵は、提供元がバケットのポリシーで絞れるなら、保持・版の管理・ポリシーを変える操作を拒む。絞れたかは
-  `deploy/cloud/backup/check-bucket.sh probe-writer` が、**宣言と同じ設定**だけを書き込もうとして確かめる（拒まれれば合格。通っても設定は変わらない）。
+  `deploy/cloud/backup/check-bucket.sh probe-writer` が、宣言の JSON を書き込もうとして確かめる（拒まれれば合格）。書けてしまう鍵では
+  その時の設定が宣言で上書きされ、ずれがあれば跡が消えるので、`probe-writer` は書く前に verify と同じ突き合わせを行い、ずれていれば（読めなければ）書かずに止まる。
+  手順書も verify を先に流す順にする。
 - 保持の設定（版の管理・Object Lock の既定の保持・lifecycle）は、`check-bucket.sh verify` が宣言の JSON と突き合わせる（読むだけ）。オーナーが週に 1 度と、警報・障害・鍵の作り直しの後に流す。
 - 手元の鍵は `deploy/cloud/backup/s3-creds.sh` が扱う: `store` は端末から伏せて読んで age で暗号化したファイルだけを書き、`run` は復号した値をスクリプトの変数へ読み、
   `exec` するコマンドの環境（AWS_*・rclone の objstore）にだけ載せる。引数・平文のファイル・呼んだシェルには残らない。
+- `AWS_ENDPOINT_URL` を読まない古い aws CLI（v2 は 2.13.0 より前・v1 は 1.29.0 より前。aws-cli の CHANGELOG で確かめた）は、既定の AWS の宛先へ鍵で署名した要求を送る。
+  `run` は PATH の aws の版を確かめ、古い・判定できなければ鍵を渡さずに止まる。`AWS_ENDPOINT_URL_S3` も同じ宛先にし、`AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=false` を置く。
+  `check-bucket.sh` は宛先を `--endpoint-url` で明示する。
 - 手順書の検査（`scripts/runbook-secret-handling.test.js`）に 2 つの規則を足す: `set -a` の下の env ファイルの読み込みと、手元のツールの S3 の鍵の `export`（変数を渡す形でも）。
   行末の `\` で続く行はつないで読む。
 
@@ -65,7 +70,12 @@ related_specs:
 ### 決定 4 — ノード: kubeconfig と Pod のログも LUKS の領域へ。nftables の 2 枚目の防御（報告 → 落とす）。SSH は root の禁止と送り元の絞り
 
 - `/etc/rancher` と `/var/log/pods` を LUKS の領域の中のディレクトリへ bind mount し、k3s の drop-in の起動の条件に 3 つのマウントを並べる。
-  既に動いているノードは止めて写し、管理者の資格を作り直す（`k3s certificate rotate`）。
+  既に動いているノードは止めて写し、平文で置かれていた管理者の資格を、クラスタの CA ごと作り直して無効にする（`k3s certificate rotate-ca --force`。
+  古い CA と関係のない CA を `generate-custom-ca-certs.sh` で作る）。`k3s certificate rotate` は葉の証明書を作り直すだけで CA を変えず、
+  Kubernetes は CRL を使わないので、古い client 証明書が期限まで通る。k3s の公式の文書（https://docs.k3s.io/cli/certificate 「Certificate Authority (CA) Certificates」）は、
+  漏れた管理者の kubeconfig を失効させるには CA を丸ごと置き換えるしかないとする。既定の `rotate-default-ca-certs.sh` は古い root を CA の束に残すので使わない
+  （k3s の `contrib/util/rotate-default-ca-certs.sh`。main `dca306c81c44` で確かめた）。`rotate-ca` は動いている k3s へ送る（`pkg/cli/cert/cert.go` が `/v1-k3s/cert/cacerts` へ PUT する）。
+  拒まれることは、新しい server CA でサーバを確かめて古い client 証明書だけを出し、`/api` が 200 から 401 に替わることで確かめる。
 - ノードの中の防御は nftables の自分の表（`inet node_guard`）だけを作り直す（`flush ruleset` を使わない）。入りだけを絞り、受けるのはループバック・確立済みの戻り・ICMP・
   22・DHCP の応答・Pod からの口（cni0・flannel.1）。既定の規則は「報告」（数えて記録する）で、`node-guard-enforce.nft` で「落とす」へ替える。替えるときは 10 分の後に報告へ戻す備えを置く。
 - SSH は `PermitRootLogin no`・`AllowUsers`・送り元の固定 IP への絞りを必須にする。
@@ -80,7 +90,7 @@ related_specs:
 ## 残余リスク
 
 - 提供元が鍵ごとにバケットの操作を絞れないときは、書き込みの鍵で 28 日より古い回の保持を縮められ得る。直近 28 日の回は Object Lock が守る。週に 1 度の verify で変化に気付き、管理の鍵で戻す。
-- bind mount の前にルートのディスクへ書かれた kubeconfig とログは、消しても領域が上書きされるまで残り得る。管理者の資格は作り直す。Pod の emptyDir（`/var/lib/kubelet`）はこの決定の対象外で、ルートのディスクに残る。
+- bind mount の前にルートのディスクへ書かれた kubeconfig とログは、消しても領域が上書きされるまで残り得る。管理者の client 証明書は CA の入れ替えで無効にするが、ログの中身（記録された値）は無効にできない。CA の入れ替えは API とすべての Pod を 10 分ほど止め、OpenBao の unseal を要する。サービスアカウントのトークンは署名の鍵を残すので無効にならない（トークンが漏れていた場合は別に鍵を替える）。Pod の emptyDir（`/var/lib/kubelet`）はこの決定の対象外で、ルートのディスクに残る。
 - 端末そのものが侵された場合は、包んだ識別子も復号の時に読まれ得る。鍵の装置はこれを狭める。
 
 ## 影響

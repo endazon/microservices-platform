@@ -8,8 +8,11 @@
 #         定期に（週に 1 度と、警報・障害の後に）流す。違えば 1 で終わり、違う箇所を名指す。
 #   bash deploy/cloud/backup/s3-creds.sh run --creds <書き込みの鍵>.age --identity <識別子> --endpoint <EP> -- \
 #     bash deploy/cloud/backup/check-bucket.sh probe-writer --bucket <バケット>
-#       → クラスタに入れる書き込みの鍵で、保持の設定を書き換えられないか。宣言と**同じ**設定を書き込もうとして、
-#         拒まれれば 0（書き込みの鍵は保持を変えられない）。通れば 1（設定は宣言のままで変わらないが、鍵の権限が広い）。
+#       → クラスタに入れる書き込みの鍵で、保持の設定を書き換えられないか。宣言の JSON（object-lock.json・bucket-lifecycle.json）を
+#         実際に書き込もうとして、拒まれれば 0（書き込みの鍵は保持を変えられない）。通れば 1（鍵の権限が広い）。
+#         🔴 書き込みが通ると、その時のバケットの設定は宣言の JSON で上書きされる（ずれていれば宣言に揃い、ずれは消える）。
+#         そこで書く前に verify と同じ読み取りと突き合わせを行い、ずれがあれば何も書かずに 1 で止まる
+#         （ずれは管理の鍵で調べて直す。手順書 §1 の 6 も verify を先に流す）。読めないときも書かずに止まる。
 # 終了コード: 0＝合う／拒まれた / 1＝違う／通った・読めない / 2＝引数の誤り
 set -euo pipefail
 
@@ -28,15 +31,18 @@ done
 case "$CMD" in verify | probe-writer) ;; *) die 2 "verify か probe-writer を与える" ;; esac
 for t in aws node; do command -v "$t" >/dev/null 2>&1 || die 1 "$t が無い"; done
 [ -n "${AWS_ACCESS_KEY_ID:-}" ] || die 2 "鍵が環境に無い（s3-creds.sh run の -- の後で流す）"
+# 宛先は引数で明示する（AWS_ENDPOINT_URL を読まない古い aws CLI でも、既定の AWS の宛先へ鍵を送らない）。
+[[ "${AWS_ENDPOINT_URL:-}" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]] || die 2 "宛先（AWS_ENDPOINT_URL）が環境に無いか https でない（s3-creds.sh run の -- の後で流す）"
 
 LOCK_JSON="$HERE/object-lock.json"
 LIFECYCLE_JSON="$HERE/bucket-lifecycle.json"
-s3() { aws s3api "$@" --bucket "$BUCKET" --output json; }
+s3() { aws s3api "$@" --bucket "$BUCKET" --output json --endpoint-url "$AWS_ENDPOINT_URL"; }
 
-if [ "$CMD" = verify ]; then
-  ver="$(s3 get-bucket-versioning)" || die 1 "版の管理の設定を読めない"
-  lock="$(s3 get-object-lock-configuration)" || die 1 "Object Lock の設定を読めない（バケットが Object Lock なしで作られていないか）"
-  life="$(s3 get-bucket-lifecycle-configuration)" || die 1 "lifecycle の設定を読めない"
+# 版の管理・Object Lock・lifecycle を読み、宣言と突き合わせる（読むだけ）。合えば 0、違う・読めなければ 1。
+check_declared() {
+  ver="$(s3 get-bucket-versioning)" || { echo "NG: 版の管理の設定を読めない" >&2; return 1; }
+  lock="$(s3 get-object-lock-configuration)" || { echo "NG: Object Lock の設定を読めない（バケットが Object Lock なしで作られていないか）" >&2; return 1; }
+  life="$(s3 get-bucket-lifecycle-configuration)" || { echo "NG: lifecycle の設定を読めない" >&2; return 1; }
   node - "$LOCK_JSON" "$LIFECYCLE_JSON" "$ver" "$lock" "$life" <<'JS'
 const fs = require('fs');
 const [lockFile, lifeFile, verRaw, lockRaw, lifeRaw] = process.argv.slice(2);
@@ -59,10 +65,19 @@ for (const id of gRules.keys()) if (!wRules.has(id)) out.push(`lifecycle に宣�
 if (out.length) { for (const l of out) process.stderr.write(`NG: ${l}\n`); process.exit(1); }
 process.stdout.write('OK: 版の管理・Object Lock の既定の保持・lifecycle は宣言どおり\n');
 JS
+}
+
+if [ "$CMD" = verify ]; then
+  check_declared
   exit $?
 fi
 
-# probe-writer: 宣言と同じ設定を書き込もうとする（通っても設定は変わらない）。拒まれることを期待する。
+# probe-writer: 先に読んで宣言と突き合わせ、ずれが無いときだけ宣言の JSON を書き込もうとする（通れば設定は宣言で上書きされる）。
+# 拒まれることを期待する。
+if ! check_declared; then
+  echo "NG: バケットの設定が宣言とずれている（か読めない）ので、書き込みを試さずに止めた。書けばずれが宣言で上書きされて消える。管理の鍵で verify を流して調べる" >&2
+  exit 1
+fi
 rc=0
 for op in lifecycle lock; do
   case "$op" in

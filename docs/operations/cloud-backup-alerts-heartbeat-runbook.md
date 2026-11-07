@@ -66,7 +66,8 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
    2 つのファイルは、秘匿管理のファイルと同じく別々の 2 か所に保管する（場所はリポジトリに書かない）。
 3. バケットを **Object Lock を有効にして**作る（Object Lock は作成時にしか有効にできない）。リージョンはノードと同じにする。
 4. 既定の保持と lifecycle を、**管理の鍵で**当てる（`deploy/cloud/backup/` の JSON。接頭辞 `ast-poc/` は下の `dest` と揃える）。
-   鍵は `s3-creds.sh run` が 1 つのコマンドの環境にだけ渡す（呼んだシェルには残らない）:
+   鍵は `s3-creds.sh run` が 1 つのコマンドの環境にだけ渡す（呼んだシェルには残らない）。手元の aws CLI は v2 の 2.13.0 以上
+   （v1 なら 1.29.0 以上）にする。古い版は宛先の環境変数を読まずに AWS の既定の宛先へ鍵で署名した要求を送るため、`s3-creds.sh run` は古い版を見ると鍵を渡さずに止まる:
    ```bash
    EP=https://fsn1.your-objectstorage.com   # リージョンのエンドポイント
    A="bash deploy/cloud/backup/s3-creds.sh run --creds <管理の鍵>.age --identity <識別子のファイル> --endpoint $EP --"
@@ -87,8 +88,12 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
    `s3:ListBucketVersions`・`s3:AbortMultipartUpload`・`s3:ListMultipartUploadParts`）だけにし、少なくとも次を**拒む**: `s3:PutLifecycleConfiguration`・`s3:PutBucketObjectLockConfiguration`・`s3:PutBucketPolicy`・
    `s3:DeleteBucketPolicy`・`s3:PutBucketVersioning`・`s3:DeleteObjectVersion`・`s3:BypassGovernanceRetention`。
    ポリシーは管理の鍵で当てる（主体の書き方は提供元の文書に従う。ポリシーの本文はリポジトリに置かない）。
-   当てた後、**書き込みの鍵で**保持の設定を書けないことを確かめる（宣言と同じ設定を書き込もうとするので、通っても設定は変わらない）:
+   当てた後、**書き込みの鍵で**保持の設定を書けないことを確かめる。`probe-writer` は宣言の JSON を実際に書き込もうとするので、
+   書けてしまう鍵では、その時のバケットの設定が宣言で上書きされる（ずれていれば宣言に揃い、ずれの跡が消える）。
+   🔴 **先に管理の鍵で `verify` を流し、「宣言どおり」と出てから `probe-writer` を流す。** `probe-writer` も書く前に同じ突き合わせを行い、
+   ずれていれば（読めなければ）何も書かずに止まる。止まったら、ずれを管理の鍵で調べて直してから流し直す:
    ```bash
+   $A bash deploy/cloud/backup/check-bucket.sh verify --bucket <バケット>   # 「宣言どおり」と出ること（出なければ先へ進まない）
    W="bash deploy/cloud/backup/s3-creds.sh run --creds <書き込みの鍵>.age --identity <識別子のファイル> --endpoint $EP --"
    $W bash deploy/cloud/backup/check-bucket.sh probe-writer --bucket <バケット>   # 「書けない（拒まれた）」が 2 行出ること
    ```

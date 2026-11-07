@@ -11,6 +11,9 @@
 # 鍵は 2 組を別々のファイルに持つ（手順書 cloud-backup-alerts-heartbeat-runbook.md §1）:
 #   - 管理の鍵（バケットの作成・Object Lock・lifecycle・確かめ）。手元にだけ置く。クラスタへ入れない。
 #   - 書き込みの鍵（クラスタのバックアップの Job が使う。OpenBao へ入れる）。手元でリストア試験にも使う。
+# aws CLI が PATH にあれば、AWS_ENDPOINT_URL を読む版（v2 は 2.13.0 から・v1 は 1.29.0 から。aws-cli の CHANGELOG の
+# 「Configure the endpoint URL ... via an environment variable」）であることを確かめ、古い・判定できなければ鍵を渡さずに 1 で止まる
+# （古い版は AWS_ENDPOINT_URL を無視し、既定の AWS の宛先へ鍵で署名した要求を送る）。
 # 終了コード: 0＝成功（run は <コマンド> の終了コード） / 2＝引数の誤り・鍵の形が違う / 1＝復号・書き出しの失敗
 set -euo pipefail
 
@@ -64,11 +67,20 @@ case "$CMD" in
     [ -n "$IDENTITY" ] && [ -r "$IDENTITY" ] || die 2 "age の識別子のファイル（--identity）を読めない"
     [[ "$ENDPOINT" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?/?$ ]] || die 2 "--endpoint は https://<名前> の形で与える"
     [ "$#" -ge 1 ] || die 2 "-- の後に、鍵を渡すコマンドを与える"
+    if command -v aws >/dev/null 2>&1; then
+      v="$(aws --version 2>&1 | sed -n 's#^aws-cli/\([0-9]*\)\.\([0-9]*\)\..*#\1 \2#p' | head -n 1)"
+      read -r vmaj vmin <<< "${v:-x x}" || true
+      if ! [[ "$vmaj" =~ ^[0-9]+$ && "$vmin" =~ ^[0-9]+$ ]] || { [ "$vmaj" -eq 2 ] && [ "$vmin" -lt 13 ]; } \
+        || { [ "$vmaj" -eq 1 ] && [ "$vmin" -lt 29 ]; } || [ "$vmaj" -lt 1 ]; then
+        die 1 "aws CLI の版が古いか判定できない（$(aws --version 2>&1 | head -n 1)）。AWS_ENDPOINT_URL を読まず既定の AWS の宛先へ鍵を送り得るので、鍵を渡さない。v2 は 2.13.0 以上・v1 は 1.29.0 以上へ上げる"
+      fi
+    fi
     # 復号の出力はこのプロセスの変数へだけ読む（ファイル・引数を経ない）。
     { IFS= read -r id && IFS= read -r secret; } < <(age -d -i "$IDENTITY" "$CREDS") || true
     [[ "${id:-}" =~ $KEY_SHAPE ]] && [[ "${secret:-}" =~ $KEY_SHAPE ]] || { unset id secret; die 1 "鍵のファイルを復号できないか、中身の形が違う（値は表示しない）"; }
     # 鍵は、このプロセス（と exec する <コマンド>）の環境にだけ載せる。
-    export AWS_ACCESS_KEY_ID="$id" AWS_SECRET_ACCESS_KEY="$secret" AWS_ENDPOINT_URL="$ENDPOINT" AWS_EC2_METADATA_DISABLED=true
+    export AWS_ACCESS_KEY_ID="$id" AWS_SECRET_ACCESS_KEY="$secret" AWS_ENDPOINT_URL="$ENDPOINT" AWS_ENDPOINT_URL_S3="$ENDPOINT" \
+      AWS_IGNORE_CONFIGURED_ENDPOINT_URLS=false AWS_EC2_METADATA_DISABLED=true
     export RCLONE_CONFIG_OBJSTORE_TYPE=s3 RCLONE_CONFIG_OBJSTORE_PROVIDER=Other RCLONE_CONFIG_OBJSTORE_ENV_AUTH=false \
       RCLONE_CONFIG_OBJSTORE_ENDPOINT="$ENDPOINT" RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="$id" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$secret"
     unset id secret
