@@ -11,6 +11,10 @@
 
 OPENBAO_NS="${OPENBAO_NS:-openbao}"
 
+# NFR-18, IADR-0703 決定 2: 宛先のクラスタの確かめ（ct_require_target）。各手順が最初の kubectl より前に呼ぶ。
+# shellcheck source=deploy/cloud/lib/target-cluster.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/target-cluster.sh"
+
 ob_need() {
   local t
   for t in "$@"; do
@@ -34,6 +38,27 @@ ob_exec() {
 # ob_readable <ファイル> <説明> —— 読めるファイルか（中身は読まない）
 ob_readable() {
   [ -n "$1" ] && [ -r "$1" ] || { echo "ERROR: ${2} を読めない: ${1:-（未指定）}" >&2; exit 2; }
+}
+
+# NFR-05, IADR-0703 決定 3: ob_identity_guard <age の識別子のファイル> —— 識別子が平文の秘密鍵のままか（中身は表示しない）。
+#   unseal の鍵とオーナー用の資格は同じ識別子で開く（保持はオーナー。裁定どおり）。識別子そのものを、パスフレーズで暗号化した
+#   ファイル（`age -p` で包んだもの。復号のたびに尋ねられる）か、鍵の装置（age のプラグインの識別子）で守る。
+#   平文の識別子（age の秘密鍵の接頭辞で始まる行を持つファイル）は、OB_IDENTITY_POLICY が warn（既定）なら警告して進み、enforce なら止める。
+OB_IDENTITY_POLICY="${OB_IDENTITY_POLICY:-warn}"
+case "$OB_IDENTITY_POLICY" in
+  warn | enforce) ;;
+  *) echo "ERROR: OB_IDENTITY_POLICY は warn か enforce" >&2; exit 2 ;;
+esac
+ob_identity_guard() {
+  # 接頭辞は分けて組み立てる（deploy/ に秘密鍵らしき字面を置かない。scripts/platform-backup.test.js の 8）。
+  local prefix='AGE-SECRET-'
+  prefix+='KEY-1'
+  grep -q "^${prefix}" "$1" 2>/dev/null || return 0
+  if [ "$OB_IDENTITY_POLICY" = enforce ]; then
+    echo "ERROR: age の識別子 ${1} が平文の秘密鍵のまま（OB_IDENTITY_POLICY=enforce）。パスフレーズか鍵の装置で守ってから流す（手順書 cloud-openbao-init-unseal-runbook.md「識別子を守る」）" >&2
+    exit 2
+  fi
+  echo "WARN: age の識別子 ${1} が平文の秘密鍵のまま。パスフレーズか鍵の装置で守る（手順書「識別子を守る」。守った後は OB_IDENTITY_POLICY=enforce）" >&2
 }
 
 # ob_fresh <ファイル> —— 書き出し先が在れば止める（上書きで鍵を失わない）

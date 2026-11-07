@@ -43,6 +43,7 @@ while [ "$#" -gt 0 ]; do
 done
 ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+ob_identity_guard "$IDENTITY"
 
 # 初回の root を失効させる（既に失効していれば何もしない）。失効したことを確かめて 0。
 # 🔴 「失効した」と読むのは、OpenBao に届き、unseal 済みで書き込みを受ける状態（active）にあり、lookup が permission denied（403）を返したときだけ。
@@ -82,6 +83,7 @@ esac
 if [ "$REVOKE_ONLY" = 1 ]; then
   live_opt_in_require "configure.sh"
   ob_need kubectl age node
+  ct_require_target "configure.sh"
   revoke_root || { echo "ERROR: 失効を確かめられない。OpenBao の状態を確かめてから --revoke-only を流し直す" >&2; exit 3; }
   echo "OK: 初回の root は失効している。"
   exit 0
@@ -95,6 +97,7 @@ ob_fresh "$OUT"
 case "$K8S_HOST" in https://*) ;; *) echo "ERROR: OPENBAO_KUBERNETES_HOST は https:// で始める" >&2; exit 2 ;; esac
 live_opt_in_require "configure.sh"
 ob_need kubectl age node
+ct_require_target "configure.sh"
 printf 'probe' | age -R "$RECIPIENTS" >/dev/null || { echo "ERROR: 受取人のファイルで暗号化できない" >&2; exit 2; }
 
 policy_write() {

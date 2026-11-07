@@ -29,6 +29,10 @@ TIMEOUT_S="${KEYCLOAK_CLIENTS_TIMEOUT_S:-300}"
 case "$TIMEOUT_S" in '' | *[!0-9]*) echo "ERROR: KEYCLOAK_CLIENTS_TIMEOUT_S は秒数（正の整数）" >&2; exit 2 ;; esac
 live_opt_in_require "keycloak-clients.sh"
 command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl が無い" >&2; exit 1; }
+# NFR-18, IADR-0703 決定 2: 宛先のクラスタを確かめ、以後の kubectl をその context に固定する。
+# shellcheck source=deploy/cloud/lib/target-cluster.sh
+. "$ROOT/deploy/cloud/lib/target-cluster.sh"
+ct_require_target "keycloak-clients.sh"
 
 # 段を差し替えた Job の宣言（印の行は 1 つだけ。在るはずの行が無ければ止める）
 manifest="$(awk -v stage="$STAGE" 'prev ~ /^            - name: MODE$/ && $0 ~ /^              value: "check"$/ { sub(/"check"/, "\"" stage "\"") } { print; prev = $0 }' "$HERE/job.yaml")"

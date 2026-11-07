@@ -28,15 +28,21 @@ unseal の鍵とオーナー用の資格は、オーナーが age で暗号化�
 
 ### 1-1. ファイアウォール（Hetzner Cloud Firewall）
 
-- 受けるのは **SSH（TCP 22）だけ**。送り元は管理する端末の固定 IP に絞れるなら絞る。
+- 受けるのは **SSH（TCP 22）だけ**。**送り元は管理する端末の固定 IP に絞る**（必須。固定 IP が無いときは、使う回線の範囲に絞り、変わったら直す）。
 - **80・443・6443・50000 は開けない。** 画面を公開しないので、外から受ける口は SSH のほかに無い。
-- SSH は**鍵認証だけ**にする（`/etc/ssh/sshd_config.d/10-hardening.conf`）:
+- SSH は**鍵認証だけ**にし、**root では入らない**（sudo を持つ管理の利用者で入る。`/etc/ssh/sshd_config.d/10-hardening.conf`）:
 
   ```
   PasswordAuthentication no
   KbdInteractiveAuthentication no
-  PermitRootLogin prohibit-password
+  PermitRootLogin no
+  AllowUsers <管理の利用者>
   ```
+
+  root のログインを外すのは、管理の利用者で鍵と sudo を確かめた**後**に行う（開いたままの接続を残し、別の接続で入れることを見てから閉じる）。
+  手順は[ノードの防御の手順書](../../docs/operations/cloud-node-hardening-runbook.md) §3。
+- **ノードの中にも 2 枚目の防御を置く**（nftables。提供元のファイアウォールの設定を誤っても、22 のほかを落とす）。
+  規則は `node/node-guard.nft`（既定は「報告」。数えて確かめてから `node/node-guard-enforce.nft` で「落とす」）。手順は同じ手順書 §2。
 
 ### 1-2. データの暗号化（LUKS）
 
@@ -49,7 +55,17 @@ mkfs.ext4 /dev/mapper/rancher
 mkdir -p /var/lib/rancher && mount /dev/mapper/rancher /var/lib/rancher
 ```
 
-- 再起動の後は `cryptsetup open` と `mount` を人が行い、それから k3s を起こす（パスフレーズはノードに置かない。手順は 1-5）。
+管理者の kubeconfig（`/etc/rancher/k3s/k3s.yaml`）と Pod のログ（`/var/log/pods`）も、同じ暗号化した領域に置く（bind mount。k3s を入れる**前に**行う）:
+
+```sh
+mkdir -p /var/lib/rancher/etc-rancher /var/lib/rancher/pod-logs /etc/rancher /var/log/pods
+mount --bind /var/lib/rancher/etc-rancher /etc/rancher
+mount --bind /var/lib/rancher/pod-logs /var/log/pods
+findmnt -T /etc/rancher; findmnt -T /var/log/pods                 # どちらも SOURCE が /dev/mapper/rancher[…] であること
+```
+
+- 再起動の後は `cryptsetup open` と `mount`（と 2 つの bind mount）を人が行い、それから k3s を起こす（パスフレーズはノードに置かない。手順は 1-5）。
+- 既に動いているノードを移す手順（止めて写し、クラスタの CA ごと作り直して古い管理者の資格を無効にする）は[ノードの防御の手順書](../../docs/operations/cloud-node-hardening-runbook.md) §1。
 - **k3s は暗号化した領域をマウントする前に起動させない**（起動すると `/var/lib/rancher` がルートのディスクの上に平文で作られる）。1-4 の drop-in と `systemctl disable k3s` で止める。
 
 ### 1-3. 時刻同期・更新の時間帯
@@ -113,6 +129,11 @@ cat > /etc/systemd/system/k3s.service.d/10-require-encrypted-data.conf <<'EOF'
 # /var/lib/rancher が LUKS の領域のマウント点でなければ起動しない（ルートのディスクに平文で作らない）。
 ConditionPathIsMountPoint=/var/lib/rancher
 RequiresMountsFor=/var/lib/rancher
+# 管理者の kubeconfig と Pod のログも、暗号化した領域の bind mount でなければ起動しない（1-2）。
+ConditionPathIsMountPoint=/etc/rancher
+RequiresMountsFor=/etc/rancher
+ConditionPathIsMountPoint=/var/log/pods
+RequiresMountsFor=/var/log/pods
 EOF
 systemctl daemon-reload
 systemctl disable k3s      # 起動時に自動で起こさない。マウントの後に人が systemctl start k3s する（1-5）
@@ -131,12 +152,16 @@ systemctl disable k3s      # 起動時に自動で起こさない。マウント
 ```sh
 cryptsetup open /dev/disk/by-id/scsi-0HC_Volume_<id> rancher     # パスフレーズは対話で入れる
 mount /dev/mapper/rancher /var/lib/rancher
-mountpoint /var/lib/rancher                                       # 「is a mountpoint」を確かめてから起こす
+mount --bind /var/lib/rancher/etc-rancher /etc/rancher
+mount --bind /var/lib/rancher/pod-logs /var/log/pods
+mountpoint /var/lib/rancher && mountpoint /etc/rancher && mountpoint /var/log/pods   # 3 つとも「is a mountpoint」を確かめてから起こす
 systemctl start k3s
 kubectl -n platform-infra get pods                                # すべてが Ready に戻るまで見る
 ```
 
 - マウントせずに `systemctl start k3s` しても、drop-in の条件で起動しない（`systemctl status k3s` に条件が満たされない旨が出る）。
+- 起こした後に、ノードの防御をまとめて確かめる: `sudo bash check-node.sh`（`deploy/cloud/node/check-node.sh` をノードへ運んだもの。読むだけ。
+  暗号化した 3 つの領域・2 枚目の防御の段・SSH を見る。手順書 §4）。
 - **`systemctl start k3s` の終了コードで成否を判断しない。** 条件が満たされずに起動しなかったときも 0 で終わる。`mountpoint` の確かめを先に行い、起動の後は `systemctl is-active k3s` と Pod の Ready で確かめる。
 
 ## 2. イメージ
@@ -165,8 +190,11 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 
 手順の詳細（鍵の受け渡し・再起動・作り直し）は[秘匿管理の手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md)。
 スクリプトはどれも `--live` が無ければ何もしない。**秘密の値を引数・環境変数・ディスクに置かない**（age の復号はパイプで Pod の標準入力へだけ流す）。
+スクリプトはどれも、流す前に**宛先のクラスタを確かめる**（API の宛先がノードへの SSH のトンネルで、クラスタの印が手元の記録と同じか。
+違えば何もせずに 4 で終わる）。印は最初に 1 度だけ記録する（[手順書](../../docs/operations/cloud-owner-target-cluster-runbook.md)）。
 
 ```sh
+bash deploy/cloud/cluster-mark.sh --live record                       # 一度だけ（クラスタの印を手元に記録する。ノードで照らす）
 kubectl apply -f deploy/cloud/infra/namespaces.yaml
 kubectl apply -k deploy/cloud/vault                                   # OpenBao（受け口の証明書の Secret を待つ）
 bash deploy/cloud/vault/tls-cert.sh --live issue                      # 受け口（TLS の 8443）の証明書と CA の ConfigMap → OpenBao が封印された状態で起きる（Ready にならないのが正しい）

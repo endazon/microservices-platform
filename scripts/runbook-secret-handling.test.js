@@ -10,6 +10,10 @@
  *      コンテナの中の値の受け渡し（`export …="$VAULT_DEV_ROOT_TOKEN_ID"` のように変数だけを渡す形）は対象外。
  *   2. DB のダンプ・realm の書き出し・tar の退避を、平文のままファイルへ書かない（`| age -R …` へパイプで渡す）。
  *   3. Bearer トークンを curl の引数に載せない（`-H @<(printf …)` で渡す）。
+ *   4. ［IADR-0703］平文の env ファイルを `set -a` の下で読み込まない（`set -a; . file`。鍵が平文のファイルと以後の全プロセスの環境に残る）。
+ *   5. ［IADR-0703］手元のツールが読む S3 の鍵（`AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` / rclone の `RCLONE_CONFIG_<名前>_SECRET_ACCESS_KEY` など）は、
+ *      変数を渡す形でも `export` しない（deploy/cloud/backup/s3-creds.sh run が 1 つのコマンドの環境にだけ載せる）。
+ *      行末の `\` で続く行は 1 行につないでから読む（複数行の export を見落とさない）。
  *   変異: 各規則は、直す前の字面（本変更で直した行）を必ず検出する（規則が空振りしない）。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ）。実行: node scripts/runbook-secret-handling.test.js
@@ -39,6 +43,8 @@ function walk(dir, out = []) {
 const SECRETISH = /^(?:[A-Z0-9_]*_)?(?:[A-Z0-9]*(?:PASS|PASSWORD|SECRET|TOKEN|PHRASE|KEY))[A-Z0-9_]*$/;
 // パス・ファイル名を持つ変数（`*_FILE` / `*_PATH` / `*_DIR`）は値でない。
 const PATHISH = /_(FILE|PATH|DIR)$/;
+// IADR-0703: 手元のツールが環境から読む S3 の鍵（変数を渡す形でも export しない）。
+const HOST_S3_SECRET = /^(?:AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|RCLONE_CONFIG_[A-Z0-9_]+_(?:SECRET_ACCESS_KEY|SESSION_TOKEN|PASS|PASSWORD|KEY))$/;
 
 /** 1 行の違反（無ければ空の配列）。 */
 function violations(rawLine) {
@@ -49,12 +55,14 @@ function violations(rawLine) {
     for (const a of m[1].matchAll(/([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/g)) {
       const [name, valueRaw] = [a[1], a[2]];
       if (!SECRETISH.test(name) || PATHISH.test(name)) continue;
+      if (HOST_S3_SECRET.test(name)) { out.push(`export ${name}=…（手元のツールの S3 の鍵を export している。s3-creds.sh run で 1 つのコマンドにだけ渡す）`); continue; }
       const v = valueRaw.replace(/^\\?["']|\\?["']$/g, '');
       // 変数だけを渡す形（"$X" / "\$X"）は対象外。字面の値と、手元のコマンド置換は違反。
       if (/^\\?\$\{?[A-Za-z_][A-Za-z0-9_]*\}?$/.test(v)) continue;
       out.push(`export ${name}=…（字面の値かコマンド置換を export している）`);
     }
   }
+  if (/(?:^|[;&|]\s*)set\s+-[A-Za-z]*a\b[^;]*;\s*(?:\.|source)\s+\S/.test(line)) out.push('平文の env ファイルを set -a の下で読み込んでいる（age で暗号化したファイルから s3-creds.sh run で渡す）');
   if (/\b(pg_dumpall|pg_dump|kcadm\.sh get realms|tar\b[^|]*-c[a-z]*f -)/.test(line) && /\s>\s*["']?[^\s|&]+/.test(line) && !/\|\s*age\b/.test(line)) {
     out.push('ダンプ・書き出しを平文のままファイルへ書いている（| age -R … へ渡す）');
   }
@@ -68,10 +76,17 @@ function codeLines(file) {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   const out = [];
   let inFence = false;
+  let cont = null; // 行末の \ で続く行（IADR-0703: 1 行につないで読む）
   lines.forEach((l, i) => {
-    if (/^\s*(```|~~~)/.test(l)) { inFence = !inFence; return; }
-    if (inFence) out.push({ at: i + 1, text: l });
-    else for (const m of l.matchAll(/`([^`]+)`/g)) out.push({ at: i + 1, text: m[1] });
+    if (/^\s*(```|~~~)/.test(l)) { inFence = !inFence; cont = null; return; }
+    if (inFence) {
+      const piece = cont ? `${cont.text} ${l.trim()}` : l;
+      if (/\\$/.test(l)) { cont = { at: cont ? cont.at : i + 1, text: piece.replace(/\\$/, '') }; return; }
+      out.push({ at: cont ? cont.at : i + 1, text: piece });
+      cont = null;
+      return;
+    }
+    for (const m of l.matchAll(/`([^`]+)`/g)) out.push({ at: i + 1, text: m[1] });
   });
   return out;
 }
@@ -103,6 +118,10 @@ ok('変異: 本変更で直した前の字面を、各規則が検出する（�
     'curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients?clientId=$CLIENT"',
     '  -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID")"',
     '  -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath=\'{.data.password}\' | base64 -d)" | jq -r .access_token)',
+    // IADR-0703: クラウドのバックアップの手順書（§1・§6）の直す前の字面
+    'set -a; . ~/.secrets/backup-s3.env; set +a',
+    'export RCLONE_CONFIG_OBJSTORE_TYPE=s3 RCLONE_CONFIG_OBJSTORE_PROVIDER=Other RCLONE_CONFIG_OBJSTORE_ENDPOINT=https://fsn1.your-objectstorage.com RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"',
+    'export AWS_SECRET_ACCESS_KEY="$S"',
   ];
   for (const l of before) assert.ok(violations(l).length > 0, `検出しない: ${l}`);
   const allowed = [
@@ -114,8 +133,22 @@ ok('変異: 本変更で直した前の字面を、各規則が検出する（�
     'curl -sf -H @"$(auth_hdr)" "$KC/admin/realms/platform/clients?clientId=$CLIENT"',
     '  --data-urlencode password@<(kubectl -n platform-infra get secret keycloak-admin -o jsonpath=\'{.data.password}\' | base64 -d) | jq -r .access_token)',
     'export MSP_SYNC_TOKEN_FILE="$HOME/.msp/token"',
+    'set -euo pipefail',
+    'bash deploy/cloud/backup/s3-creds.sh run --creds <書き込みの鍵>.age --identity <識別子> --endpoint "$EP" -- rclone lsf objstore:<バケット>/ast-poc/postgres/daily/',
   ];
   for (const l of allowed) assert.deepStrictEqual(violations(l), [], `誤って検出する: ${l}`);
+});
+
+ok('IADR-0703: 行末の \\ で続く行は 1 行につないで読む（複数行の export を見落とさない）', () => {
+  const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'rsh-'));
+  const f = path.join(dir, 'x.md');
+  fs.writeFileSync(f, ['```bash', 'export RCLONE_CONFIG_OBJSTORE_TYPE=s3 \\', '  RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"', 'echo done', '```', ''].join('\n'));
+  const lines = codeLines(f);
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.strictEqual(lines.length, 2);
+  assert.strictEqual(lines[0].at, 2);
+  assert.ok(violations(lines[0].text).length > 0, 'つないだ行の export を検出しない');
+  assert.deepStrictEqual(violations(lines[1].text), []);
 });
 
 process.stdout.write(`runbook-secret-handling.test.js: ${passed} passed\n`);
