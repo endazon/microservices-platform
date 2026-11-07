@@ -441,6 +441,18 @@ done
 B status >/dev/null 2>&1 || [ $? -eq 2 ] || ng "renew の途中: 併記の CA で受け口へ届かない"
 printf '%s\n' "$old_ca" > "$W/old-ca.crt"
 BAO_ADDR="$TEST_BAO_ADDR" BAO_CACERT="$W/old-ca.crt" "$BAO" status >/dev/null 2>&1 || ng "renew の途中: 受け口が古い証明書を出していない（読み直させる前に替わった）"
+# 途中で落ちる経路 2: 読み直させても新しい CA だけでは届かない（読み直しが効かない形。SIGHUP の宛先を bao でない使い捨ての
+# プロセスにする）→ 古い CA を外さず、束のまま 1 で止まる（受け口は古い証明書のまま ESO は届く）。手順書 §4 の「途中で落ちたら」。
+sleep 300 & decoy=$!
+set +e; OB_POD_SERVER_PID="$decoy" run tls-cert.sh renew >"$W/renew2.log" 2>&1; rc=$?; set -e
+kill "$decoy" 2>/dev/null || true
+[ "$rc" -ne 0 ] || ng "renew が新しい CA で届かないのに成功を返した"
+grep -q '新しい CA だけでは受け口へ届かない' "$W/renew2.log" || ng "陽性対照: renew の確かめの段（新しい CA だけで届くか）で止まっていない"
+for ns in platform-infra microservices-platform ai-stock-trading; do
+  [ "$(pem_count "$CM_DIR/$ns-openbao-ca.crt")" -ge 2 ] || ng "renew の確かめで落ちた後: ConfigMap ${ns}/openbao-ca から古い CA を外した"
+done
+[ "$(pem_count "$W/tls/ca.crt")" -ge 2 ] || ng "renew の確かめで落ちた後: Secret の ca.crt から古い CA を外した"
+BAO_ADDR="$TEST_BAO_ADDR" BAO_CACERT="$W/old-ca.crt" "$BAO" status >/dev/null 2>&1 || [ $? -eq 2 ] || ng "renew の確かめで落ちた後: 古い CA で受け口へ届かない"
 run tls-cert.sh renew >/dev/null
 [ "$(pem_count "$W/tls/ca.crt")" = 1 ] && [ "$(cat "$W/tls/ca.crt")" != "$old_ca" ] && [ "$(cat "$W/tls/tls.crt")" != "$old_crt" ] || ng "renew の後: Secret が新しい CA の 1 つと新しい証明書になっていない"
 for ns in platform-infra microservices-platform ai-stock-trading; do
@@ -453,7 +465,7 @@ st="$(B status -format=json || true)"
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" >/dev/null || ng "renew の後: 手順が新しい CA で受け口へ届かない"
 run tls-cert.sh publish-ca --namespace ai-stock-trading >/dev/null
 cmp -s "$CM_DIR/ai-stock-trading-openbao-ca.crt" "$W/tls/ca.crt" || ng "publish-ca が CA を写さない"
-ok "TLS renew: 古い CA と新しい CA を併記してから受け口を読み直させ（封印しない）、新しい CA で届くことを確かめて古い CA を外す。途中で落ちても併記のまま流し直せる"
+ok "TLS renew: 古い CA と新しい CA を併記してから受け口を読み直させ（封印しない）、新しい CA で届くことを確かめて古い CA を外す。読み直しの段・確かめの段のどちらで落ちても併記のまま流し直せる"
 
 key_line="$(sed -n 2p "$W/tls/tls.key")"
 [ -n "$key_line" ] || ng "陽性対照: 受け口の鍵を読めない"

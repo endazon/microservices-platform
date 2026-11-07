@@ -102,6 +102,10 @@ bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <age 
 
 - 確かめ: `kubectl -n openbao get svc openbao -o jsonpath='{.spec.ports[*].port}'` が `8443` だけ。ストアが Ready のまま。
   平文の口が残っていないことは、描画の試験（`node scripts/deploy-cloud.test.js`）が最終の段で固定している。
+- 確かめ（併存の段の残り）: `kubectl -n openbao get configmap openbao-config-coexist --ignore-not-found -o name` が何も出さず、
+  `kubectl -n openbao get deploy openbao -o jsonpath='{.spec.template.spec.containers[0].command}'` に `coexist` が無い。
+  出たら、消し忘れか最終の段を当て損ねている（ConfigMap を消し、`kubectl apply -k deploy/cloud/vault` を当て直す）。
+- 段 4 の確かめの結果は、移行の門の稼働の確かめで記録する（本書を `draft` に留めている理由）。
 
 ### 切り戻し
 

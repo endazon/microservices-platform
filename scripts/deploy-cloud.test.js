@@ -385,6 +385,8 @@ function openbaoTlsProblems(docs, esoDocs, { coexist = false } = {}) {
   const wantPlain = coexist ? `[${OPENBAO_PLAIN_PORT}]` : '[]';
   if (JSON.stringify(plain.map(port)) !== wantPlain) out.push(`OpenBao の平文の listener が ${wantPlain} でない（平文の口が閉じていない）: ${JSON.stringify(plain.map(port))}`);
   if (!/^\s*api_addr\s*=\s*"https:\/\//m.test(hcl)) out.push('OpenBao の api_addr が https でない');
+  // 最終の段に併存の段の残り（平文の設定の ConfigMap・2 つ目の設定ファイル）が無いこと。
+  if (!coexist && docs.some((d) => d.kind === 'ConfigMap' && d.metadata.name === 'openbao-config-coexist')) out.push('最終の段に併存の段の ConfigMap openbao-config-coexist が残っている');
   const dep = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao');
   if (dep) {
     const spec = dep.spec.template.spec;
@@ -394,6 +396,7 @@ function openbaoTlsProblems(docs, esoDocs, { coexist = false } = {}) {
     if ((c.env || []).some((e) => /SKIP_VERIFY|TLS_SKIP/i.test(e.name))) out.push('OpenBao の Pod に検証を外す env がある');
     const ports = (c.ports || []).map((p) => Number(p.containerPort)).sort();
     const wantPorts = coexist ? [OPENBAO_PLAIN_PORT, OPENBAO_TLS_PORT] : [OPENBAO_TLS_PORT];
+    if (!coexist && [...(c.command || []), ...(c.args || [])].some((a) => /coexist/.test(String(a)))) out.push('最終の段の OpenBao が併存の段の設定ファイルを読む');
     if (JSON.stringify(ports) !== JSON.stringify(wantPorts)) out.push(`OpenBao の受け口が ${JSON.stringify(wantPorts)} でない: ${JSON.stringify(ports)}`);
     const probe = (c.readinessProbe || {}).httpGet || {};
     if (probe.scheme !== 'HTTPS' || Number(probe.port) !== OPENBAO_TLS_PORT) out.push(`OpenBao の readiness が HTTPS の ${OPENBAO_TLS_PORT} でない`);
@@ -998,7 +1001,7 @@ if (require.main === module) {
     const co = renderOpenbaoCoexist();
     assert.deepStrictEqual(vaultProblems(co, renderEso(), localVaultImage(), { coexist: true }), []);
     const p = vaultProblems(co, renderEso(), localVaultImage());
-    for (const want of [/平文の口が閉じていない/, /受け口が \[8443\] でない/, /Service のポートが \[8443\] でない/, /入りのポートが \[8443\] でない/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    for (const want of [/平文の口が閉じていない/, /受け口が \[8443\] でない/, /Service のポートが \[8443\] でない/, /入りのポートが \[8443\] でない/, /ConfigMap openbao-config-coexist が残っている/, /併存の段の設定ファイルを読む/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
     // 併存の判定に最終の段を当てると、平文の口の欠落で落ちる（まだ http のストアが届かない形）
     assert.ok(vaultProblems(renderVault(), renderEso(), localVaultImage(), { coexist: true }).some((x) => /平文の listener が \[8200\] でない/.test(x)), '併存の段の平文の欠落を検出しない');
     // 重ねは OpenBao の名前空間の外を描かない

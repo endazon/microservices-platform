@@ -104,3 +104,4 @@ related_specs:
 1. 受け口の鍵は k8s の Secret に在る（OpenBao から供給できない「OpenBao を開ける側」の値。`secret-inventory.js` の `OPENER_SUPPLIED`）。ノードの root と、名前空間 `openbao` の Secret を読める者は読める。
 2. 受け口の証明書の期限の警報は置いていない。期限は `kubectl -n openbao get secret openbao-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -enddate` で読む（公開の部分だけ）。
 3. ESO の名前空間（`external-secrets`）に NetworkPolicy を置いていない（IADR-0689 残余 4 のまま）。
+4. `tls-cert.sh` は署名の後に CA の鍵の変数を空にするが、シェル（bash）はメモリ上からの消去を保証しない（鍵はプロセスが終わるまでそのメモリに残り得る。ディスク・引数・環境には出ない）。
