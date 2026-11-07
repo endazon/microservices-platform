@@ -781,3 +781,4 @@
 | [IADR-0701](./IADR-0701_nuget-lock-files-and-pr-ci-planning-token.md) | 本リポジトリの 2 ユニットの NuGet の推移的な依存を lock ファイルで固定し（AST・雛形へは届かせない）、CI とイメージのビルドは locked mode で restore し、lock の無い・書き換わったプロジェクトは backend-verify-build が落とす。PR の CI へ計画リポジトリを読むトークンを渡さない（push のときだけ） | Accepted |
 | [IADR-0702](./IADR-0702_llm-embedding-guard-and-synthetic-marker-trust.md) | LLM ゲートウェイの埋め込みの面にも呼び手ごとの許可表と送る前の上限を掛け（費用は補完と同じ呼び手の枠に合算）、合成監視の標識を引き継ぐ呼び手を許可集合に限る。どちらも段（Off／Report／Enforce）を持ち、クラウドだけを段 2 にする | Accepted |
 | [IADR-0703](./IADR-0703_backup-owner-ops-hardening.md) | バックアップの鍵を管理と書き込みに分け、保持の設定を外から確かめる。手元の S3 の鍵は age のファイルから 1 つのコマンドにだけ渡す。オーナーの手順は宛先のクラスタを確かめ、平文の識別子を warn → enforce で扱う。ノードは kubeconfig と Pod のログも LUKS へ寄せ、nftables の 2 枚目と SSH の root の禁止を置く | Accepted |
+| [IADR-0704](./IADR-0704_ai-review-full-diff-every-head.md) | AI レビューは同じ PR への 2 回目以後の push でも、この head の全差分を読み直し、前回のレビューの結果を流用しない（prompt で定め、試験で固定する。検査器は緩めない） | Accepted |
