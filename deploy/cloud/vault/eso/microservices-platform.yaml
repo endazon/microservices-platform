@@ -33,7 +33,8 @@ spec:
             audiences:
               - vault
 ---
-# ［2026-11-07 / IADR-0689 決定 11］LLM ゲートウェイの提供元の鍵（anthropic-api-key。voyage-api-key は任意）。
+# ［2026-11-07 / IADR-0689 決定 11］LLM ゲートウェイの提供元の鍵（anthropic-api-key）。
+# ［2026-11-07 / IADR-0701］クラウドでは埋め込みを使わないので、埋め込みの鍵（voyage-api-key）は置かない（手順書 §4）。
 apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:

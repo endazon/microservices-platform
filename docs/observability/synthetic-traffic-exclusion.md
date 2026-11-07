@@ -3,14 +3,14 @@ title: 合成監視トラフィックの標識と、費用・利用状況から�
 type: observability-spec
 status: in-progress
 created: 2026-09-05
-updated: 2026-10-30
+updated: 2026-11-07
 author: claude
 ---
 <!-- trace:
 ids: [NFR-02, NFR-21, FR-10, SC-10]
 adrs: [ADR-0006, ADR-0044, ADR-0071, ADR-0072, ADR-0076, ADR-0079]
-iadrs: [IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533, IADR-0654]
-specs: [20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue, 20261030_2335_llm-slo-synthetic-probe]
+iadrs: [IADR-0701, IADR-0378, IADR-0343, IADR-0354, IADR-0367, IADR-0370, IADR-0299, IADR-0110, IADR-0533, IADR-0654]
+specs: [20261107_llm-gateway-embed-limits-synthetic-marker, 20260905_issue-1203_analysis-ask-absent-companion, 20261015_1902_east-west-rest-residue, 20261030_2335_llm-slo-synthetic-probe]
 issues: [#1203, #1202, #1204, #1111, #1902, #2335, planning#524, planning#538]
 -->
 <!-- 起点 ID・関連 ADR/IADR・仕様書名・修飾付き issue 参照は本文へ書かず、上の trace ブロックへ入れる -->
@@ -36,6 +36,10 @@ issues: [#1203, #1202, #1204, #1111, #1902, #2335, planning#524, planning#538]
 
 🔴 **外周は受信ヘッダを一切見ない。** 見れば「外から印を付けて実利用を費用集計から隠す」経路ができる。
 この否定形は試験で固定している（外からヘッダを付けても除外されないこと）。
+
+［2026-11-07 追記］**LlmGateway は、標識を検証済みのトークンの主体が許可集合（`Llm:SyntheticMarker:TrustedCallers`。既定は AI 分析・検索）に在るときだけ引き継ぐ。**
+メッシュの無い構成（クラウドの最小構成）では「外周が付けたヘッダだけが届く」前提が成り立たないためである。段 `Llm:SyntheticMarker:Mode` の
+既定 `Report` は従前どおり引き継いで許可集合の外を数え（`llm_synthetic_marker_untrusted_total`）、`Enforce` は許可集合の外の標識を無視して費用に計上する。
 
 🔴 **fail-closed。** 許可集合（`SyntheticMonitoring:Subjects`）が空なら**何も合成と見なさない**。
 逆向き（空＝全部が合成）に倒すと、設定漏れで実利用がまるごと費用計上から消える。

@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using LlmGateway.Domain.Authorization;
 using LlmGateway.Domain.Limits;
 using LlmGateway.Domain.Routing;
 
@@ -138,5 +139,31 @@ public class LlmCallLimitOptionsValidatorTests
     public void Reportでは費用の上限が無くても成功する_段1の既定を変えない()
     {
         Validator().Validate(null, new LlmCallLimitOptions { Mode = LlmCallLimitMode.Report }).Succeeded.Should().BeTrue();
+    }
+
+    // ---- NFR-18, IADR-0701: 埋め込みの段・用途・単価 ----------------------------------------------------
+
+    [Fact]
+    public void 埋め込みの段の既定はReportで_段2も既定の当日の費用の上限が無いと失敗する()
+    {
+        new LlmCallLimitOptions().EmbeddingMode.Should().Be(LlmGuardStage.Report);
+
+        var o = new LlmCallLimitOptions { EmbeddingMode = LlmGuardStage.Enforce };
+        Validator().Validate(null, o).Failed.Should().BeTrue("段 2 の埋め込みも金額が無いと費用の判定が黙って働かない");
+
+        o.Default.DailyCostLimit = 0.5m;
+        Validator().Validate(null, o).Succeeded.Should().BeTrue();
+    }
+
+    [Fact]
+    public void 用途の費用の枠のキーにembeddingを書け_埋め込みの単価は正の値に限る()
+    {
+        var o = new LlmCallLimitOptions();
+        o.Default.PurposeDailyCostLimits["embedding"] = 1m;
+        o.EmbeddingPrices["voyage-3.5"] = 0.06m;
+        Validator().Validate(null, o).Succeeded.Should().BeTrue();
+
+        o.EmbeddingPrices["free-model"] = 0m;
+        Validator().Validate(null, o).Failed.Should().BeTrue("0 だと埋め込みで費用の上限が黙って効かない");
     }
 }

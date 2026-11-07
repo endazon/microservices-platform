@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700]
-specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
+iadrs: [IADR-0701, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700]
+specs: [20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->
 
@@ -132,7 +132,7 @@ openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       #
 
 | 値 | パス | キー | 写す先（名前空間 / Secret） |
 | --- | --- | --- | --- |
-| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key`（埋め込みを使うなら `voyage-api-key` も） | `microservices-platform` / `llm-provider-credentials` |
+| LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key` だけ（クラウドでは埋め込みを使わない。埋め込みの鍵は置かない） | `microservices-platform` / `llm-provider-credentials` |
 | バックアップの保管先の鍵 | `cloud/platform/platform-backup-s3` | `access-key-id`・`secret-access-key` | `platform-infra` / `platform-backup-s3` |
 | 警報の Discord の webhook | `cloud/platform/alertmanager-discord` | `webhook-url` | `platform-infra` / `alertmanager-discord` |
 | 外の監視の ping の URL | `cloud/platform/alertmanager-heartbeat` | `ping-url`・`discord-ping-url`・`discord-fail-url` | `platform-infra` / `alertmanager-heartbeat` |

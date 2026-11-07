@@ -21,7 +21,7 @@ related_ids:
   - IADR-0110
 author: claude
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-11-07
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0076_slo-evaluation-target-and-metric-units.md (決定 3・4 / §残るもの)
   - planning:projects/microservices-platform/07_adr/ADR-0044_llm-usage-metrics-and-pricing-table.md (決定 1・3)
@@ -75,6 +75,10 @@ plan_refs:
 🔴 **外周は受信ヘッダを一切見ない。** 見れば「外から印を付けて実利用を費用集計から隠す」経路が開く。
 これは**攻撃者に費用計上の免除権を配ることに等しい**。否定形の試験（外からヘッダを付けても除外されない）を
 陽性・陰性と対で置いた。
+
+> ［2026-11-07 追記 / IADR-0701］内周の受容の前提（メッシュの STRICT mTLS の内側で、外周が付けたヘッダだけが届く）は、メッシュも外周も無い構成
+> （クラウドの最小構成）では成り立たない。LlmGateway は標識を、検証済みのトークンの主体が許可集合（`Llm:SyntheticMarker:TrustedCallers`）に在るときだけ引き継ぐ
+> （段 `Llm:SyntheticMarker:Mode`。既定 Report は従前どおり引き継いで数え、Enforce は許可集合の外の標識を無視して費用に計上する。クラウドは Enforce）。
 
 **ヘッダだけで済ませなかった理由**: 合成監視は `.RequireAuthorization()` の端点を叩くため、
 **どのみち主体を用意しなければならない**（#443 / #1103 が踏んだ罠）。主体が要るなら、

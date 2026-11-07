@@ -1,8 +1,10 @@
 using Grpc.Core;
+using LlmGateway.Domain.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Llm;
+using Platform.Shared.Infrastructure.Foundation.Observability;
 using Pb = Platform.Shared.Contracts.Grpc.LlmGateway.V1;
 
 namespace LlmGateway.Features.Embeddings.Embed;
@@ -25,11 +27,20 @@ namespace LlmGateway.Features.Embeddings.Embed;
 // 🔴 縮退は RpcException にしない。越境拒否・プロバイダ未登録・次元不整合・上流不調はすべて
 // `embedded=false` の**応答**で返す（REST の 200 ＋ Embedded=false と同値）。RpcException になるのは
 // s2s の面（UNAUTHENTICATED / PERMISSION_DENIED）と輸送不達（UNAVAILABLE）だけである。
+//
+// 🔴 NFR-18, IADR-0701: **判定器へ入る前に呼び手ごとの許可表（LlmCallerPolicy.EvaluateEmbedding）を見る**（補完と同じ 1 つの表）。
+// 段 2 で許可の無い呼び手は PERMISSION_DENIED。送る前の上限は判定器（EmbedUseCase）の中で掛かる。
 [Authorize(Policy = PlatformAuthPolicies.ServiceCaller)]
-public sealed class LlmEmbeddingGrpcService(EmbedUseCase useCase) : Pb.LlmEmbedding.LlmEmbeddingBase
+public sealed class LlmEmbeddingGrpcService(EmbedUseCase useCase, LlmCallerPolicy callerPolicy) : Pb.LlmEmbedding.LlmEmbeddingBase
 {
     public override async Task<Pb.EmbedResponse> Embed(Pb.EmbedRequest request, ServerCallContext context)
     {
+        // 呼び手は検証済みのトークンの主体（補完と同じ関数）。
+        var caller = MachinePrincipal.ClientIdOf(context.GetHttpContext().User);
+        if (!callerPolicy.EvaluateEmbedding(caller).Allowed)
+            throw new RpcException(new Status(
+                StatusCode.PermissionDenied, "この呼び手には、埋め込みが許可されていない。"));
+
         // 🔴 proto3 に null は無い（IADR-0397 決定 3）。EMBED_PURPOSE_UNSPECIFIED（既定 0）は
         // REST の DTO 既定（EmbedPurpose.Index）へ**明示的に写す**。写し漏れは「用途が Index として
         // routing されない」形で静かに壊れる（例外にならない）ため、T-S-07 が固定する。
@@ -41,7 +52,7 @@ public sealed class LlmEmbeddingGrpcService(EmbedUseCase useCase) : Pb.LlmEmbedd
             // FR-03, ADR-0092 決定 2, [[IADR-0467]] (#336): 空文字（未指定）は null へ戻す（REST と同値）。
             TargetCollection: LlmGrpcMapping.ToDtoTargetCollection(request.TargetCollection));
 
-        var result = await useCase.ExecuteAsync(dto, context.CancellationToken);
+        var result = await useCase.ExecuteAsync(dto, context.CancellationToken, caller);
         return LlmGrpcMapping.ToProto(result);
     }
 }

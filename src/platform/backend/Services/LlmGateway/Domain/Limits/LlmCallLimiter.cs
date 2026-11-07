@@ -1,4 +1,5 @@
 using LlmGateway.Common.Observability;
+using LlmGateway.Domain.Authorization;
 using LlmGateway.Domain.Ports;
 using LlmGateway.Domain.Pricing;
 using LlmGateway.Domain.Routing;
@@ -21,6 +22,8 @@ namespace LlmGateway.Domain.Limits;
 //   - 前回の値を読めるまでは、費用の上限を持つ呼び手の呼び出しを段 2 で送らない（種類 cost_state。fail-closed）。
 //   - 見込み額の予約を置き場へ書けなければ、段 2 では予約を戻して送らない（送ってから書けないと、再起動で消える消費が生まれる）。
 //   - 実額への置き換え・戻しを書けなかったときは、手元の値は正しいまま次の書き込みで追いつく（置き場には予約が残る＝多めの側）。
+// 🔴 NFR-18, NFR-21, IADR-0701: **埋め込み（EmbedUseCase）も同じ判定器を通る**（AdmitEmbedding）。呼び手の要求数・当日の費用の枠は
+//   補完と同じ鍵に数え（呼び手の合計に埋め込みも入る）、用途の枠は固定の `embedding`。段は `EmbeddingMode`（Off は判定しない）。
 public sealed class LlmCallLimiter(
     IOptionsMonitor<LlmCallLimitOptions> options,
     IOptionsMonitor<LlmRoutingOptions> routing,
@@ -46,6 +49,9 @@ public sealed class LlmCallLimiter(
     public const string ModeReport = "report";
     public const string ModeEnforce = "enforce";
 
+    // NFR-18, IADR-0701: 埋め込みの用途の枠（固定の値。計器の llm.purpose にもこの値で載る）。
+    public const string EmbeddingPurpose = "embedding";
+
     private static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(1);
 
     private readonly object _gate = new();
@@ -66,9 +72,34 @@ public sealed class LlmCallLimiter(
         string? caller, string purpose, string? model, int promptChars, int maxTokens)
     {
         var o = options.CurrentValue;
-        // AI レビュー #2408: 呼び手は小文字へ揃える（Callers の照合は大小を区別しないので、枠の鍵と計器の綴りも揃える）。
-        var who = string.IsNullOrWhiteSpace(caller) ? UnknownCaller : caller.Trim().ToLowerInvariant();
         var normalizedPurpose = LlmMetricValues.NormalizePurpose(routing.CurrentValue, purpose);
+        return AdmitCore(
+            o, Who(caller), normalizedPurpose, model, promptChars, maxTokens,
+            embedding: false, priced: true, enforce: o.Mode == LlmCallLimitMode.Enforce);
+    }
+
+    // NFR-18, NFR-21, IADR-0701: 埋め込みを送る直前に 1 回呼ぶ（戻り値の扱いは Admit と同じ）。
+    // textChars は入力の文字数（入力トークンとみなす。出力は 0）。billable が偽（外へ出ない経路）なら費用を数えず、要求数と長さだけを見る。
+    // 段（EmbeddingMode）が Off なら判定も計上もしない。
+    public LlmCallAdmission AdmitEmbedding(string? caller, string? model, int textChars, bool billable)
+    {
+        var o = options.CurrentValue;
+        var who = Who(caller);
+        if (o.EmbeddingMode == LlmGuardStage.Off)
+            return new LlmCallAdmission(this, false, [], null, "c|" + who, "p|" + who + "|" + EmbeddingPurpose, default, embedding: true);
+        return AdmitCore(
+            o, who, EmbeddingPurpose, model, textChars, 0,
+            embedding: true, priced: billable, enforce: o.EmbeddingMode == LlmGuardStage.Enforce);
+    }
+
+    // AI レビュー #2408: 呼び手は小文字へ揃える（Callers の照合は大小を区別しないので、枠の鍵と計器の綴りも揃える）。
+    private static string Who(string? caller)
+        => string.IsNullOrWhiteSpace(caller) ? UnknownCaller : caller.Trim().ToLowerInvariant();
+
+    private LlmCallAdmission AdmitCore(
+        LlmCallLimitOptions o, string who, string normalizedPurpose, string? model, int promptChars, int maxTokens,
+        bool embedding, bool priced, bool enforce)
+    {
         var limits = EffectiveCallerLimits.For(o, who);
         var now = clock.GetUtcNow();
         var today = DateOnly.FromDateTime(now.UtcDateTime);
@@ -76,19 +107,21 @@ public sealed class LlmCallLimiter(
         var purposeKey = "p|" + who + "|" + normalizedPurpose;
 
         var exceeded = new List<string>(2);
-        if (maxTokens <= 0 || maxTokens > o.MaxOutputTokens) exceeded.Add(KindMaxTokens);
+        if (!embedding && (maxTokens <= 0 || maxTokens > o.MaxOutputTokens)) exceeded.Add(KindMaxTokens);
         if (promptChars > o.MaxPromptChars) exceeded.Add(KindPromptLength);
 
         // 費用の上限が無い呼び手では換算しない（単価表の警告を増やさない。IADR-0678 決定 2）。
         decimal? estimate = null;
-        if (limits.HasCostLimit)
+        if (priced && limits.HasCostLimit)
         {
-            estimate = CostOf(o, model, Math.Max(0, promptChars), Math.Max(0, maxTokens), now, default, out var unpriced);
+            var unpriced = false;
+            estimate = embedding
+                ? EmbeddingCostOf(o, model, Math.Max(0, promptChars))
+                : CostOf(o, model, Math.Max(0, promptChars), Math.Max(0, maxTokens), now, default, out unpriced);
             if (unpriced)
                 metrics.RecordUnpricedEstimate(who, normalizedPurpose);
         }
 
-        var enforce = o.Mode == LlmCallLimitMode.Enforce;
         lock (_gate)
         {
             // IADR-0698: 費用を数える呼び出しは、前回の値を読めるまで判定できない（読めない＝段 2 では送らない）。
@@ -142,7 +175,7 @@ public sealed class LlmCallLimiter(
         var denied = enforce && exceeded.Count > 0;
         return new LlmCallAdmission(
             this, denied, exceeded,
-            denied ? null : estimate, callerKey, purposeKey, today);
+            denied ? null : estimate, callerKey, purposeKey, today, embedding);
     }
 
     // 見込み額を実額へ置き換える（送った後）。
@@ -150,7 +183,9 @@ public sealed class LlmCallLimiter(
     {
         if (admission.ReservedCost is not { } reserved) return;
         var now = clock.GetUtcNow();
-        var actual = CostOf(options.CurrentValue, model, inputTokens, outputTokens, now, cache, out _);
+        var actual = admission.IsEmbedding
+            ? EmbeddingCostOf(options.CurrentValue, model, inputTokens)
+            : CostOf(options.CurrentValue, model, inputTokens, outputTokens, now, cache, out _);
         Adjust(admission, reserved, actual, DateOnly.FromDateTime(now.UtcDateTime));
     }
 
@@ -172,6 +207,16 @@ public sealed class LlmCallLimiter(
         const decimal PerMillion = 1_000_000m;
         return inputTokens * o.UnknownModelPrice.InputPerMillionTokens / PerMillion
              + outputTokens * o.UnknownModelPrice.OutputPerMillionTokens / PerMillion;
+    }
+
+    // NFR-18, IADR-0701: 埋め込みの金額（入力だけ）。EmbeddingPrices に無いモデルは UnknownModelPrice の入力単価（多めの側）。
+    private static decimal EmbeddingCostOf(LlmCallLimitOptions o, string? model, long inputTokens)
+    {
+        const decimal PerMillion = 1_000_000m;
+        var perMillion = !string.IsNullOrWhiteSpace(model) && o.EmbeddingPrices.TryGetValue(model, out var p)
+            ? p
+            : o.UnknownModelPrice.InputPerMillionTokens;
+        return inputTokens * perMillion / PerMillion;
     }
 
     private void Adjust(LlmCallAdmission admission, decimal reserved, decimal actual, DateOnly today)
@@ -302,8 +347,9 @@ public sealed class LlmCallAdmission
 
     internal LlmCallAdmission(
         LlmCallLimiter owner, bool denied, IReadOnlyList<string> exceeded,
-        decimal? reservedCost, string callerKey, string purposeKey, DateOnly reservedDay)
+        decimal? reservedCost, string callerKey, string purposeKey, DateOnly reservedDay, bool embedding = false)
     {
+        IsEmbedding = embedding;
         _owner = owner;
         Denied = denied;
         Exceeded = exceeded;
@@ -323,6 +369,7 @@ public sealed class LlmCallAdmission
     internal string CallerKey { get; }
     internal string PurposeKey { get; }
     internal DateOnly ReservedDay { get; }
+    internal bool IsEmbedding { get; }
 
     public void Settle(string? model, long inputTokens, long outputTokens, PromptCacheTokens cache = default)
     {

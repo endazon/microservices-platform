@@ -19,10 +19,11 @@ public sealed class LlmCallerPolicyTests : IDisposable
 
     public void Dispose() => _meters.Dispose();
 
-    private LlmCallerPolicy Policy(LlmCallerPolicyMode mode, ILoggerFactory? loggers = null)
+    private LlmCallerPolicy Policy(
+        LlmCallerPolicyMode mode, ILoggerFactory? loggers = null, LlmGuardStage embeddingMode = LlmGuardStage.Report)
     {
-        var o = new LlmCallerPolicyOptions { Mode = mode };
-        o.Callers["retrieval-service"] = new LlmCallerGrant { Purposes = ["rerank", "default"] };
+        var o = new LlmCallerPolicyOptions { Mode = mode, EmbeddingMode = embeddingMode };
+        o.Callers["retrieval-service"] = new LlmCallerGrant { Purposes = ["rerank", "default"], AllowEmbedding = true };
         o.Callers["ast"] = new LlmCallerGrant { Purposes = ["trade-decision"], AllowModelOverride = true };
         var routing = new LlmRoutingOptions();
         routing.PurposeModels["rerank"] = "m";
@@ -102,5 +103,67 @@ public sealed class LlmCallerPolicyTests : IDisposable
         var warnings = loggers.Entries.Where(e => e.Level == LogLevel.Warning).ToList();
         warnings.Should().HaveCount(2, "抑止の鍵は (種類, other, 用途) と (種類, retrieval-service, 用途) の 2 つだけ");
         warnings[0].Values["Caller"].Should().Be("stranger-0", "ログの本文には実名を出す");
+    }
+
+    // ---- NFR-18, IADR-0701: 埋め込みの許可（AllowEmbedding・段は EmbeddingMode） -------------------------------
+
+    [Fact]
+    public void 埋め込みの許可がある呼び手は違反なし_段の既定はReportである()
+    {
+        new LlmCallerPolicyOptions().EmbeddingMode.Should().Be(LlmGuardStage.Report);
+        new LlmCallerGrant().AllowEmbedding.Should().BeFalse("既定は不可");
+
+        var d = Policy(LlmCallerPolicyMode.Report, embeddingMode: LlmGuardStage.Enforce).EvaluateEmbedding("Retrieval-Service");
+        d.Allowed.Should().BeTrue();
+        d.Violations.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("ast", LlmCallerPolicy.KindEmbeddingNotAllowed)]
+    [InlineData("wiki-service", LlmCallerPolicy.KindUnknownCaller)]
+    [InlineData(null, LlmCallerPolicy.KindUnknownCaller)]
+    public void 埋め込みは許可の無い呼び手を段2で拒み段1で通し_Offは判定しない(string? caller, string kind)
+    {
+        // 補完の段（Mode）とは独立に切り替わる（補完が Report でも埋め込みの Enforce は拒む）。
+        var enforced = Policy(LlmCallerPolicyMode.Report, embeddingMode: LlmGuardStage.Enforce).EvaluateEmbedding(caller);
+        enforced.Allowed.Should().BeFalse();
+        enforced.Violations.Should().Equal(kind);
+
+        var reported = Policy(LlmCallerPolicyMode.Enforce, embeddingMode: LlmGuardStage.Report).EvaluateEmbedding(caller);
+        reported.Allowed.Should().BeTrue("段 1 は通す");
+        reported.Violations.Should().Equal(kind);
+
+        var off = Policy(LlmCallerPolicyMode.Enforce, embeddingMode: LlmGuardStage.Off).EvaluateEmbedding(caller);
+        off.Allowed.Should().BeTrue();
+        off.Violations.Should().BeEmpty("Off は判定しない（従前の挙動）");
+    }
+
+    [Fact]
+    public void 埋め込みの違反は用途embeddingと段を計器に載せる()
+    {
+        var seen = new List<Dictionary<string, string>>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (i, l) =>
+        {
+            if (i.Name == LlmCallerPolicy.ViolationCounterName) l.EnableMeasurementEvents(i);
+        };
+        listener.SetMeasurementEventCallback<long>((_, _, tags, _) =>
+        {
+            var d = new Dictionary<string, string>();
+            foreach (var t in tags) d[t.Key] = t.Value?.ToString() ?? "";
+            lock (seen) seen.Add(d);
+        });
+        listener.Start();
+
+        Policy(LlmCallerPolicyMode.Report, embeddingMode: LlmGuardStage.Enforce).EvaluateEmbedding("ast");
+
+        lock (seen)
+            seen.Should().ContainSingle(d => d[LlmCallerPolicy.KindTag] == LlmCallerPolicy.KindEmbeddingNotAllowed)
+                .Which.Should().Contain(new Dictionary<string, string>
+                {
+                    [LlmCallerPolicy.ModeTag] = "enforce",
+                    [LlmCallerPolicy.CallerTag] = "ast",
+                    [LlmCompletionMetrics.PurposeTag] = "embedding",
+                });
     }
 }
