@@ -2,7 +2,7 @@
 title: 作業仕様書 — クラウドのブローカの権限から購読する exchange の configure を外し、購読される exchange を起動の直後の初期化で宣言する
 type: spec
 status: done
-related_ids: [NFR-18, IADR-0681, IADR-0689, IADR-0691, IADR-0693]
+related_ids: [NFR-18, IADR-0681, IADR-0689, IADR-0691, IADR-0694]
 author: claude
 created: 2026-11-07
 updated: 2026-11-07
@@ -17,13 +17,13 @@ plan_refs: []
 
 - 非機能要件: NFR-18（サービス間の通信の保護）。機能要求（FR）・ユースケース（UC）・画面（SC）: なし。
 - 起点: 所有者の裁定（2026-11-07）「購読側の権限を、購読に要るもの（exchange の read と自分のキューへの束ね）だけへ絞る」。
-- 関連 IADR: IADR-0691 決定 3・§残る制約 2（本作業が引き継ぐ）。本作業の決定は IADR-0693。取引ユニットの側は AST の IADR-0628。
+- 関連 IADR: IADR-0691 決定 3・§残る制約 2（本作業が引き継ぐ）。本作業の決定は IADR-0694。取引ユニットの側は AST の IADR-0628。
 
 ## 対象範囲
 
 - 対象: `scripts/gen-rabbitmq-permissions.js`（クラウドの写し・`exchanges.json`）、生成物 `deploy/cloud/infra/rabbitmq-permissions.yaml`、
   `deploy/cloud/infra/rabbitmq.yaml`（起動の直後の復元に宣言を 1 段足す）、`scripts/rabbitmq-permissions.test.js`、`deploy/cloud/README.md`（順序）、
-  IADR-0693（新規）と IADR-0691（日付つきの追記）、索引。
+  IADR-0694（新規）と IADR-0691（日付つきの追記）、索引。
 - 対象外:
   - ローカルの生成物 `deploy/local/rabbitmq-setup/permissions.txt`（ローカルの購読側は従来どおり宣言する）。
   - 既定の exchange への write（受信キューを持つ利用者の戻し。IADR-0691 §残る制約 1）。
@@ -66,4 +66,4 @@ plan_refs: []
 
 ## 残余リスク
 
-- IADR-0693 §残る制約 1・2。
+- IADR-0694 §残る制約 1・2。

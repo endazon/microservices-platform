@@ -20,7 +20,7 @@
  *   6. 合わせ（reconcile-users.sh）: 既定（段 1）は vhost 全体のまま、narrow（段 2）は生成物の行を当てる。行の欠け・届かないものが
  *      あれば何も変えずに止まる。--permissions-report は何も書かない。当てた段を ConfigMap に写す。
  *   7. 起動の直後の復元（rabbitmq.yaml の restore-users.sh）は ConfigMap の段に従い、行の無いユーザーへ vhost 全体を付けない。
- *   8. クラウドの写し（NFR-18, IADR-0693）: 購読する（発行しない）exchange の configure を与えない。それ以外はローカルの行と同じ。
+ *   8. クラウドの写し（NFR-18, IADR-0694）: 購読する（発行しない）exchange の configure を与えない。それ以外はローカルの行と同じ。
  *      購読に要る操作（受動の宣言・束ね）は当たり、変異（購読の exchange の configure を戻す）で陰性対照が赤になる。
  *      exchanges.json は購読される exchange の和で、Wolverine の宣言と同じ形。クラウドの復元は利用者の権限を当てる前にそれを宣言する。
  *
@@ -476,7 +476,7 @@ ok('ブローカの manifest は ConfigMap rabbitmq-permissions を optional で
 });
 
 // --- 8 ----------------------------------------------------------------------------------------------------------
-// NFR-18, IADR-0693: クラウドの写し。取引ユニットはクラウドで購読の exchange を受動で宣言する（AST の IADR-0628）。
+// NFR-18, IADR-0694: クラウドの写し。取引ユニットはクラウドで購読の exchange を受動で宣言する（AST の IADR-0628）。
 const CLOUD_TEXT = fs.readFileSync(path.join(REPO_ROOT, gen.CLOUD_PERMS_REL), 'utf8');
 const cloudRows = (() => {
   const m = CLOUD_TEXT.match(/\n  permissions\.txt: \|\n((?:    .*\n)+)/);

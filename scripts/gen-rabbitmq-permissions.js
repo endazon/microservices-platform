@@ -24,7 +24,7 @@
  *   - NFR-18, IADR-0691: **既定の exchange への write は、自分の受信キューを持つ（購読する）利用者だけに与える。**
  *     既定の exchange への発行は宛先のキューの権限を見ないので、持つ利用者は名前を知るどのキューへも入れられる。
  *     戻しの要らない発行だけの利用者には与えない（受信キューが無く、戻すものが無い）。
- *   - NFR-18, IADR-0693: **クラウドの写し（deploy/cloud）では、購読する（自分が発行しない）exchange の configure を与えない。**
+ *   - NFR-18, IADR-0694: **クラウドの写し（deploy/cloud）では、購読する（自分が発行しない）exchange の configure を与えない。**
  *     取引ユニットはクラウドで購読の exchange を受動で宣言する（AST の IADR-0628。values-cloud の subscribedExchanges=Passive）。
  *     購読に要るのは exchange の read（束ね）と自分のキューだけになる。exchange はブローカの起動の直後の初期化が先に宣言する
  *     （ConfigMap の exchanges.json。購読される exchange の一覧をここで導く）。ローカル（permissions.txt）は従来のまま（購読側も宣言する）。
@@ -422,7 +422,7 @@ const alt = (names) => `^(${names.join('|')})$`;
 
 /**
  * 導出（名前の集合）から 3 つの正規表現を作る。RabbitMQ の権限の表（下の requiredAccess）と対で読む。
- * cloud: クラウドの写し（NFR-18, IADR-0693）。購読側は購読の exchange を宣言しないので、configure の exchange は発行するものだけにする。
+ * cloud: クラウドの写し（NFR-18, IADR-0694）。購読側は購読の exchange を宣言しないので、configure の exchange は発行するものだけにする。
  */
 function patternsFor(d, { cloud = false } = {}) {
   const q = `${reEscape(d.queuePrefix)}.*`;
@@ -433,7 +433,7 @@ function patternsFor(d, { cloud = false } = {}) {
     //   購読の exchange を含めるのは、購読側の Wolverine が起動時に exchange を passive でなく宣言するためである
     //   （基盤の BindPlatformQueue の DeclareExchange・取引ユニットの規約ルーティング。AutoProvision）。RabbitMQ は在る
     //   exchange の宣言し直しにも configure を求める（実ブローカで確かめた。IADR-0691）。ローカルの行はこのまま。
-    //   NFR-18, IADR-0693: クラウドの写しでは購読側が受動で宣言する（AST の IADR-0628）ので、発行する exchange だけにする。
+    //   NFR-18, IADR-0694: クラウドの写しでは購読側が受動で宣言する（AST の IADR-0628）ので、発行する exchange だけにする。
     configure: alt([q, RESPONSE_PATTERN, reEscape(DEAD_LETTER), ...ex(cloud ? d.publish : both)]),
     // 書く: 自分のキュー（束ねる側）・共有のデッドレター（宣言の x-dead-letter-exchange と束ね）・発行の exchange・
     //   既定の exchange（戻し。NFR-18, IADR-0691: 受信キューを持つ利用者だけ）。
@@ -457,7 +457,7 @@ function requiredAccess(d, { cloud = false } = {}) {
     add('configure', q, `${t} の受信キューの宣言`);
     add('read', q, `${t} の受信キューの購読`);
     add('write', q, `${t} の受信キューの束ね`);
-    // NFR-18, IADR-0693: クラウドでは購読側は購読の exchange を受動で宣言する（受動の宣言は configure を要らない）。
+    // NFR-18, IADR-0694: クラウドでは購読側は購読の exchange を受動で宣言する（受動の宣言は configure を要らない）。
     if (!cloud) add('configure', t, `${t} の exchange の宣言`);
     add('read', t, `${t} の exchange への束ね`);
     if (d.deadLetterQueues) {
@@ -524,7 +524,7 @@ function alternatives(pattern) {
 const unEscape = (s) => s.replace(/\\(.)/g, '$1');
 
 /**
- * NFR-18, IADR-0693: ローカルの行（permissions.txt）からクラウドの行を作る。configure の exchange を発行するもの（write に在る exchange）だけにする。
+ * NFR-18, IADR-0694: ローカルの行（permissions.txt）からクラウドの行を作る。configure の exchange を発行するもの（write に在る exchange）だけにする。
  * 行の形は patternsFor が決める: configure = [キューの接頭辞, 応答キュー, 共有のデッドレター, …exchange]、write = [キューの接頭辞, 共有のデッドレター,
  * (既定の exchange), …発行の exchange]。行だけから作るので、AST の写しが無い checkout でも照合できる（導出からの値との一致は試験が固定する）。
  */
@@ -538,13 +538,13 @@ function cloudRow(row) {
   return { ...row, configure: alt([...fixed, ...conf.slice(3).filter((x) => write.has(x))]) };
 }
 
-/** NFR-18, IADR-0693: 購読される exchange（クラウドの行の read の exchange。キュー・応答キュー・共有のデッドレターを除く）。 */
+/** NFR-18, IADR-0694: 購読される exchange（クラウドの行の read の exchange。キュー・応答キュー・共有のデッドレターを除く）。 */
 function subscribedExchanges(row) {
   return alternatives(row.read).slice(3).map(unEscape);
 }
 
 /**
- * NFR-18, IADR-0693: ブローカの起動の直後の初期化（restore-users.sh の rabbitmqctl import_definitions）が、利用者の権限を当てる前に
+ * NFR-18, IADR-0694: ブローカの起動の直後の初期化（restore-users.sh の rabbitmqctl import_definitions）が、利用者の権限を当てる前に
  * 宣言する exchange。取引ユニットの購読される exchange の和。形は Wolverine の AutoProvision の宣言と同じ（fanout・durable・自動削除しない・
  * 引数なし）にする（違うと発行側の宣言が PRECONDITION_FAILED で拒まれる）。vhost はクラウドの 1 つ（/）。
  */
@@ -563,7 +563,7 @@ function renderCloud(rows, users) {
     '# NFR-18, IADR-0681, IADR-0689 決定 12: 生成物（手で直さない）。node scripts/gen-rabbitmq-permissions.js --write が',
     '#   deploy/local/rabbitmq-setup/permissions.txt の取引ユニットの行から作り、同じスクリプト（既定の照合）が突き合わせる。',
     '# クラウドのブローカは段 2（narrow）だけで動く。行の無いユーザーには権限を付けない（vhost 全体へ倒さない）。',
-    '# NFR-18, IADR-0693: クラウドでは購読側が購読の exchange を宣言しないので、configure の exchange は発行するものだけ（ローカルの行との違い）。',
+    '# NFR-18, IADR-0694: クラウドでは購読側が購読の exchange を宣言しないので、configure の exchange は発行するものだけ（ローカルの行との違い）。',
     '#   exchanges.json は、起動の直後の初期化が利用者の権限を当てる前に宣言する exchange（購読される exchange の和）。',
     'apiVersion: v1',
     'kind: ConfigMap',

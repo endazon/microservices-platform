@@ -1,5 +1,5 @@
 ---
-title: IADR-0693 クラウドのブローカの権限から、購読する（自分が発行しない）exchange の configure を外す。購読される exchange はブローカの起動の直後の初期化が、利用者の権限を当てる前に宣言する。ローカルの権限は変えない
+title: IADR-0694 クラウドのブローカの権限から、購読する（自分が発行しない）exchange の configure を外す。購読される exchange はブローカの起動の直後の初期化が、利用者の権限を当てる前に宣言する。ローカルの権限は変えない
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, IADR-0681, IADR-0689, IADR-0691, AST/IADR-0628]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_rabbitmq-cloud-subscriber-no-exchange-configure.md
 ---
 
-# IADR-0693: クラウドの購読側から購読の exchange の configure を外す
+# IADR-0694: クラウドの購読側から購読の exchange の configure を外す
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 
