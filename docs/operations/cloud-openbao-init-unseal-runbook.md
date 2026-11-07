@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700]
-specs: [20261107_backup-owner-ops-hardening, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
+iadrs: [IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0705]
+specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->
 
@@ -145,6 +145,10 @@ openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       #
 
 - 書けるのは `cloud/ast`・`cloud/platform`・`cloud/msp` の下だけ（`cloud/shared` は §4 の `seed-secrets.sh` が作る）。
 - **キーが在れば止まる**（終了コード 5。何も変えない）。作り直すときだけ `--overwrite` を付ける（同じパスのほかのキーは残す）。
+- ［2026-11-07 追記］🔴 **Keycloak の管理者の値（`cloud/platform/keycloak-admin` の `username`・`password`）を `--overwrite` で替える前に、
+  `bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live close` を流して閉じた状態にする**（`… --live check` が 0 で終わることを確かめる）。
+  一時管理者の有無はその資格でトークンを取れるかで読むので、値を替えた後に `check`・`close` を流すと、前の値で作られた一時管理者を「無い」と読み、
+  消さずに残す（[一時管理者の手順書](cloud-keycloak-admin-runbook.md) §2）。閉じた状態なら master realm に一時管理者は在らず、替えた値は次の `open` で使われる。
 - 終了コード: 0 書いた・1 失敗（パスやキーの有無を読めないときも、書かずに 1）・2 引数の誤りか値が空・3 `--live` が無い・5 キーが在る。
 - 書いた後は ESO が 1 時間以内に写す。すぐに写すときは `kubectl -n <名前空間> annotate externalsecret <名前> force-sync="$(date +%s)" --overwrite`。
 

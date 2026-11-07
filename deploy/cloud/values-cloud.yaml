@@ -111,6 +111,10 @@ services:
       - { name: Llm__CallLimits__Default__DailyCostLimit, value: "0.5" }
       - { name: Llm__CallLimits__Callers__ai-stock-trading-llm-caller__DailyCostLimit, value: "18" }
       - { name: Llm__CallLimits__SpendStore__Path, value: "/var/lib/llm-gateway/daily-spend.json" }
+      # NFR-18, IADR-0705: 提供元の API へは外向きの中継（platform-infra の egress-proxy。名前の許可表）を経る（外の 443 へ直には出さない。
+      #   infra/networkpolicy.yaml の llmgateway-egress）。Keycloak（https）・collector（http）はクラスタの中なので中継を経ない（NO_PROXY）。
+      - { name: HTTPS_PROXY, value: "http://egress-proxy.platform-infra.svc.cluster.local:3128" }
+      - { name: NO_PROXY, value: "localhost,127.0.0.1,keycloak,otel-collector,.svc,.cluster.local" }
 
 frontend:
   enabled: false

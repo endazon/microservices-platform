@@ -101,6 +101,7 @@ for t in k3s k3s-install; do
 done > "$PINNED_WORK/k3s.sha256"
 ( cd "$PINNED_WORK" && sha256sum -c k3s.sha256 )                    # 2 行とも OK を確かめる（macOS は shasum -a 256 -c）
 scp "$PINNED_WORK/k3s-$K3S_VERSION" "$PINNED_WORK/k3s-install-$K3S_VERSION" "$PINNED_WORK/k3s.sha256" <ノード>:/root/
+scp deploy/cloud/k3s/audit-policy.yaml deploy/cloud/k3s/config.yaml.d/20-apiserver-audit.yaml <ノード>:/root/   # API サーバーの監査（下）
 ```
 
 ノードで、運んだものをもう一度照合してから入れる（インストーラには取得をさせない）:
@@ -108,12 +109,18 @@ scp "$PINNED_WORK/k3s-$K3S_VERSION" "$PINNED_WORK/k3s-install-$K3S_VERSION" "$PI
 ```sh
 cd /root && sha256sum -c k3s.sha256                                  # 2 行とも OK でなければ先へ進まない
 install -m 0755 -o root -g root k3s-v1.35.10+k3s1 /usr/local/bin/k3s
+mountpoint /var/lib/rancher                                          # 暗号化した領域（1-2）がマウントされていることを確かめる
+install -d -m 0700 /var/lib/rancher/k3s/server/logs
+install -m 0600 -o root -g root audit-policy.yaml /var/lib/rancher/k3s/server/audit-policy.yaml
+install -d -m 0755 /etc/rancher/k3s/config.yaml.d
+install -m 0600 -o root -g root 20-apiserver-audit.yaml /etc/rancher/k3s/config.yaml.d/20-apiserver-audit.yaml
 INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC="server \
   --disable traefik --disable servicelb \
   --secrets-encryption \
   --bind-address 127.0.0.1 --advertise-address 127.0.0.1 --node-ip 127.0.0.1 \
   --write-kubeconfig-mode 0600" sh ./k3s-install-v1.35.10+k3s1
 k3s --version                                                        # v1.35.10+k3s1 を確かめ、版と sha256 を運用の記録に残す
+test -s /var/lib/rancher/k3s/server/logs/audit.log && echo audit-ok  # API サーバーの監査の記録が書かれ始めたこと
 ```
 
 - 版は、試験の k3d が使う k3s（`scripts/k8s-local-up.sh` の `K3S_IMAGE`）と同じ minor の、最新の patch に置いた。
@@ -141,6 +148,10 @@ systemctl disable k3s      # 起動時に自動で起こさない。マウント
 
 - `--disable traefik --disable servicelb`: 入口（Ingress・LoadBalancer）を持たない。描画にも LoadBalancer の Service と hostPort は無い（試験で固定）。
 - `--secrets-encryption`: Secret を保存時に暗号化する（`k3s secrets-encrypt status` で確かめる）。
+- **API サーバーの監査の記録**（[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）: `deploy/cloud/k3s/config.yaml.d/20-apiserver-audit.yaml`
+  （`kube-apiserver-arg`）を k3s が起動の引数と同じに読む。方針 `deploy/cloud/k3s/audit-policy.yaml` は Metadata まで（要求・応答の本文を残さない）で、
+  Secret・トークン・exec・RBAC の操作は必ず残す。方針と記録は `/var/lib/rancher` の下（暗号化した領域）。インストーラは k3s を起こすので、
+  **方針と設定の追加はインストーラの前に置く**。稼働中のノードへ足すときは[手順書](../../docs/operations/cloud-apiserver-audit-log-runbook.md)。
 - **API サーバーは公開 IP に出さない**（`--bind-address 127.0.0.1`）。管理（kubectl・helm）は SSH のトンネル越しに行う:
 
   ```sh
@@ -204,8 +215,9 @@ bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <a
   --recipients <age の受取人> --operator-out <operator>.age          # 初回の root は最後に失効する
 bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <age の識別子>   # 7 種（DB はサービスごとの 7 組も）を OpenBao の中で作る
 . scripts/lib/pinned-artifacts.sh && pinned_work_init
+kubectl apply -k deploy/cloud/external-secrets                       # ESO の名前空間（PSA restricted・到達の制限）を chart より先に作る
 helm upgrade --install external-secrets "$(pinned_chart external-secrets 2.8.0 "$PINNED_WORK")" \
-  -n external-secrets --create-namespace -f deploy/cloud/vault/external-secrets-values.yaml --wait
+  -n external-secrets -f deploy/cloud/vault/external-secrets-values.yaml --wait
 node deploy/cloud/realm-for-cloud.js --template deploy/keycloak/microservices-platform-realm.json \
   | kubectl -n platform-infra create configmap keycloak-realm-template --from-file=platform-realm.json=/dev/stdin --dry-run=client -o yaml \
   | kubectl apply -f -                                                 # 雛形（secret を持たない）
@@ -222,7 +234,18 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   -f deploy/cloud/values-cloud.yaml --set-string global.image.tag="$TAG"
 ```
 
-- `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言が入らない。
+- `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言、
+  外向きの中継（`egress/`）・証明書の期限の測り（`tls-cert-probe/`）が入らない。
+- **クラスタの外の 443 へ宛先を名指して出るのは外向きの中継（`egress/`。[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）だけ**
+  （ESO・OpenBao の API サーバー向けの出はポートだけで、宛先を問わず 443・6443 へ出られる。同 IADR の残余 5）。
+  LLM ゲートウェイ・バックアップ・Alertmanager は中継を HTTPS_PROXY として使い、中継は名前の許可表に在る宛先の 443 だけへ繋ぐ。
+  許可表は宣言（LLM の提供元・Discord）・バックアップの保管先（ConfigMap `platform-backup-s3-target` の `endpoint`）・オーナーが埋める表
+  （ConfigMap `egress-proxy-extra-hosts`。heartbeat の宛先など）の和。**新しく作る構成では `kubectl apply -k deploy/cloud` の前に**
+  `egress-proxy-extra-hosts` を作る（無いと heartbeat が届かず、外の監視が知らせる）。**稼働中の構成へ入れるとき**は、この順ではなく
+  [外向きの中継の手順書](../../docs/operations/cloud-egress-proxy-runbook.md)の移す段（`deploy/cloud-transition/egress-proxy-report`）を経る。
+- master realm の一時管理者は常には置かない（`infra/keycloak.yaml` は `KC_BOOTSTRAP_ADMIN_*` を持たない。realm の取り込みに管理者は要らない）。
+  稼働中の realm へ手を入れるときだけ `deploy/cloud/keycloak-admin/keycloak-admin.sh --live open` で開き、作業の後に `… --live close` で消して閉じる
+  （[手順書](../../docs/operations/cloud-keycloak-admin-runbook.md)。稼働中の構成で初回の起動に作られた一時管理者も、同じ手順書で消す）。
 - 基盤の Pod はどれも root でなく capability を持たない（[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)）。
   名前空間 `platform-infra`・`microservices-platform` の Pod Security は restricted で、宣言の外の Pod（`kubectl run` ほか）は受け付けで拒まれる。
   **稼働中の構成へ初めて当てるとき**（前の宣言は root の起動器で動いていた）は、当てる前に、データの PVC に root の所有の物が無いことを読みだけで確かめる
@@ -250,8 +273,8 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
   `cloud/shared/*`（DB・ブローカ・機密クライアントの secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
 - 取引ユニットのサービス間の認証は、サービスごとの機密クライアント（`ai-stock-trading-svc-<サービス>` の 7 つ。[IADR-0700](../../.ai-context/adr/IADR-0700_cloud-ast-per-service-s2s-clients.md)）で行う。
-  **稼働中の構成へ入れるとき**は、`seed-secrets.sh`（無いキーだけを足す）→ ESO の同期 → `bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check` →
-  `… --live apply` の順で、取引ユニットの chart より先に当てる（[手順書](../../docs/operations/cloud-s2s-per-service-clients-runbook.md)）。新しく作る構成は realm の取り込みが最初から含む。
+  **稼働中の構成へ入れるとき**は、`seed-secrets.sh`（無いキーだけを足す）→ ESO の同期 → `bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live open` →
+  `bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check` → `… --live apply` → `keycloak-admin.sh --live close` の順で、取引ユニットの chart より先に当てる（[手順書](../../docs/operations/cloud-s2s-per-service-clients-runbook.md)）。新しく作る構成は realm の取り込みが最初から含む。
 
 ## 4. 資格情報
 
@@ -269,8 +292,8 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   クライアントだけを残し、人の利用者・試験の利用者・SMTP を外す（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
   加えて、取引ユニットのサービスごとの 7 つ（`ai-stock-trading-svc-<サービス>`。宣言の `ai-stock-trading-svc` と同じ作り・宛先は取引ユニットの API だけ）を組んで足す。
 - 在るパスには無いキーだけを足す（`seed-secrets.sh` の `perkey`。機密クライアントの secret とブローカの利用者の両方に及ぶ。`users.txt` に行が増えれば稼働中の `ast-rabbitmq-users` にもキーが足される。在るキーの値は触らず、稼働の側との不一致は見ない。DB の `userpass` はパスが在れば触らない）。
-- Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
-  ユーザーはサービスごとのユーザーが揃うと消える）。
+- Keycloak の管理者は、稼働中の realm へ手を入れる間だけ在る（`keycloak-admin.sh` が開いて消す。値は OpenBao の `cloud/platform/keycloak-admin` のまま）。
+  ブローカの既定のユーザーは、サービスごとのユーザーが揃うと消える。
 - 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）。
 - 外から持ち込む値（LLM の鍵・バックアップの保管先・Discord・heartbeat・取引ユニットの外部の資格）は、オーナーが
   `vault/put-external-secret.sh` で標準入力から OpenBao の `cloud/{msp,platform,ast}/*` に書き、ESO が写す
@@ -314,7 +337,9 @@ node scripts/deploy-cloud.test.js    # 上の 2 つを描いて、持ち込ま�
   （証明書の公開の部分だけを読む。鍵 `tls.key` は読まない）と、CA（10 年）は
   `kubectl -n platform-infra get configmap platform-infra-ca -o jsonpath='{.data.ca\.crt}' | openssl x509 -noout -enddate`。
 - すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret postgres-tls force-sync="$(date +%s)" --overwrite`（RabbitMQ・Keycloak・LLM ゲートウェイも同じ）の後に消費側を作り直す。
-- 期限の警報は置いていない（理由と確かめ方は[認可サーバーの TLS の手順書](../../docs/operations/cloud-keycloak-tls-runbook.md)の §4）。
+- **期限の警報**（[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）: `tls-cert-probe/` が 4 つの受け口の**出している**証明書の
+  期限を 10 分ごとに測り、Prometheus の `cloud-tls-expiry` が鳴らす（残り 150 日で warning・30 日で critical。作り直しの漏れも、消費側の作り直しの漏れも
+  残りの減りとして見える）。CA（`platform-infra-ca`）の残り 400 日と、OpenBao の受け口の証明書（`openbao-ca` の notAfter − 365 日で導く）の残り 150 日も鳴らす。
 - **封印のあいだは発行できない。** 作り直しは unseal の後に行う。
 - OpenBao 自身の受け口の証明書（1 年）は PKI の外で、`bash deploy/cloud/vault/tls-cert.sh --live renew` で半年ごとに作り直す（封印しない。
   CA を併記してから読み直させるので、ESO が届かない時間を作らない。[手順書](../../docs/operations/cloud-openbao-tls-runbook.md) §4）。

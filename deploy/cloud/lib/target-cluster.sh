@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# NFR-18, NFR-05, IADR-0703 決定 2: オーナーが手元から流す deploy/cloud の手順（vault/*.sh・keycloak-clients・db-users）が、
+# NFR-18, NFR-05, IADR-0703 決定 2: オーナーが手元から流す deploy/cloud の手順（vault/*.sh・keycloak-clients・keycloak-admin・db-users）が、
 # **宛先のクラスタを確かめてから** kubectl を使うための関数。
 #
 #   . "$ROOT/deploy/cloud/lib/target-cluster.sh"

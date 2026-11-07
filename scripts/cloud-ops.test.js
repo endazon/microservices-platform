@@ -422,12 +422,15 @@ t('T-2402-36 バックアップ: 保持（lifecycle）と Object Lock の日数�
   for (const r of lc.Rules) assert.ok(r.NoncurrentVersionExpiration, `${r.ID}: 古い版を消さないと容量が積み上がる`);
 });
 const np = find(bds, 'NetworkPolicy', 'platform-backup-egress') || EMPTY;
-t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・443 だけ。受けは無し）', () => {
+t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・外向きの中継〔IADR-0705。外の 443 へ直には出ない〕だけ。受けは無し）', () => {
   assert.ok(np.text, 'NetworkPolicy platform-backup-egress が無い');
   assert.deepStrictEqual(np.obj.spec.policyTypes, ['Egress']);
   const ports = new Set();
   for (const rule of np.obj.spec.egress) for (const p of rule.ports) ports.add(Number(p.port));
-  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 443, 5432]);
+  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 3128, 5432]);
+  const toProxy = np.obj.spec.egress.find((r) => r.ports.some((p) => Number(p.port) === 3128));
+  assert.deepStrictEqual(toProxy.to.map((x) => x.podSelector && x.podSelector.matchLabels && x.podSelector.matchLabels.app), ['egress-proxy'], '3128 の宛先が外向きの中継でない');
+  assert.ok(!np.obj.spec.egress.some((r) => (r.to || []).some((x) => x.ipBlock)), '外の範囲（ipBlock）へ直に出る規則が残っている');
 });
 
 // ---------------------------------------------------------------- 警報・heartbeat

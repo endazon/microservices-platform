@@ -8,15 +8,15 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0703, IADR-0689, IADR-0674]
-specs: [20261107_backup-owner-ops-hardening]
+iadrs: [IADR-0703, IADR-0689, IADR-0674, IADR-0705]
+specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry]
 -->
 
 # 運用 Runbook: 宛先のクラスタの確かめ（クラスタの印）
 
 > **運用仕様書（[`operations.md`](operations.md)）の「秘匿管理」の下位にあたる手順書である。**
 > 対象は、オーナーが手元から流すクラウドの最小構成の手順（`deploy/cloud/vault/*.sh`・`deploy/cloud/keycloak-clients/keycloak-clients.sh`・
-> `deploy/cloud/db-users/ast-db-users.sh`）。秘匿管理そのものの手順は[秘匿管理の手順書](cloud-openbao-init-unseal-runbook.md)。
+> `deploy/cloud/keycloak-admin/keycloak-admin.sh`・`deploy/cloud/db-users/ast-db-users.sh`）。秘匿管理そのものの手順は[秘匿管理の手順書](cloud-openbao-init-unseal-runbook.md)。
 >
 > **状態を `draft` に留めている理由**: クラウドのノードで印の記録と照らし合わせをまだ記録していない。
 

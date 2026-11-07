@@ -1,0 +1,15 @@
+# NFR-18, IADR-0705: クラウドの基盤の外向きの中継（名前の許可表を持つ CONNECT の中継）。クラスタの外の 443 へ宛先を名指して出るのはこの中継の Pod だけにする
+# （ESO・OpenBao の API サーバー向けの出はポートだけで宛先を問わない。IADR-0705 残余 5）。
+# deploy/cloud の kustomization が resources に入れる（単独では当てない）。手順は docs/operations/cloud-egress-proxy-runbook.md。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - egress-proxy.yaml
+
+# 手順（proxy.js）は ConfigMap に入れる。中身が変われば名前の接尾辞が変わり、Deployment が作り直される。
+configMapGenerator:
+  - name: egress-proxy-script
+    namespace: platform-infra
+    files:
+      - proxy.js

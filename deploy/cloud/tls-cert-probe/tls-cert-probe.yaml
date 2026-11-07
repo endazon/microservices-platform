@@ -1,0 +1,174 @@
+# NFR-16, NFR-21, IADR-0705: サーバ証明書（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ）の期限の測り（platform-infra）。
+#   - 受け口へ TLS で繋いで出している証明書の notAfter を読み（Postgres は SSLRequest の後）、基盤の CA（ConfigMap platform-infra-ca）で鎖と名前を確かめる。
+#     中身は送らない。Secret を読まない（鍵に触れない）。ServiceAccount のトークンも持たない。10 分ごと。
+#   - CA の期限: platform-infra-ca（OpenBao の PKI の CA）と openbao-ca（OpenBao の受け口の CA。IADR-0696。受け口の証明書の期限は CA から導く）。
+#   - 系列は Prometheus が :9465 から読む。警報は observability/prometheus.yaml の cloud-tls-expiry。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tls-cert-probe-config
+  namespace: platform-infra
+data:
+  # 名前（servername）は ESO の VaultDynamicSecret の common_name（vault/eso/tls-*.yaml）と同じ。宛先のポートは各 Service の TLS の口。
+  targets.json: |
+    {
+      "targets": [
+        { "name": "postgres", "host": "postgres", "port": 5432, "servername": "postgres", "protocol": "postgres", "ca": "/etc/tls-cert-probe/platform-infra-ca/ca.crt" },
+        { "name": "rabbitmq", "host": "rabbitmq", "port": 5671, "servername": "rabbitmq", "ca": "/etc/tls-cert-probe/platform-infra-ca/ca.crt" },
+        { "name": "keycloak", "host": "keycloak", "port": 8443, "servername": "keycloak", "ca": "/etc/tls-cert-probe/platform-infra-ca/ca.crt" },
+        { "name": "llmgateway-service", "host": "llmgateway-service.microservices-platform.svc.cluster.local", "port": 8080, "servername": "llmgateway-service.microservices-platform.svc.cluster.local", "ca": "/etc/tls-cert-probe/platform-infra-ca/ca.crt" }
+      ],
+      "cas": [
+        { "name": "platform-infra-ca", "path": "/etc/tls-cert-probe/platform-infra-ca/ca.crt" },
+        { "name": "openbao-ca", "path": "/etc/tls-cert-probe/openbao-ca/ca.crt" }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tls-cert-probe
+  namespace: platform-infra
+  labels: { app: tls-cert-probe }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: tls-cert-probe }
+  template:
+    metadata:
+      labels: { app: tls-cert-probe }
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: tls-cert-probe
+          # deploy/cloud/keycloak-clients/job.yaml と同じ digest（Node 22。外部依存なし）。
+          image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+          command: ["node", "/opt/tls-cert-probe/probe.js"]
+          env:
+            - { name: TLS_PROBE_CONFIG, value: /etc/tls-cert-probe/config/targets.json }
+            - { name: TLS_PROBE_INTERVAL_S, value: "600" }
+            - { name: TLS_PROBE_PORT, value: "9465" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - { name: metrics, containerPort: 9465 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9465 }
+            periodSeconds: 30
+          volumeMounts:
+            - { name: script, mountPath: /opt/tls-cert-probe, readOnly: true }
+            - { name: config, mountPath: /etc/tls-cert-probe/config, readOnly: true }
+            - { name: platform-infra-ca, mountPath: /etc/tls-cert-probe/platform-infra-ca, readOnly: true }
+            - { name: openbao-ca, mountPath: /etc/tls-cert-probe/openbao-ca, readOnly: true }
+          resources:
+            requests: { cpu: 5m, memory: 24Mi }
+            limits: { cpu: 100m, memory: 96Mi }
+      volumes:
+        - name: script
+          configMap: { name: tls-cert-probe-script, defaultMode: 0444 }
+        - name: config
+          configMap: { name: tls-cert-probe-config }
+        # どちらも公開してよい CA の証明書（configure.sh と tls-cert.sh が置く）。無ければ CA の系列を作らず、警報の absent が拾う。
+        - name: platform-infra-ca
+          configMap: { name: platform-infra-ca, optional: true, items: [{ key: ca.crt, path: ca.crt }] }
+        - name: openbao-ca
+          configMap: { name: openbao-ca, optional: true, items: [{ key: ca.crt, path: ca.crt }] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tls-cert-probe
+  namespace: platform-infra
+  labels: { app: tls-cert-probe }
+spec:
+  type: ClusterIP
+  selector: { app: tls-cert-probe }
+  ports:
+    - { name: metrics, port: 9465, targetPort: 9465 }
+---
+# 入りは Prometheus からの 9465 だけ。出は名前解決と同じ名前空間（Postgres・RabbitMQ・Keycloak。allow-egress-dns-and-intra-namespace）と、
+# LLM ゲートウェイの 8080 だけ（下）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tls-cert-probe
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: tls-cert-probe } }
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: prometheus } }
+      ports:
+        - { protocol: TCP, port: 9465 }
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
+          podSelector: { matchLabels: { app: llmgateway-service } }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# 受け口の側の入りの許可（別宣言。NetworkPolicy は加算的で、infra/networkpolicy.yaml の送り元の一覧は書き換えない）。測りの Pod から、各 TLS の口だけ。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-ingress-tls-cert-probe
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: postgres } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: tls-cert-probe } }
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq-ingress-tls-cert-probe
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: rabbitmq } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: tls-cert-probe } }
+      ports:
+        - { protocol: TCP, port: 5671 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-ingress-tls-cert-probe
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: keycloak } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: { matchLabels: { app: tls-cert-probe } }
+      ports:
+        - { protocol: TCP, port: 8443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llmgateway-ingress-tls-cert-probe
+  namespace: microservices-platform
+spec:
+  podSelector: { matchLabels: { app: llmgateway-service } }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: tls-cert-probe } }
+      ports:
+        - { protocol: TCP, port: 8080 }

@@ -57,6 +57,7 @@ entries=(
   "vault/put-external-secret.sh --live --operator-file $W/f.age --identity $W/id.txt cloud/msp/x k"
   "vault/tls-cert.sh --live issue"
   "keycloak-clients/keycloak-clients.sh --live check"
+  "keycloak-admin/keycloak-admin.sh --live check"
   "db-users/ast-db-users.sh --live apply"
 )
 
@@ -104,7 +105,7 @@ mv "$W/mark.bak" "$CLOUD_CLUSTER_MARK_FILE"
 ok "印の記録が無ければ、どの入口も record を案内して止まる（記録の無いまま流さない）"
 
 # --- 確かめた後は、確かめた context に固定される（途中で現在の context が替わっても） ---
-for e in "keycloak-clients/keycloak-clients.sh --live check" "db-users/ast-db-users.sh --live apply"; do
+for e in "keycloak-clients/keycloak-clients.sh --live check" "keycloak-admin/keycloak-admin.sh --live check" "db-users/ast-db-users.sh --live apply"; do
   target ctx-a "https://127.0.0.1:6443" "$UID_A"
   # shellcheck disable=SC2086
   STUB_SWITCH_TO=ctx-b bash "$HERE"/$e >/dev/null 2>&1 || ng "${e%% *} が一致の宛先で通らない"

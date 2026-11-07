@@ -148,7 +148,12 @@ function mspIngressProblems(docs) {
   const types = (d) => (d.spec.policyTypes || []).map(String);
   const deny = np.some((d) => JSON.stringify(d.spec.podSelector || {}) === '{}' && types(d).includes('Ingress') && !(d.spec.ingress || []).length);
   if (!deny) out.push(`infra: ${MSP_NS} の入りの既定拒否（podSelector が空・Ingress・規則なし）が無い`);
-  const ingressAllows = np.filter((d) => types(d).includes('Ingress') && (d.spec.ingress || []).length);
+  // IADR-0705: サーバ証明書の期限の測りの入り（platform-infra の測りの Pod から 8080 だけ）は別宣言。その形のときだけ数から外す。
+  const probe = np.find((d) => d.metadata.name === TLS_PROBE_INGRESS.llmgateway);
+  if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[['platform-infra', 'tls-cert-probe']], [`TCP/${LLM_GATEWAY_PORT}`]])) {
+    out.push(`infra: ${probe.metadata.name} が「platform-infra の測りの Pod から 8080 だけ」でない`);
+  }
+  const ingressAllows = np.filter((d) => types(d).includes('Ingress') && (d.spec.ingress || []).length && d !== probe);
   const gw = ingressAllows.filter((d) => JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'llmgateway-service' } }));
   if (gw.length !== 1) out.push(`infra: LLM ゲートウェイへの入りの許可がちょうど 1 枚でない（${gw.length}）`);
   for (const d of ingressAllows.filter((x) => !gw.includes(x))) out.push(`infra: ${MSP_NS} に LLM ゲートウェイ以外への入りの許可がある（${d.metadata.name}）`);
@@ -641,6 +646,19 @@ const KEYCLOAK_AST_CALLERS = [
   'notification-service', 'order-execution-service', 'report-service', 'risk-management-service', 'trade-decision-service',
 ];
 const KEYCLOAK_HTTPS_PORT = 8443;
+/** IADR-0705: サーバ証明書の期限の測りの、受け口の側の入りの別宣言（deploy/cloud/tls-cert-probe）。形は scripts/deploy-cloud-egress-audit.test.js も固定する。 */
+const TLS_PROBE_INGRESS = Object.freeze({ keycloak: 'keycloak-ingress-tls-cert-probe', llmgateway: 'llmgateway-ingress-tls-cert-probe' });
+/** 入りの宣言の形（規則が 1 つ・送り元の [名前空間, app] の一覧・ポートの一覧）。キーの並びに依らない。 */
+function tlsProbeIngressShape(d) {
+  const rules = (d.spec && d.spec.ingress) || [];
+  if (rules.length !== 1) return `rules=${rules.length}`;
+  const from = (rules[0].from || []).map((f) => [
+    (f.namespaceSelector && f.namespaceSelector.matchLabels && f.namespaceSelector.matchLabels['kubernetes.io/metadata.name']) || (f.namespaceSelector ? '?' : null),
+    (f.podSelector && f.podSelector.matchLabels && f.podSelector.matchLabels.app) || '?',
+  ]);
+  if ((rules[0].from || []).some((f) => f.ipBlock || (f.podSelector && f.podSelector.matchExpressions))) return 'other';
+  return JSON.stringify([from, (rules[0].ports || []).map((x) => `${x.protocol || 'TCP'}/${x.port}`)]);
+}
 const KEYCLOAK_HTTP_PORT = 8080;
 const KEYCLOAK_ISSUER = 'https://keycloak:8443/realms/platform';
 
@@ -685,7 +703,12 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
   // 入り: Keycloak を選ぶ許可はちょうど 1 枚。各要素は名前空間 かつ Pod（AND）。名前空間だけの要素は名前空間の全 Pod へ開く。
   const isKc = (d) => d.kind === 'NetworkPolicy' && d.metadata.namespace === 'platform-infra'
     && JSON.stringify(d.spec.podSelector || {}) === JSON.stringify({ matchLabels: { app: 'keycloak' } }) && (d.spec.ingress || []).length;
-  const allows = docs.filter(isKc);
+  // IADR-0705: サーバ証明書の期限の測り（deploy/cloud/tls-cert-probe）の入りは別宣言。同じ名前空間の測りの Pod から 8443 だけ、の形のときだけ数から外す。
+  const probe = docs.find((d) => isKc(d) && d.metadata.name === TLS_PROBE_INGRESS.keycloak);
+  if (probe && tlsProbeIngressShape(probe) !== JSON.stringify([[[null, 'tls-cert-probe']], [`TCP/${KEYCLOAK_HTTPS_PORT}`]])) {
+    out.push(`infra: ${probe.metadata.name} が「測りの Pod から 8443 だけ」でない`);
+  }
+  const allows = docs.filter((d) => isKc(d) && d !== probe);
   if (allows.length !== 1) out.push(`infra: Keycloak への入りの許可がちょうど 1 枚でない（${allows.length}）`);
   for (const d of allows) {
     for (const rule of d.spec.ingress) {
@@ -702,7 +725,8 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
         seen[ns] = [...(seen[ns] || []), ...pods].sort();
       }
       // IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
-      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients'] };
+      // IADR-0705: master realm の一時管理者を開け閉めする Job（deploy/cloud/keycloak-admin。流すときだけ在る）。
+      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients', 'keycloak-master-admin'] };
       if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
         out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);
       }
@@ -1042,7 +1066,7 @@ function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
   return out;
 }
 
-module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, cloudEmbeddingKeyProblems, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, cloudEmbeddingKeyProblems, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS, tlsProbeIngressShape, TLS_PROBE_INGRESS, WORKLOAD_KINDS, podSpec };
 
 if (require.main === module) {
   let failed = 0;

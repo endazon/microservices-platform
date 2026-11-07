@@ -9,6 +9,9 @@ resources:
   - infra
   - backup
   - observability
+  # IADR-0705: 外向きの中継（クラスタの外の 443 へ宛先を名指して出るのはこれだけ。ポートだけの出は IADR-0705 残余 5）と、サーバ証明書の期限の測り（警報の元の系列）。
+  - egress
+  - tls-cert-probe
 
 # otel-collector へメトリクスの remote write と自己テレメトリの Service の口を足す（#2401 の infra は単独でも描ける形のまま）。
 patches:

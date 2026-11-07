@@ -1,0 +1,64 @@
+# NFR-05, NFR-18, IADR-0705: ESO（External Secrets Operator。helm の chart 2.8.0）の名前空間を、chart より先に宣言で作る
+#   （kubectl apply -k deploy/cloud/external-secrets。README §3 は helm に名前空間を作らせない）。ESO は OpenBao の値を Secret へ写す（全名前空間の Secret を書ける。chart の ClusterRole）ので、
+#   その Pod が侵害されたときに広がる先と、受け付ける Pod を先に絞る。
+#   - Pod Security Admission は enforce・warn・audit とも restricted（chart 2.8.0 の 3 つの Pod は root でなく、capability を全部落とし、
+#     権限の昇格を許さず、seccomp は RuntimeDefault。scripts/deploy-cloud-egress-audit.test.js が chart の描画で確かめる）。
+#   - 入り・出とも既定で拒否する。
+#       出: 名前解決・OpenBao の受け口（TLS の 8443）・API サーバー（443・6443。API サーバーはノードのループバックで宛先の IP を名指せないので
+#           ポートだけで絞る。OpenBao の出と同じ形。IADR-0689 残余 2）。
+#       入り: webhook（10250）だけ。呼ぶのは API サーバー（ノード）で、送り元を Pod として名指せないので送り元を絞らない（受けるのは検証の要求だけ）。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: external-secrets
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: eso-egress-dns-openbao-apiserver
+  namespace: external-secrets
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: kube-system } }
+          podSelector: { matchLabels: { k8s-app: kube-dns } }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # OpenBao へ届くのは controller だけ（OpenBao の入りも controller だけを許す。networkpolicy.yaml の openbao-ingress-eso）。
+    - to:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: openbao } }
+          podSelector: { matchLabels: { app: openbao } }
+      ports:
+        - { protocol: TCP, port: 8443 }
+    # API サーバー（ポートだけ。上の注記）。🔴 宛先を問わず 443・6443 へ出られる（IADR-0705 残余 5。宛先で絞るのは移行の門で測ってから）。
+    - ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 6443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: eso-webhook-ingress
+  namespace: external-secrets
+spec:
+  podSelector: { matchLabels: { app.kubernetes.io/name: external-secrets-webhook } }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 10250 }
