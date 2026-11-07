@@ -8,6 +8,7 @@ created: 2026-11-07
 updated: 2026-11-07
 related_specs:
   - ../specs/20261107_cloud-infra-pod-hardening.md
+  - ../specs/20261107_cloud-openbao-sa-token.md
 ---
 
 # IADR-0697: クラウドの基盤の Pod の権限を最小にし、collector の受け口を絞る
@@ -111,6 +112,20 @@ related_specs:
   費用の警報の元（`llm_*`）を LLM ゲートウェイの送り手からだけ受ける形（collector の `filter` で resource の service.name を見る）は、service.name 自体が送り手の
   自己申告なので、送り手ごとの名乗り（上の mTLS）が無い限り効かない（残余 1）。
 
+### 決定 7 — ［2026-11-07 追記 / #2496］OpenBao の Pod は、自動のマウントを止め、期限を 1 時間に限ったトークンを明示で載せる
+
+- OpenBao の kubernetes 認証は、`auth/kubernetes/config` に `token_reviewer_jwt` を置かず `disable_local_ca_jwt=false`（`deploy/cloud/vault/configure.sh` のクラスタの中の分岐）で、
+  **OpenBao 自身の ServiceAccount のトークン**（ClusterRole `system:auth-delegator`）で TokenReview を呼ぶ。このトークンは要る
+  （実の k3s v1.35.10 で、トークンが無い Pod では `auth/kubernetes/config` の書き込みが「ca.crt が無い」で通らず、明示のトークンを載せた Pod では
+  ESO 役の ServiceAccount のトークン〔audience vault〕でログインでき、audience の違うトークンは拒まれることを確かめた）。
+- クライアント（ESO）の JWT を reviewer に使う形（`disable_local_ca_jwt=true`・reviewer なし）は、ESO の 3 つの ServiceAccount に auth-delegator を渡すことになり、
+  権限を ESO の側へ広げるので採らない。
+- `automountServiceAccountToken: false` にし、同じ置き場（`/var/run/secrets/kubernetes.io/serviceaccount`。configure.sh はこの置き場の `ca.crt` でクラスタの中と判じる）へ
+  projected のボリュームで、トークン（audience は API サーバーの既定・`expirationSeconds: 3600`）・API サーバーの CA・名前空間だけを読み取り専用で載せる。
+  トークンは OpenBao のコンテナだけが持つ。kubelet が期限の前に作り直し、OpenBao は置き場から読み直す（期限の切り替わりの実測はしていない。残余 6）。
+- `scripts/deploy-cloud.test.js` の H1〜H3 の対象に `deploy/cloud/vault` と OpenBao の併存の重ねを入れた。明示のトークンは `SA_TOKEN_ALLOWED` の Pod（今は OpenBao だけ。理由つき）だけ・
+  期限 1 時間以内・読み取り専用のマウントに限る。名前空間 `openbao` の PSA も restricted であることを固定する。
+
 ## 結果
 
 - 良い影響: 基盤のどの Pod も root でなく capability を持たない（NET_RAW を含む）。PSA の restricted が、宣言の書き漏らし（新しい Pod・initContainer）を受け付けで止める。
@@ -127,3 +142,4 @@ related_specs:
 4. 手元で確かめられなかったこと: 実の k3s の上で全部を同時に動かすこと（ディスクの都合。k3s では PSA の受け付けと PVC の所有の付け替えを確かめ、各イメージの起動は docker で
    宣言の securityContext を写して確かめた）。取引ユニットの Pod から collector への到達（NetworkPolicy の実効）は、稼働の後に `OtlpSendersMissing` が鳴らないことで見る。
 5. `PrometheusHeadSeriesHigh` の閾値（100000）は見込みで、平時の実測が無い。**稼働の開始から 7 日の間の `max_over_time(prometheus_tsdb_head_series[7d])` の実測で見直す**（期限: 稼働の開始の 7 日後。平時の最大の 10 倍ほどへ直す）。
+6. ［2026-11-07 追記 / #2496］OpenBao のトークンの期限（1 時間）の切り替わりの後も kubernetes 認証が通り続けることは、手元で測っていない（kubelet の作り直しと OpenBao の読み直しに依る）。稼働の後に ESO の同期が 1 時間を越えて続くことで見る。
