@@ -775,6 +775,55 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
 });
+// NFR-21, IADR-0697: collector が受け取りを拒む・remote write が失敗する・受け取りが 0・送り手が欠ける・系列が多すぎるときの警報。
+const PIPELINE_ALERTS = ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'PrometheusHeadSeriesHigh'];
+t('IADR-0697 collector の受け取りの拒否・系列の途絶えの警報: promtool の単体試験（鳴るときに鳴り、平時は鳴らない）', () => {
+  need('promtool');
+  const groups = PIPELINE_ALERTS.map((a) => {
+    const r = ruleOf(a);
+    assert.ok(r.expr, `${a} の式が読めない`);
+    return `      - alert: ${a}\n        expr: ${JSON.stringify(r.expr)}\n${r.for ? `        for: ${r.for}\n` : ''}        labels: ${typeof r.labels === 'string' ? r.labels : JSON.stringify(r.labels || {})}\n`;
+  }).join('');
+  const f = path.join(sandbox, 'pipeline-rules.yml');
+  fs.writeFileSync(f, `groups:\n  - name: pipeline\n    rules:\n${groups}`);
+  // 1 分ごとに 1 時間。送り手は 12（job=s0..s11）。target_info は 1 分ごとに 1。
+  const senders = (n) => Array.from({ length: n }, (_, i) => `      - series: 'target_info{job="s${i}"}'\n        values: '1x60'\n`).join('');
+  const base = `      - series: 'otelcol_receiver_accepted_metric_points{receiver="otlp", transport="grpc"}'\n        values: '0+100x60'\n`
+    + `      - series: 'prometheus_tsdb_head_series{job="prometheus"}'\n        values: '5000x60'\n`;
+  const fires = (name, labels) => `      - eval_time: 50m\n        alertname: ${name}\n        exp_alerts:\n          - exp_labels: ${JSON.stringify(labels)}\n`;
+  const silent = (name) => `      - eval_time: 50m\n        alertname: ${name}\n        exp_alerts: []\n`;
+  const cases = [
+    // 平時: 12 の送り手・受け取りが流れる・拒否なし → どれも鳴らない
+    [base + senders(12), PIPELINE_ALERTS.map(silent).join('')],
+    // 受け取りの拒否（メトリクス）と remote write の失敗 → 鳴る
+    [base + senders(12)
+      + `      - series: 'otelcol_receiver_refused_metric_points{receiver="otlp", transport="grpc"}'\n        values: '0+50x60'\n`
+      + `      - series: 'otelcol_exporter_send_failed_metric_points{exporter="prometheusremotewrite"}'\n        values: '0+10x60'\n`,
+    fires('OtelCollectorRefusingData', { severity: 'critical' }) + fires('OtelCollectorExportFailing', { severity: 'critical' })],
+    // ログだけの拒否でも鳴る（系列の名前が無い他の項は 0 として足す）
+    [base + senders(12) + `      - series: 'otelcol_receiver_refused_log_records{receiver="otlp", transport="grpc"}'\n        values: '0+5x60'\n`,
+      fires('OtelCollectorRefusingData', { severity: 'critical' })],
+    // 受け取りが 0（系列が無い）・送り手が 11 → 鳴る
+    [`      - series: 'prometheus_tsdb_head_series{job="prometheus"}'\n        values: '5000x60'\n` + senders(11),
+      fires('OtlpMetricsPipelineSilent', { severity: 'critical' }) + fires('OtlpSendersMissing', { severity: 'warning' })],
+    // 送り手の系列が 1 つも無い（target_info が無い）→ 鳴る（or vector(0)）
+    [base, fires('OtlpSendersMissing', { severity: 'warning' })],
+    // 系列が多すぎる → 鳴る
+    [base.replace("'5000x60'", "'150000x60'") + senders(12), fires('PrometheusHeadSeriesHigh', { severity: 'warning', job: 'prometheus' })],
+  ];
+  const tf = path.join(sandbox, 'pipeline.test.yml');
+  for (const [series, expect] of cases) {
+    const test = `rule_files:\n  - ${f}\nevaluation_interval: 1m\ntests:\n  - interval: 1m\n    input_series:\n${series}    alert_rule_test:\n${expect}`;
+    fs.writeFileSync(tf, test);
+    const ok = run('promtool', ['test', 'rules', tf]);
+    assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+    // 陰性対照: 期待を反対にすると promtool が落ちる（試験が空回りしていない）。
+    const flipped = /exp_alerts: \[\]/.test(expect) ? expect.replace('alertname: OtelCollectorRefusingData\n        exp_alerts: []', `alertname: OtelCollectorRefusingData\n        exp_alerts:\n          - exp_labels: {"severity":"critical"}`) : expect.replace(/exp_alerts:\n[\s\S]*?(?=\n      - eval_time|$)/, 'exp_alerts: []\n');
+    fs.writeFileSync(tf, test.replace(expect, flipped));
+    const ng = run('promtool', ['test', 'rules', tf]);
+    assert.notStrictEqual(ng.status, 0, `期待を反対にしても promtool が通る:\n${flipped}`);
+  }
+});
 t('T-2402-47 描いた Alertmanager の設定を amtool check-config で読める', () => {
   need('amtool');
   const r0 = renderWith(FAKE_URL);

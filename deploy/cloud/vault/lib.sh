@@ -18,9 +18,17 @@ ob_need() {
   done
 }
 
-# ob_exec <Pod の中の sh の手順> —— 標準入力をそのまま Pod の中の sh へ渡す。
+# NFR-16, IADR-0696: Pod の中の bao が話す宛先。OpenBao の受け口は TLS だけ（平文の口を持たない）なので、Pod の中のループバックへも
+#   https で、受け口の CA（Secret openbao-tls の ca.crt。tls-cert.sh が作る）で検証して話す。検証を外す指定（*_SKIP_VERIFY）は消す。
+#   どちらも値ではない（宛先とファイルのパス）。手順の文字列へ埋め込むため、形を確かめる。試験は実物の OpenBao の宛先へ向ける。
+OB_POD_ADDR="${OB_POD_ADDR:-https://127.0.0.1:8443}"
+OB_POD_TLS_DIR="${OB_POD_TLS_DIR:-/openbao/tls}"
+[[ "$OB_POD_ADDR" =~ ^https://[A-Za-z0-9.-]+:[0-9]+$ ]] || { echo "ERROR: OB_POD_ADDR は https://<名前>:<ポート> の形で与える（平文の宛先は受けない）" >&2; exit 2; }
+[[ "$OB_POD_TLS_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "ERROR: OB_POD_TLS_DIR は絶対パスで与える" >&2; exit 2; }
+
+# ob_exec <Pod の中の sh の手順> —— 標準入力をそのまま Pod の中の sh へ渡す（宛先は上の TLS の口）。
 ob_exec() {
-  kubectl -n "$OPENBAO_NS" exec -i deploy/openbao -c openbao -- sh -c "$1"
+  kubectl -n "$OPENBAO_NS" exec -i deploy/openbao -c openbao -- sh -c "export BAO_ADDR='${OB_POD_ADDR}' BAO_CACERT='${OB_POD_TLS_DIR}/ca.crt'; unset BAO_SKIP_VERIFY VAULT_SKIP_VERIFY BAO_CAPATH VAULT_CAPATH; $1"
 }
 
 # ob_readable <ファイル> <説明> —— 読めるファイルか（中身は読まない）

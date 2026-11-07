@@ -5,7 +5,7 @@
 #   - 入り・出とも既定で拒否する。出は名前解決と同じ名前空間（Keycloak → Postgres）だけ。
 #   - Postgres ← 取引ユニットの DB を持つサービス・Keycloak。ブローカ ← 取引ユニットのブローカを使うサービス（users.txt の AST の行）。
 #   - Keycloak ← 取引ユニットの Keycloak を呼ぶ 11 個の Pod・MSP の LLM ゲートウェイ（トークンの発行・鍵の取得）。HTTPS（8443）だけ
-#     （IADR-0693。OpenD は Keycloak を呼ばないので入れない）。collector ← 取引ユニット・MSP。
+#     （IADR-0693。OpenD は Keycloak を呼ばないので入れない）。collector ← 取引ユニットの OTLP を送る 11 個の Pod・LLM ゲートウェイ（gRPC の 4317 だけ。IADR-0697）。
 # microservices-platform（MSP は LLM ゲートウェイだけ）:
 #   - 出は既定で拒否する。LLM ゲートウェイだけに、名前解決・Keycloak（8443）・collector・クラスタの外の 443（提供元の API）を許す。
 #   - 入りも既定で拒否する。LLM ゲートウェイへは、取引ユニットの呼び出し元（報告書・取引判断）の 8080（REST）だけを許す。
@@ -138,12 +138,32 @@ spec:
   podSelector: { matchLabels: { app: otel-collector } }
   policyTypes: [Ingress]
   ingress:
+    # NFR-18, NFR-21, IADR-0697: 送り元は「名前空間 かつ Pod」（同じ from の要素に置く＝AND）。名前空間だけの要素は名前空間の全 Pod へ開く
+    #   （送る必要の無い Pod にも受け口を開けない。警報の元の系列を書けるのは送り手だけにする）。取引ユニットの一覧は、取引ユニットの chart の
+    #   values-cloud の描画で OTLP の宛先の env（Otlp__Endpoint）を持つ Deployment（作業仕様書 20261107_cloud-infra-pod-hardening の母集合。
+    #   OpenD は持たない）。MSP は LLM ゲートウェイだけ。宛先はどれも gRPC（4317）なので、HTTP（4318）の口は開けない。
     - from:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - audit-service
+                  - backtest-service
+                  - configuration-service
+                  - cost-control-service
+                  - information-collection-service
+                  - market-monitor-service
+                  - notification-service
+                  - order-execution-service
+                  - report-service
+                  - risk-management-service
+                  - trade-decision-service
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
+          podSelector: { matchLabels: { app: llmgateway-service } }
       ports:
         - { protocol: TCP, port: 4317 }
-        - { protocol: TCP, port: 4318 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
