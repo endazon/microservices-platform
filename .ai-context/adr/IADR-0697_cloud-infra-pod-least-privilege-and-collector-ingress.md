@@ -8,6 +8,7 @@ created: 2026-11-07
 updated: 2026-11-07
 related_specs:
   - ../specs/20261107_cloud-infra-pod-hardening.md
+  - ../specs/20261107_cloud-openbao-sa-token.md
 ---
 
 # IADR-0697: クラウドの基盤の Pod の権限を最小にし、collector の受け口を絞る
@@ -111,6 +112,36 @@ related_specs:
   費用の警報の元（`llm_*`）を LLM ゲートウェイの送り手からだけ受ける形（collector の `filter` で resource の service.name を見る）は、service.name 自体が送り手の
   自己申告なので、送り手ごとの名乗り（上の mTLS）が無い限り効かない（残余 1）。
 
+### 決定 7 — ［2026-11-07 追記 / #2496］OpenBao の Pod は、自動のマウントを止め、期限を 1 時間に限ったトークンを明示で載せる
+
+- OpenBao の kubernetes 認証は、`auth/kubernetes/config` に `token_reviewer_jwt` を置かず `disable_local_ca_jwt=false`（`deploy/cloud/vault/configure.sh` のクラスタの中の分岐）で、
+  **OpenBao 自身の ServiceAccount のトークン**（ClusterRole `system:auth-delegator`）で TokenReview を呼ぶ。このトークンは要る
+  （実の k3s v1.35.10 で、トークンが無い Pod では `auth/kubernetes/config` の書き込みが「ca.crt が無い」で通らず、明示のトークンを載せた Pod では
+  ESO 役の ServiceAccount のトークン〔audience vault〕でログインでき、audience の違うトークンは拒まれることを確かめた）。
+- クライアント（ESO）の JWT を reviewer に使う形（`disable_local_ca_jwt=true`・reviewer なし）は、ESO の 3 つの ServiceAccount に auth-delegator を渡すことになり、
+  権限を ESO の側へ広げるので採らない。
+- `automountServiceAccountToken: false` にし、同じ置き場（`/var/run/secrets/kubernetes.io/serviceaccount`。configure.sh はこの置き場の `ca.crt` でクラスタの中と判じる）へ
+  projected のボリュームで、トークン（audience は API サーバーの既定・`expirationSeconds: 3600`）・API サーバーの CA・名前空間だけを読み取り専用で載せる。
+  トークンは OpenBao のコンテナだけが持つ。kubelet が期限の前に作り直し、OpenBao は置き場から読み直す（出典と実測は下）。
+- **読み直すことの出典**（OpenBao `v2.7.1`。タグのコミット `a5db72cef75c24b920ade02065b18dd8eb666bac`。kubernetes 認証は組み込みの
+  `internal/builtin/credential/kubernetes`）:
+  - `path_config.go`: `localJWTPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"`・`localCACertPath = "…/serviceaccount/ca.crt"`。
+    本件のマウント先（`/var/run/secrets/kubernetes.io/serviceaccount` の `token`・`ca.crt`）と一致する。
+  - `backend.go` の `loadConfig`: `DisableLocalCAJwt` が false で、保存した設定の `TokenReviewerJWT` が空のときだけ、
+    `localSATokenReader.ReadFile()` で置き場のトークンを読む（CA も保存が空なら置き場から読む）。`path_login.go` は login のたびに `loadConfig` を呼ぶ。
+  - `backend.go`: `jwtReloadPeriod = 1 * time.Minute`（`newCachingFileReader(localJWTPath, jwtReloadPeriod, …)`）、`caReloadPeriod = 1 * time.Hour`。
+    `caching_file_reader.go` の `ReadFile` は、写しの期限（1 分）を過ぎると `os.ReadFile` で読み直す。
+  - つまり、**設定に `token_reviewer_jwt` を保存すると読み直さない**（保存した 1 つのトークンが 1 時間で切れ、ESO の同期が全部止まる）。
+    configure.sh のクラスタの中の分岐が `token_reviewer_jwt`・`disable_local_ca_jwt`・`kubernetes_ca_cert` を書かないことと、トークンと CA が上の置き場に
+    載ることを `scripts/deploy-cloud.test.js`（`openbaoReviewerTokenProblems`。保存する形・読まない形・置き場の移動の変異で赤）が固定する。
+  - 置き場のトークンが読めないとき、プラグインは黙って login の JWT を reviewer に使う（`loadConfig` の注記）。ESO の ServiceAccount は auth-delegator を
+    持たないので、その場合 login は TokenReview で拒まれる（黙って広がる側へは倒れない）。
+- **実測**（docker の中の k3s v1.35.10。宣言と同じ securityContext・projected で、期限だけ最短の `expirationSeconds: 600`。OpenBao 2.7.1 を dev で起こし、
+  クラスタの中の分岐と同じ `kubernetes_host` だけの設定。試験の足場で値はその場の乱数）: 1 分ごとに、新しく作った ESO 役のトークンで login した。
+  置き場のトークンは起動の 508 秒後に kubelet が作り直し（期限の 8 割の後）、**最初のトークンの期限を過ぎた後（+10 分・+11 分 …）も login が通り続けた**。
+- `scripts/deploy-cloud.test.js` の H1〜H3 の対象に `deploy/cloud/vault` と OpenBao の併存の重ねを入れた。明示のトークンは `SA_TOKEN_ALLOWED` の Pod（今は OpenBao だけ。理由つき）だけ・
+  期限 1 時間以内・読み取り専用のマウントに限る。名前空間 `openbao` の PSA も restricted であることを固定する。
+
 ## 結果
 
 - 良い影響: 基盤のどの Pod も root でなく capability を持たない（NET_RAW を含む）。PSA の restricted が、宣言の書き漏らし（新しい Pod・initContainer）を受け付けで止める。
@@ -127,3 +158,5 @@ related_specs:
 4. 手元で確かめられなかったこと: 実の k3s の上で全部を同時に動かすこと（ディスクの都合。k3s では PSA の受け付けと PVC の所有の付け替えを確かめ、各イメージの起動は docker で
    宣言の securityContext を写して確かめた）。取引ユニットの Pod から collector への到達（NetworkPolicy の実効）は、稼働の後に `OtlpSendersMissing` が鳴らないことで見る。
 5. `PrometheusHeadSeriesHigh` の閾値（100000）は見込みで、平時の実測が無い。**稼働の開始から 7 日の間の `max_over_time(prometheus_tsdb_head_series[7d])` の実測で見直す**（期限: 稼働の開始の 7 日後。平時の最大の 10 倍ほどへ直す）。
+6. ［2026-11-07 追記 / #2496］OpenBao のトークンの切り替わりは、期限 600 秒で実測した（決定 7）。宣言の期限（3600 秒）そのものでは測っていない（kubelet の作り直しは期限の割合で決まり、プラグインの読み直しは 1 分ごとで期限に依らない）。稼働の後に ESO の同期が 1 時間を越えて続くことでも見る。
+7. ［2026-11-07 追記 / #2496］OpenBao の Pod は ConfigMap `kube-root-ca.crt`（kube-controller-manager が全名前空間に作る）が無いと起動しない（projected の source は optional にしない）。名前空間を作った直後の数秒だけ起き得る。受容する（Pod は作り直しで起きる）。
