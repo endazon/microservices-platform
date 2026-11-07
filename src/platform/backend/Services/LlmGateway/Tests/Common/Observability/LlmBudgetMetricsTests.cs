@@ -136,10 +136,17 @@ public class LlmBudgetMetricsTests(TestWebApplicationFactory factory) : IClassFi
             .ToDictionary(m => m.Tags[LlmCompletionMetrics.PurposeTag], m => m.Value)
             .Should().BeEquivalentTo(new Dictionary<string, double>
             {
-                ["trade-decision"] = 135, ["trade-decision-screening"] = 30, ["report-daily"] = 30,
-                ["report-weekly"] = 22.5, ["report-monthly"] = 7.5,
-                ["rag-answer"] = 3.75, ["analysis"] = 3.75, ["graph-suggestion"] = 3.75, ["graph-cluster-summary"] = 3.75,
-                ["rerank"] = 7.5, ["diagram-coding"] = 7.5,
+                ["trade-decision"] = 135,
+                ["trade-decision-screening"] = 30,
+                ["report-daily"] = 30,
+                ["report-weekly"] = 22.5,
+                ["report-monthly"] = 7.5,
+                ["rag-answer"] = 3.75,
+                ["analysis"] = 3.75,
+                ["graph-suggestion"] = 3.75,
+                ["graph-cluster-summary"] = 3.75,
+                ["rerank"] = 7.5,
+                ["diagram-coding"] = 7.5,
             });
     }
 
