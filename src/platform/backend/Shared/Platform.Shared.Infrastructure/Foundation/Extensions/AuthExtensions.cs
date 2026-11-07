@@ -76,6 +76,12 @@ public static class AuthExtensions
     // トークンが platform の API を通ってしまうため、構成で与えられても起動を止める。
     public const string ReservedMcpAudience = "mcp-server";
 
+    // NFR-16, NFR-18, [[IADR-0693]]: メタデータ・鍵（JWKS）の取得に HTTPS を求めるかの構成キー。未設定・false は従来どおり
+    // （クラスタの中の平文の認可サーバー）。true のとき、Authority（MetadataAddress を与えたらそちら）が https でなければ
+    // **登録の時点で例外を投げる**（＝サービスの起動で止まる）。サーバ証明書の検証はシステムの信頼ストア（SSL_CERT_DIR に
+    // 基盤の CA を足す。chart の global.auth.tls）が行う。
+    public const string RequireHttpsMetadataConfigKey = "Auth:RequireHttpsMetadata";
+
     // ADR-0004: Keycloak OIDC/JWT 認証（P0: 認証のみ、P2: ABAC 認可を追加）
     public static IServiceCollection AddPlatformAuth(
         this IServiceCollection services,
@@ -142,6 +148,7 @@ public static class AuthExtensions
         var metadataAddress = config["Auth:MetadataAddress"];
         var validIssuers = ParseValidIssuers(config["Auth:ValidIssuers"]);
         var validAudiences = ResolveAudiences(config);
+        var requireHttpsMetadata = ResolveRequireHttpsMetadata(config, authority, metadataAddress);
 
         return options =>
         {
@@ -155,7 +162,7 @@ public static class AuthExtensions
             {
                 options.Authority = authority;
             }
-            options.RequireHttpsMetadata = false;
+            options.RequireHttpsMetadata = requireHttpsMetadata;
             // NFR-09, 計画 ADR-0036, [[IADR-0523]] (#1846): audience を検証する。`aud` が無いトークン・
             // 運用ツールや MCP クライアントに発行されたトークン（`aud` に platform-api が無い）は 401 になる。
             options.TokenValidationParameters.ValidateAudience = true;
@@ -209,6 +216,34 @@ public static class AuthExtensions
                 $"{AudiencesConfigKey} に {ReservedMcpAudience} は使えません。MCP クライアントのトークンの audience であり、McpServer の /mcp だけが受け付けます（計画 ADR-0134 決定 1・#1846）。");
         }
         return values;
+    }
+
+    // NFR-16, NFR-18, [[IADR-0693]]: Auth:RequireHttpsMetadata を読む。true なのに取得先が https でなければ例外（fail-fast）。
+    //   JwtBearer 自身も https でない取得先を拒むが、それは最初の要求の時点（起動の後）であり、起動では止まらない。
+    internal static bool ResolveRequireHttpsMetadata(IConfiguration config, string authority, string? metadataAddress)
+    {
+        var raw = config[RequireHttpsMetadataConfigKey];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+        if (!bool.TryParse(raw, out var require))
+        {
+            throw new InvalidOperationException(
+                $"{RequireHttpsMetadataConfigKey} は true か false です（{raw}。IADR-0693）。");
+        }
+        if (!require)
+        {
+            return false;
+        }
+        var target = string.IsNullOrWhiteSpace(metadataAddress) ? authority : metadataAddress;
+        if (!Uri.TryCreate(target, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException(
+                $"{RequireHttpsMetadataConfigKey}=true ですが、認可サーバーのメタデータの取得先が https ではありません（{target}）。" +
+                "Auth:Authority（Auth:MetadataAddress を与えたらそちら）を https にしてください（IADR-0693）。");
+        }
+        return true;
     }
 
     private static string[] SplitList(string? raw) =>

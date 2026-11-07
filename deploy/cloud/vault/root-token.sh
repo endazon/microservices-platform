@@ -4,6 +4,9 @@
 #   bash deploy/cloud/vault/root-token.sh --live --init-file <init.sh のファイル>.age --operator-file <configure.sh のファイル>.age \
 #     --identity <age の識別子> apply-policies
 #       → deploy/cloud/vault/policies/*.hcl を当て直す（policy を改めたとき）
+#   bash deploy/cloud/vault/root-token.sh --live --init-file … --operator-file … --identity … apply-pki-roles
+#       → PKI（pki_cloud）のサーバ証明書の role を lib.sh の OB_PKI_ROLES どおりに書き直す（role を足したとき。IADR-0693。
+#         在る role は同じ値で上書きされるだけ。CA と発行済みの証明書は変えない）
 #   bash deploy/cloud/vault/root-token.sh --live --init-file … --operator-file … --identity … \
 #     rotate-operator --recipients <age の受取人のファイル> --operator-out <新しいファイル>.age
 #       → オーナー用の AppRole の secret_id を作り直し、古いものを全部消す（資格のファイルを失った・漏れた疑いのとき）
@@ -30,11 +33,11 @@ while [ "$#" -gt 0 ]; do
     --identity) IDENTITY="${2:-}"; shift 2 ;;
     --recipients) RECIPIENTS="${2:-}"; shift 2 ;;
     --operator-out) OUT="${2:-}"; shift 2 ;;
-    apply-policies | rotate-operator) CMD="$1"; shift ;;
-    *) echo "ERROR: 未知の引数: $1（操作は apply-policies か rotate-operator）" >&2; exit 2 ;;
+    apply-policies | apply-pki-roles | rotate-operator) CMD="$1"; shift ;;
+    *) echo "ERROR: 未知の引数: $1（操作は apply-policies・apply-pki-roles・rotate-operator のどれか）" >&2; exit 2 ;;
   esac
 done
-[ -n "$CMD" ] || { echo "ERROR: 操作（apply-policies か rotate-operator）を与える" >&2; exit 2; }
+[ -n "$CMD" ] || { echo "ERROR: 操作（apply-policies・apply-pki-roles・rotate-operator のどれか）を与える" >&2; exit 2; }
 ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$OPERATOR_FILE" "オーナー用の資格のファイル（--operator-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
@@ -72,6 +75,11 @@ policy_write() {
 case "$CMD" in
   apply-policies)
     OP="$(for p in platform-infra-eso msp-eso ast-eso cloud-operator; do policy_write "$p"; done)"
+    { ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id; ob_decrypt_lines "$INIT_FILE" "$IDENTITY" unseal_keys_b64; } \
+      | ob_exec "${OB_POD_LOGIN}${POD_ROOT}${OP}"
+    ;;
+  apply-pki-roles)
+    OP="$(ob_pki_roles r)"
     { ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id; ob_decrypt_lines "$INIT_FILE" "$IDENTITY" unseal_keys_b64; } \
       | ob_exec "${OB_POD_LOGIN}${POD_ROOT}${OP}"
     ;;

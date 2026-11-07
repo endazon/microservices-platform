@@ -107,3 +107,20 @@ wait_active() {
   done
 }
 '
+
+# NFR-16, NFR-18, IADR-0689 決定 4, IADR-0693: PKI（pki_cloud）のサーバ証明書の role の一覧（<サービス>:<名前空間>）。
+#   configure.sh（初回の root）と root-token.sh apply-pki-roles（稼働中の構成。作り直した root）が同じ一覧を書く（2 か所に持たない）。
+#   許す名前は短い名前・名前空間つき・.svc・.svc.cluster.local の 4 つだけ（従来の SAN と同じ）。発行した証明書は保存しない（no_store）。
+OB_PKI_ROLES="postgres:platform-infra rabbitmq:platform-infra keycloak:platform-infra llmgateway-service:microservices-platform"
+
+# ob_pki_roles <Pod の中で bao を呼ぶ関数の名前（b か r）> —— 一覧の role を書く Pod の中の手順（値を持たない）を標準出力へ出す。
+ob_pki_roles() {
+  local cmd="$1" e svc ns
+  for e in $OB_PKI_ROLES; do
+    svc="${e%%:*}" ns="${e#*:}"
+    printf '%s write pki_cloud/roles/%s allowed_domains="%s,%s.%s,%s.%s.svc,%s.%s.svc.cluster.local" ' "$cmd" "$svc" "$svc" "$svc" "$ns" "$svc" "$ns" "$svc" "$ns"
+    printf 'allow_bare_domains=true allow_subdomains=false allow_glob_domains=false allow_wildcard_certificates=false allow_localhost=false allow_ip_sans=false '
+    printf 'server_flag=true client_flag=false key_type=rsa key_bits=3072 max_ttl=8760h no_store=true >/dev/null\n'
+    printf 'echo "    書いた: PKI の role %s"\n' "$svc"
+  done
+}

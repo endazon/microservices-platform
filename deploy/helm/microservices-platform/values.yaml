@@ -30,6 +30,13 @@ global:
     # されるため、in-cluster issuer（手順A token）と併存する。
     metadataAddress: ""
     validIssuers: ""
+    # NFR-16, NFR-18, IADR-0693: 認可サーバーへの通信（メタデータ・鍵の取得）を TLS で検証する（opt-in。既定は描かない＝従来のまま）。
+    #   有効にすると: authority（と metadataAddress）が https:// でなければ描画で止める。各サービスへ Auth__RequireHttpsMetadata=true を渡す
+    #   （アプリは https でない取得先を起動で拒む）。サーバ証明書の CA（global.infraCa の ConfigMap）を /etc/platform-infra-ca へマウントし、
+    #   信頼ストアへ足す（SSL_CERT_DIR。既定の /etc/ssl/certs を先に残す。基盤のブローカと同じ型。IADR-0591）。
+    #   クラウド（deploy/cloud/values-cloud.yaml）だけが有効にする。既定・ローカル・compose は平文の in-cluster のまま。
+    tls:
+      enabled: false
   # NFR, ADR-0002, #1012: サービス DB（DB per Service）の接続。**資格情報をイメージへ焼かない。**
   # 各サービスの `appsettings.json` は接続文字列を持たず（#1012 で撤去）、未注入なら起動時に落ちる。
   # パスワードは Secret（existingSecret）から `$(DB_PASSWORD)` で補間する（値を chart に書かない）。

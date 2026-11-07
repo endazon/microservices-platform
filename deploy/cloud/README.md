@@ -7,7 +7,7 @@
 | --- | --- |
 | Postgres（取引ユニットの 7 つの DB・Keycloak の DB。TLS） | `infra/postgres.yaml` |
 | RabbitMQ（取引ユニットのサービスごとのユーザー。TLS） | `infra/rabbitmq.yaml` |
-| Keycloak（本番モード `start`・realm `platform`） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
+| Keycloak（本番モード `start`・realm `platform`・HTTPS 8443 だけ。[IADR-0693](../../.ai-context/adr/IADR-0693_cloud-keycloak-tls-openbao-pki.md)） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
 | OpenTelemetry の collector（受けて捨てる） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
 | 秘匿管理（OpenBao。本番の init・raft）と、OpenBao から Secret へ写す ESO | `vault/`（`vault/eso/`・`vault/*.sh`） |
@@ -183,6 +183,9 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言が入らない。
   バックアップの保管先・Discord・heartbeat の資格情報は、[運用手順書](../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md)の準備で作る（作るまで Alertmanager は起動しない）。
 - **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。
+- Keycloak は HTTPS（8443）だけで受ける（証明書は ESO が写す `keycloak-tls`。発行元は `https://keycloak:8443/realms/platform`）。LLM ゲートウェイは
+  https を必須にし、基盤の CA で検証する（values-cloud の `global.auth`）。**平文で動いている構成を移すときは、この順ではなく**
+  [認可サーバーの TLS の手順書](../../docs/operations/cloud-keycloak-tls-runbook.md)の併存の段（`deploy/cloud-transition/keycloak-tls-coexist`）を経る。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
   `cloud/shared/*`（DB・ブローカ・3 つの client の secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
 
@@ -192,7 +195,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | --- | --- | --- | --- |
 | DB の管理者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー | `seed-secrets.sh`（Pod の中の乱数。利用者名も乱数の接尾辞） | `cloud/platform/*` | `platform-infra` の Secret `postgres`・`keycloak-db`・`keycloak-admin`・`rabbitmq` |
 | 取引ユニットの DB の利用者・ブローカの 11 ユーザー・3 つの機密クライアントの secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
-| サーバ証明書と鍵（Postgres・RabbitMQ・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない） | — | `postgres-tls`・`rabbitmq-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
+| サーバ証明書と鍵（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない。role の一覧は `vault/lib.sh` の `OB_PKI_ROLES`） | — | `postgres-tls`・`rabbitmq-tls`・`keycloak-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
 | CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
 
 - 在る値は作り直さない（`seed-secrets.sh` の 2 回目は何も変えない）。
@@ -231,9 +234,11 @@ node scripts/deploy-cloud.test.js    # 上の 2 つを描いて、持ち込ま�
 ## 6. 運用: 証明書の更新
 
 - サーバ証明書は OpenBao の PKI が発行する（有効期限 1 年）。ESO が**半年ごとに**作り直して Secret を書き換える。
-- 書き換わった後に、消費側（Postgres・RabbitMQ・LLM ゲートウェイ）を作り直して読み直させる（`kubectl rollout restart`）。期限は次で読める:
+- 書き換わった後に、消費側（Postgres・RabbitMQ・LLM ゲートウェイ）を作り直して読み直させる（`kubectl rollout restart`）。
+  Keycloak は 1 時間ごとに証明書のファイルを読み直すので、作り直さなくてよい（`KC_HTTPS_CERTIFICATES_RELOAD_PERIOD`）。期限は次で読める:
   `kubectl -n platform-infra get secret postgres-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -enddate`
   （証明書の公開の部分だけを読む。鍵 `tls.key` は読まない）と、CA（10 年）は
   `kubectl -n platform-infra get configmap platform-infra-ca -o jsonpath='{.data.ca\.crt}' | openssl x509 -noout -enddate`。
-- すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret postgres-tls force-sync="$(date +%s)" --overwrite`（RabbitMQ・LLM ゲートウェイも同じ）の後に消費側を作り直す。
+- すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret postgres-tls force-sync="$(date +%s)" --overwrite`（RabbitMQ・Keycloak・LLM ゲートウェイも同じ）の後に消費側を作り直す。
+- 期限の警報は置いていない（理由と確かめ方は[認可サーバーの TLS の手順書](../../docs/operations/cloud-keycloak-tls-runbook.md)の §4）。
 - **封印のあいだは発行できない。** 作り直しは unseal の後に行う。
