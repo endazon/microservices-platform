@@ -1374,6 +1374,18 @@ if (require.main === module) {
     assert.throws(() => buildCloudRealm(pub, secrets), /standardFlowEnabled/);
     assert.throws(() => buildCloudRealm(realm, { ...secrets, [SERVICE_CLIENTS[4]]: undefined }), /secret が渡されていない/);
   });
+  ok('IADR-0700: サービスごとの機密クライアント（SERVICE_CLIENTS）は、取引ユニットの values-cloud の serviceAuthClient の clientId と集合で一致する（submodule が在るとき）', () => {
+    const { SERVICE_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
+    const astValues = path.join(process.env.AST_ROOT || path.join(REPO_ROOT, 'src/ai-stock-trading'), 'deploy/helm/ai-stock-trading/values-cloud.yaml');
+    if (!fs.existsSync(astValues)) {
+      if (process.env.DEPLOY_CLOUD_REQUIRE_AST === '1') assert.fail(`取引ユニットの values-cloud が無い: ${astValues}`);
+      console.log(`  notice: 取引ユニットの写し（${astValues}）が無いので、クライアントの集合の照合を飛ばした`);
+      return;
+    }
+    const ids = [...fs.readFileSync(astValues, 'utf8').matchAll(/^\s*serviceAuthClient:\s*\{\s*clientId:\s*([a-z0-9-]+)\s*\}\s*$/gm)].map((m) => m[1]).sort();
+    assert.ok(ids.length > 0, '取引ユニットの values-cloud に serviceAuthClient が 1 つも無い（読みが壊れている）');
+    assert.deepStrictEqual(ids, [...SERVICE_CLIENTS].sort(), '基盤の realm と取引ユニットの chart のクライアントの集合が違う（片方だけ足した・外した）');
+  });
   ok('IADR-0700: 稼働中の realm へ無い機密クライアントだけを足す Job（宣言・入口・手順）の形と、手順の試験', () => {
     const job = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/job.yaml'), 'utf8'))[0];
     const pod = podSpec(job);

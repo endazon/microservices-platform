@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — クラウドの realm に取引ユニットのサービスごとの機密クライアントを足し、秘密を OpenBao の中で作り、稼働中の realm へも足す
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR-18, NFR-05, IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
 author: claude
 created: 2026-11-07
@@ -55,15 +55,20 @@ related_specs:
 
 ## 受け入れ基準
 
-- [ ] AC1: クラウドの realm に 7 つのクライアントが在り、機密・サービスアカウントだけ・標準フロー／直接のパスワード／暗黙なし・リダイレクトなし・宛先は取引ユニットの API だけ・
+- [x] AC1: クラウドの realm に 7 つのクライアントが在り、機密・サービスアカウントだけ・標準フロー／直接のパスワード／暗黙なし・リダイレクトなし・宛先は取引ユニットの API だけ・
   サービスアカウントは trading-service だけ。旧の共有クライアントは宛先のスコープを持たない。陰性対照で各条件が赤になる。
-- [ ] AC2: 雛形の印は 10 で、値を差し込むと値を渡して組んだ realm と同じ。
-- [ ] AC3: seed は 10 のキーを作り、旧の 3 つだけの在るパスには 7 つを足して 3 つの値を変えない。全部在れば触らない（実物の OpenBao の試験）。
-- [ ] AC4: 稼働中の realm へ足す手順は、無いものだけを作り、在るものに書かず、2 回目は何も書かない。check は読むだけ。前提が無ければ何も書かずに止まる。
-- [ ] AC5: `secret-inventory.js --strict` が通る。Keycloak の入りの判定（KT1〜3）が Job の Pod を含めて通る。
-- [ ] AC6: 修正を外すと試験が赤になる。
+- [x] AC2: 雛形の印は 10 で、値を差し込むと値を渡して組んだ realm と同じ。
+- [x] AC3: seed は 10 のキーを作り、旧の 3 つだけの在るパスには 7 つを足して 3 つの値を変えない。全部在れば触らない（実物の OpenBao の試験）。
+- [x] AC4: 稼働中の realm へ足す手順は、無いものだけを作り、在るものに書かず、2 回目は何も書かない。check は読むだけ。前提が無ければ何も書かずに止まる。
+- [x] AC5: `secret-inventory.js --strict` が通る。Keycloak の入りの判定（KT1〜3）が Job の Pod を含めて通る。
+- [x] AC6: 修正を外すと試験が赤になる。
 
 ## 適用の順序
 
 基盤の realm・seed・ESO・稼働中の realm（本件）→ 取引ユニットの image と chart（移行の段）→ 確かめ → 旧の共有クライアントを外す（別の変更）。手順は
 `docs/operations/cloud-s2s-per-service-clients-runbook.md`。
+
+## ［2026-11-07 追記］レビューの指摘への対応と取引ユニットの取り込み
+
+- `perkey` の「無いキーだけを足す」は、機密クライアントの secret とブローカの利用者の両方に意図して及ぼす（IADR-0700 決定 2）。`userpass` はパスの単位のまま。secret の不一致は扱わない。
+- 取引ユニットの submodule を AST#1592 を含む先へ進め、`SERVICE_CLIENTS` と取引ユニットの values-cloud の `serviceAuthClient` の集合の一致を試験で固定した（`deploy-cloud.test.js`。写しが無い checkout では notice で飛ばす）。

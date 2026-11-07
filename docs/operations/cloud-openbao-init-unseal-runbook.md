@@ -104,7 +104,7 @@ bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --
 ```
 
 - DB・Keycloak・ブローカの資格情報（取引ユニットの DB はサービスごとの 7 組も。[DB の利用者の手順書](cloud-db-per-service-users-runbook.md)）と、取引ユニットの機密クライアント（宣言の 3 つとサービスごとの 7 つ。[サービスごとの機密クライアントの手順書](cloud-s2s-per-service-clients-runbook.md)）の secret を、**OpenBao の Pod の中で**乱数から作る。
-  値は Pod の外へ出ない。在る値は触らない（2 回目は何も変えない）。在るパスに無いキーだけは足す（稼働中の構成へクライアントを足すとき）。
+  値は Pod の外へ出ない。在る値は触らない（2 回目は何も変えない）。機密クライアントの secret とブローカの取引ユニットの利用者は、在るパスに無いキーだけを足す（稼働中の構成へクライアントを足すとき・`users.txt` に行が増えたとき）。DB などの利用者名とパスワードの組は、パスが在れば触らない。
 - 取引ユニットだけの値を作る口（取引ユニットの手順書から呼ぶ）:
 
   ```sh

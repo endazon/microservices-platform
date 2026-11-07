@@ -209,5 +209,6 @@ related_specs:
 
 - クラウドの realm の機密クライアントは、宣言から残す 3 つ（`DECLARED_CLOUD_CLIENTS`）に、取引ユニットのサービスごとの 7 つ（`SERVICE_CLIENTS`。宣言には置かず
   realm-for-cloud.js が組む）を足した 10 である（`CLOUD_CLIENTS`）。`cloud/shared/ast-client-secrets` のキーも 10。
-- `seed-secrets.sh` は、在るパスには無いキーだけを足す（在るキーの値は触らない）。「在れば触らない」はキーの単位になった。
+- `seed-secrets.sh` のキーごとの表（`perkey`。`shared/ast-client-secrets` と `shared/ast-rabbitmq-users`）は、在るパスには無いキーだけを足す（在るキーの値は触らない）。
+  この 2 つでは「在れば触らない」がキーの単位になった。`username`・`password` の組（`userpass`。`platform/*`・`shared/ast-db`・`shared/ast-db-<サービス>`）は従来どおりパスの単位である。
 - 稼働中の realm へは `deploy/cloud/keycloak-clients/` の Job で、無い機密クライアントだけを足す（`--import-realm` は在る realm を飛ばすため）。
