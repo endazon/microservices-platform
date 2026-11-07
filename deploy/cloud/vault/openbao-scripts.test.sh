@@ -261,12 +261,31 @@ done
   || ng "サービスごとの DB の利用者名・パスワードが互いに違わない"
 users="$(grep -v '^[[:space:]]*#' "$HERE/../../local/rabbitmq-setup/users.txt" | awk 'NF >= 2 && $2 == "ai-stock-trading" { print $1 }' | sort | tr '\n' ',')"
 [ "$(get shared/ast-rabbitmq-users | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")+","))')" = "$users" ] || ng "ブローカの利用者の集合が users.txt の取引ユニットの行と違う"
-[ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")))')" = "ai-stock-trading-llm-caller,ai-stock-trading-owner,ai-stock-trading-svc" ] || ng "client の secret のキーが 3 つの clientId でない"
+CLIENT_KEYS="$(node -e 'process.stdout.write([...require(process.argv[1]).CLOUD_CLIENTS].sort().join(","))' "$HERE/../realm-for-cloud.js")"
+[ "$(printf '%s' "$CLIENT_KEYS" | tr ',' '\n' | grep -c .)" -eq 10 ] || ng "CLOUD_CLIENTS が 10 でない（宣言の 3 つとサービスごとの 7 つ。IADR-0700）"
+[ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")))')" = "$CLIENT_KEYS" ] || ng "client の secret のキーが CLOUD_CLIENTS の 10 の clientId でない"
+get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const v=Object.values(JSON.parse(s));if(!v.every((x)=>/^[0-9a-f]{48}$/.test(x))||new Set(v).size!==v.length)process.exit(1);})' \
+  || ng "client の secret が 24 バイトの乱数でないか、互いに同じ"
 before="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/ast-db-risk-management shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" >/dev/null
 after="$(for p in platform/postgres shared/ast-db shared/ast-db-audit shared/ast-db-risk-management shared/ast-rabbitmq-users shared/ast-client-secrets; do get "$p"; done)"
 [ "$before" = "$after" ] || ng "2 回目の seed が値を変えた"
-ok "seed: 7 種とサービスごとの DB の 7 組を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 3 つ）、2 回目は何も変えない"
+ok "seed: 7 種とサービスごとの DB の 7 組を作り（利用者名は乱数の接尾辞・パスワードは 24 バイト・ブローカは users.txt の 11 人・client は 10）、2 回目は何も変えない"
+
+# IADR-0700: 在るパス（稼働中の構成。旧の 3 つの client だけ）には、無いキーだけを足す。在るキーの値は変えない。
+old3="$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);const o={};for(const k of ["ai-stock-trading-svc","ai-stock-trading-llm-caller","ai-stock-trading-owner"])o[k]=d[k];process.stdout.write(JSON.stringify(o));})')"
+printf '%s' "$old3" | BAO_TOKEN="$OPT" B kv put -mount=cloud shared/ast-client-secrets - >/dev/null
+[ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(String(Object.keys(JSON.parse(s)).length)))')" = 3 ] || ng "旧の 3 つの形に戻せない（試験の前提）"
+out="$(run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt")"
+[[ "$out" == *"足した: cloud/shared/ast-client-secrets"* ]] || ng "在るパスに無いキーを足さない: $out"
+[ "$(get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(Object.keys(JSON.parse(s)).sort().join(",")))')" = "$CLIENT_KEYS" ] || ng "足した後のキーが 10 の clientId でない"
+get shared/ast-client-secrets | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const d=JSON.parse(s);const o=JSON.parse(process.argv[1]);for(const k of Object.keys(o))if(d[k]!==o[k])process.exit(1);})' "$old3" \
+  || ng "無いキーを足すときに、在るキーの値を変えた"
+before2="$(get shared/ast-client-secrets)"
+out="$(run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt")"
+[ "$(get shared/ast-client-secrets)" = "$before2" ] && [[ "$out" == *"在る: cloud/shared/ast-client-secrets（触らない）"* ]] || ng "全部在るのに書いた"
+unset old3 before2
+ok "seed: 在るパスには無いキーだけを足し（旧の 3 つの client の値は変えない）、全部在れば触らない"
 
 # --- gen ---
 run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" gen cloud/ast/ast-secrets order-approval-signing-key 32 >/dev/null

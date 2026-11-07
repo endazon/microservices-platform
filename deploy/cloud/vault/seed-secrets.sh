@@ -2,7 +2,8 @@
 # NFR-05, NFR-18, IADR-0689 決定 6・決定 7: クラスタの中で使う資格情報を、**OpenBao の Pod の中で**乱数から作る（オーナーが手元から流す）。
 #
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <configure.sh のファイル>.age --identity <age の識別子>
-#       → 7 種（下の表。取引ユニットの DB はサービスごとの 7 組も）を作る。在れば触らない（作り直しで稼働中の値と食い違わせない）。
+#       → 7 種（下の表。取引ユニットの DB はサービスごとの 7 組も）を作る。在る値は触らない（作り直しで稼働中の値と食い違わせない）。
+#         username・password の組（userpass）はパスが在れば触らない。キーごとの表（perkey）は在るパスに無いキーだけを足す（IADR-0700）。
 #   bash deploy/cloud/vault/seed-secrets.sh --live --operator-file … --identity … gen <cloud/パス> <キー> <バイト数>
 #       → 指定のバイト数の乱数を**標準の base64**（パディングつき・1 行）で書く。キーが在れば止まる（上書きしない）。
 #         例（取引ユニットの手順書）: gen cloud/ast/ast-secrets order-approval-signing-key 32
@@ -11,8 +12,9 @@
 #   cloud/platform/postgres・keycloak-db・keycloak-admin・rabbitmq  … username（乱数の接尾辞）・password
 #   cloud/shared/ast-db                                            … username・password（共有の利用者。移行の間だけ。IADR-0695）
 #   cloud/shared/ast-db-<サービス>（7 つ）                         … username（ast_<サービス>_<乱数>）・password（IADR-0695。サービスごとの DB の利用者）
-#   cloud/shared/ast-rabbitmq-users  … deploy/local/rabbitmq-setup/users.txt の取引ユニットの行の利用者名ごとのパスワード
-#   cloud/shared/ast-client-secrets  … deploy/cloud/realm-for-cloud.js の CLOUD_CLIENTS（3 つ）ごとの secret
+#   cloud/shared/ast-rabbitmq-users  … deploy/local/rabbitmq-setup/users.txt の取引ユニットの行の利用者名ごとのパスワード（perkey）
+#   cloud/shared/ast-client-secrets  … deploy/cloud/realm-for-cloud.js の CLOUD_CLIENTS（宣言の 3 つと、サービスごとの 7 つ。IADR-0700）ごとの secret（perkey）
+#     perkey の 2 つは、在るパスには無いキーだけを足す（在るキーの値は触らない。users.txt に行が増えれば稼働中のパスにもキーが増える）。
 #
 # 🔴 値は Pod の外へ出ない（手元へも返さない）。Pod の中で作り、標準入力で bao へ渡す。オーナー用の資格は age の復号から
 #    パイプで Pod の標準入力へだけ流す（lib.sh）。
@@ -89,7 +91,21 @@ userpass() {
 }
 perkey() {
   p="$1"; shift
-  if have "$p"; then echo "    在る: cloud/$p（触らない）"; return 0; fi
+  if have "$p"; then
+    # IADR-0700: 在るパスには、無いキーだけを足す（在るキーの値は触らない。読めないキーがあれば書かずに止める）。
+    miss=""
+    for k in "$@"; do
+      case "$(key_state "$p" "$k")" in present) ;; absent) miss="$miss $k" ;;
+        *) echo "ERROR: cloud/$p の $k の有無を読めない（権限・通信・封印）。書かずに止める" >&2; exit 1 ;; esac
+    done
+    if [ -z "$miss" ]; then echo "    在る: cloud/$p（触らない）"; return 0; fi
+    j="{"; sep=""
+    for k in $miss; do j="$j$sep\"$k\":\"$(hex 24)\""; sep=","; done
+    printf "%s}" "$j" | b kv patch -mount=cloud "$p" - >/dev/null
+    unset j
+    echo "    足した: cloud/$p（在るキーは触らない。足したキー:$miss）"
+    return 0
+  fi
   j="{"; sep=""
   for k in "$@"; do j="$j$sep\"$k\":\"$(hex 24)\""; sep=","; done
   printf "%s}" "$j" | b kv put -mount=cloud "$p" - >/dev/null
@@ -114,7 +130,7 @@ perkey shared/ast-client-secrets __CLIENTS__
 '
     POD_SEED="${POD_SEED/__MQ_USERS__/$MQ_USERS}"
     POD_SEED="${POD_SEED/__CLIENTS__/$CLIENTS}"
-    echo "==> クラスタの中で使う資格情報を OpenBao の中で作る（在れば触らない。値は表示しない）"
+    echo "==> クラスタの中で使う資格情報を OpenBao の中で作る（在る値は触らない。無いキーだけを足す。値は表示しない）"
     ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id | ob_exec "${OB_POD_LOGIN}${OB_POD_KV_STATE}${POD_FN}${POD_SEED}"
     ;;
   gen)

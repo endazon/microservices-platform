@@ -9,6 +9,7 @@
 | 取引ユニットの DB のサービスごとの利用者（各利用者が自分の DB だけを持つ。[IADR-0695](../../.ai-context/adr/IADR-0695_cloud-db-per-service-users.md)） | `infra/postgres-ast-db-users.yaml`・`db-users/` |
 | RabbitMQ（取引ユニットのサービスごとのユーザー。TLS） | `infra/rabbitmq.yaml` |
 | Keycloak（本番モード `start`・realm `platform`・HTTPS 8443 だけ。[IADR-0693](../../.ai-context/adr/IADR-0693_cloud-keycloak-tls-openbao-pki.md)） | `infra/keycloak.yaml`・`realm-for-cloud.js` |
+| 稼働中の realm へ、取り込み元に在って稼働に無い機密クライアントだけを足す Job（[IADR-0700](../../.ai-context/adr/IADR-0700_cloud-ast-per-service-s2s-clients.md)） | `keycloak-clients/` |
 | OpenTelemetry の collector（メトリクスは Prometheus へ。受けるのは OTLP を送る Pod だけ・gRPC だけ。[IADR-0697](../../.ai-context/adr/IADR-0697_cloud-infra-pod-least-privilege-and-collector-ingress.md)） | `infra/otel-collector.yaml` |
 | LLM ゲートウェイ（MSP の chart。ほかのサービスは描かない） | `values-cloud.yaml` |
 | LLM ゲートウェイの当日の費用の枠（再起動を越えて残す。PVC `llmgateway-service-state`。[IADR-0698](../../.ai-context/adr/IADR-0698_llm-daily-cost-state-persistence.md)） | `values-cloud.yaml`（`services.llmgateway.persistence`） |
@@ -219,14 +220,17 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - 取引ユニットの DB の利用者はサービスごとに分ける（[手順書](../../docs/operations/cloud-db-per-service-users-runbook.md)）。共有の利用者は移行の間だけ残り、
   取引ユニットを入れた後に `ast-db-users.sh --live drop-shared` で消す。稼働中の構成を移すときは手順書の 3 段の順。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
-  `cloud/shared/*`（DB・ブローカ・3 つの client の secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
+  `cloud/shared/*`（DB・ブローカ・機密クライアントの secret・CA の証明書）と `cloud/ast/*` を読む（読める範囲は policy `ast-eso`）。
+- 取引ユニットのサービス間の認証は、サービスごとの機密クライアント（`ai-stock-trading-svc-<サービス>` の 7 つ。[IADR-0700](../../.ai-context/adr/IADR-0700_cloud-ast-per-service-s2s-clients.md)）で行う。
+  **稼働中の構成へ入れるとき**は、`seed-secrets.sh`（無いキーだけを足す）→ ESO の同期 → `bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check` →
+  `… --live apply` の順で、取引ユニットの chart より先に当てる（[手順書](../../docs/operations/cloud-s2s-per-service-clients-runbook.md)）。新しく作る構成は realm の取り込みが最初から含む。
 
 ## 4. 資格情報
 
 | 値 | 作り手 | OpenBao | 写す先 |
 | --- | --- | --- | --- |
 | DB の管理者・Keycloak の DB の利用者・Keycloak の管理者・ブローカの既定のユーザー | `seed-secrets.sh`（Pod の中の乱数。利用者名も乱数の接尾辞） | `cloud/platform/*` | `platform-infra` の Secret `postgres`・`keycloak-db`・`keycloak-admin`・`rabbitmq` |
-| 取引ユニットの DB の利用者・ブローカの 11 ユーザー・3 つの機密クライアントの secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
+| 取引ユニットの DB の利用者・ブローカの 11 ユーザー・10 の機密クライアント（宣言の 3 つとサービスごとの 7 つ）の secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
 | 取引ユニットの DB のサービスごとの利用者（7 組。共有の `ast-db` は移行の後に外す） | 同上（利用者名は `ast_<サービス>_<乱数>`） | `cloud/shared/ast-db-<サービス>` | `platform-infra` の `ast-db-<サービス>`（利用者を作る Job が読む）。取引ユニットの側も同じパスを読む |
 | サーバ証明書と鍵（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない。role の一覧は `vault/lib.sh` の `OB_PKI_ROLES`） | — | `postgres-tls`・`rabbitmq-tls`・`keycloak-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
 | CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
@@ -235,6 +239,8 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - 在る値は作り直さない（`seed-secrets.sh` の 2 回目は何も変えない）。
 - 取り込む realm は、宣言から取引ユニットの 3 つの機密クライアント（`ai-stock-trading-svc`・`-llm-caller`・`-owner`）と組み込みの
   クライアントだけを残し、人の利用者・試験の利用者・SMTP を外す（`realm-for-cloud.js`。宣言の開発用の値が残れば止まる）。
+  加えて、取引ユニットのサービスごとの 7 つ（`ai-stock-trading-svc-<サービス>`。宣言の `ai-stock-trading-svc` と同じ作り・宛先は取引ユニットの API だけ）を組んで足す。
+- 在るパスには無いキーだけを足す（`seed-secrets.sh` の `perkey`。機密クライアントの secret とブローカの利用者の両方に及ぶ。`users.txt` に行が増えれば稼働中の `ast-rabbitmq-users` にもキーが足される。在るキーの値は触らず、稼働の側との不一致は見ない。DB の `userpass` はパスが在れば触らない）。
 - Keycloak の管理者・ブローカの既定のユーザーは、初回の起動の後は使わない（管理者は Keycloak の DB が持ち、ブローカの既定の
   ユーザーはサービスごとのユーザーが揃うと消える）。
 - 取引ユニットだけの値を OpenBao の中で作る口: `seed-secrets.sh gen <cloud/パス> <キー> <バイト数>`（標準の base64）。

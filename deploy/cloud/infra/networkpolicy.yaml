@@ -4,7 +4,8 @@
 # platform-infra:
 #   - 入り・出とも既定で拒否する。出は名前解決と同じ名前空間（Keycloak → Postgres）だけ。
 #   - Postgres ← 取引ユニットの DB を持つサービス・Keycloak。ブローカ ← 取引ユニットのブローカを使うサービス（users.txt の AST の行）。
-#   - Keycloak ← 取引ユニットの Keycloak を呼ぶ 11 個の Pod・MSP の LLM ゲートウェイ（トークンの発行・鍵の取得）。HTTPS（8443）だけ
+#   - Keycloak ← 取引ユニットの Keycloak を呼ぶ 11 個の Pod・MSP の LLM ゲートウェイ（トークンの発行・鍵の取得）・稼働中の realm へ
+#     機密クライアントを足す Job（IADR-0700。流すときだけ）。HTTPS（8443）だけ
 #     （IADR-0693。OpenD は Keycloak を呼ばないので入れない）。collector ← 取引ユニットの OTLP を送る 11 個の Pod・LLM ゲートウェイ（gRPC の 4317 だけ。IADR-0697）。
 # microservices-platform（MSP は LLM ゲートウェイだけ）:
 #   - 出は既定で拒否する。LLM ゲートウェイだけに、名前解決・Keycloak（8443）・collector・クラスタの外の 443（提供元の API）を許す。
@@ -126,6 +127,9 @@ spec:
                   - trade-decision-service
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
           podSelector: { matchLabels: { app: llmgateway-service } }
+        # IADR-0700: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る。管理の API を 8443 で呼ぶ）。
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: keycloak-add-clients } }
       ports:
         - { protocol: TCP, port: 8443 }
 ---
