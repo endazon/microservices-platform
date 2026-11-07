@@ -40,6 +40,10 @@ plan_refs: []
    - 上限: 呼び手の要求数・当日の費用（補完と同じ呼び手の枠に合算する）・入力の長さ。用途の枠は固定の `embedding`。
      段は `Llm:CallLimits:EmbeddingMode`（Off / Report / Enforce。既定 Report）。外へ出ない経路（ティア A）は費用を数えない。
    - 費用の見込み・実額は単価表（`Llm:Pricing:Models`）で換算する。`voyage-3.5` の単価を足す（計画の比較時点の目安。正は契約の価格表）。
+
+     ［2026-11-07 追記 / #2506］上の 1 行は実装と食い違う。埋め込みの単価は補完の単価表（`Llm:Pricing:Models`）に足さず、
+     別の表 `Llm:CallLimits:EmbeddingPrices`（既定 `voyage-3.5`）に置いた。補完の単価表は計画 ADR-0138 決定 7 が 3 モデルに限り、
+     既存の試験がそれを固定しているため。表に無いモデルは 0 にせず `UnknownModelPrice` の入力単価で数える（IADR-0702）。
 2. 合成監視の標識を引き継ぐ呼び手を許可集合 `Llm:SyntheticMarker:TrustedCallers` に限る。段は `Llm:SyntheticMarker:Mode`
    （Report＝従来どおり引き継ぎ、許可集合の外を数えて報告／Enforce＝許可集合の外の標識を無視して費用に計上する）。既定 Report。
 3. クラウドは 3 つとも段 2（`Enforce`）。取引ユニットの呼び手には埋め込みを許可しない。クラウドの手順書から埋め込みの鍵の案内を外す。
