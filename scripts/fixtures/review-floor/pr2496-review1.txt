@@ -1,0 +1,50 @@
+**Claude finished @endazon's task in 1m 18s** —— [View job](https://github.com/endazon/microservices-platform/actions/runs/42351698550)
+
+---
+## AI コードレビュー結果
+
+変更 18 ファイル中 18 ファイルを読んだ（生成物の除外なし。差分を行単位で読んだ）。
+
+### 🔴 重大
+- （指摘なし）
+
+### 🟡 推奨
+- **マージ順の依存（PR 本文どおり）**: `check-adr-numbering` は今の head で `IADR-0696 が欠番` として赤になる。#2495 が先にマージされるまで `develop` の必須チェックは通らない。本文の注記どおり #2495 を先に流すこと。`README.md`・`deploy-cloud.test.js`・`.ai-context/adr/README.md` は #2495 とも衝突しうる。
+- **新しい警報の promtool 単体試験は、このセッションでは実走できていない**（下の「実行できなかったこと」）。`scripts/cloud-ops.test.js` の IADR-0697 の試験は `promtool` が PATH に無く NG だった。マージ前に CI の `scripts-tests` が success であることを確認すること。特に `OtlpSendersMissing` の式 `count(count by (job) (last_over_time(target_info[10m])))` と `for: 15m` は、この試験が唯一の裏付けである。
+- **`PrometheusHeadSeriesHigh` の閾値 100000 は見込み**（IADR-0697 残余 5 に記載済み）。稼働後の実測で見直す issue を起票しておくとよい。
+
+### 🟢 軽微
+- `OtlpSendersMissing` の閾値 `12` が式・summary・description に直書きされている。`deploy-cloud.test.js` の H5 が式の閾値と送り元の一覧の数を突き合わせるが、summary と description の「12」は突き合わせの対象外。送り手を増やすとここだけ古くなりうる。
+- collector の HTTP receiver（4318）は設定に残るが、入りの NetworkPolicy は 4317 だけになった。IADR-0697 決定 4 に理由が書かれていて矛盾はない。
+- 範囲外で見つけたこと（バックアップの Dockerfile の `ARG RCLONE_VERSION`）は PR 本文で報告済み。別 issue 化を推奨する。
+
+**良い点**
+- fsGroup が local-path の PVC にも効くという実測を根拠に、fsGroup を置かずに initContainer を `runAsUser` が本体と同じ・`runAsGroup: 0` で走らせる設計。chown と capability を要らなくしている。
+- `rabbitmq-users` の写し（`for f in /users-src/*` と `[ -f ] || continue`）は optional な Secret が無い場合も安全に通る。
+- 判定（H1〜H5）に、陰性対照と宣言ファイルの変異が付いている。
+- ADR・仕様書・runbook の trace ブロックが追随している。
+- コミット件名は規約どおり。
+
+### ✅ 確認できたこと（このセッションで実走）
+- `git diff --name-only origin/develop...HEAD` で 18 ファイルを確認し、全差分を読んだ。
+- `node scripts/deploy-cloud.test.js` → 全件 ok（IADR-0697 の H1〜H5・陰性対照・変異を含む）、最終行 `✓ deploy/cloud の描画は受け入れ基準を満たす`。
+- `node scripts/check-adr-numbering.js` → exit 1。違反は `[missing-number] IADR-0696 が欠番` の 1 件だけで、PR 本文の説明（#2495 待ち）と一致する。
+- `node scripts/check-trace-blocks.js` → OK（201 件）。
+- `node scripts/gen-knowledge-graph.js --check` → OK。
+- `node scripts/check-doc-links.js` → OK（2122 件）。
+- `node scripts/check-doc-updated.js --base origin/develop` → OK。
+- `node scripts/check-commit-messages.js` → 1 件検査し、適合。
+- `node scripts/check-plan-id-qualification.js` → OK（4287 件）。
+- `scripts.test.js` を `REQUIRE_REPO_TESTS=1` の子プロセス形で全件実行した。**exit 1**。出力は途中で切り捨てられ、失敗した試験の一覧は読めていない。説明できるのは、上の IADR-0696 の欠番と、下の promtool / amtool が無い環境である。それ以外に失敗がないかは未確認。
+
+### 🔍 実行できなかったこと
+- `node scripts/cloud-ops.test.js` → 48 passed, 7 failed。7 件はすべて `promtool` / `amtool` が PATH に無いことによる NG。このため **IADR-0697 の警報の promtool 単体試験（鳴るときに鳴り平時は鳴らない）は未検証**。
+- `scripts.test.js` の全件結果は出力の切り捨てで失敗項目を特定できず、**エラー行の有無は未検証**。同じ head の CI `scripts-tests` が実行中で、success になるまで確認できていない。
+- `deploy-cloud-postgres.test.js`・`platform-backup.test.js` は実走していない（docker 前提。`scripts.test.js` の中で実行された範囲の成否は上のとおり読めていない）。
+- k3s の Pod Security 受け付け、docker 上の各イメージの起動、実クラスタでの NetworkPolicy の実効は、PR 本文の実測の主張であり、追試していない。
+- 計画書原文・他リポジトリ（#2495 を含む）は本セッションの対象外。
+- `deploy/helm/**` と `src/**/backend` の差分はないので、helm・dotnet は実行していない。
+
+---
+*レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+ · ブランチ: `fix/NFR-cloud-infra-pod-hardening`
