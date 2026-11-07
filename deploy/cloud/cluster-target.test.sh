@@ -7,6 +7,8 @@
 # kubectl は PATH のスタブ（宛先・印・現在の context を環境変数で変え、呼び出しを全部記録する）。稼働のクラスタには触れない。
 # 「確かめ以外の呼び出し」（ACT の行）が 1 つでも記録されたら、宛先を確かめる前に手順が動いたとみなす。
 set -euo pipefail
+# 標準入力を空にする（スタブの kubectl は当たらない呼び出しで標準入力を読み捨てる。端末やソケットのまま流すとそこで待ち続ける。手順の中のパイプは効く）。
+exec </dev/null
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 for t in age age-keygen node; do command -v "$t" >/dev/null || { echo "✗ $t が無い" >&2; exit 1; }; done
