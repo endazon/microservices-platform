@@ -69,6 +69,14 @@ submodule（`src/ai-stock-trading`）はこの変更を含む AST の版へ進�
 - 変異: 共有のデッドレターを戻す・他のサービスのデッドレターを足すと赤になる。共有のデッドレターを持つ行からクラウドの写しは作れない。
   shim の規則の字面・呼び出しを外す（コメントアウトを含む）と生成器が止まる。
 
+### 決定 5 — AI レビューの生成物の除外に権限の表を名指しで足す
+
+`deploy/local/rabbitmq-setup/permissions.txt`・`deploy/cloud/infra/rabbitmq-permissions.yaml` は生成器の出力で、1 行が数千字の正規表現になり、
+AI レビューが行単位で読み切れない（本 PR の 1 回目の `claude-review` が「9 ファイル中 7 ファイル」で落ちた）。中身は CI の一致検査
+（生成器の既定の照合と `rabbitmq-permissions.test.js`）がコードからの導出と突き合わせて守るので、レビューの生成物の除外（K）へ入れる。
+除外はこの 2 つのパスだけを名指しする（生成器・試験・ブローカの manifest は除外に当たらないことを `check-review-verdict.js` の自己試験が固定する）。
+レビューの手順（`claude-code-review.yml` の【検証の下限】）と検査器の `GENERATED_TOKENS` の対は `scripts.repo.test.js` が固定する。
+
 ## 結果
 
 - 良い: 取引ユニットの利用者は、他のサービスの死んだメッセージを読めず、共有の受け皿を宣言・削除できない。
