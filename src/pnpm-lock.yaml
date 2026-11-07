@@ -278,8 +278,8 @@ importers:
   knowledge/frontend:
     dependencies:
       '@hookform/resolvers':
-        specifier: ^7.0.1
-        version: 7.0.1(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)
+        specifier: ^7.0.2
+        version: 7.0.2(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)
       '@lingui/core':
         specifier: ^6.6.0
         version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(babel-plugin-macros@3.1.0)
@@ -1131,8 +1131,8 @@ packages:
       react: ^19.2.0
       react-dom: ^19.2.0
 
-  '@hookform/resolvers@7.0.1':
-    resolution: {integrity: sha512-F3aM0dDWsRGmFjnnXjogaGLwP7gY2HA6/c5qp4v4Im/UV7pTNkX+WAjcOlM1V0PE0zoMzuPqCyaYtMzUhoFToA==}
+  '@hookform/resolvers@7.0.2':
+    resolution: {integrity: sha512-8JVNoDGKwBc1iBy/e1CKXJ3ixvN7Ef3NHYlIA+9uuc5ZM+SV9E2nw5vy0SOvu+OMAfBxmyEmEOlGdpd0seQcxg==}
     peerDependencies:
       '@standard-schema/spec': ^1.0.0
       '@vinejs/vine': ^2.0.0 || ^3.0.0 || ^4.0.0
@@ -6292,7 +6292,7 @@ snapshots:
       - '@types/react'
       - supports-color
 
-  '@hookform/resolvers@7.0.1(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)':
+  '@hookform/resolvers@7.0.2(ajv@8.20.0)(react-hook-form@7.86.0(react@19.2.8))(zod@4.6.7)':
     dependencies:
       '@standard-schema/utils': 0.3.0
       react-hook-form: 7.86.0(react@19.2.8)
