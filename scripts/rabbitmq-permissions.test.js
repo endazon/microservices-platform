@@ -20,6 +20,9 @@
  *   6. 合わせ（reconcile-users.sh）: 既定（段 1）は vhost 全体のまま、narrow（段 2）は生成物の行を当てる。行の欠け・届かないものが
  *      あれば何も変えずに止まる。--permissions-report は何も書かない。当てた段を ConfigMap に写す。
  *   7. 起動の直後の復元（rabbitmq.yaml の restore-users.sh）は ConfigMap の段に従い、行の無いユーザーへ vhost 全体を付けない。
+ *   4-b. デッドレターはサービスごと（NFR-18, IADR-0699）: 取引ユニットの利用者は、共有のデッドレター（wolverine-dead-letter-queue）にも
+ *        他のサービスのデッドレター（<ServiceName>.dead-letter・<キュー>_error）にも、configure / write / read のいずれも持たない（ローカル・クラウドとも）。
+ *        自分のデッドレターは要る操作として当たる。共有のデッドレターを戻す変異で赤になり、shim の配線（CustomizeDeadLetterQueueing）を外すと生成器が止まる。
  *   8. クラウドの写し（NFR-18, IADR-0694）: 購読する（発行しない）exchange の configure を与えない。それ以外はローカルの行と同じ。
  *      購読に要る操作（受動の宣言・束ね）は当たり、変異（購読の exchange の configure を戻す）で陰性対照が赤になる。
  *      exchanges.json は購読される exchange の和で、Wolverine の宣言と同じ形。クラウドの復元は利用者の権限を当てる前にそれを宣言する。
@@ -124,8 +127,8 @@ ok('隔て: 他のサービスのキューには当たらず、発行しない e
     const row = committed.get(a.user);
     for (const b of G.derived) {
       if (a === b) continue;
-      // 他のサービスの受信キュー（購読の全件。AST はデッドレターの `_error` も）と、購読の無いサービスの前置の探り。
-      const foreign = [`${b.queuePrefix}Probe`, ...b.subscribe.flatMap((t) => {
+      // 他のサービスの受信キュー（購読の全件。AST はデッドレターの `_error` とサービスごとのデッドレターも）と、購読の無いサービスの前置の探り。
+      const foreign = [`${b.queuePrefix}Probe`, ...(b.serviceDeadLetter ? [b.serviceDeadLetter] : []), ...b.subscribe.flatMap((t) => {
         const q = `${b.queuePrefix}${b.unit === 'ai-stock-trading' ? t.split('.').pop() : t}`;
         return b.deadLetterQueues ? [q, `${q}_error`] : [q];
       })];
@@ -228,6 +231,102 @@ ok('最小権限（変異）: 規則を元に戻すと、陰性対照が必ず�
   for (const d of off) {
     const r = committed.get(d.user);
     assert.ok(violations(d, { ...r, write: gen.patternsFor({ ...d, hasListener: true }).write }).length > 0, `${d.user}: 既定の exchange を戻しても赤にならない`);
+  }
+});
+
+// --- 4-b ------------------------------------------------------------------------------------------------------
+// NFR-18, IADR-0699: 取引ユニットのデッドレターはサービスごと。共有のデッドレターと他のサービスのデッドレターに、どの権限も当たらない。
+const PERMS = ['configure', 'write', 'read'];
+/** クラウドの写しの行（下の 8 の cloudRows と同じ読み方。8 より先に使うので関数にする）。 */
+function cloudRowsEarly() {
+  const m = fs.readFileSync(path.join(REPO_ROOT, gen.CLOUD_PERMS_REL), 'utf8').match(/\n  permissions\.txt: \|\n((?:    .*\n)+)/);
+  assert.ok(m, 'rabbitmq-permissions.yaml に permissions.txt が無い');
+  return new Map(m[1].trim().split('\n').map((l) => l.trim().split(/\s+/)).map(([user, configure, write, read]) => [user, { user, configure, write, read }]));
+}
+const astOf = (rows) => [...rows.entries()].filter(([u]) => users.some((x) => x.user === u && x.namespace === 'ai-stock-trading'));
+
+/** 取引ユニットの利用者 u の行で、デッドレターについて拒まれるべきなのに当たる操作。 */
+function deadLetterViolations(u, row) {
+  const out = [];
+  for (const k of PERMS) if (rx(row[k]).test(gen.DEAD_LETTER)) out.push(`${k} ${gen.DEAD_LETTER}（共有のデッドレター）`);
+  for (const b of G.derived) {
+    if (b.user === u || !b.serviceDeadLetter) continue;
+    const others = [b.serviceDeadLetter, ...b.subscribe.map((t) => `${b.queuePrefix}${t.split('.').pop()}_error`)];
+    for (const name of others) for (const k of PERMS) if (rx(row[k]).test(name)) out.push(`${k} ${name}（${b.user} のデッドレター）`);
+  }
+  return out;
+}
+
+ok('デッドレター: 取引ユニットの利用者は共有のデッドレターの権限を持たない（ローカルの行・クラウドの写しとも）', () => {
+  const ast = [...astOf(committed), ...astOf(cloudRowsEarly())];
+  assert.ok(ast.length >= 22, `取引ユニットの行が少なすぎる（${ast.length}）`);
+  for (const [u, row] of ast) {
+    for (const k of PERMS) {
+      assert.ok(!rx(row[k]).test(gen.DEAD_LETTER), `${u} の ${k} が共有のデッドレター ${gen.DEAD_LETTER} に当たる`);
+      assert.ok(!row[k].includes('wolverine-dead-letter'), `${u} の ${k} に共有のデッドレターの名前が残る`);
+    }
+  }
+});
+
+ok('デッドレター: どの取引ユニットの利用者も、他のサービスのデッドレターに権限を持たず、自分のデッドレターは要る操作として当たる', () => {
+  if (!hasAst) return;
+  const astD = G.derived.filter((d) => d.unit === 'ai-stock-trading');
+  assert.strictEqual(astD.length, 11, '取引ユニットの利用者は 11');
+  let probes = 0;
+  for (const d of astD) {
+    assert.strictEqual(d.serviceDeadLetter, `${d.queuePrefix}dead-letter`, `${d.user} のサービスごとのデッドレターの名前`);
+    for (const rows of [committed, cloudRowsEarly()]) {
+      const row = rows.get(d.user);
+      assert.deepStrictEqual(deadLetterViolations(d.user, row), [], `${d.user} が他のデッドレターに当たる`);
+      for (const k of PERMS) assert.ok(rx(row[k]).test(d.serviceDeadLetter), `${d.user} の ${k} が自分のデッドレター ${d.serviceDeadLetter} に当たらない`);
+      probes++;
+    }
+    const need = gen.requiredAccess(d).filter((a) => a.name === d.serviceDeadLetter).map((a) => a.perm).sort();
+    assert.deepStrictEqual(need, ['configure', 'read', 'write'], `${d.user}: 自分のデッドレターの要る操作`);
+    assert.ok(!gen.requiredAccess(d).some((a) => a.name === gen.DEAD_LETTER), `${d.user}: 共有のデッドレターを要る操作に数えている`);
+  }
+  assert.strictEqual(probes, 22);
+});
+
+ok('デッドレター（変異）: 共有のデッドレターを戻す・他のサービスの接頭辞を足すと赤になり、クラウドの写しは作れない', () => {
+  if (!hasAst) return;
+  const astD = G.derived.filter((d) => d.unit === 'ai-stock-trading');
+  for (const d of astD) {
+    // 共有のデッドレターを戻す（serviceDeadLetter を外す＝ Wolverine の既定の名前の配線）。
+    const shared = { user: d.user, ...gen.patternsFor({ ...d, serviceDeadLetter: null }) };
+    assert.ok(deadLetterViolations(d.user, shared).length > 0, `${d.user}: 共有のデッドレターを戻しても赤にならない`);
+    assert.throws(() => gen.cloudRow(shared), /共有のデッドレター/, `${d.user}: 共有のデッドレターを持つ行からクラウドの写しを作れてしまう`);
+    // 他のサービスのデッドレターを足す。
+    const other = astD.find((x) => x !== d);
+    const leaked = { ...committed.get(d.user), read: committed.get(d.user).read.replace(/\)\$$/, `|${other.serviceDeadLetter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})$`) };
+    assert.ok(deadLetterViolations(d.user, leaked).length > 0, `${d.user}: 他のサービスのデッドレターを足しても赤にならない`);
+  }
+  // 接頭辞の外のサービスごとのデッドレター（規則の取り違え）は生成器が止める。
+  assert.throws(() => gen.patternsFor({ ...astD[0], serviceDeadLetter: 'ai-stock-trading.dead-letter' }), /接頭辞/);
+});
+
+ok('デッドレターの導出の検出力: shim の規則の字面・配線（CustomizeDeadLetterQueueing）が無ければ生成器が止まる', () => {
+  if (!hasAst) return;
+  const src = fs.readFileSync(path.join(G.astRoot, gen.AST_SHIM_REL), 'utf8');
+  const withShim = (text, fn) => {
+    const H = fs.mkdtempSync(path.join(os.tmpdir(), 'rmqdlq-'));
+    try {
+      fs.mkdirSync(path.dirname(path.join(H, gen.AST_SHIM_REL)), { recursive: true });
+      fs.writeFileSync(path.join(H, gen.AST_SHIM_REL), text);
+      return fn(H);
+    } finally {
+      fs.rmSync(H, { recursive: true, force: true });
+    }
+  };
+  withShim(src, (H) => gen.assertAstNamingRules(H));
+  const cases = [
+    [src.replace('return $"{serviceName}.dead-letter";', 'return "wolverine-dead-letter-queue";'), /サービスごとの既定のデッドレターの規則/],
+    [src.replace(/\.CustomizeDeadLetterQueueing\([^\n]*\n/, '\n'), /CustomizeDeadLetterQueueing が無い/],
+    [src.replace(/(\s*)(\.CustomizeDeadLetterQueueing\()/, '$1// $2'), /CustomizeDeadLetterQueueing が無い/],
+  ];
+  for (const [text, want] of cases) {
+    assert.notStrictEqual(text, src, '変異が当たっていない');
+    withShim(text, (H) => assert.throws(() => gen.assertAstNamingRules(H), want));
   }
 });
 
@@ -527,7 +626,7 @@ ok('クラウドの写し（陰性対照）: 購読する（発行しない）ex
   // 行だけ（AST の写しが無くても）で読める形: configure の exchange ⊆ write の exchange。
   for (const [u, r] of cloudRows) {
     const write = new Set(r.write.slice(2, -2).split('|'));
-    const extra = r.configure.slice(2, -2).split('|').slice(3).filter((x) => !write.has(x));
+    const extra = r.configure.slice(2, -2).split('|').slice(2).filter((x) => !write.has(x));
     assert.deepStrictEqual(extra, [], `${u}: 発行しない exchange の configure がある`);
   }
 });

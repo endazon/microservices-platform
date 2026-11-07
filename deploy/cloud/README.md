@@ -246,6 +246,11 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   （取引ユニットの chart の `global.rabbitmq.subscribedExchanges: Passive`）のマージと、**取引ユニットのイメージの更新の後に**、
   ConfigMap `rabbitmq-permissions`・`rabbitmq-boot` を当ててブローカを作り直す（`kubectl -n platform-infra rollout restart deploy/rabbitmq`）。
   先に当てると、従来の（非受動で宣言する）購読側の Pod は起動できない（configure が拒まれる）。戻すときは、この表を前の版へ戻してブローカを作り直す。
+- 🔴 **共有のデッドレターを外した表の適用の順序**（[IADR-0699](../../.ai-context/adr/IADR-0699_rabbitmq-per-service-dead-letter.md)）: 取引ユニットの
+  「デッドレターをサービスごと（`<ServiceName>.dead-letter`）にする」変更を含むイメージを**全 11 サービスに当てた後に**、同じ手順で表を当ててブローカを作り直す。
+  先に当てると、旧のイメージの Pod は共有のデッドレター（`wolverine-dead-letter-queue`）の宣言が拒まれ、起動できない。デッドレターは各サービスが自分の
+  接頭辞の中で宣言する（定義で先に作らない）。旧の共有のデッドレターのキューの扱い（件数を読みだけで確かめ、空なら消す）は取引ユニットの手順書
+  （`docs/operations/broker-per-service-dead-letter-runbook.md`）。戻すときは、この表を前の版へ戻してブローカを作り直す。
 
 ## 5. 確かめ方（クラスタに触れない）
 
