@@ -102,6 +102,11 @@ spec:
       labels: { app: openbao }
     spec:
       serviceAccountName: openbao
+      # NFR-18, IADR-0697（2026-11-07 追記）: kubernetes 認証は、OpenBao 自身の ServiceAccount のトークン（auth-delegator）で TokenReview を呼ぶ
+      #   （configure.sh。token_reviewer_jwt を置かない＝Pod の中のトークンを読む）。クライアント（ESO）の JWT を reviewer に使う形にすると、
+      #   ESO の ServiceAccount に auth-delegator を渡すことになるので採らない。自動のマウントは止め、同じ置き場へ期限を 1 時間に限った
+      #   トークンを明示して載せる（kubelet が期限の前に作り直し、OpenBao は置き場から読み直す）。configure.sh はこの置き場の ca.crt でクラスタの中と判じる。
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 100
@@ -135,6 +140,7 @@ spec:
             - { name: tls, mountPath: /openbao/tls, readOnly: true }
             - { name: data, mountPath: /openbao/data }
             - { name: tmp, mountPath: /tmp }
+            - { name: kube-api-access, mountPath: /var/run/secrets/kubernetes.io/serviceaccount, readOnly: true }
       volumes:
         - name: config
           configMap: { name: openbao-config }
@@ -145,6 +151,14 @@ spec:
           secret: { secretName: openbao-tls, defaultMode: 0440 }
         - name: tmp
           emptyDir: { medium: Memory, sizeLimit: 16Mi }
+        # TokenReview の呼び手のトークン（audience は API サーバーの既定）・API サーバーの CA・名前空間。
+        - name: kube-api-access
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken: { path: token, expirationSeconds: 3600 }
+              - configMap: { name: kube-root-ca.crt, items: [{ key: ca.crt, path: ca.crt }] }
+              - downwardAPI: { items: [{ path: namespace, fieldRef: { fieldPath: metadata.namespace } }] }
 ---
 apiVersion: v1
 kind: Service

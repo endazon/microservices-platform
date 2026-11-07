@@ -819,6 +819,13 @@ function astDbUsersProblems(infraDocs, esoDocs, job, policies) {
 const WORKLOAD_KINDS = ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob', 'ReplicaSet', 'Pod'];
 /** 足してよい capability（理由つき）。今は無い（どのイメージも 1024 より上で受け、所有の付け替えも要らない＝実測。IADR-0697）。 */
 const HARDENING_ALLOWED_CAPS = Object.freeze({});
+/**
+ * 明示の ServiceAccount のトークンを載せてよい Pod（名前空間/名前 → 理由）。
+ *   openbao/openbao: kubernetes 認証の TokenReview を OpenBao 自身のトークン（auth-delegator）で呼ぶ。クライアント（ESO）の JWT を reviewer に
+ *   すると ESO の ServiceAccount に auth-delegator を渡すことになるので採らない（IADR-0697 の 2026-11-07 追記。実の k3s で、トークンが無いと
+ *   認証の設定が通らないことを確かめた）。
+ */
+const SA_TOKEN_ALLOWED = Object.freeze({ 'openbao/openbao': 'kubernetes 認証の TokenReview の呼び手（auth-delegator）' });
 const podSpecOf = (d) => (d.kind === 'Pod' ? d.spec : podSpec(d));
 function podHardeningProblems(docs, where) {
   const out = [];
@@ -828,6 +835,20 @@ function podHardeningProblems(docs, where) {
     if (!ps) { out.push(`${id}: Pod の宣言が読めない`); continue; }
     const psc = ps.securityContext || {};
     if (String(ps.automountServiceAccountToken) !== 'false') out.push(`${id}: ServiceAccount のトークンを載せる（automountServiceAccountToken: false が無い）`);
+    // 明示の ServiceAccount のトークン（projected）は、理由つきの許可の Pod だけ・期限は 1 時間以内・読み取り専用のマウント。
+    for (const v of ps.volumes || []) {
+      const tokens = ((v.projected && v.projected.sources) || []).filter((x) => x.serviceAccountToken);
+      if (!tokens.length) continue;
+      const key = `${d.metadata.namespace}/${d.metadata.name}`;
+      if (!Object.prototype.hasOwnProperty.call(SA_TOKEN_ALLOWED, key)) out.push(`${id}: ServiceAccount のトークンを明示で載せる（理由つきの許可に無い）`);
+      for (const t of tokens) {
+        const exp = Number(t.serviceAccountToken.expirationSeconds);
+        if (!(exp > 0 && exp <= 3600)) out.push(`${id}: ServiceAccount のトークンの期限が 1 時間以内でない（${t.serviceAccountToken.expirationSeconds}）`);
+      }
+      for (const c of [...(ps.initContainers || []), ...(ps.containers || [])]) {
+        for (const m of (c.volumeMounts || []).filter((x) => x.name === v.name)) if (String(m.readOnly) !== 'true') out.push(`${id} の ${c.name}: ServiceAccount のトークンのマウントが読み取り専用でない`);
+      }
+    }
     for (const k of ['hostPID', 'hostIPC', 'hostNetwork']) if (String(ps[k]) === 'true') out.push(`${id}: ${k}`);
     for (const c of [...(ps.initContainers || []), ...(ps.containers || [])]) {
       const sc = c.securityContext || {};
@@ -869,7 +890,7 @@ function netRawHolders(docs, where) {
 }
 
 /** NFR-18, IADR-0697: 基盤と MSP の名前空間の Pod Security Admission は enforce・warn・audit とも restricted。 */
-const PSA_RESTRICTED_NAMESPACES = ['platform-infra', 'microservices-platform'];
+const PSA_RESTRICTED_NAMESPACES = ['platform-infra', 'microservices-platform', 'openbao'];
 function namespacePsaProblems(docs) {
   const out = [];
   for (const name of PSA_RESTRICTED_NAMESPACES) {
@@ -968,7 +989,40 @@ function collectorLimitProblems(docs) {
   return out;
 }
 
-module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+/**
+ * NFR-18, IADR-0697 決定 7: OpenBao の kubernetes 認証が、Pod の中のトークンを**読み直す**形のままであること。
+ *   - configure.sh のクラスタの中の分岐は auth/kubernetes/config に token_reviewer_jwt・disable_local_ca_jwt・kubernetes_ca_cert を書かない
+ *     （書けば設定に保存した 1 つのトークンを使い続け、1 時間で切れる。読み直すのは token_reviewer_jwt が空のときだけ）。
+ *   - deploy/cloud/vault の手順のどこにも token_reviewer_jwt が無い。
+ *   - OpenBao の明示のトークンは、プラグインが読む既定の置き場（…/serviceaccount の token・ca.crt）に載る。
+ */
+const K8S_SA_DIR = '/var/run/secrets/kubernetes.io/serviceaccount';
+function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
+  const out = [];
+  const lines = String(configureSh).split('\n');
+  const inCluster = lines.findIndex((l) => l.includes(`[ -r ${K8S_SA_DIR}/ca.crt ]`));
+  if (inCluster < 0) out.push('configure.sh: クラスタの中の判定（serviceaccount の ca.crt）が無い');
+  else {
+    const els = lines.findIndex((l, i) => i > inCluster && /^else\b/.test(l.trim()));
+    const body = lines.slice(inCluster + 1, els < 0 ? inCluster + 6 : els).filter((l) => /auth\/kubernetes\/config/.test(l));
+    if (body.length !== 1) out.push(`configure.sh: クラスタの中の分岐の auth/kubernetes/config の書き込みがちょうど 1 つでない（${body.length}）`);
+    for (const l of body) for (const k of ['token_reviewer_jwt', 'disable_local_ca_jwt', 'kubernetes_ca_cert']) if (l.includes(k)) out.push(`configure.sh: クラスタの中の分岐が ${k} を設定に書く（Pod の中のトークン・CA を読み直さなくなる）`);
+  }
+  for (const [name, text] of Object.entries(vaultScripts)) if (/token_reviewer_jwt/.test(String(text).replace(/^\s*#.*$/gm, ''))) out.push(`${name}: token_reviewer_jwt を書く`);
+  const dep = vaultDocs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao');
+  const ps = dep ? dep.spec.template.spec : {};
+  const c = (ps.containers || [])[0] || {};
+  const m = (c.volumeMounts || []).find((x) => x.mountPath === K8S_SA_DIR);
+  const v = m && (ps.volumes || []).find((x) => x.name === m.name);
+  const src = (v && v.projected && v.projected.sources) || [];
+  const tok = src.find((x) => x.serviceAccountToken);
+  if (!tok || tok.serviceAccountToken.path !== 'token') out.push(`OpenBao: 明示のトークンが ${K8S_SA_DIR}/token に載らない`);
+  const ca = src.find((x) => x.configMap && x.configMap.name === 'kube-root-ca.crt');
+  if (!ca || !(ca.configMap.items || []).some((i) => i.key === 'ca.crt' && i.path === 'ca.crt')) out.push(`OpenBao: API サーバーの CA が ${K8S_SA_DIR}/ca.crt に載らない`);
+  return out;
+}
+
+module.exports = { cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -1428,6 +1482,8 @@ if (require.main === module) {
     ['deploy/cloud/db-users', dbUsersJob()],
     ['chart', renderChart()],
     ['keycloak-tls-coexist', docsOf(run('kubectl', ['kustomize', 'deploy/cloud-transition/keycloak-tls-coexist']))],
+    ['deploy/cloud/vault', docsOf(run('kubectl', ['kustomize', 'deploy/cloud/vault']))],
+    ['openbao-tls-coexist', docsOf(run('kubectl', ['kustomize', 'deploy/cloud-transition/openbao-tls-coexist']))],
   ];
   ok('IADR-0697 H1: クラウドの描画の全 Pod（initContainer を含む）が root でなく、capability を全部落とし（足す物なし）、権限の昇格を許さず、seccomp は RuntimeDefault、SA のトークンを載せない', () => {
     let n = 0;
@@ -1436,13 +1492,13 @@ if (require.main === module) {
       assert.deepStrictEqual(podHardeningProblems(docs, where), []);
     }
     // 陽性対照: 基盤の 7 つ（Postgres・RabbitMQ・Keycloak・collector・Prometheus・Alertmanager・バックアップ）＋ db-users の Job ＋ LLM ゲートウェイ ＋ 併存の重ねの 7 つ
-    assert.ok(n >= 16, `陽性対照: 数えた Pod の宣言が少ない（${n}）`);
+    assert.ok(n >= 18, `陽性対照: 数えた Pod の宣言が少ない（${n}）`);
   });
   ok('IADR-0697 H2: NET_RAW を持つ Pod が無い（クラウドの描画の全コンテナ）', () => {
     for (const [where, docs] of allPodRenders()) assert.deepStrictEqual(netRawHolders(docs, where), []);
   });
   ok('IADR-0697 H3: 基盤と MSP の名前空間の Pod Security Admission は enforce・warn・audit とも restricted', () => {
-    assert.deepStrictEqual(namespacePsaProblems(renderInfra()), []);
+    assert.deepStrictEqual(namespacePsaProblems([...renderInfra(), ...docsOf(run('kubectl', ['kustomize', 'deploy/cloud/vault']))]), []);
   });
   ok('IADR-0697 H4: collector の OTLP の入りは、取引ユニットの OTLP を送る 11 個の Pod と LLM ゲートウェイだけ（名前空間 かつ Pod）・gRPC の 4317 だけ。OpenD は入らない', () => {
     const docs = renderCloudAll();
@@ -1451,6 +1507,41 @@ if (require.main === module) {
   });
   ok('IADR-0697 H5: collector の受け取りの上限（gRPC・memory_limiter）と、受け取りの拒否・系列の途絶え・系列の数の警報が在る（送り手の数の閾値は一覧と同じ）', () => {
     assert.deepStrictEqual(collectorLimitProblems(renderCloudAll()), []);
+  });
+  ok('IADR-0697 決定 7: OpenBao の kubernetes 認証は Pod の中のトークンを読み直す形（configure.sh が token_reviewer_jwt を書かない・トークンと CA がプラグインの既定の置き場に載る）。保存する形へ戻すと赤', () => {
+    const rd = (f) => fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/vault', f), 'utf8');
+    const scripts = Object.fromEntries(fs.readdirSync(path.join(REPO_ROOT, 'deploy/cloud/vault')).filter((f) => f.endsWith('.sh') && !f.endsWith('.test.sh')).map((f) => [f, rd(f)]));
+    const vault = docsOf(run('kubectl', ['kustomize', 'deploy/cloud/vault']));
+    assert.deepStrictEqual(openbaoReviewerTokenProblems(scripts['configure.sh'], scripts, vault), []);
+    const from = '  b write auth/kubernetes/config kubernetes_host="__K8S_HOST__" >/dev/null';
+    assert.ok(scripts['configure.sh'].includes(from), '変異の置換元が無い（試験が古い）');
+    const saved = scripts['configure.sh'].replace(from, '  b write auth/kubernetes/config kubernetes_host="__K8S_HOST__" token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token >/dev/null');
+    const p = openbaoReviewerTokenProblems(saved, { ...scripts, 'configure.sh': saved }, vault);
+    for (const want of [/クラスタの中の分岐が token_reviewer_jwt/, /configure\.sh: token_reviewer_jwt を書く/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    const off = scripts['configure.sh'].replace(from, '  b write auth/kubernetes/config kubernetes_host="__K8S_HOST__" disable_local_ca_jwt=true >/dev/null');
+    assert.ok(openbaoReviewerTokenProblems(off, scripts, vault).some((x) => /disable_local_ca_jwt/.test(x)), 'ローカルのトークンを読まない形を検出しない');
+    const moved = JSON.parse(JSON.stringify(vault));
+    const ps = moved.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao').spec.template.spec;
+    ps.containers[0].volumeMounts.find((m) => m.mountPath === '/var/run/secrets/kubernetes.io/serviceaccount').mountPath = '/var/run/openbao-sa';
+    assert.ok(openbaoReviewerTokenProblems(scripts['configure.sh'], scripts, moved).some((x) => /token に載らない/.test(x)), '置き場の移動を検出しない');
+  });
+  ok('IADR-0697 追記 陰性対照: OpenBao の明示のトークンの期限を延ばす・書けるマウントにする・自動のマウントへ戻す・許可の外の Pod に載せる・OpenBao の名前空間の PSA を緩めると、判定が赤になる', () => {
+    const vault = JSON.parse(JSON.stringify(docsOf(run('kubectl', ['kustomize', 'deploy/cloud/vault']))));
+    const bao = vault.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao');
+    const ps = bao.spec.template.spec;
+    const vol = ps.volumes.find((v) => v.projected && v.projected.sources.some((x) => x.serviceAccountToken));
+    assert.ok(vol, '陽性対照: OpenBao に明示のトークンが無い');
+    vol.projected.sources.find((x) => x.serviceAccountToken).serviceAccountToken.expirationSeconds = 86400;
+    ps.containers[0].volumeMounts.find((m) => m.name === vol.name).readOnly = false;
+    ps.automountServiceAccountToken = true;
+    const other = JSON.parse(JSON.stringify(renderCloudAll())).find((d) => d.kind === 'Deployment' && d.metadata.name === 'prometheus');
+    other.spec.template.spec.volumes.push(JSON.parse(JSON.stringify(vol)));
+    const p = podHardeningProblems([...vault, other], 'x');
+    for (const want of [/openbao: ServiceAccount のトークンの期限が 1 時間以内でない/, /openbao の openbao: ServiceAccount のトークンのマウントが読み取り専用でない/, /openbao: ServiceAccount のトークンを載せる（automountServiceAccountToken/, /prometheus: ServiceAccount のトークンを明示で載せる（理由つきの許可に無い）/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    vault.find((d) => d.kind === 'Namespace' && d.metadata.name === 'openbao').metadata.labels['pod-security.kubernetes.io/enforce'] = 'baseline';
+    assert.ok(namespacePsaProblems([...renderInfra(), ...vault]).some((x) => /openbao の Pod Security の enforce/.test(x)), 'OpenBao の名前空間の PSA の緩めを検出しない');
   });
   ok('IADR-0697 陰性対照: securityContext を外す・NET_RAW を足す・root で走らせる・SA のトークンを載せる・PSA を緩める・collector の入りを名前空間だけへ広げる・OpenD を足す・4318 を開ける・警報を外すと、判定が赤になる', () => {
     const clone = (x) => JSON.parse(JSON.stringify(x));
