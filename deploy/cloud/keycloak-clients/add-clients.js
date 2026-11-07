@@ -6,7 +6,10 @@
  *
  * なぜ要るか: Keycloak の `--import-realm` は同名の realm が在ると黙って飛ばす。取り込み元にクライアントを足しても、稼働の realm は変わらない。
  *
- *   - 在るクライアントは触らない（secret も設定も読まず・書かない）。無いクライアントだけを取り込み元の表現（secret を含む）で作る。
+ *   - 在るクライアントの secret・設定は読まず書かない。既定のスコープ（宛先）とサービスアカウントのロールだけを読んで確かめる。
+ *     無いクライアントだけを取り込み元の表現（secret を含む）で作る。
+ *   - 既定のスコープの欠けは失敗にする（足さない）。直し方は、サービスごとのクライアント（ai-stock-trading-svc-<サービス>。この Job が足すもの）なら
+ *     消してから流し直す。それ以外（旧の共有クライアントなど稼働中のもの）は消さない（消すと稼働中の取引ユニットが止まる）。取り込み元との差分を確かめる。
  *   - 作ったクライアント（と在るクライアント）のサービスアカウントに、取り込み元の利用者の realm ロールのうち無いものだけを足す（外さない）。
  *   - クライアントの既定のスコープが稼働の realm に無ければ、何も書かずに止める（無いスコープは Keycloak が黙って捨て、トークンの宛先が欠ける）。
  *   - MODE=check は読むだけ（無いクライアント・足りないロールを名指しし、在れば 3 で終わる）。MODE=apply は書く。
@@ -16,6 +19,12 @@
  * env: KC_URL（https://keycloak:8443）・REALM（platform）・REALM_FILE・KC_ADMIN_USER・KC_ADMIN_PASSWORD・MODE（apply / check）。
  */
 const fs = require('fs');
+
+/** この Job が足すサービスごとのクライアント（消して流し直してよい）。名前の形は realm-for-cloud.js の SERVICE_CLIENTS と同じ（試験が固定する）。 */
+const REPLACEABLE_CLIENT = /^ai-stock-trading-svc-[a-z][a-z-]*$/;
+const fixHint = (clientId) => (REPLACEABLE_CLIENT.test(clientId)
+  ? 'サービスごとのクライアント。管理の画面で消してから流し直す'
+  : '稼働中のクライアント。消さない（消すと稼働中の取引ユニットが止まる）。取り込み元との差分を確かめる');
 
 function desiredFrom(realm) {
   const users = new Map((realm.users || []).filter((u) => u.serviceAccountClientId).map((u) => [u.serviceAccountClientId, u]));
@@ -78,7 +87,7 @@ async function reconcile(call, realmName, desired, { apply, log = console.log })
     // （在るものは触らない）。欠けていれば失敗にする（流し直しで「在る」として素通りし、宛先の無いクライアントが残るのを防ぐ）。
     const got = new Set(((await call('GET', `${r}/clients/${live.id}/default-client-scopes`)) || []).map((x) => x.name));
     for (const sc of client.defaultClientScopes || []) {
-      if (!got.has(sc)) out.problems.push(`${id} に既定のスコープ ${sc} が付いていない（クライアントを消してから流し直す）`);
+      if (!got.has(sc)) out.problems.push(`${id} に既定のスコープ ${sc} が付いていない（${fixHint(id)}）`);
     }
     const sa = await call('GET', `${r}/clients/${live.id}/service-account-user`);
     const has = new Set(((await call('GET', `${r}/users/${sa.id}/role-mappings/realm`)) || []).map((x) => x.name));
@@ -114,7 +123,7 @@ async function main(env = process.env, log = console.log) {
   return mode === 'check' && (out.missing.length > 0 || out.rolesLacking.length > 0) ? 3 : 0;
 }
 
-module.exports = { desiredFrom, reconcile, main };
+module.exports = { desiredFrom, reconcile, main, REPLACEABLE_CLIENT };
 if (require.main === module) {
   main().then((code) => process.exit(code), (e) => { console.log(`ERROR: ${e.message}`); process.exit(1); });
 }

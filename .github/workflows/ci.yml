@@ -808,8 +808,11 @@ jobs:
       # NFR-18, IADR-0674, Issue #2401: クラウドの最小構成の**描画**を固定する —— 持ち込まない資源・外への口
       # （LoadBalancer・hostPort）・既定の資格情報の字面・Keycloak の start-dev が無いこと、外部のイメージがローカルの基盤と同じ digest、
       # MSP の描画は LLM ゲートウェイだけ。kubectl kustomize と helm template（どちらもオフライン）を使うので、このジョブに置く。
+      # IADR-0700: このジョブは submodule を取るので、取引ユニットの values-cloud が無いこと（クライアントの集合の照合を飛ばすこと）を失敗にする。
       - name: Check cloud minimal manifests (render)
         if: ${{ !cancelled() }}
+        env:
+          DEPLOY_CLOUD_REQUIRE_AST: "1"
         run: node scripts/deploy-cloud.test.js
 
       # NFR-18, IADR-0674, Issue #2401: クラウドの最小構成の Postgres を、宣言と同じ digest の実物のイメージで**空のボリュームから**

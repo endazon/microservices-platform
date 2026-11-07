@@ -12,7 +12,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
-const { desiredFrom, reconcile, main } = require('./add-clients.js');
+const { desiredFrom, reconcile, main, REPLACEABLE_CLIENT } = require('./add-clients.js');
 const { buildCloudRealm, CLOUD_CLIENTS, SERVICE_CLIENTS, DECLARED_CLOUD_CLIENTS } = require('../realm-for-cloud.js');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -129,12 +129,25 @@ test('在るクライアントに既定のスコープ（宛先）が欠けて�
     const c = kc.st.clients.find((x) => x.clientId === SERVICE_CLIENTS[2]);
     c.defaultClientScopes = c.defaultClientScopes.filter((x) => x !== 'ai-stock-trading-api-audience');
     const out = await reconcile(kc.call, 'platform', desiredFrom(cloud), { apply, log: quiet });
-    assert.deepStrictEqual(out.problems, [`${SERVICE_CLIENTS[2]} に既定のスコープ ai-stock-trading-api-audience が付いていない（クライアントを消してから流し直す）`]);
+    assert.deepStrictEqual(out.problems, [`${SERVICE_CLIENTS[2]} に既定のスコープ ai-stock-trading-api-audience が付いていない（サービスごとのクライアント。管理の画面で消してから流し直す）`]);
     assert.deepStrictEqual(kc.st.writes, [], '在るクライアントに書いた（スコープを足した）');
   }
   // 陰性対照: スコープが揃っていれば問題は出ない（同じ在る 10 のクライアント）
   const ok = fakeKeycloak({ clientIds: CLOUD_CLIENTS });
   assert.deepStrictEqual((await reconcile(ok.call, 'platform', desiredFrom(cloud), { apply: true, log: quiet })).problems, []);
+});
+
+test('稼働中のクライアント（旧の 3 つ）のスコープの欠けは「消さない・差分を確かめる」と出し、サービスごとの 7 つとは区別する', async () => {
+  // 名前の形の区分は realm-for-cloud.js の集合と同じ（7 つは消してよい・3 つは消さない）
+  assert.deepStrictEqual(CLOUD_CLIENTS.filter((c) => REPLACEABLE_CLIENT.test(c)).sort(), [...SERVICE_CLIENTS].sort());
+  assert.ok(DECLARED_CLOUD_CLIENTS.every((c) => !REPLACEABLE_CLIENT.test(c)), '旧の 3 つが「消してよい」に入った');
+  const kc = fakeKeycloak({ clientIds: CLOUD_CLIENTS });
+  const owner = kc.st.clients.find((x) => x.clientId === 'ai-stock-trading-owner');
+  owner.defaultClientScopes = owner.defaultClientScopes.filter((x) => x !== 'ai-stock-trading-api-audience');
+  const out = await reconcile(kc.call, 'platform', desiredFrom(cloud), { apply: true, log: quiet });
+  assert.deepStrictEqual(out.problems, ['ai-stock-trading-owner に既定のスコープ ai-stock-trading-api-audience が付いていない（稼働中のクライアント。消さない（消すと稼働中の取引ユニットが止まる）。取り込み元との差分を確かめる）']);
+  assert.ok(!out.problems[0].includes('消してから'), '稼働中のクライアントに「消してから流し直す」を出した');
+  assert.deepStrictEqual(kc.st.writes, []);
 });
 
 test('作った直後に既定のスコープが付かなければ失敗にする', async () => {

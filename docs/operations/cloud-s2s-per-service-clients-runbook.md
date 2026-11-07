@@ -64,10 +64,14 @@ bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check        # 「
 ```
 
 - 雛形を当てた後、`keycloak-realm-import` が 10 の secret で作り直されたことを確かめてから `apply` する（古い取り込み元には 7 つが無い。`check` が名指さない）。
-- Job は在るクライアントを読まず・書かない。既定のスコープ（`ai-stock-trading-api-audience`）か `trading-service` が稼働の realm に無ければ、何も書かずに失敗する
+- Job は在るクライアントの secret・設定を読まず書かない。既定のスコープ（宛先）とサービスアカウントのロールだけを読んで確かめる（足りないロールは足す）。既定のスコープ（`ai-stock-trading-api-audience`）か `trading-service` が稼働の realm に無ければ、何も書かずに失敗する
   （ログの理由を読む。宛先のスコープが無い realm は、前の段の取り込みの手順に戻る）。
-- `… に既定のスコープ ai-stock-trading-api-audience が付いていない` で失敗したら（作った直後か、前の回に作ったクライアント）、Job はそのクライアントを直さない。
-  管理の画面でそのクライアントを消してから `apply` を流し直す（作り直したクライアントの secret は取り込み元の値で、OpenBao の値と同じ）。
+- `… に既定のスコープ … が付いていない` で失敗したとき、Job はそのクライアントを直さない。直し方は、失敗の表示の括弧の中の区分で分ける。
+  - **サービスごとのクライアント**（`ai-stock-trading-svc-<サービス>` の 7 つ。この Job が足すもの）: 管理の画面でそのクライアントを消してから `apply` を流し直す。
+    作り直したクライアントの secret は取り込み元の値で、OpenBao の値と同じ。
+  - 🔴 **稼働中のクライアント**（旧の共有クライアント `ai-stock-trading-svc`・`ai-stock-trading-llm-caller`・`ai-stock-trading-owner`）: **消さない**。
+    消すと稼働中の取引ユニットが止まる。まず取り込み元（Secret `keycloak-realm-import`）と稼働の realm の、そのクライアントの既定のスコープの差分を確かめる。
+    直すのは、realm の取り込みの手順か、基盤の管理の画面でのスコープの付け直し（オーナーの判断）。
 - Keycloak の Pod の再起動は要らない。
 
 ### 段 3: 取引ユニットを入れる
