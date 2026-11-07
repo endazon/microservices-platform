@@ -34,7 +34,14 @@ plan_refs: []
   `images.yml` にジョブ `build-cloud-backup (platform-backup-cloud)`（push なし・`build-local` と同じ形）を足し、出来たイメージで
   `age --version`・`rclone version`・`pg_dump --version` をネット無しで確かめる。変更の判定に `^deploy/cloud/backup/image/` を足し、
   必須チェックの集約ジョブ `image-build`（名前は変えない）がその結果を拾う。形は `scripts/cloud-ops.test.js` が固定する。
-  - 受け入れる性質: rclone の apk の `-rN` が上がると、Dockerfile を触る PR でこのジョブが赤になる（age と同じ。止まるのが正しい）。
+  - 受け入れる性質: rclone の apk の `-rN` が上がると、このジョブが赤になる（age と同じ。止まるのが正しい）。
+  - ［2026-11-07 / AI レビュー］**rclone の `-rN` 上げの定期検査（`check-age-apkindex.js` と同型）は、この PR では置かない。** 理由:
+    (1) 運用規約「検査器の追加は同型の事故 2 回から」に当たらない。age は版の消失が 2 回（#1825・#2003）あって置いた。rclone の版の消失はまだ 0 回で、
+    今回の事故は ARG の名前の衝突であり、版の消失ではない。
+    (2) 検知の空白は小さい。`images.yml` は develop・main への push で必ず `build-cloud-backup` を走らせるので、版が消えれば次の develop へのマージで赤になる
+    （age の 2 回目で 6 日間気づかなかったのは、ローカルのイメージがこの形で毎回建っていなかった頃の事情も含む）。
+    (3) `check-age-apkindex.js` は 524 行あり、汎用化は小さな追加にならない。
+    - **置く条件**: rclone の版の消失が 1 回でも起きたら記録し、2 回目で `check-age-apkindex.js` を rclone へ広げる（日次の `age-apkindex-watch.yml` に載せる）。
 
 ## 受け入れ基準
 
