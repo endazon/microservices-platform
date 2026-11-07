@@ -1,0 +1,27 @@
+# NFR-18, IADR-0703: 稼働中のクラウドの構成へ外向きの中継を入れる間だけ当てる**移す段**。
+#   kubectl apply -k deploy/cloud-transition/egress-proxy-report
+# deploy/cloud（最終の段: 中継は enforce・外の 443 へ出るのは中継だけ）に重ね（deploy/cloud の下に置くと kustomize が循環として拒むので、隣に置く）、次だけを変える:
+#   - 中継の段を report にする（許可表に無い宛先も通し、`report:` の行を出す）。
+#   - LLM ゲートウェイ・バックアップ・Alertmanager の、外の 443 への直の出を残す（*-egress-direct-https-transition）。中継を使う設定
+#     （HTTPS_PROXY・proxy_url）が当たる前の Pod と、切り戻した Pod が外へ届くように。
+# 🔴 report の行が出なくなり（許可表に足し終え）、3 つの Pod が中継を経ているのを確かめたら、deploy/cloud（最終の段）を当てて閉じる。
+#    この重ねは残さない（14 日を過ぎると警報 EgressProxyReportMode が出る）。重ねを当てても、作った 3 つの直の出は deploy/cloud を当てるだけでは
+#    消えない（kubectl apply は宣言から外した資源を消さない）ので、手順書の最後の段で名指しで消す。
+#    手順: docs/operations/cloud-egress-proxy-runbook.md
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../cloud
+  - direct-https.yaml
+
+patches:
+  # 段の env は 1 つ目（名前を test で確かめてから替える。並びが変われば描画が止まる）。
+  - target: { kind: Deployment, name: egress-proxy, namespace: platform-infra }
+    patch: |-
+      - op: test
+        path: /spec/template/spec/containers/0/env/0/name
+        value: EGRESS_PROXY_MODE
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: report

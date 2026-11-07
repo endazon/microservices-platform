@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-16, NFR-18, NFR-05]
-iadrs: [IADR-0693, IADR-0689, IADR-0674, IADR-0591, IADR-0086]
+iadrs: [IADR-0693, IADR-0689, IADR-0674, IADR-0591, IADR-0086, IADR-0703]
 specs: [20261107_cloud-keycloak-tls]
 -->
 
@@ -161,6 +161,7 @@ kubectl -n platform-infra get svc keycloak -o jsonpath='{.spec.ports[*].port}'  
   ```
 
 - すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret keycloak-tls force-sync="$(date +%s)" --overwrite`（封印のあいだは発行できない。unseal の後に行う）。
-- **警報は置いていない。** Prometheus は相手の証明書の期限を系列にしないため、期限の系列には別の部品（blackbox の exporter か ESO のメトリクスの収集）が要る。
+- ［2026-11-07 追記］**警報を置いた。** 測りの Pod（`deploy/cloud/tls-cert-probe`）が 4 つの受け口の出している証明書の期限を 10 分ごとに系列にし、
+  Prometheus の `cloud-tls-expiry` が残り 150 日で warning・30 日で critical を鳴らす（`deploy/cloud/README.md` §6）。以前の記述「警報は置いていない」は改めた。
   作り直しは半年ごとで、止まっても半年の余裕がある。上の確かめを棚卸しで流す。
 - CA（10 年）の期限は[秘匿管理の手順書](cloud-openbao-init-unseal-runbook.md)と同じく ConfigMap `platform-infra-ca` から読む。

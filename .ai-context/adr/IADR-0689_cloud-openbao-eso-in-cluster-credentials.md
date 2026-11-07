@@ -2,7 +2,7 @@
 title: IADR-0689 クラウドの最小構成に秘匿管理（OpenBao）と ESO を持ち込み、クラスタの中で作る資格情報を OpenBao の中で作り、TLS の鍵を OpenBao の PKI で発行する。unseal の鍵とオーナー用の資格は age で暗号化してオーナーが手元に持ち、root は使うたびに作り直して失効させる（IADR-0674 決定 3・4 を覆す。#2471）
 type: impl-adr
 status: Accepted
-related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684, IADR-0692, IADR-0696]
+related_ids: [NFR-05, NFR-18, IADR-0674, IADR-0682, IADR-0525, IADR-0591, IADR-0678, IADR-0684, IADR-0692, IADR-0696, IADR-0703]
 author: claude
 created: 2026-11-06
 updated: 2026-11-07
@@ -212,3 +212,8 @@ related_specs:
 - `seed-secrets.sh` のキーごとの表（`perkey`。`shared/ast-client-secrets` と `shared/ast-rabbitmq-users`）は、在るパスには無いキーだけを足す（在るキーの値は触らない）。
   この 2 つでは「在れば触らない」がキーの単位になった。`username`・`password` の組（`userpass`。`platform/*`・`shared/ast-db`・`shared/ast-db-<サービス>`）は従来どおりパスの単位である。
 - 稼働中の realm へは `deploy/cloud/keycloak-clients/` の Job で、無い機密クライアントだけを足す（`--import-realm` は在る realm を飛ばすため）。
+
+## ［2026-11-07 追記 / IADR-0703］残余 4 を閉じた
+
+- ESO の名前空間は `deploy/cloud/external-secrets/` が chart より先に作る（PSA restricted・入り・出の既定拒否・出は名前解決と OpenBao の 8443 と API サーバーのポートだけ）。
+  ESO の権限（全名前空間の Secret を書ける）は IADR-0703 残余 2 に移した。残余 2（OpenBao の出はポートだけ）は受容のまま（理由は変わらない）。

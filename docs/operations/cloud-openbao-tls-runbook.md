@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-16, NFR-05, NFR-18]
-iadrs: [IADR-0696, IADR-0689, IADR-0693, IADR-0682]
+iadrs: [IADR-0696, IADR-0689, IADR-0693, IADR-0682, IADR-0703]
 specs: [20261107_cloud-openbao-tls]
 -->
 
@@ -140,4 +140,6 @@ bash deploy/cloud/vault/tls-cert.sh --live renew
 - 途中で落ちたら: 束（古い CA と新しい CA）のままで止まる。ESO は届く。理由を直して `renew` を流し直せばよい（流し直しは CA ごと作り直す）。
 - 期限は公開の部分だけを読む（鍵 `tls.key` は読まない）:
   `kubectl -n openbao get secret openbao-tls -o jsonpath='{.data.tls\.crt}' | base64 -d | openssl x509 -noout -enddate`
-- 期限の警報は置いていない。半年ごとの作り直しを、基盤の証明書の作り直し（`deploy/cloud/README.md` §6）と同じ日に行う。
+- 半年ごとの作り直しを、基盤の証明書の作り直し（`deploy/cloud/README.md` §6）と同じ日に行う。
+- ［2026-11-07 追記］期限の警報 `OpenBaoListenerCertExpiringSoon` を置いた（残り 150 日）。受け口は ESO だけが届くので測りに行かず、`renew` が同じ回に作る
+  CA（2 年）と受け口の証明書（1 年）の関係から、ConfigMap `openbao-ca` の最新の CA の notAfter − 365 日で導く。`renew` の日数を変えるときは警報の式も変える（試験が突き合わせる）。

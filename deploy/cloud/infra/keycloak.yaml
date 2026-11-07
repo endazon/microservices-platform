@@ -1,6 +1,8 @@
 # NFR-18, IADR-0674 (#2401): 認可サーバ（Keycloak）を**本番モード（start）**で動かす。deploy/local/infra/keycloak.yaml との違い:
 #   - start-dev ではなく start。DB は共有 Postgres（TLS・サーバ証明書を検証する）。利用者名・パスワードは Secret keycloak-db から読む。
-#   - 管理者は Secret keycloak-admin から読む（OpenBao の中で乱数で作り、ESO が写す。IADR-0689）。
+#   - master realm の一時管理者は常には置かない（KC_BOOTSTRAP_ADMIN_* を宣言に持たない。realm の取り込みに管理者は要らない。IADR-0703）。
+#     稼働中の realm へ手を入れるときだけ deploy/cloud/keycloak-admin/keycloak-admin.sh が開き（Secret keycloak-admin への参照を足して作り直す）、
+#     作業の後に閉じる（消して外す）。資格は Secret keycloak-admin（OpenBao の中で乱数で作り、ESO が写す。IADR-0689）。
 #   - hostname はクラスタの中の名前だけ（画面を公開しないので、外向きのホストを持たない）。クラスタの中だけで受ける
 #     （Service は ClusterIP。外への口は描かない。到達は networkpolicy.yaml が絞る）。
 #   - NFR-16, NFR-18, IADR-0693: 受け口は HTTPS（8443）だけ。平文（8080）は開けない。サーバ証明書は OpenBao の PKI（pki_cloud。
@@ -43,10 +45,6 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
           env:
-            - name: KC_BOOTSTRAP_ADMIN_USERNAME
-              valueFrom: { secretKeyRef: { name: keycloak-admin, key: username } }
-            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
-              valueFrom: { secretKeyRef: { name: keycloak-admin, key: password } }
             - name: KC_DB
               value: postgres
             - name: KC_DB_URL

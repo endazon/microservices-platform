@@ -1,0 +1,49 @@
+# NFR-18, IADR-0703: 移す間だけ残す、外の 443 への直の出（最終の段の前の形と同じ。私設・リンクローカル・CGNAT の範囲を除く）。
+#   名前は *-egress-direct-https-transition（最終の段の宣言には無い。手順書の最後の段で名指しで消す）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llmgateway-egress-direct-https-transition
+  namespace: microservices-platform
+spec:
+  podSelector: { matchLabels: { app: llmgateway-service } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: platform-backup-egress-direct-https-transition
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: platform-backup } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-egress-direct-https-transition
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: alertmanager } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
+      ports:
+        - { protocol: TCP, port: 443 }

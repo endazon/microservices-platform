@@ -843,6 +843,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/cloud-ops.test.js
 
+      # NFR-18, NFR-16, NFR-21, IADR-0703: クラウドの最小構成の外向きの中継（外の 443 へ出るのは中継だけ・許可表・report → enforce の段）・
+      # Keycloak の一時管理者を常に置かないこと・ESO の名前空間（restricted・到達の制限。固定の chart の tgz を描く）・API サーバーの監査の方針・
+      # サーバ証明書の期限の測りと警報（promtool の単体試験）を、宣言と描画で固定する。kubectl・helm・promtool（上で導入）を使うので、このジョブに置く。
+      - name: Check cloud egress proxy / admin / ESO namespace / audit / cert expiry
+        if: ${{ !cancelled() }}
+        run: node scripts/deploy-cloud-egress-audit.test.js
+
       # NFR-02, NFR-21, ADR-0076 決定 4, ADR-0079 決定 1・2, IADR-0469, Issue #1287: helm チャートの合成監視
       # （既定オフ）を**実際に helm template で描いて**固定する —— 無効時はバイト等価、有効時は標識と同じ描画、
       # 除外の面が欠ける／AllowLlmEgress が立つ構成は描画で落ちる、ローカルの門（SYNTHETIC=1）・overlay との一致、変異。

@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637]
+iadrs: [IADR-0700, IADR-0689, IADR-0674, IADR-0693, AST:IADR-0637, IADR-0703]
 specs: [20261107_s2s-per-service-clients]
 -->
 
@@ -58,10 +58,16 @@ node deploy/cloud/realm-for-cloud.js --template deploy/keycloak/microservices-pl
   | kubectl -n platform-infra create configmap keycloak-realm-template --from-file=platform-realm.json=/dev/stdin --dry-run=client -o yaml \
   | kubectl apply -f -                                                       # 雛形（secret を持たない。10 の印）
 kubectl apply -k deploy/cloud                                               # Keycloak の入りに Job の Pod を足す
+bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live open             # master の一時管理者を開く（Keycloak を作り直す）
 bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check        # 無い 7 つを名指して失敗で終わる（読むだけ）
 bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live apply        # 無いものだけを作り、サービスアカウントに trading-service を足す
 bash deploy/cloud/keycloak-clients/keycloak-clients.sh --live check        # 「無かったクライアント 0 件」で成功する
+bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live close            # 一時管理者を消して閉じる（Keycloak を作り直す）
 ```
+
+- ［2026-11-07 追記］Job は master realm の管理者で管理の API を呼ぶ。管理者は常には置かない（`infra/keycloak.yaml` は一時管理者の env を持たない）ので、
+  前後を `keycloak-admin.sh` の `open`・`close` で挟む。途中で失敗しても `close` は必ず流す（[一時管理者の手順書](cloud-keycloak-admin-runbook.md)）。
+  `open`・`close` は Keycloak を作り直すので、米国の場の時間外に流す。
 
 - 雛形を当てた後、`keycloak-realm-import` が 10 の secret で作り直されたことを確かめてから `apply` する（古い取り込み元には 7 つが無い。`check` が名指さない）。
 - Job は在るクライアントの secret・設定を読まず書かない。既定のスコープ（宛先）とサービスアカウントのロールだけを読んで確かめる（足りないロールは足す）。既定のスコープ（`ai-stock-trading-api-audience`）か `trading-service` が稼働の realm に無ければ、何も書かずに失敗する
