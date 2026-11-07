@@ -44,8 +44,10 @@ P="${POS[0]}" K="${POS[1]}"
 [ ! -t 0 ] || { echo "ERROR: 値は標準入力から流す（端末から直に打たない。read -rs で読んでからパイプで渡す）" >&2; exit 2; }
 ob_readable "$OPERATOR_FILE" "configure.sh が書いたオーナー用の資格のファイル（--operator-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+ob_identity_guard "$IDENTITY"
 live_opt_in_require "put-external-secret.sh"
 ob_need kubectl age node
+ct_require_target "put-external-secret.sh"
 
 REL="${P#cloud/}"
 # Pod の中の手順（値を持たない）。1・2 行目はオーナー用の資格、その後ろが値（そのまま 1 つのキーの値にする）。

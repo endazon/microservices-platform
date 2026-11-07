@@ -778,3 +778,4 @@
 | [IADR-0698](./IADR-0698_llm-daily-cost-state-persistence.md) | LLM ゲートウェイの当日の費用の枠を、置き場（クラウドでは PVC の上の 1 つのファイル）に残して再起動を越えて引き継ぐ。読めない・書けない間は段 2 で送らない。起動の時刻を計器に出し、短い間の再起動の繰り返しを警報にする | Accepted |
 | [IADR-0699](./IADR-0699_rabbitmq-per-service-dead-letter.md) | 取引ユニットのブローカの利用者から共有のデッドレター（`wolverine-dead-letter-queue`）の権限を外す。デッドレターはサービスごと（`<ServiceName>.dead-letter`・`<キュー>_error`）で、各サービスが自分の接頭辞の configure で宣言する。生成器は AST の共通配線を読み、無ければ止まる。取引ユニットのイメージの後に当てる | Accepted |
 | [IADR-0700](./IADR-0700_cloud-ast-per-service-s2s-clients.md) | クラウドの realm に取引ユニットのサービスごとの機密クライアント（ai-stock-trading-svc-<サービス>）を足し、secret は OpenBao の中で作り（在るパスには無いキーだけを足す）、稼働中の realm へは無い機密クライアントだけを作る Job で足す | Accepted |
+| [IADR-0704](./IADR-0704_backup-owner-ops-hardening.md) | バックアップの鍵を管理と書き込みに分け、保持の設定を外から確かめる。手元の S3 の鍵は age のファイルから 1 つのコマンドにだけ渡す。オーナーの手順は宛先のクラスタを確かめ、平文の識別子を warn → enforce で扱う。ノードは kubeconfig と Pod のログも LUKS へ寄せ、nftables の 2 枚目と SSH の root の禁止を置く | Accepted |

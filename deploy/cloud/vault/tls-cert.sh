@@ -50,6 +50,7 @@ done
 [ "${#NAMESPACES[@]}" -eq 0 ] || [ "$CMD" = publish-ca ] || { echo "ERROR: --namespace は publish-ca だけが受ける" >&2; exit 2; }
 live_opt_in_require "tls-cert.sh"
 ob_need kubectl openssl node
+ct_require_target "tls-cert.sh"
 
 SECRET=openbao-tls
 CONFIGMAP=openbao-ca

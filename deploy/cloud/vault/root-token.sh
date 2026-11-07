@@ -41,12 +41,14 @@ done
 ob_readable "$INIT_FILE" "init.sh が書いたファイル（--init-file）"
 ob_readable "$OPERATOR_FILE" "オーナー用の資格のファイル（--operator-file）"
 ob_readable "$IDENTITY" "age の識別子のファイル（--identity）"
+ob_identity_guard "$IDENTITY"
 if [ "$CMD" = rotate-operator ]; then
   ob_readable "$RECIPIENTS" "age の受取人のファイル（--recipients）"
   ob_fresh "$OUT"
 fi
 live_opt_in_require "root-token.sh"
 ob_need kubectl age node
+ct_require_target "root-token.sh"
 
 # Pod の中: オーナー用の資格（1・2 行目）で入り、unseal の鍵（3 行目）で root を作り、操作の後に失効させる。
 # shellcheck disable=SC2016
