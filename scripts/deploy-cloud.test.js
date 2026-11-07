@@ -432,8 +432,11 @@ function cloudRealmAudienceProblems(realm) {
   else if (!(scope.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-audience-mapper' && (m.config || {})['included.custom.audience'] === 'ai-stock-trading-api')) {
     out.push('audience のスコープが ai-stock-trading-api を載せない');
   }
-  const holders = (realm.clients || []).filter((c) => (c.defaultClientScopes || []).includes('ai-stock-trading-api-audience')).map((c) => c.clientId);
-  if (JSON.stringify(holders) !== '["ai-stock-trading-owner"]') out.push(`audience のスコープの持ち手が owner だけでない: ${holders.join(', ')}`);
+  const holders = (realm.clients || []).filter((c) => (c.defaultClientScopes || []).includes('ai-stock-trading-api-audience')).map((c) => c.clientId).sort();
+  // IADR-0699: owner と、取引ユニットのサービスごとのクライアント（SERVICE_CLIENTS）だけ。旧の共有クライアント（ai-stock-trading-svc）は持たない。
+  const { SERVICE_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
+  const want = ['ai-stock-trading-owner', ...SERVICE_CLIENTS].sort();
+  if (JSON.stringify(holders) !== JSON.stringify(want)) out.push(`audience のスコープの持ち手が owner とサービスごとのクライアントだけでない: ${holders.join(', ')}`);
   if (!((realm.roles || {}).realm || []).some((r) => r.name === 'trading-bot')) out.push('realm ロール trading-bot が無い');
   const bots = (realm.users || []).filter((u) => (u.realmRoles || []).includes('trading-bot')).map((u) => u.username);
   if (JSON.stringify(bots) !== '["service-account-ai-stock-trading-owner"]') out.push(`trading-bot の持ち手が owner のサービスアカウントだけでない: ${bots.join(', ')}`);
@@ -640,7 +643,8 @@ function keycloakTlsProblems(docs, { coexist = false } = {}) {
         }
         seen[ns] = [...(seen[ns] || []), ...pods].sort();
       }
-      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'] };
+      // IADR-0699: 稼働中の realm へ機密クライアントを足す Job（deploy/cloud/keycloak-clients。流すときだけ在る）。
+      const expected = { [AST_NS]: [...KEYCLOAK_AST_CALLERS].sort(), [MSP_NS]: ['llmgateway-service'], 'platform-infra': ['keycloak-add-clients'] };
       if (JSON.stringify(Object.keys(seen).sort().map((k) => [k, seen[k]])) !== JSON.stringify(Object.keys(expected).sort().map((k) => [k, expected[k]]))) {
         out.push(`infra: ${d.metadata.name} の送り元が取引ユニットの Keycloak を呼ぶ Pod と LLM ゲートウェイだけでない（${JSON.stringify(seen)}）`);
       }
@@ -1178,10 +1182,85 @@ if (require.main === module) {
     assert.ok(cloudRealmAudienceProblems(cut).some((x) => /スコープ ai-stock-trading-api-audience が無い/.test(x)));
     const more = buildCloudRealm(realm, secrets);
     more.clients.find((c) => c.clientId === 'ai-stock-trading-svc').defaultClientScopes.push('ai-stock-trading-api-audience');
-    assert.ok(cloudRealmAudienceProblems(more).some((x) => /持ち手が owner だけでない/.test(x)));
+    assert.ok(cloudRealmAudienceProblems(more).some((x) => /持ち手が owner とサービスごとのクライアントだけでない/.test(x)));
     const norole = buildCloudRealm(realm, secrets);
     norole.roles.realm = norole.roles.realm.filter((r) => r.name !== 'trading-bot');
     assert.ok(cloudRealmAudienceProblems(norole).some((x) => /trading-bot が無い/.test(x)));
+  });
+  ok('IADR-0699: クラウドの realm にサービスごとの機密クライアント 7 つ（サービスアカウントだけ・宛先は取引ユニットの API だけ・trading-service だけ）が足され、secret は互いに違う', () => {
+    const { buildCloudRealm, CLOUD_CLIENTS, SERVICE_CLIENTS, DECLARED_CLOUD_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');
+    const realm = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'));
+    assert.deepStrictEqual([...SERVICE_CLIENTS], ['backtest', 'cost-control', 'information-collection', 'market-monitor', 'order-execution', 'report', 'trade-decision'].map((x) => `ai-stock-trading-svc-${x}`));
+    assert.deepStrictEqual([...CLOUD_CLIENTS], [...DECLARED_CLOUD_CLIENTS, ...SERVICE_CLIENTS]);
+    for (const id of SERVICE_CLIENTS) assert.ok(!realm.clients.some((c) => c.clientId === id), `宣言（ローカル）に ${id} が在る（クラウドの realm にだけ足す）`);
+    const secrets = Object.fromEntries(CLOUD_CLIENTS.map((c) => [c, ['probe', c, 'z'.repeat(32)].join('-')]));
+    const problems = (out) => {
+      const p = [];
+      for (const id of SERVICE_CLIENTS) {
+        const c = out.clients.find((x) => x.clientId === id);
+        if (!c) { p.push(`${id} が無い`); continue; }
+        const flags = { publicClient: false, standardFlowEnabled: false, directAccessGrantsEnabled: false, serviceAccountsEnabled: true, implicitFlowEnabled: false };
+        for (const [k, v] of Object.entries(flags)) if (c[k] !== v) p.push(`${id} の ${k} が ${v} でない`);
+        if ((c.redirectUris || []).length || (c.webOrigins || []).length) p.push(`${id} にリダイレクト・オリジンがある`);
+        if (JSON.stringify(c.defaultClientScopes) !== JSON.stringify(['roles', 'ai-stock-trading-api-audience'])) p.push(`${id} の既定のスコープが roles と取引ユニットの宛先だけでない: ${c.defaultClientScopes}`);
+        if ((c.optionalClientScopes || []).length) p.push(`${id} に任意のスコープがある`);
+        if ((c.protocolMappers || []).length) p.push(`${id} に個別の mapper がある`);
+        const u = out.users.filter((x) => x.serviceAccountClientId === id);
+        if (u.length !== 1 || u[0].username !== `service-account-${id}` || JSON.stringify(u[0].realmRoles) !== '["trading-service"]' || u[0].clientRoles || u[0].groups) {
+          p.push(`${id} のサービスアカウントが trading-service だけでない: ${JSON.stringify(u)}`);
+        }
+      }
+      const vals = out.clients.filter((c) => CLOUD_CLIENTS.includes(c.clientId)).map((c) => c.secret);
+      if (new Set(vals).size !== CLOUD_CLIENTS.length) p.push('secret が互いに違わない');
+      const svc = out.clients.find((c) => c.clientId === 'ai-stock-trading-svc');
+      if (!svc || (svc.defaultClientScopes || []).includes('ai-stock-trading-api-audience')) p.push('旧の共有クライアントが無いか、取引ユニットの宛先を持つ');
+      return p;
+    };
+    const out = buildCloudRealm(realm, secrets);
+    assert.deepStrictEqual(problems(out), []);
+    assert.deepStrictEqual(problems(buildCloudRealm(realm, {}, { template: true })).filter((x) => !/secret が互いに違わない/.test(x)), [], '雛形でも同じ形');
+    // 陰性対照: 標準フロー・共通の宛先・ロールの追加・1 つ抜く
+    const mut = (f) => { const o = buildCloudRealm(realm, secrets); f(o); return problems(o); };
+    assert.ok(mut((o) => { o.clients.find((c) => c.clientId === SERVICE_CLIENTS[0]).standardFlowEnabled = true; }).some((x) => /standardFlowEnabled/.test(x)));
+    assert.ok(mut((o) => { o.clients.find((c) => c.clientId === SERVICE_CLIENTS[1]).defaultClientScopes.push('platform-api-audience'); }).some((x) => /既定のスコープ/.test(x)));
+    assert.ok(mut((o) => { o.users.find((u) => u.serviceAccountClientId === SERVICE_CLIENTS[2]).realmRoles.push('trading-owner'); }).some((x) => /trading-service だけでない/.test(x)));
+    assert.ok(mut((o) => { o.clients = o.clients.filter((c) => c.clientId !== SERVICE_CLIENTS[3]); }).some((x) => /が無い/.test(x)));
+    // 宣言の側の前提が崩れたら組まない（宣言にサービスごとのクライアントを置く・旧の共有クライアントを公開にする・secret を渡さない）
+    const bad = JSON.parse(JSON.stringify(realm));
+    bad.clients.push({ ...bad.clients.find((c) => c.clientId === 'ai-stock-trading-svc'), clientId: SERVICE_CLIENTS[0] });
+    assert.throws(() => buildCloudRealm(bad, secrets), /クラウドの realm にだけ足す/);
+    const pub = JSON.parse(JSON.stringify(realm));
+    pub.clients.find((c) => c.clientId === 'ai-stock-trading-svc').standardFlowEnabled = true;
+    assert.throws(() => buildCloudRealm(pub, secrets), /standardFlowEnabled/);
+    assert.throws(() => buildCloudRealm(realm, { ...secrets, [SERVICE_CLIENTS[4]]: undefined }), /secret が渡されていない/);
+  });
+  ok('IADR-0699: 稼働中の realm へ無い機密クライアントだけを足す Job（宣言・入口・手順）の形と、手順の試験', () => {
+    const job = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/job.yaml'), 'utf8'))[0];
+    const pod = podSpec(job);
+    const c = pod.containers[0];
+    const env = Object.fromEntries(c.env.map((e) => [e.name, e]));
+    assert.strictEqual(job.metadata.namespace, 'platform-infra');
+    assert.strictEqual(Number(job.spec.backoffLimit), 0);
+    assert.strictEqual(String(pod.automountServiceAccountToken), 'false');
+    assert.deepStrictEqual([env.MODE.value, env.KC_URL.value, env.REALM.value, env.NODE_EXTRA_CA_CERTS.value], ['check', 'https://keycloak:8443', 'platform', '/etc/platform-infra-ca/ca.crt']);
+    for (const k of ['KC_ADMIN_USER', 'KC_ADMIN_PASSWORD']) assert.strictEqual(env[k].valueFrom.secretKeyRef.name, 'keycloak-admin', `${k} が Secret から読まない`);
+    assert.ok(c.env.every((e) => !CREDENTIAL_ENV.test(e.name) || e.valueFrom), '資格の env が字面');
+    assert.deepStrictEqual(pod.volumes.find((v) => v.name === 'realm').secret.secretName, 'keycloak-realm-import');
+    const sc = c.securityContext;
+    assert.ok(String(sc.runAsNonRoot) === 'true' && String(sc.allowPrivilegeEscalation) === 'false' && String(sc.readOnlyRootFilesystem) === 'true' && JSON.stringify(sc.capabilities.drop) === '["ALL"]' && sc.seccompProfile.type === 'RuntimeDefault', '制限の securityContext でない');
+    const localJob = docsOf(fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/keycloak-setup/realm-reconcile-job.yaml'), 'utf8'))[0];
+    assert.strictEqual(c.image, podSpec(localJob).containers[0].image, 'ローカルの realm の後追いの Job と同じ digest でない');
+    assert.match(c.image, /@sha256:[0-9a-f]{64}$/);
+    assert.strictEqual(labelApp(job.spec.template), 'keycloak-add-clients');
+    // 入口は段の行を 1 つだけ差し替える（apply・check のほかは受けない）
+    const sh = fs.readFileSync(path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/keycloak-clients.sh'), 'utf8');
+    assert.match(sh, /apply \| check\) ;;/);
+    assert.match(sh, /live_opt_in_require "keycloak-clients\.sh"/);
+    assert.ok(!/--from-literal|echo "\$KC_ADMIN/.test(sh), '入口が値を扱う');
+    const r = spawnSync('bash', [path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/keycloak-clients.sh'), 'apply'], { encoding: 'utf8' });
+    assert.notStrictEqual(r.status, 0, '--live なしで動いた');
+    const t = spawnSync(process.execPath, [path.join(REPO_ROOT, 'deploy/cloud/keycloak-clients/add-clients.test.js')], { encoding: 'utf8' });
+    assert.strictEqual(t.status, 0, `add-clients.test.js が落ちた:\n${t.stdout}${t.stderr}`);
   });
   ok('陰性対照: 基盤の描画へ start-dev・LoadBalancer・字面のパスワードを足すと判定に落ちる', () => {
     const docs = JSON.parse(JSON.stringify(renderInfra()));

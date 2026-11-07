@@ -204,3 +204,10 @@ related_specs:
 5. OpenD の RSA の鍵（決定 7）は、オーナーの手元のプロセスのメモリを通る（OpenBao の中で作れないため）。ディスクには書かない。
 6. 外から持ち込む 4 つ（LLM の鍵・バックアップの保管先・Discord・heartbeat）は PR ② まで「供給元なし」（`secret-inventory.js`）。移行の門は満たさない。
    ［2026-11-07 追記 / #2471］決定 11 で解消した（`secret-inventory.js --strict` が全件で通る）。
+
+## ［2026-11-07 追記 / IADR-0699］決定 6・決定 9 の「3 つの機密クライアント」と「在れば触らない」を改めた
+
+- クラウドの realm の機密クライアントは、宣言から残す 3 つ（`DECLARED_CLOUD_CLIENTS`）に、取引ユニットのサービスごとの 7 つ（`SERVICE_CLIENTS`。宣言には置かず
+  realm-for-cloud.js が組む）を足した 10 である（`CLOUD_CLIENTS`）。`cloud/shared/ast-client-secrets` のキーも 10。
+- `seed-secrets.sh` は、在るパスには無いキーだけを足す（在るキーの値は触らない）。「在れば触らない」はキーの単位になった。
+- 稼働中の realm へは `deploy/cloud/keycloak-clients/` の Job で、無い機密クライアントだけを足す（`--import-realm` は在る realm を飛ばすため）。

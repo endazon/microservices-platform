@@ -9,8 +9,8 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696]
-specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls]
+iadrs: [IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0699]
+specs: [20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->
 
@@ -103,8 +103,8 @@ bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <�
 bash deploy/cloud/vault/seed-secrets.sh --live --operator-file <operator>.age --identity <識別子のファイル>
 ```
 
-- DB・Keycloak・ブローカの資格情報（取引ユニットの DB はサービスごとの 7 組も。[DB の利用者の手順書](cloud-db-per-service-users-runbook.md)）と、取引ユニットの 3 つの機密クライアントの secret を、**OpenBao の Pod の中で**乱数から作る。
-  値は Pod の外へ出ない。在る値は触らない（2 回目は何も変えない）。
+- DB・Keycloak・ブローカの資格情報（取引ユニットの DB はサービスごとの 7 組も。[DB の利用者の手順書](cloud-db-per-service-users-runbook.md)）と、取引ユニットの機密クライアント（宣言の 3 つとサービスごとの 7 つ。[サービスごとの機密クライアントの手順書](cloud-s2s-per-service-clients-runbook.md)）の secret を、**OpenBao の Pod の中で**乱数から作る。
+  値は Pod の外へ出ない。在る値は触らない（2 回目は何も変えない）。在るパスに無いキーだけは足す（稼働中の構成へクライアントを足すとき）。
 - 取引ユニットだけの値を作る口（取引ユニットの手順書から呼ぶ）:
 
   ```sh
