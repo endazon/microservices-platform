@@ -67,7 +67,11 @@ bash deploy/cloud/db-users/ast-db-users.sh --live apply
 
 ### 段 ③: 共有の利用者を消す（最終）
 
+流す前に、共有の Secret（取引ユニットの名前空間の `ast-db-credentials`）を env で参照する Pod が 1 つも残っていないことを確かめる
+（接続の数だけでは、接続を持っていない瞬間の Pod を見落とす。出力が空であること）:
+
 ```sh
+kubectl -n ai-stock-trading get pods -o json | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{for(const p of JSON.parse(s).items)for(const c of [...(p.spec.initContainers||[]),...p.spec.containers])for(const e of c.env||[])if(((e.valueFrom||{}).secretKeyRef||{}).name==="ast-db-credentials")console.log(p.metadata.name)})'
 bash deploy/cloud/db-users/ast-db-users.sh --live drop-shared
 ```
 
@@ -85,3 +89,6 @@ bash deploy/cloud/db-users/ast-db-users.sh --live drop-shared
 | 段 ③ の後 | 共有の利用者へは戻さない。サービスの利用者の資格に問題があれば、段 ① の `apply` を流し直す（パスワードを OpenBao の値へ合わせ直す） | サービスごとのまま |
 
 - 🔴 **段 ③ の後に、取引ユニットの chart を共有の資格の版へ戻さない。** 共有の利用者が無いので、戻した Pod は DB に入れない。
+- 段 ③ が数え直しの後に止まり（終了 4）、`ALTER ROLE … LOGIN` で戻せずに共有の利用者が NOLOGIN のまま残ったとき（旧の Pod が `role … is not permitted to log in` で入れない）は、
+  手で LOGIN に戻す（利用者名は Postgres の Pod の env にある。値を引数に載せない）:
+  `printf '%s\n' '\getenv u AST_DB_USER' 'ALTER ROLE :"u" LOGIN;' | kubectl -n platform-infra exec -i deploy/postgres -- sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres -f -'`

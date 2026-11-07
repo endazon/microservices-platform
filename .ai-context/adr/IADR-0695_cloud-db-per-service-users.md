@@ -107,6 +107,6 @@ related_specs:
 ## 残余
 
 1. 段 ① の REASSIGN は表ごとに ACCESS EXCLUSIVE のロックを取る（OWNER の変更）。長いトランザクションがあれば待つ（`lock_timeout` 30 秒で Job が失敗する。冪等なので流し直す）。
-   取引の時間帯（JST 22:30〜05:00）の外で流す（手順書）。
+   流す時間帯は手順書（`docs/operations/cloud-db-per-service-users-runbook.md` §2）に従う。
 2. 監査の DB の追記だけの権限（決定 5 の案 A）は別の作業。
 3. クラスタでしか確かめられないこと（移行の門の稼働の確かめ）: ESO が 7 つの Secret を書くこと・Job が TLS で入れること・取引ユニットの Pod が自分の資格で起動すること。
