@@ -41,6 +41,7 @@ issues: [#2165, #380, #443, #546, #1111, #1203, #1741, #1875, #1902, #2047, #211
 | `llm.budget.monthly_limit` | 観測ゲージ | `{currency}` | `llm_budget_monthly_limit` | **用途別の月次予算の上限**（設定 `Llm:Budget:MonthlyLimits`。**既定なし**。設定された用途だけが系列を持つ） |
 | `llm.call_limit.exceeded.total` | Counter | `{completion}` | `llm_call_limit_exceeded_total` | **送る前の上限を超えた呼び出し**（§送る前の上限。`report` は送った・`enforce` は送らなかった） |
 | `llm.call_limit.unpriced_estimate.total` | Counter | `{completion}` | `llm_call_limit_unpriced_estimate_total` | **費用の上限の判定で、単価表に無いモデルを表に無いモデル用の単価で見積もった件数**（0 が正常） |
+| `llm.call_limit.state_save.duration` | Histogram | `s` | `llm_call_limit_state_save_duration_seconds` | **当日の費用の枠を置き場へ書いた所要時間**（`llm.result=ok` / `error`。判定の錠の中で同期に走るので p99 を見る。置き場がプロセス内だけなら出さない） |
 | `llm.gateway.start_time_seconds` | 観測ゲージ | `{unix_second}` | `llm_gateway_start_time_seconds` | **ゲートウェイのプロセスが起動した時刻**（UNIX 秒）。値の変わった回数が起動の回数（短い間の再起動の繰り返しの警報に使う）。起動の直後に 1 回送り出す |
 
 🔴 **上限のゲージは金額を設定しない限り系列を持たない。** 金額は所有者が決める値であり、実装は既定を置かない。
@@ -233,6 +234,7 @@ k8s 経路は `deploy/local/observability/grafana.yaml` の ConfigMap に同内�
 | 用途の定義漏れ | `llm_purpose="other"` の増加 | 定義していない用途が来ている（ルーティングが既定へ落ちている） |
 | 送る前の上限 | `llm_call_limit_exceeded_total` の増加 | `report` なら「止めていたら止まった」呼び出し。呼び手・種類ごとに、上限が低すぎるのか呼び出しが多すぎるのかを見分ける |
 | 費用の枠の置き場 | `llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}` > 0 | 置き場を扱えず、`Enforce` では呼び出しを送っていない。ゲートウェイのログと置き場のボリュームを見る |
+| 費用の枠の保存の遅さ | `histogram_quantile(0.99, sum by (le) (rate(llm_call_limit_state_save_duration_seconds_bucket[1h])))` | 0.1 秒を超えたら、警報を足すか書き込みを錠の外へ出すかを判断する（今は警報を置かない） |
 | 再起動の繰り返し | `changes(max(llm_gateway_start_time_seconds)[30m:1m])` | 短い間に何度も起動し直している（起動で止まる理由をログで見る） |
 
 ## 本仕様書が扱わないこと

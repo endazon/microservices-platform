@@ -762,12 +762,12 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
 });
 // NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動の繰り返しと、当日の費用の枠の置き場の障害の警報。
 const LLM_RESTART_EXPR = 'changes(max(llm_gateway_start_time_seconds)[30m:1m]) >= 3';
-const LLM_COST_STATE_EXPR = 'sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0';
+const LLM_COST_STATE_EXPR = '(sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} offset 10m) > 0)';
 t('IADR-0698 LLM ゲートウェイの再起動の繰り返し（起動の時刻のゲージの変わった回数）と、当日の費用の枠の置き場の障害の警報がある', () => {
   assert.strictEqual(ruleOf('LlmGatewayRestartLoop').expr, LLM_RESTART_EXPR);
   assert.match(rules, /alert: LlmGatewayRestartLoop[\s\S]{0,200}labels: \{ severity: warning \}/, '再起動の繰り返しの重大度が warning でない');
   assert.strictEqual(ruleOf('LlmCostStateUnavailable').expr, LLM_COST_STATE_EXPR);
-  assert.match(rules, /alert: LlmCostStateUnavailable[\s\S]{0,200}labels: \{ severity: critical \}/, '置き場の障害の重大度が critical でない');
+  assert.match(rules, /alert: LlmCostStateUnavailable[\s\S]{0,400}labels: \{ severity: critical \}/, '置き場の障害の重大度が critical でない');
   // ゲージの名前はゲートウェイの定数と同じ（Prometheus 側の名前。{…} の単位は接尾辞にならない）。
   const src = fs.readFileSync(path.join(REPO_ROOT, 'src/platform/backend/Services/LlmGateway/Common/Observability/LlmGatewayStartMetrics.cs'), 'utf8');
   assert.match(src, /StartTimeGaugeName = "llm\.gateway\.start_time_seconds"/, 'ゲートウェイのゲージの名前が警報の式と違う');
@@ -803,15 +803,35 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
     + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n`
     + `  - interval: 1m\n    input_series:\n`
     + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
-    + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`;
+    + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`
+    // 起動の直後の最初の 1 件: 系列が 0 から現れずに 1 で現れ、以後増えない（increase だけでは数えない形）。
+    + `  - interval: 1m\n    input_series:\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", instance="p1"}'\n        values: '_ _ _ _ _ 1x30'\n`
+    + `    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n`
+    // その 1 件のまま 10 分を過ぎ、増えなければ収まる（恒常発火しない）。
+    + `      - eval_time: 30m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`;
   const tf = path.join(sandbox, 'llm-gateway-state.test.yml');
   fs.writeFileSync(tf, test);
   const ok = run('promtool', ['test', 'rules', tf]);
   assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
   // 陰性対照: 閾値を 1 つ下げた式（2 回の再起動で鳴る）では、2 回の群が落ちる（試験が閾値を見ている）。
-  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('>= 3', '>= 2'));
+  const rulesText = fs.readFileSync(f, 'utf8');
+  fs.writeFileSync(f, rulesText.replace('>= 3', '>= 2'));
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '閾値を下げても promtool が通る');
+  // 陰性対照: 初回を拾う右の項を外した式（increase だけ）では、最初の 1 件の群が落ちる。
+  const increaseOnly = 'sum(increase(llm_call_limit_exceeded_total{llm_limit_kind=\\"cost_state\\"}[10m])) > 0';
+  const swapped = rulesText.replace(JSON.stringify(ruleOf('LlmCostStateUnavailable').expr).slice(1, -1), increaseOnly);
+  assert.notStrictEqual(swapped, rulesText, '陰性対照の置換元が無い');
+  fs.writeFileSync(f, swapped);
+  const ng2 = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng2.status, 0, '初回を拾わない式でも promtool が通る');
+  // 陰性対照: 最初の 1 件の期待を反転すると赤になる。
+  fs.writeFileSync(f, rulesText);
+  fs.writeFileSync(tf, test.replace("values: '_ _ _ _ _ 1x30'\n    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n",
+    "values: '_ _ _ _ _ 1x30'\n    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n"));
+  const ng3 = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng3.status, 0, '最初の 1 件の期待を反転しても promtool が通る');
 });
 // NFR-21, IADR-0697: collector が受け取りを拒む・remote write が失敗する・受け取りが 0・送り手が欠ける・系列が多すぎるときの警報。
 const PIPELINE_ALERTS = ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'PrometheusHeadSeriesHigh'];

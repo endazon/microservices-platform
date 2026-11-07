@@ -222,6 +222,7 @@ public sealed class LlmCallLimiter(
     // 当日の値を丸ごと置き場へ書く。_gate の内側で呼ぶ。
     private bool TryPersist(DateOnly today)
     {
+        var started = clock.GetTimestamp();
         try
         {
             var totals = new Dictionary<string, decimal>(StringComparer.Ordinal);
@@ -229,10 +230,12 @@ public sealed class LlmCallLimiter(
                 if (bucket.Day == today && bucket.Total > 0m)
                     totals[key] = bucket.Total;
             store.Save(new LlmSpendSnapshot(today, totals));
+            if (store.IsDurable) metrics.RecordStateSave(clock.GetElapsedTime(started).TotalSeconds, ok: true);
             return true;
         }
         catch (Exception ex)
         {
+            if (store.IsDurable) metrics.RecordStateSave(clock.GetElapsedTime(started).TotalSeconds, ok: false);
             LogStateFailure("save", ex);
             return false;
         }

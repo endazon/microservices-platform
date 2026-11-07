@@ -159,8 +159,9 @@ data:
               summary: "LLM ゲートウェイが短い間に再起動を繰り返している（直近 30 分に 3 回以上）"
               description: "直近 30 分に LLM ゲートウェイが {{ $value }} 回起動し直した。kubectl -n microservices-platform describe pod -l app=llmgateway-service と logs --previous で理由を読む。当日の費用の枠は PVC に残る（IADR-0698）。"
           # 置き場を読めない・書けない間、段 2 は費用の上限を持つ呼び手の呼び出しを送らない（fail-closed）。取引ユニットの LLM の判断が止まる。
+          # 右の項は、10 分前に無かった系列（起動の直後の最初の 1 件。0 から現れずに 1 で現れる）を拾う（increase は新しい系列の初回を数えない）。
           - alert: LlmCostStateUnavailable
-            expr: sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0
+            expr: (sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} offset 10m) > 0)
             labels: { severity: critical }
             annotations:
               summary: "LLM ゲートウェイが当日の費用の枠の置き場を扱えず、呼び出しを送っていない"

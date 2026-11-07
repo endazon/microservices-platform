@@ -282,6 +282,55 @@ public sealed class LlmCallLimiterPersistenceTests : IDisposable
         persisted.Load()!.Totals["c|" + Caller].Should().Be(Estimate1000 * Capacity);
     }
 
+    // ---- 保存の所要時間（IADR-0698 決定 3） --------------------------------------------------------
+
+    [Fact]
+    public void 置き場への保存ごとに所要時間を結果つきで計器に載せる()
+    {
+        var factory = _meterServices.GetRequiredService<IMeterFactory>();
+        var seen = new List<string>();
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Name == LlmCallLimitMetrics.StateSaveDurationName && ReferenceEquals(instrument.Meter.Scope, factory))
+                l.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<double>((_, v, tags, _) =>
+        {
+            v.Should().BeGreaterThanOrEqualTo(0);
+            foreach (var t in tags)
+                if (t.Key == LlmCallLimitMetrics.ResultTag) lock (seen) seen.Add((string)t.Value!);
+        });
+        listener.Start();
+
+        var store = new FaultyStore();
+        var l = Limiter(store, cap: Estimate1000 * 10);
+        Admit(l);
+        store.FailSave = true;
+        Admit(l);
+
+        lock (seen) seen.Should().Equal(LlmCallLimitMetrics.ResultOk, LlmCallLimitMetrics.ResultError);
+    }
+
+    [Fact]
+    public void プロセス内だけの置き場では保存の所要時間を載せない()
+    {
+        var factory = _meterServices.GetRequiredService<IMeterFactory>();
+        var count = 0;
+        using var listener = new MeterListener();
+        listener.InstrumentPublished = (instrument, l) =>
+        {
+            if (instrument.Name == LlmCallLimitMetrics.StateSaveDurationName && ReferenceEquals(instrument.Meter.Scope, factory))
+                l.EnableMeasurementEvents(instrument);
+        };
+        listener.SetMeasurementEventCallback<double>((_, _, _, _) => Interlocked.Increment(ref count));
+        listener.Start();
+
+        Admit(Limiter(new ProcessLocalLlmSpendStore(), cap: Estimate1000 * 10));
+
+        count.Should().Be(0);
+    }
+
     // 故障を注入する置き場（読み・書きのそれぞれを止められる）。
     private sealed class FaultyStore : ILlmSpendStore
     {

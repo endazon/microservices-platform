@@ -68,6 +68,13 @@ related_specs:
   置き場には予約（見込み額 ≧ 実額がふつう）が残るので、その間に再起動しても多めの側に倒れる。
 - 判定と予約と書き込みは 1 つの錠の中で行う。同時の要求でも枠を越えて送らない（試験で固定）。書き込みは呼び出しごとに 1〜2 回で、
   要求数の上限（呼び手 300 / 分）の下では錠の待ちは小さい。
+- ［2026-11-07 / AI レビュー］書き込み（fsync を含む）の所要時間をヒストグラム `llm.call_limit.state_save.duration`（秒・`llm.result=ok|error`。
+  Prometheus 側は `llm_call_limit_state_save_duration_seconds_bucket`）に出し、p99 を見られるようにした。置き場がプロセス内だけのときは出さない。
+  - **遅い保存の警報は置かない**（今の判断）。理由: (1) 保存の失敗は `LlmCostStateUnavailable` が鳴らす（止まる側は既に知らせる）。
+    (2) 遅い保存が実害になるのは、錠の待ちが呼び出しの期限（取引ユニットの呼び出しは秒〜分）に迫るときで、単一ノードの local-path（ノードのディスク）では
+    p99 が 10 ms を超える見込みが無い。(3) 実測の無いしきい値は誤報か不発になる。
+  - **見直しの条件**: 稼働の後、`histogram_quantile(0.99, sum by (le) (rate(llm_call_limit_state_save_duration_seconds_bucket[1h])))` が 0.1 秒を超えたら、
+    警報（同じ式・0.25 秒・for 15m）を足すか、書き込みを錠の外へ出す（予約の後・送る前に書くことは保つ）判断を別の IADR で行う。
 
 ### 決定 4 — 書き手は 1 つ（1 レプリカ・Recreate・ファイルの排他の鍵）
 
@@ -87,6 +94,9 @@ related_specs:
 - クラウドの警報（`deploy/cloud/observability/prometheus.yaml` の群 `llm-gateway-state`。promtool の単体試験は `scripts/cloud-ops.test.js`）:
   - `LlmGatewayRestartLoop`（warning）: `changes(max(llm_gateway_start_time_seconds)[30m:1m]) >= 3`（直近 30 分に 3 回以上の再起動）。
   - `LlmCostStateUnavailable`（critical）: 直近 10 分に `cost_state` で送らなかった呼び出しがある。
+    ［2026-11-07 / AI レビュー］`increase` は新しい系列の初回を数えない（起動の直後の最初の 1 件が 0 からでなく 1 で現れる）ので、
+    「10 分前に無かった系列」（`X unless X offset 10m`）を `or` で足して拾う。計数を全 kind・呼び手・用途で 0 から出す形は、呼び手と用途の組が
+    起動の時に分からないので採らなかった。promtool の単体試験に「系列が 0 から現れずに 1 件だけ」の場合と陰性対照（右の項を外す・期待を反転する）を足した。
 - 提供元のコンソールの支出上限を、クラウドの稼働の前提条件として手順書（`deploy/cloud/README.md` §3「前提条件」）に書いた。値は所有者が決め、リポジトリに書かない。
   ゲートウェイの上限はゲートウェイを通る呼び出しにしか効かない（ゲートウェイの不具合・鍵の漏れには効かない）。
 
