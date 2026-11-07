@@ -17,9 +17,13 @@
  *     shim の UseAiStockTradingRabbitMq（Wolverine の規約ルーティング）で、キュー名は `<ServiceName>.<型名>`、
  *     デッドレターは `<キュー>_error`、exchange 名は型の完全名。購読はハンドラ（Wolverine のハンドラ発見の規則）から、
  *     発行は「メッセージ型をそのサービスのコードが作る（new T）」から読む（過大側に倒す。漏れは下の突き合わせで止める）。
- *   - 両方に共通の Wolverine の名前: 共有のデッドレター `wolverine-dead-letter-queue`・応答キュー `wolverine.response.<id>`・
+ *   - 両方に共通の Wolverine の名前: 共有のデッドレター `wolverine-dead-letter-queue`・応答キュー `wolverine.response.<Guid>`
+ *     （Wolverine が `Guid.NewGuid()` の既定の書式で名付ける。正規表現も Guid の形だけに当てる）・
  *     既定の exchange `amq.default`（リスナーの停止のときに受け取り済みの未処理のメッセージをキューへ戻す送り先。
  *     書けないと戻しが失敗し、取りこぼしが出ることを実ブローカで確かめた）。
+ *   - NFR-18, IADR-0691: **既定の exchange への write は、自分の受信キューを持つ（購読する）利用者だけに与える。**
+ *     既定の exchange への発行は宛先のキューの権限を見ないので、持つ利用者は名前を知るどのキューへも入れられる。
+ *     戻しの要らない発行だけの利用者には与えない（受信キューが無く、戻すものが無い）。
  *
  * AST の写しが無い checkout（submodule を取得しないジョブ）では、AST の行は生成物の値をそのまま残し、照合しない
  * （そのことを notice で必ず出す）。RABBITMQ_PERMISSIONS_REQUIRE_AST=1 なら無いことを失敗にする（CI の submodule を取るジョブ）。
@@ -42,6 +46,11 @@ const AST_CONTRACT_NS = 'AiStockTrading.Shared.Contracts.Events';
 const DEAD_LETTER = 'wolverine-dead-letter-queue';
 const RESPONSE_PREFIX = 'wolverine.response.';
 const DEFAULT_EXCHANGE = 'amq.default';
+// NFR-18, IADR-0691: 応答キューの名前の正規表現。Wolverine（RabbitMqTransport.tryBuildSystemEndpoints）は
+// `wolverine.response.{Guid.NewGuid()}`（既定の書式 = 小文字の 16 進 8-4-4-4-12）で名付ける。`.*` にすると、
+// 接頭辞を同じにした任意の名前（他の用途のキュー・exchange）にも当たる。awk（点検）が区間 `{n}` を読めない実装でも
+// 同じに読めるよう、文字クラスを並べて書く。
+const HEX = '[0-9a-f]';
 
 // Wolverine のハンドラ発見の規則（型名の接尾辞・メソッド名）。WolverineFx 6.24 の既定。
 const HANDLER_TYPE_SUFFIX = /(Handler|Consumer)$/;
@@ -51,6 +60,7 @@ class GenError extends Error {}
 const fail = (msg) => { throw new GenError(msg); };
 
 const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const RESPONSE_PATTERN = `${reEscape(RESPONSE_PREFIX)}${[8, 4, 4, 4, 12].map((n) => HEX.repeat(n)).join('-')}`;
 const toPosix = (p) => p.split(path.sep).join('/');
 
 // コメント（// と /* */）と文字列の中身を除く（コメントアウトした配線を読まない）。文字列は位置を保ったまま残す。
@@ -131,6 +141,8 @@ function deriveMsp(row, repoRoot) {
     if (m[1] === 'BindPlatformQueue') listens.add(m[2]);
   }
   for (const m of code.matchAll(/\bRoutePlatformEvent<(\w+)>\(\s*\)/g)) routes.add(m[1]);
+  // 受信キュー（リスナー）を持つか。束ねの無いリスナー（段宣言なしの ListenToPlatformQueue）も戻しをする。
+  const hasListener = listens.size > 0 || /\bListenTo(?:Platform|Rabbit)Queue\b/.test(code);
   // 段宣言なしの形（ListenToPlatformQueue(opts, "<app>", "<queue>")）も接頭辞は同じなので、キューは前置の規則で覆う。
   if (listens.size === 0 && routes.size === 0) fail(`${rel}: ブローカの配線（BindPlatformQueue / RoutePlatformEvent）が 1 つも無い。users.txt の ${row.user} はブローカを使わないのでは`);
   return {
@@ -139,6 +151,7 @@ function deriveMsp(row, repoRoot) {
     source: rel,
     queuePrefix: `${row.app}.`,
     deadLetterQueues: false,
+    hasListener,
     subscribe: [...listens].sort(),
     publish: [...routes].sort(),
   };
@@ -388,6 +401,8 @@ function deriveAst(rows, root) {
       source: toPosix(path.relative(root, s.dir)),
       queuePrefix: `${s.serviceName}.`,
       deadLetterQueues: true,
+      // 規約ルーティングはハンドラの受ける型ごとにリスナーを立てる。ハンドラが無ければ受信キューも無い。
+      hasListener: s.handled.size > 0,
       subscribe: [...s.handled.keys()].sort(),
       publish: [...s.published.keys()].sort(),
     });
@@ -408,11 +423,16 @@ function patternsFor(d) {
   const both = [...new Set([...d.subscribe, ...d.publish])].sort();
   return {
     // 宣言（キュー・exchange）: 自分のキュー・応答キュー・共有のデッドレター・購読と発行の exchange。
-    configure: alt([q, `${reEscape(RESPONSE_PREFIX)}.*`, reEscape(DEAD_LETTER), ...ex(both)]),
-    // 書く: 自分のキュー（束ねる側）・共有のデッドレター（宣言の x-dead-letter-exchange と束ね）・既定の exchange（戻し）・発行の exchange。
-    write: alt([q, reEscape(DEAD_LETTER), reEscape(DEFAULT_EXCHANGE), ...ex(d.publish)]),
+    //   購読の exchange を含めるのは、購読側の Wolverine が起動時に exchange を passive でなく宣言するためである
+    //   （基盤の BindPlatformQueue の DeclareExchange・取引ユニットの規約ルーティング。AutoProvision）。RabbitMQ は在る
+    //   exchange の宣言し直しにも configure を求める（実ブローカで確かめた。IADR-0691）。外すには購読側の宣言を passive に
+    //   替え、exchange を誰が先に宣言するかを決める変更が両方のユニットに要る（IADR-0691 §残る制約）。
+    configure: alt([q, RESPONSE_PATTERN, reEscape(DEAD_LETTER), ...ex(both)]),
+    // 書く: 自分のキュー（束ねる側）・共有のデッドレター（宣言の x-dead-letter-exchange と束ね）・発行の exchange・
+    //   既定の exchange（戻し。NFR-18, IADR-0691: 受信キューを持つ利用者だけ）。
+    write: alt([q, reEscape(DEAD_LETTER), ...(d.hasListener ? [reEscape(DEFAULT_EXCHANGE)] : []), ...ex(d.publish)]),
     // 読む: 自分のキュー（購読）・応答キュー・共有のデッドレター（束ね）・購読の exchange（束ね）。
-    read: alt([q, `${reEscape(RESPONSE_PREFIX)}.*`, reEscape(DEAD_LETTER), ...ex(d.subscribe)]),
+    read: alt([q, RESPONSE_PATTERN, reEscape(DEAD_LETTER), ...ex(d.subscribe)]),
   };
 }
 
@@ -449,7 +469,7 @@ function requiredAccess(d) {
   add('read', DEAD_LETTER, '共有のデッドレターの束ね');
   add('configure', `${RESPONSE_PREFIX}00000000-0000-0000-0000-000000000000`, '応答キューの宣言');
   add('read', `${RESPONSE_PREFIX}00000000-0000-0000-0000-000000000000`, '応答キューの購読');
-  add('write', DEFAULT_EXCHANGE, 'リスナーの停止のときの戻し（既定の exchange）');
+  if (d.hasListener) add('write', DEFAULT_EXCHANGE, 'リスナーの停止のときの戻し（既定の exchange）');
   return req;
 }
 
@@ -580,5 +600,5 @@ if (require.main === module) process.exit(main(process.argv.slice(2)));
 
 module.exports = {
   GenError, derive, generate, patternsFor, requiredAccess, readPermissions, readUsers, render, stripComments,
-  DEAD_LETTER, RESPONSE_PREFIX, DEFAULT_EXCHANGE, PERMS_REL, USERS_REL, CLOUD_PERMS_REL, renderCloud,
+  DEAD_LETTER, RESPONSE_PREFIX, RESPONSE_PATTERN, DEFAULT_EXCHANGE, PERMS_REL, USERS_REL, CLOUD_PERMS_REL, renderCloud,
 };
