@@ -31,6 +31,12 @@
  *     KT4 クラウドの chart の受け手は Authority が https・Auth__RequireHttpsMetadata=true・CA を信頼ストアに足す。既定・ローカルは変えない。
  *     KT5 global.auth.tls.enabled で Authority が https でなければ描画で止まる。
  *     KT6 PKI の role・ESO・policy（keycloak の発行は基盤の側だけ。取引ユニットは CA の証明書だけを読む）。
+ *   IADR-0696（秘匿管理への通信の TLS）:
+ *     OT1 OpenBao の受け口は TLS の 8443 だけ（listener に tls_disable が無く、証明書と鍵は Secret openbao-tls。平文の listener・
+ *         8200 のポートが無い・probe は HTTPS・Pod の中の bao の宛先も https で CA を持つ）。Service と入りも 8443 だけ。
+ *     OT2 ESO のストア（SecretStore・VaultDynamicSecret）は https://openbao.openbao.svc:8443 で、CA を ConfigMap openbao-ca で検証する。
+ *     OT3 併存の重ね（deploy/cloud-transition/openbao-tls-coexist）は 8443 に加えて平文の 8200 も受ける（送り元は ESO の controller だけ）。
+ *         既定の描画には無い。
  *
  * kubectl / helm が無ければ失敗にする（fail-closed。CI の static-checks は両方を持つ。check-deploy-manifests と同じ）。
  * 判定の関数は export し、scripts/scripts.repo.test.js が宣言そのもの（kustomize は resources だけで変換を持たない）にも当てる。
@@ -294,10 +300,12 @@ function renderChart(extra = [], chartDir = CHART) {
 /**
  * NFR-05, NFR-18, IADR-0689: 秘匿管理（deploy/cloud/vault）の描画の判定。
  *   - OpenBao は dev モードでなく（`-dev`・`*_DEV_ROOT_TOKEN_ID` が無い）、宣言の digest はローカルの OpenBao と同じ。
- *   - 受け口（8200）に入れるのは名前空間 external-secrets の controller だけ。入り・出とも既定で拒否。
+ *   - 受け口に入れるのは名前空間 external-secrets の controller だけ。入り・出とも既定で拒否。
  *   - Secret・ClusterSecretStore・PushSecret を描かない。外への口を持たない（commonProblems）。
+ *   - IADR-0696 OT1・OT2: 受け口は TLS の 8443 だけ。ESO は https で CA を検証する（openbaoTlsProblems）。
+ *     coexist は併存の重ねの描画を見るとき（平文の 8200 も受ける）。
  */
-function vaultProblems(docs, esoDocs, localVaultImage) {
+function vaultProblems(docs, esoDocs, localVaultImage, { coexist = false } = {}) {
   // 秘匿管理は、deploy/cloud/vault にだけ置く（基盤・chart の描画には引き続き持ち込まない資源として数える）。
   const allow = ['vault', 'openbao'];
   const out = [...commonProblems(docs, 'deploy/cloud/vault', { allow }), ...commonProblems(esoDocs, 'deploy/cloud/vault/eso', { allow })];
@@ -323,10 +331,93 @@ function vaultProblems(docs, esoDocs, localVaultImage) {
     const onlyEso = from.length === 1 && JSON.stringify(from[0].namespaceSelector) === JSON.stringify({ matchLabels: { 'kubernetes.io/metadata.name': 'external-secrets' } })
       && JSON.stringify(from[0].podSelector) === JSON.stringify({ matchLabels: { 'app.kubernetes.io/name': 'external-secrets' } });
     if (!onlyEso) out.push(`OpenBao の入りに ESO の controller の外の送り元がある: ${JSON.stringify(from)}`);
-    if (JSON.stringify((r.ports || []).map((p) => Number(p.port))) !== '[8200]') out.push(`OpenBao の入りのポートが 8200 だけでない: ${JSON.stringify(r.ports)}`);
+    const want = coexist ? `[${OPENBAO_TLS_PORT},${OPENBAO_PLAIN_PORT}]` : `[${OPENBAO_TLS_PORT}]`;
+    if (JSON.stringify((r.ports || []).map((p) => Number(p.port))) !== want) out.push(`OpenBao の入りのポートが ${want} でない: ${JSON.stringify(r.ports)}`);
   }
   if (ingress.length === 0) out.push('陽性対照: OpenBao の入りの許可が無い（ESO が届かない）');
   for (const d of esoDocs) if (/^Cluster/.test(d.kind) || d.kind === 'PushSecret') out.push(`${d.kind}/${d.metadata.name} を描いている（名前空間ごとの SecretStore だけ）`);
+  return [...out, ...openbaoTlsProblems(docs, esoDocs, { coexist })];
+}
+
+const OPENBAO_TLS_PORT = 8443;
+const OPENBAO_PLAIN_PORT = 8200;
+const OPENBAO_SERVER = `https://openbao.openbao.svc:${OPENBAO_TLS_PORT}`;
+const OPENBAO_CA_PROVIDER = { type: 'ConfigMap', name: 'openbao-ca', key: 'ca.crt' };
+
+/** OpenBao の設定（HCL）の listener "tcp" の塊を、中身の文字列として取り出す（入れ子の { } を数える）。 */
+function hclListeners(hcl) {
+  const out = [];
+  const re = /^\s*listener\s+"tcp"\s*\{/gm;
+  let m;
+  while ((m = re.exec(hcl))) {
+    let depth = 1;
+    let i = m.index + m[0].length;
+    const start = i;
+    for (; i < hcl.length && depth > 0; i++) {
+      if (hcl[i] === '{') depth++;
+      else if (hcl[i] === '}') depth--;
+    }
+    out.push(hcl.slice(start, i - 1));
+  }
+  return out;
+}
+const hclValue = (block, key) => {
+  const m = new RegExp(`^\\s*${key}\\s*=\\s*"?([^"\\n]*)"?`, 'm').exec(block);
+  return m ? m[1].trim() : undefined;
+};
+
+/**
+ * IADR-0696 OT1〜OT3: OpenBao の受け口が TLS だけであること（併存の重ねは平文の 8200 も受ける）と、ESO が https で CA を検証すること。
+ *   docs は deploy/cloud/vault（または併存の重ね）の描画、esoDocs は deploy/cloud/vault/eso の描画（無ければ ESO を見ない）。
+ */
+function openbaoTlsProblems(docs, esoDocs, { coexist = false } = {}) {
+  const out = [];
+  const hcl = docs.filter((d) => d.kind === 'ConfigMap' && d.metadata.namespace === 'openbao').flatMap((d) => Object.values(d.data || {}).map(String)).join('\n');
+  const listeners = hclListeners(hcl);
+  const tls = listeners.filter((b) => !/^(true|1)$/.test(String(hclValue(b, 'tls_disable') || '')));
+  const plain = listeners.filter((b) => /^(true|1)$/.test(String(hclValue(b, 'tls_disable') || '')));
+  const port = (b) => Number(String(hclValue(b, 'address') || '').split(':').pop());
+  if (JSON.stringify(tls.map(port)) !== `[${OPENBAO_TLS_PORT}]`) out.push(`OpenBao の TLS の listener が ${OPENBAO_TLS_PORT} の 1 つでない: ${JSON.stringify(tls.map(port))}`);
+  for (const b of tls) {
+    if (hclValue(b, 'tls_cert_file') !== '/openbao/tls/tls.crt' || hclValue(b, 'tls_key_file') !== '/openbao/tls/tls.key') out.push('OpenBao の TLS の listener の証明書・鍵が Secret openbao-tls のマウント（/openbao/tls）でない');
+    if (hclValue(b, 'tls_min_version') !== 'tls13') out.push(`OpenBao の TLS の listener の最小の版が tls13 でない: ${hclValue(b, 'tls_min_version')}`);
+  }
+  const wantPlain = coexist ? `[${OPENBAO_PLAIN_PORT}]` : '[]';
+  if (JSON.stringify(plain.map(port)) !== wantPlain) out.push(`OpenBao の平文の listener が ${wantPlain} でない（平文の口が閉じていない）: ${JSON.stringify(plain.map(port))}`);
+  if (!/^\s*api_addr\s*=\s*"https:\/\//m.test(hcl)) out.push('OpenBao の api_addr が https でない');
+  const dep = docs.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao');
+  if (dep) {
+    const spec = dep.spec.template.spec;
+    const c = (spec.containers || [])[0] || {};
+    const env = Object.fromEntries((c.env || []).map((e) => [e.name, e.value]));
+    if (env.BAO_ADDR !== `https://127.0.0.1:${OPENBAO_TLS_PORT}` || env.BAO_CACERT !== '/openbao/tls/ca.crt') out.push(`Pod の中の bao の宛先が TLS の口と CA でない: ${env.BAO_ADDR} ${env.BAO_CACERT}`);
+    if ((c.env || []).some((e) => /SKIP_VERIFY|TLS_SKIP/i.test(e.name))) out.push('OpenBao の Pod に検証を外す env がある');
+    const ports = (c.ports || []).map((p) => Number(p.containerPort)).sort();
+    const wantPorts = coexist ? [OPENBAO_PLAIN_PORT, OPENBAO_TLS_PORT] : [OPENBAO_TLS_PORT];
+    if (JSON.stringify(ports) !== JSON.stringify(wantPorts)) out.push(`OpenBao の受け口が ${JSON.stringify(wantPorts)} でない: ${JSON.stringify(ports)}`);
+    const probe = (c.readinessProbe || {}).httpGet || {};
+    if (probe.scheme !== 'HTTPS' || Number(probe.port) !== OPENBAO_TLS_PORT) out.push(`OpenBao の readiness が HTTPS の ${OPENBAO_TLS_PORT} でない`);
+    const mount = (c.volumeMounts || []).find((v) => v.mountPath === '/openbao/tls');
+    const vol = mount && (spec.volumes || []).find((v) => v.name === mount.name);
+    if (!vol || !vol.secret || vol.secret.secretName !== 'openbao-tls' || vol.secret.optional) out.push('受け口の証明書が Secret openbao-tls（optional でない）のマウントでない');
+  }
+  const svc = docs.find((d) => d.kind === 'Service' && d.metadata.name === 'openbao');
+  const svcPorts = svc ? (svc.spec.ports || []).map((p) => Number(p.port)).sort() : [];
+  const wantSvc = coexist ? [OPENBAO_PLAIN_PORT, OPENBAO_TLS_PORT] : [OPENBAO_TLS_PORT];
+  if (JSON.stringify(svcPorts) !== JSON.stringify(wantSvc)) out.push(`OpenBao の Service のポートが ${JSON.stringify(wantSvc)} でない: ${JSON.stringify(svcPorts)}`);
+  // OT2: ESO のストア（SecretStore の vault・VaultDynamicSecret の provider）。
+  const providers = (esoDocs || []).flatMap((d) => {
+    if (d.kind === 'SecretStore') return [[`SecretStore ${d.metadata.namespace}/${d.metadata.name}`, ((d.spec || {}).provider || {}).vault || {}]];
+    if (d.kind === 'VaultDynamicSecret') return [[`VaultDynamicSecret ${d.metadata.namespace}/${d.metadata.name}`, (d.spec || {}).provider || {}]];
+    return [];
+  });
+  if (esoDocs && providers.length === 0) out.push('陽性対照: ESO のストアが無い');
+  for (const [id, v] of providers) {
+    if (v.server !== OPENBAO_SERVER) out.push(`${id}: 宛先が ${OPENBAO_SERVER} でない: ${v.server}`);
+    const ca = v.caProvider || {};
+    if (Object.keys(ca).length !== 3 || Object.entries(OPENBAO_CA_PROVIDER).some(([k, x]) => ca[k] !== x)) out.push(`${id}: CA を ConfigMap openbao-ca で検証しない: ${JSON.stringify(v.caProvider || null)}`);
+    if (Object.keys(v).some((k) => /insecure|skip/i.test(k))) out.push(`${id}: 検証を外す指定がある`);
+  }
   return out;
 }
 
@@ -673,7 +764,7 @@ function astDbUsersProblems(infraDocs, esoDocs, job, policies) {
   return out;
 }
 
-module.exports = { astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
+module.exports = { openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS };
 
 if (require.main === module) {
   let failed = 0;
@@ -870,7 +961,48 @@ if (require.main === module) {
     ing.spec.ingress[0].ports.push({ protocol: 'TCP', port: 8201 });
     e.push({ kind: 'ClusterSecretStore', metadata: { name: 'x' }, spec: {} }, { kind: 'Secret', metadata: { name: 'y', namespace: 'platform-infra' } });
     const p = vaultProblems(v, e, localVaultImage());
-    for (const want of [/dev モード/, /ESO の controller の外の送り元/, /8200 だけでない/, /ClusterSecretStore/, /Secret を描いている/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    for (const want of [/dev モード/, /ESO の controller の外の送り元/, /入りのポートが \[8443\] でない/, /ClusterSecretStore/, /Secret を描いている/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+  });
+  const renderOpenbaoCoexist = () => docsOf(run('kubectl', ['kustomize', 'deploy/cloud-transition/openbao-tls-coexist']));
+  ok('IADR-0696 OT1・OT2: OpenBao の受け口は TLS の 8443 だけ（平文の listener・8200 が無い）で、ESO の全てのストアは https で CA（ConfigMap openbao-ca）を検証する', () => {
+    assert.deepStrictEqual(openbaoTlsProblems(renderVault(), renderEso()), []);
+    const e = renderEso();
+    assert.strictEqual(e.filter((d) => d.kind === 'SecretStore' || d.kind === 'VaultDynamicSecret').length, 6, '陽性対照: ストアの数（SecretStore 2・VaultDynamicSecret 4）');
+  });
+  ok('IADR-0696 OT1・OT2 陰性対照: 平文の listener・平文の宛先・CA の欠落・検証を外す指定・HTTP の probe・8200 のポートを検出する', () => {
+    const v = JSON.parse(JSON.stringify(renderVault()));
+    const e = JSON.parse(JSON.stringify(renderEso()));
+    const cfg = v.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'openbao-config');
+    cfg.data['cloud.hcl'] = String(cfg.data['cloud.hcl']).replace(/tls_min_version = "tls13"/, 'tls_min_version = "tls13"\n      tls_disable = true');
+    const dep = v.find((d) => d.kind === 'Deployment' && d.metadata.name === 'openbao');
+    const c = dep.spec.template.spec.containers[0];
+    c.readinessProbe.httpGet.scheme = 'HTTP';
+    c.env.find((x) => x.name === 'BAO_ADDR').value = 'http://127.0.0.1:8200';
+    c.ports.push({ containerPort: 8200 });
+    v.find((d) => d.kind === 'Service' && d.metadata.name === 'openbao').spec.ports.push({ port: 8200 });
+    const store = e.find((d) => d.kind === 'SecretStore');
+    store.spec.provider.vault.server = 'http://openbao.openbao.svc:8200';
+    delete e.find((d) => d.kind === 'VaultDynamicSecret').spec.provider.caProvider;
+    e.filter((d) => d.kind === 'VaultDynamicSecret')[1].spec.provider.insecureSkipVerify = true;
+    const p = openbaoTlsProblems(v, e);
+    for (const want of [/TLS の listener が 8443 の 1 つでない/, /readiness が HTTPS/, /Pod の中の bao の宛先が TLS/, /受け口が \[8443\] でない/, /Service のポートが \[8443\] でない/, /宛先が https:\/\/openbao\.openbao\.svc:8443 でない/, /CA を ConfigMap openbao-ca で検証しない/, /検証を外す指定/]) {
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    // 平文の listener を足しただけ（TLS の listener は残す）でも落ちる
+    const v2 = JSON.parse(JSON.stringify(renderVault()));
+    const cfg2 = v2.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'openbao-config');
+    cfg2.data['cloud.hcl'] += '\nlistener "tcp" {\n  address = "0.0.0.0:8200"\n  tls_disable = true\n}\n';
+    assert.ok(openbaoTlsProblems(v2, renderEso()).some((x) => /平文の口が閉じていない/.test(x)), '平文の listener の追加を検出しない');
+  });
+  ok('IADR-0696 OT3: 併存の重ねは 8443 に加えて平文の 8200 も受け（送り元は ESO の controller だけ）、最終の段の判定では落ちる', () => {
+    const co = renderOpenbaoCoexist();
+    assert.deepStrictEqual(vaultProblems(co, renderEso(), localVaultImage(), { coexist: true }), []);
+    const p = vaultProblems(co, renderEso(), localVaultImage());
+    for (const want of [/平文の口が閉じていない/, /受け口が \[8443\] でない/, /Service のポートが \[8443\] でない/, /入りのポートが \[8443\] でない/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    // 併存の判定に最終の段を当てると、平文の口の欠落で落ちる（まだ http のストアが届かない形）
+    assert.ok(vaultProblems(renderVault(), renderEso(), localVaultImage(), { coexist: true }).some((x) => /平文の listener が \[8200\] でない/.test(x)), '併存の段の平文の欠落を検出しない');
+    // 重ねは OpenBao の名前空間の外を描かない
+    assert.deepStrictEqual([...new Set(co.map((d) => d.metadata.namespace).filter(Boolean))].sort(), ['openbao']);
   });
   ok('IADR-0689 決定 9: クラウドの realm に、audience のスコープ（owner の既定のスコープ）と trading-bot（owner のサービスアカウントだけ）が残る', () => {
     const { buildCloudRealm, CLOUD_CLIENTS } = require('../deploy/cloud/realm-for-cloud.js');

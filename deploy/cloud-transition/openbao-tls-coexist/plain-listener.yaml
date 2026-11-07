@@ -1,0 +1,14 @@
+# NFR-16, IADR-0696: 併存の段だけの平文の listener（kustomization.yaml の注記）。最終の段（deploy/cloud/vault）には無い。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openbao-config-coexist
+  namespace: openbao
+  labels: { app: openbao }
+data:
+  plain.hcl: |
+    # 移る間だけ。ESO のストアが全部 https へ移ったら、deploy/cloud/vault を当てて閉じる。
+    listener "tcp" {
+      address     = "0.0.0.0:8200"
+      tls_disable = true
+    }

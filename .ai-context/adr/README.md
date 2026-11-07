@@ -773,3 +773,4 @@
 | [IADR-0693](./IADR-0693_cloud-keycloak-tls-openbao-pki.md) | クラウドの認可サーバー（Keycloak）を OpenBao の PKI（DB・ブローカと同じ CA）の証明書で HTTPS だけにし、受け手は https を必須にしてシステムの信頼ストアに基盤の CA を足して検証する。稼働中の構成は併存の段を経て平文を閉じる | Accepted |
 | [IADR-0694](./IADR-0694_rabbitmq-cloud-subscriber-no-exchange-configure.md) | クラウドのブローカの権限から、購読する（自分が発行しない）exchange の configure を外す。購読される exchange はブローカの起動の直後の初期化が、利用者の権限を当てる前に宣言する。ローカルの権限は変えない | Accepted |
 | [IADR-0695](./IADR-0695_cloud-db-per-service-users.md) | クラウドの取引ユニットの DB の利用者をサービスごとに分け、各利用者が自分の DB だけを OWNER で持ち、他の DB へは CONNECT できないようにする。利用者は OpenBao の中で作った値で Job が作り、稼働中の構成は共有の利用者を残す 3 段で移す。監査の DB の追記だけの権限は別の作業 | Accepted |
+| [IADR-0696](./IADR-0696_cloud-openbao-listener-tls.md) | クラウドの秘匿管理（OpenBao）の受け口を TLS の 8443 だけにする。受け口の証明書は OpenBao の外でオーナーが流すスクリプトが作り（CA の鍵は署名の後に捨てる）、ESO とオーナーの手順は CA で検証する。稼働中の構成は併存の段を経て平文を閉じる（IADR-0689 決定 3 を改める） | Accepted |

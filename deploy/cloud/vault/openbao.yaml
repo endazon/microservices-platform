@@ -2,8 +2,11 @@
 #
 #   - unseal の鍵（1 分割・閾値 1）と初回の root はオーナーが init.sh で作り、age で暗号化したファイルとしてだけ手元に持つ。
 #     リポジトリにもノードにも平文で置かない（ADR-0080 決定 1）。起動のたびに、オーナーが unseal.sh で開ける。
-#   - 受け口は平文の 8200（IADR-0689 決定 3）。入れるのは ESO の controller だけ（networkpolicy.yaml）。オーナーは Pod の中の
-#     bao（BAO_ADDR はループバック）を kubectl exec で使う。
+#   - 受け口は TLS の 8443 だけ（IADR-0696。平文の口を持たない）。入れるのは ESO の controller だけ（networkpolicy.yaml）。
+#     オーナーは Pod の中の bao を kubectl exec で使い、ループバックへも TLS で、受け口の CA で検証して話す（lib.sh の ob_exec）。
+#   - 受け口の証明書と鍵は Secret openbao-tls（tls-cert.sh がオーナーの手元で作る。OpenBao の PKI では作らない: 封印のあいだは
+#     発行できないため）。Secret が無ければ Pod は起きない（先に tls-cert.sh issue。README §3）。作り直しは tls-cert.sh renew
+#     （SIGHUP で読み直す。封印しない）。
 #   - 封印のあいだは readiness が落ちる（/v1/sys/health は封印中 503）。Pod が Ready でないことが「unseal を待っている」の印になる。
 #   - 監査は設定ファイルで宣言する（OpenBao は API での audit device の作成を既定で拒む。IADR-0525）。値は記録しない。
 apiVersion: v1
@@ -50,12 +53,15 @@ data:
       path    = "/openbao/data/raft"
       node_id = "openbao-0"
     }
-    # IADR-0689 決定 3: 平文。届くのは ESO の controller（NetworkPolicy）と Pod の中のループバックだけ。
+    # NFR-16, IADR-0696: TLS だけ（tls_disable を書かない＝既定の TLS。平文の listener を持たない）。届くのは ESO の controller
+    # （NetworkPolicy）と Pod の中のループバックだけ。証明書は SIGHUP で読み直す（tls-cert.sh renew）。
     listener "tcp" {
-      address     = "0.0.0.0:8200"
-      tls_disable = true
+      address         = "0.0.0.0:8443"
+      tls_cert_file   = "/openbao/tls/tls.crt"
+      tls_key_file    = "/openbao/tls/tls.key"
+      tls_min_version = "tls13"
     }
-    api_addr     = "http://openbao.openbao.svc:8200"
+    api_addr     = "https://openbao.openbao.svc:8443"
     cluster_addr = "http://127.0.0.1:8201"
     ui           = false
     # 値を記録しない（log_raw=false・hmac_accessor=true を明示する。IADR-0525 と同じ）。
@@ -108,13 +114,14 @@ spec:
           # イメージの起動器（dev の既定を持つ）を通さず、設定ファイルだけで起こす。
           command: ["bao", "server", "-config=/openbao/config/cloud.hcl"]
           env:
-            # Pod の中の bao（オーナーが kubectl exec で使う）の宛先。値ではない。
-            - { name: BAO_ADDR, value: "http://127.0.0.1:8200" }
+            # Pod の中の bao（オーナーが kubectl exec で使う）の宛先と、受け口の CA。値ではない（lib.sh の ob_exec も同じ値を明示する）。
+            - { name: BAO_ADDR, value: "https://127.0.0.1:8443" }
+            - { name: BAO_CACERT, value: /openbao/tls/ca.crt }
             - { name: HOME, value: /tmp }
           ports:
-            - { containerPort: 8200, name: http }
+            - { containerPort: 8443, name: https }
           readinessProbe:
-            httpGet: { path: /v1/sys/health, port: 8200 }
+            httpGet: { path: /v1/sys/health, port: 8443, scheme: HTTPS }
             periodSeconds: 10
           securityContext:
             allowPrivilegeEscalation: false
@@ -125,6 +132,7 @@ spec:
             limits: { cpu: 500m, memory: 256Mi }
           volumeMounts:
             - { name: config, mountPath: /openbao/config, readOnly: true }
+            - { name: tls, mountPath: /openbao/tls, readOnly: true }
             - { name: data, mountPath: /openbao/data }
             - { name: tmp, mountPath: /tmp }
       volumes:
@@ -132,6 +140,9 @@ spec:
           configMap: { name: openbao-config }
         - name: data
           persistentVolumeClaim: { claimName: openbao-data }
+        # 受け口の証明書と鍵（tls-cert.sh が作る）。fsGroup（1000）で 0440。optional にしない（無ければ起きない）。
+        - name: tls
+          secret: { secretName: openbao-tls, defaultMode: 0440 }
         - name: tmp
           emptyDir: { medium: Memory, sizeLimit: 16Mi }
 ---
@@ -145,4 +156,4 @@ spec:
   type: ClusterIP
   selector: { app: openbao }
   ports:
-    - { name: http, port: 8200, targetPort: 8200 }
+    - { name: https, port: 8443, targetPort: 8443 }

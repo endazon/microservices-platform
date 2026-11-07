@@ -21,19 +21,9 @@ PID=""
 cleanup() { [ -n "$PID" ] && kill "$PID" 2>/dev/null; wait 2>/dev/null || true; rm -rf "$W"; }
 trap cleanup EXIT
 PORT="$(NODE_NO_WARNINGS=1 node -e 'const s=require("net").createServer().listen(0,"127.0.0.1",()=>{console.log(s.address().port);s.close();})')"
-export TEST_BAO_ADDR="http://127.0.0.1:${PORT}"
-mkdir -p "$W/data" "$W/bin"
-cat > "$W/server.hcl" <<EOF
-storage "raft" { path = "$W/data" node_id = "t0" }
-listener "tcp" { address = "127.0.0.1:${PORT}" tls_disable = true }
-api_addr = "$TEST_BAO_ADDR"
-cluster_addr = "http://127.0.0.1:$((PORT + 1))"
-EOF
-"$BAO" server -config="$W/server.hcl" > "$W/server.log" 2>&1 &
-PID=$!
-up=0
-for _ in $(seq 1 50); do rc=0; BAO_ADDR="$TEST_BAO_ADDR" "$BAO" status >/dev/null 2>&1 || rc=$?; [ "$rc" -eq 2 ] && { up=1; break; }; sleep 0.2; done
-[ "$up" = 1 ] || { echo "✗ OpenBao が起動しない" >&2; cat "$W/server.log" >&2; exit 1; }
+# NFR-16, IADR-0696: 受け口は TLS だけ。証明書は tls-cert.sh が作ったもの（スタブが Secret を $W/tls へ「マウント」する）を使う。
+export TEST_BAO_ADDR="https://127.0.0.1:${PORT}"
+mkdir -p "$W/data" "$W/bin" "$W/tls"
 
 # kubectl のスタブ（引数を全部記録する。値が引数に載れば、後の確かめで見つかる）
 # Pod の中の bao。試験は BAO_FAIL_ON（引数の部分文字列）で 1 回だけ失敗を差し込める（途中で落ちる経路の確かめ）。
@@ -72,22 +62,66 @@ for i in "${!args[@]}"; do
     [ "${rest[0]}" = sh ] && [ "${rest[1]}" = -c ] || { echo "stub: 想定外の exec: ${rest[*]}" >&2; exit 9; }
     cd "$POD_HOME" || exit 9
     if [ -n "${KUBECTL_FAIL_AFTER:-}" ] && [[ "${rest[2]}" == *"$KUBECTL_FAIL_AFTER"* ]] && [ ! -e "$FAIL_DONE" ]; then
-      env BAO_ADDR="$TEST_BAO_ADDR" HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}" >/dev/null 2>&1 || true
+      env BAO_ADDR="$POD_BAO_ADDR" BAO_SKIP_VERIFY=true HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}" >/dev/null 2>&1 || true
       : > "$FAIL_DONE"; echo "injected failure (after): $KUBECTL_FAIL_AFTER" >&2; exit 1
     fi
-    exec env BAO_ADDR="$TEST_BAO_ADDR" HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}"
+    exec env BAO_ADDR="$POD_BAO_ADDR" BAO_SKIP_VERIFY=true HOME="$POD_HOME" PATH="$STUB_BIN:/usr/bin:/bin" sh -c "${rest[2]}"
   fi
 done
 case "$*" in
   *"create configmap platform-infra-ca"*) cat > "$CM_DIR/$2.crt"; echo "kind: ConfigMap" ;;
   "apply -f -") cat >/dev/null ;;
+  # IADR-0696: tls-cert.sh の Secret・ConfigMap（JSON を標準入力で受ける）。Secret は $TLS_DIR へ書く（kubelet のマウントの代わり）。
+  "apply --server-side --field-manager=openbao-tls-cert --force-conflicts -f -")
+    node -e '
+      const fs = require("fs"); const d = JSON.parse(fs.readFileSync(0, "utf8"));
+      const [tls, cm] = process.argv.slice(1);
+      if (d.kind === "Secret" && d.metadata.name === "openbao-tls" && d.metadata.namespace === "openbao") {
+        for (const [k, v] of Object.entries(d.data)) fs.writeFileSync(`${tls}/${k}`, Buffer.from(v, "base64"), { mode: 0o600 });
+      } else if (d.kind === "ConfigMap" && d.metadata.name === "openbao-ca") {
+        fs.writeFileSync(`${cm}/${d.metadata.namespace}-openbao-ca.crt`, d.data["ca.crt"]);
+      } else { process.stderr.write("stub: 想定外の apply\n"); process.exit(9); }' "$TLS_DIR" "$CM_DIR" ;;
+  "get namespace "*" --ignore-not-found -o name")
+    for n in $K8S_NAMESPACES; do [ "$3" = "$n" ] && echo "namespace/$n"; done; exit 0 ;;
+  "-n openbao get secret openbao-tls --ignore-not-found -o name")
+    [ -e "$TLS_DIR/tls.crt" ] && echo "secret/openbao-tls"; exit 0 ;;
+  "-n openbao get secret openbao-tls --ignore-not-found -o jsonpath={.data.ca\\.crt}")
+    [ -e "$TLS_DIR/ca.crt" ] && base64 -w0 < "$TLS_DIR/ca.crt"; exit 0 ;;
   *) echo "stub: 想定外: $*" >&2; exit 9 ;;
 esac
 EOF
 chmod +x "$W/bin/kubectl"
 export FAIL_DONE="$W/fail.done" KLOG="$W/kubectl.log" POD_HOME="$W/pod" CM_DIR="$W/cm" STUB_BIN="$W/bin" PATH="$W/bin:$PATH"
+export TLS_DIR="$W/tls" K8S_NAMESPACES="openbao platform-infra microservices-platform ai-stock-trading"
+# Pod の中の環境に置く宛先は平文（手順の側が TLS の宛先と CA を明示しなければ届かない）。手順の宛先は試験の OpenBao の TLS の口。
+export POD_BAO_ADDR="http://127.0.0.1:${PORT}" OB_POD_ADDR="$TEST_BAO_ADDR" OB_POD_TLS_DIR="$W/tls" OB_TLS_SYNC_WAIT_S=10
 mkdir -p "$POD_HOME" "$CM_DIR"
 : > "$KLOG"
+
+# --- 受け口の証明書（tls-cert.sh issue）と、TLS だけで受ける OpenBao ---
+set +e
+bash "$HERE/tls-cert.sh" issue >/dev/null 2>&1; [ $? -eq 3 ] || { echo "✗ tls-cert.sh は --live が無ければ 3 で終わる" >&2; exit 1; }
+set -e
+bash "$HERE/tls-cert.sh" --live issue >/dev/null
+for f in tls.crt tls.key ca.crt; do [ -s "$W/tls/$f" ] || { echo "✗ tls-cert.sh issue が Secret の $f を置かない" >&2; exit 1; }; done
+openssl verify -CAfile "$W/tls/ca.crt" "$W/tls/tls.crt" >/dev/null || { echo "✗ 受け口の証明書を CA で検証できない" >&2; exit 1; }
+cat > "$W/server.hcl" <<HCL
+storage "raft" { path = "$W/data" node_id = "t0" }
+listener "tcp" {
+  address         = "127.0.0.1:${PORT}"
+  tls_cert_file   = "$W/tls/tls.crt"
+  tls_key_file    = "$W/tls/tls.key"
+  tls_min_version = "tls13"
+}
+api_addr = "$TEST_BAO_ADDR"
+cluster_addr = "https://127.0.0.1:$((PORT + 1))"
+HCL
+"$BAO" server -config="$W/server.hcl" > "$W/server.log" 2>&1 &
+PID=$!
+export OB_POD_SERVER_PID="$PID"
+up=0
+for _ in $(seq 1 50); do rc=0; BAO_ADDR="$TEST_BAO_ADDR" BAO_CACERT="$W/tls/ca.crt" "$BAO" status >/dev/null 2>&1 || rc=$?; [ "$rc" -eq 2 ] && { up=1; break; }; sleep 0.2; done
+[ "$up" = 1 ] || { echo "✗ OpenBao が起動しない" >&2; cat "$W/server.log" >&2; exit 1; }
 age-keygen -o "$W/id.txt" 2> "$W/recipients.txt"
 sed -i 's/^Public key: //' "$W/recipients.txt"
 
@@ -96,7 +130,7 @@ ok() { pass=$((pass + 1)); echo "  ok  $1"; }
 ng() { echo "  NG  $1" >&2; exit 1; }
 run() { bash "$HERE/$1" --live "${@:2}"; }
 dec() { age -d -i "$W/id.txt" "$1" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const j=JSON.parse(s);let v=j[process.argv[1]];if(Array.isArray(v))v=v[0];process.stdout.write(v);})' "$2"; }
-B() { BAO_ADDR="$TEST_BAO_ADDR" "$BAO" "$@"; }
+B() { BAO_ADDR="$TEST_BAO_ADDR" BAO_CACERT="$W/tls/ca.crt" "$BAO" "$@"; }
 
 # --- 明示の指定と、引数の形 ---
 set +e
@@ -371,6 +405,61 @@ grep -q '作り直した root を失効させた' "$W/rt.log" || ng "apply-pki-r
 BAO_TOKEN="$TPX" B write pki_cloud/issue/keycloak common_name=keycloak >/dev/null 2>&1 || ng "apply-pki-roles の後に keycloak の証明書を発行できない"
 unset TPX   # 10 分で切れる（default の policy を持たないので自分では失効できない）
 ok "root-token apply-pki-roles: 稼働中の構成へ lib.sh の role の一覧を書き、root を失効させる（IADR-0693）"
+
+# --- 受け口の TLS（IADR-0696）: 平文は受けず、手順は CA で検証して話し、作り直しは届かない時間を作らない ---
+pem_count() { grep -c 'BEGIN CERTIFICATE' "$1"; }
+set +e
+BAO_ADDR="http://127.0.0.1:${PORT}" "$BAO" status >/dev/null 2>&1; rc=$?
+set -e
+[ "$rc" -eq 1 ] || ng "受け口が平文の要求に応えた（rc=$rc）"
+set +e
+OB_POD_ADDR="http://127.0.0.1:${PORT}" run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null 2>&1; rc=$?
+set -e
+[ "$rc" -eq 2 ] || ng "手順が平文の宛先（OB_POD_ADDR=http://）を受けた（rc=$rc）"
+mkdir -p "$W/badtls"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=other-ca -keyout /dev/null -out "$W/badtls/ca.crt" >/dev/null 2>&1
+set +e
+OB_POD_TLS_DIR="$W/badtls" run unseal.sh --init-file "$W/init.age" --identity "$W/id.txt" >/dev/null 2>&1; rc=$?
+set -e
+[ "$rc" -ne 0 ] || ng "手順が別の CA でも受け口へ届いた（検証していない。Pod の環境の BAO_SKIP_VERIFY を消していない）"
+for ns in platform-infra microservices-platform ai-stock-trading; do
+  cmp -s "$CM_DIR/$ns-openbao-ca.crt" "$W/tls/ca.crt" || ng "issue: ConfigMap ${ns}/openbao-ca が受け口の CA と同じでない"
+done
+set +e; run tls-cert.sh issue >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -ne 0 ] || ng "2 回目の issue が止まらない（作り直しは renew）"
+ok "TLS: 受け口は平文の要求に応えず、手順は https の宛先だけを受け、受け口の CA で検証する（別の CA では届かない）。CA は 3 つの名前空間の ConfigMap に在る"
+
+old_ca="$(cat "$W/tls/ca.crt")" old_crt="$(cat "$W/tls/tls.crt")"
+# 途中で落ちる経路: 受け口に読み直させる段で落ちても、CA は併記のまま（古い証明書のまま ESO は届く）。流し直せば終わる。
+rm -f "$W/fail.done"
+set +e; KUBECTL_FAIL_ON="kill -HUP" run tls-cert.sh renew >"$W/renew.log" 2>&1; rc=$?; set -e
+[ -e "$W/fail.done" ] || ng "陽性対照: renew の SIGHUP の段に失敗を差し込めていない"
+[ "$rc" -ne 0 ] || ng "renew が途中で落ちたのに成功を返した"
+for ns in platform-infra microservices-platform ai-stock-trading; do
+  [ "$(pem_count "$CM_DIR/$ns-openbao-ca.crt")" = 2 ] || ng "renew の途中: ConfigMap ${ns}/openbao-ca が古い CA と新しい CA の併記でない"
+done
+B status >/dev/null 2>&1 || [ $? -eq 2 ] || ng "renew の途中: 併記の CA で受け口へ届かない"
+printf '%s\n' "$old_ca" > "$W/old-ca.crt"
+BAO_ADDR="$TEST_BAO_ADDR" BAO_CACERT="$W/old-ca.crt" "$BAO" status >/dev/null 2>&1 || ng "renew の途中: 受け口が古い証明書を出していない（読み直させる前に替わった）"
+run tls-cert.sh renew >/dev/null
+[ "$(pem_count "$W/tls/ca.crt")" = 1 ] && [ "$(cat "$W/tls/ca.crt")" != "$old_ca" ] && [ "$(cat "$W/tls/tls.crt")" != "$old_crt" ] || ng "renew の後: Secret が新しい CA の 1 つと新しい証明書になっていない"
+for ns in platform-infra microservices-platform ai-stock-trading; do
+  cmp -s "$CM_DIR/$ns-openbao-ca.crt" "$W/tls/ca.crt" || ng "renew の後: ConfigMap ${ns}/openbao-ca が新しい CA だけでない"
+done
+set +e; BAO_ADDR="$TEST_BAO_ADDR" BAO_CACERT="$W/old-ca.crt" "$BAO" status >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" -eq 1 ] || ng "renew の後: 受け口がまだ古い CA の証明書を出す（SIGHUP で読み直していない）"
+st="$(B status -format=json || true)"
+[[ "$st" == *'"sealed": false'* ]] || ng "renew の後: 封印された（読み直しは封印しない）"
+run seed-secrets.sh --operator-file "$W/operator.age" --identity "$W/id.txt" >/dev/null || ng "renew の後: 手順が新しい CA で受け口へ届かない"
+run tls-cert.sh publish-ca --namespace ai-stock-trading >/dev/null
+cmp -s "$CM_DIR/ai-stock-trading-openbao-ca.crt" "$W/tls/ca.crt" || ng "publish-ca が CA を写さない"
+ok "TLS renew: 古い CA と新しい CA を併記してから受け口を読み直させ（封印しない）、新しい CA で届くことを確かめて古い CA を外す。途中で落ちても併記のまま流し直せる"
+
+key_line="$(sed -n 2p "$W/tls/tls.key")"
+[ -n "$key_line" ] || ng "陽性対照: 受け口の鍵を読めない"
+grep -qF -- "$key_line" "$KLOG" && ng "受け口の鍵が kubectl の引数に載った"
+if grep -rqF -- "$key_line" "$POD_HOME" "$CM_DIR" 2>/dev/null; then ng "受け口の鍵が手元の作業場・ConfigMap に残った"; fi
+ok "受け口の鍵は kubectl の引数にも、手元の作業場・ConfigMap にも出ない（標準入力で Secret へだけ渡る）"
 
 # --- 値が引数・ディスクに残らない ---
 R2="$(mkroot)"

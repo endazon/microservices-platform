@@ -158,7 +158,8 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 
 ```sh
 kubectl apply -f deploy/cloud/infra/namespaces.yaml
-kubectl apply -k deploy/cloud/vault                                   # OpenBao（封印された状態で起きる。Ready にならないのが正しい）
+kubectl apply -k deploy/cloud/vault                                   # OpenBao（受け口の証明書の Secret を待つ）
+bash deploy/cloud/vault/tls-cert.sh --live issue                      # 受け口（TLS の 8443）の証明書と CA の ConfigMap → OpenBao が封印された状態で起きる（Ready にならないのが正しい）
 bash deploy/cloud/vault/init.sh --live --recipients <age の受取人> --out <init>.age              # 一度だけ
 bash deploy/cloud/vault/unseal.sh --live --init-file <init>.age --identity <age の識別子>
 bash deploy/cloud/vault/configure.sh --live --init-file <init>.age --identity <age の識別子> \
@@ -188,6 +189,9 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - Keycloak は HTTPS（8443）だけで受ける（証明書は ESO が写す `keycloak-tls`。発行元は `https://keycloak:8443/realms/platform`）。LLM ゲートウェイは
   https を必須にし、基盤の CA で検証する（values-cloud の `global.auth`）。**平文で動いている構成を移すときは、この順ではなく**
   [認可サーバーの TLS の手順書](../../docs/operations/cloud-keycloak-tls-runbook.md)の併存の段（`deploy/cloud-transition/keycloak-tls-coexist`）を経る。
+- OpenBao は TLS の 8443 だけで受ける（受け口の証明書は `vault/tls-cert.sh` がオーナーの手元で作る。ESO とオーナーの手順は CA で検証する）。
+  **平文の 8200 で動いている構成を移すときは、この順ではなく**[秘匿管理の受け口の TLS の手順書](../../docs/operations/cloud-openbao-tls-runbook.md)の
+  併存の段（`deploy/cloud-transition/openbao-tls-coexist`）を経る。取引ユニットのストアを https にするのは、MSP の併存の段と基盤のストアの後。
 - 取引ユニットの DB の利用者はサービスごとに分ける（[手順書](../../docs/operations/cloud-db-per-service-users-runbook.md)）。共有の利用者は移行の間だけ残り、
   取引ユニットを入れた後に `ast-db-users.sh --live drop-shared` で消す。稼働中の構成を移すときは手順書の 3 段の順。
 - 取引ユニットの側（values-cloud・OpenD・移行の手順）は AST#1525。取引ユニットの名前空間の SecretStore・ExternalSecret は取引ユニットの側が置き、
@@ -202,6 +206,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | 取引ユニットの DB のサービスごとの利用者（7 組。共有の `ast-db` は移行の後に外す） | 同上（利用者名は `ast_<サービス>_<乱数>`） | `cloud/shared/ast-db-<サービス>` | `platform-infra` の `ast-db-<サービス>`（利用者を作る Job が読む）。取引ユニットの側も同じパスを読む |
 | サーバ証明書と鍵（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない。role の一覧は `vault/lib.sh` の `OB_PKI_ROLES`） | — | `postgres-tls`・`rabbitmq-tls`・`keycloak-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
 | CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
+| OpenBao 自身の受け口の証明書と鍵 | `vault/tls-cert.sh`（オーナーの手元。OpenBao を開ける側の値なので OpenBao の外。CA の鍵は署名の後に捨てる） | — | Secret `openbao/openbao-tls`。CA の証明書（公開してよい）は ConfigMap `openbao-ca`（基盤の 2 つと取引ユニットの名前空間。ESO のストアが検証に使う） |
 
 - 在る値は作り直さない（`seed-secrets.sh` の 2 回目は何も変えない）。
 - 取り込む realm は、宣言から取引ユニットの 3 つの機密クライアント（`ai-stock-trading-svc`・`-llm-caller`・`-owner`）と組み込みの
@@ -247,3 +252,5 @@ node scripts/deploy-cloud.test.js    # 上の 2 つを描いて、持ち込ま�
 - すぐに作り直すとき: `kubectl -n platform-infra annotate externalsecret postgres-tls force-sync="$(date +%s)" --overwrite`（RabbitMQ・Keycloak・LLM ゲートウェイも同じ）の後に消費側を作り直す。
 - 期限の警報は置いていない（理由と確かめ方は[認可サーバーの TLS の手順書](../../docs/operations/cloud-keycloak-tls-runbook.md)の §4）。
 - **封印のあいだは発行できない。** 作り直しは unseal の後に行う。
+- OpenBao 自身の受け口の証明書（1 年）は PKI の外で、`bash deploy/cloud/vault/tls-cert.sh --live renew` で半年ごとに作り直す（封印しない。
+  CA を併記してから読み直させるので、ESO が届かない時間を作らない。[手順書](../../docs/operations/cloud-openbao-tls-runbook.md) §4）。
