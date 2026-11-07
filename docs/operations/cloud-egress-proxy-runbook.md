@@ -62,15 +62,26 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
 前の構成は、3 つの Pod が直に外の 443 へ出ている。中継を入れる間は、移す段の重ね（`deploy/cloud-transition/egress-proxy-report`）で、
 中継を **report**（表に無い宛先も通し、`report:` の行を出す）にし、3 つの直の 443 も残す。
 
-1. 1-1 の表を作る。
-2. report の段に入る日時を書く（警報 `EgressProxyReportMode` はこの日時から 14 日で鳴る。Prometheus や中継を作り直しても数え直さない）。
-   **在れば書き直さない**（流し直しで日時を先へ延ばさない）。日時が無い・形が違う（RFC 3339 の UTC 以外）と、警報はすぐ鳴る:
+1. **最初に、report の段に入る日時を書く**（警報 `EgressProxyReportMode` はこの日時から 14 日で鳴る。Prometheus や中継を作り直しても数え直さない）。
+   **在れば書き直さない**（流し直しで日時を先へ延ばさない）。日時は `date -u +%Y-%m-%dT%H:%M:%SZ` の形（`Z` 付きの RFC 3339 の UTC。例の形は
+   `2026-11-07T09:30:00Z`）で書く。中継が受けるのはこの形だけで、オフセット付き（`+09:00` など）・日付だけ・UNIX 秒は読まずに 0 とみなす
+   （＝警報がすぐ鳴る側）:
 
    ```sh
    kubectl -n platform-infra get configmap egress-proxy-report-since >/dev/null 2>&1 \
      || kubectl -n platform-infra create configmap egress-proxy-report-since --from-literal=since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-   kubectl -n platform-infra get configmap egress-proxy-report-since -o jsonpath='{.data.since}'; echo   # 書いた日時を運用の記録に残す
+   kubectl -n platform-infra get configmap egress-proxy-report-since -o jsonpath='{.data.since}'; echo   # 読み返す。書いた日時を運用の記録に残す
    ```
+
+2. 1-1 の表を作る。
+
+**当てる前のチェックリスト**（全部に印が付くまで 3 へ進まない）:
+
+- [ ] 1 で ConfigMap `egress-proxy-report-since` に日時を書いた（または前の回のものが在る）。
+- [ ] `kubectl -n platform-infra get configmap egress-proxy-report-since -o jsonpath='{.data.since}'` で読み返し、`YYYY-MM-DDTHH:MM:SSZ` の形で、
+      今より先の日時でないことを確かめた。
+- [ ] 2 で表（`egress-proxy-extra-hosts`）を作った。
+- [ ] その後に、3 の `kubectl apply -k deploy/cloud-transition/egress-proxy-report` を流す。
 
 3. 移す段を当てる（中継が起き、3 つの Pod の出に中継の 3128 が足される。直の 443 は残る）:
 
@@ -116,7 +127,8 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
 - 警報 `EgressProxyDown`: 中継が止まると、LLM の提供元・バックアップの保管先・Discord・heartbeat へ届かない（heartbeat が止まり、外の監視も知らせる）。
   `kubectl -n platform-infra describe pod -l app=egress-proxy` と `logs` で理由を読む。
 - 警報 `EgressProxyReportMode`: 移す段が、入った日時（ConfigMap `egress-proxy-report-since`）から 14 日を過ぎて残っている。3 の 5・6 を行う。
-  日時が無い・形が違うときも鳴る（3 の 2 で書いていない）。そのときは 3 の 2 の手順で書く（移す段に入った実際の日時が分かれば、それを書く）。
+  日時が無い・形が違う（`Z` 付きの RFC 3339 の UTC でない）ときも鳴る（3 の 1 で書いていない）。そのときは 3 の 1 の手順で書く（移す段に入った
+  実際の日時が分かれば、それを同じ形で書く）。
 
 ## 5. 切り戻し
 
