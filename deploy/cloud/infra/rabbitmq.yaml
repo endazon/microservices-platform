@@ -194,11 +194,14 @@ data:
     # NFR-18, IADR-0694: 購読される exchange を、利用者の権限を当てる前に宣言する（購読側は購読の exchange を受動で確かめるだけで、
     #   宣言の configure を持たない。AST の IADR-0628）。表は生成物（ConfigMap rabbitmq-permissions の exchanges.json）。追加だけで、
     #   在る exchange・利用者・権限は変えない（冪等）。宣言できなくても利用者の復元は続ける（購読側は起動の再試行で待つ）。
+    #   失敗の理由は stderr を 1 行に詰め、200 字までに切って残す（rabbitmqctl は「Error:」の次の行に詳細を出す。読み込むのは
+    #   exchange の表だけで、資格情報は渡さない。標準入力も渡さない）。標準出力は捨てる。
     if [ -f "$PERMS_DIR/exchanges.json" ]; then
-      if rabbitmqctl -q import_definitions "$PERMS_DIR/exchanges.json" >/dev/null 2>&1; then
+      if err="$(rabbitmqctl -q import_definitions "$PERMS_DIR/exchanges.json" 2>&1 >/dev/null </dev/null)"; then
         log "購読される exchange を宣言した"
       else
-        log "購読される exchange を宣言できない（購読側は exchange が現れるまで起動を待つ）"
+        reason="$(printf '%s' "$err" | tr '\r\n\t' '   ' | tr -s ' ' | sed 's/^ //' | cut -c1-200)"
+        log "購読される exchange を宣言できない（購読側は exchange が現れるまで起動を待つ）: ${reason:-理由の出力なし}"
       fi
     else
       log "購読される exchange の表が無い（宣言しない）"
