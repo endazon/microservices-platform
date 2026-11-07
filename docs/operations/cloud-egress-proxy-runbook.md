@@ -63,7 +63,16 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
 中継を **report**（表に無い宛先も通し、`report:` の行を出す）にし、3 つの直の 443 も残す。
 
 1. 1-1 の表を作る。
-2. 移す段を当てる（中継が起き、3 つの Pod の出に中継の 3128 が足される。直の 443 は残る）:
+2. report の段に入る日時を書く（警報 `EgressProxyReportMode` はこの日時から 14 日で鳴る。Prometheus や中継を作り直しても数え直さない）。
+   **在れば書き直さない**（流し直しで日時を先へ延ばさない）。日時が無い・形が違う（RFC 3339 の UTC 以外）と、警報はすぐ鳴る:
+
+   ```sh
+   kubectl -n platform-infra get configmap egress-proxy-report-since >/dev/null 2>&1 \
+     || kubectl -n platform-infra create configmap egress-proxy-report-since --from-literal=since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+   kubectl -n platform-infra get configmap egress-proxy-report-since -o jsonpath='{.data.since}'; echo   # 書いた日時を運用の記録に残す
+   ```
+
+3. 移す段を当てる（中継が起き、3 つの Pod の出に中継の 3128 が足される。直の 443 は残る）:
 
    ```sh
    kubectl apply -k deploy/cloud-transition/egress-proxy-report
@@ -79,8 +88,8 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
    - **証明書の期限の測り（`tls-cert-probe`）の作成**: 新しい Pod が 1 つ起き、4 つの受け口へ 10 分ごとに繋ぐ（受け口は止まらない）。
      起きるまでに 30 分を越えると警報 `TlsServerCertProbeMissing` が出る（`for: 30m`）。
 
-3. LLM ゲートウェイを当て直す（HTTPS_PROXY が足される。`deploy/cloud/README.md` §3 の `helm upgrade`）。
-4. 少なくとも 1 回のバックアップ（日次）と、Watchdog の heartbeat（5 分ごと）と、LLM の呼び出しが流れるまで待ち、report の行を読む:
+4. LLM ゲートウェイを当て直す（HTTPS_PROXY が足される。`deploy/cloud/README.md` §3 の `helm upgrade`）。
+5. 少なくとも 1 回のバックアップ（日次）と、Watchdog の heartbeat（5 分ごと）と、LLM の呼び出しが流れるまで待ち、report の行を読む:
 
    ```sh
    kubectl -n platform-infra logs deploy/egress-proxy | grep -E '^(allow|report|deny):' | sort | uniq -c
@@ -88,16 +97,17 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
 
    - `allow:` に、LLM の提供元・バックアップの保管先・Discord・heartbeat の宛先が並ぶ（3 つの Pod が中継を経ている）。
    - `report:` の行は表に無い宛先。要る宛先なら 1-1 の表に足す。要らない宛先なら、呼び手を調べる（足さない）。
-5. `report:` の行が出なくなったら、最終の段を当てて閉じる（中継は enforce・3 つの直の 443 は宣言から消える）:
+6. `report:` の行が出なくなったら、最終の段を当てて閉じる（中継は enforce・3 つの直の 443 は宣言から消える）:
 
    ```sh
    kubectl apply -k deploy/cloud
    kubectl -n microservices-platform delete networkpolicy llmgateway-egress-direct-https-transition
    kubectl -n platform-infra delete networkpolicy platform-backup-egress-direct-https-transition alertmanager-egress-direct-https-transition
+   kubectl -n platform-infra delete configmap egress-proxy-report-since      # 次に移す段へ入るときに、新しい日時を書くため
    ```
 
-   `kubectl apply` は宣言から外した資源を消さないので、移す段の 3 つは名指しで消す。
-6. 確かめ: 警報 `EgressProxyDenied` が出ない・`EgressProxyReportMode` が出ない・heartbeat が届く・次のバックアップが成功する。
+   `kubectl apply` は宣言から外した資源を消さないので、移す段の 3 つは名指しで消す。日時の ConfigMap も消す（enforce の段では読まない）。
+7. 確かめ: 警報 `EgressProxyDenied` が出ない・`EgressProxyReportMode` が出ない・heartbeat が届く・次のバックアップが成功する。
 
 ## 4. 運用
 
@@ -105,7 +115,8 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
   要る宛先なら 1-1 の表に足す（効くまでの目安は 1〜2 分。§1）。
 - 警報 `EgressProxyDown`: 中継が止まると、LLM の提供元・バックアップの保管先・Discord・heartbeat へ届かない（heartbeat が止まり、外の監視も知らせる）。
   `kubectl -n platform-infra describe pod -l app=egress-proxy` と `logs` で理由を読む。
-- 警報 `EgressProxyReportMode`: 移す段が 14 日を過ぎて残っている。3 の 4・5 を行う。
+- 警報 `EgressProxyReportMode`: 移す段が、入った日時（ConfigMap `egress-proxy-report-since`）から 14 日を過ぎて残っている。3 の 5・6 を行う。
+  日時が無い・形が違うときも鳴る（3 の 2 で書いていない）。そのときは 3 の 2 の手順で書く（移す段に入った実際の日時が分かれば、それを書く）。
 
 ## 5. 切り戻し
 

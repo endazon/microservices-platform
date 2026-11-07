@@ -5,7 +5,7 @@ status: done
 related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0704, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700]
 author: claude
 created: 2026-11-07
-updated: 2026-11-08
+updated: 2026-11-07
 related_specs:
   - 20261107_cloud-infra-pod-hardening.md
   - 20261107_cloud-openbao-tls.md
@@ -82,7 +82,7 @@ IADR-0704 の決定 1〜5 のとおり。
   `cloud-eso-namespace-runbook.md`（名前空間のラベルと到達の制限）、`cloud-apiserver-audit-log-runbook.md`（稼働中のノードへ監査を足す）。
 - heartbeat の宛先の名前を ConfigMap `egress-proxy-extra-hosts` に書く（設定に無い宛先）。
 
-## ［2026-11-08 追記］状態と、レビューの後の変更
+## ［2026-11-07 追記］状態と、レビューの後の変更
 
 - 状態を `done` にした（リポジトリの中の実装・試験・手順書は揃った。クラスタでしか確かめられないことは IADR-0704 残余 4・5 に残し、移行の門で確かめる）。
 - 改番: 仮の IADR-0703 を IADR-0704 にした（IADR-0703 は先にマージされた MSP#2508 が確保した。番号は develop の最大＋1）。本文の「IADR-0703」の記述は改番の前のもの。

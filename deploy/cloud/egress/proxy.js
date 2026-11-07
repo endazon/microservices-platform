@@ -13,6 +13,9 @@
  *       3. バックアップの保管先（ConfigMap platform-backup-s3-target の endpoint の URL の名前。無くてもよい）
  *     最後に読んでから 30 秒を過ぎた後の最初の要求で読み直す（ConfigMap の差し替えで Pod を作り直さなくてよい。届くまでの kubelet の同期の間は別）。
  *   - 段（EGRESS_PROXY_MODE）: enforce は表に無い宛先を 403。report は通して `report:` の行を出す（移す間だけ。手順書）。
+ *   - report の段に入った日時（ConfigMap egress-proxy-report-since の since。移す段を当てる前にオーナーが書く。RFC 3339 の UTC）を
+ *     egress_proxy_report_since_timestamp_seconds に出す（report の段のときだけ）。Prometheus も中継も、再起動で数え直さないため（警報
+ *     EgressProxyReportMode は「今 − この日時」で 14 日を見る）。無い・読めない・1 日より先の日時なら 0 を出す（＝とうに過ぎた扱いで鳴る側）。
  *   - どちらの段でも、名前を引いた先が私設・ループバック・リンクローカル・CGNAT の範囲なら 403（クラスタの中へ回り込ませない）。
  *   - ログに出すのは判定・宛先の名前・ポートだけ（中身・要求の頭は出さない）。/metrics は判定ごとの件数（別のポート）。
  *
@@ -83,6 +86,16 @@ function decide(target, allowSet, mode) {
   return { decision: 'deny', reason: '許可表に無い' };
 }
 
+/** report の段に入った日時（UNIX 秒）。無い・形が違う・1 日より先の日時は 0（警報が鳴る側へ倒す）。 */
+function readReportSince(file, now = Date.now()) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf8').trim(); } catch { return 0; }
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(text)) return 0;
+  const t = Date.parse(text);
+  if (!Number.isFinite(t) || t > now + 86400 * 1000) return 0;
+  return Math.floor(t / 1000);
+}
+
 function readAllowFiles(files) {
   const out = new Set();
   for (const { path: p, kind } of files) {
@@ -100,6 +113,7 @@ function readAllowFiles(files) {
  *   lookup: (host) => Promise<string[]>（名前を引く。既定は dns.promises.lookup の全件）
  *   connect: (address, port) => net.Socket（外へ繋ぐ。既定は net.connect）
  *   log: (line) => void
+ *   reportSince: () => number（report の段に入った日時。UNIX 秒。既定は 0＝無い）
  *   connectTimeoutMs: 番地ごとに繋がるのを待つ上限（既定 10 秒。過ぎたら次の番地へ）
  */
 function createProxy(opts) {
@@ -107,6 +121,7 @@ function createProxy(opts) {
   const lookup = opts.lookup || (async (h) => (await dns.promises.lookup(h, { all: true, verbatim: true })).map((x) => x.address));
   const connect = opts.connect || ((address, port) => net.connect({ host: address, port }));
   const log = opts.log || ((l) => console.log(l));
+  const reportSince = opts.reportSince || (() => 0);
   const connectTimeoutMs = opts.connectTimeoutMs || 10 * 1000;
   const counts = { allow: 0, report: 0, deny: 0 };
   const server = http.createServer((req, res) => {
@@ -178,6 +193,12 @@ function createProxy(opts) {
     '# HELP egress_proxy_enforcing 段が enforce なら 1、report なら 0。',
     '# TYPE egress_proxy_enforcing gauge',
     `egress_proxy_enforcing ${mode === 'enforce' ? 1 : 0}`,
+    // report の段のときだけ出す（enforce では要らない）。読むたびにファイルを読む（ConfigMap を書き直せば次の収集で効く）
+    ...(mode === 'report' ? [
+      '# HELP egress_proxy_report_since_timestamp_seconds report の段に入った日時（UNIX 秒。ConfigMap egress-proxy-report-since。無い・読めなければ 0）。',
+      '# TYPE egress_proxy_report_since_timestamp_seconds gauge',
+      `egress_proxy_report_since_timestamp_seconds ${reportSince()}`,
+    ] : []),
     '',
   ].join('\n');
   return { server, counts, metrics, mode };
@@ -196,8 +217,10 @@ function main(env = process.env) {
   }
   let allow = readAllowFiles(files);
   let readAt = Date.now();
+  const sinceFile = env.EGRESS_PROXY_REPORT_SINCE || '/etc/egress-proxy/report-since/since';
   const p = createProxy({
     mode,
+    reportSince: () => readReportSince(sinceFile),
     allow: () => {
       if (Date.now() - readAt > 30000) { allow = readAllowFiles(files); readAt = Date.now(); }
       return allow;
@@ -212,5 +235,5 @@ function main(env = process.env) {
   }).listen(Number(env.EGRESS_PROXY_METRICS_PORT || 9464));
 }
 
-module.exports = { parseHosts, hostOfEndpoint, isPrivateAddress, parseTarget, decide, readAllowFiles, createProxy };
+module.exports = { parseHosts, hostOfEndpoint, isPrivateAddress, parseTarget, decide, readAllowFiles, readReportSince, createProxy };
 if (require.main === module) main();

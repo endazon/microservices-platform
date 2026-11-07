@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-18, NFR-16, NFR-21, NFR-05, IADR-0674, IADR-0675, IADR-0689, IADR-0693, IADR-0696, IADR-0697, IADR-0700, IADR-0703]
 author: claude
 created: 2026-11-07
-updated: 2026-11-08
+updated: 2026-11-07
 related_specs:
   - ../specs/20261107_cloud-egress-audit-cert-expiry.md
 ---
@@ -50,6 +50,11 @@ related_specs:
   外し、中継の 3128 だけを許す。`ipBlock` で外の範囲を名指す出は中継の Pod だけが持つ（試験が描画で固定する。宛先を問わないポートだけの出は残余 5）。
 - 段: 最終の段（`deploy/cloud`）は enforce。稼働中の構成へ入れる間は重ね `deploy/cloud-transition/egress-proxy-report`（中継は report・3 つの直の 443 を戻す）を経る。
   report の行で表の不足を埋めてから最終の段を当てる。重ねが 14 日を過ぎて残れば警報 `EgressProxyReportMode`、enforce で拒めば `EgressProxyDenied`。
+- ［2026-11-07 追記］`EgressProxyReportMode` は `for: 14d` で数えない。Prometheus（emptyDir・保持 7 日）か中継が 14 日の間に再起動すると数え直しになり、
+  移す段が残ったまま鳴らない。report の段に入った日時をオーナーが ConfigMap `egress-proxy-report-since`（宣言の外。在れば書き直さない）に書き、
+  中継が report の段のときだけ `egress_proxy_report_since_timestamp_seconds` に出す。式は「enforce でない かつ（今 − 日時 > 14 日 か、日時の系列が無い）」、
+  `for: 1h`。日時が無い・形が違う・1 日より先なら中継は 0 を出す（鳴る側）。`promtool test rules` で、14 日を越える／越えない／日時が無い／enforce／
+  Prometheus の再起動の後、を固定する（前の形へ戻すと赤）。
 
 採った理由: NetworkPolicy は名前を名指せない。中継の 1 か所に宛先の名前を集めれば、持ち出しの宛先が表に閉じ、表の外への試みが記録と警報になる。
 中継は既存のイメージと標準ライブラリだけで書けるので、新しい外部のイメージ（digest の固定・脆弱性の追随）を増やさない。
@@ -71,7 +76,7 @@ OpenBao の出（API サーバーの TokenReview。443・6443 のポートだけ
   取れないことを確かめる → env を外して作り直す → 在らないことを確かめる）。閉じる段は始めに env と一時管理者の有無を読み、在る分だけ消すので、
   途中で落ちても流し直せる（一時管理者が既に無いことでは止まらず、有無を確かめられないときだけ止まる）。`check` は閉じ忘れを 3、確かめられないことを 1 で知らせる。
 - master realm の総当たりの検知は platform realm の宣言と同じ値（試験が突き合わせる）。
-- ［2026-11-08 追記］`keycloak-admin.sh` は、ほかのオーナーの手順と同じく `deploy/cloud/lib/target-cluster.sh`（IADR-0703 決定 2）で宛先のクラスタを確かめてから
+- ［2026-11-07 追記］`keycloak-admin.sh` は、ほかのオーナーの手順と同じく `deploy/cloud/lib/target-cluster.sh`（IADR-0703 決定 2）で宛先のクラスタを確かめてから
   kubectl を使い、以後は確かめた context に固定する（`cluster-target.test.sh` の入口に足した）。
 - 管理の面へ届く Pod の範囲（取引ユニットの 11 の Pod・LLM ゲートウェイ）は変えない。管理者が在らない間は、届いても認証が通る資格が無い。
 

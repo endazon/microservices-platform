@@ -241,13 +241,15 @@ data:
             annotations:
               summary: "外向きの中継が宛先を拒んだ（直近 15 分に {{ $value }} 件）"
               description: "kubectl -n platform-infra logs deploy/egress-proxy | grep deny: で宛先を読む。要る宛先なら手順書（cloud-egress-proxy-runbook）で許可表へ足す。要らない宛先なら呼び手を調べる。"
+          # 14 日は report の段に入った日時（中継が ConfigMap egress-proxy-report-since から出す）から数える。for で数えると、Prometheus
+          # （emptyDir・保持 7 日）か中継の再起動で数え直しになり、鳴らないまま残りうる。日時が無い・読めない（0・系列が無い）ときも鳴る。
           - alert: EgressProxyReportMode
-            expr: max(egress_proxy_enforcing) == 0
-            for: 14d
+            expr: max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400 or on() absent(egress_proxy_report_since_timestamp_seconds))
+            for: 1h
             labels: { severity: warning }
             annotations:
-              summary: "外向きの中継が report の段のまま 14 日を過ぎた"
-              description: "移す間の段（deploy/cloud-transition/egress-proxy-report）が残っている。report の行を読み、許可表を埋めて deploy/cloud を当てる。"
+              summary: "外向きの中継が report の段のまま 14 日を過ぎた（か、report の段に入った日時が無い）"
+              description: "移す間の段（deploy/cloud-transition/egress-proxy-report）が残っている。report の行を読み、許可表を埋めて deploy/cloud を当てる。日時が無いときは ConfigMap platform-infra/egress-proxy-report-since の since を確かめる（手順書 cloud-egress-proxy-runbook）。"
           - alert: EgressProxyDown
             expr: absent(up{job="egress-proxy"} == 1)
             for: 10m

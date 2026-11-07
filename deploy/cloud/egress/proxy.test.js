@@ -9,6 +9,7 @@
  *   E3 どちらの段でも、引いた先が私設・ループバック・リンクローカル・CGNAT の範囲なら拒む（クラスタの中へ回り込ませない）。
  *   E4 許可表は宣言・オーナーの表・バックアップの endpoint の和で、不正な行・https でない endpoint は入れない。
  *   E5 件数（/metrics）は判定ごとに数え、段を出す。
+ *   E7 report の段に入った日時（ConfigMap egress-proxy-report-since）を読み、report の段だけ計器に出す。無い・形が違う・先の日時は 0。
  *   E6 引いた番地を順に試す（1 件目が繋がらない・応答しないとき 2 件目へ。全部だめなら 502）。名前を引く間に閉じたクライアントのためには繋がない。
  */
 const assert = require('assert');
@@ -197,6 +198,29 @@ ok('E6 引いた番地を順に試す: 1 件目が拒む・応答しないとき
     await new Promise((r) => setTimeout(r, 400));
     assert.deepStrictEqual(tried, [], '閉じたクライアントのために外へ繋いだ');
   }, { lookupDelayMs: 200 });
+});
+
+ok('E7 report の段に入った日時: RFC 3339 の UTC を読んで report の段だけ出す。無い・形が違う・先の日時は 0（警報が鳴る側）', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-since-'));
+  try {
+    const f = path.join(d, 'since');
+    const now = Date.parse('2026-11-08T00:00:00Z');
+    fs.writeFileSync(f, '2026-11-01T09:30:00Z\n');
+    assert.strictEqual(p.readReportSince(f, now), Date.parse('2026-11-01T09:30:00Z') / 1000);
+    assert.strictEqual(p.readReportSince(path.join(d, 'none'), now), 0, '無いのに 0 でない');
+    for (const bad of ['', 'yesterday', '2026-11-01', '2026-11-01T09:30:00+09:00', '1730000000']) {
+      fs.writeFileSync(f, bad);
+      assert.strictEqual(p.readReportSince(f, now), 0, `形の違う ${JSON.stringify(bad)} を読んだ`);
+    }
+    fs.writeFileSync(f, '2026-11-10T00:00:00Z');
+    assert.strictEqual(p.readReportSince(f, now), 0, '先の日時を読んだ（警報を先へ延ばせる）');
+    const rep = p.createProxy({ mode: 'report', allow: () => new Set(), reportSince: () => 1730000000, log: () => {} }).metrics();
+    assert.match(rep, /^egress_proxy_report_since_timestamp_seconds 1730000000$/m);
+    const missing = p.createProxy({ mode: 'report', allow: () => new Set(), log: () => {} }).metrics();
+    assert.match(missing, /^egress_proxy_report_since_timestamp_seconds 0$/m, '日時の関数が無いとき 0 を出さない');
+    const enf = p.createProxy({ mode: 'enforce', allow: () => new Set(), reportSince: () => 1730000000, log: () => {} }).metrics();
+    assert.ok(!/egress_proxy_report_since_timestamp_seconds/.test(enf), 'enforce の段で日時を出した');
+  } finally { fs.rmSync(d, { recursive: true, force: true }); }
 });
 
 ok('陰性対照: 判定の関数は、表を空にすると enforce で通さず、report で通す（判定が空回りしていない）', () => {

@@ -73,6 +73,7 @@ spec:
             - { name: hosts, mountPath: /etc/egress-proxy/hosts, readOnly: true }
             - { name: extra, mountPath: /etc/egress-proxy/extra, readOnly: true }
             - { name: backup, mountPath: /etc/egress-proxy/backup, readOnly: true }
+            - { name: report-since, mountPath: /etc/egress-proxy/report-since, readOnly: true }
           resources:
             requests: { cpu: 10m, memory: 32Mi }
             limits: { cpu: 300m, memory: 128Mi }
@@ -87,6 +88,10 @@ spec:
         # バックアップの保管先（運用手順書の準備でオーナーが作る ConfigMap）。endpoint だけを読む（バケットの名前は読まない）。
         - name: backup
           configMap: { name: platform-backup-s3-target, optional: true, items: [{ key: endpoint, path: endpoint }] }
+        # report の段に入った日時（移す段を当てる前にオーナーが作る。kustomize の外。当て直しで日時が書き換わらないように）。
+        # 中継は report の段のときだけ読んで計器に出す。無ければ 0（警報 EgressProxyReportMode が鳴る側）。IADR-0704 決定 1。
+        - name: report-since
+          configMap: { name: egress-proxy-report-since, optional: true, items: [{ key: since, path: since }] }
 ---
 apiVersion: v1
 kind: Service

@@ -320,21 +320,62 @@ function certAlertProblems(cloudDocs, esoText, tlsCertSh) {
   return out;
 }
 
+/** 単体試験に渡す規則のファイルを書く（注釈は $value の文字で揺れるので照合から外す。cloud-ops.test.js と同じ扱い）。 */
+function writeRulesWithoutAnnotations(rulesText, file) {
+  const lines = rulesText.split('\n');
+  const kept = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = /^(\s*)annotations:\s*$/.exec(lines[i]);
+    if (!m) { kept.push(lines[i]); continue; }
+    while (i + 1 < lines.length && (lines[i + 1].trim() === '' || /^\s*/.exec(lines[i + 1])[0].length > m[1].length)) i += 1;
+  }
+  fs.writeFileSync(file, kept.join('\n'));
+}
+
+const REPORT_MODE_EXPR = 'max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400 or on() absent(egress_proxy_report_since_timestamp_seconds))';
+
+/**
+ * promtool の単体試験: EgressProxyReportMode は report の段に入った日時から 14 日で鳴る。Prometheus の再起動（系列の途切れ）の後でも鳴る。
+ * 日時が無ければ鳴る。enforce なら鳴らない。戻り値は promtool の結果（陰性対照で、変えた規則を渡す）。
+ */
+function promtoolReportModeRun(rulesText) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-report-alerts-'));
+  try {
+    const rf = path.join(dir, 'rules.yml');
+    writeRulesWithoutAnnotations(rulesText, rf);
+    const day = 86400;
+    const at = 2 * 3600; // 評価の時刻（試験の始まりを 0 とする time()）
+    const group = (series, evalTime, exp) => `  - interval: 1m\n    input_series:\n${series.map(([n, v]) => `      - series: '${n}'\n        values: '${v}'\n`).join('')}`
+      + `    alert_rule_test:\n      - eval_time: ${evalTime}\n        alertname: EgressProxyReportMode\n        exp_alerts:${exp ? '\n          - exp_labels: { severity: warning }\n' : ' []\n'}`;
+    const tests = [
+      // 14 日を越えた
+      group([['egress_proxy_enforcing', '0x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 15 * day}x150`]], '2h', true),
+      // 14 日を越えていない
+      group([['egress_proxy_enforcing', '0x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 13 * day}x150`]], '2h', false),
+      // 日時が無い（系列が無い）
+      group([['egress_proxy_enforcing', '0x150']], '2h', true),
+      // enforce の段なら、古い日時が残っていても鳴らない
+      group([['egress_proxy_enforcing', '1x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 30 * day}x150`]], '2h', false),
+      // Prometheus の再起動（80 分より前の系列が無い）の後でも、日時から数えるので 1 時間で鳴る
+      group([['egress_proxy_enforcing', '_x80 0x70'], ['egress_proxy_report_since_timestamp_seconds', `_x80 ${150 * 60 - 20 * day}x70`]], '150m', true),
+    ];
+    const tf = path.join(dir, 'test.yml');
+    fs.writeFileSync(tf, `rule_files:\n  - ${rf}\nevaluation_interval: 1m\ntests:\n${tests.join('')}`);
+    const r = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
+    if (r.error) throw new Error('promtool が PATH に無い');
+    return r;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 /** promtool の単体試験: 期限の警報が残り 150 日・30 日の境で鳴る・鳴らない、OpenBao の受け口の導出、測りの不在。 */
 function promtoolCertAlertTest(cloudDocs) {
   const { rulesText } = PLATFORM_RULES(cloudDocs);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cert-alerts-'));
   try {
     const rf = path.join(dir, 'rules.yml');
-    // 注釈は $value の文字で揺れるので、単体試験の照合から外す（cloud-ops.test.js と同じ扱い）。
-    const lines = rulesText.split('\n');
-    const kept = [];
-    for (let i = 0; i < lines.length; i += 1) {
-      const m = /^(\s*)annotations:\s*$/.exec(lines[i]);
-      if (!m) { kept.push(lines[i]); continue; }
-      while (i + 1 < lines.length && (lines[i + 1].trim() === '' || /^\s*/.exec(lines[i + 1])[0].length > m[1].length)) i += 1;
-    }
-    fs.writeFileSync(rf, kept.join('\n'));
+    writeRulesWithoutAnnotations(rulesText, rf);
     const day = 86400;
     // 評価の時刻（time()）は試験の始まりからの秒。始まりを 0 として、2h の評価の時点で残りを決める。
     const at = 2 * 3600;
@@ -481,6 +522,24 @@ if (require.main === module) {
     assert.ok(proxyProblems(bad, { mode: 'enforce' }).some((p) => /送り元が 3 つの呼び手だけでない/.test(p)), '陰性対照: 送り元の追加を検出しない');
   });
   ok('E5: 中継の手順の試験', () => child('deploy/cloud/egress/proxy.test.js'));
+  ok('E6: report の段の警報は入った日時から 14 日で鳴る（Prometheus・中継の再起動で数え直さない。日時が無ければ鳴る。promtool の単体試験）', () => {
+    const { rulesText } = PLATFORM_RULES(cloud);
+    assert.strictEqual(rulesText.split(REPORT_MODE_EXPR).length, 2, '陽性対照: EgressProxyReportMode の式が想定の形でない');
+    const good = promtoolReportModeRun(rulesText);
+    assert.strictEqual(good.status, 0, good.stdout + good.stderr);
+    // 陰性対照 1: 前の形（for: 14d で数える）へ戻すと、14 日を越えた・再起動の後・日時が無いの 3 つで鳴らずに赤
+    const old = rulesText.replace(REPORT_MODE_EXPR, 'max(egress_proxy_enforcing) == 0').replace(/(alert: EgressProxyReportMode\n\s+expr: [^\n]+\n\s+)for: 1h/, '$1for: 14d');
+    assert.notStrictEqual(old, rulesText);
+    assert.notStrictEqual(promtoolReportModeRun(old).status, 0, '前の形（for: 14d）でも通る（試験が数え方を見分けていない）');
+    // 陰性対照 2: 日時が無いときの枝（absent）を外すと、日時が無い場合で鳴らずに赤
+    const noAbsent = rulesText.replace(REPORT_MODE_EXPR, 'max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400)');
+    assert.notStrictEqual(promtoolReportModeRun(noAbsent).status, 0, '日時が無いときに鳴らない形でも通る');
+    // 中継は日時を ConfigMap egress-proxy-report-since（optional・kustomize の外）から読む
+    const vols = find(cloud, 'Deployment', 'egress-proxy', 'platform-infra').spec.template.spec.volumes;
+    const v = vols.find((x) => x.configMap && x.configMap.name === 'egress-proxy-report-since');
+    assert.ok(v && String(v.configMap.optional) === 'true' && JSON.stringify(v.configMap.items) === JSON.stringify([{ key: 'since', path: 'since' }]), '中継が report の段の日時を optional の ConfigMap から読まない');
+    assert.ok(!cloud.concat(report).some((d) => d.kind === 'ConfigMap' && d.metadata.name === 'egress-proxy-report-since'), '日時の ConfigMap を宣言に置いている（当て直しで日時が変わる）');
+  });
 
   ok('N1: external-secrets の名前空間は PSA restricted・既定で拒否・出は名前解決と OpenBao の 8443 と API サーバーのポートだけ・入りは webhook だけ', () => {
     assert.deepStrictEqual(esoNamespaceProblems(esoNs), []);

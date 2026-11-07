@@ -5,7 +5,7 @@
 #   - LLM ゲートウェイ・バックアップ・Alertmanager の、外の 443 への直の出を残す（*-egress-direct-https-transition）。中継を使う設定
 #     （HTTPS_PROXY・proxy_url）が当たる前の Pod と、切り戻した Pod が外へ届くように。
 # 🔴 report の行が出なくなり（許可表に足し終え）、3 つの Pod が中継を経ているのを確かめたら、deploy/cloud（最終の段）を当てて閉じる。
-#    この重ねは残さない（14 日を過ぎると警報 EgressProxyReportMode が出る）。重ねを当てても、作った 3 つの直の出は deploy/cloud を当てるだけでは
+#    この重ねは残さない（report の段に入った日時〔オーナーが当てる前に書く ConfigMap egress-proxy-report-since。宣言の外〕から 14 日を過ぎると警報 EgressProxyReportMode が出る）。重ねを当てても、作った 3 つの直の出は deploy/cloud を当てるだけでは
 #    消えない（kubectl apply は宣言から外した資源を消さない）ので、手順書の最後の段で名指しで消す。
 #    手順: docs/operations/cloud-egress-proxy-runbook.md
 apiVersion: kustomize.config.k8s.io/v1beta1

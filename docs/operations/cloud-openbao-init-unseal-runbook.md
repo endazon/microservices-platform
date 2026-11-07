@@ -4,7 +4,7 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-06
-updated: 2026-11-08
+updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
@@ -145,7 +145,7 @@ openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       #
 
 - 書けるのは `cloud/ast`・`cloud/platform`・`cloud/msp` の下だけ（`cloud/shared` は §4 の `seed-secrets.sh` が作る）。
 - **キーが在れば止まる**（終了コード 5。何も変えない）。作り直すときだけ `--overwrite` を付ける（同じパスのほかのキーは残す）。
-- ［2026-11-08 追記］🔴 **Keycloak の管理者の値（`cloud/platform/keycloak-admin` の `username`・`password`）を `--overwrite` で替える前に、
+- ［2026-11-07 追記］🔴 **Keycloak の管理者の値（`cloud/platform/keycloak-admin` の `username`・`password`）を `--overwrite` で替える前に、
   `bash deploy/cloud/keycloak-admin/keycloak-admin.sh --live close` を流して閉じた状態にする**（`… --live check` が 0 で終わることを確かめる）。
   一時管理者の有無はその資格でトークンを取れるかで読むので、値を替えた後に `check`・`close` を流すと、前の値で作られた一時管理者を「無い」と読み、
   消さずに残す（[一時管理者の手順書](cloud-keycloak-admin-runbook.md) §2）。閉じた状態なら master realm に一時管理者は在らず、替えた値は次の `open` で使われる。

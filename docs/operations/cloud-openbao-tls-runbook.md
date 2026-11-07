@@ -9,7 +9,7 @@ updated: 2026-11-07
 <!-- trace:
 ids: [NFR-16, NFR-05, NFR-18]
 iadrs: [IADR-0696, IADR-0689, IADR-0693, IADR-0682, IADR-0704]
-specs: [20261107_cloud-openbao-tls]
+specs: [20261107_cloud-openbao-tls, 20261107_cloud-egress-audit-cert-expiry]
 -->
 
 # 運用 Runbook: クラウドの秘匿管理（OpenBao）の受け口の TLS
