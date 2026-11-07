@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-21, NFR-05, IADR-0704 決定 1: オーナーの手元で使うバックアップの手順（s3-creds.sh・check-bucket.sh）を固定する。
+# NFR-21, NFR-05, IADR-0703 決定 1: オーナーの手元で使うバックアップの手順（s3-creds.sh・check-bucket.sh）を固定する。
 #
 #   bash deploy/cloud/backup/backup-owner-scripts.test.sh
 #

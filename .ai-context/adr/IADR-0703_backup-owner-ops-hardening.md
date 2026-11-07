@@ -1,5 +1,5 @@
 ---
-title: IADR-0704 クラウドのバックアップの鍵を管理と書き込みの 2 組に分け、保持の設定を外から確かめる。手元の S3 の鍵は age のファイルから 1 つのコマンドの環境にだけ渡す。オーナーの手順は宛先のクラスタ（トンネルと kube-system の UID）を確かめて context を固定し、平文の age の識別子を warn → enforce で扱う。ノードは kubeconfig と Pod のログも LUKS の領域へ寄せ、nftables の 2 枚目の防御（報告 → 落とす）と SSH の root の禁止を置く
+title: IADR-0703 クラウドのバックアップの鍵を管理と書き込みの 2 組に分け、保持の設定を外から確かめる。手元の S3 の鍵は age のファイルから 1 つのコマンドの環境にだけ渡す。オーナーの手順は宛先のクラスタ（トンネルと kube-system の UID）を確かめて context を固定し、平文の age の識別子を warn → enforce で扱う。ノードは kubeconfig と Pod のログも LUKS の領域へ寄せ、nftables の 2 枚目の防御（報告 → 落とす）と SSH の root の禁止を置く
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, NFR-05, NFR-21, IADR-0675, IADR-0682, IADR-0689, IADR-0674]
@@ -10,7 +10,7 @@ related_specs:
   - ../specs/20261107_backup-owner-ops-hardening.md
 ---
 
-# IADR-0704: バックアップとオーナーの運用の硬化（クラウドの最小構成）
+# IADR-0703: バックアップとオーナーの運用の硬化（クラウドの最小構成）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

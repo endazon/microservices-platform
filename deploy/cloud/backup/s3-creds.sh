@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-05, NFR-18, IADR-0704 決定 1（IADR-0682 の形）: オブジェクトストレージの S3 の鍵を、オーナーの手元で**平文のファイルにも
+# NFR-05, NFR-18, IADR-0703 決定 1（IADR-0682 の形）: オブジェクトストレージの S3 の鍵を、オーナーの手元で**平文のファイルにも
 # シェルの環境にも置かずに**使う。鍵は age で暗号化したファイルだけに持ち、使うときは 1 つのコマンドの環境にだけ載せる。
 #
 #   bash deploy/cloud/backup/s3-creds.sh store --recipients <age の受取人> --out <鍵>.age

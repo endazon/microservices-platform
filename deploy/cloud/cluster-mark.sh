@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, IADR-0704 決定 2: オーナーの手元に、クラウドのクラスタの印（名前空間 kube-system の UID）を記録する・確かめる。
+# NFR-18, IADR-0703 決定 2: オーナーの手元に、クラウドのクラスタの印（名前空間 kube-system の UID）を記録する・確かめる。
 #
 #   bash deploy/cloud/cluster-mark.sh --live record   # 初回（と、クラスタを作り直したとき）。印を CLOUD_CLUSTER_MARK_FILE へ書く（在れば止める）
 #   bash deploy/cloud/cluster-mark.sh --live check    # 今の context が、記録したクラウドのクラスタか（deploy/cloud の手順は流す前に同じ確かめをする）

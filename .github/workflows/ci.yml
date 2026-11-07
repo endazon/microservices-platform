@@ -128,7 +128,7 @@ jobs:
       - name: Test cloud OpenBao procedures (real OpenBao, kubectl stub)
         if: ${{ !cancelled() }}
         run: bash deploy/cloud/vault/openbao-scripts.test.sh
-      # NFR-18, NFR-05, NFR-21, IADR-0704: オーナーが手元とノードで流すクラウドの手順を固定する（既存ジョブへの段の追加・起動条件は不変）——
+      # NFR-18, NFR-05, NFR-21, IADR-0703: オーナーが手元とノードで流すクラウドの手順を固定する（既存ジョブへの段の追加・起動条件は不変）——
       #   宛先のクラスタの確かめと context の固定・平文の age の識別子の扱い（kubectl はスタブ）、手元の S3 の鍵の扱いとバケットの保持の確かめ
       #   （aws はスタブ・age は実物）、ノードの 2 枚目の防御（実物の nft を使い捨てのネットワークの名前空間へ当てる。root が要るので sudo）と確かめ。
       - name: Test cloud owner procedures (target cluster, S3 keys, node guard)
@@ -341,13 +341,16 @@ jobs:
       #    起票は週次の backlog-audit.yml が担い、ここでは 4 種・起票なしのまま。
       #    PLANNING_REPO_TOKEN が無ければ status: unverified・scanned: 0 になる —— それは
       #    「ずれが無い」ではなく「検査が動いていない」であり、出力の scanned で区別できる。
+      # 🔴 NFR(セキュリティ) / IADR-0701: トークンは develop / main への push のときだけ渡す。PR の CI では空にし、
+      #    突合は unverified（scanned: 0・exit 0）で通す。PR の時点のずれは push の CI と週次の backlog-audit.yml が拾う。
+      #    ステップとジョブは PR でも走らせる（必須チェックの名前と起動条件は変えない）。
       - name: Self-test planning ID range checker
         if: ${{ !cancelled() }}
         run: node scripts/check-planning-adr-range.js --self-test
       - name: Check planning ID range freshness
         if: ${{ !cancelled() }}
         env:
-          PLANNING_REPO_TOKEN: ${{ secrets.PLANNING_REPO_TOKEN }}
+          PLANNING_REPO_TOKEN: ${{ github.event_name == 'push' && secrets.PLANNING_REPO_TOKEN || '' }}
         run: node scripts/check-planning-adr-range.js --out "$RUNNER_TEMP/planning-id-range.json"
 
       # NFR, Issue #956, IADR-0247: 追跡下ファイルへの生の NUL バイト混入を検査する。
@@ -1145,8 +1148,9 @@ jobs:
       #
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする。着手前の実測では
       # setup-dotnet が本リポジトリで 8 箇所使われて 1 つも cache: を設定しておらず、毎 run
-      # 全パッケージを取り直していた。packages.lock.json を持たないため setup-dotnet の
-      # cache: true は使えない（ロックファイルのハッシュをキーにする実装のため）。
+      # 全パッケージを取り直していた。当時は packages.lock.json を持たなかったため setup-dotnet の
+      # cache: true は使えなかった（ロックファイルのハッシュをキーにする実装のため）。lock ファイルを入れた後も
+      # （IADR-0701）キーと保存の分担は従来のまま変えていない。
       #
       # 🔴 NFR, #1686（2026-10-02 再裁定）: シャードの脚は**復元だけ**する（actions/cache/restore）。脚は閉包の
       # パッケージしか restore しないので、同じキーで保存すると「キーは当たるのに中身が足りない」キャッシュを
@@ -1216,7 +1220,7 @@ jobs:
             cat "$target"
             echo "::endgroup::"
           fi
-          dotnet restore "$target"
+          dotnet restore "$target" --locked-mode
           dotnet build "$target" --no-restore --configuration Release -p:ShouldUnsetParentConfigurationAndPlatform=false
           dotnet test "$target" --no-build --configuration Release \
             --filter "Category!=Integration" \
@@ -1273,7 +1277,19 @@ jobs:
         run: |
           set -euo pipefail
           slnx="src/${UNIT}/backend/backend.slnx"
-          dotnet restore "$slnx"
+          dotnet restore "$slnx" --locked-mode
+          # NFR(セキュリティ) / IADR-0701: locked mode は lock ファイルの無いプロジェクトでは落ちずに新しく作る（実測）。
+          # restore の後に lock ファイルが新しく出来た・書き換わったなら、コミット漏れとして落とす。
+          # 対象は本リポジトリの実体のユニットだけ。submodule のユニット（.gitmodules から導く）は外す（submodule の lock は
+          # その側が決める）。ユニット名はここへ書かない（上の決定 2。ユニットが増えても静かに外れない）。
+          excl=()
+          while read -r _ sub; do excl+=(":(exclude)${sub}"); done < <(git config --file .gitmodules --get-regexp '^submodule\..*\.path$' || true)
+          drift="$(git status --porcelain --untracked-files=all -- ':(glob)src/*/backend/**/packages.lock.json' "${excl[@]}")"
+          if [ -n "$drift" ]; then
+            echo "::error::packages.lock.json がコミットされていないか、restore で書き換わった。dotnet restore ${slnx} を流して差分をコミットすること。"
+            echo "$drift"
+            exit 1
+          fi
           dotnet build "$slnx" --no-restore --configuration Release
 
   # ───────────────────────────────────────────────────────────────────────────────
@@ -1414,7 +1430,7 @@ jobs:
             echo "::notice::${slnx} が無い（バックエンドを持たないユニット）。ビルドするものが無い。"
             exit 0
           fi
-          dotnet restore "$slnx"
+          dotnet restore "$slnx" --locked-mode
           dotnet build "$slnx" --no-restore --configuration Release
           dotnet test "$slnx" --no-build --configuration Release \
             --filter "Category!=Integration" \

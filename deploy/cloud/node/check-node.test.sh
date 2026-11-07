@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, IADR-0704 決定 4: ノードの 2 枚目の防御（node-guard.nft・node-guard-enforce.nft）と、ノードの確かめ（check-node.sh）を固定する。
+# NFR-18, IADR-0703 決定 4: ノードの 2 枚目の防御（node-guard.nft・node-guard-enforce.nft）と、ノードの確かめ（check-node.sh）を固定する。
 #
 #   sudo bash deploy/cloud/node/check-node.test.sh
 #

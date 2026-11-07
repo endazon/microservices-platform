@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-21, NFR-05, IADR-0704 決定 1: バックアップのバケットの保持の設定を、クラスタの外（オーナーの手元）から確かめる。
+# NFR-21, NFR-05, IADR-0703 決定 1: バックアップのバケットの保持の設定を、クラスタの外（オーナーの手元）から確かめる。
 # 鍵は s3-creds.sh run が渡す（このスクリプトは鍵を読まない・表示しない）。
 #
 #   bash deploy/cloud/backup/s3-creds.sh run --creds <管理の鍵>.age --identity <識別子> --endpoint <EP> -- \

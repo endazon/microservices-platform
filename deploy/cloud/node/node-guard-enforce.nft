@@ -1,5 +1,5 @@
 #!/usr/sbin/nft -f
-# NFR-18, IADR-0704 決定 4: node-guard.nft の「報告」を「落とす」へ替える（node-guard.nft を当てた後に当てる）。
+# NFR-18, IADR-0703 決定 4: node-guard.nft の「報告」を「落とす」へ替える（node-guard.nft を当てた後に当てる）。
 # 戻すときは node-guard.nft を当て直す（報告へ戻る）か、`nft delete table inet node_guard`（2 枚目を外す）。
 flush chain inet node_guard guard_tail
 add rule inet node_guard guard_tail limit rate 10/minute log prefix "node-guard drop: " level info

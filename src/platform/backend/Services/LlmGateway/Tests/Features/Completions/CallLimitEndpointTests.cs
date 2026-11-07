@@ -283,6 +283,9 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
                 sent.Should().BeInRange(1, 49, "枠の中で送れ、やがて枠が埋まる");
             }
 
+            // 前のプロセスが置き場の lock を手放す（＝終わる）まで待つ。
+            await WaitUntilSpendStoreReleasedAsync(path);
+
             // 作り直したプロセス: 前回の消費を引き継ぐので、最初の 1 件から止まる。
             using (var restarted = Enforce(settings))
                 ShouldBeLimited(await PostAsync(As(restarted, "service-account-retrieval-service"), maxTokens: 10), "caller_cost");
@@ -296,6 +299,28 @@ public class CallLimitEndpointTests(TestWebApplicationFactory factory)
         finally
         {
             dir.Delete(recursive: true);
+        }
+    }
+
+    // NFR-18, IADR-0698, IADR-0702: 器（WebApplicationFactory）の Dispose が返った時点では、前のホストはまだ置き場の lock を持っている
+    // ことがある。ホストの破棄（DI の破棄＝FileLlmSpendStore.Dispose）は Program の `app.Run()` の側（RunAsync の finally）で、
+    // Dispose の呼び出しとは別のスレッドで後から走るためである。手放す前に次の器が読むと、判定器は正しく fail-closed（cost_state）
+    // になり、この試験の主題（前回の消費を引き継ぐ）を見られない。実際の配備で「前の Pod が終わってから次が読む」に当たる
+    // 待ちをここで明示する（lock を取れるまで待つ。取れたらすぐ放す）。待ちの上限を超えたら試験を赤にする。
+    private static async Task WaitUntilSpendStoreReleasedAsync(string path)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+        while (true)
+        {
+            try
+            {
+                using var probe = new FileStream(path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return;
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            }
         }
     }
 

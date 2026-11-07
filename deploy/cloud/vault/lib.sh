@@ -11,7 +11,7 @@
 
 OPENBAO_NS="${OPENBAO_NS:-openbao}"
 
-# NFR-18, IADR-0704 決定 2: 宛先のクラスタの確かめ（ct_require_target）。各手順が最初の kubectl より前に呼ぶ。
+# NFR-18, IADR-0703 決定 2: 宛先のクラスタの確かめ（ct_require_target）。各手順が最初の kubectl より前に呼ぶ。
 # shellcheck source=deploy/cloud/lib/target-cluster.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/target-cluster.sh"
 
@@ -40,7 +40,7 @@ ob_readable() {
   [ -n "$1" ] && [ -r "$1" ] || { echo "ERROR: ${2} を読めない: ${1:-（未指定）}" >&2; exit 2; }
 }
 
-# NFR-05, IADR-0704 決定 3: ob_identity_guard <age の識別子のファイル> —— 識別子が平文の秘密鍵のままか（中身は表示しない）。
+# NFR-05, IADR-0703 決定 3: ob_identity_guard <age の識別子のファイル> —— 識別子が平文の秘密鍵のままか（中身は表示しない）。
 #   unseal の鍵とオーナー用の資格は同じ識別子で開く（保持はオーナー。裁定どおり）。識別子そのものを、パスフレーズで暗号化した
 #   ファイル（`age -p` で包んだもの。復号のたびに尋ねられる）か、鍵の装置（age のプラグインの識別子）で守る。
 #   平文の識別子（age の秘密鍵の接頭辞で始まる行を持つファイル）は、OB_IDENTITY_POLICY が warn（既定）なら警告して進み、enforce なら止める。

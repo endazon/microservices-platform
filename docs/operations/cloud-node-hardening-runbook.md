@@ -8,7 +8,7 @@ updated: 2026-11-07
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0704, IADR-0674]
+iadrs: [IADR-0703, IADR-0674]
 specs: [20261107_backup-owner-ops-hardening]
 -->
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, NFR-05, IADR-0704 決定 4: クラウドのノードの防御の確かめ（オーナーがノードの上で root で流す。読むだけ・何も変えない）。
+# NFR-18, NFR-05, IADR-0703 決定 4: クラウドのノードの防御の確かめ（オーナーがノードの上で root で流す。読むだけ・何も変えない）。
 #
 #   sudo bash check-node.sh                    # 2 枚目の防御が「落とす」段であることまで求める
 #   sudo bash check-node.sh --expect report    # 段の途中（「報告」の段で数えている間）

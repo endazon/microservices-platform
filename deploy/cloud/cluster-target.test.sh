@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NFR-18, NFR-05, IADR-0704 決定 2・決定 3: オーナーが手元から流す deploy/cloud の手順が、宛先のクラスタを確かめてから kubectl を使い、
+# NFR-18, NFR-05, IADR-0703 決定 2・決定 3: オーナーが手元から流す deploy/cloud の手順が、宛先のクラスタを確かめてから kubectl を使い、
 # 確かめた context に固定すること（lib/target-cluster.sh・cluster-mark.sh）と、平文の age の識別子の扱い（vault/lib.sh の ob_identity_guard）を固定する。
 #
 #   bash deploy/cloud/cluster-target.test.sh

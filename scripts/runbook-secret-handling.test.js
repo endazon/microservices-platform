@@ -10,8 +10,8 @@
  *      コンテナの中の値の受け渡し（`export …="$VAULT_DEV_ROOT_TOKEN_ID"` のように変数だけを渡す形）は対象外。
  *   2. DB のダンプ・realm の書き出し・tar の退避を、平文のままファイルへ書かない（`| age -R …` へパイプで渡す）。
  *   3. Bearer トークンを curl の引数に載せない（`-H @<(printf …)` で渡す）。
- *   4. ［IADR-0704］平文の env ファイルを `set -a` の下で読み込まない（`set -a; . file`。鍵が平文のファイルと以後の全プロセスの環境に残る）。
- *   5. ［IADR-0704］手元のツールが読む S3 の鍵（`AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` / rclone の `RCLONE_CONFIG_<名前>_SECRET_ACCESS_KEY` など）は、
+ *   4. ［IADR-0703］平文の env ファイルを `set -a` の下で読み込まない（`set -a; . file`。鍵が平文のファイルと以後の全プロセスの環境に残る）。
+ *   5. ［IADR-0703］手元のツールが読む S3 の鍵（`AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` / rclone の `RCLONE_CONFIG_<名前>_SECRET_ACCESS_KEY` など）は、
  *      変数を渡す形でも `export` しない（deploy/cloud/backup/s3-creds.sh run が 1 つのコマンドの環境にだけ載せる）。
  *      行末の `\` で続く行は 1 行につないでから読む（複数行の export を見落とさない）。
  *   変異: 各規則は、直す前の字面（本変更で直した行）を必ず検出する（規則が空振りしない）。
@@ -43,7 +43,7 @@ function walk(dir, out = []) {
 const SECRETISH = /^(?:[A-Z0-9_]*_)?(?:[A-Z0-9]*(?:PASS|PASSWORD|SECRET|TOKEN|PHRASE|KEY))[A-Z0-9_]*$/;
 // パス・ファイル名を持つ変数（`*_FILE` / `*_PATH` / `*_DIR`）は値でない。
 const PATHISH = /_(FILE|PATH|DIR)$/;
-// IADR-0704: 手元のツールが環境から読む S3 の鍵（変数を渡す形でも export しない）。
+// IADR-0703: 手元のツールが環境から読む S3 の鍵（変数を渡す形でも export しない）。
 const HOST_S3_SECRET = /^(?:AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN|RCLONE_CONFIG_[A-Z0-9_]+_(?:SECRET_ACCESS_KEY|SESSION_TOKEN|PASS|PASSWORD|KEY))$/;
 
 /** 1 行の違反（無ければ空の配列）。 */
@@ -76,7 +76,7 @@ function codeLines(file) {
   const lines = fs.readFileSync(file, 'utf8').split('\n');
   const out = [];
   let inFence = false;
-  let cont = null; // 行末の \ で続く行（IADR-0704: 1 行につないで読む）
+  let cont = null; // 行末の \ で続く行（IADR-0703: 1 行につないで読む）
   lines.forEach((l, i) => {
     if (/^\s*(```|~~~)/.test(l)) { inFence = !inFence; cont = null; return; }
     if (inFence) {
@@ -118,7 +118,7 @@ ok('変異: 本変更で直した前の字面を、各規則が検出する（�
     'curl -sf -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients?clientId=$CLIENT"',
     '  -H "Authorization: Bearer $TOKEN" "$KC/admin/realms/platform/clients/$CID")"',
     '  -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath=\'{.data.password}\' | base64 -d)" | jq -r .access_token)',
-    // IADR-0704: クラウドのバックアップの手順書（§1・§6）の直す前の字面
+    // IADR-0703: クラウドのバックアップの手順書（§1・§6）の直す前の字面
     'set -a; . ~/.secrets/backup-s3.env; set +a',
     'export RCLONE_CONFIG_OBJSTORE_TYPE=s3 RCLONE_CONFIG_OBJSTORE_PROVIDER=Other RCLONE_CONFIG_OBJSTORE_ENDPOINT=https://fsn1.your-objectstorage.com RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"',
     'export AWS_SECRET_ACCESS_KEY="$S"',
@@ -139,7 +139,7 @@ ok('変異: 本変更で直した前の字面を、各規則が検出する（�
   for (const l of allowed) assert.deepStrictEqual(violations(l), [], `誤って検出する: ${l}`);
 });
 
-ok('IADR-0704: 行末の \\ で続く行は 1 行につないで読む（複数行の export を見落とさない）', () => {
+ok('IADR-0703: 行末の \\ で続く行は 1 行につないで読む（複数行の export を見落とさない）', () => {
   const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'rsh-'));
   const f = path.join(dir, 'x.md');
   fs.writeFileSync(f, ['```bash', 'export RCLONE_CONFIG_OBJSTORE_TYPE=s3 \\', '  RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY"', 'echo done', '```', ''].join('\n'));

@@ -57,6 +57,7 @@ issues: [#2413, #2410, #2402, #2148, #2361, #2178, #2334, #2335, #2336, #2143, #
 | トークンの audience の検証を入れる・401 が全経路で出た | §トークンの audience の検証の導入 |
 | キャッシュ・セッションストア（Valkey）のパスワードを回す・戻す／Argo CD の前提／到達の制限の確かめ方 | §キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し |
 | 経路B の Loki のログを読む・日付とサービスを指定してファイルへ保全する・保持と永続化を確かめる | [`loki-log-read-runbook.md`](loki-log-read-runbook.md) |
+| CI が計画リポジトリを読むトークンを作り直す・権限を読み取りだけ・期限つきに絞る | [`planning-repo-token-runbook.md`](planning-repo-token-runbook.md) |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---

@@ -51,7 +51,7 @@ chmod +x "$W/bin/bao"
 cat > "$W/bin/kubectl" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$KLOG"
-# IADR-0704 決定 2: 宛先のクラスタの確かめ（lib/target-cluster.sh）に答え、以後の呼び出しは確かめた context に固定されていることを求める。
+# IADR-0703 決定 2: 宛先のクラスタの確かめ（lib/target-cluster.sh）に答え、以後の呼び出しは確かめた context に固定されていることを求める。
 case "$*" in
   "config current-context") echo cloud-test; exit 0 ;;
   "config view --minify --context cloud-test -o jsonpath={.clusters[0].cluster.server}") echo "https://127.0.0.1:6443"; exit 0 ;;
@@ -100,7 +100,7 @@ esac
 EOF
 chmod +x "$W/bin/kubectl"
 export FAIL_DONE="$W/fail.done" KLOG="$W/kubectl.log" POD_HOME="$W/pod" CM_DIR="$W/cm" STUB_BIN="$W/bin" PATH="$W/bin:$PATH"
-# IADR-0704 決定 2: 手元に記録したクラスタの印（スタブが答える UID と同じ）。
+# IADR-0703 決定 2: 手元に記録したクラスタの印（スタブが答える UID と同じ）。
 export STUB_CLUSTER_UID="0b6c2f4e-1d3a-4c5b-9e8f-7a6b5c4d3e2f" CLOUD_CLUSTER_MARK_FILE="$W/cluster-mark"
 printf '%s\n' "$STUB_CLUSTER_UID" > "$CLOUD_CLUSTER_MARK_FILE"
 export TLS_DIR="$W/tls" K8S_NAMESPACES="openbao platform-infra microservices-platform ai-stock-trading"
