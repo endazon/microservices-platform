@@ -90,7 +90,7 @@ jobs:
       # 資産は Obsidian が読む 2 つだけである（styles.css は持たない。IADR-0338 決定 3）。
       # cli.mjs は実測・検証用のハーネスであって配布物ではないので**出さない**。
       - name: Create / update GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           name: Obsidian プラグイン ${{ inputs.tag || github.ref_name }}
