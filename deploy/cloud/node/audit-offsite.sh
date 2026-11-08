@@ -86,7 +86,9 @@ cmd_send() {
 cmd_verify() {
   local file="$1" kind path size sha f found bad=0 total=0
   [ -r "$file" ] || die2 "目録を読めない: $file"
-  head -n 1 "$file" | grep -q '^msp-audit-manifest v1 ' || die2 "目録の形が違う（1 行目が msp-audit-manifest v1 でない）: $file"
+  local first=""
+  IFS= read -r first < "$file" || true
+  [[ "$first" == "msp-audit-manifest v1 "* ]] || die2 "目録の形が違う（1 行目が msp-audit-manifest v1 でない）: $file"
   while read -r kind path size sha; do
     case "$kind" in apiserver | openbao) ;; *) continue ;; esac
     [[ "$size" =~ ^[0-9]+$ ]] && [[ "$sha" =~ ^[0-9a-f]{64}$ ]] || { echo "NG  形の違う行: $kind $path"; bad=1; continue; }
