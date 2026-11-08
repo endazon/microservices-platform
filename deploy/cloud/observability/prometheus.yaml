@@ -326,7 +326,7 @@ spec:
         seccompProfile: { type: RuntimeDefault }
       initContainers:
         - name: load-ast-rules
-          image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
+          image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
           command: ["/bin/sh", "/etc/prometheus/config/extract-ast-rules.sh"]
           securityContext:
             allowPrivilegeEscalation: false
@@ -345,7 +345,7 @@ spec:
             limits: { cpu: 200m, memory: 128Mi }
       containers:
         - name: prometheus
-          image: prom/prometheus:v2.52.0@sha256:5c435642ca4d8427ca26f4901c11114023004709037880cd7860d5b7176aa731
+          image: prom/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2
           args:
             - "--config.file=/etc/prometheus/config/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
