@@ -24,9 +24,15 @@ public sealed class QdrantGrpcReady : IWaitUntil
         => await ProbeAsync(container.Hostname, container.GetMappedPublicPort(GrpcPort));
 
     // 応答が返れば true。つながらない・途中で切られる・時間切れは false（例外を投げない —— 待機の再試行に任せる）。
-    public static async Task<bool> ProbeAsync(string host, int port)
+    // 🔴 「つながらない・途中で切られる」は Unavailable だけでなく Internal でも返る（Grpc.Net.Client が
+    // 内側に IOException を持たない接続の失敗を Internal に写すため。QdrantGrpcReadyTests の集合が正）。
+    // RpcException は状態を問わず false にする —— 状態で絞ると、時機で変わる側を準備完了と取り違える。
+    public static Task<bool> ProbeAsync(string host, int port) => ProbeAsync(new QdrantClient(host, port));
+
+    // 試験が接続の失敗の型を決定的に与えるための入口（client は受け取って破棄する）。
+    internal static async Task<bool> ProbeAsync(QdrantClient client)
     {
-        using var client = new QdrantClient(host, port);
+        using var _ = client;
         using var cts = new CancellationTokenSource(ProbeTimeout);
         try
         {
