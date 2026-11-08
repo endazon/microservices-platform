@@ -36,6 +36,30 @@ function run(cmd, args, opts = {}) {
   return r;
 }
 
+/**
+ * NFR-21: promtool（test rules・check rules）を走らせる。promtool の単体試験は評価のたびに一時の TSDB（WAL と head の chunk）を
+ * TMPDIR の下に書く。既定の /tmp を使うと、ほかの処理と同じ置き場の空きを取り合い、空きが尽きると評価の途中で書き込みに失敗する
+ * （「no space left on device」の行が並ぶか、強制終了で出力が空のまま 0 でない終了になる）。また、強制終了の後は一時の TSDB が /tmp に残る。
+ *   - 一時の置き場は呼び出しごとに砂場（sandbox）の下に作り、終われば消す（TMPDIR）。
+ *   - 戻り値の why は、終了のコード・シグナル・標準出力・標準エラーをまとめた説明（空の出力のまま落ちて理由が読めない、を防ぐ）。
+ *   - infra は、期待の照合の外の理由（置き場の書き込みの失敗・一時の置き場を開けない・シグナル）で落ちたか。陰性対照は infra でない
+ *     失敗（期待との食い違い）だけを「落ちた」と数える（置き場の失敗で陰性対照が黙って通らないように）。
+ */
+function promtool(args) {
+  const tmp = fs.mkdtempSync(path.join(sandbox, 'promtool-tmp-'));
+  try {
+    const r = run('promtool', args, { env: { ...process.env, TMPDIR: tmp } });
+    const out = `${r.stdout || ''}${r.stderr || ''}`;
+    r.infra = r.signal != null || /no space left on device|opening test storage|write to WAL|cannot allocate memory/i.test(out);
+    r.why = `promtool ${args.join(' ')}: 終了 ${r.status}${r.signal ? `（シグナル ${r.signal}）` : ''}${r.infra ? '・期待の照合の外の理由で落ちた（一時の置き場・シグナル）' : ''}\n${out.trim() ? out.split('\n').filter((l) => l.trim()).slice(0, 40).join('\n') : '（出力なし）'}`;
+    return r;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+/** 陰性対照: 期待との食い違いで落ちた（置き場の失敗・シグナルではない）。 */
+const failedOnExpectation = (r) => r.status === 1 && !r.infra && /FAILED:/.test(`${r.stdout}${r.stderr}`);
+
 function render(dir) {
   const r = run('kubectl', ['kustomize', dir]);
   if (r.status !== 0) throw new Error(`kubectl kustomize ${dir} が失敗した:\n${r.stderr}`);
@@ -783,8 +807,8 @@ t('T-2402-48 プラットフォームの規則と Prometheus の設定を promto
   assert.ok(/- alert: /.test(rules), 'プラットフォームの規則が空');
   const f = path.join(sandbox, 'platform-rules.yml');
   fs.writeFileSync(f, rules);
-  const r = run('promtool', ['check', 'rules', f]);
-  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const r = promtool(['check', 'rules', f]);
+  assert.strictEqual(r.status, 0, r.why);
 });
 // NFR-21, IADR-0692: クラウドの LLM 費用の月次予算の進みの警報。窓は保持（7 日）に合わせ、月次予算を 7/30 に按分して比べる。
 // IADR-0709 決定 5: 元の系列は collector が送り元の Pod から付けた印が LLM ゲートウェイのものだけ。
@@ -804,6 +828,26 @@ t('IADR-0692 LLM の月次予算の進みの警報が、ゲートウェイのゲ
   const args = ((((dep.obj || {}).spec || {}).template || {}).spec || {}).containers[0].args.join(' ');
   assert.match(args, /--storage\.tsdb\.retention\.time=7d/, '保持が 7 日でない（警報の窓と対で改める）');
 });
+t('promtool の呼び出し: 期待の照合の外の理由（置き場の空き・シグナル）で落ちた回を陰性対照の「落ちた」に数えず、理由を出す', () => {
+  const enospc = { status: 1, signal: null, stdout: 'Unit Testing:  x.yml\n', stderr: '  FAILED:\nwrite to WAL: log samples: write /tmp/test_storage1/wal/00000000: no space left on device\n', infra: true };
+  const killed = { status: null, signal: 'SIGKILL', stdout: '', stderr: '', infra: true };
+  const mismatch = { status: 1, signal: null, stdout: 'Unit Testing:  x.yml\n', stderr: '  FAILED:\n    alertname: A, time: 8d,\n        exp:[...]\n', infra: false };
+  assert.strictEqual(failedOnExpectation(mismatch), true, '期待との食い違いを落ちたと数えない');
+  assert.strictEqual(failedOnExpectation(enospc), false, '置き場の空きの不足を陰性対照の落ちたと数えた');
+  assert.strictEqual(failedOnExpectation(killed), false, 'シグナルでの終了を陰性対照の落ちたと数えた');
+  // 実物: 一時の置き場は砂場の下（TMPDIR）。終われば消え、/tmp の既定の置き場を使わない。
+  need('promtool');
+  const f = path.join(sandbox, 'tmpdir-probe-rules.yml');
+  fs.writeFileSync(f, 'groups:\n  - name: g\n    rules:\n      - alert: A\n        expr: vector(1)\n');
+  const tf = path.join(sandbox, 'tmpdir-probe.test.yml');
+  fs.writeFileSync(tf, `rule_files:\n  - ${f}\nevaluation_interval: 1m\ntests:\n  - interval: 1m\n    input_series: []\n    alert_rule_test:\n      - eval_time: 1m\n        alertname: A\n        exp_alerts:\n          - exp_labels: {}\n`);
+  const before = fs.readdirSync(sandbox).filter((x) => x.startsWith('promtool-tmp-')).length;
+  const r = promtool(['test', 'rules', tf]);
+  assert.strictEqual(r.status, 0, r.why);
+  assert.strictEqual(r.infra, false, r.why);
+  assert.strictEqual(fs.readdirSync(sandbox).filter((x) => x.startsWith('promtool-tmp-')).length, before, '一時の置き場が残った');
+  assert.match(r.why, /^promtool test rules .*: 終了 0/, '理由の説明に終了のコードが無い');
+});
 t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（按分を超えたら鳴り、下なら鳴らず、上限の無い用途は鳴らない）', () => {
   need('promtool');
   // 描いた規則の式と for をそのまま使う（注釈は $value の小数で揺れるので、単体試験の照合から外す）。
@@ -812,41 +856,44 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   const f = path.join(sandbox, 'llm-pace-rules.yml');
   fs.writeFileSync(f, `groups:\n  - name: llm-cost-budget\n    rules:\n      - alert: LlmMonthlyBudgetPaceExceeded\n        expr: ${JSON.stringify(r.expr)}\n        for: ${r.for}\n        labels: { severity: warning }\n`);
   const rulesFile = fs.readFileSync(f, 'utf8');
-  // 5 分ごとに 8 日分。trade-decision は月次 135 → 7 日の按分 31.5。5 分あたり 0.02 → 7 日で 40.32（超える）。
-  // report-daily は月次 30 → 按分 7。5 分あたり 0.0025 → 7 日で 5.04（超えない）。other はゲージが無い（鳴らない）。
+  // 1 時間ごとに 8 日分（193 点）。窓（7d）と按分は 5 分ごとと同じ値になる（費用は単調増加の counter なので、点の間隔は increase の値を変えない）。
+  //   点を 5 分ごと（2305 点 × 系列）にすると、評価のたびの一時の TSDB への書き込みと評価の時間が 12 倍になり、並べて流すと置き場の空きと
+  //   時間を取り合って落ちることがあった（作業仕様書 20261108_cloud-ops-promtool-flake）。
+  // trade-decision は月次 135 → 7 日の按分 31.5。1 時間あたり 0.24 → 7 日で 40.32（超える）。
+  // report-daily は月次 30 → 按分 7。1 時間あたり 0.03 → 7 日で 5.04（超えない）。other はゲージが無い（鳴らない）。
   const lab = (sender) => (sender ? `, ${sender}` : '');
-  const series = (purpose, step, sender = LLM_SENDER) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD"${lab(sender)}}'\n        values: '0+${step}x2304'\n`;
-  const gauge = (purpose, v, sender = LLM_SENDER) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD"${lab(sender)}}'\n        values: '${v}x2304'\n`;
+  const series = (purpose, step, sender = LLM_SENDER) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD"${lab(sender)}}'\n        values: '0+${step}x192'\n`;
+  const gauge = (purpose, v, sender = LLM_SENDER) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD"${lab(sender)}}'\n        values: '${v}x192'\n`;
   // IADR-0709 決定 5: 他の送り手（取引ユニットの Pod）が LLM ゲートウェイの名で書いた費用・上限の系列は式に入らない（report-daily を押し上げても鳴らない）。
   const forged = 'otlp_sender_namespace="ai-stock-trading", otlp_sender_app="report-service"';
-  const test = `rule_files:\n  - ${f}\nevaluation_interval: 5m\ntests:\n  - interval: 5m\n    input_series:\n`
-    + series('trade-decision', 0.02) + gauge('trade-decision', 135)
-    + series('report-daily', 0.0025) + gauge('report-daily', 30)
-    + series('report-daily', 1, forged) + gauge('report-daily', 1, forged)
-    + series('other', 1)
+  const test = `rule_files:\n  - ${f}\nevaluation_interval: 1h\ntests:\n  - interval: 1h\n    input_series:\n`
+    + series('trade-decision', 0.24) + gauge('trade-decision', 135)
+    + series('report-daily', 0.03) + gauge('report-daily', 30)
+    + series('report-daily', 12, forged) + gauge('report-daily', 1, forged)
+    + series('other', 12)
     // IADR-0709 決定 5: 印の無い系列（collector が送り元の Pod を引けない間）も式に入り、按分を超えれば鳴る（費用の上限の警報を黙らせない）。
-    + series('unverified', 0.02, '') + gauge('unverified', 135, '')
+    + series('unverified', 0.24, '') + gauge('unverified', 135, '')
     + `    alert_rule_test:\n      - eval_time: 8d\n        alertname: LlmMonthlyBudgetPaceExceeded\n        exp_alerts:\n          - exp_labels: { severity: warning, llm_purpose: trade-decision, llm_currency: USD }\n          - exp_labels: { severity: warning, llm_purpose: unverified, llm_currency: USD }\n`;
   const tf = path.join(sandbox, 'llm-pace.test.yml');
   fs.writeFileSync(tf, test);
-  const ok = run('promtool', ['test', 'rules', tf]);
-  assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+  const ok = promtool(['test', 'rules', tf]);
+  assert.strictEqual(ok.status, 0, ok.why);
   // 陰性対照: 期待を外すと promtool が落ちる（試験が空回りしていない）。
   fs.writeFileSync(tf, test.replace(/exp_alerts:\n[\s\S]*$/, 'exp_alerts: []\n'));
-  const ng = run('promtool', ['test', 'rules', tf]);
-  assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
+  const ng = promtool(['test', 'rules', tf]);
+  assert.ok(failedOnExpectation(ng), `鳴るはずの警報が鳴らなくても promtool が通る\n${ng.why}`);
   // 陰性対照（IADR-0709）: 送り元の印で絞らない式では、他の送り手が書いた report-daily の系列で鳴り、promtool が落ちる。
   fs.writeFileSync(tf, test);
   fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`{${LLM_SEL}}`).join('').split(`{${jsonInner(LLM_SEL)}}`).join(''));
   assert.ok(!fs.readFileSync(f, 'utf8').includes('otlp_sender_app'), '陰性対照の置換が効いていない');
-  const ng2 = run('promtool', ['test', 'rules', tf]);
-  assert.notStrictEqual(ng2.status, 0, '送り元の印で絞らなくても promtool が通る（他の送り手の系列を見分けていない）');
+  const ng2 = promtool(['test', 'rules', tf]);
+  assert.ok(failedOnExpectation(ng2), `送り元の印で絞らなくても promtool が通る（他の送り手の系列を見分けていない）\n${ng2.why}`);
   // 陰性対照（IADR-0709 決定 5）: 印の無い系列を外す形（印が LLM ゲートウェイのものだけ）では、印の無い系列の群で鳴らず、promtool が落ちる。
   const strict = rulesFile.split(LLM_SEL).join(LLM_SENDER).split(jsonInner(LLM_SEL)).join(jsonInner(LLM_SENDER));
   assert.notStrictEqual(strict, rulesFile, '陰性対照の置換元が無い');
   fs.writeFileSync(f, strict);
-  const ng3 = run('promtool', ['test', 'rules', tf]);
-  assert.notStrictEqual(ng3.status, 0, '印の無い系列を外しても promtool が通る（印が付かない間に費用の警報が黙る形を見分けていない）');
+  const ng3 = promtool(['test', 'rules', tf]);
+  assert.ok(failedOnExpectation(ng3), `印の無い系列を外しても promtool が通る（印が付かない間に費用の警報が黙る形を見分けていない）\n${ng3.why}`);
 });
 // NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動の繰り返しと、当日の費用の枠の置き場の障害の警報。
 const LLM_RESTART_EXPR = `changes(max(llm_gateway_start_time_seconds{${LLM_SEL}})[30m:1m]) >= 3`;
@@ -900,26 +947,26 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
     + `      - eval_time: 30m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`;
   const tf = path.join(sandbox, 'llm-gateway-state.test.yml');
   fs.writeFileSync(tf, test);
-  const ok = run('promtool', ['test', 'rules', tf]);
-  assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+  const ok = promtool(['test', 'rules', tf]);
+  assert.strictEqual(ok.status, 0, ok.why);
   // 陰性対照: 閾値を 1 つ下げた式（2 回の再起動で鳴る）では、2 回の群が落ちる（試験が閾値を見ている）。
   const rulesText = fs.readFileSync(f, 'utf8');
   fs.writeFileSync(f, rulesText.replace('>= 3', '>= 2'));
-  const ng = run('promtool', ['test', 'rules', tf]);
-  assert.notStrictEqual(ng.status, 0, '閾値を下げても promtool が通る');
+  const ng = promtool(['test', 'rules', tf]);
+  assert.ok(failedOnExpectation(ng), `閾値を下げても promtool が通る\n${ng.why}`);
   // 陰性対照: 初回を拾う右の項を外した式（increase だけ）では、最初の 1 件の群が落ちる。
   const increaseOnly = jsonInner(`sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SEL}}[10m])) > 0`);
   const swapped = rulesText.replace(JSON.stringify(ruleOf('LlmCostStateUnavailable').expr).slice(1, -1), increaseOnly);
   assert.notStrictEqual(swapped, rulesText, '陰性対照の置換元が無い');
   fs.writeFileSync(f, swapped);
-  const ng2 = run('promtool', ['test', 'rules', tf]);
-  assert.notStrictEqual(ng2.status, 0, '初回を拾わない式でも promtool が通る');
+  const ng2 = promtool(['test', 'rules', tf]);
+  assert.ok(failedOnExpectation(ng2), `初回を拾わない式でも promtool が通る\n${ng2.why}`);
   // 陰性対照: 最初の 1 件の期待を反転すると赤になる。
   fs.writeFileSync(f, rulesText);
   fs.writeFileSync(tf, test.replace("values: '_ _ _ _ _ 1x30'\n    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n",
     "values: '_ _ _ _ _ 1x30'\n    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n"));
-  const ng3 = run('promtool', ['test', 'rules', tf]);
-  assert.notStrictEqual(ng3.status, 0, '最初の 1 件の期待を反転しても promtool が通る');
+  const ng3 = promtool(['test', 'rules', tf]);
+  assert.ok(failedOnExpectation(ng3), `最初の 1 件の期待を反転しても promtool が通る\n${ng3.why}`);
 });
 // NFR-21, IADR-0697: collector が受け取りを拒む・remote write が失敗する・受け取りが 0・送り手が欠ける・系列が多すぎるときの警報。
 const PIPELINE_ALERTS = ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'OtlpSenderUnverified', 'PrometheusHeadSeriesHigh'];
@@ -968,13 +1015,13 @@ t('IADR-0697 collector の受け取りの拒否・系列の途絶えの警報: p
   for (const [series, expect] of cases) {
     const test = `rule_files:\n  - ${f}\nevaluation_interval: 1m\ntests:\n  - interval: 1m\n    input_series:\n${series}    alert_rule_test:\n${expect}`;
     fs.writeFileSync(tf, test);
-    const ok = run('promtool', ['test', 'rules', tf]);
-    assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+    const ok = promtool(['test', 'rules', tf]);
+    assert.strictEqual(ok.status, 0, ok.why);
     // 陰性対照: 期待を反対にすると promtool が落ちる（試験が空回りしていない）。
     const flipped = /exp_alerts: \[\]/.test(expect) ? expect.replace('alertname: OtelCollectorRefusingData\n        exp_alerts: []', `alertname: OtelCollectorRefusingData\n        exp_alerts:\n          - exp_labels: {"severity":"critical"}`) : expect.replace(/exp_alerts:\n[\s\S]*?(?=\n      - eval_time|$)/, 'exp_alerts: []\n');
     fs.writeFileSync(tf, test.replace(expect, flipped));
-    const ng = run('promtool', ['test', 'rules', tf]);
-    assert.notStrictEqual(ng.status, 0, `期待を反対にしても promtool が通る:\n${flipped}`);
+    const ng = promtool(['test', 'rules', tf]);
+    assert.ok(failedOnExpectation(ng), `期待を反対にしても promtool が通る:\n${flipped}\n${ng.why}`);
   }
 });
 t('T-2402-47 描いた Alertmanager の設定を amtool check-config で読める', () => {
@@ -1012,5 +1059,7 @@ t('T-2402-62 runbook と deploy/cloud に秘密の値が無い', () => {
   }
 });
 
+// 砂場（promtool の一時の置き場を含む）を消す（流すたびに /tmp に残さない）。
+fs.rmSync(sandbox, { recursive: true, force: true });
 console.log(`\ncloud-ops.test.js: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);
