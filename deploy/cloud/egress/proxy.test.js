@@ -334,6 +334,27 @@ ok('E9 送り元つきの表と受け口の一覧の読み方', () => {
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+ok('E10 heartbeat の宛先: Alertmanager とバックアップの両方の行が要る（片方だけなら、もう一方は enforce で拒まれ、report で数えて通る）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-hb-'));
+  try {
+    const f = path.join(dir, 'extra');
+    const decideFor = (source, sourceMode, text) => {
+      fs.writeFileSync(f, text);
+      const { all, bySource } = p.readTables([{ path: f, kind: 'sources' }]);
+      return p.decide(p.parseTarget('hc-ping.com:443'), all, 'enforce', { source, sourceMode, sourceSet: bySource.get(source) || new Set() });
+    };
+    const both = 'alertmanager hc-ping.com\nbackup hc-ping.com\n';
+    for (const src of ['alertmanager', 'backup']) assert.strictEqual(decideFor(src, 'enforce', both).decision, 'allow', `${src} が両方の行で通らない`);
+    // 陰性対照: Alertmanager の行だけ（手順書の旧の例）なら、バックアップの回の生存の確かめは enforce で拒まれ、report では数えて通る
+    const amOnly = 'alertmanager hc-ping.com\n';
+    assert.strictEqual(decideFor('backup', 'enforce', amOnly).decision, 'deny');
+    const rep = decideFor('backup', 'report', amOnly);
+    assert.deepStrictEqual([rep.decision, rep.mismatch], ['report', true]);
+    // 送り元を書かない古い形の行は、どちらの送り元の行にもならない
+    assert.strictEqual(decideFor('alertmanager', 'enforce', 'hc-ping.com\n').decision, 'deny');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 ok('陰性対照: 判定の関数は、表を空にすると enforce で通さず、report で通す（判定が空回りしていない）', () => {
   const t = p.parseTarget('api.anthropic.com:443');
   assert.strictEqual(p.decide(t, new Set(), 'enforce').decision, 'deny');

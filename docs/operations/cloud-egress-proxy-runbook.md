@@ -48,10 +48,11 @@ URL の残り（check の識別子）は表に書かない。
 
 ```sh
 kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
-  --from-literal=hosts="$(printf '%s\n' 'alertmanager <heartbeat の宛先の名前>')" --dry-run=client -o yaml | kubectl apply -f -
+  --from-literal=hosts="$(printf '%s\n' 'alertmanager <heartbeat の宛先の名前>' 'backup <heartbeat の宛先の名前>')" --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-- 1 行に 1 つ: `<送り元> <名前>`（名前は完全一致）。heartbeat を送るのは Alertmanager なので送り元は `alertmanager`。IP の字面は入れても無視される。
+- 1 行に 1 つ: `<送り元> <名前>`（名前は完全一致）。heartbeat の宛先へ送るのは Alertmanager（check A・B）とバックアップ（回の生存の確かめ）の 2 つなので、
+  同じ名前を送り元 `alertmanager` と `backup` の 2 行に書く。片方だけだと、もう一方は送り元ごとの段が `enforce` で拒まれる。IP の字面は入れても無視される。
 - 送り元を書かない古い形の行（`<名前>` だけ）は、どの送り元の行にもならない（送り元ごとの段が report の間は通し、`EgressProxySourceMismatch` が鳴る）。
   §6-1 の前に、送り元つきの形へ書き直す。
 - 宛先を足すときは、その宛先を使う設定（values・受信先）と対で足す。要らなくなった宛先は外す。
@@ -173,7 +174,10 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
 2. 1-1 の表を送り元つきの形へ書き直す。
 3. `kubectl apply -k deploy/cloud` と、LLM ゲートウェイの values の当て直し。3 つの Pod が自分の受け口を使っていることを
    `kubectl -n platform-infra logs deploy/egress-proxy | grep -E '^(allow|report): \[(llmgateway|backup|alertmanager)\]'` で確かめる。
-4. 7 日続けて、`egress_proxy_source_mismatch_total` が増えず、`[legacy]` の行が出ないことを確かめる。
+4. 7 日続けて、`egress_proxy_source_mismatch_total` が増えないことと、**`[legacy]` の行が 1 行も出ないこと**を確かめる。
+   🔴 **後者は enforce へ移る前の必須の確認である。** 従来の口（3128）は、report の間は送り元の判定を受けない（全体の表で通る）ので、
+   `[legacy]` の行が出ている送り元は、まだ送り元ごとの表で確かめられていない:
+   `kubectl -n platform-infra logs deploy/egress-proxy --since=168h | grep -c '\[legacy\]'` が 0 であること（Pod を作り直した後は、作り直した時刻から数え直す）。
 5. `EGRESS_PROXY_SOURCE_MODE` を `enforce` にする変更をリポジトリへ入れて当てる（従来の口は何も通さなくなる）。その後、3 つの Pod の出と中継の入りから 3128 を外す。
 
 ### 6-2. バックアップの保管先を自分のバケットの名前だけにする

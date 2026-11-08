@@ -42,6 +42,12 @@ related_specs:
 - `OtlpSendersMissing`: `deploy-cloud.test.js`（閾値・注釈）・`cloud-ops.test.js`（promtool）。
 - collector の設定の 2 か所（`infra/otel-collector.yaml`・`observability/patches/otel-collector.yaml`）は T-2402-51 が同じであることを突き合わせる。両方を直す。
 
+- ［2026-11-08 追記］送り元ごとの表へ移して落ちる宛先の走査（母集合＝移す前の全体の表）: 宣言の 4 つ（`api.anthropic.com`→llmgateway・
+  `api.voyageai.com`→載せない〔埋め込みを使わない〕・`discord.com`／`discordapp.com`→alertmanager）、バックアップの保管先（→backup。中継が ConfigMap から読む）、
+  オーナーの表の heartbeat の宛先（値は Secret の中。Alertmanager の check A・B に加え、並行の変更〔MSP#2518〕でバックアップの回の生存の確かめも同じ名前へ送る）。
+  heartbeat だけが 2 つの送り元に要る → 手順書 1-1 の例を 2 行にし、試験 E7（egress audit）と E10（proxy）で固定した。送り元を書かない古い形の行は
+  どの送り元の行にもならない（report の間は数えて通す。手順書 1-1 で書き直す）。
+
 ## 受け入れ基準
 
 | # | 基準 | 試験 |
@@ -54,6 +60,7 @@ related_specs:
 | AC6 | ESO・OpenBao・collector の API サーバーへの出は 2 つの番地を名指し、宛先を問わない出は段 1 の 2 つの宣言だけ。番地は README の k3s の旗・確かめの手順の値と同じ。確かめの手順は一致で 0・違いで 1・宛先が違えば 4 | E1・A1・`cluster-target.test.sh` |
 | AC7 | collector の metrics の pipeline が「消す→名前空間ごとに引く→写す→batch」の順、接続から引く、Role は Pod の読みだけ・ClusterRole なし。LLM の 3 つの警報は印で絞り、送り手の数は印で数え、`OtlpSenderUnverified` がある | O1・`cloud-ops.test.js`（promtool。他の送り手の系列で鳴らない） |
 | AC8 | 陰性対照: 上の各直しを外すと赤 | 各試験の中の陰性対照 |
+| AC9 | 移す前の全体の表の宛先は、使う送り元の行に在る（載せないものは理由つき）。heartbeat の宛先は alertmanager と backup の 2 行（片方だけなら enforce で拒まれる） | E7（egress audit）・E10（proxy） |
 
 ## 確かめられないこと
 

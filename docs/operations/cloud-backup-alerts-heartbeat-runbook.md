@@ -126,6 +126,7 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
    ［2026-11-07 追記］バックアップの Pod は、外の 443 へ外向きの中継を経て出る（直には出ない）。中継はこの ConfigMap の `endpoint` の名前を許可表に入れる（足す作業は要らない）。
    heartbeat の宛先の名前（Healthchecks.io の ping の URL の名前の部分）は、オーナーが ConfigMap `egress-proxy-extra-hosts` に書く
    （[外向きの中継の手順書](cloud-egress-proxy-runbook.md)の 1-1）。書かないと heartbeat が届かず、外の監視が知らせる。
+   ［2026-11-08 追記］外向きの中継の表は送り元ごとである。同じ名前を送り元 `alertmanager` と `backup`（回の生存の確かめを送る）の 2 行に書く（外向きの中継の手順書の 1-1）。
 2. Postgres への接続は TLS（verify-full）である。CA の ConfigMap `platform-infra-ca` と、バックアップの利用者の Secret `postgres-backup`（`username` / `password`）は、
    クラウドの最小構成の秘匿管理（OpenBao）の手順で作る（[手順書](cloud-openbao-init-unseal-runbook.md)）。手で作らない。
    ［2026-11-07］バックアップは超利用者で入らない。バックアップの利用者は全データを読めるだけで（書き込み・利用者の作成はできない）、
@@ -256,7 +257,18 @@ LLM ゲートウェイの費用・上限・再起動・費用の枠の置き場�
 
 1. `kubectl apply -k deploy/cloud`（collector の ServiceAccount と、名前空間 `microservices-platform` の Pod を読む Role）。
 2. 取引ユニットの名前空間（`ai-stock-trading`）が在ってから: `kubectl apply -k deploy/cloud/otlp-sender-identity-ast`（その名前空間の Pod を読む Role）。
-3. 15 分後に、警報 `OtlpSenderUnverified` が出ていないこと、`count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info[10m]))` が 12 であることを確かめる。
+3. 🔴 **1 の直後（5 分以内）に**、collector が起きていて印が付いていることを確かめる（collector の新しい設定は、実物の collector で読ませる前に入れている）:
+   ```sh
+   kubectl -n platform-infra rollout status deploy/otel-collector --timeout=120s
+   kubectl -n platform-infra logs deploy/otel-collector --since=5m | grep -i -E 'error|k8sattributes' | head
+   kubectl -n platform-infra exec deploy/prometheus -- wget -qO- \
+     'http://localhost:9090/api/v1/query?query=count(last_over_time(target_info{k8s_pod_label_app!=""}[5m]))'
+   ```
+   - collector が起きない（`rollout status` が通らない・`CrashLoopBackOff`）か、件数が 0（`"result":[]`）なら**切り戻す**:
+     前の版の `deploy/cloud` を当てる（`git checkout <前の版> -- deploy/cloud && kubectl apply -k deploy/cloud`）。collector の設定が戻れば系列は従来の名乗りのまま届く
+     （LLM ゲートウェイの警報も前の式に戻る）。切り戻した後で、collector のログの誤りを報告する。
+   - 件数が 1 以上なら次へ進む（2 を当てる前は、LLM ゲートウェイの 1 つだけでもよい）。
+4. 15 分後に、警報 `OtlpSenderUnverified` が出ていないこと、`count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info[10m]))` が 12 であることを確かめる。
 
 - 2 を当てるまでは、取引ユニットの送り手の系列は印を持たず、`OtlpSenderUnverified` と `OtlpSendersMissing` が鳴る（系列そのものは止まらない）。
 - `OtlpSenderUnverified` が鳴り続けるときは、collector のログ（`k8sattributes`）、Role（`kubectl auth can-i list pods -n ai-stock-trading --as=system:serviceaccount:platform-infra:otel-collector`）、

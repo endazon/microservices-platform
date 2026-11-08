@@ -126,7 +126,7 @@ data:
             labels: { severity: warning }
             annotations:
               summary: "メトリクスを送ってくるサービスが {{ $value }} 個（12 個のはず）"
-              description: "直近 10 分に系列を送ってきたサービスが 12 個に足りない。止まっているサービスか、collector へ届かないサービスがある（count by (job) (last_over_time(target_info[10m])) で見る）。"
+              description: "直近 10 分に系列を送ってきたサービスが 12 個に足りない。止まっているサービスか、collector へ届かないサービスがある（count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info{k8s_pod_label_app!=\"\"}[10m])) で見る。印の無い送り手は OtlpSenderUnverified）。"
           # IADR-0709 決定 5: 送り元の Pod を引けなかった送り手がいる（collector が API サーバーへ届かない・権限が無い・入りの一覧の外から届いた）。
           #   その系列は送り元の印（otlp_sender_*）を持たないので、印で絞る警報（LLM ゲートウェイの費用・再起動）の元にならない。
           - alert: OtlpSenderUnverified

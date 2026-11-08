@@ -789,6 +789,9 @@ t('T-2402-48 プラットフォームの規則と Prometheus の設定を promto
 // NFR-21, IADR-0692: クラウドの LLM 費用の月次予算の進みの警報。窓は保持（7 日）に合わせ、月次予算を 7/30 に按分して比べる。
 // IADR-0709 決定 5: 元の系列は collector が送り元の Pod から付けた印が LLM ゲートウェイのものだけ。
 const LLM_SENDER = 'otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"';
+// 規則のファイルは式を JSON の文字列（JSON.stringify）で書く。その中の字面を探す・置き換えるときは、同じ JSON の文字列の escape
+// （バックスラッシュも含めて全部）を掛けた形で引く（手で " だけを escape しない）。
+const jsonInner = (text) => JSON.stringify(String(text)).slice(1, -1);
 const LLM_PACE_EXPR = `sum by (llm_purpose, llm_currency) (increase(llm_cost_total{${LLM_SENDER}}[7d]))\n  > on (llm_purpose, llm_currency)\nmax by (llm_purpose, llm_currency) (llm_budget_monthly_limit{${LLM_SENDER}}) * 7 / 30\n`;
 t('IADR-0692 LLM の月次予算の進みの警報が、ゲートウェイのゲージを直近 7 日（保持と同じ）で見る', () => {
   const r = ruleOf('LlmMonthlyBudgetPaceExceeded');
@@ -828,7 +831,7 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
   // 陰性対照（IADR-0709）: 送り元の印で絞らない式では、他の送り手が書いた report-daily の系列で鳴り、promtool が落ちる。
   fs.writeFileSync(tf, test);
-  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`{${LLM_SENDER}}`).join('').split(`{${LLM_SENDER.replace(/"/g, '\\"')}}`).join(''));
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`{${LLM_SENDER}}`).join('').split(`{${jsonInner(LLM_SENDER)}}`).join(''));
   assert.ok(!fs.readFileSync(f, 'utf8').includes('otlp_sender_app'), '陰性対照の置換が効いていない');
   const ng2 = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng2.status, 0, '送り元の印で絞らなくても promtool が通る（他の送り手の系列を見分けていない）');
@@ -893,7 +896,7 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '閾値を下げても promtool が通る');
   // 陰性対照: 初回を拾う右の項を外した式（increase だけ）では、最初の 1 件の群が落ちる。
-  const increaseOnly = `sum(increase(llm_call_limit_exceeded_total{llm_limit_kind=\\"cost_state\\", ${LLM_SENDER.replace(/"/g, '\\"')}}[10m])) > 0`;
+  const increaseOnly = jsonInner(`sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}}[10m])) > 0`);
   const swapped = rulesText.replace(JSON.stringify(ruleOf('LlmCostStateUnavailable').expr).slice(1, -1), increaseOnly);
   assert.notStrictEqual(swapped, rulesText, '陰性対照の置換元が無い');
   fs.writeFileSync(f, swapped);

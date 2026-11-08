@@ -34,6 +34,8 @@ data:
       # NFR-21, IADR-0709 決定 5: 送り手の名乗り（service.name＝job）とは別に、接続の送り元の Pod から名前空間と app を付ける（警報の元の系列を
       #   他の送り手が偽れないように）。順は「送り手が付けた同じ名の属性を消す → 送り元の Pod から付ける → 各点へ写す」。batch より前に置く
       #   （送り元の接続は batch の後では分からない）。Pod を引けなければ何も付けない（その系列は警報 OtlpSenderUnverified の元になる）。
+      #   消す名前の正規表現の . は、どの 1 文字にも当てる（意図して）: k8s.x・k8s_x・k8s-x はどれも Prometheus の名前では k8s_x になり、
+      #   印と同じ名前を送り手が作れないようにする（otlp.sender.* も同じ）。
       transform/otlp-sender-strip:
         error_mode: ignore
         metric_statements:

@@ -231,7 +231,8 @@ function allowlistProblems(docs) {
   if ((table.get('backup') || new Set()).size) out.push('宣言の表に送り元 backup の行がある（保管先は ConfigMap platform-backup-s3-target から読む）');
   // 取引ユニットの外へ出るサービス（AST の values-cloud の externalHttps: true）と OpenD の送り元を持つ（AST の側が中継へ通す先）
   for (const src of ['ast-information-collection', 'ast-market-monitor', 'ast-notification', 'ast-report', 'ast-risk-management', 'ast-trade-decision']) if (!rows(src).length) out.push(`取引ユニットの送り元 ${src} の行が無い`);
-  if (!rows('ast-notification').includes('discord.com')) out.push('送り元 ast-notification の表に Discord が無い');
+  // 名前は表の鍵と完全一致で見る（部分一致にしない）
+  if (!new Set(rows('ast-notification')).has('discord.com')) out.push('送り元 ast-notification の表に Discord が無い');
   // 1 段下を許す行（"*.<名前>"）は、名前が応答で決まる Discord の Bot の再接続先だけ（IADR-0709 決定 1）
   const wild = [...table].flatMap(([src, keys]) => [...keys].filter((k) => k.startsWith('*.')).map((k) => `${src} ${k}`));
   if (JSON.stringify(wild) !== JSON.stringify(['ast-notification *.discord.gg:443'])) out.push(`1 段下を許す行が Discord の Bot の再接続先だけでない（${wild.join(', ')}）`);
@@ -342,6 +343,45 @@ function senderIdentityProblems(docs, astDocs) {
   }
   if (!/count by \(k8s_namespace_name, k8s_pod_label_app\) \(last_over_time\(target_info\{k8s_pod_label_app!=""\}\[10m\]\)\)/.test(block('OtlpSendersMissing'))) out.push('警報 OtlpSendersMissing が送り元の印で数えない');
   if (block('OtlpSenderUnverified') !== 'count(last_over_time(target_info{k8s_pod_label_app=""}[10m])) > 0') out.push('警報 OtlpSenderUnverified が無い・形が違う');
+  return out;
+}
+
+/**
+ * IADR-0709: 送り元ごとの表へ移したとき、移す前の全体の表（IADR-0705 の宣言・オーナーの表の heartbeat・バックアップの保管先）で通っていた宛先が、
+ * それを使う送り元の行から落ちていない。母集合は移す前の全体の表で、どの送り元の行にも載せない宛先は理由つきで名指す。
+ *   heartbeat の宛先は値が Secret の中にあり宣言に無いので、手順書 1-1 のオーナーの表の例が、使う 2 つの送り元
+ *   （Alertmanager の check A・B、バックアップの回の生存の確かめ）の行を持つことを見る。
+ */
+const PRE_PER_SOURCE_UNION = [
+  // [移す前の宛先, それを使う送り元（null は載せない）, 理由]
+  ['api.anthropic.com', 'llmgateway', 'LLM の提供元'],
+  ['api.voyageai.com', null, 'クラウドは埋め込みを使わない（鍵を置かない）'],
+  ['discord.com', 'alertmanager', 'Discord の受信先'],
+  ['discordapp.com', 'alertmanager', 'Discord の受信先'],
+];
+const HEARTBEAT_SENDERS = ['alertmanager', 'backup'];
+function migrationCoverageProblems(docs, runbook) {
+  const out = [];
+  const cm = find(docs, 'ConfigMap', 'egress-proxy-hosts', 'platform-infra');
+  const { parseSourceHosts } = require('../deploy/cloud/egress/proxy.js');
+  const table = parseSourceHosts(cm ? cm.data.hosts : '');
+  const has = (src, h) => (table.get(src) || new Set()).has(`${h}:443`);
+  for (const [h, src, why] of PRE_PER_SOURCE_UNION) {
+    if (src && !has(src, h)) out.push(`移す前に通っていた ${h}（${why}）が送り元 ${src} の行に無い`);
+    if (!src && [...table.values()].some((x) => x.has(`${h}:443`))) out.push(`載せないと決めた ${h}（${why}）がある`);
+  }
+  // バックアップの保管先は送り元 backup（中継が ConfigMap platform-backup-s3-target から読む）
+  const dep = find(docs, 'Deployment', 'egress-proxy', 'platform-infra');
+  if (!(dep && dep.spec.template.spec.volumes.some((v) => v.configMap && v.configMap.name === 'platform-backup-s3-target'))) out.push('移す前に通っていたバックアップの保管先を中継が読まない');
+  // heartbeat: 手順書 1-1 のオーナーの表の例が、使う送り元の行を全部持つ
+  const sec = (/### 1-1\. [^\n]*\n([\s\S]*?)\n## 2\./.exec(runbook) || [])[1] || '';
+  const example = (/--from-literal=hosts="\$\(printf '%s\\n' ([^)]*)\)"/.exec(sec) || [])[1] || '';
+  if (!example) out.push('陽性対照: 手順書 1-1 のオーナーの表の例を読めない');
+  for (const src of HEARTBEAT_SENDERS) if (!example.includes(`'${src} <heartbeat の宛先の名前>'`)) out.push(`手順書 1-1 のオーナーの表の例に、heartbeat の宛先の送り元 ${src} の行が無い`);
+  // バックアップが heartbeat の宛先へ送るなら（URL を Pod に載せるなら）、HEARTBEAT_SENDERS に backup が在る（試験の側の追随の確かめ）
+  const cj = find(docs, 'CronJob', 'platform-backup-postgres', 'platform-infra');
+  const sendsHeartbeat = cj && JSON.stringify(dc.podSpec(cj)).includes('alertmanager-heartbeat');
+  if (sendsHeartbeat && !HEARTBEAT_SENDERS.includes('backup')) out.push('バックアップが heartbeat の宛先へ送るのに、試験の送り元に backup が無い');
   return out;
 }
 
@@ -729,6 +769,16 @@ if (require.main === module) {
     assert.ok(proxyProblems(bad2, { mode: 'enforce' }).some((x) => /送り元と受け口が表と違う/.test(x)), '陰性対照: 受け口の食い違いを検出しない');
     assert.ok(proxyProblems(cloud, { mode: 'enforce', sourceMode: 'enforce' }).some((x) => /送り元ごとの段が enforce でない/.test(x)), '陰性対照: 送り元ごとの段を見ていない');
   });
+  ok('E7: 送り元ごとの表へ移しても、移す前の全体の表で通っていた宛先は使う送り元の行に在る（heartbeat はバックアップと Alertmanager の両方）', () => {
+    const runbook = read('docs/operations/cloud-egress-proxy-runbook.md');
+    assert.deepStrictEqual(migrationCoverageProblems(cloud, runbook), []);
+    const bad = clone(cloud);
+    const cm = find(bad, 'ConfigMap', 'egress-proxy-hosts');
+    cm.data.hosts = cm.data.hosts.replace('alertmanager discordapp.com\n', '').replace('llmgateway api.anthropic.com\n', 'llmgateway api.anthropic.com\nllmgateway api.voyageai.com\n');
+    const p = migrationCoverageProblems(bad, runbook.replace(" 'backup <heartbeat の宛先の名前>'", ''));
+    for (const want of [/discordapp\.com.*alertmanager の行に無い/, /api\.voyageai\.com/, /送り元 backup の行が無い/]) assert.ok(p.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${p.join('\n')}`);
+  });
+
   ok('E5: 中継の手順の試験', () => child('deploy/cloud/egress/proxy.test.js'));
   ok('E6: report の段の警報は入った日時から 14 日で鳴る（Prometheus・中継の再起動で数え直さない。日時が無ければ鳴る。promtool の単体試験）', () => {
     const { rulesText } = PLATFORM_RULES(cloud);
