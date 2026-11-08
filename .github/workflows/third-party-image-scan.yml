@@ -1,0 +1,115 @@
+# NFR, IADR-0708: 配備する第三者のイメージ（deploy/ の digest 固定の参照）の既知の脆弱性を週次で走査する。
+#
+# images.yml の Trivy は自製のイメージ（compose の build 定義）だけを走査する。RabbitMQ・Prometheus・Alertmanager・
+# collector・OpenBao・Keycloak など、上流のイメージを digest で固定して使うものは、固定の性質上、上流の修正が
+# 自動では入らない。ここで走査し、修正版のある CRITICAL / HIGH を Security タブへ載せる（更新の通知は dependabot.yml の docker）。
+#
+# 対象: `node scripts/check-image-digests.js --scan-targets`（deploy/ の第三者・digest 固定・重複なし）。
+#       対象の選び方は同スクリプトの scanTargets と自己試験が固定する。
+#
+# 結果の扱い（手順は docs/operations/third-party-image-scan-runbook.md）:
+#   🔴 **本リポジトリは public である。結果を公開の面（issue・Actions のログ・注記・実行の要約・ジョブの成否）へ出さない。**
+#   - 週次 schedule・workflow_dispatch: SARIF を code scanning へ上げる。**通知は Security タブの alert に一本化する**
+#     （書き込みの権限を持つ人だけが見る）。issue は起票しない。見つかった脆弱性でジョブを落とさない（ジョブの成否も公開の面である）。
+#   - pull_request: SARIF を上げない。走査が完走したかだけを示す（件数を出さない）。**必須チェックにしない**（paths を持つ）。
+#   - ジョブが落ちるのは走査そのものが失敗した（結果が無い・読めない）ときだけである。
+#   - ログ・注記・要約にイメージごとの件数もイメージ名も書かない（scripts.repo.test.js が固定する）。ジョブ名も番号にする。
+#   - 受け入れる脆弱性は Security タブで alert を dismiss する（理由と見直しの日を注記に書く）。リポジトリの ignore ファイルには書かない
+#     （公開のファイルに「どの CVE を残して動かしているか」を書くことになるため）。
+name: Third-party Image Scan
+
+on:
+  schedule:
+    - cron: "17 4 * * 2"
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "deploy/**"
+      - "scripts/check-image-digests.js"
+      - ".github/workflows/third-party-image-scan.yml"
+
+# PR の連続 push では古い実行を捨てる。schedule・dispatch は捨てない（結果を Security タブへ残す経路のため）。
+concurrency:
+  group: third-party-image-scan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  targets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: List scan targets
+        id: list
+        run: |
+          set -euo pipefail
+          matrix="$(node scripts/check-image-digests.js --scan-targets)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # ジョブ名にイメージ名を入れない（番号だけ）。
+    name: scan (${{ strategy.job-index }})
+    # SARIF を code scanning へ上げる（security-events: write）。codeql-action の upload-sarif が実行中の run を読む（actions: read）。
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        image: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # code scanning の category は、参照から digest を落とし、英数字と `. _ / -` だけにした短い名前にする
+      # （`:` `@` と 64 桁の digest を入れない。同じ repo:tag が別の digest で並ぶことは check-image-digests.js の [digest-mismatch] が止める）。
+      - name: Category
+        id: cat
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          name="$(printf '%s' "${IMAGE%%@sha256:*}" | sed 's/[^A-Za-z0-9._/-]/-/g')"
+          echo "category=third-party-image/${name}" >> "$GITHUB_OUTPUT"
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          # 本アクションの版の既定と同じ値を明示する（確かめた版で固定する）。
+          version: v0.70.0
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          # 既定の SARIF は重大度の絞りを外して全件を出す。alert を CRITICAL / HIGH に合わせるため絞る。
+          limit-severities-for-sarif: true
+          output: trivy.sarif
+          exit-code: "0"
+      - name: Upload to code scanning
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        with:
+          sarif_file: trivy.sarif
+          category: ${{ steps.cat.outputs.category }}
+      # 走査が完走したか（SARIF が在り、JSON として読め、runs を持つか）だけを確かめる。件数・イメージ名は出さない。
+      - name: Check scan completed
+        run: |
+          set -euo pipefail
+          if [ ! -s trivy.sarif ] || ! jq -e '.runs | type == "array"' trivy.sarif >/dev/null 2>&1; then
+            echo "::error::走査の結果が無いか読めない（走査が失敗した。合格ではない）。"
+            exit 1
+          fi
+          echo "走査は完走した。結果は Security タブ（code scanning。週次・手動の実行だけが上げる）。" >> "$GITHUB_STEP_SUMMARY"
