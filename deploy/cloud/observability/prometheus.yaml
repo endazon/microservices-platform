@@ -116,15 +116,26 @@ data:
               summary: "otel-collector がメトリクスを 1 件も受け取っていない"
               description: "直近 10 分に OTLP のメトリクスの受け取りが 0 件。送り手（取引ユニット・LLM ゲートウェイ）が止まっているか、collector へ届いていない。"
           # 系列を送ってくるサービスの数が、送るはずのサービスの数（入りを許した一覧と同じ 12 = 取引ユニットの 11 ＋ LLM ゲートウェイ）を下回る。
-          #   target_info は送り手ごと（job = service.name）に remote write が作る。一部の送り手だけが途絶えた（止まった・届かない）ことを見る。
+          #   target_info は送り手ごとに remote write が作る。一部の送り手だけが途絶えた（止まった・届かない）ことを見る。
+          #   IADR-0709 決定 5: 数えるのは送り手の名乗り（job = service.name）ではなく、collector が接続の送り元の Pod から付けた
+          #   名前空間と app（k8s_namespace_name・k8s_pod_label_app）。1 つの送り手が他の名を名乗っても、数は増えない。
           #   注: 数は deploy/cloud/infra/networkpolicy.yaml の collector の入りの一覧と同じに保つ（scripts/deploy-cloud.test.js が突き合わせる）。
           - alert: OtlpSendersMissing
-            expr: (count(count by (job) (last_over_time(target_info[10m]))) or vector(0)) < 12
+            expr: (count(count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info{k8s_pod_label_app!=""}[10m]))) or vector(0)) < 12
             for: 15m
             labels: { severity: warning }
             annotations:
               summary: "メトリクスを送ってくるサービスが {{ $value }} 個（12 個のはず）"
-              description: "直近 10 分に系列を送ってきたサービスが 12 個に足りない。止まっているサービスか、collector へ届かないサービスがある（count by (job) (last_over_time(target_info[10m])) で見る）。"
+              description: "直近 10 分に系列を送ってきたサービスが 12 個に足りない。止まっているサービスか、collector へ届かないサービスがある（count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info{k8s_pod_label_app!=\"\"}[10m])) で見る。印の無い送り手は OtlpSenderUnverified）。"
+          # IADR-0709 決定 5: 送り元の Pod を引けなかった送り手がいる（collector が API サーバーへ届かない・権限が無い・入りの一覧の外から届いた）。
+          #   その系列は送り元の印（otlp_sender_*）を持たないので、印で絞る警報（LLM ゲートウェイの費用・再起動）の元にならない。
+          - alert: OtlpSenderUnverified
+            expr: count(last_over_time(target_info{k8s_pod_label_app=""}[10m])) > 0
+            for: 15m
+            labels: { severity: warning }
+            annotations:
+              summary: "送り元の Pod を引けない送り手がいる（{{ $value }} 個）"
+              description: "collector が接続の送り元の Pod（名前空間と app）を引けなかった。target_info{k8s_pod_label_app=\"\"} の job で送り手を見る。collector のログ（k8sattributes）と、ServiceAccount otel-collector の権限（名前空間 microservices-platform と ai-stock-trading の Role）、API サーバーへの出（otel-collector-egress-apiserver）を確かめる。"
           # 系列の数が増えすぎた（メモリの上限〔768Mi〕で Prometheus が作り直されると、保持している値〔月次予算の 7 日の窓〕も消える）。
           #   平時の見込み（12 のサービス × 数百 ＋ 自分たち）の 10 倍ほどを閾値にする。
           - alert: PrometheusHeadSeriesHigh
@@ -137,6 +148,9 @@ data:
       # FR-11, NFR-21, IADR-0466, IADR-0692: LLM 費用の月次予算（用途別）の**進み**の超過（クラウド版）。
       # 注: この ConfigMap の値の中に絵文字を書かない（kustomize が値を引用符の 1 行へ書き換え、試験の読み手が読めなくなる）。
       # 金額も単価も式に無い。上限はゲートウェイのゲージ llm_budget_monthly_limit（Llm:Budget:MonthlyLimits。appsettings.json）。
+      # IADR-0709 決定 5: 元の系列は、collector が送り元の Pod から付けた印（otlp_sender_namespace・otlp_sender_app）が LLM ゲートウェイのもの**か、
+      #   印の無いもの**（他の送り手の印を持つ系列は式に入らない）。印の無い系列も入れるのは、collector が API サーバーへ届かない・権限が無いなどで
+      #   印が付かない間も、費用・再起動・置き場の警報を黙らせないため（印の無い送り手は OtlpSenderUnverified が別に知らせる）。
       # 窓は直近 7 日である（30 日ではない）。この Prometheus の保持は 7 日・データは emptyDir なので、30 日の窓は
       #   いつも過小になる（7 日分しか無い）。7 日の費用を、月次予算を 7/30 に按分した値と比べる（月次予算を超える速さで使っている）。
       #   compose・経路 B の LlmMonthlyBudgetExceeded（直近 30 日）とは窓が違うので、名前を分けた。
@@ -146,9 +160,9 @@ data:
         rules:
           - alert: LlmMonthlyBudgetPaceExceeded
             expr: |
-              sum by (llm_purpose, llm_currency) (increase(llm_cost_total[7d]))
+              sum by (llm_purpose, llm_currency) (increase(llm_cost_total{otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"}[7d]))
                 > on (llm_purpose, llm_currency)
-              max by (llm_purpose, llm_currency) (llm_budget_monthly_limit) * 7 / 30
+              max by (llm_purpose, llm_currency) (llm_budget_monthly_limit{otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"}) * 7 / 30
             for: 5m
             labels: { severity: warning }
             annotations:
@@ -157,10 +171,11 @@ data:
       # NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動と、当日の費用の枠の置き場の障害。
       # 当日の費用の枠は PVC に残る（再起動で 0 に戻らない）。短い間の再起動の繰り返しは、それでも原因を見る（要求数の窓はプロセス内で戻る）。
       # 起動の回数は起動の時刻のゲージ llm_gateway_start_time_seconds の変わった回数で数える（プロセスごとに大きくなる。ラベルが変わっても max で 1 本になる）。
+      # 元の系列は LLM ゲートウェイの印か印の無いものだけ（IADR-0709 決定 5。上の費用の警報と同じ絞り）。
       - name: llm-gateway-state
         rules:
           - alert: LlmGatewayRestartLoop
-            expr: changes(max(llm_gateway_start_time_seconds)[30m:1m]) >= 3
+            expr: changes(max(llm_gateway_start_time_seconds{otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"})[30m:1m]) >= 3
             labels: { severity: warning }
             annotations:
               summary: "LLM ゲートウェイが短い間に再起動を繰り返している（直近 30 分に 3 回以上）"
@@ -168,7 +183,7 @@ data:
           # 置き場を読めない・書けない間、段 2 は費用の上限を持つ呼び手の呼び出しを送らない（fail-closed）。取引ユニットの LLM の判断が止まる。
           # 右の項は、10 分前に無かった系列（起動の直後の最初の 1 件。0 から現れずに 1 で現れる）を拾う（increase は新しい系列の初回を数えない）。
           - alert: LlmCostStateUnavailable
-            expr: (sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} offset 10m) > 0)
+            expr: (sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"} offset 10m) > 0)
             labels: { severity: critical }
             annotations:
               summary: "LLM ゲートウェイが当日の費用の枠の置き場を扱えず、呼び出しを送っていない"
@@ -268,15 +283,22 @@ data:
             annotations:
               summary: "外向きの中継が宛先を拒んだ（直近 15 分に {{ $value }} 件）"
               description: "kubectl -n platform-infra logs deploy/egress-proxy | grep deny: で宛先を読む。要る宛先なら手順書（cloud-egress-proxy-runbook）で許可表へ足す。要らない宛先なら呼び手を調べる。"
+          # IADR-0709: 全体の表には在るが、その送り元の表に無い宛先への要求（送り元ごとの段が report なら通している。enforce なら拒んで上の警報も鳴る）。
+          - alert: EgressProxySourceMismatch
+            expr: sum by (source) (increase(egress_proxy_source_mismatch_total[15m])) > 0
+            labels: { severity: warning }
+            annotations:
+              summary: "外向きの中継の送り元 {{ $labels.source }} が、自分の表に無い宛先へ出ようとした（直近 15 分に {{ $value }} 件）"
+              description: "kubectl -n platform-infra logs deploy/egress-proxy | grep 'の表に無い' で宛先を読む。その送り元が使う宛先なら、送り元の行として許可表へ足す。使わない宛先なら呼び手を調べる（手順書 cloud-egress-proxy-runbook）。"
           # 14 日は report の段に入った日時（中継が ConfigMap egress-proxy-report-since から出す）から数える。for で数えると、Prometheus
           # （emptyDir・保持 7 日）か中継の再起動で数え直しになり、鳴らないまま残りうる。日時が無い・読めない（0・系列が無い）ときも鳴る。
           - alert: EgressProxyReportMode
-            expr: max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400 or on() absent(egress_proxy_report_since_timestamp_seconds))
+            expr: (max(egress_proxy_enforcing) == 0 or on() max(egress_proxy_source_enforcing) == 0) and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400 or on() absent(egress_proxy_report_since_timestamp_seconds))
             for: 1h
             labels: { severity: warning }
             annotations:
-              summary: "外向きの中継が report の段のまま 14 日を過ぎた（か、report の段に入った日時が無い）"
-              description: "移す間の段（deploy/cloud-transition/egress-proxy-report）が残っている。report の行を読み、許可表を埋めて deploy/cloud を当てる。日時が無いときは ConfigMap platform-infra/egress-proxy-report-since の since を確かめる（手順書 cloud-egress-proxy-runbook）。"
+              summary: "外向きの中継が report の段（全体か送り元ごと）のまま 14 日を過ぎた（か、report の段に入った日時が無い）"
+              description: "移す間の段（deploy/cloud-transition/egress-proxy-report）か、送り元ごとの段（EGRESS_PROXY_SOURCE_MODE=report。IADR-0709）が残っている。report の行を読み、許可表を埋めて enforce へ進める。日時が無いときは ConfigMap platform-infra/egress-proxy-report-since の since を確かめる（手順書 cloud-egress-proxy-runbook）。"
           - alert: EgressProxyDown
             expr: absent(up{job="egress-proxy"} == 1)
             for: 10m

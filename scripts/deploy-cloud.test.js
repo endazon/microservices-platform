@@ -960,7 +960,11 @@ const HARDENING_ALLOWED_CAPS = Object.freeze({});
  *   すると ESO の ServiceAccount に auth-delegator を渡すことになるので採らない（IADR-0697 の 2026-11-07 追記。実の k3s で、トークンが無いと
  *   認証の設定が通らないことを確かめた）。
  */
-const SA_TOKEN_ALLOWED = Object.freeze({ 'openbao/openbao': 'kubernetes 認証の TokenReview の呼び手（auth-delegator）' });
+const SA_TOKEN_ALLOWED = Object.freeze({
+  'openbao/openbao': 'kubernetes 認証の TokenReview の呼び手（auth-delegator）',
+  // IADR-0709 決定 5: 送り元の Pod を引く（k8sattributes。名前空間ごとの Role で Pod の読みだけ）。
+  'platform-infra/otel-collector': 'OTLP の送り元の Pod（名前空間とラベル app）を引く読みだけの呼び手',
+});
 const podSpecOf = (d) => (d.kind === 'Pod' ? d.spec : podSpec(d));
 function podHardeningProblems(docs, where) {
   const out = [];
@@ -1800,7 +1804,7 @@ if (require.main === module) {
     const c = collectorIngressProblems(docs);
     for (const want of [/「名前空間 かつ Pod」でない送り元/, /一覧.*と一致しない/, /ポートが 4317 だけでない/]) assert.ok(c.some((x) => want.test(x)), `${want} を検出しない:\n${c.join('\n')}`);
     const prom = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'prometheus-cloud-config');
-    prom.data['platform-rules.yml'] = String(prom.data['platform-rules.yml']).replace('- alert: OtelCollectorRefusingData', '- alert: X').replace(/(target_info\[10m\]\)\)\) or vector\(0\)\) < )12/, '$111').replace('（12 個のはず）', '（13 個のはず）');
+    prom.data['platform-rules.yml'] = String(prom.data['platform-rules.yml']).replace('- alert: OtelCollectorRefusingData', '- alert: X').replace(/(target_info\{[^}]*\}\[10m\]\)\)\) or vector\(0\)\) < )12/, '$111').replace('（12 個のはず）', '（13 個のはず）');
     const col = docs.find((d) => d.kind === 'ConfigMap' && d.metadata.name === 'otel-collector-config');
     col.data['config.yaml'] = String(col.data['config.yaml']).replace(/\n\s+max_recv_msg_size_mib: \d+/, '');
     const l = collectorLimitProblems(docs);

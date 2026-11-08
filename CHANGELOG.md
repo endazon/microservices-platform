@@ -339,6 +339,8 @@
 
 ### 不具合修正
 
+- **NFR-18**: AI のジョブから id-token を外し、bot の PR では AI レビューを走らせない。配備する第三者のイメージを週次で走査し、更新を Dependabot で知らせる（IADR-0708） (#2516) (59a542f5)
+- **NFR**: 検証の下限の検査器が、レビュー本文の引用（引用ブロック・語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文を、下限の自己申告と読み違えないようにする（IADR-0707） (#2513) (3ba6611f)
 - **NFR-18**: クラウドの Postgres の超利用者の TCP を既定で拒み、バックアップを専用の利用者にし、ブローカの平文と管理の口を閉じ、資格の作り直しを消費側へ反映する（IADR-0706） (#2510) (c3d5a6ef)
 - **NFR-18**: クラウドの外向きの通信を中継へ集め、Keycloak の一時管理者を要る間だけ置き、ESO の名前空間と API の監査を足し、証明書の期限を警報にする (#2509) (9646ee9b)
 - **NFR**: AI レビューに、同じ PR への 2 回目以後の push でも head の全差分を読み直させ、前回のレビューの結果を流用させない（IADR-0704） (#2512) (d73f85a7)
@@ -803,6 +805,8 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2515) (91a28a06)
+- **NFR**: CHANGELOG を自動更新 (#2507) (f29b4026)
 - **NFR**: CHANGELOG を自動更新 (#2497) (376638f0)
 - **NFR**: CHANGELOG を自動更新 (#2490) (3d36d5ee)
 - **NFR**: CHANGELOG を自動更新 (#2481) (0f08179a)
@@ -1210,6 +1214,7 @@
 
 ### その他
 
+- **NFR**: AST の submodule を f55ee1c8 へ進め、AST の依存の宣言に合わせて @tanstack/react-query を 5.105.3・@playwright/test を 1.64.1 へ上げる (#2514) (85102377)
 - **NFR**: dependabot の 3 本（@storybook/react-vite・sonner・tailwind-merge）を 1 本にまとめ、@babel/types を 1 版にそろえ、初期ロードの床を実測で上げる (#2511) (6ad8b441)
 - **deps**: bump @hookform/resolvers from 7.0.1 to 7.0.2 in /src (#2487) (44facea0)
 - **deps-dev**: bump storybook from 10.5.6 to 10.6.5 in /src (#2485) (9599adc7)

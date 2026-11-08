@@ -61,7 +61,14 @@ jobs:
     # dependabot に加え、bot が自動生成する PR（CHANGELOG 更新等）も除外する。
     # GITHUB_TOKEN で作られた PR はワークフローが `action_required`（承認待ち）で
     # 止まるため、対象に含めても実行されずキューを汚すだけである（changelog.yml 参照）。
-    if: ${{ github.actor != 'dependabot[bot]' && !startsWith(github.head_ref, 'automation/') }}
+    # NFR, IADR-0708: **作成者か起動した者が bot（ログインが `[bot]` で終わる）の PR では走らせない。**
+    # 本ジョブは PR のコードを実行する道具（node・dotnet build/test 等）と書き込みのトークンを持ち、PR の本文を読む。
+    # bot の PR（依存の更新など）は本文・差分を上流の第三者が書くので、その手の届く所に置かない。
+    # 必須チェック `claude-review` はジョブ単位の if で skipped になり、GitHub は skipped を合格として扱う
+    # （dependabot の PR で従前から同じ扱い）。bot の PR の確認は人のレビュー（CODEOWNERS）が持つ。
+    # 判定はログインの接尾辞で行う（user.type は使わない。pr-title.yml の #524 の禁止と同じ書き方に揃える）。
+    # 🔴 ステップの中で `exit 1` にしない（check が赤になり、bot の PR が全部マージ不能になる）。scripts.repo.test.js が固定する。
+    if: ${{ !endsWith(github.actor, '[bot]') && !endsWith(github.event.pull_request.user.login, '[bot]') && !startsWith(github.head_ref, 'automation/') }}
     runs-on: ubuntu-latest
     # ハングした実行が上限まで回り続けるのを防ぐ。
     timeout-minutes: 20
@@ -69,7 +76,9 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
+      # NFR, IADR-0708: id-token: write は持たない。アクションは github_token を渡すとその値を使い、OIDC（App トークンへの
+      # 交換）を求めない。Anthropic への認証も API キー／OAuth トークンで、workload identity・Bedrock・Vertex を使わない
+      # （使うなら IADR を改定して戻す）。claude-coding.yml も同じ。scripts.repo.test.js の JOB_SCOPES が固定する。
       # CI の状態・ログを参照するために必要。2 か所が同時にこれへ依存する:
       #   1. アクションが注入する mcp__github_ci__* サーバー。導入前にワークフロートークンが
       #      actions: read を持つか実際に検証し、無ければ「Skipping CI server installation」と
@@ -138,7 +147,7 @@ jobs:
         # 版を上げるときは **PR で実測して緑を確認してから** SHA を進めること。
         # 🔴 **claude-code-review.yml と claude-coding.yml は同じ SHA を指す** ——
         # 片方だけ動かすと「レビューは通るのに @claude は動かない」という切り分けの難しい状態になる。
-        uses: anthropics/claude-code-action@4845bacbb38b3c4b15d948f035349786f678e068 # v1.0.267（2026-11-06 に #2450 で上げた。develop へ入った後の #2474 の claude-review が、この SHA で緑）
+        uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1.0.267（2026-11-06 に #2450 で上げた。develop へ入った後の #2474 の claude-review が、この SHA で緑）
         # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -156,11 +165,9 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # GitHub API アクセス用トークン（MCP GitHub ツール・スティッキーコメント投稿に必要）
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Bot（GitHub App の Claude 等）が開いた PR もレビュー対象にする。
-          # 注意: 公開リポジトリで '*' を指定すると外部 App からも起動され得る（公式警告）。
-          #   公開リポジトリでは 'claude,dependabot[bot]' など特定ボット名に絞ること。
-          #   再帰ループが心配な場合も同様に絞る。
-          allowed_bots: '*'
+          # NFR, IADR-0708: bot からの起動は受け付けない（既定の空）。bot の PR はジョブの if で走らせないので、
+          # ここへ届くのは人の起動だけである。if を緩めても bot の起動はアクションが拒む（閉じる向きの二重化）。
+          allowed_bots: ''
           # レビュー結果を PR スティッキーコメントとして投稿する（use_sticky_comment: true が重要）。
           # アクション自身が必ず PR にスティッキーコメントを投稿する（ツールの成否に関わらず保証される）。
           use_sticky_comment: true

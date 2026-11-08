@@ -12,13 +12,13 @@
     "typecheck": "tsc -b --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:live": "playwright test --config playwright.live.config.ts --pass-with-no-tests",
-    "test:e2e:visual": "pnpm run build && docker run --rm --ipc=host --network none -u \"$(id -u):$(id -g)\" -e HOME=/tmp -e PW_VISUAL=1 -v \"$(cd ../.. && pwd)\":/work -w /work/platform/frontend mcr.microsoft.com/playwright:v1.62.1-noble node node_modules/@playwright/test/cli.js test --project visual"
+    "test:e2e:visual": "pnpm run build && docker run --rm --ipc=host --network none -u \"$(id -u):$(id -g)\" -e HOME=/tmp -e PW_VISUAL=1 -v \"$(cd ../.. && pwd)\":/work -w /work/platform/frontend mcr.microsoft.com/playwright:v1.64.1-noble node node_modules/@playwright/test/cli.js test --project visual"
   },
   "dependencies": {
     "@lingui/core": "^6.6.0",
     "@lingui/react": "^6.6.0",
     "@platform/ui": "workspace:*",
-    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-query": "^5.105.3",
     "@tanstack/react-router": "^1.170.18",
     "dayjs": "^1.11.23",
     "dompurify": "^3.4.17",
@@ -34,7 +34,7 @@
     "@axe-core/playwright": "4.14.0",
     "@faker-js/faker": "^10.6.0",
     "@lingui/babel-plugin-lingui-macro": "^6.6.0",
-    "@playwright/test": "^1.47.2",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.0.0",
     "@tanstack/router-core": "^1.171.15",
     "@types/node": "^22.7.4",
