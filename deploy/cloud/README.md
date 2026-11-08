@@ -238,8 +238,9 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 - `deploy/cloud/infra` だけを当てない。collector の remote write と自己テレメトリの口（patch）、バックアップと観測の宣言、
   外向きの中継（`egress/`）・証明書の期限の測り（`tls-cert-probe/`）が入らない。
 - **クラスタの外の 443 へ宛先を名指して出るのは外向きの中継（`egress/`。[IADR-0705](../../.ai-context/adr/IADR-0705_cloud-egress-proxy-audit-log-cert-expiry.md)）だけ**
-  （ESO・OpenBao の API サーバー向けの出はポートだけで、宛先を問わず 443・6443 へ出られる。同 IADR の残余 5）。
-  LLM ゲートウェイ・バックアップ・Alertmanager は中継を HTTPS_PROXY として使い、中継は名前の許可表に在る宛先の 443 だけへ繋ぐ。
+  （ESO・OpenBao・collector の API サーバー向けの出は番地を名指す。ESO・OpenBao の宛先を問わない出は段 1 の別の宣言にだけ残し、
+  確かめてから外す。[IADR-0709](../../.ai-context/adr/IADR-0709_cloud-egress-per-source-otlp-sender-identity.md) 決定 4）。
+  LLM ゲートウェイ・バックアップ・Alertmanager は中継の自分の受け口を HTTPS_PROXY として使い、中継はその送り元の許可表の行に在る宛先の 443 だけへ繋ぐ（送り元ごとの段は既定 report。IADR-0709 決定 1・3）。
   許可表は宣言（LLM の提供元・Discord）・バックアップの保管先（ConfigMap `platform-backup-s3-target` の `endpoint`）・オーナーが埋める表
   （ConfigMap `egress-proxy-extra-hosts`。heartbeat の宛先など）の和。**新しく作る構成では `kubectl apply -k deploy/cloud` の前に**
   `egress-proxy-extra-hosts` を作る（無いと heartbeat が届かず、外の監視が知らせる）。**稼働中の構成へ入れるとき**は、この順ではなく
@@ -260,6 +261,8 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   当てると Postgres・RabbitMQ・Keycloak・Prometheus は作り直される（Recreate。取引ユニットは繋ぎ直すまで止まる。Prometheus の保持の値は消える）。
   米国の場の時間外に当て、`rollout status`（上）と、RabbitMQ の起動の直後の復元の行（`kubectl -n platform-infra logs deploy/rabbitmq | grep rabbitmq-boot`）を確かめる。
   15 分の後に警報 `OtlpSendersMissing` が出ていなければ、取引ユニットの 11 のサービスと LLM ゲートウェイの系列が届いている。
+  取引ユニットの名前空間が在ってから `kubectl apply -k deploy/cloud/otlp-sender-identity-ast` を当てる（collector が送り元の Pod を引く読みの Role。
+  [IADR-0709](../../.ai-context/adr/IADR-0709_cloud-egress-per-source-otlp-sender-identity.md) 決定 5。当てるまでは `OtlpSenderUnverified` が鳴る）。
   戻すときは前の版の `deploy/cloud` を当てる（名前空間の Pod Security も baseline へ戻る）。
   バックアップの保管先・Discord・heartbeat の資格情報は、[運用手順書](../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md)の準備で作る（作るまで Alertmanager は起動しない）。
 - **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。

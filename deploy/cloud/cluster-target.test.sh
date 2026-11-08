@@ -63,6 +63,7 @@ entries=(
   "keycloak-admin/keycloak-admin.sh --live check"
   "db-users/ast-db-users.sh --live apply"
   "db-users/rotate-superuser.sh --live check"
+  "apiserver-egress-check.sh --live"
 )
 
 # --- 記録（record）---

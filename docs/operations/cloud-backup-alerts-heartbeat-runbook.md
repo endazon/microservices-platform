@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-05
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0706, IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0705]
-specs: [20261107_cloud-data-broker-hardening, 20261107_backup-owner-ops-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat, 20261107_cloud-egress-audit-cert-expiry]
+iadrs: [IADR-0706, IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0705, IADR-0709]
+specs: [20261108_egress-per-source-otlp-identity, 20261107_cloud-data-broker-hardening, 20261107_backup-owner-ops-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat, 20261107_cloud-egress-audit-cert-expiry]
 issues: [#2471, #2402, #2401]
 -->
 
@@ -247,6 +247,20 @@ kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres bac
 - 時間切れの値は、定時の回と同じ式（依存先の待ち 600 ＋ 確かめ 10 ＋ 間隔 5 ＋（9 ＋ K）× rclone の 1 回の上限 240 ＋ 余裕 300）で決めた。
   K = 31 で 615 ＋ 40 × 240 ＋ 300 ＝ 10,515 秒なので、切り上げて 10,800 秒（3 時間）にする。K を変えたら、この式で値を引き直す（試験 T-2402-16 が突き合わせる）。
 - 中身を確かめる回は新しい順なので、分けて何回か起こしても古い回へは届かない。1 回で上げる。
+
+## 7. 送り手の名乗り（collector が送り元の Pod から付ける印）
+
+collector は、メトリクスの送り手が名乗る名前（`job`）とは別に、接続の送り元の Pod から名前空間とラベル `app` を引いて系列に付ける
+（`target_info` の `k8s_namespace_name`・`k8s_pod_label_app`、各系列の `otlp_sender_namespace`・`otlp_sender_app`）。
+LLM ゲートウェイの費用・上限・再起動・費用の枠の置き場の警報と、送り手の数の警報 `OtlpSendersMissing` は、この印で見る（他の送り手が同じ名を名乗っても入らない）。
+
+1. `kubectl apply -k deploy/cloud`（collector の ServiceAccount と、名前空間 `microservices-platform` の Pod を読む Role）。
+2. 取引ユニットの名前空間（`ai-stock-trading`）が在ってから: `kubectl apply -k deploy/cloud/otlp-sender-identity-ast`（その名前空間の Pod を読む Role）。
+3. 15 分後に、警報 `OtlpSenderUnverified` が出ていないこと、`count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info[10m]))` が 12 であることを確かめる。
+
+- 2 を当てるまでは、取引ユニットの送り手の系列は印を持たず、`OtlpSenderUnverified` と `OtlpSendersMissing` が鳴る（系列そのものは止まらない）。
+- `OtlpSenderUnverified` が鳴り続けるときは、collector のログ（`k8sattributes`）、Role（`kubectl auth can-i list pods -n ai-stock-trading --as=system:serviceaccount:platform-infra:otel-collector`）、
+  API サーバーへの出（[外向きの中継の手順書](cloud-egress-proxy-runbook.md) §7 の確かめ）を見る。
 
 ## 失敗したときの分岐
 

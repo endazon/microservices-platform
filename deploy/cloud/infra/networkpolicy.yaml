@@ -172,6 +172,27 @@ spec:
       ports:
         - { protocol: TCP, port: 4317 }
 ---
+# NFR-21, IADR-0709 決定 5: collector が送り元の Pod を引くための API サーバーへの出。番地を名指す（ESO・OpenBao と同じ。IADR-0709 決定 4:
+#   Pod が出す宛先 10.43.0.1:443 と、ノードで書き換わった先 127.0.0.1:6443）。宛先を問わないポートだけの出は持たない（届かなければ
+#   送り元の印が付かず、警報 OtlpSenderUnverified が鳴る。系列は止まらない）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-egress-apiserver
+  namespace: platform-infra
+spec:
+  podSelector: { matchLabels: { app: otel-collector } }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 443 }
+    - to:
+        - ipBlock: { cidr: 127.0.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 6443 }
+---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -241,4 +262,6 @@ spec:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
           podSelector: { matchLabels: { app: egress-proxy } }
       ports:
+        # IADR-0709: 送り元 llmgateway の受け口（3131）。従来の口（3128）は移す間と切り戻しのため。
         - { protocol: TCP, port: 3128 }
+        - { protocol: TCP, port: 3131 }

@@ -1,0 +1,10 @@
+# NFR-21, IADR-0709 決定 5: collector（platform-infra の ServiceAccount otel-collector）が、取引ユニットの名前空間の Pod（名前空間とラベル app）を
+# 読む権限。取引ユニットの名前空間（ai-stock-trading）が在ってから当てる（deploy/cloud の外。在る前に当てると落ちるため分けた）:
+#   kubectl apply -k deploy/cloud/otlp-sender-identity-ast
+# 当てるまでは、取引ユニットの送り手の系列は送り元の印を持たず、警報 OtlpSenderUnverified・OtlpSendersMissing が鳴る（黙って通らない）。
+# 手順: docs/operations/cloud-backup-alerts-heartbeat-runbook.md の「送り手の名乗り」。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - rbac.yaml

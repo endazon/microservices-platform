@@ -1,29 +1,76 @@
-# NFR-18, IADR-0705: クラウドの基盤の外向きの中継（platform-infra）。
-#   - クラスタの外の 443 へ出る Pod（LLM ゲートウェイ・バックアップ・Alertmanager）は、直に外へ出ず、この中継を HTTPS_PROXY として使う。
-#     それらの Pod の出の NetworkPolicy は、外の 443 ではなくこの中継の 3128 だけを許す（infra/networkpolicy.yaml・backup/・observability/）。
-#   - 中継は CONNECT <名前>:443 だけを受け、名前の許可表に在る宛先へだけ繋ぐ（proxy.js。TLS は端から端まで。中身を読まない）。
+# NFR-18, IADR-0705, IADR-0709: クラウドの基盤の外向きの中継（platform-infra）。
+#   - クラスタの外の 443 へ出る Pod（LLM ゲートウェイ・バックアップ・Alertmanager。取引ユニットの外へ出るサービスと OpenD も同じ形で載せる）は、
+#     直に外へ出ず、この中継を HTTPS_PROXY として使う。それらの Pod の出の NetworkPolicy は、外の 443 ではなくこの中継の自分の受け口だけを許す。
+#   - 中継は CONNECT <名前>:443 だけを受け、許可表に在る宛先へだけ繋ぐ（proxy.js。TLS は端から端まで。中身を読まない）。
+#   - IADR-0709: 許可表は**送り元ごと**。送り元の名乗りは「どの受け口（ポート）に来たか」で、各受け口へ届く Pod は下の NetworkPolicy が
+#     「名前空間 かつ Pod のラベル app」で 1 つに絞る。受け口の一覧は env EGRESS_PROXY_SOURCES、表は下の ConfigMap egress-proxy-hosts。
+#       送り元                     受け口  Pod（名前空間/app）
+#       llmgateway                 3131    microservices-platform/llmgateway-service
+#       backup                     3132    platform-infra/platform-backup
+#       alertmanager               3133    platform-infra/alertmanager
+#       ast-information-collection 3141    ai-stock-trading/information-collection-service
+#       ast-market-monitor         3142    ai-stock-trading/market-monitor-service
+#       ast-notification           3143    ai-stock-trading/notification-service
+#       ast-report                 3144    ai-stock-trading/report-service
+#       ast-risk-management        3145    ai-stock-trading/risk-management-service
+#       ast-trade-decision         3146    ai-stock-trading/trade-decision-service
+#       ast-opend                  3147    ai-stock-trading/opend
+#     送り元を名乗らない従来の口（3128。送り元 legacy）は、移す間と切り戻しの Pod のために残す（全体の表で判定。送り元ごとの段が enforce なら何も通さない）。
 #   - 許可表は 3 つの和（最後に読んでから 30 秒を過ぎた後の要求で読み直す。ConfigMap が届くまでの kubelet の同期の間は別）:
-#       1. 下の ConfigMap egress-proxy-hosts（設定に在る宛先: LLM の提供元〔LlmGateway の appsettings の BaseUrl と Anthropic の SDK の既定〕・Discord〔Alertmanager の受信先の形〕）
-#       2. ConfigMap egress-proxy-extra-hosts（kustomize の外。オーナーが埋める: heartbeat の宛先など、値が Secret の中にあり設定に無いもの）
-#       3. ConfigMap platform-backup-s3-target の endpoint の名前（バックアップの保管先。オーナーが作る。運用手順書）
-#   - 段は EGRESS_PROXY_MODE（enforce: 表に無い宛先を 403。report: 通して記録する）。最終の段は enforce。稼働中の構成を移す間だけ
-#     deploy/cloud-transition/egress-proxy-report が report にし、直の 443 も残す（手順書）。
-#   - 名前を引いた先が私設・ループバック・リンクローカル・CGNAT なら、どちらの段でも拒む（クラスタの中へ回り込ませない）。
-#   - OpenBao の出（API サーバーの TokenReview）は中継を通らない（宛先が外ではない。IADR-0689 残余 2）。
+#       1. 下の ConfigMap egress-proxy-hosts（設定に在る宛先。"<送り元> <名前>[:<ポート>]"）
+#       2. ConfigMap egress-proxy-extra-hosts（kustomize の外。オーナーが埋める: heartbeat の宛先など、値が Secret の中にあり設定に無いもの。
+#          同じ形の行で送り元を書く。送り元を書かない行〔IADR-0705 の形〕は全体の表にだけ入り、どの送り元の表にも入らない）
+#       3. ConfigMap platform-backup-s3-target の endpoint の名前（送り元 backup の行。オーナーが作る。運用手順書）
+#   - 段は 2 つ。EGRESS_PROXY_MODE（全体の表に無い宛先。enforce: 403。report: 通して記録）と、EGRESS_PROXY_SOURCE_MODE（全体の表に在るが
+#     その送り元の表に無い宛先。enforce: 403。report: 通して `report:` の行と egress_proxy_source_mismatch_total を出す）。
+#     送り元ごとの段の既定は report（IADR-0709 決定 3。件数が 0 のまま続くのを確かめてから enforce へ。手順書）。
+#     稼働中の構成を移す間だけ deploy/cloud-transition/egress-proxy-report が全体の段も report にし、直の 443 も残す（手順書）。
+#   - 名前を引いた先が私設・ループバック・リンクローカル・CGNAT なら、どの段でも拒む（クラスタの中へ回り込ませない）。
+#   - OpenBao・ESO・collector の出（API サーバー）は中継を通らない（宛先が外ではない。IADR-0709 決定 4 で番地を名指す）。
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: egress-proxy-hosts
   namespace: platform-infra
 data:
-  # 1 行に 1 つの名前（完全一致・小文字）。足すときは、その宛先を使う設定（values・appsettings・受信先の形）と対で足す。
+  # 1 行に 1 つ: "<送り元> <名前>[:<ポート>]"（名前は完全一致・小文字。ポートを書かなければ 443。"*.<名前>" はその 1 段下だけ）。足すときは、その宛先を使う設定
+  # （values・appsettings・受信先の形）と対で、使う送り元の行にだけ足す。
   hosts: |
-    # LLM の提供元（Anthropic は SDK の既定〔AnthropicClientWiringTests が固定〕、Voyage は src/platform/backend/Services/LlmGateway/appsettings.json の BaseUrl）
-    api.anthropic.com
-    api.voyageai.com
-    # Alertmanager の Discord の受信先（observability/alertmanager.yaml の render.sh が受ける形の名前）
-    discord.com
-    discordapp.com
+    # LLM の提供元（Anthropic は SDK の既定〔AnthropicClientWiringTests が固定〕）。クラウドは埋め込み（Voyage）を使わない
+    # （deploy/cloud/vault/eso/microservices-platform.yaml は voyage の鍵を置かない）ので、api.voyageai.com は載せない（IADR-0709 決定 2）。
+    llmgateway api.anthropic.com
+    # Alertmanager の Discord の受信先（observability/alertmanager.yaml の render.sh が受ける形の名前）。heartbeat の宛先はオーナーの表。
+    alertmanager discord.com
+    alertmanager discordapp.com
+    # バックアップの保管先は ConfigMap platform-backup-s3-target の endpoint から（送り元 backup）。ここには書かない。
+    # 取引ユニット（AST の values-cloud の networkPolicy.services の externalHttps: true の 6 つ。宛先は AST の側が確定した一覧〔AST#1607〕）。
+    #   AST の外向きをこの中継へ通すまでは使われない（AST の側の作業。届く Pod は下の NetworkPolicy が絞る）。
+    ast-information-collection finnhub.io
+    ast-information-collection news.google.com
+    ast-information-collection data.sec.gov
+    ast-information-collection www.sec.gov
+    ast-information-collection api.stlouisfed.org
+    # 設定で有効にしたときだけ使う情報源（EDINET・日本銀行・FINRA）。
+    ast-information-collection api.edinet-fsa.go.jp
+    ast-information-collection www.stat-search.boj.or.jp
+    ast-information-collection cdn.finra.org
+    ast-market-monitor finnhub.io
+    # Discord の Bot は再接続で gateway-<地域>.discord.gg へ繋ぎ直す（名前は応答で決まる）ので、discord.gg の 1 段下だけを許す。
+    ast-notification discord.com
+    ast-notification discordapp.com
+    ast-notification gateway.discord.gg
+    ast-notification *.discord.gg
+    ast-report finnhub.io
+    ast-report www.stat-search.boj.or.jp
+    ast-report api.stlouisfed.org
+    ast-risk-management finnhub.io
+    ast-risk-management www.stat-search.boj.or.jp
+    ast-risk-management api.stlouisfed.org
+    ast-trade-decision finnhub.io
+    ast-trade-decision www.stat-search.boj.or.jp
+    ast-trade-decision api.stlouisfed.org
+    # trade-decision の SEC（data.sec.gov・www.sec.gov）はクラウドでは無効なので載せない（使わない宛先を載せない。IADR-0709 決定 2）。
+    # OpenD（ast-opend）の宛先は配布物が持つ（名前とポートは AST の側が測って "<送り元> <名前>:<ポート>" で足す）。
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -52,7 +99,12 @@ spec:
           command: ["node", "/opt/egress-proxy/proxy.js"]
           env:
             - { name: EGRESS_PROXY_MODE, value: enforce }
+            # IADR-0709 決定 3: 送り元ごとの段（既定 report）。
+            - { name: EGRESS_PROXY_SOURCE_MODE, value: report }
             - { name: EGRESS_PROXY_PORT, value: "3128" }
+            # IADR-0709 決定 1: 送り元と受け口（上の表。NetworkPolicy の入り・Service のポートと同じ組。scripts/deploy-cloud-egress-audit.test.js が突き合わせる）。
+            - name: EGRESS_PROXY_SOURCES
+              value: "llmgateway:3131 backup:3132 alertmanager:3133 ast-information-collection:3141 ast-market-monitor:3142 ast-notification:3143 ast-report:3144 ast-risk-management:3145 ast-trade-decision:3146 ast-opend:3147"
             - { name: EGRESS_PROXY_METRICS_PORT, value: "9464" }
           securityContext:
             allowPrivilegeEscalation: false
@@ -60,6 +112,16 @@ spec:
             capabilities: { drop: [ALL] }
           ports:
             - { name: proxy, containerPort: 3128 }
+            - { name: llmgateway, containerPort: 3131 }
+            - { name: backup, containerPort: 3132 }
+            - { name: alertmanager, containerPort: 3133 }
+            - { name: ast-info-coll, containerPort: 3141 }
+            - { name: ast-market-mon, containerPort: 3142 }
+            - { name: ast-notify, containerPort: 3143 }
+            - { name: ast-report, containerPort: 3144 }
+            - { name: ast-risk-mgmt, containerPort: 3145 }
+            - { name: ast-trade-dec, containerPort: 3146 }
+            - { name: ast-opend, containerPort: 3147 }
             - { name: metrics, containerPort: 9464 }
           readinessProbe:
             httpGet: { path: /healthz, port: 9464 }
@@ -85,9 +147,16 @@ spec:
         # オーナーが埋める表（kustomize の外）。無ければ空として扱う。
         - name: extra
           configMap: { name: egress-proxy-extra-hosts, optional: true, items: [{ key: hosts, path: hosts }] }
-        # バックアップの保管先（運用手順書の準備でオーナーが作る ConfigMap）。endpoint だけを読む（バケットの名前は読まない）。
+        # バックアップの保管先（運用手順書の準備でオーナーが作る ConfigMap）。endpoint と、仮想ホスト形式のとき（force_path_style=false）の
+        # バケットの名前（dest）だけを読む（IADR-0709 決定 2。表に入れるのは "<バケット>.<endpoint の名前>" だけになる）。
         - name: backup
-          configMap: { name: platform-backup-s3-target, optional: true, items: [{ key: endpoint, path: endpoint }] }
+          configMap:
+            name: platform-backup-s3-target
+            optional: true
+            items:
+              - { key: endpoint, path: endpoint }
+              - { key: dest, path: dest }
+              - { key: force_path_style, path: force_path_style }
         # report の段に入った日時（移す段を当てる前にオーナーが作る。kustomize の外。当て直しで日時が書き換わらないように）。
         # 中継は report の段のときだけ読んで計器に出す。無ければ 0（警報 EgressProxyReportMode が鳴る側）。IADR-0705 決定 1。
         - name: report-since
@@ -104,9 +173,21 @@ spec:
   selector: { app: egress-proxy }
   ports:
     - { name: proxy, port: 3128, targetPort: 3128 }
+    - { name: llmgateway, port: 3131, targetPort: 3131 }
+    - { name: backup, port: 3132, targetPort: 3132 }
+    - { name: alertmanager, port: 3133, targetPort: 3133 }
+    - { name: ast-info-coll, port: 3141, targetPort: 3141 }
+    - { name: ast-market-mon, port: 3142, targetPort: 3142 }
+    - { name: ast-notify, port: 3143, targetPort: 3143 }
+    - { name: ast-report, port: 3144, targetPort: 3144 }
+    - { name: ast-risk-mgmt, port: 3145, targetPort: 3145 }
+    - { name: ast-trade-dec, port: 3146, targetPort: 3146 }
+    - { name: ast-opend, port: 3147, targetPort: 3147 }
     - { name: metrics, port: 9464, targetPort: 9464 }
 ---
-# 入り: 外の 443 を使う 3 つの Pod から 3128、Prometheus から 9464（件数）だけ。出: 名前解決と、クラスタの外（私設の範囲を除く）の 443 だけ。
+# 入り: 送り元ごとの受け口へは、その送り元の Pod だけ（名前空間 かつ Pod。同じ from の要素に置く＝AND。IADR-0709 決定 1）。
+#   従来の口（3128）は MSP の 3 つの Pod だけ（移す間と切り戻しのため）。Prometheus から 9464（件数）。
+# 出: 名前解決と、クラスタの外（私設の範囲を除く）の 443 だけ（443 でないポートの宛先〔OpenD〕は、AST の側が測ってからこの出と表に対で足す）。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -116,13 +197,67 @@ spec:
   podSelector: { matchLabels: { app: egress-proxy } }
   policyTypes: [Ingress, Egress]
   ingress:
+    # 従来の口（送り元 legacy）。送り元ごとの段が enforce なら中継が何も通さない。最後の段で消す（手順書）。
     - from:
         - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
           podSelector: { matchLabels: { app: llmgateway-service } }
-        - podSelector: { matchLabels: { app: platform-backup } }
-        - podSelector: { matchLabels: { app: alertmanager } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: platform-backup } }
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: alertmanager } }
       ports:
         - { protocol: TCP, port: 3128 }
+    # 送り元ごとの受け口（上の表と同じ組）。
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: microservices-platform } }
+          podSelector: { matchLabels: { app: llmgateway-service } }
+      ports:
+        - { protocol: TCP, port: 3131 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: platform-backup } }
+      ports:
+        - { protocol: TCP, port: 3132 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: platform-infra } }
+          podSelector: { matchLabels: { app: alertmanager } }
+      ports:
+        - { protocol: TCP, port: 3133 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: information-collection-service } }
+      ports:
+        - { protocol: TCP, port: 3141 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: market-monitor-service } }
+      ports:
+        - { protocol: TCP, port: 3142 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: notification-service } }
+      ports:
+        - { protocol: TCP, port: 3143 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: report-service } }
+      ports:
+        - { protocol: TCP, port: 3144 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: risk-management-service } }
+      ports:
+        - { protocol: TCP, port: 3145 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: trade-decision-service } }
+      ports:
+        - { protocol: TCP, port: 3146 }
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ai-stock-trading } }
+          podSelector: { matchLabels: { app: opend } }
+      ports:
+        - { protocol: TCP, port: 3147 }
     - from:
         - podSelector: { matchLabels: { app: prometheus } }
       ports:

@@ -427,7 +427,8 @@ t('T-2402-38 バックアップ: 外への通信を絞る（DNS・Postgres・外
   assert.deepStrictEqual(np.obj.spec.policyTypes, ['Egress']);
   const ports = new Set();
   for (const rule of np.obj.spec.egress) for (const p of rule.ports) ports.add(Number(p.port));
-  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 3128, 5432]);
+  // IADR-0709: 中継の送り元 backup の受け口（3132）と、移す間の従来の口（3128）。
+  assert.deepStrictEqual([...ports].sort((a, b) => a - b), [53, 3128, 3132, 5432]);
   const toProxy = np.obj.spec.egress.find((r) => r.ports.some((p) => Number(p.port) === 3128));
   assert.deepStrictEqual(toProxy.to.map((x) => x.podSelector && x.podSelector.matchLabels && x.podSelector.matchLabels.app), ['egress-proxy'], '3128 の宛先が外向きの中継でない');
   assert.ok(!np.obj.spec.egress.some((r) => (r.to || []).some((x) => x.ipBlock)), '外の範囲（ipBlock）へ直に出る規則が残っている');
@@ -786,11 +787,13 @@ t('T-2402-48 プラットフォームの規則と Prometheus の設定を promto
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
 });
 // NFR-21, IADR-0692: クラウドの LLM 費用の月次予算の進みの警報。窓は保持（7 日）に合わせ、月次予算を 7/30 に按分して比べる。
-const LLM_PACE_EXPR = 'sum by (llm_purpose, llm_currency) (increase(llm_cost_total[7d]))\n  > on (llm_purpose, llm_currency)\nmax by (llm_purpose, llm_currency) (llm_budget_monthly_limit) * 7 / 30\n';
+// IADR-0709 決定 5: 元の系列は collector が送り元の Pod から付けた印が LLM ゲートウェイのものだけ。
+const LLM_SENDER = 'otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"';
+const LLM_PACE_EXPR = `sum by (llm_purpose, llm_currency) (increase(llm_cost_total{${LLM_SENDER}}[7d]))\n  > on (llm_purpose, llm_currency)\nmax by (llm_purpose, llm_currency) (llm_budget_monthly_limit{${LLM_SENDER}}) * 7 / 30\n`;
 t('IADR-0692 LLM の月次予算の進みの警報が、ゲートウェイのゲージを直近 7 日（保持と同じ）で見る', () => {
   const r = ruleOf('LlmMonthlyBudgetPaceExceeded');
   assert.strictEqual(r.expr, LLM_PACE_EXPR);
-  assert.match(rules, /alert: LlmMonthlyBudgetPaceExceeded[\s\S]{0,400}labels: \{ severity: warning \}/, '重大度が warning でない');
+  assert.match(rules, /alert: LlmMonthlyBudgetPaceExceeded[\s\S]{0,700}labels: \{ severity: warning \}/, '重大度が warning でない');
   // 窓は保持を超えない（超えると黙って過小になる）。
   const dep = find(ods, 'Deployment', 'prometheus') || EMPTY;
   const args = ((((dep.obj || {}).spec || {}).template || {}).spec || {}).containers[0].args.join(' ');
@@ -805,11 +808,14 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   fs.writeFileSync(f, `groups:\n  - name: llm-cost-budget\n    rules:\n      - alert: LlmMonthlyBudgetPaceExceeded\n        expr: ${JSON.stringify(r.expr)}\n        for: ${r.for}\n        labels: { severity: warning }\n`);
   // 5 分ごとに 8 日分。trade-decision は月次 135 → 7 日の按分 31.5。5 分あたり 0.02 → 7 日で 40.32（超える）。
   // report-daily は月次 30 → 按分 7。5 分あたり 0.0025 → 7 日で 5.04（超えない）。other はゲージが無い（鳴らない）。
-  const series = (purpose, step) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD"}'\n        values: '0+${step}x2304'\n`;
-  const gauge = (purpose, v) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD"}'\n        values: '${v}x2304'\n`;
+  const series = (purpose, step, sender = LLM_SENDER) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD", ${sender}}'\n        values: '0+${step}x2304'\n`;
+  const gauge = (purpose, v, sender = LLM_SENDER) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD", ${sender}}'\n        values: '${v}x2304'\n`;
+  // IADR-0709 決定 5: 他の送り手（取引ユニットの Pod）が LLM ゲートウェイの名で書いた費用・上限の系列は式に入らない（report-daily を押し上げても鳴らない）。
+  const forged = 'otlp_sender_namespace="ai-stock-trading", otlp_sender_app="report-service"';
   const test = `rule_files:\n  - ${f}\nevaluation_interval: 5m\ntests:\n  - interval: 5m\n    input_series:\n`
     + series('trade-decision', 0.02) + gauge('trade-decision', 135)
     + series('report-daily', 0.0025) + gauge('report-daily', 30)
+    + series('report-daily', 1, forged) + gauge('report-daily', 1, forged)
     + series('other', 1)
     + `    alert_rule_test:\n      - eval_time: 8d\n        alertname: LlmMonthlyBudgetPaceExceeded\n        exp_alerts:\n          - exp_labels: { severity: warning, llm_purpose: trade-decision, llm_currency: USD }\n`;
   const tf = path.join(sandbox, 'llm-pace.test.yml');
@@ -820,15 +826,21 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   fs.writeFileSync(tf, test.replace(/exp_alerts:\n[\s\S]*$/, 'exp_alerts: []\n'));
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
+  // 陰性対照（IADR-0709）: 送り元の印で絞らない式では、他の送り手が書いた report-daily の系列で鳴り、promtool が落ちる。
+  fs.writeFileSync(tf, test);
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`{${LLM_SENDER}}`).join('').split(`{${LLM_SENDER.replace(/"/g, '\\"')}}`).join(''));
+  assert.ok(!fs.readFileSync(f, 'utf8').includes('otlp_sender_app'), '陰性対照の置換が効いていない');
+  const ng2 = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng2.status, 0, '送り元の印で絞らなくても promtool が通る（他の送り手の系列を見分けていない）');
 });
 // NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動の繰り返しと、当日の費用の枠の置き場の障害の警報。
-const LLM_RESTART_EXPR = 'changes(max(llm_gateway_start_time_seconds)[30m:1m]) >= 3';
-const LLM_COST_STATE_EXPR = '(sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state"} offset 10m) > 0)';
+const LLM_RESTART_EXPR = `changes(max(llm_gateway_start_time_seconds{${LLM_SENDER}})[30m:1m]) >= 3`;
+const LLM_COST_STATE_EXPR = `(sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}} offset 10m) > 0)`;
 t('IADR-0698 LLM ゲートウェイの再起動の繰り返し（起動の時刻のゲージの変わった回数）と、当日の費用の枠の置き場の障害の警報がある', () => {
   assert.strictEqual(ruleOf('LlmGatewayRestartLoop').expr, LLM_RESTART_EXPR);
   assert.match(rules, /alert: LlmGatewayRestartLoop[\s\S]{0,200}labels: \{ severity: warning \}/, '再起動の繰り返しの重大度が warning でない');
   assert.strictEqual(ruleOf('LlmCostStateUnavailable').expr, LLM_COST_STATE_EXPR);
-  assert.match(rules, /alert: LlmCostStateUnavailable[\s\S]{0,400}labels: \{ severity: critical \}/, '置き場の障害の重大度が critical でない');
+  assert.match(rules, /alert: LlmCostStateUnavailable[\s\S]{0,700}labels: \{ severity: critical \}/, '置き場の障害の重大度が critical でない');
   // ゲージの名前はゲートウェイの定数と同じ（Prometheus 側の名前。{…} の単位は接尾辞にならない）。
   const src = fs.readFileSync(path.join(REPO_ROOT, 'src/platform/backend/Services/LlmGateway/Common/Observability/LlmGatewayStartMetrics.cs'), 'utf8');
   assert.match(src, /StartTimeGaugeName = "llm\.gateway\.start_time_seconds"/, 'ゲートウェイのゲージの名前が警報の式と違う');
@@ -843,7 +855,7 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
     + `      - alert: LlmGatewayRestartLoop\n        expr: ${JSON.stringify(ruleOf('LlmGatewayRestartLoop').expr)}\n        labels: { severity: warning }\n`
     + `      - alert: LlmCostStateUnavailable\n        expr: ${JSON.stringify(ruleOf('LlmCostStateUnavailable').expr)}\n        labels: { severity: critical }\n`);
   // プロセスごとに別のラベル（service.instance.id はプロセスごと）。5 分ずつ動いて替わる。起動の時刻は替わるたびに大きくなる。
-  const proc = (i, from, value) => `      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", instance="p${i}"}'\n        values: '${'_ '.repeat(from)}${value}x4'\n`;
+  const proc = (i, from, value) => `      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", instance="p${i}", ${LLM_SENDER}}'\n        values: '${'_ '.repeat(from)}${value}x4'\n`;
   const group = (n, alerts) => `  - interval: 1m\n    input_series:\n`
     + Array.from({ length: n }, (_, i) => proc(i, i * 5, 1000 + i * 300)).join('')
     + `    alert_rule_test:\n      - eval_time: ${n * 5 - 1}m\n        alertname: LlmGatewayRestartLoop\n        exp_alerts:${alerts}\n`;
@@ -852,22 +864,22 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
     + group(4, fire) // 4 回の起動 ＝ 3 回の再起動
     + group(3, ' []') // 3 回の起動 ＝ 2 回の再起動
     // ラベルが変わらない（同じ系列の値が替わる）形でも数える。
-    + `  - interval: 1m\n    input_series:\n      - series: 'llm_gateway_start_time_seconds{job="llm-gateway"}'\n        values: '1000x4 1300x4 1600x4 1900x4'\n`
+    + `  - interval: 1m\n    input_series:\n      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", ${LLM_SENDER}}'\n        values: '1000x4 1300x4 1600x4 1900x4'\n`
     + `    alert_rule_test:\n      - eval_time: 19m\n        alertname: LlmGatewayRestartLoop\n        exp_alerts:${fire}\n`
     // 起動し直さないプロセスは 1 時間動いても鳴らない。
-    + `  - interval: 1m\n    input_series:\n      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", instance="p0"}'\n        values: '1000x60'\n`
+    + `  - interval: 1m\n    input_series:\n      - series: 'llm_gateway_start_time_seconds{job="llm-gateway", instance="p0", ${LLM_SENDER}}'\n        values: '1000x60'\n`
     + `    alert_rule_test:\n      - eval_time: 60m\n        alertname: LlmGatewayRestartLoop\n        exp_alerts: []\n`
     // 置き場の障害（cost_state）で送らなかった呼び出しがあれば鳴り、費用の上限そのもの（caller_cost）では鳴らない。
     + `  - interval: 1m\n    input_series:\n`
-    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
-    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", ${LLM_SENDER}}'\n        values: '0+1x20'\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", ${LLM_SENDER}}'\n        values: '0+1x20'\n`
     + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n`
     + `  - interval: 1m\n    input_series:\n`
-    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision"}'\n        values: '0+1x20'\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="caller_cost", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", ${LLM_SENDER}}'\n        values: '0+1x20'\n`
     + `    alert_rule_test:\n      - eval_time: 15m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`
     // 起動の直後の最初の 1 件: 系列が 0 から現れずに 1 で現れ、以後増えない（increase だけでは数えない形）。
     + `  - interval: 1m\n    input_series:\n`
-    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", instance="p1"}'\n        values: '_ _ _ _ _ 1x30'\n`
+    + `      - series: 'llm_call_limit_exceeded_total{llm_limit_kind="cost_state", llm_limit_mode="enforce", llm_caller="ai-stock-trading-llm-caller", llm_purpose="trade-decision", instance="p1", ${LLM_SENDER}}'\n        values: '_ _ _ _ _ 1x30'\n`
     + `    alert_rule_test:\n      - eval_time: 8m\n        alertname: LlmCostStateUnavailable\n        exp_alerts:\n          - exp_labels: { severity: critical }\n`
     // その 1 件のまま 10 分を過ぎ、増えなければ収まる（恒常発火しない）。
     + `      - eval_time: 30m\n        alertname: LlmCostStateUnavailable\n        exp_alerts: []\n`;
@@ -881,7 +893,7 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '閾値を下げても promtool が通る');
   // 陰性対照: 初回を拾う右の項を外した式（increase だけ）では、最初の 1 件の群が落ちる。
-  const increaseOnly = 'sum(increase(llm_call_limit_exceeded_total{llm_limit_kind=\\"cost_state\\"}[10m])) > 0';
+  const increaseOnly = `sum(increase(llm_call_limit_exceeded_total{llm_limit_kind=\\"cost_state\\", ${LLM_SENDER.replace(/"/g, '\\"')}}[10m])) > 0`;
   const swapped = rulesText.replace(JSON.stringify(ruleOf('LlmCostStateUnavailable').expr).slice(1, -1), increaseOnly);
   assert.notStrictEqual(swapped, rulesText, '陰性対照の置換元が無い');
   fs.writeFileSync(f, swapped);
@@ -895,7 +907,7 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
   assert.notStrictEqual(ng3.status, 0, '最初の 1 件の期待を反転しても promtool が通る');
 });
 // NFR-21, IADR-0697: collector が受け取りを拒む・remote write が失敗する・受け取りが 0・送り手が欠ける・系列が多すぎるときの警報。
-const PIPELINE_ALERTS = ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'PrometheusHeadSeriesHigh'];
+const PIPELINE_ALERTS = ['OtelCollectorRefusingData', 'OtelCollectorExportFailing', 'OtlpMetricsPipelineSilent', 'OtlpSendersMissing', 'OtlpSenderUnverified', 'PrometheusHeadSeriesHigh'];
 t('IADR-0697 collector の受け取りの拒否・系列の途絶えの警報: promtool の単体試験（鳴るときに鳴り、平時は鳴らない）', () => {
   need('promtool');
   const groups = PIPELINE_ALERTS.map((a) => {
@@ -906,7 +918,8 @@ t('IADR-0697 collector の受け取りの拒否・系列の途絶えの警報: p
   const f = path.join(sandbox, 'pipeline-rules.yml');
   fs.writeFileSync(f, `groups:\n  - name: pipeline\n    rules:\n${groups}`);
   // 1 分ごとに 1 時間。送り手は 12（job=s0..s11）。target_info は 1 分ごとに 1。
-  const senders = (n) => Array.from({ length: n }, (_, i) => `      - series: 'target_info{job="s${i}"}'\n        values: '1x60'\n`).join('');
+  // IADR-0709 決定 5: target_info は collector が送り元の Pod から付けた名前空間と app を持つ（数えるのはこちら）。
+  const senders = (n) => Array.from({ length: n }, (_, i) => `      - series: 'target_info{job="s${i}", k8s_namespace_name="ns", k8s_pod_label_app="a${i}"}'\n        values: '1x60'\n`).join('');
   const base = `      - series: 'otelcol_receiver_accepted_metric_points{receiver="otlp", transport="grpc"}'\n        values: '0+100x60'\n`
     + `      - series: 'prometheus_tsdb_head_series{job="prometheus"}'\n        values: '5000x60'\n`;
   const fires = (name, labels) => `      - eval_time: 50m\n        alertname: ${name}\n        exp_alerts:\n          - exp_labels: ${JSON.stringify(labels)}\n`;
@@ -927,6 +940,12 @@ t('IADR-0697 collector の受け取りの拒否・系列の途絶えの警報: p
       fires('OtlpMetricsPipelineSilent', { severity: 'critical' }) + fires('OtlpSendersMissing', { severity: 'warning' })],
     // 送り手の系列が 1 つも無い（target_info が無い）→ 鳴る（or vector(0)）
     [base, fires('OtlpSendersMissing', { severity: 'warning' })],
+    // IADR-0709: 11 の送り手のうち 1 つが、欠けた送り手の名（job）も名乗る → 名乗りでは 12 でも、送り元の Pod では 11 なので鳴る
+    [base + senders(11) + `      - series: 'target_info{job="s11", k8s_namespace_name="ns", k8s_pod_label_app="a0"}'\n        values: '1x60'\n`,
+      fires('OtlpSendersMissing', { severity: 'warning' })],
+    // IADR-0709: 送り元の Pod を引けない送り手（印が無い）→ 数に入らず、OtlpSenderUnverified が鳴る
+    [base + senders(11) + `      - series: 'target_info{job="s11"}'\n        values: '1x60'\n`,
+      fires('OtlpSendersMissing', { severity: 'warning' }) + fires('OtlpSenderUnverified', { severity: 'warning' })],
     // 系列が多すぎる → 鳴る
     [base.replace("'5000x60'", "'150000x60'") + senders(12), fires('PrometheusHeadSeriesHigh', { severity: 'warning', job: 'prometheus' })],
   ];
