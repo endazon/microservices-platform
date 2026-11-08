@@ -1,0 +1,98 @@
+# NFR-21, IADR-0709 決定 5: deploy/cloud（基盤）の collector の設定（observability/patches/otel-collector.yaml の config.yaml）に、取引ユニットの
+# 名前空間の送り元の Pod を引く k8sattributes/ast と、それを使う経路だけを足した写し。🔴 基盤の側を変えたら、ここも同じに直す
+# （scripts/deploy-cloud-egress-audit.test.js O1 が、k8sattributes/ast と経路の 1 語の他は基盤の設定と同じであることを突き合わせる）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: platform-infra
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          # IADR-0697: 1 回の受け取りの大きさと、1 つの接続の同時の流れの数に上限を置く（溢れさせて正当な系列を落とさせない）。
+          #   超えた分は受け取りを拒み、拒んだ数は自身の計器（otelcol_receiver_refused_*）に出る（警報 OtelCollectorRefusingData）。
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 4
+            max_concurrent_streams: 16
+          http:
+            endpoint: 0.0.0.0:4318
+            max_request_body_size: 4194304
+    processors:
+      batch:
+        timeout: 5s
+      # 使う量が上限に近づくと受け取りを拒む（拒んだ数は otelcol_receiver_refused_* に出る）。spike は明示する（既定は上限の 2 割）。
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 128
+        spike_limit_mib: 32
+      # NFR-21, IADR-0709 決定 5: 送り手の名乗り（service.name＝job）とは別に、接続の送り元の Pod から名前空間と app を付ける（警報の元の系列を
+      #   他の送り手が偽れないように）。順は「送り手が付けた同じ名の属性を消す → 送り元の Pod から付ける → 各点へ写す」。batch より前に置く
+      #   （送り元の接続は batch の後では分からない）。Pod を引けなければ何も付けない（その系列は警報 OtlpSenderUnverified の元になる）。
+      #   消す名前の正規表現の . は、どの 1 文字にも当てる（意図して）: k8s.x・k8s_x・k8s-x はどれも Prometheus の名前では k8s_x になり、
+      #   印と同じ名前を送り手が作れないようにする（otlp.sender.* も同じ）。
+      transform/otlp-sender-strip:
+        error_mode: ignore
+        metric_statements:
+          - context: resource
+            statements:
+              - delete_matching_keys(attributes, "^k8s.")
+          - context: datapoint
+            statements:
+              - delete_matching_keys(attributes, "^otlp.sender.")
+      # 名前空間ごとに 1 つ（Role は名前空間ごと。クラスタ全体の Pod は読まない）。読むのは Pod の名前空間とラベル app だけ。この重ねは取引ユニットの名前空間の分（k8sattributes/ast）を足す。
+      k8sattributes/ast:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          namespace: ai-stock-trading
+        pod_association:
+          - sources:
+              - from: connection
+        extract:
+          metadata: [k8s.namespace.name]
+          labels:
+            - { tag_name: k8s.pod.label.app, key: app, from: pod }
+      k8sattributes/msp:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          namespace: microservices-platform
+        pod_association:
+          - sources:
+              - from: connection
+        extract:
+          metadata: [k8s.namespace.name]
+          labels:
+            - { tag_name: k8s.pod.label.app, key: app, from: pod }
+      transform/otlp-sender-identity:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["otlp_sender_namespace"], resource.attributes["k8s.namespace.name"]) where resource.attributes["k8s.namespace.name"] != nil
+              - set(attributes["otlp_sender_app"], resource.attributes["k8s.pod.label.app"]) where resource.attributes["k8s.pod.label.app"] != nil
+    exporters:
+      debug:
+        verbosity: basic
+      prometheusremotewrite:
+        endpoint: http://prometheus:9090/api/v1/write
+    service:
+      telemetry:
+        metrics:
+          address: 0.0.0.0:8888
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/otlp-sender-strip, k8sattributes/ast, k8sattributes/msp, transform/otlp-sender-identity, batch]
+          exporters: [prometheusremotewrite]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug]

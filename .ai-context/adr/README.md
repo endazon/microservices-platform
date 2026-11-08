@@ -786,3 +786,4 @@
 | [IADR-0706](./IADR-0706_cloud-data-broker-hardening.md) | クラウドの Postgres の超利用者の TCP は既定で拒み、利用者を作る Job の間だけ Pod の中のゲートで開ける。バックアップは全データを読めるだけの専用の利用者で入る。ブローカは平文と管理の口を Pod の外へ出さず、既定のユーザーの扱いを段（retain → delete）にする。OpenBao の値の作り直しを消費側へ反映する手段を持つ | Accepted |
 | [IADR-0707](./IADR-0707_review-verdict-ignore-quotes-and-output-object.md) | 検証の下限の検査器は、レビュー本文の引用（引用ブロック・語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文を、下限の自己申告として数えない（狭く外し、下限は緩めない） | Accepted |
 | [IADR-0708](./IADR-0708_ai-job-scopes-bot-pr-and-third-party-image-scan.md) | AI のジョブは id-token を持たず、AI レビューは作成者か起動した者が bot の PR では走らせない（check は skipped）。配備する第三者のイメージは週次で走査して結果を Security タブだけに上げ（issue・ログ・ジョブの成否に出さない）、更新は Dependabot の docker で知らせる | Accepted |
+| [IADR-0709](./IADR-0709_cloud-egress-per-source-otlp-sender-identity.md) | クラウドの外向きの中継の許可表を送り元ごと（受け口のポートで名乗る）にし、API サーバーへの出の番地を名指し、collector が OTLP の送り手を送り元の Pod で確かめる | Accepted |

@@ -1,7 +1,7 @@
 # NFR-18, IADR-0689 決定 3, IADR-0696: 秘匿管理の受け口（TLS の 8443）に届く相手をここで絞る（段 1 を持たない。最初から強制）。
 #   - 入り: ESO の controller（名前空間 external-secrets）からの 8443 だけ。オーナーは kubectl exec で Pod の中のループバックを使う
 #     （kubelet を経るので NetworkPolicy の外。ポートを外へ開かない）。
-#   - 出: 名前解決と、kubernetes 認証の TokenReview（API サーバー）だけ。
+#   - 出: 名前解決と、kubernetes 認証の TokenReview（API サーバー。番地を名指す。IADR-0709 決定 4）だけ。
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -41,8 +41,29 @@ spec:
       ports:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
-    # API サーバー（TokenReview）。k3s の API サーバーはノードのループバック（README §1-4）で、宛先の IP を名指せないため、
-    # ポートだけで絞る（IADR-0689 残余）。
+    # IADR-0709 決定 4: API サーバーの番地を名指す。k3s は --advertise-address 127.0.0.1（README §1-4）で、Service kubernetes の ClusterIP は
+    #   既定の範囲（--service-cidr を渡さない）の 10.43.0.1。Pod からの要求は 10.43.0.1:443 を宛先に出て、ノードで 127.0.0.1:6443 へ
+    #   書き換わる。どちらの段で NetworkPolicy が当たっても通るよう、両方を名指す（宛先を問わない 443・6443 は段 1 の下の別の宣言だけ）。
+    #   TokenReview の宛先も同じ。実際の番地は deploy/cloud/apiserver-egress-check.sh --live で確かめる（読むだけ。手順書 cloud-egress-proxy-runbook §7）。
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 443 }
+    - to:
+        - ipBlock: { cidr: 127.0.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 6443 }
+---
+# IADR-0709 決定 4 の段 1: 宛先を問わない API サーバーのポート（IADR-0689 残余の形）を別の宣言に分けて残す（external-secrets と同じ。手順書 §5 で外す）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openbao-egress-apiserver-ports-only-stage1
+  namespace: openbao
+spec:
+  podSelector: { matchLabels: { app: openbao } }
+  policyTypes: [Egress]
+  egress:
     - ports:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 6443 }

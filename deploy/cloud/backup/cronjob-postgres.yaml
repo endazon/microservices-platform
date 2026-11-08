@@ -75,8 +75,9 @@ spec:
                       optional: true
                 # NFR-18, IADR-0705: オブジェクトストレージへは外向きの中継（名前の許可表。保管先の名前は ConfigMap platform-backup-s3-target の
                 #   endpoint から中継が読む）を経る。rclone は HTTPS_PROXY に従う。Postgres（libpq）は中継を使わない。
+                # IADR-0709 決定 1: 送り元 backup の受け口（3132）。中継はこの受け口に来た要求を、送り元 backup の表（保管先だけ）で判定する。
                 - name: HTTPS_PROXY
-                  value: http://egress-proxy:3128
+                  value: http://egress-proxy:3132
                 - name: NO_PROXY
                   value: localhost,127.0.0.1,postgres,.svc,.cluster.local
                 - name: RCLONE_CONFIG_OBJSTORE_TYPE
@@ -88,6 +89,14 @@ spec:
                 # バケットの作成を試みない（資格情報にその権限を要らなくする）。
                 - name: RCLONE_CONFIG_OBJSTORE_NO_CHECK_BUCKET
                   value: "true"
+                # IADR-0709 決定 2: 仮想ホスト形式（<バケット>.<endpoint の名前>）で書くかの切り替え。キーが無ければ rclone の既定（パス形式）。
+                #   オーナーが false を書くと、中継の表も "<バケット>.<名前>" だけになる（同じ ConfigMap を読む。手順書）。
+                - name: RCLONE_CONFIG_OBJSTORE_FORCE_PATH_STYLE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: platform-backup-s3-target
+                      key: force_path_style
+                      optional: true
                 - name: RCLONE_CONFIG_OBJSTORE_ENDPOINT
                   valueFrom:
                     configMapKeyRef:
