@@ -872,8 +872,43 @@ function keycloakPkiProblems(esoDocs, texts) {
   const issues = (t) => [...t.matchAll(/^path\s+"pki_cloud\/issue\/([^"]+)"/gm)].map((m) => m[1]).sort();
   if (JSON.stringify(issues(texts.platformInfraEso)) !== JSON.stringify(['keycloak', 'postgres', 'rabbitmq'])) out.push(`vault: 基盤の側の発行の範囲が postgres・rabbitmq・keycloak でない（${issues(texts.platformInfraEso).join(', ')}）`);
   if (issues(texts.mspEso).includes('keycloak')) out.push('vault: MSP の側が keycloak の証明書を発行できる');
-  if (/pki_cloud\//.test(texts.astEso)) out.push('vault: 取引ユニットの側が PKI に触れる（CA の証明書は KV の cloud/shared/platform-infra-ca で読む）');
+  // ［2026-11-08 / AST の IADR-0646］取引ユニットの側の PKI は、自分のサービスの 11 個の発行だけ（astServiceTlsPkiProblems が名指しを固定する）。
+  if (texts.astEso.split('\n').some((l) => /pki_cloud\//.test(l) && !/^path\s+"pki_cloud\/issue\/[a-z-]+-service"/.test(l) && !/^\s*#/.test(l))) out.push('vault: 取引ユニットの側が PKI に触れる（CA の証明書は KV の cloud/shared/platform-infra-ca で読む）');
   if (!/^path\s+"cloud\/data\/shared\/platform-infra-ca"\s+\{\s*capabilities\s*=\s*\["read"\]\s*\}/m.test(texts.astEso)) out.push('vault: 取引ユニットの側が CA の証明書（cloud/shared/platform-infra-ca）を読めない');
+  return out;
+}
+
+/**
+ * NFR-18, NFR-05, AST の IADR-0646: 取引ユニットのサービス間の TLS の受け側の証明書の PKI の role と発行の許可。
+ *   - lib.sh の OB_PKI_ROLES の名前空間 ai-stock-trading の role が、取引ユニットの chart の 11 のサービス（<サービス>-service）とちょうど同じ。
+ *   - policy ast-eso の pki_cloud の path は、その 11 個の pki_cloud/issue/<サービス>-service だけで、許可は update だけ（POST。ワイルドカード・ほかの口なし）。
+ *   - 基盤の側・MSP の側の policy は、その 11 個を発行できない。
+ * texts は { lib, platformInfraEso, mspEso, astEso }。
+ */
+const AST_SERVICE_TLS_SERVICES = Object.freeze(['audit', 'backtest', 'configuration', 'cost-control', 'information-collection', 'market-monitor',
+  'notification', 'order-execution', 'report', 'risk-management', 'trade-decision']);
+function astServiceTlsPkiProblems(texts) {
+  const out = [];
+  const want = AST_SERVICE_TLS_SERVICES.map((s) => `${s}-service`).sort();
+  const entries = ((texts.lib.match(/^OB_PKI_ROLES="([^"]*)"/m) || [])[1] || '').split(/\s+/).filter(Boolean);
+  if (entries.length === 0) out.push('vault: lib.sh の OB_PKI_ROLES を読めない');
+  const astRoles = entries.filter((e) => e.endsWith(':ai-stock-trading')).map((e) => e.split(':')[0]).sort();
+  if (JSON.stringify(astRoles) !== JSON.stringify(want)) out.push(`vault: OB_PKI_ROLES の取引ユニットの role が 11 のサービスと違う（${astRoles.join(', ')}）`);
+  for (const e of entries) if (!/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(e)) out.push(`vault: OB_PKI_ROLES の項目の形が違う（${e}）`);
+  const pkiLines = texts.astEso.split('\n').filter((l) => !/^\s*#/.test(l) && /pki_cloud/.test(l));
+  const issued = [];
+  for (const l of pkiLines) {
+    const m = /^path\s+"pki_cloud\/issue\/([a-z-]+)"\s+\{\s*capabilities\s*=\s*\[([^\]]*)\]\s*\}\s*$/.exec(l);
+    if (!m) { out.push(`vault: ast-eso の PKI の行の形が違う（${l.trim()}）`); continue; }
+    issued.push(m[1]);
+    const caps = m[2].split(',').map((c) => c.trim().replace(/"/g, '')).sort();
+    if (JSON.stringify(caps) !== '["update"]') out.push(`vault: ast-eso の ${m[1]} の許可が update だけでない（${caps.join(', ')}）`);
+  }
+  if (JSON.stringify(issued.sort()) !== JSON.stringify(want)) out.push(`vault: ast-eso の発行の範囲が 11 のサービスと違う（${issued.join(', ')}）`);
+  for (const [who, t] of [['基盤の側', texts.platformInfraEso], ['MSP の側', texts.mspEso]]) {
+    const leak = want.filter((r) => new RegExp(`"pki_cloud/issue/${r}"`).test(t));
+    if (leak.length) out.push(`vault: ${who}が取引ユニットのサービス証明書を発行できる（${leak.join(', ')}）`);
+  }
   return out;
 }
 
@@ -1161,7 +1196,7 @@ function openbaoReviewerTokenProblems(configureSh, vaultScripts, vaultDocs) {
   return out;
 }
 
-module.exports = { superuserTcpProblems, brokerListenerProblems, cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, cloudEmbeddingKeyProblems, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS, tlsProbeIngressShape, TLS_PROBE_INGRESS, WORKLOAD_KINDS, podSpec };
+module.exports = { astServiceTlsPkiProblems, AST_SERVICE_TLS_SERVICES, superuserTcpProblems, brokerListenerProblems, cloudSpendStateProblems, SPEND_STATE_PVC, SPEND_STORE_ENV, openbaoReviewerTokenProblems, openbaoTlsProblems, OPENBAO_SERVER, OPENBAO_CA_PROVIDER, podHardeningProblems, netRawHolders, namespacePsaProblems, collectorIngressProblems, collectorLimitProblems, OTLP_AST_SENDERS, OTLP_MSP_SENDERS, HARDENING_ALLOWED_CAPS, astDbUsersProblems, AST_DB_SERVICES, keycloakTlsProblems, authTlsProblems, keycloakPkiProblems, KEYCLOAK_AST_CALLERS, k3sInstallProblems, pipeToShellProblems, monthlyBudgetProblems, DAILY_COST_ALLOCATION, cloudCostLimitProblems, CLOUD_LLM_COST_ENV, stage2Problems, llmGatewayEnv, STAGE2_LLM_ENV, cloudEmbeddingKeyProblems, vaultProblems, cloudRealmAudienceProblems, commonProblems, keycloakExposureProblems, EDGE_KINDS, infraProblems, chartProblems, gatewayListenerProblems, mspIngressProblems, postgresHbaProblems, rabbitmqPersistenceProblems, docsOf, FORBIDDEN, DEV_LITERALS, tlsProbeIngressShape, TLS_PROBE_INGRESS, WORKLOAD_KINDS, podSpec };
 
 if (require.main === module) {
   let failed = 0;
@@ -1707,6 +1742,28 @@ if (require.main === module) {
     for (const want of [/発行の口が pki_cloud\/issue\/keycloak でない/, /OB_PKI_ROLES に keycloak/, /基盤の側の発行の範囲/, /MSP の側が keycloak/, /取引ユニットの側が PKI/]) {
       assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
     }
+  });
+  ok('AST の IADR-0646: 取引ユニットの 11 のサービスの PKI の role と、ast-eso の発行の許可（名指し・update だけ）が同じ集合である', () => {
+    const t = pkiTexts();
+    assert.deepStrictEqual(astServiceTlsPkiProblems(t), []);
+    // 陰性対照: role の欠け・余り、policy の欠け・ワイルドカード・許可の広げ・ほかの口、基盤の側への漏れを検出する。
+    const cases = [
+      [{ lib: t.lib.replace(' report-service:ai-stock-trading', '') }, /OB_PKI_ROLES の取引ユニットの role が 11/],
+      [{ lib: t.lib.replace('trade-decision-service:ai-stock-trading"', 'trade-decision-service:ai-stock-trading extra-service:ai-stock-trading"') }, /OB_PKI_ROLES の取引ユニットの role が 11/],
+      [{ astEso: t.astEso.replace(/^path "pki_cloud\/issue\/audit-service".*$/m, '') }, /ast-eso の発行の範囲が 11/],
+      [{ astEso: `${t.astEso}\npath "pki_cloud/issue/*" { capabilities = ["update"] }\n` }, /PKI の行の形が違う/],
+      [{ astEso: t.astEso.replace(/("pki_cloud\/issue\/report-service"\s+\{ capabilities = \[)"update"/, '$1"read", "update"') }, /report-service の許可が update だけでない/],
+      [{ astEso: t.astEso.replace(/("pki_cloud\/issue\/audit-service"\s+\{ capabilities = \[)"update"/, '$1"create", "update"') }, /audit-service の許可が update だけでない/],
+      [{ astEso: `${t.astEso}\npath "pki_cloud/sign/report-service" { capabilities = ["update"] }\n` }, /PKI の行の形が違う/],
+      [{ mspEso: `${t.mspEso}\npath "pki_cloud/issue/report-service" { capabilities = ["update"] }\n` }, /MSP の側が取引ユニットのサービス証明書を発行できる/],
+    ];
+    for (const [patch, want] of cases) {
+      const p = astServiceTlsPkiProblems({ ...t, ...patch });
+      assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    }
+    // KT6 の「取引ユニットの側が PKI に触れる」は、名指しの 11 個の発行のほか（CA の口など）だけを拒む。
+    assert.deepStrictEqual(keycloakPkiProblems(renderEso(), t).filter((x) => /取引ユニットの側が PKI/.test(x)), []);
+    assert.ok(keycloakPkiProblems(renderEso(), { ...t, astEso: `${t.astEso}\npath "pki_cloud/cert/ca" { capabilities = ["read"] }\n` }).some((x) => /取引ユニットの側が PKI/.test(x)), '陰性対照: 発行のほかの PKI の口を検出しない');
   });
   // NFR-18, NFR-21, IADR-0697: 基盤の Pod の権限の最小化と、collector の受け口の絞り。
   const renderCloudAll = () => docsOf(run('kubectl', ['kustomize', 'deploy/cloud']));

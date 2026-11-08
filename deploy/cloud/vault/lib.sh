@@ -193,7 +193,14 @@ wait_active() {
 # NFR-16, NFR-18, IADR-0689 決定 4, IADR-0693: PKI（pki_cloud）のサーバ証明書の role の一覧（<サービス>:<名前空間>）。
 #   configure.sh（初回の root）と root-token.sh apply-pki-roles（稼働中の構成。作り直した root）が同じ一覧を書く（2 か所に持たない）。
 #   許す名前は短い名前・名前空間つき・.svc・.svc.cluster.local の 4 つだけ（従来の SAN と同じ）。発行した証明書は保存しない（no_store）。
-OB_PKI_ROLES="postgres:platform-infra rabbitmq:platform-infra keycloak:platform-infra llmgateway-service:microservices-platform"
+#   ［2026-11-08 / AST の IADR-0646］取引ユニットのサービス間の TLS の受け側の証明書（名前空間 ai-stock-trading の 11 のサービス）を足した。
+#   名前は取引ユニットの chart の services の 11（values.yaml。ESO の VaultDynamicSecret が pki_cloud/issue/<サービス>-service を呼ぶ）と同じ。
+#   発行できるのは policy ast-eso だけ（名指しの 11 個）。稼働中の構成へは root-token.sh apply-pki-roles と apply-policies で書く
+#   （手順書 docs/operations/cloud-openbao-init-unseal-runbook.md §6）。
+OB_PKI_ROLES="postgres:platform-infra rabbitmq:platform-infra keycloak:platform-infra llmgateway-service:microservices-platform
+audit-service:ai-stock-trading backtest-service:ai-stock-trading configuration-service:ai-stock-trading cost-control-service:ai-stock-trading
+information-collection-service:ai-stock-trading market-monitor-service:ai-stock-trading notification-service:ai-stock-trading
+order-execution-service:ai-stock-trading report-service:ai-stock-trading risk-management-service:ai-stock-trading trade-decision-service:ai-stock-trading"
 
 # ob_pki_roles <Pod の中で bao を呼ぶ関数の名前（b か r）> —— 一覧の role を書く Pod の中の手順（値を持たない）を標準出力へ出す。
 ob_pki_roles() {

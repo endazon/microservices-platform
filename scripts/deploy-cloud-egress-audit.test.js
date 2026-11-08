@@ -502,7 +502,8 @@ function probeTargetProblems(cloudDocs, esoTexts, libSh) {
   const out = [];
   const cm = find(cloudDocs, 'ConfigMap', 'tls-cert-probe-config', 'platform-infra');
   const cfg = JSON.parse(cm ? cm.data['targets.json'] : '{"targets":[],"cas":[]}');
-  const roles = ((/^OB_PKI_ROLES="([^"]+)"/m.exec(libSh) || [])[1] || '').split(/\s+/).filter(Boolean).map((e) => e.split(':')[0]);
+  // 測るのは基盤の受け口（4 つ）。取引ユニットの名前空間の role（サービス間の TLS。AST の IADR-0646）は測りの宛先に入れない。
+  const roles = ((/^OB_PKI_ROLES="([^"]+)"/m.exec(libSh) || [])[1] || '').split(/\s+/).filter(Boolean).filter((e) => !e.endsWith(':ai-stock-trading')).map((e) => e.split(':')[0]);
   if (roles.length !== 4) out.push(`陽性対照: lib.sh の OB_PKI_ROLES を読めない（${roles.join(', ')}）`);
   const names = cfg.targets.map((t) => t.name).sort();
   if (JSON.stringify(names) !== JSON.stringify([...roles].sort())) out.push(`測りの宛先が PKI の role と違う（${names.join(', ')} / ${roles.join(', ')}）`);

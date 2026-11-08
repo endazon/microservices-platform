@@ -10,7 +10,7 @@ updated: 2026-11-08
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
 iadrs: [IADR-0710, IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0705]
-specs: [20261108_backup-alerts-audit-offnode-approle-openapi, 20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
+specs: [20261108_ast-service-tls-pki-roles, 20261108_backup-alerts-audit-offnode-approle-openapi, 20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->
 
@@ -184,6 +184,17 @@ bash deploy/cloud/vault/root-token.sh --live --init-file <init>.age --operator-f
 - `apply-policies`: policy（`deploy/cloud/vault/policies/`）を改めたときに当て直す。
 - `apply-pki-roles`: PKI のサーバ証明書の role（`deploy/cloud/vault/lib.sh` の `OB_PKI_ROLES`）を足したときに書き直す。在る role は同じ値で書き直されるだけ。
   role を足したら、発行を許す policy も `apply-policies` で当て直す（例: [認可サーバーの TLS の手順書](cloud-keycloak-tls-runbook.md)の段 0）。
+- **取引ユニットのサービス間の TLS の前提（稼働中の構成へ足す）**: 取引ユニットの 11 のサービス（`audit`・`backtest`・`configuration`・`cost-control`・
+  `information-collection`・`market-monitor`・`notification`・`order-execution`・`report`・`risk-management`・`trade-decision`。それぞれ `-service` を付ける）の
+  受け側の証明書の role（名前空間 `ai-stock-trading`）と、取引ユニットの側の policy `ast-eso` の発行の許可（名指しの 11 個・update だけ）は、
+  リポジトリの宣言に入っている。稼働中の OpenBao へは、オーナーが次の順で書く（米国の場の時間外。稼働中の通信は変わらない —— 取引ユニットの側の段が
+  `"Off"` の間は、誰も発行しない）:
+  1. `apply-pki-roles`（上の 2 行目）。出力に `書いた: PKI の role <サービス>-service` が 11 行（と従来の 4 行）出ることを見る。
+  2. `apply-policies`（上の 1 行目）。出力に `当てた: policy ast-eso` が出ることを見る。
+  3. 確かめ（値は出ない。名前だけ）: 取引ユニットの側が段を `Listen` へ上げた後に
+     `kubectl -n ai-stock-trading get externalsecret` で、`ast-<サービス>-service-tls` の 11 個が
+     `SecretSynced` になること。`permission denied` なら 2 を、`unknown role` なら 1 を流し直す。
+  - 戻すとき: 取引ユニットの側の段を `"Off"` へ戻す（発行が止まる）。role と許可は残してよい（発行を求める者がいなければ使われない）。
 - `rotate-operator`: オーナー用の資格のファイルを失った・漏れた疑いのとき、**および期限の前に定期に**作り直す。古い資格はすべて消える。2 か所の保管を差し替える。
   - オーナー用の資格（secret_id）は **90 日の期限つき**である（作った時に決まる）。期限は ConfigMap `platform-infra/openbao-operator-credential`
     に記録され（値ではない）、残り 30 日で警報 `OpenBaoOperatorSecretIdExpiringSoon`、7 日で `OpenBaoOperatorSecretIdExpiryCritical` が Discord に出る。

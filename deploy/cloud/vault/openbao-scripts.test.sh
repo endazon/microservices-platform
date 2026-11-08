@@ -452,6 +452,28 @@ rm -f "$W/kc.crt"; unset TKC
 set +e; BAO_TOKEN="$TP" B write pki_cloud/issue/keycloak common_name=postgres >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" -ne 0 ] || ng "keycloak の role が別の名前（postgres）を発行した"
 ok "PKI: role は名指しの名前だけを発行し、CA の鍵は OpenBao の外へ出ない（internal）。keycloak の証明書は CA で検証できる"
+# AST の IADR-0646: 取引ユニットの 11 のサービスの受け側の証明書は、取引ユニットの側（ast-eso）だけが名指しで発行できる。
+AST_TLS_SVCS="audit backtest configuration cost-control information-collection market-monitor notification order-execution report risk-management trade-decision"
+for s in $AST_TLS_SVCS; do
+  [ "$(cap "$TA" "pki_cloud/issue/$s-service")" = update ] || ng "取引ユニットの側の $s-service の発行の許可が update だけでない（$(cap "$TA" "pki_cloud/issue/$s-service")）"
+  [ "$(cap "$TP" "pki_cloud/issue/$s-service")" = deny ] && [ "$(cap "$TM" "pki_cloud/issue/$s-service")" = deny ] || ng "取引ユニットの外の側が $s-service の証明書を発行できる"
+done
+for x in postgres keycloak llmgateway-service other-service; do [ "$(cap "$TA" "pki_cloud/issue/$x")" = deny ] || ng "取引ユニットの側が名指しの外の $x を発行できる"; done
+[ "$(cap "$TA" pki_cloud/sign/risk-management-service)" = deny ] && [ "$(cap "$TA" pki_cloud/roles/risk-management-service)" = deny ] || ng "取引ユニットの側が発行のほかの PKI の口に触れる"
+# 取引ユニットの chart の VaultDynamicSecret と同じ名前（短い名前・名前空間つき・.svc・.svc.cluster.local）で発行でき、別の名前は拒まれる。
+n=risk-management-service ns=ai-stock-trading
+TAI="$(BAO_TOKEN="$TA" B write -format=json "pki_cloud/issue/$n" common_name="$n" alt_names="$n.$ns,$n.$ns.svc,$n.$ns.svc.cluster.local" ttl=2160h)"
+[[ "$TAI" == *"PRIVATE KEY"* ]] || ng "取引ユニットの側が $n の証明書を発行できない"
+printf '%s' "$TAI" | node -e 'let s="";process.stdin.on("data",c=>s+=c).on("end",()=>process.stdout.write(JSON.parse(s).data.certificate))' > "$W/ast.crt"
+BAO_TOKEN="$R1" B read -field=certificate pki_cloud/cert/ca > "$W/ca.crt"
+openssl verify -CAfile "$W/ca.crt" "$W/ast.crt" >/dev/null || ng "$n の証明書が基盤の CA で検証できない"
+rm -f "$W/ast.crt"; unset TAI
+for bad in "common_name=postgres" "common_name=$n alt_names=$n.platform-infra" "common_name=report-service"; do
+  # shellcheck disable=SC2086
+  set +e; BAO_TOKEN="$TA" B write "pki_cloud/issue/$n" $bad >/dev/null 2>&1; rc=$?; set -e
+  [ "$rc" -ne 0 ] || ng "$n の role が名指しの外の名前（$bad）を発行した"
+done
+ok "PKI（取引ユニット）: 11 のサービスの role を、取引ユニットの側だけが名指しで update だけで発行でき（POST が通る）（基盤・MSP の側は拒む）、名前は 4 つの形だけ"
 BAO_TOKEN="$R1" B token revoke -self >/dev/null
 
 # --- root-token.sh: 作り直して操作し、失効させる ---
