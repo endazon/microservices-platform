@@ -157,6 +157,20 @@ ok('C4 CA の束の各証明書の notAfter を出し、読めない束は系列
   assert.strictEqual((m.match(/tls_ca_cert_not_after_seconds\{ca="openbao-ca",serial="[0-9a-f]+"\}/g) || []).length, 2);
 });
 
+// IADR-0710 決定 3: オーナー用の secret_id の期限の記録（ConfigMap の not-after）を系列にする。形の違う記録は系列を作らない（absent が拾う）。
+ok('C6 資格の期限の記録（UNIX 秒）を credential_not_after_seconds に出し、形の違う記録は系列を作らない', () => {
+  assert.strictEqual(p.parseDeadline('1790000000\n'), 1790000000);
+  for (const bad of ['', 'abc', '0', '-1', '1790000000 1', '17900000000000', '2026-01-01T00:00:00Z']) assert.strictEqual(p.parseDeadline(bad), null, bad);
+  const m = p.renderMetrics([], [], 1, [{ name: 'openbao-operator-secret-id', notAfter: 1790000000 }, { name: 'x', notAfter: null }]);
+  assert.match(m, /^credential_not_after_seconds\{credential="openbao-operator-secret-id"\} 1790000000$/m);
+  assert.strictEqual((m.match(/^credential_not_after_seconds\{/gm) || []).length, 1);
+  // 宣言の測りが、記録の ConfigMap を読む設定と、Pod へのマウント（無くても起きる optional）を持つ。
+  const y = fs.readFileSync(path.join(__dirname, 'tls-cert-probe.yaml'), 'utf8');
+  assert.match(y, /"deadlines": \[\s*\{ "name": "openbao-operator-secret-id", "path": "\/etc\/tls-cert-probe\/openbao-operator-credential\/not-after" \}/);
+  assert.match(y, /configMap: \{ name: openbao-operator-credential, optional: true, items: \[\{ key: not-after, path: not-after \}\] \}/);
+  assert.match(y, /mountPath: \/etc\/tls-cert-probe\/openbao-operator-credential, readOnly: true/);
+});
+
 (async () => {
   let failed = 0;
   try {

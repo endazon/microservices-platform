@@ -2,6 +2,7 @@
 #   - 受け口へ TLS で繋いで出している証明書の notAfter を読み（Postgres は SSLRequest の後）、基盤の CA（ConfigMap platform-infra-ca）で鎖と名前を確かめる。
 #     中身は送らない。Secret を読まない（鍵に触れない）。ServiceAccount のトークンも持たない。10 分ごと。
 #   - CA の期限: platform-infra-ca（OpenBao の PKI の CA）と openbao-ca（OpenBao の受け口の CA。IADR-0696。受け口の証明書の期限は CA から導く）。
+#   - 資格の期限: オーナー用の AppRole の secret_id（ConfigMap openbao-operator-credential の not-after。IADR-0710）。
 #   - 系列は Prometheus が :9465 から読む。警報は observability/prometheus.yaml の cloud-tls-expiry。
 apiVersion: v1
 kind: ConfigMap
@@ -21,6 +22,9 @@ data:
       "cas": [
         { "name": "platform-infra-ca", "path": "/etc/tls-cert-probe/platform-infra-ca/ca.crt" },
         { "name": "openbao-ca", "path": "/etc/tls-cert-probe/openbao-ca/ca.crt" }
+      ],
+      "deadlines": [
+        { "name": "openbao-operator-secret-id", "path": "/etc/tls-cert-probe/openbao-operator-credential/not-after" }
       ]
     }
 ---
@@ -67,6 +71,7 @@ spec:
             - { name: config, mountPath: /etc/tls-cert-probe/config, readOnly: true }
             - { name: platform-infra-ca, mountPath: /etc/tls-cert-probe/platform-infra-ca, readOnly: true }
             - { name: openbao-ca, mountPath: /etc/tls-cert-probe/openbao-ca, readOnly: true }
+            - { name: openbao-operator-credential, mountPath: /etc/tls-cert-probe/openbao-operator-credential, readOnly: true }
           resources:
             requests: { cpu: 5m, memory: 24Mi }
             limits: { cpu: 100m, memory: 96Mi }
@@ -80,6 +85,9 @@ spec:
           configMap: { name: platform-infra-ca, optional: true, items: [{ key: ca.crt, path: ca.crt }] }
         - name: openbao-ca
           configMap: { name: openbao-ca, optional: true, items: [{ key: ca.crt, path: ca.crt }] }
+        # IADR-0710 決定 3: オーナー用の secret_id の期限の記録（公開してよい値。configure.sh・root-token.sh rotate-operator が置く）。
+        - name: openbao-operator-credential
+          configMap: { name: openbao-operator-credential, optional: true, items: [{ key: not-after, path: not-after }] }
 ---
 apiVersion: v1
 kind: Service

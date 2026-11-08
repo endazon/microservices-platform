@@ -270,7 +270,11 @@ app.Services.GetRequiredService<LlmGatewayStartMetrics>();
 app.UsePlatformMiddleware();
 app.MapPlatformHealthChecks();
 app.MapPlatformIntrospection();
-app.MapOpenApi();
+// NFR-09, NFR-18, IADR-0710: OpenAPI の文書（/openapi/v1.json）は開発の環境（Development）でだけ出す。
+// 本番（クラウド・k8s・compose の既定〔Production〕）と試験の器（Testing）では口を張らない（認可の無い口を残さない）。
+// 呼び出し元は gRPC と REST の /complete だけで、実行時にこの文書を読む呼び出し元は無い（契約は docs/api と .proto が持つ）。
+if (app.Environment.IsDevelopment())
+    app.MapOpenApi();
 
 app.MapCompletionEndpoints();
 // ［2026-10-15 / #1902・[[IADR-0533]] 追記］REST の `/embed`・`/complete/stream` は撤去した（呼び出し元は gRPC だけ）。

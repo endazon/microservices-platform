@@ -43,8 +43,9 @@ ob_readable() {
 # NFR-05, IADR-0703 決定 3: ob_identity_guard <age の識別子のファイル> —— 識別子が平文の秘密鍵のままか（中身は表示しない）。
 #   unseal の鍵とオーナー用の資格は同じ識別子で開く（保持はオーナー。裁定どおり）。識別子そのものを、パスフレーズで暗号化した
 #   ファイル（`age -p` で包んだもの。復号のたびに尋ねられる）か、鍵の装置（age のプラグインの識別子）で守る。
-#   平文の識別子（age の秘密鍵の接頭辞で始まる行を持つファイル）は、OB_IDENTITY_POLICY が warn（既定）なら警告して進み、enforce なら止める。
-OB_IDENTITY_POLICY="${OB_IDENTITY_POLICY:-warn}"
+#   平文の識別子（age の秘密鍵の接頭辞で始まる行を持つファイル）は、OB_IDENTITY_POLICY が enforce（既定）なら止め、warn なら警告して進む。
+#   ［2026-11-08 / IADR-0710 決定 4］既定を warn から enforce へ替えた。包む前の一時の手順だけ、明示の OB_IDENTITY_POLICY=warn で進める。
+OB_IDENTITY_POLICY="${OB_IDENTITY_POLICY:-enforce}"
 case "$OB_IDENTITY_POLICY" in
   warn | enforce) ;;
   *) echo "ERROR: OB_IDENTITY_POLICY は warn か enforce" >&2; exit 2 ;;
@@ -55,10 +56,58 @@ ob_identity_guard() {
   prefix+='KEY-1'
   grep -q "^${prefix}" "$1" 2>/dev/null || return 0
   if [ "$OB_IDENTITY_POLICY" = enforce ]; then
-    echo "ERROR: age の識別子 ${1} が平文の秘密鍵のまま（OB_IDENTITY_POLICY=enforce）。パスフレーズか鍵の装置で守ってから流す（手順書 cloud-openbao-init-unseal-runbook.md「識別子を守る」）" >&2
+    echo "ERROR: age の識別子 ${1} が平文の秘密鍵のまま（OB_IDENTITY_POLICY=enforce が既定）。パスフレーズか鍵の装置で守ってから流す（手順書 cloud-openbao-init-unseal-runbook.md「識別子を守る」）。包む前の一時の手順だけ OB_IDENTITY_POLICY=warn を明示して流せる" >&2
     exit 2
   fi
-  echo "WARN: age の識別子 ${1} が平文の秘密鍵のまま。パスフレーズか鍵の装置で守る（手順書「識別子を守る」。守った後は OB_IDENTITY_POLICY=enforce）" >&2
+  echo "WARN: age の識別子 ${1} が平文の秘密鍵のまま（OB_IDENTITY_POLICY=warn を明示した）。パスフレーズか鍵の装置で守る（手順書「識別子を守る」。守った後は warn を外す）" >&2
+}
+
+# NFR-05, NFR-18, IADR-0710 決定 3: オーナー用の AppRole（cloud-operator）の secret_id の期限（時間）。期限の前に root-token.sh rotate-operator で作り直す。
+#   期限は secret_id を作った時に決まる（role の設定を変えても、作った後の secret_id の期限は変わらない）。
+#   🔴 切れるとオーナー用の資格で入れなくなる（root の作り直しも入れなくなる）。警報（OpenBaoOperatorSecretIdExpiringSoon・…Critical）で前もって知らせる。
+#   回数の上限は置かない（1 回の手順の中で数回入るため。期限と、流すたびの短いトークン〔15 分〕で抑える）。
+OB_OPERATOR_SECRET_ID_TTL_HOURS=2160
+# 期限の記録（公開してよい。値ではない）を置く ConfigMap（platform-infra。tls-cert-probe が読み、期限の系列として出す）。
+OB_OPERATOR_EXPIRY_CM=openbao-operator-credential
+OB_OPERATOR_EXPIRY_NS=platform-infra
+
+# ob_operator_issue <b|r> —— Pod の中の手順（文字列）: role の設定を書き、古い secret_id を全部消し、新しい secret_id を 1 つ作る。
+#   作った secret_id の期限が OB_OPERATOR_SECRET_ID_TTL_HOURS と同じであることを確かめ、資格（JSON）を fd 3 へ出す。
+#   引数は Pod の中で bao を呼ぶ関数の名前（configure.sh は初回の root の b、root-token.sh は作り直した root の r）。
+ob_operator_issue() {
+  local c="$1" ttl_s=$((OB_OPERATOR_SECRET_ID_TTL_HOURS * 3600))
+  # shellcheck disable=SC2016
+  printf '%s\n' \
+    '# 認証の口の最長（既定は 768 時間）が secret_id の期限を頭打ちにする。口の最長を期限と同じにする（トークンは role の token_max_ttl=1h のまま）。' \
+    "${c} auth tune -max-lease-ttl=${OB_OPERATOR_SECRET_ID_TTL_HOURS}h approle/ >/dev/null" \
+    "${c} write auth/approle/role/cloud-operator token_policies=cloud-operator token_ttl=15m token_max_ttl=1h \\" \
+    "  secret_id_ttl=${OB_OPERATOR_SECRET_ID_TTL_HOURS}h secret_id_num_uses=0 bind_secret_id=true \\" \
+    "  token_bound_cidrs=127.0.0.1/32 secret_id_bound_cidrs=127.0.0.1/32 >/dev/null" \
+    '# 一覧は JSON の配列（無ければ「{}」）。accessor の形のものだけを拾う。' \
+    "for a in \$(${c} list -format=json auth/approle/role/cloud-operator/secret-id 2>/dev/null | tr -d \"[]\\\", \" | grep -E \"^[0-9a-f-]{36}\$\" || true); do" \
+    "  printf '{\"secret_id_accessor\":\"%s\"}' \"\$a\" | ${c} write auth/approle/role/cloud-operator/secret-id-accessor/destroy - >/dev/null" \
+    'done' \
+    "rid=\"\$(${c} read -field=role_id auth/approle/role/cloud-operator/role-id)\"" \
+    "sj=\"\$(${c} write -f -format=json auth/approle/role/cloud-operator/secret-id)\"" \
+    'sid="$(printf "%s\n" "$sj" | sed -n "s/^ *\"secret_id\": *\"\([^\"]*\)\".*/\1/p")"' \
+    'sttl="$(printf "%s\n" "$sj" | sed -n "s/^ *\"secret_id_ttl\": *\([0-9]*\).*/\1/p")"' \
+    'unset sj' \
+    "[ -n \"\$sid\" ] && [ \"\$sttl\" = ${ttl_s} ] || { unset rid sid; echo \"ERROR: 作った secret_id の期限が ${OB_OPERATOR_SECRET_ID_TTL_HOURS} 時間でない（値は表示しない）\" >&2; exit 1; }" \
+    'printf "{\"role_id\":\"%s\",\"secret_id\":\"%s\"}\n" "$rid" "$sid" >&3' \
+    'unset rid sid sttl'
+}
+
+# ob_operator_record_expiry <作り始めた時刻（UNIX 秒）> —— secret_id の期限（作り始めた時刻＋期限。実際の期限より早いか同じ）を
+#   ConfigMap platform-infra/openbao-operator-credential のキー not-after に置く（公開してよい。値ではない）。
+#   置けなくても資格は有効なので止めない（警報 OpenBaoOperatorSecretIdExpiryUnknown が知らせる）。
+ob_operator_record_expiry() {
+  local na=$(( $1 + OB_OPERATOR_SECRET_ID_TTL_HOURS * 3600 ))
+  if kubectl -n "$OB_OPERATOR_EXPIRY_NS" create configmap "$OB_OPERATOR_EXPIRY_CM" --from-literal=not-after="$na" --dry-run=client -o yaml \
+       | kubectl apply -f - >/dev/null; then
+    echo "    記録した: オーナー用の secret_id の期限（ConfigMap ${OB_OPERATOR_EXPIRY_NS}/${OB_OPERATOR_EXPIRY_CM}。$(date -u -d "@$na" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "$na") まで）"
+  else
+    echo "WARN: secret_id の期限を ConfigMap ${OB_OPERATOR_EXPIRY_NS}/${OB_OPERATOR_EXPIRY_CM} に置けない（資格は有効。期限の警報が「読めない」で鳴る。rotate-operator を流し直すと置き直す）" >&2
+  fi
 }
 
 # ob_fresh <ファイル> —— 書き出し先が在れば止める（上書きで鍵を失わない）

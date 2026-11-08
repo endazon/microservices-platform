@@ -4,12 +4,12 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-07
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-18, NFR-05]
-iadrs: [IADR-0703, IADR-0689, IADR-0674, IADR-0705]
-specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry]
+iadrs: [IADR-0710, IADR-0703, IADR-0689, IADR-0674, IADR-0705]
+specs: [20261108_backup-alerts-audit-offnode-approle-openapi, 20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry]
 -->
 
 # 運用 Runbook: 宛先のクラスタの確かめ（クラスタの印）
@@ -64,7 +64,21 @@ specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-ex
 bash deploy/cloud/cluster-mark.sh --live check     # 「記録したクラウドのクラスタを向いている」と出ること
 ```
 
-各手順は流すたびに同じ確かめをするので、これは任意である（`kubectl apply -k` のように手で流すコマンドの前に使う）。
+各手順は流すたびに同じ確かめをするので、これは任意である。
+
+## 3. 手で打つ kubectl・helm を固定する（配備の手順の段）
+
+配備の手順（`deploy/cloud/README.md` §3）のように `kubectl`・`helm` を手で打つときは、最初に同じシェルで流す:
+
+```sh
+. deploy/cloud/lib/target-cluster.sh && ct_pin_shell readme
+```
+
+- 確かめ（上の 3 つ）が合えば、**そのシェルの** `kubectl`・`helm` は確かめた context に固定される（`--context`・`--kube-context` を付けて呼ぶ）。
+  パイプの先や、読み込んだ関数（`scripts/lib/recreate-strategy.sh` の `reconcile_recreate_strategy`）の中の `kubectl` にも効く。
+- 違えば終了コード 4 を返し、そのシェルの `kubectl`・`helm` は**流れずに止まる**（シェルは閉じない）。直してから同じ行を流し直す。
+- 固定はそのシェルだけに効く。新しいシェル・別の端末を開いたら、最初の行から流し直す。固定を外すときはシェルを閉じる。
+- 確かめ: `type kubectl` が「kubectl is a function」を、`echo "$CT_CONTEXT"` が確かめた context を出すこと。
 
 ## 失敗したときの分岐
 

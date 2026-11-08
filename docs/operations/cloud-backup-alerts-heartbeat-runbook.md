@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-05
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-21, NFR-03, NFR-05, NFR-18]
 adrs: [ADR-0002, ADR-0006, ADR-0008]
-iadrs: [IADR-0706, IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0705]
-specs: [20261107_cloud-data-broker-hardening, 20261107_backup-owner-ops-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat, 20261107_cloud-egress-audit-cert-expiry]
+iadrs: [IADR-0710, IADR-0706, IADR-0703, IADR-0698, IADR-0689, IADR-0675, IADR-0471, IADR-0571, IADR-0669, IADR-0670, IADR-0697, IADR-0705]
+specs: [20261108_backup-alerts-audit-offnode-approle-openapi, 20261107_cloud-data-broker-hardening, 20261107_backup-owner-ops-hardening, 20261107_llm-cost-cap-persistence, 20261107_cloud-infra-pod-hardening, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261105_2402_cloud-backup-alerts-heartbeat, 20261107_cloud-egress-audit-cert-expiry]
 issues: [#2471, #2402, #2401]
 -->
 
@@ -160,12 +160,15 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
 
 ## 4. 外の監視（Healthchecks.io）と heartbeat
 
-1. Healthchecks.io（無料の枠）にプロジェクトを作り、check を **2 つ**作る。
+1. Healthchecks.io（無料の枠）にプロジェクトを作り、check を **3 つ**作る（A・B は Alertmanager、C はバックアップ）。
    - **check A（死活）**: **Period: 5 分、Grace: 5 分**。常に鳴る警報 Watchdog が 5 分ごとに ping する。途絶えてから最大 10 分で知らせる。
    - **check B（Discord への到達）**: **Period: 5 分、Grace: 10 分**。Discord への送信に失敗が無い間だけ、警報 DiscordDeliveryHealthy が
      5 分ごとに ping する。失敗が起きると、警報 AlertmanagerDiscordFailing が B の `/fail` を叩いてすぐに下げる。
      失敗の間は B へ ping が来ないので、**B は下がったまま**である（A の ping では戻らない。B が戻るのは、失敗が 15 分の窓から消えたとき）。
-   - どちらも「Integrations」で、オーナーへ届く宛先を**2 つ以上**つなぐ（メールと Discord。Discord の連携は、警報とは別のチャンネルにする —— 警報の webhook が壊れたときも届くように）。
+   - **check C（日次のバックアップ）**: **Period: 1 日、Grace: 6 時間**。バックアップの回（JST 12:00）が終わるたびに、成功なら ping、
+     失敗なら `/fail` を送る（CronJob の本体が送る）。**走らなかった日・時間切れで止まった回は何も送られず、期限で下がる**
+     （保管先の資格の失効・ConfigMap の欠落・オブジェクトストレージの拒否・CronJob の止まりのどれでも、オーナーへ外から届く）。
+   - どれも「Integrations」で、オーナーへ届く宛先を**2 つ以上**つなぐ（メールと Discord。Discord の連携は、警報とは別のチャンネルにする —— 警報の webhook が壊れたときも届くように）。
 2. 2 つの check の ping の URL を、秘匿管理の `cloud/platform/alertmanager-heartbeat`（キー `ping-url`・`discord-ping-url`・`discord-fail-url`）に書く。
    ESO が Secret `alertmanager-heartbeat` に写す:
    ```bash
@@ -174,6 +177,12 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
    read -rs b; printf '%s' "$b" | $P cloud/platform/alertmanager-heartbeat discord-ping-url
    printf '%s/fail' "$b" | $P cloud/platform/alertmanager-heartbeat discord-fail-url; unset b          # check B の URL の後ろに /fail
    ```
+   check C の ping の URL は、同じパスのキー `backup-ping-url` に書く（バックアップの Pod はこのキーだけをマウントする）:
+   ```bash
+   read -rs c; printf '%s' "$c" | $P cloud/platform/alertmanager-heartbeat backup-ping-url; unset c   # check C の ping の URL（/fail は付けない）
+   ```
+   **段**: キーを書くまで、バックアップは外へ送らず、Job のログに「外の生存の確かめの URL が無い」の警告を出す（回の結果は変えない）。
+   宛先の名前は check A・B と同じ（外向きの中継の許可表 `egress-proxy-extra-hosts` に在る名前）なので、許可表を足す必要は無い。
    2 つの URL が同じ（check を分けていない）・`discord-fail-url` が「`discord-ping-url`/fail」でないときは、Alertmanager は起動しない。
    この Secret が無いと Alertmanager の Pod は起動しない（ping が始まらず、外の監視が「一度も来ていない」と見せる）。
 3. AST の警報の規則（ConfigMap `ast-prometheus-rules`。AST の `PrometheusRule` の YAML をそのまま入れる）:
@@ -197,6 +206,8 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
    ```
    Discord のチャンネルに届くことを見る。
 2. **heartbeat が届く**: Healthchecks.io の check A と check B が「up」で、最後の ping が 5 分以内であることを見る。
+   check C は、バックアップの回を手動で 1 回流し（§2 と同じ `kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres <名前>`）、
+   Job のログに「外の生存の確かめへ送った（成功）」が出て、check C が「up」になることを見る。
 3. **heartbeat が途絶えたとき、オーナーへ届く**（止め試験。米国の場の時間外に行う）:
    ```bash
    kubectl -n platform-infra scale deploy/alertmanager --replicas=0
@@ -261,4 +272,5 @@ kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres bac
 | `PrometheusHeadSeriesHigh` が出た | `topk(10, count by (__name__, job) ({__name__=~".+"}))` | 系列を増やしている送り手と名前を探し、送り手を直す。放っておくとメモリの上限で Prometheus が作り直され、保持の値が消える |
 | `LlmGatewayRestartLoop` が Discord に出た（LLM ゲートウェイが直近 30 分に 3 回以上起動し直した） | `kubectl -n microservices-platform describe pod -l app=llmgateway-service`、`logs --previous` | 起動で止まる理由（設定の検査・鍵の欠落・メモリの上限）を読んで直す。当日の費用の枠は PVC に残るので、再起動で枠は 0 に戻らない |
 | `LlmCostStateUnavailable` が Discord に出た（当日の費用の枠を読めない・書けないため、LLM の呼び出しを送っていない） | ゲートウェイのログ「当日の費用の枠を置き場で扱えない」（`operation`・`error`）、`kubectl -n microservices-platform get pvc llmgateway-service-state` | PVC が付いていない・容量が尽きた・ファイルが壊れた・2 つ目の Pod が同じ置き場を開いた、のどれかである。壊れたファイルは退避して残す。退避するとその日の枠は 0 から数え直すので、その日の消費は提供元のコンソールの使用量で確かめ、要れば当日の上限を一時的に下げる。直れば次の呼び出しから送る |
+| check C が「down」（`/fail` か、1 日と 6 時間の途絶え）になった | `kubectl -n platform-infra get cronjob platform-backup-postgres`・`get jobs -l app=platform-backup`、Job のログ | `/fail` なら下の「バックアップの Job が失敗した」へ。途絶えなら、CronJob が止まっている（`suspend`）・Job が作られていない（`startingDeadlineSeconds` を過ぎた・ノードが止まっていた）・時間切れで止まった、のどれかである。手動で 1 回流して完全な回を取り、check C が「up」へ戻ることを見る |
 | バックアップの Job が失敗した | `kubectl -n platform-infra logs job/<名前>` | 「保管先が 1 つもありません」→ §2 の ConfigMap。「検算が合いません」→ 再実行（`COMPLETE` は置かれていない）。「同じ名前の回が既にあります」→ 手動の回が同じ秒に重なった。「monthly の回の確かめが上限に達しました」→ その月の `monthly/` に `COMPLETE` の無い回が溜まっている。送れない原因（鍵・接続・容量）を直し、取りこぼしの回は消さずに（lifecycle が片付ける）、完全な回を 1 つ取る。上限を超えて溜まっている間は定時の回も手動の回も同じところで止まるので、「回を手動でやり直すとき」の、上限を上げた 1 回で取る（daily は毎回書けている） |
