@@ -37,6 +37,9 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { parseDocuments } = require('./lib/yaml-subset');
+// NFR-21: promtool は共通器を通す（一時の置き場は呼び出しごとに砂場の下・失敗の理由を出す・陰性対照は期待との食い違いだけを数える）。
+//   作業仕様書 20261108_egress-audit-promtool-sandbox（cloud-ops.test.js の #2527 と同じ手当て）。
+const { promtool, failedOnExpectation } = require('./lib/promtool');
 const dc = require('./deploy-cloud.test.js');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -615,9 +618,7 @@ function promtoolReportModeRun(rulesText) {
     ];
     const tf = path.join(dir, 'test.yml');
     fs.writeFileSync(tf, `rule_files:\n  - ${rf}\nevaluation_interval: 1m\ntests:\n${tests.join('')}`);
-    const r = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
-    if (r.error) throw new Error('promtool が PATH に無い');
-    return r;
+    return promtool(['test', 'rules', tf], { tmpRoot: dir });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -656,13 +657,12 @@ function promtoolCertAlertTest(cloudDocs) {
     ].join('');
     const tf = path.join(dir, 'test.yml');
     fs.writeFileSync(tf, test(exp));
-    const okRun = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
-    if (okRun.error) throw new Error('promtool が PATH に無い');
-    assert.strictEqual(okRun.status, 0, okRun.stdout + okRun.stderr);
+    const okRun = promtool(['test', 'rules', tf], { tmpRoot: dir });
+    assert.strictEqual(okRun.status, 0, okRun.why);
     // 陰性対照: rabbitmq（残り 200 日）が鳴ると期待すると落ちる（閾値が空回りしていない）
     fs.writeFileSync(tf, test(exp.replace('          - exp_labels: { severity: warning, target: keycloak }\n', '          - exp_labels: { severity: warning, target: keycloak }\n          - exp_labels: { severity: warning, target: rabbitmq }\n')));
-    const ng = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
-    assert.notStrictEqual(ng.status, 0, '残り 200 日でも鳴ると期待して promtool が通る');
+    const ng = promtool(['test', 'rules', tf], { tmpRoot: dir });
+    assert.ok(failedOnExpectation(ng), `残り 200 日でも鳴ると期待して promtool が通る\n${ng.why}`);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -706,9 +706,9 @@ function credentialAlertProblems(cloudDocs, libSh) {
     ];
     const tf = path.join(dir, 'test.yml');
     fs.writeFileSync(tf, `rule_files:\n  - ${rf}\nevaluation_interval: 1m\ntests:\n${cases.join('')}`);
-    const r = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
-    if (r.error) throw new Error('promtool が PATH に無い');
-    if (r.status !== 0) out.push(`promtool の単体試験が落ちた:\n${r.stdout}${r.stderr}`);
+    const r = promtool(['test', 'rules', tf], { tmpRoot: dir });
+    // 期待との食い違いだけを「単体試験が落ちた」と言う（陰性対照はこの文言で数える）。置き場の失敗・シグナルは別の文言で出す。
+    if (r.status !== 0) out.push(failedOnExpectation(r) ? `promtool の単体試験が落ちた:\n${r.why}` : `promtool が期待の照合の外の理由で終わった（陰性対照に数えない）:\n${r.why}`);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -864,18 +864,21 @@ if (require.main === module) {
     const { rulesText } = PLATFORM_RULES(cloud);
     assert.strictEqual(rulesText.split(REPORT_MODE_EXPR).length, 2, '陽性対照: EgressProxyReportMode の式が想定の形でない');
     const good = promtoolReportModeRun(rulesText);
-    assert.strictEqual(good.status, 0, good.stdout + good.stderr);
+    assert.strictEqual(good.status, 0, good.why);
     // 陰性対照 1: 前の形（for: 14d で数える）へ戻すと、14 日を越えた・再起動の後・日時が無いの 3 つで鳴らずに赤
     const old = rulesText.replace(REPORT_MODE_EXPR, 'max(egress_proxy_enforcing) == 0').replace(/(alert: EgressProxyReportMode\n\s+expr: [^\n]+\n\s+)for: 1h/, '$1for: 14d');
     assert.notStrictEqual(old, rulesText);
-    assert.notStrictEqual(promtoolReportModeRun(old).status, 0, '前の形（for: 14d）でも通る（試験が数え方を見分けていない）');
+    const ngOld = promtoolReportModeRun(old);
+    assert.ok(failedOnExpectation(ngOld), `前の形（for: 14d）でも通る（試験が数え方を見分けていない）\n${ngOld.why}`);
     // 陰性対照 2: 日時が無いときの枝（absent）を外すと、日時が無い場合で鳴らずに赤
     const noAbsent = rulesText.replace(REPORT_MODE_EXPR, 'max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400)');
-    assert.notStrictEqual(promtoolReportModeRun(noAbsent).status, 0, '日時が無いときに鳴らない形でも通る');
+    const ngNoAbsent = promtoolReportModeRun(noAbsent);
+    assert.ok(failedOnExpectation(ngNoAbsent), `日時が無いときに鳴らない形でも通る\n${ngNoAbsent.why}`);
     // 陰性対照 3（IADR-0709）: 送り元ごとの段の枝を外すと、送り元ごとの段が report のまま残る場合で鳴らずに赤
     const noSource = rulesText.replace(REPORT_MODE_EXPR, REPORT_MODE_EXPR.replace('(max(egress_proxy_enforcing) == 0 or on() max(egress_proxy_source_enforcing) == 0)', 'max(egress_proxy_enforcing) == 0'));
     assert.notStrictEqual(noSource, rulesText);
-    assert.notStrictEqual(promtoolReportModeRun(noSource).status, 0, '送り元ごとの段を見ない形でも通る');
+    const ngNoSource = promtoolReportModeRun(noSource);
+    assert.ok(failedOnExpectation(ngNoSource), `送り元ごとの段を見ない形でも通る\n${ngNoSource.why}`);
     // 中継は日時を ConfigMap egress-proxy-report-since（optional・kustomize の外）から読む
     const vols = find(cloud, 'Deployment', 'egress-proxy', 'platform-infra').spec.template.spec.volumes;
     const v = vols.find((x) => x.configMap && x.configMap.name === 'egress-proxy-report-since');
@@ -994,7 +997,8 @@ if (require.main === module) {
     const bad = clone(cloud);
     const cm = find(bad, 'ConfigMap', 'prometheus-cloud-config', 'platform-infra');
     cm.data['platform-rules.yml'] = cm.data['platform-rules.yml'].replace('absent(credential_not_after_seconds{credential="openbao-operator-secret-id"}) and on() (count(tls_probe_up) > 0)', 'absent(credential_not_after_seconds{credential="openbao-operator-secret-id"})');
-    assert.ok(credentialAlertProblems(bad, libSh).some((x) => /promtool/.test(x)), '陰性対照: 測りの止まりでも「記録なし」が鳴る形を検出しない');
+    const pBad = credentialAlertProblems(bad, libSh);
+    assert.ok(pBad.some((x) => /^promtool の単体試験が落ちた:/.test(x)), `陰性対照: 測りの止まりでも「記録なし」が鳴る形を検出しない\n${pBad.join('\n')}`);
   });
 
   if (failed) {

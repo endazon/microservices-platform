@@ -37,28 +37,14 @@ function run(cmd, args, opts = {}) {
 }
 
 /**
- * NFR-21: promtool（test rules・check rules）を走らせる。promtool の単体試験は評価のたびに一時の TSDB（WAL と head の chunk）を
- * TMPDIR の下に書く。既定の /tmp を使うと、ほかの処理と同じ置き場の空きを取り合い、空きが尽きると評価の途中で書き込みに失敗する
- * （「no space left on device」の行が並ぶか、強制終了で出力が空のまま 0 でない終了になる）。また、強制終了の後は一時の TSDB が /tmp に残る。
- *   - 一時の置き場は呼び出しごとに砂場（sandbox）の下に作り、終われば消す（TMPDIR）。
- *   - 戻り値の why は、終了のコード・シグナル・標準出力・標準エラーをまとめた説明（空の出力のまま落ちて理由が読めない、を防ぐ）。
- *   - infra は、期待の照合の外の理由（置き場の書き込みの失敗・一時の置き場を開けない・シグナル）で落ちたか。陰性対照は infra でない
- *     失敗（期待との食い違い）だけを「落ちた」と数える（置き場の失敗で陰性対照が黙って通らないように）。
+ * NFR-21: promtool（test rules・check rules）を走らせる。一時の置き場（TMPDIR）は砂場の下に呼び出しごとに作り、終われば消す。
+ * 戻り値の why（失敗の理由の説明）・infra（期待の照合の外の理由で落ちたか）と陰性対照の判定 failedOnExpectation は
+ * 共通器 scripts/lib/promtool.js が持つ（scripts/deploy-cloud-egress-audit.test.js と共用。作業仕様書 20261108_egress-audit-promtool-sandbox）。
  */
-function promtool(args) {
-  const tmp = fs.mkdtempSync(path.join(sandbox, 'promtool-tmp-'));
-  try {
-    const r = run('promtool', args, { env: { ...process.env, TMPDIR: tmp } });
-    const out = `${r.stdout || ''}${r.stderr || ''}`;
-    r.infra = r.signal != null || /no space left on device|opening test storage|write to WAL|cannot allocate memory/i.test(out);
-    r.why = `promtool ${args.join(' ')}: 終了 ${r.status}${r.signal ? `（シグナル ${r.signal}）` : ''}${r.infra ? '・期待の照合の外の理由で落ちた（一時の置き場・シグナル）' : ''}\n${out.trim() ? out.split('\n').filter((l) => l.trim()).slice(0, 40).join('\n') : '（出力なし）'}`;
-    return r;
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-}
+const promtoolLib = require('./lib/promtool');
+const promtool = (args) => promtoolLib.promtool(args, { tmpRoot: sandbox });
 /** 陰性対照: 期待との食い違いで落ちた（置き場の失敗・シグナルではない）。 */
-const failedOnExpectation = (r) => r.status === 1 && !r.infra && /FAILED:/.test(`${r.stdout}${r.stderr}`);
+const { failedOnExpectation } = promtoolLib;
 
 function render(dir) {
   const r = run('kubectl', ['kustomize', dir]);
