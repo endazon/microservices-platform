@@ -786,3 +786,4 @@
 | [IADR-0706](./IADR-0706_cloud-data-broker-hardening.md) | クラウドの Postgres の超利用者の TCP は既定で拒み、利用者を作る Job の間だけ Pod の中のゲートで開ける。バックアップは全データを読めるだけの専用の利用者で入る。ブローカは平文と管理の口を Pod の外へ出さず、既定のユーザーの扱いを段（retain → delete）にする。OpenBao の値の作り直しを消費側へ反映する手段を持つ | Accepted |
 | [IADR-0707](./IADR-0707_review-verdict-ignore-quotes-and-output-object.md) | 検証の下限の検査器は、レビュー本文の引用（引用ブロック・語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文を、下限の自己申告として数えない（狭く外し、下限は緩めない） | Accepted |
 | [IADR-0708](./IADR-0708_ai-job-scopes-bot-pr-and-third-party-image-scan.md) | AI のジョブは id-token を持たず、AI レビューは作成者か起動した者が bot の PR では走らせない（check は skipped）。配備する第三者のイメージは週次で走査して結果を Security タブだけに上げ（issue・ログ・ジョブの成否に出さない）、更新は Dependabot の docker で知らせる | Accepted |
+| [IADR-0711](./IADR-0711_dependabot-docker-no-major-per-image-openbao-272.md) | Dependabot の docker は大版を出さず、0.x の製品と chart と対の製品は小版も出さず、collector は名指しで止め、1 イメージ 1 本の PR（修正版と小版は別の group）にする。OpenBao を 2.7.2 へ上げ、Keycloak 26.8 は上げない | Accepted |

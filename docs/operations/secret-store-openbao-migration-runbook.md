@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-10-09
-updated: 2026-10-16
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-18, NFR-21, SC-22]
 adrs: [ADR-0132, ADR-0124, ADR-0107, ADR-0112]
-iadrs: [IADR-0457, IADR-0471, IADR-0486, IADR-0525, IADR-0548]
-specs: [20261009_1840_secret-store-openbao, 20261016_1868_openbao-raft-snapshot-backup]
+iadrs: [IADR-0457, IADR-0471, IADR-0486, IADR-0525, IADR-0548, IADR-0711]
+specs: [20261009_1840_secret-store-openbao, 20261016_1868_openbao-raft-snapshot-backup, 20261108_dependabot-docker-safe-updates]
 issues: [#1840, #1868]
 -->
 
@@ -207,7 +207,7 @@ git worktree remove "$PRE"
 
 | 見るもの | 成功の条件 | コマンド |
 | --- | --- | --- |
-| 製品・ストレージ・封印 | `version` が `2.7.1`、`storage_type` が `raft`、`sealed` が `false` | `kubectl -n platform-infra exec deploy/vault -- sh -c "$IN_POD"' vault status -format=json' \| jq '{version, storage_type, sealed}'` |
+| 製品・ストレージ・封印 | `version` が `2.7.2`（宣言のイメージの版。`deploy/local/vault/vault-dev.yaml`）、`storage_type` が `raft`、`sealed` が `false` | `kubectl -n platform-infra exec deploy/vault -- sh -c "$IN_POD"' vault status -format=json' \| jq '{version, storage_type, sealed}'` |
 | ラッパーの記録 | `initialized (reusing …)`・`unsealed`・`fixed root token present`・`audit device present at stdout/`・`ready` が出て、`not initialized` が**出ない** | `kubectl -n platform-infra logs deploy/vault \| grep vault-entrypoint` |
 | データ | 手順 1 で控えた KV の数と現在版が同じ | 手順 1 の 2 つのコマンド |
 | 認証の設定 | `kubernetes/`・`oidc/`（OIDC を入れていれば）が在る | `… vault auth list` |

@@ -6,7 +6,7 @@
 **opt-in オーバーレイ**。AST chart 側の `ExternalSecret`（`ast-secrets` / `moomoo-*`・opt-in）がこのストアを
 参照して Vault dev から同期できる状態を作る。
 
-> **製品は OpenBao**（Vault API 互換・MPL-2.0。`openbao/openbao:2.7.1` を digest で固定。NFR-18・ADR-0132・IADR-0525・#1840）。
+> **製品は OpenBao**（Vault API 互換・MPL-2.0。`openbao/openbao:2.7.2` を digest で固定。NFR-18・ADR-0132・IADR-0525・#1840。2.7.1 → 2.7.2 は IADR-0711）。
 > HashiCorp Vault は 1.15 以降 BUSL-1.1 で、配備していた 1.16 はコミュニティ保守も終わっていた。**名前は変えていない**
 > （`deploy/vault`・Service `vault`・Secret `vault-dev-token`・`VAULT=1`・アプリの `Vault__*`。計画中の「Vault」は Vault API 互換の製品と読む）。
 > イメージは `vault` を `bao` へのリンクとして同梱し、CLI は `BAO_*` が無いとき `VAULT_ADDR` / `VAULT_TOKEN` を読む。

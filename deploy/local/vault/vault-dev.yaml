@@ -32,8 +32,8 @@ spec:
       serviceAccountName: vault
       containers:
         - name: vault
-          # OpenBao 2.7.1（index の digest。匿名で 2 回解決して一致。2026-10-09）。イメージは `vault` を `bao` へのリンクとして同梱する。
-          image: openbao/openbao:2.7.1@sha256:6d2b93856e3fcf7b18ad855a0b51eaba474dc8b79cf554379ea32034797d2acf
+          # OpenBao 2.7.2（index の digest。amd64・arm64 を含む。docker buildx imagetools とレジストリ API で一致。2026-11-08・IADR-0711）。イメージは `vault` を `bao` へのリンクとして同梱する。
+          image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
           args: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
           env:
             # dev root トークン（平文コミットしない・Secret 経由）。

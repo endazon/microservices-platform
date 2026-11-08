@@ -109,7 +109,7 @@ jobs:
       - name: Test local Vault persistence entrypoint (vault stub)
         run: bash deploy/local/vault-persistence/vault-entrypoint.test.sh
       # NFR-05, NFR-18, IADR-0689, Issue #2471: クラウドの秘匿管理の手順（init・unseal・configure・seed・gen・root の作り直し）を、
-      # **実物の OpenBao**（宣言のイメージと同じ 2.7.1。pinned-artifacts.sh の表の sha256 と突合してから導入する）で通して固定する —— 値が kubectl の引数・
+      # **実物の OpenBao**（宣言のイメージと同じ 2.7.2。pinned-artifacts.sh の表の sha256 と突合してから導入する）で通して固定する —— 値が kubectl の引数・
       # 作業場に残らない・root が失効する・policy の境界・gen のバイト数と形式。OpenBao は一時ディレクトリの raft・ループバックで起こし、kubectl はスタブ。
       - name: Install OpenBao and age (pinned, checksum-verified)
         if: ${{ !cancelled() }}
@@ -118,7 +118,7 @@ jobs:
           # 版・取得元・sha256 は scripts/lib/pinned-artifacts.sh の表（pinned_tool_entry）が 1 つに持つ。合わなければここで止まる。
           . scripts/lib/pinned-artifacts.sh
           pinned_work_init
-          tgz="$(pinned_tool openbao 2.7.1 "$PINNED_WORK")"
+          tgz="$(pinned_tool openbao 2.7.2 "$PINNED_WORK")"
           tar -xzf "$tgz" -C "$PINNED_WORK" bao
           sudo install -m 0755 "$PINNED_WORK/bao" /usr/local/bin/bao
           bao version

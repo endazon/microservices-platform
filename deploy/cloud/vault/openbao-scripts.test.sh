@@ -16,7 +16,7 @@ BAO="${BAO_BIN:-$(command -v bao || true)}"
 # 絶対のパスにする（スタブの kubectl は Pod の作業場へ cd してから bao を呼ぶので、相対のパスでは見つからず「状態を読めない」で落ちる）。
 BAO="$(cd "$(dirname "$BAO")" && pwd)/$(basename "$BAO")"
 for t in age age-keygen node openssl; do command -v "$t" >/dev/null || { echo "✗ $t が無い" >&2; exit 1; }; done
-[[ "$("$BAO" version)" == *"OpenBao v2.7.1"* ]] || { echo "✗ bao の版が宣言（2.7.1）と違う: $("$BAO" version)" >&2; exit 1; }
+[[ "$("$BAO" version)" == *"OpenBao v2.7.2"* ]] || { echo "✗ bao の版が宣言（2.7.2）と違う: $("$BAO" version)" >&2; exit 1; }
 
 W="$(mktemp -d)"
 PID=""

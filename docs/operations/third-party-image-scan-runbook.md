@@ -7,10 +7,10 @@ created: 2026-11-08
 updated: 2026-11-08
 ---
 <!-- trace:
-ids: [NFR-18]
+ids: [NFR-18, SC-12]
 adrs: [ADR-0107]
-iadrs: [IADR-0708, IADR-0514, IADR-0584, IADR-0232]
-specs: [20261108_ci-review-perms-image-scan]
+iadrs: [IADR-0708, IADR-0711, IADR-0514, IADR-0584, IADR-0232]
+specs: [20261108_ci-review-perms-image-scan, 20261108_dependabot-docker-safe-updates]
 -->
 
 # 運用 Runbook: 第三者のイメージの走査と更新
@@ -30,7 +30,7 @@ specs: [20261108_ci-review-perms-image-scan]
 | --- | --- | --- | --- |
 | `Third-party Image Scan`（`.github/workflows/third-party-image-scan.yml`） | 週次（火曜 04:17 UTC）・手動（workflow_dispatch） | `node scripts/check-image-digests.js --scan-targets` の全イメージを Trivy で走査し、修正版のある CRITICAL / HIGH を SARIF で code scanning へ上げる。**issue は起票しない。見つかった脆弱性でジョブを落とさない** | Security タブ → Code scanning（カテゴリ `third-party-image/<イメージ名-tag>`）。新しい alert の通知は、リポジトリを watch する設定（Security alerts）で受ける |
 | 同上（pull_request） | `deploy/**`・対象の選び方・本ワークフローを触る PR | 走査が完走したかだけを示す。SARIF を上げず、件数も出さない。**必須チェックではない** | なし（PR の版で増えたかは、マージ後の週次か手動の実行の alert で見る） |
-| Dependabot（`.github/dependabot.yml` の `docker`） | 週次 | `deploy/cloud/**` の `image:` の新しい版を 1 本の PR にまとめて出す | 下の §更新の PR を仕上げる |
+| Dependabot（`.github/dependabot.yml` の `docker`） | 週次 | `deploy/cloud/**` の `image:` の修正版・小版を、**1 イメージ 1 本の PR** で出す（修正版と小版は PR の題で分かる）。大版・下の除外は出さない | 下の §更新の PR を仕上げる・§Dependabot が出さない更新 |
 
 - ジョブが赤になるのは、走査そのものが失敗した（結果が無い・読めない）ときだけである。レジストリの一時的な失敗なら手動で再実行する。
   続くならイメージの参照（digest の実在）を `docker buildx imagetools inspect <ref>` で確かめる。
@@ -62,6 +62,37 @@ Dependabot の docker は `deploy/cloud/**` だけを見る。同じイメージ
 4. 版の上げ方に注意が要るもの（設定の互換・データの移行）は、上流のリリースノートを人が読む（AI のレビューは bot の PR では走らない）。
    RabbitMQ の 3.13 系から 4.x への移行は、機能フラグとキューの種類の確認が要るので、通常の更新と分けて計画に載せる。
 5. 稼働中のクラスタへの反映は、各部品の runbook の手順（オーナーが行う）に従う。本書はリポジトリの中の更新までを扱う。
+
+## Dependabot が出さない更新（設定は `.github/dependabot.yml` の `docker`）
+
+1 本の PR に大版と小版を混ぜて 7 製品を束ねた更新（tag の選び誤りを含む）を閉じた経緯から、次を出させない。**出ない更新は週次の走査の alert と、
+下の §大版の移行の棚卸しで拾う。**
+
+| 出させないもの | 理由 |
+| --- | --- |
+| 全製品の大版（semver の major） | 設定・規則・CRD の互換を、更新の PR の CI では確かめられない |
+| collector の全部の更新 | 上流は `<版>-386` のように**数字だけのアーキテクチャ接尾辞**の tag を出し、Dependabot はそれを版の続きと読んで選んだ。Dependabot の docker では接尾辞の型で除く設定が無い（下の注） |
+| Alertmanager の小版 | 0.x の製品で、小版でも互換が崩れうる |
+| External Secrets Operator の小版 | helm chart（`scripts/lib/pinned-artifacts.sh`）と CRD を対で上げる |
+
+- 注: `versioning-strategy` は docker では使えない。`ignore` の `versions` は Bundler の版の書式で、「末尾が `-386`」のような型は書けない。
+  `-amd64`・`-arm64` などの英字を含む接尾辞は、閉じた PR で選ばれなかった（同じ版に在ったのに `-386` だけが選ばれた）。
+  英字の接尾辞を別の型として扱っていると**推定**しているが、文書には書かれていない。collector を上げたら、PR の差分の tag が接尾辞の無い形であることを人が確かめる。
+- 手で上げる・Dependabot の PR を受けるときの tag は、**接尾辞の無い multi-arch の tag**（`docker buildx imagetools inspect` の
+  `MediaType` が image index で、`Platform` に `linux/amd64` が在る）に限る。
+
+## 大版の移行（後続の作業。1 製品ずつ別の PR で行う）
+
+どれも、上げる PR の中で次の項目を確かめるまで上げない。確かめ方が CI に無いものは、使い捨てのコンテナかクラスタで実測して作業仕様書に残す。
+
+| 製品 | 今の版 → 候補 | 確かめること |
+| --- | --- | --- |
+| Prometheus | v2 系 → v3 系 | 警報・記録の規則が v3 で読めること（`promtool check rules`・`promtool test rules` を v3 の promtool で）。v3 で変わった既定（UTF-8 の名前・範囲の選択の境界・`le` / `quantile` の正規化など）で式の結果が変わらないこと。scrape の設定・remote write・TSDB の既存データの読み込み。Grafana の data source から引けること |
+| Alertmanager | 0.27 → 0.3x | 設定（`amtool check-config`）・route・receiver（メール）・テンプレートが新しい版で読めること。受信の API の版。Prometheus からの送りが届くこと |
+| collector（contrib） | 0.102 → 0.16x | 接尾辞の無い multi-arch の tag を選ぶこと。設定の component の改名・廃止（receiver・processor・exporter）、`service.telemetry` の書式、OTLP の受け口と認証、Loki・Tempo・Prometheus への送り先の exporter が新しい版に在ること。メモリの上限 |
+| External Secrets Operator | 2.8 → 2.1x | image と helm chart の版を対で上げる（chart の sha256 を表へ）。CRD の版（`v1` / `v1beta1`）の扱いと、ClusterSecretStore・ExternalSecret が Ready / SecretSynced のままであること。chart の values の改名 |
+| node（Job・中継のイメージ） | 22 → 24（LTS） | 25 などの LTS でない版は採らない。Job のスクリプトが新しい版で動くこと（`fetch`・TLS の既定）。`src/` の Dockerfile・helm values・`deploy/local`・`deploy/mail-relay` の写しも同じ PR で揃える |
+| Keycloak | 26.7 → 26.8 | 小版だが上流の移行の手引きに破壊的変更が並ぶ（管理の REST API の audience の検査・protocol mapper の管理の権限・クライアント登録のポリシー・SMTP の StartTLS・refresh token の期限・ログイン画面の IdP のボタン など）。realm の宣言の取り込み・MCP クライアントの払い出し（管理用のクライアント）・匿名のクライアント登録のポリシー・メール・テーマ（`check-realm-constraints.js` の同梱テーマの表を新しい版の配布物から引き直す）・統合スタックの門を新しい版で通す |
 
 ## 関連
 
