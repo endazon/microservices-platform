@@ -38,13 +38,15 @@ related_specs:
    - `user.type` は使わない（#524 の試験が全ワークフローで禁じる。ログインの接尾辞で判定する）。
    - `GH_TOKEN` のステップの env は残す。アクション自身が同じ値を `GH_TOKEN`・`GITHUB_TOKEN` に入れる（`run.ts`）ので、外しても届く範囲は変わらない。
 3. 第三者のイメージの走査 `third-party-image-scan.yml` を足す。対象は `check-image-digests.js --scan-targets`（`deploy/` の第三者・digest 固定・重複なし）。
-   Trivy（`images.yml` と同じ固定の版）で CRITICAL / HIGH・修正版ありを数え、SARIF を code scanning へ上げる。
-   - 週次・dispatch: 1 件でもあれば脚を落とし、`ci-failure-issue.yml` が起票する。
-   - PR（`deploy/**` 等の paths）: 注記だけで落とさない。必須チェックにしない。
-   - 受け入れ: `.github/image-scan.trivyignore.yaml`（id・statement・90 日以内の expired_at）。
-   - ［2026-11-08 追記 / #2516 のレビュー］ignore の YAML がアクション・Trivy の固定の版で読まれることをソースで確かめた（IADR-0708 決定 3）。Trivy の版を明示し、code scanning の category は digest を落として記号を `-` にした名前にした。
+   Trivy（`images.yml` と同じ固定の版。v0.70.0 を明示）で CRITICAL / HIGH・修正版ありを SARIF にする。
+   - 🔴 本リポジトリは public。結果を公開の面へ出さない（2026-11-08 の追加の指示）。
+   - 週次・dispatch: SARIF を code scanning へ上げる。通知は Security タブの alert に一本化し、issue を起票しない。脆弱性でジョブを落とさない。
+   - PR（`deploy/**` 等の paths）: SARIF を上げず、走査が完走したかだけを示す。必須チェックにしない。
+   - ログ・注記・要約にイメージごとの件数もイメージ名も出さない。ジョブ名は番号。落とすのは走査の失敗だけ。
+   - 受け入れは Security タブの dismiss（理由と見直しの日）。リポジトリの ignore ファイルは置かない。
+   - code scanning の category は digest を落として記号を `-` にした名前。
 4. `dependabot.yml` に docker（`/deploy/cloud/**`・1 本の PR へまとめる）を足す。片側の更新は `[digest-mismatch]` が止めるので、手順書で残りを揃える。
-5. 手順書 `docs/operations/third-party-image-scan-runbook.md`（赤の扱い・受け入れ・更新の PR の仕上げ）。
+5. 手順書 `docs/operations/third-party-image-scan-runbook.md`（alert の扱い・受け入れ・更新の PR の仕上げ）。
 
 ## 母集合（規則 9・10）
 
@@ -61,16 +63,15 @@ related_specs:
 | --- | --- | --- |
 | AC1 | 2 つの AI のジョブが `id-token: write` を持たない | `scripts.repo.test.js` の #1581 の JOB_SCOPES・IADR-0708 の言明 |
 | AC2 | `claude-review` は作成者か起動した者が bot の PR ではジョブの if で走らず、ジョブ名・types は不変、`allowed_bots` は `*` でない | IADR-0708 の言明と陰性対照 |
-| AC3 | 走査は週次・dispatch で修正版のある CRITICAL / HIGH を落とし、PR では落とさず、落ちたら起票する | 同上 |
-| AC4 | 受け入れのファイルの各項目は CVE・statement・90 日以内の expired_at を持つ | 同上 |
+| AC3 | 走査は週次・dispatch で SARIF を code scanning へ上げ、issue の起票・件数やイメージ名の出力・脆弱性でのジョブの失敗・PR での上げが無い | 同上 |
+| AC4 | 受け入れの ignore ファイルをリポジトリに置かない（ワークフローも渡さない） | 同上 |
 | AC5 | Dependabot の docker が `deploy/cloud/**` を見る | 同上 |
 | AC6 | 走査の対象は `deploy/` の第三者・digest 固定・重複なしで、RabbitMQ・Prometheus・Alertmanager・collector・OpenBao・Keycloak を含む | `check-image-digests.js --self-test`・IADR-0708 の言明 |
 | AC7 | 陰性対照: 直しを外した（2 つのワークフローと dependabot.yml を develop に戻した）状態では AC1・AC2・AC5 が赤。`scanTargets` の deploy の絞り・補間の除外を外すと自己試験が赤 | 手で確かめ、PR 本文に記録 |
 | AC8 | 既存の試験が全部緑 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` |
-| AC9 | PR の run で走査のワークフローが動き、対象の件数と各イメージの件数を出す（PR では緑） | PR の run |
+| AC9 | PR の run で走査のワークフローが完走する（件数は出さない） | PR の run |
 
 ## 残余
 
-- 週次の走査の最初の結果（古い版の Prometheus・Alertmanager・collector・RabbitMQ 等）は、マージ後の最初の週次で赤になる見込み。
-  上げるか期限つきで受け入れるかは手順書に従って利用者が判断する。RabbitMQ の 4.x への移行は計画へ載せる。
+- alert の扱い（上げる・dismiss・移行を計画へ）は手順書に従い、Security タブの中で利用者が判断する。dismiss の見直しは月次（オーナー）。
 - bot の PR は AI レビューを受けない（人のレビューが持つ）。

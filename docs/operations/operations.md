@@ -58,7 +58,7 @@ issues: [#2413, #2410, #2402, #2148, #2361, #2178, #2334, #2335, #2336, #2143, #
 | キャッシュ・セッションストア（Valkey）のパスワードを回す・戻す／Argo CD の前提／到達の制限の確かめ方 | §キャッシュ・セッションストア（Valkey）のパスワードの差し替え・切り戻し |
 | 経路B の Loki のログを読む・日付とサービスを指定してファイルへ保全する・保持と永続化を確かめる | [`loki-log-read-runbook.md`](loki-log-read-runbook.md) |
 | CI が計画リポジトリを読むトークンを作り直す・権限を読み取りだけ・期限つきに絞る | [`planning-repo-token-runbook.md`](planning-repo-token-runbook.md) |
-| 第三者のイメージの週次の走査が赤になった・受け入れる脆弱性を期限つきで載せる・更新の PR（Dependabot）を仕上げる | [`third-party-image-scan-runbook.md`](third-party-image-scan-runbook.md) |
+| 第三者のイメージの走査の alert（Security タブ）を扱う・受け入れる・更新の PR（Dependabot）を仕上げる | [`third-party-image-scan-runbook.md`](third-party-image-scan-runbook.md) |
 | 障害発生時の一次対応を知りたい | §障害対応（Runbook） |
 
 ---

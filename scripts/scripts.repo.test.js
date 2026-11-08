@@ -8659,7 +8659,6 @@ ${r.stderr}`);
       'security.yml:report-failure': { actions: 'read', issues: 'write' },
       // IADR-0708: 第三者のイメージの走査の SARIF を code scanning へ上げる（security-events: write。upload-sarif が run を読む actions: read）
       'third-party-image-scan.yml:scan': { actions: 'read', 'security-events': 'write' },
-      'third-party-image-scan.yml:report-failure': { actions: 'read', issues: 'write' },
     };
     const sortedScopes = (o) => Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b)));
     /** ジョブの permissions から `contents: read` を除いたもの（キーで整列）。ブロックが無ければ {}（ワークフロー単位を継ぐ）。 */
@@ -21339,8 +21338,9 @@ esac
   // 1. claude-code-review / claude-coding のジョブは id-token: write を持たない（JOB_SCOPES の表でも固定。ここは陰性対照つきの言明）。
   // 2. claude-review は作成者か起動した者が bot の PR では走らない。止め方はジョブ単位の if（check は skipped＝合格）で、
   //    ステップの exit 1 ではない。ジョブ名・起動の types は変えない。allowed_bots は '*' にしない。
-  // 3. 第三者のイメージの走査は週次・dispatch で落ち、PR では落とさない。対象は check-image-digests.js --scan-targets。
-  //    受け入れの ignore ファイルの各項目は id・statement・expired_at（90 日以内）を持つ。dependabot.yml の docker が deploy/cloud を見る。
+  // 3. 第三者のイメージの走査は週次・dispatch で SARIF を code scanning へ上げる。対象は check-image-digests.js --scan-targets。
+  //    結果は Security タブだけ（issue・ログ・注記・ジョブの成否に出さない）。受け入れはリポジトリの ignore ファイルで行わない。
+  //    dependabot.yml の docker が deploy/cloud を見る。
   {
     const fsR8 = require('fs');
     const pathR8 = require('path');
@@ -21392,55 +21392,51 @@ esac
       if (!/^ {2}workflow_dispatch:/m.test(code)) out.push('workflow_dispatch が無い');
       if (!code.includes('node scripts/check-image-digests.js --scan-targets')) out.push('対象を check-image-digests.js --scan-targets から引いていない');
       if (!/severity: CRITICAL,HIGH/.test(code) || !/ignore-unfixed: true/.test(code) || !/limit-severities-for-sarif: true/.test(code)) out.push('重大度・修正版・SARIF の絞りが無い');
-      if (!/trivyignores: \.github\/image-scan\.trivyignore\.yaml/.test(code)) out.push('受け入れの ignore ファイルを渡していない');
+      if (/trivyignores:|TRIVY_IGNOREFILE|\.trivyignore/.test(code)) out.push('受け入れをリポジトリの ignore ファイルで行っている（公開のファイルに残す CVE を書くことになる）');
       if (!/^ +version: v\d+\.\d+\.\d+\s*$/m.test(code)) out.push('Trivy の版を明示していない');
       if (/category: [^\n]*matrix\.image/.test(code) || !/category: \$\{\{ steps\.cat\.outputs\.category \}\}/.test(code)) out.push('code scanning の category に参照をそのまま入れている');
       if (!code.includes("${IMAGE%%@sha256:*}") || !code.includes("sed 's/[^A-Za-z0-9._/-]/-/g'")) out.push('category の名前から digest と記号を落としていない');
-      if (!/if \[ "\$EVENT_NAME" = "pull_request" \]; then[\s\S]*?exit 0[\s\S]*?exit 1/.test(code)) out.push('PR では落とさず、それ以外では落とす判定になっていない');
-      if (!/uses: \.\/\.github\/workflows\/ci-failure-issue\.yml/.test(code)) out.push('失敗の起票（ci-failure-issue.yml）を呼んでいない');
-      if (!/if: always\(\) && github\.event_name != 'pull_request' && contains\(needs\.\*\.result, 'failure'\)/.test(code)) out.push('起票の条件が PR を除いていない');
+      // public リポジトリなので、結果を公開の面（issue・ログ・注記・要約・ジョブの成否）へ出さない
+      if (/ci-failure-issue\.yml|issues:\s*write|^ {2}report-failure:|gh issue create|issues\.create/m.test(code)) out.push('issue を起票する呼び出しがある');
+      if (/\.results\b|results\[\]|\|\s*length/.test(code)) out.push('結果の件数を数えて出す step がある');
+      for (const l of code.split('\n')) {
+        if (/(echo|printf)\b/.test(l) && /(::warning::|::error::|::notice::|GITHUB_STEP_SUMMARY|^\s*(echo|printf)\b)/.test(l) && /\$\{?(IMAGE|n)\b|matrix\.image/.test(l) && !/GITHUB_OUTPUT/.test(l)) out.push(`ログ・注記・要約にイメージ名か件数を出している: ${l.trim()}`);
+      }
+      if (/^ {4}name: [^\n]*matrix\.image/m.test(code)) out.push('ジョブ名にイメージ名を入れている');
+      if (!/- name: Upload to code scanning\n {8}if: github\.event_name != 'pull_request'/.test(code)) out.push('PR でも SARIF を上げる・または上げていない');
+      const exits = code.match(/exit 1/g) || [];
+      if (exits.length !== 1 || !/if \[ ! -s trivy\.sarif \][^\n]*\n[^\n]*\n\s*exit 1/.test(code)) out.push('走査の失敗以外でジョブを落としている');
       return out;
     };
-    ok('IADR-0708: 第三者のイメージの走査は週次・dispatch で落ち、PR では落とさず、落ちたら起票する', () => {
+    ok('IADR-0708: 第三者のイメージの走査は結果を Security タブだけに上げ、issue・ログ・注記・ジョブの成否に出さない', () => {
       assert.deepStrictEqual(scanIssues(readR8('.github/workflows/third-party-image-scan.yml')), []);
     });
-    ok('IADR-0708 陰性対照: schedule を消す・PR でも落とす・重大度の絞りを外す・起票を消すと赤', () => {
+    ok('IADR-0708 陰性対照: schedule を消す・絞りを外す・起票を足す・件数や名前を出す・結果で落とす・PR で上げると赤', () => {
       const t = readR8('.github/workflows/third-party-image-scan.yml');
-      assert.ok(scanIssues(t.replace(/^ {2}schedule:\n {4}- cron: .*\n/m, '')).includes('週次の schedule が無い'));
-      const pr = 'if [ "$EVENT_NAME" = "pull_request" ]; then';
-      assert.ok(t.includes(pr));
-      assert.ok(scanIssues(t.replace(pr, 'if false; then')).length > 0);
+      const has = (text, re) => scanIssues(text).some((e) => re.test(e));
+      assert.ok(has(t.replace(/^ {2}schedule:\n {4}- cron: .*\n/m, ''), /schedule/));
       assert.ok(scanIssues(t.replace('limit-severities-for-sarif: true', 'limit-severities-for-sarif: false')).length > 0);
-      assert.ok(scanIssues(t.replace('uses: ./.github/workflows/ci-failure-issue.yml', 'uses: ./.github/workflows/nope.yml')).length > 0);
-      assert.ok(scanIssues(t.replace('category: ${{ steps.cat.outputs.category }}', 'category: third-party-image/${{ matrix.image }}')).includes('code scanning の category に参照をそのまま入れている'));
-      assert.ok(scanIssues(t.replace(/^ +version: v\d+\.\d+\.\d+\n/m, '')).includes('Trivy の版を明示していない'));
+      const rf = '\n  report-failure:\n    needs: [targets, scan]\n    if: always() && github.event_name != \'pull_request\' && contains(needs.*.result, \'failure\')\n    uses: ./.github/workflows/ci-failure-issue.yml\n    permissions:\n      contents: read\n      issues: write\n      actions: read\n';
+      assert.ok(has(t + rf, /issue を起票/));
+      const done = '          echo "走査は完走した。';
+      assert.ok(t.includes(done));
+      const count = '          n="$(jq \'[.runs[].results[]] | length\' trivy.sarif)"\n          echo "### ${IMAGE}: ${n} 件" >> "$GITHUB_STEP_SUMMARY"\n';
+      assert.ok(has(t.replace(done, count + done), /件数を数えて/));
+      assert.ok(has(t.replace(done, count + done), /イメージ名か件数/));
+      assert.ok(has(t.replace(done, '          echo "::warning::$IMAGE を走査した"\n' + done), /イメージ名か件数/));
+      assert.ok(has(t.replace('name: scan (${{ strategy.job-index }})', 'name: scan (${{ matrix.image }})'), /ジョブ名/));
+      assert.ok(has(t.replace(done, '          exit 1\n' + done), /走査の失敗以外/));
+      assert.ok(has(t.replace("- name: Upload to code scanning\n        if: github.event_name != 'pull_request'\n", '- name: Upload to code scanning\n'), /SARIF/));
+      assert.ok(has(t.replace('uses: aquasecurity', 'uses: aquasecurity').replace('category: ${{ steps.cat.outputs.category }}', 'category: third-party-image/${{ matrix.image }}'), /category/));
+      assert.ok(has(t.replace(/^ +version: v\d+\.\d+\.\d+\n/m, ''), /Trivy の版/));
     });
 
-    const ignoreIssues = (text, today) => {
-      const out = [];
-      const code = codeOf(text);
-      if (!/^vulnerabilities:/m.test(code)) out.push('vulnerabilities: が無い');
-      const items = code.split(/\n(?= {2}- id:)/).slice(1);
-      for (const it of items) {
-        const id = (/- id: (\S+)/.exec(it) || [])[1];
-        if (!/^(CVE-\d{4}-\d{4,})$/.test(id || '')) out.push(`ID が公開の CVE の形でない: ${id}`);
-        if (!/\n {4}statement: \S/.test(it)) out.push(`${id}: statement が無い`);
-        const exp = (/\n {4}expired_at: (\d{4}-\d{2}-\d{2})/.exec(it) || [])[1];
-        if (!exp) out.push(`${id}: expired_at が無い`);
-        else if ((Date.parse(exp) - Date.parse(today)) / 86400000 > 90) out.push(`${id}: expired_at が 90 日より先`);
-      }
-      return out;
-    };
-    ok('IADR-0708: 受け入れの ignore ファイルの各項目は CVE・statement・90 日以内の expired_at を持つ', () => {
-      assert.deepStrictEqual(ignoreIssues(readR8('.github/image-scan.trivyignore.yaml'), new Date().toISOString().slice(0, 10)), []);
-    });
-    ok('IADR-0708 陰性対照: statement・期限の欠落、遠すぎる期限、CVE 以外の ID は赤', () => {
-      const good = 'vulnerabilities:\n  - id: CVE-2026-12345\n    statement: 理由\n    expired_at: 2026-12-01\n';
-      assert.deepStrictEqual(ignoreIssues(good, '2026-11-08'), []);
-      assert.ok(ignoreIssues(good.replace('    statement: 理由\n', ''), '2026-11-08').length === 1);
-      assert.ok(ignoreIssues(good.replace('    expired_at: 2026-12-01\n', ''), '2026-11-08').length === 1);
-      assert.ok(ignoreIssues(good.replace('2026-12-01', '2027-06-01'), '2026-11-08').length === 1);
-      assert.ok(ignoreIssues(good.replace('CVE-2026-12345', 'XYZ-1'), '2026-11-08').length === 1);
+    ok('IADR-0708: 受け入れの ignore ファイルをリポジトリに置かない（受け入れは Security タブの dismiss）', () => {
+      const root = pathR8.join(ROOT_R8, '.github');
+      const found = fsR8.readdirSync(root).filter((f) => /trivyignore/i.test(f));
+      assert.deepStrictEqual(found, []);
+      const t = readR8('.github/workflows/third-party-image-scan.yml');
+      assert.ok(scanIssues(t.replace('exit-code: "0"', 'exit-code: "0"\n          trivyignores: .github/image-scan.trivyignore.yaml')).some((e) => /ignore ファイル/.test(e)));
     });
 
     const depIssues = (text) => {

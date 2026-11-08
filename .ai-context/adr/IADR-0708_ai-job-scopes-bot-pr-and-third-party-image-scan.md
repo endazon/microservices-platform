@@ -1,5 +1,5 @@
 ---
-title: IADR-0708 AI のジョブは id-token を持たず、AI レビューは作成者か起動した者が bot の PR では走らせない（check は skipped）。配備する第三者のイメージは週次で走査して修正版のある CRITICAL / HIGH で落とし、更新は Dependabot の docker で知らせる
+title: IADR-0708 AI のジョブは id-token を持たず、AI レビューは作成者か起動した者が bot の PR では走らせない（check は skipped）。配備する第三者のイメージは週次で走査して結果を Security タブだけに上げ（issue・ログ・ジョブの成否に出さない）、更新は Dependabot の docker で知らせる
 type: impl-adr
 status: Accepted
 related_ids: [NFR-18, IADR-0232, IADR-0584, IADR-0514, IADR-0203, IADR-0581]
@@ -46,12 +46,16 @@ related_specs:
    - 静的な読解だけに落として走らせる形は採らない（下の代替案）。
 3. 配備する第三者のイメージを週次（と手動）で走査する `third-party-image-scan.yml` を置く。
    - 対象は `check-image-digests.js --scan-targets`（`deploy/` の第三者・digest 固定・補間なし・重複なし）。固定の検査器と同じ抽出を使い、母集合を 2 つに割らない。
-   - Trivy（`images.yml` と同じ固定の版）で CRITICAL / HIGH・修正版ありを数える。SARIF を code scanning へ上げ（詳細は書き込みの権限を持つ人だけが見る）、ログには件数だけを出す。
-   - **週次・手動では 1 件でもあれば落とし、`ci-failure-issue.yml` で起票する。PR では注記だけで落とさない**（既存の古い版で関係の無い PR を赤くしない）。必須チェックにしない。
-   - 受け入れは `.github/image-scan.trivyignore.yaml` に、公開の CVE・理由・90 日以内の期限で 1 件ずつ書く（期限が来ると再び赤になる。書式は試験が固定する）。
-     固定の版のアクション（v0.36.0）は YAML の ignore ファイルを 1 つだけ受け付け、連結せずにそのまま `TRIVY_IGNOREFILE` へ渡す（`entrypoint.sh` の YAML の分岐）。
-     その既定の Trivy（v0.70.0。ワークフローに明示する）は拡張子で YAML と判じ、`expired_at` を過ぎた項目を外し（`pkg/result/ignore.go` の `Prune`）、
-     `statement` を無視の理由として結果に残す（`pkg/result/filter.go`）。
+   - Trivy（`images.yml` と同じ固定の版。v0.70.0 をワークフローに明示する）で CRITICAL / HIGH・修正版ありを SARIF にし、
+     週次・手動の実行だけが code scanning へ上げる。
+   - 🔴 **本リポジトリは public なので、結果を公開の面へ出さない。** 通知は Security タブの alert（書き込みの権限を持つ人だけが見る）に一本化する。
+     - issue は起票しない（`ci-failure-issue.yml` を呼ばない）。
+     - 見つかった脆弱性でジョブを落とさない（イメージごとのジョブの成否も公開の面である）。落とすのは走査そのものが失敗したときだけ。
+     - ログ・注記・実行の要約に、イメージごとの件数もイメージ名も出さない。ジョブ名は番号にする。PR の run は SARIF を上げず、完走したかだけを示す。
+     - 受け入れはリポジトリの ignore ファイル（`.trivyignore` 等）で行わない（公開のファイルに残す CVE を書くことになる）。Security タブの dismiss に
+       理由と見直しの日を書き、オーナーが月に 1 回見直す。
+     - いずれも `scripts.repo.test.js` が陰性対照つきで固定する（起票の呼び出し・件数を数える step・名前や件数の echo・結果での exit・PR での上げ・ignore ファイル）。
+   - 必須チェックにしない（paths を持つ）。
    - code scanning の category は、参照から digest を落とし英数字と `. _ / -` だけにした名前（`third-party-image/<repo>-<tag>`）。
      `:` `@` と 64 桁の digest を入れない。対象の間で重ならないこと・文字種と 100 字以内を試験が固定する。
 4. 更新の通知は Dependabot の docker（`/deploy/cloud/**`・1 本の PR へまとめる）。棲み分け（IADR-0203 / IADR-0581）の「Dependabot が持つ生態系」に docker を足す。
@@ -65,11 +69,14 @@ related_specs:
 - **ステップで判定して `exit 1`**: 採らない。必須チェックが赤になり、bot の PR がマージ不能になる。
 - **Renovate の kubernetes manager**: 採らない。本リポで Renovate の PR は直近 200 本で 0 本（稼働を確かめられない）。Dependabot は動いている（25 本）。
 - **PR でも走査で落とす**: 採らない。既存の古い版が全部の `deploy/` の PR を赤くし、赤を読み流す癖が付く。上げる PR の注記で足りる。
-- **走査の結果を表でログ・実行の要約へ出す**: 採らない。件数だけにし、一覧は code scanning に置く。
+- **走査の結果を表・件数でログ・実行の要約・注記へ出す／失敗を issue に起票する／脆弱性でジョブを落とす**: 採らない。public リポジトリでは
+  どれも誰でも読める面で、どのイメージに既知の脆弱性が残るかを公開することになる。
+- **受け入れを Trivy の ignore ファイル（期限つきの YAML）で行う**: 採らない。期限で自動的に戻る利点はあるが、残す CVE を公開のファイルに書くことになる。
+  dismiss には期限が無いので、オーナーの月次の見直しで補う。
 
 ## 結果
 
-- 試験: `scripts.repo.test.js`（JOB_SCOPES、IADR-0708 の言明と陰性対照: id-token・bot の除外・allowed_bots・ジョブ名・走査の判定・起票・ignore の書式・dependabot）、
+- 試験: `scripts.repo.test.js`（JOB_SCOPES、IADR-0708 の言明と陰性対照: id-token・bot の除外・allowed_bots・ジョブ名・結果を公開の面へ出さないこと・ignore ファイルを置かないこと・category・dependabot）、
   `check-image-digests.js --self-test`（`scanTargets`）。
-- 残余: bot の PR は AI レビューを受けない。週次の走査は、古い版のイメージでマージ後の最初の回から赤になる見込みで、上げるか期限つきで受け入れるかは手順書に従う。
-  RabbitMQ の 3.13 系から 4.x への移行は計画へ載せる。アクションが `origin` をトークン入りの URL へ書き換える件は IADR-0232 の記録のとおり（権限の範囲とジョブ終了での失効が縛る）。
+- 残余: bot の PR は AI レビューを受けない。alert の扱い（上げる・dismiss・移行を計画へ）は手順書に従い、Security タブの中で行う。
+  dismiss の見直しは期限で自動的に戻らない（オーナーの月次の作業）。走査そのものの失敗は issue にならず、ワークフローの失敗の通知だけになる。アクションが `origin` をトークン入りの URL へ書き換える件は IADR-0232 の記録のとおり（権限の範囲とジョブ終了での失効が縛る）。
