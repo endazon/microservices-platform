@@ -45,18 +45,46 @@ updates:
 
   # NFR, IADR-0708: クラウドで配備する第三者のイメージ（deploy/cloud の k8s マニフェスト・helm values の `image:`。
   # `<repo>:<tag>@sha256:<digest>` で固定）の更新の通知。Dependabot の docker は k8s マニフェストの `image:` を読む。
-  # - 1 本の PR にまとめる（groups）。同じイメージは deploy/local・deploy/docker-compose.yml にも在り、
-  #   片側だけの更新は scripts/check-image-digests.js の [digest-mismatch] が止める。残りは手で揃える
-  #   （docs/operations/third-party-image-scan-runbook.md §更新の PR を仕上げる）。
+  # - 同じイメージは deploy/local・deploy/docker-compose.yml にも在り、片側だけの更新は scripts/check-image-digests.js の
+  #   [digest-mismatch] が止める。残りは手で揃える（docs/operations/third-party-image-scan-runbook.md §更新の PR を仕上げる）。
   # - 既知の脆弱性の走査は .github/workflows/third-party-image-scan.yml（週次）。
   # 既定は自動マージしない（人手レビュー必須）。
+  # NFR, IADR-0711（MSP#2523 を閉じた理由の是正）: 壊れたときに切り分けて戻せる形にする。
+  # - 大版（semver-major）は出させない。大版の移行は手順書 §大版の移行で、検証の項目を揃えてから人が上げる。
+  # - 0.x の製品（collector・Alertmanager）は小版でも互換が崩れるので小版も出させない。ESO は helm chart
+  #   （scripts/lib/pinned-artifacts.sh）と CRD を対で上げるので小版も出させない。
+  # - collector は全部の更新を止める。上流は `<版>-386`（i386）のように数字だけのアーキテクチャ接尾辞の tag を出し、
+  #   Dependabot は `-386` を版の続きと読んで選んだ（MSP#2523）。docker では versioning-strategy が使えず、
+  #   ignore の versions は Bundler の版の書式（接尾辞の型は書けない）なので、名指しで止めるのが文書で確かめられる唯一の形。
+  # - dependency-name は registry の host を除いた名前（MSP#2523 の本文の表記: `external-secrets/external-secrets`・`keycloak/keycloak`）。
+  # - cooldown は書かない。MSP#2523 で Dependabot は「registry に公開日が無いので cooldown を当てられない」と警告した（効かない統制を書かない）。
+  # - 1 イメージ 1 本の PR（group-by: dependency-name）。修正版と小版は別の group（PR の題で区別する）。
   - package-ecosystem: "docker"
     directories:
       - "/deploy/cloud/**"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "otel/opentelemetry-collector-contrib"
+      - dependency-name: "prom/alertmanager"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "external-secrets/external-secrets"
+        update-types: ["version-update:semver-minor"]
     groups:
-      cloud-third-party-images:
+      cloud-image-patch:
+        applies-to: version-updates
+        group-by: dependency-name
         patterns:
           - "*"
+        update-types:
+          - "patch"
+      cloud-image-minor:
+        applies-to: version-updates
+        group-by: dependency-name
+        patterns:
+          - "*"
+        update-types:
+          - "minor"

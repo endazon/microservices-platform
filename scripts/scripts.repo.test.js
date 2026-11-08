@@ -21460,6 +21460,55 @@ esac
       assert.ok(depIssues(mutR8(t, '"/deploy/cloud/**"', '"/deploy/local/**"')).length === 1);
     });
 
+    // NFR, IADR-0711（MSP#2523 を閉じた理由の是正）: docker の項目は大版を出さず、collector を名指しで止め、
+    // 0.x（Alertmanager）と chart と対（ESO）は小版も止め、1 イメージ 1 本（group-by）で修正版と小版を別の group にする。
+    // cooldown は書かない（registry に公開日が無く効かなかった）。
+    const dockerBlock711 = (text) => {
+      const m = /- package-ecosystem: "docker"\n([\s\S]*?)(?=\n {2}- package-ecosystem:|\s*$)/.exec(codeOf(text));
+      return m ? m[1] : '';
+    };
+    const dep711Issues = (text) => {
+      const b = dockerBlock711(text);
+      if (!b) return ['docker の項目が無い'];
+      const out = [];
+      const ign = (/\n {4}ignore:\n([\s\S]*?)(?=\n {4}\S|$)/.exec(b) || [])[1] || '';
+      const entries = ign.split(/\n(?= {6}- )/).map((e) => e.trim()).filter(Boolean);
+      const entry = (name) => entries.find((e) => e.startsWith(`- dependency-name: "${name}"`));
+      if (!/version-update:semver-major/.test(entry('*') || '')) out.push('全製品の semver-major を ignore していない');
+      const otel = entry('otel/opentelemetry-collector-contrib');
+      if (!otel || /update-types|versions/.test(otel)) out.push('collector を名指しで全部止めていない');
+      for (const n of ['prom/alertmanager', 'external-secrets/external-secrets']) {
+        if (!/version-update:semver-minor/.test(entry(n) || '')) out.push(`${n} の小版を止めていない`);
+      }
+      const grp = (/\n {4}groups:\n([\s\S]*?)(?=\n {4}\S|$)/.exec(b) || [])[1] || '';
+      const groups = grp.split(/\n(?= {6}\S)/).map((g) => g.trim()).filter(Boolean);
+      const kinds = groups.map((g) => {
+        const types = [...g.matchAll(/^\s+- "(patch|minor|major)"$/gm)].map((x) => x[1]);
+        return { types, by: /\n\s+group-by: dependency-name\b/.test(g) };
+      });
+      if (!kinds.some((k) => k.types.join() === 'patch') || !kinds.some((k) => k.types.join() === 'minor')) out.push('修正版と小版の group が分かれていない');
+      if (kinds.length === 0 || !kinds.every((k) => k.by)) out.push('group が group-by: dependency-name を持たない');
+      if (kinds.some((k) => k.types.includes('major') || k.types.length === 0)) out.push('大版か全部の版を受ける group がある');
+      if (/\n {4}cooldown:/.test(b)) out.push('効かない cooldown を書いた');
+      return out;
+    };
+    ok('IADR-0711: dependabot.yml の docker は大版を出さず、collector を止め、Alertmanager・ESO の小版を止め、1 イメージ 1 本で修正版と小版を分ける', () => {
+      assert.deepStrictEqual(dep711Issues(readR8('.github/dependabot.yml')), []);
+    });
+    ok('IADR-0711 陰性対照: 大版の ignore・collector の ignore・小版の ignore・group の分割・group-by を外す／cooldown を足すと赤', () => {
+      const t = readR8('.github/dependabot.yml');
+      const has = (x, re) => dep711Issues(x).some((e) => re.test(e));
+      assert.ok(has(mutR8(t, '"version-update:semver-major"', '"version-update:semver-patch"'), /semver-major/));
+      assert.ok(has(mutR8(t, '- dependency-name: "otel/opentelemetry-collector-contrib"\n', '- dependency-name: "otel/opentelemetry-collector-contrib"\n        update-types: ["version-update:semver-major"]\n'), /collector/));
+      assert.ok(has(mutR8(t, '- dependency-name: "otel/opentelemetry-collector-contrib"\n', ''), /collector/));
+      assert.ok(has(mutR8(t, '- dependency-name: "prom/alertmanager"', '- dependency-name: "prom/prometheus"'), /alertmanager/));
+      assert.ok(has(mutR8(t, '- dependency-name: "external-secrets/external-secrets"', '- dependency-name: "ghcr.io/external-secrets/external-secrets"'), /external-secrets/));
+      assert.ok(has(mutR8(t, '          - "minor"\n', '          - "patch"\n'), /分かれていない/));
+      assert.ok(has(mutR8(t, '          - "patch"\n', '          - "patch"\n          - "major"\n'), /大版/));
+      assert.ok(has(mutR8(t, '        group-by: dependency-name\n', ''), /group-by/));
+      assert.ok(has(mutR8(t, '    open-pull-requests-limit: 5\n    ignore:', '    open-pull-requests-limit: 5\n    cooldown:\n      default-days: 14\n    ignore:'), /cooldown/));
+    });
+
     ok('IADR-0708: 走査の対象の選び方（scanTargets）が deploy/ の RabbitMQ・Prometheus・Alertmanager・collector を含む', () => {
       const { scanTargets, collect } = require('./check-image-digests.js');
       const refs = scanTargets(collect().refs).map((x) => x.ref);
