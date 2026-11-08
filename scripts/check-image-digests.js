@@ -47,6 +47,7 @@
  * 使い方:
  *   node scripts/check-image-digests.js              # 検査。違反があれば終了コード 1
  *   node scripts/check-image-digests.js --list       # 点検の母集合（製品ごとの参照箇所）を出す。判定はしない
+ *   node scripts/check-image-digests.js --scan-targets  # 脆弱性の走査の対象（deploy/ の第三者のイメージ。digest 固定・重複なし）を JSON で出す（IADR-0708）
  *   node scripts/check-image-digests.js --self-test  # 検査ロジックの自己試験
  * 外部依存ゼロ（Node 標準モジュールのみ）。git もネットワークも使わない。
  */
@@ -506,6 +507,34 @@ function list() {
   console.log(`\n製品 ${byProduct.size} 種・参照 ${infra.length} 件（自製 ${refs.length - infra.length} 件は対象外）。`);
 }
 
+/**
+ * NFR, IADR-0708: 脆弱性の走査（.github/workflows/third-party-image-scan.yml）の対象を選ぶ。純関数。
+ * - `deploy/` の参照だけ（配備するもの。`src/` の基底イメージと Testcontainers は images.yml の走査と統合試験の側）。
+ * - 自製は除く（images.yml が建てたイメージを走査する）。
+ * - digest で固定したものだけ（tag だけの参照は本検査器が落とす。走査は固定した中身に対して行う）。
+ * - 変数の補間（`${…}`）を含む参照は除く（解決できない）。
+ * - 同じ参照は 1 つにまとめ、参照箇所を添える。並びは参照の昇順（実行の間で行列を安定させる）。
+ */
+function scanTargets(refs) {
+  const byRef = new Map();
+  for (const r of refs) {
+    if (!r.file.startsWith(`${DEPLOY_DIR}/`)) continue;
+    if (isSelfBuilt(r.ref) || !DIGEST_RE.test(r.ref) || r.ref.includes('$')) continue;
+    if (!byRef.has(r.ref)) byRef.set(r.ref, []);
+    byRef.get(r.ref).push(`${r.file}:${r.line}`);
+  }
+  return [...byRef.keys()].sort().map((ref) => ({ ref, at: byRef.get(ref) }));
+}
+
+function printScanTargets() {
+  const targets = scanTargets(collect().refs);
+  if (targets.length === 0) {
+    console.error('[check-image-digests] 走査の対象が 0 件である（抽出が壊れている）。');
+    process.exit(1);
+  }
+  console.log(JSON.stringify(targets.map((t) => t.ref)));
+}
+
 function selfTest() {
   const D = 'sha256:' + 'a'.repeat(64);
   const D2 = 'sha256:' + 'b'.repeat(64);
@@ -697,6 +726,21 @@ function selfTest() {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+  t('[IADR-0708] 走査の対象は deploy/ の第三者の digest 固定の参照だけで、重複をまとめて昇順に並べる', () => {
+    const r = (file, ref) => ({ file, line: 1, ref, kind: 'image' });
+    const got = scanTargets([
+      r('deploy/cloud/a.yaml', `rabbitmq:3.13-alpine@${D}`),
+      r('deploy/local/b.yaml', `rabbitmq:3.13-alpine@${D}`),
+      r('deploy/cloud/c.yaml', `busybox:1.37@${D2}`),
+      r('deploy/cloud/d.yaml', 'busybox:1.37'),
+      r('deploy/cloud/e.yaml', `microservices-platform/bff:abc@${D}`),
+      r('deploy/cloud/f/Dockerfile', `\${BASE}/postgres:16@${D}`),
+      r('src/x/Dockerfile', `node:22@${D}`),
+      r('scripts/k.sh', `rancher/k3s:v1@${D}`),
+    ]);
+    return JSON.stringify(got.map((x) => x.ref)) === JSON.stringify([`busybox:1.37@${D2}`, `rabbitmq:3.13-alpine@${D}`])
+      && got[1].at.length === 2;
+  });
   t('splitRef はレジストリのポートを tag と取り違えない', () => {
     const s = splitRef(`localhost:5000/foo/bar:1.2@${D}`);
     return s.name === 'localhost:5000/foo/bar' && s.tag === '1.2' && s.digest === D;
@@ -720,10 +764,11 @@ function selfTest() {
   console.log(`✓ self-test: ${cases.length} 件すべて通過`);
 }
 
-module.exports = { extractRefs, evaluate, splitRef, productOf, isSelfBuilt, isContainerfile, collect };
+module.exports = { extractRefs, evaluate, splitRef, productOf, isSelfBuilt, isContainerfile, collect, scanTargets };
 
 if (require.main === module) {
   if (process.argv.includes('--self-test')) selfTest();
   else if (process.argv.includes('--list')) list();
+  else if (process.argv.includes('--scan-targets')) printScanTargets();
   else run();
 }

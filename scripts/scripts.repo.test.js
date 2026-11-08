@@ -8639,8 +8639,9 @@ ${r.stderr}`);
       'ci-latency-watch.yml:report-failure': { actions: 'read', issues: 'write' },
       // actions: read は mcp__github_ci__* の導入条件と `gh run list`（ワークフローの注記）
       // checks: read は判定のステップが同じ head の CI scripts-tests の check-run を読むため（IADR-0615 / #2184、IADR-0617 / #2206）
-      'claude-code-review.yml:claude-review': { actions: 'read', checks: 'read', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
-      'claude-coding.yml:claude': { actions: 'read', contents: 'write', 'id-token': 'write', issues: 'write', 'pull-requests': 'write' },
+      // IADR-0708: id-token: write は持たない（アクションは github_token を渡すと OIDC を求めない）
+      'claude-code-review.yml:claude-review': { actions: 'read', checks: 'read', issues: 'write', 'pull-requests': 'write' },
+      'claude-coding.yml:claude': { actions: 'read', contents: 'write', issues: 'write', 'pull-requests': 'write' },
       'codeql.yml:analyze': { actions: 'read', 'security-events': 'write' },
       'codeql.yml:report-failure': { actions: 'read', issues: 'write' },
       // #2026 / IADR-0625: live E2E の日次・dispatch の失敗の起票（ci-failure-issue.yml の呼び出し。#1588 と同じ範囲）
@@ -8656,6 +8657,9 @@ ${r.stderr}`);
       'obsidian-plugin-release.yml:release': { contents: 'write' },
       'openapi.yml:openapi': { contents: 'write', 'pull-requests': 'write' },
       'security.yml:report-failure': { actions: 'read', issues: 'write' },
+      // IADR-0708: 第三者のイメージの走査の SARIF を code scanning へ上げる（security-events: write。upload-sarif が run を読む actions: read）
+      'third-party-image-scan.yml:scan': { actions: 'read', 'security-events': 'write' },
+      'third-party-image-scan.yml:report-failure': { actions: 'read', issues: 'write' },
     };
     const sortedScopes = (o) => Object.fromEntries(Object.entries(o || {}).sort(([a], [b]) => a.localeCompare(b)));
     /** ジョブの permissions から `contents: read` を除いたもの（キーで整列）。ブロックが無ければ {}（ワークフロー単位を継ぐ）。 */
@@ -21328,6 +21332,134 @@ esac
       assert.ok(issuesL15(text.replace(cond, '${{ secrets.PLANNING_REPO_TOKEN }}')).some((e) => /push に限らず/.test(e)));
       assert.ok(issuesL15(text.replace(cond, "${{ github.event_name != 'push' && secrets.PLANNING_REPO_TOKEN || '' }}")).some((e) => /push に限らず/.test(e)));
       assert.ok(issuesL15(text.replace(/^on:\n/m, 'on:\n  pull_request_target:\n')).some((e) => /pull_request_target/.test(e)));
+    });
+  }
+
+  // --- NFR(セキュリティ) / IADR-0708: AI のジョブの権限と bot の PR の扱い・第三者のイメージの走査と更新の通知 ---
+  // 1. claude-code-review / claude-coding のジョブは id-token: write を持たない（JOB_SCOPES の表でも固定。ここは陰性対照つきの言明）。
+  // 2. claude-review は作成者か起動した者が bot の PR では走らない。止め方はジョブ単位の if（check は skipped＝合格）で、
+  //    ステップの exit 1 ではない。ジョブ名・起動の types は変えない。allowed_bots は '*' にしない。
+  // 3. 第三者のイメージの走査は週次・dispatch で落ち、PR では落とさない。対象は check-image-digests.js --scan-targets。
+  //    受け入れの ignore ファイルの各項目は id・statement・expired_at（90 日以内）を持つ。dependabot.yml の docker が deploy/cloud を見る。
+  {
+    const fsR8 = require('fs');
+    const pathR8 = require('path');
+    const ROOT_R8 = pathR8.join(__dirname, '..');
+    const readR8 = (rel) => fsR8.readFileSync(pathR8.join(ROOT_R8, rel), 'utf8').replace(/\r\n/g, '\n');
+    const codeOf = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+    const reviewIssues = (text) => {
+      const out = [];
+      const code = codeOf(text);
+      if (/^\s+id-token:\s*write\s*$/m.test(code)) out.push('id-token: write を持つ');
+      if (!/^ {2}claude-review:\s*$/m.test(code)) out.push('ジョブ名 claude-review が無い');
+      if (!/^ {4}types: \[opened, synchronize, reopened\]\s*$/m.test(code)) out.push('pull_request の types が変わった');
+      const jobIf = (/^ {4}if: (.+)$/m.exec(code.slice(code.indexOf('  claude-review:'))) || [])[1] || '';
+      if (!jobIf.includes("!endsWith(github.event.pull_request.user.login, '[bot]')")) out.push('ジョブの if が bot の作成者を除いていない');
+      if (!jobIf.includes("!endsWith(github.actor, '[bot]')")) out.push('ジョブの if が bot の起動を除いていない');
+      if (/allowed_bots:\s*'\*'/.test(code)) out.push("allowed_bots が '*'");
+      if (/\[bot\][^\n]*\n[^\n]*exit 1/.test(code) || /user\.login[\s\S]{0,200}exit 1/.test(code)) out.push('bot の PR をステップの exit 1 で止めている（check が赤になる）');
+      return out;
+    };
+    const codingIssues = (text) => (/^\s+id-token:\s*write\s*$/m.test(codeOf(text)) ? ['claude-coding.yml が id-token: write を持つ'] : []);
+
+    ok('IADR-0708: claude-review は id-token を持たず、bot の PR はジョブの if で走らせない（ジョブ名・types は不変）', () => {
+      assert.deepStrictEqual(reviewIssues(readR8('.github/workflows/claude-code-review.yml')), []);
+      assert.deepStrictEqual(codingIssues(readR8('.github/workflows/claude-coding.yml')), []);
+    });
+
+    ok('IADR-0708 陰性対照: id-token を戻す・bot の除外を外す・allowed_bots を * に戻す・ジョブ名を変えると赤', () => {
+      const t = readR8('.github/workflows/claude-code-review.yml');
+      const perm = '      issues: write\n';
+      assert.ok(t.includes(perm));
+      assert.ok(reviewIssues(t.replace(perm, perm + '      id-token: write\n')).includes('id-token: write を持つ'));
+      const author = "&& !endsWith(github.event.pull_request.user.login, '[bot]') ";
+      assert.ok(t.includes(author));
+      assert.ok(reviewIssues(t.replace(author, '')).includes('ジョブの if が bot の作成者を除いていない'));
+      const actor = "!endsWith(github.actor, '[bot]') && ";
+      assert.ok(t.includes(actor));
+      assert.ok(reviewIssues(t.replace(actor, '')).includes('ジョブの if が bot の起動を除いていない'));
+      assert.ok(reviewIssues(t.replace("allowed_bots: ''", "allowed_bots: '*'")).includes("allowed_bots が '*'"));
+      assert.ok(reviewIssues(t.replace('  claude-review:\n', '  review:\n')).length > 0);
+      const c = readR8('.github/workflows/claude-coding.yml');
+      assert.ok(codingIssues(c.replace('      issues: write\n', '      issues: write\n      id-token: write\n')).length === 1);
+    });
+
+    const scanIssues = (text) => {
+      const out = [];
+      const code = codeOf(text);
+      if (!/^ {2}schedule:\n {4}- cron: /m.test(code)) out.push('週次の schedule が無い');
+      if (!/^ {2}workflow_dispatch:/m.test(code)) out.push('workflow_dispatch が無い');
+      if (!code.includes('node scripts/check-image-digests.js --scan-targets')) out.push('対象を check-image-digests.js --scan-targets から引いていない');
+      if (!/severity: CRITICAL,HIGH/.test(code) || !/ignore-unfixed: true/.test(code) || !/limit-severities-for-sarif: true/.test(code)) out.push('重大度・修正版・SARIF の絞りが無い');
+      if (!/trivyignores: \.github\/image-scan\.trivyignore\.yaml/.test(code)) out.push('受け入れの ignore ファイルを渡していない');
+      if (!/if \[ "\$EVENT_NAME" = "pull_request" \]; then[\s\S]*?exit 0[\s\S]*?exit 1/.test(code)) out.push('PR では落とさず、それ以外では落とす判定になっていない');
+      if (!/uses: \.\/\.github\/workflows\/ci-failure-issue\.yml/.test(code)) out.push('失敗の起票（ci-failure-issue.yml）を呼んでいない');
+      if (!/if: always\(\) && github\.event_name != 'pull_request' && contains\(needs\.\*\.result, 'failure'\)/.test(code)) out.push('起票の条件が PR を除いていない');
+      return out;
+    };
+    ok('IADR-0708: 第三者のイメージの走査は週次・dispatch で落ち、PR では落とさず、落ちたら起票する', () => {
+      assert.deepStrictEqual(scanIssues(readR8('.github/workflows/third-party-image-scan.yml')), []);
+    });
+    ok('IADR-0708 陰性対照: schedule を消す・PR でも落とす・重大度の絞りを外す・起票を消すと赤', () => {
+      const t = readR8('.github/workflows/third-party-image-scan.yml');
+      assert.ok(scanIssues(t.replace(/^ {2}schedule:\n {4}- cron: .*\n/m, '')).includes('週次の schedule が無い'));
+      const pr = 'if [ "$EVENT_NAME" = "pull_request" ]; then';
+      assert.ok(t.includes(pr));
+      assert.ok(scanIssues(t.replace(pr, 'if false; then')).length > 0);
+      assert.ok(scanIssues(t.replace('limit-severities-for-sarif: true', 'limit-severities-for-sarif: false')).length > 0);
+      assert.ok(scanIssues(t.replace('uses: ./.github/workflows/ci-failure-issue.yml', 'uses: ./.github/workflows/nope.yml')).length > 0);
+    });
+
+    const ignoreIssues = (text, today) => {
+      const out = [];
+      const code = codeOf(text);
+      if (!/^vulnerabilities:/m.test(code)) out.push('vulnerabilities: が無い');
+      const items = code.split(/\n(?= {2}- id:)/).slice(1);
+      for (const it of items) {
+        const id = (/- id: (\S+)/.exec(it) || [])[1];
+        if (!/^(CVE-\d{4}-\d{4,})$/.test(id || '')) out.push(`ID が公開の CVE の形でない: ${id}`);
+        if (!/\n {4}statement: \S/.test(it)) out.push(`${id}: statement が無い`);
+        const exp = (/\n {4}expired_at: (\d{4}-\d{2}-\d{2})/.exec(it) || [])[1];
+        if (!exp) out.push(`${id}: expired_at が無い`);
+        else if ((Date.parse(exp) - Date.parse(today)) / 86400000 > 90) out.push(`${id}: expired_at が 90 日より先`);
+      }
+      return out;
+    };
+    ok('IADR-0708: 受け入れの ignore ファイルの各項目は CVE・statement・90 日以内の expired_at を持つ', () => {
+      assert.deepStrictEqual(ignoreIssues(readR8('.github/image-scan.trivyignore.yaml'), new Date().toISOString().slice(0, 10)), []);
+    });
+    ok('IADR-0708 陰性対照: statement・期限の欠落、遠すぎる期限、CVE 以外の ID は赤', () => {
+      const good = 'vulnerabilities:\n  - id: CVE-2026-12345\n    statement: 理由\n    expired_at: 2026-12-01\n';
+      assert.deepStrictEqual(ignoreIssues(good, '2026-11-08'), []);
+      assert.ok(ignoreIssues(good.replace('    statement: 理由\n', ''), '2026-11-08').length === 1);
+      assert.ok(ignoreIssues(good.replace('    expired_at: 2026-12-01\n', ''), '2026-11-08').length === 1);
+      assert.ok(ignoreIssues(good.replace('2026-12-01', '2027-06-01'), '2026-11-08').length === 1);
+      assert.ok(ignoreIssues(good.replace('CVE-2026-12345', 'XYZ-1'), '2026-11-08').length === 1);
+    });
+
+    const depIssues = (text) => {
+      const code = codeOf(text);
+      const m = /- package-ecosystem: "docker"\n([\s\S]*?)(?=\n {2}- package-ecosystem:|\s*$)/.exec(code);
+      if (!m) return ['dependabot.yml に docker の項目が無い'];
+      return /"\/deploy\/cloud\/\*\*"/.test(m[1]) ? [] : ['docker の項目が deploy/cloud を見ていない'];
+    };
+    ok('IADR-0708: dependabot.yml の docker が deploy/cloud の第三者のイメージの更新を知らせる', () => {
+      assert.deepStrictEqual(depIssues(readR8('.github/dependabot.yml')), []);
+    });
+    ok('IADR-0708 陰性対照: docker の項目を消す・対象のディレクトリを変えると赤', () => {
+      const t = readR8('.github/dependabot.yml');
+      assert.ok(depIssues(t.replace('- package-ecosystem: "docker"', '- package-ecosystem: "pip"')).length === 1);
+      assert.ok(depIssues(t.replace('"/deploy/cloud/**"', '"/deploy/local/**"')).length === 1);
+    });
+
+    ok('IADR-0708: 走査の対象の選び方（scanTargets）が deploy/ の RabbitMQ・Prometheus・Alertmanager・collector を含む', () => {
+      const { scanTargets, collect } = require('./check-image-digests.js');
+      const refs = scanTargets(collect().refs).map((x) => x.ref);
+      for (const p of ['rabbitmq:', 'prom/prometheus:', 'prom/alertmanager:', 'otel/opentelemetry-collector-contrib:', 'openbao/openbao:', 'quay.io/keycloak/keycloak:']) {
+        assert.ok(refs.some((r) => r.startsWith(p)), `走査の対象に ${p} が無い`);
+      }
+      assert.ok(refs.every((r) => /@sha256:[0-9a-f]{64}$/.test(r)), 'digest で固定していない参照が混じっている');
     });
   }
 
