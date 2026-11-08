@@ -12,7 +12,8 @@
 #     （lib.sh の OB_PKI_ROLES: postgres・rabbitmq・keycloak・llmgateway-service。SAN は名指しの 4 つだけ・発行した証明書を保存しない。
 #     稼働中の構成へ role を足すときは root-token.sh apply-pki-roles。IADR-0693）
 #   - policy（deploy/cloud/vault/policies/*.hcl）と kubernetes 認証の role（ESO の 3 つの ServiceAccount）
-#   - オーナー用の AppRole `cloud-operator`（ループバックからだけ入れる。トークンは 15 分）
+#   - オーナー用の AppRole `cloud-operator`（ループバックからだけ入れる。トークンは 15 分。secret_id は期限つき〔IADR-0710〕で、
+#     期限を ConfigMap platform-infra/openbao-operator-credential に記録する〔警報が期限の前に知らせる〕）
 # オーナー用の資格（role_id・secret_id）は Pod の中から手元の `age -R` へだけ流し、--operator-out に暗号化して書く。
 # 🔴 初回の root を失効させるのは、資格を書き出して復号で確かめた**後**だけ。途中で落ちたら root は残し、そのまま流し直せる
 #    （済んだものは作り直さない。資格は流し直しのたびに 1 組へ作り直す）。
@@ -149,33 +150,28 @@ ca="$(b read -field=certificate pki_cloud/cert/ca)"
 printf '%s' "$ca" | b kv put -mount=cloud shared/platform-infra-ca ca.crt=- >/dev/null
 echo "    書いた: cloud/shared/platform-infra-ca（公開してよい CA の証明書）"
 case "$auths" in *'"approle/"'*) ;; *) b auth enable approle >/dev/null ;; esac
-b write auth/approle/role/cloud-operator token_policies=cloud-operator token_ttl=15m token_max_ttl=1h \
-  secret_id_ttl=0 secret_id_num_uses=0 bind_secret_id=true \
-  token_bound_cidrs=127.0.0.1/32 secret_id_bound_cidrs=127.0.0.1/32 >/dev/null
 # 前の回が資格を書き出す前に落ちたなら、その回の secret_id は誰も持たない。全部消してから 1 つだけ作る（流し直しても資格は 1 組）。
-# 一覧は JSON の配列（無ければ「{}」）。accessor の形のものだけを拾う。
-for a in $(b list -format=json auth/approle/role/cloud-operator/secret-id 2>/dev/null | tr -d "[]\", " | grep -E "^[0-9a-f-]{36}$" || true); do
-  printf '{"secret_id_accessor":"%s"}' "$a" | b write auth/approle/role/cloud-operator/secret-id-accessor/destroy - >/dev/null
-done
-rid="$(b read -field=role_id auth/approle/role/cloud-operator/role-id)"
-sid="$(b write -f -field=secret_id auth/approle/role/cloud-operator/secret-id)"
-printf '{"role_id":"%s","secret_id":"%s"}\n' "$rid" "$sid" >&3
-unset rid sid
-echo "    作った: オーナー用の資格（AppRole cloud-operator。ループバックからだけ）"
+# IADR-0710 決定 3: secret_id は期限つき（lib.sh の OB_OPERATOR_SECRET_ID_TTL_HOURS）。role の設定と作り方は root-token.sh rotate-operator と同じ 1 つ。
+__OPERATOR__
+echo "    作った: オーナー用の資格（AppRole cloud-operator。ループバックからだけ。期限つき）"
 EOF
 )"
 # bash 5.2 の置換は既定で & を一致した字面に読み替える（patsub_replacement）。差し込む手順を字面のまま入れる。
 shopt -u patsub_replacement 2>/dev/null || true
 roles="$(ob_pki_roles b)"
+operator="$(ob_operator_issue b)"
 policies="$(for p in platform-infra-eso msp-eso ast-eso cloud-operator; do policy_write "$p"; done)"
 POD="${POD/__PKI_ROLES__/$roles}"
 POD="${POD/__POLICIES__/$policies}"
+POD="${POD/__OPERATOR__/$operator}"
 POD="${POD//__K8S_HOST__/$K8S_HOST}"
 # 試験だけが与える（クラスタの中では Pod の ServiceAccount の CA を使う）。公開してよい CA の証明書。
 K8S_CA="$( [ -n "${OPENBAO_KUBERNETES_CA_FILE:-}" ] && cat "$OPENBAO_KUBERNETES_CA_FILE" || true)"
 POD="${POD/__K8S_CA__/$K8S_CA}"
 
 echo "==> 設定（初回の root を使う。失効は資格を書き出して確かめた後）"
+# IADR-0710 決定 3: 期限の記録は、作り始める前の時刻から数える（実際の期限より早いか同じ）。
+issued_from="$(date +%s)"
 # 経路 1: 書き出しの前に落ちた → 書き出し先を消す。root は残る。同じコマンドで流し直す。
 if ! ( umask 077
        ob_decrypt_lines "$INIT_FILE" "$IDENTITY" root_token | ob_exec "$POD" | age -R "$RECIPIENTS" -o "$OUT" ); then
@@ -203,6 +199,8 @@ for ns in $CA_NAMESPACES; do
   fi
   echo "    作った: ConfigMap ${ns}/platform-infra-ca"
 done
+
+ob_operator_record_expiry "$issued_from"
 
 echo "==> 失効（オーナー用の資格を書き出して確かめたので、初回の root を失効させる）"
 # 経路 3: ここで落ちた → 🔴 資格のファイルは消さない（失効が実は効いていたなら、消すと root も資格も無くなる）。

@@ -69,6 +69,16 @@ BACKUP_S3_MONTHLY_CHECK_MAX="${BACKUP_S3_MONTHLY_CHECK_MAX:-2}"
 # リモート名（英小文字・数字・-・_）＋ : ＋ バケット（S3 の命名規則の 3〜63 文字）＋ 任意の接頭辞（.. を含まない）。
 S3_DEST_RE='^[a-z][a-z0-9_-]*:[a-z0-9][a-z0-9.-]{1,61}[a-z0-9](/[A-Za-z0-9_-][A-Za-z0-9._-]*)*$'
 
+# NFR-21, NFR-18, IADR-0710 決定 1: 外の生存の確かめ（Healthchecks.io の check。クラウドでは check C）へ、回の結果を送る。
+#   BACKUP_HEARTBEAT_URL_FILE が空なら何もしない（ローカルの構成）。与えたのにファイルが無い・空なら、警告して送らない
+#   （段: オーナーが check と URL を用意するまで、外の check は作らない。手順書 cloud-backup-alerts-heartbeat-runbook §4）。
+#   成功（終了 0）は URL へ、失敗は URL/fail へ送る。止まった・時間切れの回・走らなかった日は送られず、外の check が期限で下がる。
+#   🔴 URL は秘密に準ずる（知れば成功を偽れる）ので、ログに出さず、送る道具の出力も捨てる。送れなくても回の終了コードは変えない。
+#   送るのは rclone の copyurl（HTTPS_PROXY に従う。クラウドの外向きの中継を経る）。上限は BACKUP_HEARTBEAT_TIMEOUT 秒（最悪の合計に入る。T-2402-12）。
+BACKUP_HEARTBEAT_URL_FILE="${BACKUP_HEARTBEAT_URL_FILE:-}"
+BACKUP_HEARTBEAT_TIMEOUT="${BACKUP_HEARTBEAT_TIMEOUT:-20}"
+HEARTBEAT_URL_RE='^https://[A-Za-z0-9.-]+(:443)?/[A-Za-z0-9._~/-]+$'
+
 # 回の名前: UTC の時刻 ＋ 任意の接尾辞（-partial = 一部失敗 / -keep = 運用者が長期保持へ改名したもの）。
 RUN_NAME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{6}Z(-partial|-keep)?$'
 # age の公開鍵（bech32: "age1" ＋ 58 文字）。
@@ -905,6 +915,40 @@ publish_s3() {
 	return 0
 }
 
+# ---------------------------------------------------------------- heartbeat（IADR-0710 決定 1）
+
+heartbeat_get() { timeout "$BACKUP_HEARTBEAT_TIMEOUT" rclone -q copyurl --stdout "$1" >/dev/null 2>&1; }
+
+# report_heartbeat <回の終了コード> —— 外の check へ回の結果を送る。どの分岐でも 0 を返す（回の結果を変えない）。
+report_heartbeat() {
+	local rc="$1" url what=成功
+	[ -n "$BACKUP_HEARTBEAT_URL_FILE" ] || return 0
+	if [ ! -r "$BACKUP_HEARTBEAT_URL_FILE" ] || [ ! -s "$BACKUP_HEARTBEAT_URL_FILE" ]; then
+		err "WARN: 外の生存の確かめの URL が無い（${BACKUP_HEARTBEAT_URL_FILE}。Secret alertmanager-heartbeat の backup-ping-url）。送らない"
+		return 0
+	fi
+	url=""
+	# 末尾の改行が無くても読む（Secret の値は改行を持たないことが多い）。
+	IFS= read -r url < "$BACKUP_HEARTBEAT_URL_FILE" || true
+	if [[ ! "$url" =~ $HEARTBEAT_URL_RE ]]; then
+		err "WARN: 外の生存の確かめの URL が https の URL の形でない（値は表示しない）。送らない"
+		return 0
+	fi
+	if [[ ! "$BACKUP_HEARTBEAT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+		err "WARN: BACKUP_HEARTBEAT_TIMEOUT は 1 以上の整数です（送らない）"
+		return 0
+	fi
+	command -v rclone >/dev/null 2>&1 || { err "WARN: rclone が無いので、外の生存の確かめへ送れない"; return 0; }
+	if [ "$rc" -ne 0 ]; then url="$url/fail"; what=失敗; fi
+	if heartbeat_get "$url"; then
+		log "外の生存の確かめへ送った（$what）"
+	else
+		err "WARN: 外の生存の確かめへ送れない（$what。値は表示しない）。外の check は期限で下がる"
+	fi
+	unset url
+	return 0
+}
+
 # ---------------------------------------------------------------- main
 
 main() {
@@ -979,5 +1023,7 @@ main() {
 
 if [ "${BACKUP_LIB:-}" != "1" ]; then
 	main
-	exit $?
+	main_rc=$?
+	report_heartbeat "$main_rc"
+	exit "$main_rc"
 fi

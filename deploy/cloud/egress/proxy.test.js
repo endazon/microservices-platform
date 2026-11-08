@@ -10,6 +10,9 @@
  *   E4 許可表は宣言・オーナーの表・バックアップの endpoint の和で、不正な行・https でない endpoint は入れない。
  *   E5 件数（/metrics）は判定ごとに数え、段を出す。
  *   E7 report の段に入った日時（ConfigMap egress-proxy-report-since）を読み、report の段だけ計器に出す。無い・形が違う・先の日時は 0。
+ *   E8 IADR-0709: 送り元ごとの表。受け口（送り元）の表に在る宛先だけを allow。全体の表に在り送り元の表に無い宛先は、送り元ごとの段が
+ *      report なら通して数え（mismatch）、enforce なら拒む。送り元を名乗らない口（legacy）は enforce で何も通さない。443 でないポートは名指した行だけ。
+ *   E9 IADR-0709: 送り元つきの表・受け口の一覧の読み方（不正な行は捨て、受け口の重なり・legacy の名乗りは起動を止める）。
  *   E6 引いた番地を順に試す（1 件目が繋がらない・応答しないとき 2 件目へ。全部だめなら 502）。名前を引く間に閉じたクライアントのためには繋がない。
  */
 const assert = require('assert');
@@ -111,15 +114,15 @@ ok('E1 enforce: 許可表の宛先の 443 だけを通し、表に無い宛先�
     assert.strictEqual((await connectVia(port, 'api.anthropic.com:80')).status, 403, '443 でないポートを通した');
     assert.strictEqual((await connectVia(port, '203.0.113.10:443')).status, 403, 'IP の字面を通した');
     assert.strictEqual((await connectVia(port, 'api.anthropic.com', { method: 'GET' })).status, 405, 'CONNECT でない方法を受けた');
-    assert.ok(lines.some((l) => /^allow: api\.anthropic\.com:443$/.test(l)), lines.join('\n'));
-    assert.ok(lines.some((l) => /^deny: example\.org:443 許可表に無い$/.test(l)), lines.join('\n'));
+    assert.ok(lines.some((l) => /^allow: \[legacy\] api\.anthropic\.com:443$/.test(l)), lines.join('\n'));
+    assert.ok(lines.some((l) => /^deny: \[legacy\] example\.org:443 許可表に無い$/.test(l)), lines.join('\n'));
   });
 });
 
 ok('E2 report: 表に無い宛先も通して report の行を出す。443 でない・IP の字面は report でも拒む', async () => {
   await withProxy('report', ['api.anthropic.com'], {}, async (port, lines) => {
     assert.deepStrictEqual(await connectVia(port, 'hc-ping.com:443'), { status: 200, echoed: true });
-    assert.ok(lines.some((l) => /^report: hc-ping\.com:443 /.test(l)), lines.join('\n'));
+    assert.ok(lines.some((l) => /^report: \[legacy\] hc-ping\.com:443 /.test(l)), lines.join('\n'));
     assert.strictEqual((await connectVia(port, 'hc-ping.com:8443')).status, 403);
     assert.strictEqual((await connectVia(port, '[2001:db8::1]:443')).status, 403);
   });
@@ -148,7 +151,7 @@ ok('E4 許可表は 3 つの和で、不正な行・https でない・443 でな
       { path: path.join(dir, 'endpoint'), kind: 'endpoint' },
       { path: path.join(dir, 'missing'), kind: 'hosts' },
     ]);
-    assert.deepStrictEqual([...set].sort(), ['api.anthropic.com', 'discord.com', 'fsn1.your-objectstorage.com', 'hc-ping.com']);
+    assert.deepStrictEqual([...set].sort(), ['api.anthropic.com:443', 'discord.com:443', 'fsn1.your-objectstorage.com:443', 'hc-ping.com:443']);
     assert.deepStrictEqual(p.hostOfEndpoint('http://fsn1.your-objectstorage.com'), []);
     assert.deepStrictEqual(p.hostOfEndpoint('https://fsn1.your-objectstorage.com:9000'), []);
     assert.deepStrictEqual(p.hostOfEndpoint('https://10.0.0.1'), []);
@@ -163,8 +166,8 @@ ok('E5 件数は判定ごとに数え、段を出す', async () => {
     await connectVia(port, 'api.anthropic.com:443');
     await connectVia(port, 'example.org:443');
     const m = prox.metrics();
-    assert.match(m, /egress_proxy_requests_total\{decision="allow"\} 1/);
-    assert.match(m, /egress_proxy_requests_total\{decision="deny"\} 1/);
+    assert.match(m, /egress_proxy_requests_total\{decision="allow",source="legacy"\} 1/);
+    assert.match(m, /egress_proxy_requests_total\{decision="deny",source="legacy"\} 1/);
     assert.match(m, /egress_proxy_enforcing 1/);
   });
 });
@@ -221,6 +224,138 @@ ok('E7 report の段に入った日時: RFC 3339 の UTC を読んで report の
     const enf = p.createProxy({ mode: 'enforce', allow: () => new Set(), reportSince: () => 1730000000, log: () => {} }).metrics();
     assert.ok(!/egress_proxy_report_since_timestamp_seconds/.test(enf), 'enforce の段で日時を出した');
   } finally { fs.rmSync(d, { recursive: true, force: true }); }
+});
+
+/** 送り元ごとの中継（IADR-0709）。 */
+async function withSourceProxy({ source, sourceMode, mode = 'enforce', all, mine }, fn) {
+  const echo = await echoServer();
+  const lines = [];
+  const prox = p.createProxy({
+    mode,
+    source,
+    sourceMode,
+    allow: () => new Set(all),
+    sourceAllow: () => new Set(mine),
+    lookup: async () => ['203.0.113.10'],
+    connect: () => net.connect(echo.address().port, '127.0.0.1'),
+    log: (l) => lines.push(l),
+  });
+  await new Promise((r) => prox.server.listen(0, '127.0.0.1', r));
+  try {
+    return await fn(prox.server.address().port, lines, prox);
+  } finally {
+    prox.server.close();
+    echo.close();
+  }
+}
+
+ok('E8 送り元ごとの表: 自分の表の宛先だけ allow。他の送り元の宛先は report で数えて通し、enforce で拒む。legacy は enforce で何も通さない', async () => {
+  const all = ['api.anthropic.com:443', 'discord.com:443', 'opend.example.com:9000'];
+  // report: 自分の表は allow、他の送り元の宛先は通して mismatch を数える
+  await withSourceProxy({ source: 'llmgateway', sourceMode: 'report', all, mine: ['api.anthropic.com:443'] }, async (port, lines, prox) => {
+    assert.deepStrictEqual(await connectVia(port, 'api.anthropic.com:443'), { status: 200, echoed: true });
+    assert.deepStrictEqual(await connectVia(port, 'discord.com:443'), { status: 200, echoed: true });
+    assert.ok(lines.some((l) => /^report: \[llmgateway\] discord\.com:443 送り元 llmgateway の表に無い/.test(l)), lines.join('\n'));
+    assert.strictEqual((await connectVia(port, 'example.org:443')).status, 403, '全体の表に無い宛先を通した（全体の段は enforce）');
+    const m = prox.metrics();
+    assert.match(m, /^egress_proxy_source_mismatch_total\{source="llmgateway"\} 1$/m);
+    assert.match(m, /^egress_proxy_requests_total\{decision="allow",source="llmgateway"\} 1$/m);
+    assert.match(m, /^egress_proxy_source_enforcing 0$/m);
+    assert.match(m, /^egress_proxy_report_since_timestamp_seconds 0$/m, '送り元ごとの段が report のとき日時を出さない');
+  });
+  // enforce: 他の送り元の宛先は拒む
+  await withSourceProxy({ source: 'llmgateway', sourceMode: 'enforce', all, mine: ['api.anthropic.com:443'] }, async (port, lines, prox) => {
+    assert.deepStrictEqual(await connectVia(port, 'api.anthropic.com:443'), { status: 200, echoed: true });
+    assert.strictEqual((await connectVia(port, 'discord.com:443')).status, 403, '他の送り元の宛先を通した');
+    assert.ok(lines.some((l) => /^deny: \[llmgateway\] discord\.com:443 送り元 llmgateway の表に無い$/.test(l)), lines.join('\n'));
+    assert.match(prox.metrics(), /^egress_proxy_source_enforcing 1$/m);
+  });
+  // 443 でないポートは名指した行だけ（全体の段が report でも、名指していないポートは拒む）
+  await withSourceProxy({ source: 'ast-opend', sourceMode: 'enforce', mode: 'report', all, mine: ['opend.example.com:9000'] }, async (port) => {
+    assert.deepStrictEqual(await connectVia(port, 'opend.example.com:9000'), { status: 200, echoed: true });
+    assert.strictEqual((await connectVia(port, 'opend.example.com:9001')).status, 403, '名指していないポートを通した');
+  });
+  // legacy（送り元を名乗らない口）: report では全体の表で通し、enforce では何も通さない
+  await withSourceProxy({ source: 'legacy', sourceMode: 'report', all, mine: [] }, async (port) => {
+    assert.deepStrictEqual(await connectVia(port, 'discord.com:443'), { status: 200, echoed: true });
+  });
+  await withSourceProxy({ source: 'legacy', sourceMode: 'enforce', all, mine: all }, async (port, lines) => {
+    assert.strictEqual((await connectVia(port, 'api.anthropic.com:443')).status, 403, 'legacy の口が enforce で通した');
+    assert.ok(lines.some((l) => /^deny: \[legacy\] api\.anthropic\.com:443 送り元を名乗らない口/.test(l)), lines.join('\n'));
+  });
+  // 陰性対照: 送り元を見ない判定（per なし）なら他の送り元の宛先も allow になる（試験が送り元の判定を見分けている）
+  assert.strictEqual(p.decide(p.parseTarget('discord.com:443'), new Set(all), 'enforce').decision, 'allow');
+  assert.strictEqual(p.decide(p.parseTarget('discord.com:443'), new Set(all), 'enforce', { source: 'llmgateway', sourceMode: 'enforce', sourceSet: new Set(['api.anthropic.com:443']) }).decision, 'deny');
+});
+
+ok('E9 送り元つきの表と受け口の一覧の読み方', () => {
+  const t = p.parseSourceHosts('# 注記\nllmgateway api.anthropic.com\nalertmanager Discord.com:443\nast-opend opend.example.com:9000\nhc-ping.com\nbad_src x.example.com\nllmgateway *.gg\nllmgateway a.*.example.com\nllmgateway 10.0.0.1\nllmgateway x.example.com:70000\na b c\n');
+  assert.deepStrictEqual([...t.keys()].sort(), ['*', 'alertmanager', 'ast-opend', 'llmgateway']);
+  assert.deepStrictEqual([...t.get('llmgateway')], ['api.anthropic.com:443']);
+  assert.deepStrictEqual([...t.get('alertmanager')], ['discord.com:443']);
+  assert.deepStrictEqual([...t.get('ast-opend')], ['opend.example.com:9000']);
+  assert.deepStrictEqual([...t.get('*')], ['hc-ping.com:443']);
+  // "*.<名前>" は 1 段下だけ。土台が 1 段（"*.gg"）・途中の * は捨てる
+  const w = p.parseSourceHosts('ast-notification *.discord.gg\nx *.gg\nx a.*.discord.gg\nx *.*.discord.gg\n');
+  assert.deepStrictEqual([...w.keys()], ['ast-notification']);
+  const ws = w.get('ast-notification');
+  const has = (h) => p.decide(p.parseTarget(h), ws, 'enforce').decision === 'allow';
+  assert.ok(has('gateway-us-east1-b.discord.gg:443'), '1 段下の名前に当たらない');
+  for (const no of ['discord.gg:443', 'a.b.discord.gg:443', 'evil-discord.gg:443', 'gateway.discord.gg.evil.example:443', 'gateway.discord.gg:8443']) assert.ok(!has(no), `${no} に当たった`);
+  assert.deepStrictEqual(p.parseListeners('llmgateway:3131 backup:3132'), [{ source: 'llmgateway', port: 3131 }, { source: 'backup', port: 3132 }]);
+  for (const bad of ['legacy:3131', 'a:3131 a:3132', 'a:3131 b:3131', 'a:80', 'A:3131', 'a3131']) assert.throws(() => p.parseListeners(bad), undefined, `「${bad}」を受けた`);
+  // 従来の口・件数の口と重なる送り元の口は起動を止める（陰性対照: 重ならなければ通る）
+  for (const bad of ['a:3128', 'a:3131 b:9464']) assert.throws(() => p.parseListeners(bad, [3128, 9464]), /重なる/, `「${bad}」を受けた`);
+  assert.deepStrictEqual(p.parseListeners('a:3131', [3128, 9464]), [{ source: 'a', port: 3131 }]);
+  // 表のファイル: 送り元つき・名前だけ・バックアップの endpoint（送り元 backup）
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-src-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'hosts'), 'llmgateway api.anthropic.com\nalertmanager discord.com\n');
+    fs.writeFileSync(path.join(dir, 'extra'), 'alertmanager hc-ping.com\nold.example.com\n');
+    fs.writeFileSync(path.join(dir, 'endpoint'), 'https://bucket.fsn1.your-objectstorage.com\n');
+    const { all, bySource } = p.readTables([
+      { path: path.join(dir, 'hosts'), kind: 'sources' },
+      { path: path.join(dir, 'extra'), kind: 'sources' },
+      { path: path.join(dir, 'endpoint'), kind: 'endpoint' },
+    ]);
+    assert.deepStrictEqual([...all].sort(), ['api.anthropic.com:443', 'bucket.fsn1.your-objectstorage.com:443', 'discord.com:443', 'hc-ping.com:443', 'old.example.com:443']);
+    assert.deepStrictEqual([...bySource.get('alertmanager')].sort(), ['discord.com:443', 'hc-ping.com:443']);
+    assert.deepStrictEqual([...bySource.get('backup')], ['bucket.fsn1.your-objectstorage.com:443']);
+    assert.ok(![...bySource.values()].some((s) => s.has('old.example.com:443')), '送り元を書かない行をどこかの送り元の表へ入れた');
+    // 仮想ホスト形式（force_path_style=false）なら、保管先は "<バケット>.<endpoint の名前>" だけ（共有の名前を表に入れない）
+    fs.writeFileSync(path.join(dir, 'endpoint'), 'https://fsn1.your-objectstorage.com\n');
+    fs.writeFileSync(path.join(dir, 'dest'), 'objstore:my-backups/ast-poc\n');
+    fs.writeFileSync(path.join(dir, 'pathstyle'), 'false\n');
+    const vh = p.readTables([{ path: path.join(dir, 'endpoint'), dest: path.join(dir, 'dest'), pathStyle: path.join(dir, 'pathstyle'), kind: 'endpoint' }]);
+    assert.deepStrictEqual([...vh.bySource.get('backup')], ['my-backups.fsn1.your-objectstorage.com:443']);
+    // 既定（force_path_style が無い・true）はパス形式＝endpoint の名前
+    const ps = p.readTables([{ path: path.join(dir, 'endpoint'), dest: path.join(dir, 'dest'), pathStyle: path.join(dir, 'missing'), kind: 'endpoint' }]);
+    assert.deepStrictEqual([...ps.bySource.get('backup')], ['fsn1.your-objectstorage.com:443']);
+    // バケットを読めないときは何も足さない（共有の名前へ戻して広げない）
+    assert.deepStrictEqual(p.backupHosts('https://fsn1.your-objectstorage.com', 'no-bucket', 'false'), []);
+    assert.deepStrictEqual(p.backupHosts('https://fsn1.your-objectstorage.com', 'objstore:Bad_Bucket/x', 'false'), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+ok('E10 heartbeat の宛先: Alertmanager とバックアップの両方の行が要る（片方だけなら、もう一方は enforce で拒まれ、report で数えて通る）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-hb-'));
+  try {
+    const f = path.join(dir, 'extra');
+    const decideFor = (source, sourceMode, text) => {
+      fs.writeFileSync(f, text);
+      const { all, bySource } = p.readTables([{ path: f, kind: 'sources' }]);
+      return p.decide(p.parseTarget('hc-ping.com:443'), all, 'enforce', { source, sourceMode, sourceSet: bySource.get(source) || new Set() });
+    };
+    const both = 'alertmanager hc-ping.com\nbackup hc-ping.com\n';
+    for (const src of ['alertmanager', 'backup']) assert.strictEqual(decideFor(src, 'enforce', both).decision, 'allow', `${src} が両方の行で通らない`);
+    // 陰性対照: Alertmanager の行だけ（手順書の旧の例）なら、バックアップの回の生存の確かめは enforce で拒まれ、report では数えて通る
+    const amOnly = 'alertmanager hc-ping.com\n';
+    assert.strictEqual(decideFor('backup', 'enforce', amOnly).decision, 'deny');
+    const rep = decideFor('backup', 'report', amOnly);
+    assert.deepStrictEqual([rep.decision, rep.mismatch], ['report', true]);
+    // 送り元を書かない古い形の行は、どちらの送り元の行にもならない
+    assert.strictEqual(decideFor('alertmanager', 'enforce', 'hc-ping.com\n').decision, 'deny');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 ok('陰性対照: 判定の関数は、表を空にすると enforce で通さず、report で通す（判定が空回りしていない）', () => {

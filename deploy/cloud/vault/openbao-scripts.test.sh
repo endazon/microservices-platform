@@ -80,6 +80,9 @@ for i in "${!args[@]}"; do
 done
 case "$*" in
   *"create configmap platform-infra-ca"*) cat > "$CM_DIR/$2.crt"; echo "kind: ConfigMap" ;;
+  # IADR-0710 決定 3: オーナー用の secret_id の期限の記録（公開してよい値。引数で渡る）。
+  "-n platform-infra create configmap openbao-operator-credential --from-literal=not-after="*" --dry-run=client -o yaml")
+    printf '%s\n' "${6#--from-literal=not-after=}" > "$CM_DIR/operator-not-after"; echo "kind: ConfigMap" ;;
   "apply -f -") cat >/dev/null ;;
   # IADR-0696: tls-cert.sh の Secret・ConfigMap（JSON を標準入力で受ける）。Secret は $TLS_DIR へ書く（kubelet のマウントの代わり）。
   "apply --server-side --field-manager=openbao-tls-cert --force-conflicts -f -")
@@ -101,6 +104,8 @@ case "$*" in
 esac
 EOF
 chmod +x "$W/bin/kubectl"
+# IADR-0710 決定 4: 識別子の既定は enforce。この試験の識別子は使い捨ての平文なので、warn を明示して流す（既定の拒みは cluster-target.test.sh が見る）。
+export OB_IDENTITY_POLICY=warn
 export FAIL_DONE="$W/fail.done" KLOG="$W/kubectl.log" POD_HOME="$W/pod" CM_DIR="$W/cm" STUB_BIN="$W/bin" PATH="$W/bin:$PATH"
 # IADR-0703 決定 2: 手元に記録したクラスタの印（スタブが答える UID と同じ）。
 export STUB_CLUSTER_UID="0b6c2f4e-1d3a-4c5b-9e8f-7a6b5c4d3e2f" CLOUD_CLUSTER_MARK_FILE="$W/cluster-mark"
@@ -179,7 +184,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=test-k8s-ca -keyout 
 export OPENBAO_KUBERNETES_CA_FILE="$W/k8s-ca.crt"
 ROOT0="$(dec "$W/init.age" root_token)"
 # 途中で落ちる経路: root は残り、資格は出ず、そのまま流し直せる（済んだものは作り直さない）
-for at in "auth enable kubernetes" "-field=secret_id"; do
+for at in "auth enable kubernetes" "write -f -format=json auth/approle/role/cloud-operator/secret-id"; do
   rm -f "$W/fail.done"
   set +e; BAO_FAIL_ON="$at" run configure.sh --init-file "$W/init.age" --identity "$W/id.txt" --recipients "$W/recipients.txt" --operator-out "$W/operator.age" >"$W/conf.log" 2>&1; rc=$?; [ -n "${DEBUG_TEST:-}" ] && cat "$W/conf.log" >&2; set -e
   [ -e "$W/fail.done" ] || ng "陽性対照: 失敗を差し込めていない（$at）"
@@ -246,6 +251,15 @@ ok "configure: 失効の段で落ちたら資格のファイルを有効のま�
 ! alive || ng "初回の root が失効していない"
 for ns in platform-infra microservices-platform; do grep -q 'BEGIN CERTIFICATE' "$CM_DIR/$ns.crt" || ng "CA の ConfigMap（$ns）が無い"; done
 ok "configure: 案内どおりに流し直すと最後まで進み、初回の root は失効し、オーナー用の資格は age のファイル（0600）にだけ在り、CA の証明書を ConfigMap に置く"
+
+# IADR-0710 決定 3: オーナー用の secret_id は期限つき（lib.sh の OB_OPERATOR_SECRET_ID_TTL_HOURS）。期限の記録は作り始めの時刻＋期限（実際より早いか同じ）。
+TTL_H="$(sed -n 's/^OB_OPERATOR_SECRET_ID_TTL_HOURS=\([0-9][0-9]*\)$/\1/p' "$HERE/lib.sh")"
+[ -n "$TTL_H" ] && [ "$TTL_H" -gt 0 ] || ng "lib.sh の OB_OPERATOR_SECRET_ID_TTL_HOURS を読めない"
+NA="$(cat "$CM_DIR/operator-not-after" 2>/dev/null || true)"
+NOW_S="$(date +%s)"
+[[ "$NA" =~ ^[0-9]+$ ]] && [ "$NA" -le $((NOW_S + TTL_H * 3600)) ] && [ "$NA" -gt $((NOW_S + TTL_H * 3600 - 3600)) ] \
+  || ng "configure が secret_id の期限（作り始め＋${TTL_H} 時間）を ConfigMap platform-infra/openbao-operator-credential に置かない（$NA）"
+ok "configure: オーナー用の secret_id の期限（${TTL_H} 時間）を ConfigMap に記録する（値ではない）"
 
 # 試験の側で、オーナー用の資格と unseal の鍵から root を作り直す（root-token.sh と同じ道筋の独立な確かめ）
 login() { printf '{"role_id":"%s","secret_id":"%s"}' "$(dec "$W/operator.age" role_id)" "$(dec "$W/operator.age" secret_id)" | B write -field=token auth/approle/login -; }
@@ -447,6 +461,26 @@ set +e; printf '{"role_id":"%s","secret_id":"%s"}' "$(dec "$W/operator.age" role
 [ "$rc" -ne 0 ] || ng "作り直した後も古い secret_id で入れる"
 cp "$W/operator2.age" "$W/operator.age"; OPT="$(login)"; [ -n "$OPT" ] || ng "新しい資格で入れない"
 ok "root-token: 作り直した root で policy を当て直し、オーナーの secret_id を回す（古いものは入れない）"
+# IADR-0710 決定 3: 稼働中の構成の期限なしの secret_id（従前の role の設定）も、rotate-operator が期限つきへ替える。
+R4="$(mkroot)"
+BAO_TOKEN="$R4" B write auth/approle/role/cloud-operator secret_id_ttl=0 >/dev/null
+SA="$(BAO_TOKEN="$R4" B write -f -field=secret_id_accessor auth/approle/role/cloud-operator/secret-id)"
+[ "$(printf '{"secret_id_accessor":"%s"}' "$SA" | BAO_TOKEN="$R4" B write -field=secret_id_ttl auth/approle/role/cloud-operator/secret-id-accessor/lookup -)" = 0 ] \
+  || ng "陽性対照: 期限なしの secret_id を作れていない"
+BAO_TOKEN="$R4" B token revoke -self >/dev/null
+rm -f "$CM_DIR/operator-not-after"
+run root-token.sh --init-file "$W/init.age" --operator-file "$W/operator.age" --identity "$W/id.txt" rotate-operator --recipients "$W/recipients.txt" --operator-out "$W/operator3.age" >/dev/null
+cp "$W/operator3.age" "$W/operator.age"; OPT="$(login)"; [ -n "$OPT" ] || ng "期限つきへ回した資格で入れない"
+R5="$(mkroot)"
+ids="$(BAO_TOKEN="$R5" B list -format=json auth/approle/role/cloud-operator/secret-id | tr -d '[]", ' | grep -E '^[0-9a-f-]{36}$' || true)"
+[ "$(printf '%s\n' "$ids" | grep -c .)" = 1 ] || ng "rotate-operator の後の secret_id が 1 つでない（期限なしのものが残った）"
+[ "$(printf '{"secret_id_accessor":"%s"}' "$ids" | BAO_TOKEN="$R5" B write -field=secret_id_ttl auth/approle/role/cloud-operator/secret-id-accessor/lookup -)" = $((TTL_H * 3600)) ] \
+  || ng "rotate-operator の後の secret_id の期限が ${TTL_H} 時間でない"
+[ "$(BAO_TOKEN="$R5" B read -field=secret_id_ttl auth/approle/role/cloud-operator)" = $((TTL_H * 3600)) ] || ng "rotate-operator が role の secret_id_ttl を書き直さない"
+BAO_TOKEN="$R5" B token revoke -self >/dev/null
+OPT="$(login)"
+[[ "$(cat "$CM_DIR/operator-not-after" 2>/dev/null || true)" =~ ^[0-9]+$ ]] || ng "rotate-operator が期限を ConfigMap に記録しない"
+ok "root-token rotate-operator: 期限なしの secret_id を消し、期限つき（${TTL_H} 時間）の 1 つへ替え、期限を記録する"
 # IADR-0693: 稼働中の構成（configure の後・root は失効済み）へ role を足す口。keycloak の role が無い状態から作り直す。
 #   基盤の側のトークンは親の root の失効で消えないよう orphan で作る（上の TP は R1 の失効と一緒に消えている）。
 R3="$(mkroot)"; BAO_TOKEN="$R3" B delete pki_cloud/roles/keycloak >/dev/null

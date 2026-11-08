@@ -16,6 +16,9 @@
  *   - CA の期限: platform-infra-ca（OpenBao の PKI の CA。10 年）と openbao-ca（OpenBao の受け口の CA。IADR-0696 の tls-cert.sh が受け口の証明書
  *     〔1 年〕と同じ回に 2 年で作る。束のときは各証明書）。OpenBao の受け口は ESO の controller だけが届く（IADR-0689 決定 3）ので測りに行かず、
  *     受け口の証明書の期限は CA の notAfter から導く（警報の側。作りが同じ回・1 年と 2 年であることは試験が tls-cert.sh と突き合わせる）。
+ *   - 資格の期限（IADR-0710 決定 3）: オーナー用の AppRole の secret_id の期限（ConfigMap platform-infra/openbao-operator-credential のキー
+ *     not-after。UNIX 秒。configure.sh・root-token.sh rotate-operator が置く。値ではない）を credential_not_after_seconds に出す。
+ *     無い・形が違えば系列を作らない（警報の absent が拾う）。
  *   - 測るのは 10 分ごと（受け口のログを増やさない）。/metrics はその時の値を返す。
  *
  * node:22-alpine が実行する（外部依存なし）。試験: deploy/cloud/tls-cert-probe/probe.test.js。
@@ -45,6 +48,12 @@ function caNotAfters(text) {
     }
   }
   return out;
+}
+
+/** 期限の記録（UNIX 秒の整数 1 つ。前後の空白は許す）。形が違えば null（系列を作らない）。 */
+function parseDeadline(text) {
+  const m = /^\s*([1-9][0-9]{8,10})\s*$/.exec(String(text || ''));
+  return m ? Number(m[1]) : null;
 }
 
 /** 握手が証明書の検証で落ちたことを表すエラーの種類か（届かない・時間切れとは分ける）。 */
@@ -101,7 +110,7 @@ async function probeTarget(t, { readCa = (p) => fs.readFileSync(p, 'utf8'), time
 }
 
 /** 測った結果から Prometheus の文字列を作る。 */
-function renderMetrics(results, cas, now) {
+function renderMetrics(results, cas, now, deadlines = []) {
   const lines = [
     '# HELP tls_probe_up 受け口へ TLS で届き、証明書を読めたら 1。',
     '# TYPE tls_probe_up gauge',
@@ -118,6 +127,9 @@ function renderMetrics(results, cas, now) {
     '# HELP tls_ca_cert_not_after_seconds CA の束の各証明書の notAfter（UNIX 秒）。',
     '# TYPE tls_ca_cert_not_after_seconds gauge',
     ...cas.flatMap(({ ca, certs }) => certs.map((c) => `tls_ca_cert_not_after_seconds{ca="${ca}",serial="${c.serial}"} ${c.notAfter}`)),
+    '# HELP credential_not_after_seconds 資格の期限（UNIX 秒。記録した期限。オーナー用の secret_id など）。',
+    '# TYPE credential_not_after_seconds gauge',
+    ...deadlines.filter((d) => d.notAfter !== null).map((d) => `credential_not_after_seconds{credential="${String(d.name).replace(/[^a-z0-9-]/g, '_')}"} ${d.notAfter}`),
     '# HELP tls_probe_last_run_timestamp_seconds 最後に測った時刻（UNIX 秒）。',
     '# TYPE tls_probe_last_run_timestamp_seconds gauge',
     `tls_probe_last_run_timestamp_seconds ${now}`,
@@ -137,7 +149,12 @@ function main(env = process.env) {
       try { text = fs.readFileSync(p, 'utf8'); } catch { /* 無ければ系列を作らない */ }
       return { ca: name, certs: caNotAfters(text) };
     });
-    body = renderMetrics(results, cas, Math.floor(Date.now() / 1000));
+    const deadlines = (cfg.deadlines || []).map(({ name, path: p }) => {
+      let text = '';
+      try { text = fs.readFileSync(p, 'utf8'); } catch { /* 無ければ系列を作らない */ }
+      return { name, notAfter: parseDeadline(text) };
+    });
+    body = renderMetrics(results, cas, Math.floor(Date.now() / 1000), deadlines);
     for (const r of results) console.log(`tls-cert-probe: ${r.target} ${r.verified ? `notAfter=${new Date(r.notAfter * 1000).toISOString()} verified=true` : r.ok ? `verified=false` : '届かない'}${r.error ? ` (${r.error})` : ''}`);
   };
   run();
@@ -149,5 +166,5 @@ function main(env = process.env) {
   }).listen(Number(env.TLS_PROBE_PORT || 9465));
 }
 
-module.exports = { caNotAfters, probeTarget, renderMetrics, isVerifyError, PG_SSL_REQUEST };
+module.exports = { caNotAfters, parseDeadline, probeTarget, renderMetrics, isVerifyError, PG_SSL_REQUEST };
 if (require.main === module) main();

@@ -31,6 +31,42 @@ data:
         check_interval: 1s
         limit_mib: 128
         spike_limit_mib: 32
+      # NFR-21, IADR-0709 決定 5: 送り手の名乗り（service.name＝job）とは別に、接続の送り元の Pod から名前空間と app を付ける（警報の元の系列を
+      #   他の送り手が偽れないように）。順は「送り手が付けた同じ名の属性を消す → 送り元の Pod から付ける → 各点へ写す」。batch より前に置く
+      #   （送り元の接続は batch の後では分からない）。Pod を引けなければ何も付けない（その系列は警報 OtlpSenderUnverified の元になる）。
+      #   消す名前の正規表現の . は、どの 1 文字にも当てる（意図して）: k8s.x・k8s_x・k8s-x はどれも Prometheus の名前では k8s_x になり、
+      #   印と同じ名前を送り手が作れないようにする（otlp.sender.* も同じ）。
+      transform/otlp-sender-strip:
+        error_mode: ignore
+        metric_statements:
+          - context: resource
+            statements:
+              - delete_matching_keys(attributes, "^k8s.")
+          - context: datapoint
+            statements:
+              - delete_matching_keys(attributes, "^otlp.sender.")
+      # 名前空間ごとに 1 つ（Role は名前空間ごと。クラスタ全体の Pod は読まない）。読むのは Pod の名前空間とラベル app だけ。
+      #   取引ユニットの名前空間の分（k8sattributes/ast）は、その名前空間と Role が在ってから当てる deploy/cloud-otlp-sender-identity-ast だけが足す
+      #   （基盤の既定には置かない。当てる順に依らず collector が起きるように。IADR-0709 決定 5）。
+      k8sattributes/msp:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          namespace: microservices-platform
+        pod_association:
+          - sources:
+              - from: connection
+        extract:
+          metadata: [k8s.namespace.name]
+          labels:
+            - { tag_name: k8s.pod.label.app, key: app, from: pod }
+      transform/otlp-sender-identity:
+        error_mode: ignore
+        metric_statements:
+          - context: datapoint
+            statements:
+              - set(attributes["otlp_sender_namespace"], resource.attributes["k8s.namespace.name"]) where resource.attributes["k8s.namespace.name"] != nil
+              - set(attributes["otlp_sender_app"], resource.attributes["k8s.pod.label.app"]) where resource.attributes["k8s.pod.label.app"] != nil
     exporters:
       debug:
         verbosity: basic
@@ -47,7 +83,7 @@ data:
           exporters: [debug]
         metrics:
           receivers: [otlp]
-          processors: [memory_limiter, batch]
+          processors: [memory_limiter, transform/otlp-sender-strip, k8sattributes/msp, transform/otlp-sender-identity, batch]
           exporters: [prometheusremotewrite]
         logs:
           receivers: [otlp]

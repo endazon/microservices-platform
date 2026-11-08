@@ -4,13 +4,13 @@ type: runbook
 status: draft
 author: claude
 created: 2026-11-06
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 <!-- trace:
 ids: [NFR-05, NFR-18]
 adrs: [ADR-0132]
-iadrs: [IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0705]
-specs: [20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
+iadrs: [IADR-0710, IADR-0703, IADR-0702, IADR-0689, IADR-0674, IADR-0682, IADR-0525, IADR-0693, IADR-0695, IADR-0696, IADR-0700, IADR-0705]
+specs: [20261108_backup-alerts-audit-offnode-approle-openapi, 20261107_backup-owner-ops-hardening, 20261107_cloud-egress-audit-cert-expiry, 20261107_llm-gateway-embed-limits-synthetic-marker, 20261107_2471_cloud-external-secrets-stage2, 20261106_2471_cloud-openbao-eso, 20261107_cloud-keycloak-tls, 20261107_cloud-db-per-service-users, 20261107_cloud-openbao-tls, 20261107_s2s-per-service-clients]
 issues: [#2471, #2401]
 -->
 
@@ -55,8 +55,9 @@ issues: [#2471, #2401]
   ```
 - **鍵の装置で持つ**（使えるとき）。age のプラグイン（例: YubiKey の PIV を使うもの）の識別子にし、受取人をその装置の受取人に替えて
   `<init>.age`・`<operator>.age` を作り直す（§6 の rekey・rotate-operator の後に、新しい受取人で書き出す）。
-- 手順は、平文の識別子（`AGE-SECRET-KEY-1` で始まる行を持つファイル）を受け取ると警告を出す（中身は表示しない）。包んだ後は
-  `OB_IDENTITY_POLICY=enforce` を与えて流す（平文の識別子を受け取ると止まる）。
+- 手順は、平文の識別子（`AGE-SECRET-KEY-1` で始まる行を持つファイル）を受け取ると**既定で止まる**（中身は表示しない）。
+  包む前の一時の手順（例: 包む作業の前に封印を開けるとき）だけ、`OB_IDENTITY_POLICY=warn` を明示して流せる（警告を出して進む）。
+  包んだ後は `warn` を与えない。
 - 手順は流す前に宛先のクラスタを確かめる（違えば外から持ち込む値を書かずに止まる）。印の記録は[宛先のクラスタの手順書](cloud-owner-target-cluster-runbook.md)。
 
 ## 1. 初期化（一度だけ）
@@ -157,7 +158,7 @@ openssl genrsa -traditional 1024 | $P cloud/ast/moomoo-rsa opend_rsa.pem       #
 | LLM の提供元の鍵 | `cloud/msp/llm-provider-credentials` | `anthropic-api-key` だけ（クラウドでは埋め込みを使わない。埋め込みの鍵は置かない） | `microservices-platform` / `llm-provider-credentials` |
 | バックアップの保管先の鍵 | `cloud/platform/platform-backup-s3` | `access-key-id`・`secret-access-key` | `platform-infra` / `platform-backup-s3` |
 | 警報の Discord の webhook | `cloud/platform/alertmanager-discord` | `webhook-url` | `platform-infra` / `alertmanager-discord` |
-| 外の監視の ping の URL | `cloud/platform/alertmanager-heartbeat` | `ping-url`・`discord-ping-url`・`discord-fail-url` | `platform-infra` / `alertmanager-heartbeat` |
+| 外の監視の ping の URL | `cloud/platform/alertmanager-heartbeat` | `ping-url`・`discord-ping-url`・`discord-fail-url`・`backup-ping-url`（日次のバックアップ） | `platform-infra` / `alertmanager-heartbeat` |
 | 取引ユニットの外部の値 | `cloud/ast/moomoo-credentials`・`cloud/ast/moomoo-rsa`・`cloud/ast/ast-owner-totp`・`cloud/ast/ast-secrets` | 取引ユニットの手順書が決める | `ai-stock-trading`（取引ユニットの側の ExternalSecret） |
 
 ## 5. 突き合わせ（移行の門の条件 3）
@@ -183,7 +184,14 @@ bash deploy/cloud/vault/root-token.sh --live --init-file <init>.age --operator-f
 - `apply-policies`: policy（`deploy/cloud/vault/policies/`）を改めたときに当て直す。
 - `apply-pki-roles`: PKI のサーバ証明書の role（`deploy/cloud/vault/lib.sh` の `OB_PKI_ROLES`）を足したときに書き直す。在る role は同じ値で書き直されるだけ。
   role を足したら、発行を許す policy も `apply-policies` で当て直す（例: [認可サーバーの TLS の手順書](cloud-keycloak-tls-runbook.md)の段 0）。
-- `rotate-operator`: オーナー用の資格のファイルを失った・漏れた疑いのときに作り直す。古い資格はすべて消える。2 か所の保管を差し替える。
+- `rotate-operator`: オーナー用の資格のファイルを失った・漏れた疑いのとき、**および期限の前に定期に**作り直す。古い資格はすべて消える。2 か所の保管を差し替える。
+  - オーナー用の資格（secret_id）は **90 日の期限つき**である（作った時に決まる）。期限は ConfigMap `platform-infra/openbao-operator-credential`
+    に記録され（値ではない）、残り 30 日で警報 `OpenBaoOperatorSecretIdExpiringSoon`、7 日で `OpenBaoOperatorSecretIdExpiryCritical` が Discord に出る。
+    🔴 **切れるとオーナー用の資格で入れず、root の作り直しもできない**（§7 の初期化からのやり直しになる）。警報が出たら、その週のうちに流す。
+  - 期限の記録が無い（警報 `OpenBaoOperatorSecretIdExpiryUnknown`）のは、期限の無い古い資格のままか、記録を置けなかったときである。
+    `rotate-operator` を 1 回流すと、期限つきの資格へ替わり、期限を記録する。
+  - 流した後の確かめ: `kubectl -n platform-infra get configmap openbao-operator-credential -o jsonpath='{.data.not-after}'`（UNIX 秒）が
+    今から約 90 日後であること、新しいファイルで `put-external-secret.sh` などの手順が通ること。
 
 ## 7. 初期化からやり直す（鍵を失ったとき）
 

@@ -1,0 +1,21 @@
+# NFR-18, IADR-0710 決定 5: 監査の記録の目録を外の check（Healthchecks.io の check D）へ送る（timer が日次で起こす）。
+# 置き場: /etc/systemd/system/msp-audit-offsite.service（手順書 docs/operations/cloud-apiserver-audit-log-runbook.md §4）。
+[Unit]
+Description=Send the audit log manifest off the node (msp)
+# 記録は暗号化した領域の上に在る。マウントされていなければ流さない（空の目録を送らない）。
+ConditionPathIsMountPoint=/var/lib/rancher
+ConditionPathIsMountPoint=/var/log/pods
+RequiresMountsFor=/var/lib/rancher /var/log/pods
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /usr/local/lib/msp/audit-offsite.sh send
+# 読むのは記録と URL のファイルだけ。書くのは状態の置き場（/var/lib/msp-audit-offsite。systemd が 0700 で作る）だけ。
+ProtectSystem=strict
+StateDirectory=msp-audit-offsite
+StateDirectoryMode=0700
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes

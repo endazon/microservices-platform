@@ -12,9 +12,11 @@
  *     E1 宛先を ipBlock で名指して出る許可は外向きの中継の Pod だけ（基盤・chart・vault・ESO の名前空間の描画）。
  *        🔴 この検査は ipBlock だけを見る。宛先（to）を持たずポートだけで許す出は宛先を問わず出られ、ここでは止まらない。その出は
  *        OpenBao と ESO の API サーバー向け（443・6443）の 2 つだけであることを固定する（増えたら赤。IADR-0705 残余 5）。
- *     E2 外の 443 を使う 3 つ（LLM ゲートウェイ・バックアップ・Alertmanager）は中継の 3128 へ出て、中継を使う設定を持つ。
- *     E3 中継は最終の段で enforce。移す間の重ね（cloud-transition/egress-proxy-report）は report で、3 つの直の 443 を戻す。
- *     E4 許可表は設定に在る宛先（LLM の提供元の BaseUrl・Alertmanager の Discord の形）を全部持ち、中継の入りは 3 つと Prometheus だけ。
+ *     E2 外の 443 を使う 3 つ（LLM ゲートウェイ・バックアップ・Alertmanager）は中継の自分の受け口（と移す間の 3128）へ出て、自分の受け口を使う設定を持つ。
+ *     E3 中継は最終の段で enforce（送り元ごとの段は report。IADR-0709 決定 3）。移す間の重ね（cloud-transition/egress-proxy-report）は report で、3 つの直の 443 を戻す。
+ *        送り元と受け口（env EGRESS_PROXY_SOURCES）・コンテナと Service のポート・NetworkPolicy の入り（受け口ごとに名前空間 かつ Pod が 1 つ）が同じ組。
+ *     E4 許可表は送り元ごと（IADR-0709）: 設定に在る宛先（LLM の提供元・Discord の形）をそれを使う送り元の行にだけ持ち、クラウドで使わない宛先
+ *        （埋め込みの提供元）を持たず、表の送り元はどれも受け口を持つ。取引ユニットの外へ出る 6 つと OpenD の送り元を持つ。
  *     E5 中継の手順の試験。
  *   N（ESO の名前空間・監査）
  *     N1 external-secrets の名前空間は PSA restricted、入り・出とも既定で拒否し、出は名前解決・OpenBao の 8443・API サーバーのポートだけ、入りは webhook だけ。
@@ -54,11 +56,26 @@ const appOf = (sel) => (sel && sel.matchLabels && sel.matchLabels.app) || null;
 const nsOf = (sel) => (sel && sel.matchLabels && sel.matchLabels['kubernetes.io/metadata.name']) || null;
 const portsOf = (rule) => (rule.ports || []).map((p) => `${p.protocol || 'TCP'}/${p.port}`).sort();
 
-const EGRESS_PROXY_URLS = ['http://egress-proxy:3128', 'http://egress-proxy.platform-infra.svc.cluster.local:3128'];
+// IADR-0709 決定 1: 送り元・受け口・Pod（名前空間/app）。中継の env・ポート・NetworkPolicy の入りと同じ組（proxyProblems が突き合わせる）。
+const PROXY_SOURCES = [
+  ['llmgateway', 3131, 'microservices-platform', 'llmgateway-service'],
+  ['backup', 3132, 'platform-infra', 'platform-backup'],
+  ['alertmanager', 3133, 'platform-infra', 'alertmanager'],
+  ['ast-information-collection', 3141, 'ai-stock-trading', 'information-collection-service'],
+  ['ast-market-monitor', 3142, 'ai-stock-trading', 'market-monitor-service'],
+  ['ast-notification', 3143, 'ai-stock-trading', 'notification-service'],
+  ['ast-report', 3144, 'ai-stock-trading', 'report-service'],
+  ['ast-risk-management', 3145, 'ai-stock-trading', 'risk-management-service'],
+  ['ast-trade-decision', 3146, 'ai-stock-trading', 'trade-decision-service'],
+  ['ast-opend', 3147, 'ai-stock-trading', 'opend'],
+];
+const portOfSource = (src) => PROXY_SOURCES.find((x) => x[0] === src)[1];
+const proxyUrls = (port) => [`http://egress-proxy:${port}`, `http://egress-proxy.platform-infra.svc.cluster.local:${port}`];
+// [名前空間, app, NetworkPolicy, 送り元]
 const EXTERNAL_CLIENTS = [
-  ['microservices-platform', 'llmgateway-service', 'llmgateway-egress'],
-  ['platform-infra', 'platform-backup', 'platform-backup-egress'],
-  ['platform-infra', 'alertmanager', 'alertmanager-cloud'],
+  ['microservices-platform', 'llmgateway-service', 'llmgateway-egress', 'llmgateway'],
+  ['platform-infra', 'platform-backup', 'platform-backup-egress', 'backup'],
+  ['platform-infra', 'alertmanager', 'alertmanager-cloud', 'alertmanager'],
 ];
 
 // ---------------------------------------------------------------- K
@@ -79,11 +96,22 @@ function portsOnlyEgress(docs) {
   return out.sort();
 }
 
-/** クラスタの外の範囲（ipBlock）へ出る許可を持つ NetworkPolicy のうち、外向きの中継の Pod 以外を選ぶもの。 */
+// IADR-0709 決定 4: API サーバーの番地（Pod が出す宛先 Service kubernetes の ClusterIP:443 と、ノードで書き換わった先 127.0.0.1:6443）。
+//   k3s の --advertise-address 127.0.0.1 と、--service-cidr を渡さない（既定の 10.43.0.0/16 の先頭）ことから決まる（apiServerPinProblems が README と突き合わせる）。
+const API_SERVER_PINS = [['10.43.0.1/32', 'TCP/443'], ['127.0.0.1/32', 'TCP/6443']];
+/** API サーバーの番地を名指す規則（ipBlock 1 つ・except なし・ポート 1 つで、API_SERVER_PINS の組）。 */
+const isApiServerPin = (r) => (r.to || []).length === 1 && r.to[0].ipBlock && !(r.to[0].ipBlock.except || []).length && Object.keys(r.to[0]).length === 1
+  && API_SERVER_PINS.some(([cidr, port]) => r.to[0].ipBlock.cidr === cidr && JSON.stringify(portsOf(r)) === JSON.stringify([port]));
+// API サーバーの番地を名指してよい Pod（名前空間/選ぶ Pod）。増やすときは理由を IADR に書く。
+const API_SERVER_CALLERS = ['external-secrets/*', 'openbao/openbao', 'platform-infra/otel-collector'];
+
+/** クラスタの外の範囲（ipBlock）へ出る許可を持つ NetworkPolicy のうち、外向きの中継の Pod 以外を選ぶもの（API サーバーの番地の名指しは除く）。 */
 function directEgressProblems(docs, where) {
   const out = [];
   for (const d of docs.filter((x) => x.kind === 'NetworkPolicy')) {
-    const toOutside = (d.spec.egress || []).some((r) => (r.to || []).some((t) => t.ipBlock));
+    const selected = `${d.metadata.namespace}/${appOf(d.spec.podSelector) || (JSON.stringify(d.spec.podSelector) === '{}' ? '*' : '?')}`;
+    if ((d.spec.egress || []).some(isApiServerPin) && !API_SERVER_CALLERS.includes(selected)) out.push(`${where}: ${d.metadata.namespace}/${d.metadata.name} が API サーバーの番地へ出る（許した呼び手でない: ${selected}）`);
+    const toOutside = (d.spec.egress || []).some((r) => !isApiServerPin(r) && (r.to || []).some((t) => t.ipBlock));
     if (!toOutside) continue;
     if (!(d.metadata.namespace === 'platform-infra' && appOf(d.spec.podSelector) === 'egress-proxy')) out.push(`${where}: ${d.metadata.namespace}/${d.metadata.name} がクラスタの外の範囲へ直に出る`);
   }
@@ -92,49 +120,74 @@ function directEgressProblems(docs, where) {
 
 function externalClientProblems(cloudDocs, chartDocs) {
   const out = [];
-  for (const [ns, app, policy] of EXTERNAL_CLIENTS) {
+  for (const [ns, app, policy, source] of EXTERNAL_CLIENTS) {
     const np = find(cloudDocs, 'NetworkPolicy', policy, ns);
     if (!np) { out.push(`${policy} が無い`); continue; }
     const toProxy = (np.spec.egress || []).filter((r) => (r.to || []).some((t) => appOf(t.podSelector) === 'egress-proxy' && (nsOf(t.namespaceSelector) || np.metadata.namespace) === 'platform-infra'));
-    if (!(toProxy.length === 1 && JSON.stringify(portsOf(toProxy[0])) === '["TCP/3128"]')) out.push(`${policy}: 外向きの中継の 3128 への出がちょうど 1 つでない`);
+    const want = JSON.stringify(['TCP/3128', `TCP/${portOfSource(source)}`].sort());
+    if (!(toProxy.length === 1 && JSON.stringify(portsOf(toProxy[0])) === want)) out.push(`${policy}: 外向きの中継への出がちょうど 1 つ（3128 と送り元 ${source} の受け口）でない`);
     if ((np.spec.egress || []).some((r) => portsOf(r).includes('TCP/443'))) out.push(`${policy}: 443 へ直に出る規則が残っている（${app}）`);
   }
   // 中継を使う設定
   const gw = chartDocs.find((d) => d.kind === 'Deployment' && /llmgateway/.test(d.metadata.name));
   const gwEnv = gw ? envOf(gw.spec.template.spec.containers[0]) : {};
-  if (!(gwEnv.HTTPS_PROXY && EGRESS_PROXY_URLS.includes(String(gwEnv.HTTPS_PROXY.value)))) out.push('LLM ゲートウェイに外向きの中継の HTTPS_PROXY が無い');
+  if (!(gwEnv.HTTPS_PROXY && proxyUrls(portOfSource('llmgateway')).includes(String(gwEnv.HTTPS_PROXY.value)))) out.push('LLM ゲートウェイに外向きの中継の自分の受け口の HTTPS_PROXY が無い');
   const noProxy = String((gwEnv.NO_PROXY || {}).value || '').split(',');
   for (const h of ['keycloak', 'otel-collector']) if (!noProxy.includes(h)) out.push(`LLM ゲートウェイの NO_PROXY に ${h} が無い（クラスタの中を中継へ回す）`);
   const cj = find(cloudDocs, 'CronJob', 'platform-backup-postgres', 'platform-infra') || cloudDocs.find((d) => d.kind === 'CronJob');
   const bEnv = cj ? envOf(dc.podSpec(cj).containers[0]) : {};
-  if (!(bEnv.HTTPS_PROXY && EGRESS_PROXY_URLS.includes(String(bEnv.HTTPS_PROXY.value)))) out.push('バックアップに外向きの中継の HTTPS_PROXY が無い');
+  if (!(bEnv.HTTPS_PROXY && proxyUrls(portOfSource('backup')).includes(String(bEnv.HTTPS_PROXY.value)))) out.push('バックアップに外向きの中継の自分の受け口の HTTPS_PROXY が無い');
   const am = find(cloudDocs, 'ConfigMap', 'alertmanager-cloud-config', 'platform-infra');
   const tmpl = am ? docsOf(`kind: X\n${am.data['alertmanager.yml.tmpl']}`)[0] : {};
   const proxyUrl = tmpl && tmpl.global && tmpl.global.http_config && tmpl.global.http_config.proxy_url;
-  if (!EGRESS_PROXY_URLS.includes(String(proxyUrl))) out.push('Alertmanager の global.http_config.proxy_url が外向きの中継でない');
+  if (!proxyUrls(portOfSource('alertmanager')).includes(String(proxyUrl))) out.push('Alertmanager の global.http_config.proxy_url が外向きの中継の自分の受け口でない');
   return out;
 }
 
-function proxyProblems(docs, { mode }) {
+function proxyProblems(docs, { mode, sourceMode = 'report' }) {
   const out = [];
   const dep = find(docs, 'Deployment', 'egress-proxy', 'platform-infra');
   if (!dep) return ['外向きの中継の Deployment が無い'];
-  const env = envOf(dep.spec.template.spec.containers[0]);
+  const c = dep.spec.template.spec.containers[0];
+  const env = envOf(c);
   if (String((env.EGRESS_PROXY_MODE || {}).value) !== mode) out.push(`外向きの中継の段が ${mode} でない（${(env.EGRESS_PROXY_MODE || {}).value}）`);
+  if (String((env.EGRESS_PROXY_SOURCE_MODE || {}).value) !== sourceMode) out.push(`外向きの中継の送り元ごとの段が ${sourceMode} でない（${(env.EGRESS_PROXY_SOURCE_MODE || {}).value}）`);
+  // 送り元と受け口（env）・コンテナのポート・Service のポートが同じ組
+  const { parseListeners } = require('../deploy/cloud/egress/proxy.js');
+  let listeners = [];
+  try { listeners = parseListeners(String((env.EGRESS_PROXY_SOURCES || {}).value || '')); } catch (e) { out.push(`EGRESS_PROXY_SOURCES が読めない（${e.message}）`); }
+  const want = PROXY_SOURCES.map(([src, port]) => `${src}:${port}`);
+  if (JSON.stringify(listeners.map((l) => `${l.source}:${l.port}`)) !== JSON.stringify(want)) out.push(`送り元と受け口が表と違う（${listeners.map((l) => `${l.source}:${l.port}`).join(' ')}）`);
+  const cports = (c.ports || []).map((x) => Number(x.containerPort)).sort((a, b) => a - b);
+  const svc = find(docs, 'Service', 'egress-proxy', 'platform-infra');
+  const sports = ((svc && svc.spec.ports) || []).map((x) => `${x.port}>${x.targetPort}`).sort();
+  const allPorts = [3128, ...PROXY_SOURCES.map((x) => x[1]), 9464].sort((a, b) => a - b);
+  if (JSON.stringify(cports) !== JSON.stringify(allPorts)) out.push(`中継のコンテナのポートが受け口と違う（${cports.join(',')}）`);
+  if (JSON.stringify(sports) !== JSON.stringify(allPorts.map((p) => `${p}>${p}`).sort())) out.push(`中継の Service のポートが受け口と違う（${sports.join(',')}）`);
   const np = find(docs, 'NetworkPolicy', 'egress-proxy', 'platform-infra');
   if (!np) return [...out, '外向きの中継の NetworkPolicy が無い'];
   const ing = np.spec.ingress || [];
-  const proxyIn = ing.filter((r) => JSON.stringify(portsOf(r)) === '["TCP/3128"]');
-  const senders = proxyIn.flatMap((r) => r.from || []).map((f) => `${nsOf(f.namespaceSelector) || 'platform-infra'}/${appOf(f.podSelector)}`).sort();
-  const want = EXTERNAL_CLIENTS.map(([ns, app]) => `${ns}/${app}`).sort();
-  if (JSON.stringify(senders) !== JSON.stringify(want)) out.push(`中継の 3128 の送り元が 3 つの呼び手だけでない（${senders.join(', ')}）`);
-  const other = ing.filter((r) => !proxyIn.includes(r));
-  if (!(other.length === 1 && JSON.stringify(portsOf(other[0])) === '["TCP/9464"]' && (other[0].from || []).length === 1 && appOf(other[0].from[0].podSelector) === 'prometheus')) out.push('中継の入りに 3128（3 つの呼び手）と 9464（Prometheus）の外がある');
+  const fromOf = (f) => `${nsOf(f.namespaceSelector) || '(名前空間を名指さない)'}/${appOf(f.podSelector)}`;
+  const legacyIn = ing.filter((r) => JSON.stringify(portsOf(r)) === '["TCP/3128"]');
+  const legacySenders = legacyIn.flatMap((r) => r.from || []).map(fromOf).sort();
+  const wantLegacy = EXTERNAL_CLIENTS.map(([ns, app]) => `${ns}/${app}`).sort();
+  if (JSON.stringify(legacySenders) !== JSON.stringify(wantLegacy)) out.push(`中継の 3128 の送り元が 3 つの呼び手だけでない（${legacySenders.join(', ')}）`);
+  const seen = new Set(legacyIn);
+  for (const [src, port, ns, app] of PROXY_SOURCES) {
+    const rules = ing.filter((r) => JSON.stringify(portsOf(r)) === `["TCP/${port}"]`);
+    rules.forEach((r) => seen.add(r));
+    const from = rules.flatMap((r) => r.from || []);
+    // 名前空間 かつ Pod（同じ要素の両方）。名前空間だけ・Pod だけの要素は、名乗りを 1 つに絞れない
+    const okFrom = from.length === 1 && nsOf(from[0].namespaceSelector) === ns && appOf(from[0].podSelector) === app && !from[0].ipBlock;
+    if (!(rules.length === 1 && okFrom)) out.push(`中継の受け口 ${port}（送り元 ${src}）へ届くのが ${ns}/${app} だけでない（${from.map(fromOf).join(', ') || 'なし'}）`);
+  }
+  const other = ing.filter((r) => !seen.has(r));
+  if (!(other.length === 1 && JSON.stringify(portsOf(other[0])) === '["TCP/9464"]' && (other[0].from || []).length === 1 && appOf(other[0].from[0].podSelector) === 'prometheus')) out.push('中継の入りに、受け口（送り元ごと・3128）と 9464（Prometheus）の外がある');
   const outside = (np.spec.egress || []).filter((r) => (r.to || []).some((t) => t.ipBlock));
   if (!(outside.length === 1 && JSON.stringify(portsOf(outside[0])) === '["TCP/443"]')) out.push('中継の外への出が 443 だけでない');
   for (const r of outside) for (const t of r.to) {
     const ex = (t.ipBlock.except || []).map(String);
-    for (const c of ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '100.64.0.0/10']) if (!ex.includes(c)) out.push(`中継の外への出が ${c} を除かない`);
+    for (const cidr of ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '100.64.0.0/10']) if (!ex.includes(cidr)) out.push(`中継の外への出が ${cidr} を除かない`);
   }
   return out;
 }
@@ -142,34 +195,228 @@ function proxyProblems(docs, { mode }) {
 function allowlistProblems(docs) {
   const out = [];
   const cm = find(docs, 'ConfigMap', 'egress-proxy-hosts', 'platform-infra');
-  const { parseHosts } = require('../deploy/cloud/egress/proxy.js');
-  const hosts = new Set(parseHosts(cm ? cm.data.hosts : ''));
-  // 設定に在る宛先: LLM ゲートウェイの appsettings の BaseUrl（Voyage）と、Anthropic の SDK の既定（配線の試験が固定する）
+  const { parseSourceHosts } = require('../deploy/cloud/egress/proxy.js');
+  const table = parseSourceHosts(cm ? cm.data.hosts : '');
+  const rows = (src) => [...(table.get(src) || [])].map((k) => k.replace(/:443$/, ''));
+  const everywhere = new Set([...table.values()].flatMap((x) => [...x]).map((k) => k.replace(/:443$/, '')));
+  // 表の送り元はどれも受け口を持つ（受け口の無い送り元の行は、どの要求にも効かない書き損じ）。送り元を書かない行は宣言の表に置かない。
+  for (const src of table.keys()) if (!PROXY_SOURCES.some((x) => x[0] === src)) out.push(`許可表の送り元 ${src} に受け口が無い（または送り元を書かない行）`);
+  // 設定に在る宛先: LLM ゲートウェイの appsettings の BaseUrl と、Anthropic の SDK の既定（配線の試験が固定する）
   const app = JSON.parse(read('src/platform/backend/Services/LlmGateway/appsettings.json'));
   const urls = [];
   const walk = (o) => { for (const [k, v] of Object.entries(o || {})) { if (k === 'BaseUrl' && typeof v === 'string' && v) urls.push(v); else if (v && typeof v === 'object') walk(v); } };
   walk(app);
-  // Anthropic の宛先は SDK の既定（appsettings に書かない）。配線の試験が固定する値を読む。
   for (const m of read('src/platform/backend/Services/LlmGateway/Tests/Infrastructure/ExternalServices/AnthropicClientWiringTests.cs').matchAll(/BaseUrl\.Should\(\)\.Be\("(https:\/\/[^"]+)"\)/g)) urls.push(m[1]);
   const provider = [...new Set(urls.map((u) => new URL(u).hostname))].sort();
   if (provider.length < 2) out.push(`陽性対照: appsettings から提供元の BaseUrl を拾えていない（${provider.join(', ')}）`);
-  for (const h of provider) if (!hosts.has(h)) out.push(`許可表に LLM の提供元 ${h}（appsettings の BaseUrl）が無い`);
+  // クラウドで使わない宛先: 埋め込みの提供元（鍵を置かない。vault/eso/microservices-platform.yaml）。IADR-0709 決定 2
+  const eso = read('deploy/cloud/vault/eso/microservices-platform.yaml');
+  const noEmbedding = /埋め込みの鍵（voyage-api-key）は置かない/.test(eso) && !/remoteRef:[\s\S]{0,80}voyage-api-key/.test(eso);
+  if (!noEmbedding) out.push('陽性対照: クラウドが埋め込みの鍵を置かないことを読めない（置くなら埋め込みの提供元を llmgateway の行へ戻す）');
+  const unusedInCloud = provider.filter((h) => /voyage/.test(h));
+  if (!unusedInCloud.length) out.push('陽性対照: appsettings から埋め込みの提供元を拾えていない');
+  for (const h of provider) {
+    if (unusedInCloud.includes(h)) { if (everywhere.has(h)) out.push(`許可表にクラウドで使わない ${h} がある`); continue; }
+    if (!rows('llmgateway').includes(h)) out.push(`送り元 llmgateway の表に LLM の提供元 ${h}（appsettings の BaseUrl）が無い`);
+    for (const src of table.keys()) if (src !== 'llmgateway' && rows(src).includes(h)) out.push(`送り元 ${src} の表に LLM の提供元 ${h} がある（使うのは LLM ゲートウェイだけ）`);
+  }
   // Alertmanager の Discord の受信先の形（render.sh の正規表現の名前）
   const am = find(docs, 'ConfigMap', 'alertmanager-cloud-config', 'platform-infra');
   const m = /\^https:\/\/\(([^)]+)\)\/api\/webhooks/.exec(String(am ? am.data['render.sh'] : ''));
   const discord = m ? m[1].split('|').map((x) => x.replace(/\\\./g, '.')) : [];
   if (!discord.length) out.push('陽性対照: render.sh の Discord の形を読めない');
-  for (const h of discord) if (!hosts.has(h)) out.push(`許可表に Discord の受信先 ${h} が無い`);
-  // バックアップの保管先は ConfigMap platform-backup-s3-target の endpoint から中継が読む（オーナーが作る）
+  for (const h of discord) if (!rows('alertmanager').includes(h)) out.push(`送り元 alertmanager の表に Discord の受信先 ${h} が無い`);
+  for (const src of ['llmgateway', 'backup']) for (const h of discord) if (rows(src).includes(h)) out.push(`送り元 ${src} の表に Discord の ${h} がある`);
+  // バックアップの保管先は ConfigMap platform-backup-s3-target から中継が読む（オーナーが作る）。宣言の表には書かない
+  if ((table.get('backup') || new Set()).size) out.push('宣言の表に送り元 backup の行がある（保管先は ConfigMap platform-backup-s3-target から読む）');
+  // 取引ユニットの外へ出るサービス（AST の values-cloud の externalHttps: true）と OpenD の送り元を持つ（AST の側が中継へ通す先）
+  for (const src of ['ast-information-collection', 'ast-market-monitor', 'ast-notification', 'ast-report', 'ast-risk-management', 'ast-trade-decision']) if (!rows(src).length) out.push(`取引ユニットの送り元 ${src} の行が無い`);
+  // 名前は表の鍵と完全一致で見る（部分一致にしない）
+  if (!new Set(rows('ast-notification')).has('discord.com')) out.push('送り元 ast-notification の表に Discord が無い');
+  // 1 段下を許す行（"*.<名前>"）は、名前が応答で決まる Discord の Bot の再接続先だけ（IADR-0709 決定 1）
+  const wild = [...table].flatMap(([src, keys]) => [...keys].filter((k) => k.startsWith('*.')).map((k) => `${src} ${k}`));
+  if (JSON.stringify(wild) !== JSON.stringify(['ast-notification *.discord.gg:443'])) out.push(`1 段下を許す行が Discord の Bot の再接続先だけでない（${wild.join(', ')}）`);
   const dep = find(docs, 'Deployment', 'egress-proxy', 'platform-infra');
   const vols = dep ? dep.spec.template.spec.volumes : [];
   const backup = vols.find((v) => v.configMap && v.configMap.name === 'platform-backup-s3-target');
-  if (!(backup && String(backup.configMap.optional) === 'true' && JSON.stringify(backup.configMap.items) === JSON.stringify([{ key: 'endpoint', path: 'endpoint' }]))) out.push('中継がバックアップの保管先の endpoint だけを読まない');
+  const wantItems = [{ key: 'endpoint', path: 'endpoint' }, { key: 'dest', path: 'dest' }, { key: 'force_path_style', path: 'force_path_style' }];
+  if (!(backup && String(backup.configMap.optional) === 'true' && JSON.stringify(backup.configMap.items) === JSON.stringify(wantItems))) out.push('中継がバックアップの保管先の endpoint・dest・force_path_style だけを読まない');
   const extra = vols.find((v) => v.configMap && v.configMap.name === 'egress-proxy-extra-hosts');
   if (!(extra && String(extra.configMap.optional) === 'true')) out.push('オーナーが埋める表（egress-proxy-extra-hosts）を optional で読まない');
   if (vols.some((v) => v.secret)) out.push('中継が Secret を読む');
   return out;
 }
+
+/**
+ * IADR-0709 決定 4: 名指した API サーバーの番地が、k3s の起動の旗（README §1-4）と確かめの手順（apiserver-egress-check.sh）の値と同じ。
+ *   --advertise-address 127.0.0.1（EndpointSlice の番地）・--service-cidr を渡さない（ClusterIP は既定の 10.43.0.1）。
+ */
+function apiServerPinProblems(readme, checkSh) {
+  const out = [];
+  const exec = (/INSTALL_K3S_EXEC="([\s\S]*?)"/.exec(readme) || [])[1] || '';
+  if (!exec) return ['陽性対照: README の INSTALL_K3S_EXEC を読めない'];
+  if (!/--advertise-address 127\.0\.0\.1(\s|$)/.test(exec)) out.push('k3s の --advertise-address が 127.0.0.1 でない（EndpointSlice の番地が名指しと違う）');
+  if (/--service-cidr|--cluster-cidr|--https-listen-port/.test(exec)) out.push('k3s に --service-cidr・--https-listen-port 等を渡している（名指した番地・ポートと違い得る）');
+  const pin = (name) => (new RegExp(`^${name}="([^"]+)"$`, 'm').exec(checkSh) || [])[1];
+  if (pin('PINNED_SERVICE') !== '10.43.0.1:443') out.push(`確かめの手順の PINNED_SERVICE が宣言と違う（${pin('PINNED_SERVICE')}）`);
+  if (pin('PINNED_ENDPOINT') !== '127.0.0.1:6443') out.push(`確かめの手順の PINNED_ENDPOINT が宣言と違う（${pin('PINNED_ENDPOINT')}）`);
+  const want = JSON.stringify([['10.43.0.1/32', 'TCP/443'], ['127.0.0.1/32', 'TCP/6443']]);
+  if (JSON.stringify(API_SERVER_PINS) !== want) out.push('試験の API_SERVER_PINS が手順と違う');
+  return out;
+}
+
+/** 確かめの手順を、宛先の確かめと読みに答えるスタブの kubectl で流す（クラスタに触れない）。 */
+function runApiServerCheck({ svc, eps, port }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apiserver-check-'));
+  try {
+    const uid = '11111111-2222-4333-8444-555555555555';
+    fs.mkdirSync(path.join(dir, 'bin'));
+    fs.writeFileSync(path.join(dir, 'mark'), `${uid}\n`);
+    fs.writeFileSync(path.join(dir, 'bin', 'kubectl'), `#!/usr/bin/env bash
+case "$*" in
+  "config current-context") echo ctx-a ;;
+  "config view --minify --context ctx-a -o jsonpath={.clusters[0].cluster.server}") echo https://127.0.0.1:6443 ;;
+  "--context ctx-a get namespace kube-system -o jsonpath={.metadata.uid}") echo ${uid} ;;
+  *"get service kubernetes"*) printf '%s' "$STUB_SVC" ;;
+  *"get endpointslices"*".addresses"*) printf '%s\\n' $STUB_EPS ;;
+  *"get endpointslices"*".port"*) printf '%s\\n' $STUB_PORT ;;
+  *) echo "unexpected: $*" >&2; exit 9 ;;
+esac
+`, { mode: 0o755 });
+    return spawnSync('bash', [path.join(ROOT, 'deploy/cloud/apiserver-egress-check.sh'), '--live'], {
+      encoding: 'utf8',
+      env: { PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, HOME: dir, CLOUD_CLUSTER_MARK_FILE: path.join(dir, 'mark'), STUB_SVC: svc, STUB_EPS: eps, STUB_PORT: port },
+    });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * IADR-0709 決定 5: collector が送り手の名乗りの外で送り元の Pod から印を付け、LLM ゲートウェイの警報の元の系列をその印で絞る。
+ *   - metrics の pipeline: memory_limiter → 送り手の付けた同じ名の属性を消す → 名前空間ごとの k8sattributes（接続の送り元から）→ 各点へ写す → batch。
+ *     基盤（deploy/cloud）は microservices-platform の分だけ。取引ユニットの分（k8sattributes/ast）と Role は、名前空間が在ってから当てる重ね
+ *     （deploy/cloud-otlp-sender-identity-ast）だけが足す（当てる順に依らず collector が起きる）。withAst でどちらの形かを選ぶ。
+ *   - 権限は名前空間ごとの Role（Pod の get・list・watch だけ）。ClusterRole は使わない。
+ *   - LLM ゲートウェイの費用・上限・再起動・置き場の警報は、印（microservices-platform / llmgateway-service）で絞る。送り手の数は印で数える。
+ */
+// IADR-0709 決定 5: LLM ゲートウェイの印か、印の無い系列（印が付かない間も費用の警報を黙らせない）。
+const LLM_SENDER_SELECTOR = 'otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"';
+function senderIdentityProblems(docs, { withAst }) {
+  const out = [];
+  const namespaces = withAst ? [['k8sattributes/ast', 'ai-stock-trading'], ['k8sattributes/msp', 'microservices-platform']] : [['k8sattributes/msp', 'microservices-platform']];
+  const cm = find(docs, 'ConfigMap', 'otel-collector-config', 'platform-infra');
+  const cfg = cm ? docsOf(`kind: X\n${cm.data['config.yaml']}`)[0] : {};
+  const procs = (cfg.processors || {});
+  const pl = (((cfg.service || {}).pipelines || {}).metrics || {}).processors || '';
+  const pipeline = Array.isArray(pl) ? pl.join(', ') : String(pl).replace(/^\[|\]$/g, '');
+  if (pipeline !== `memory_limiter, transform/otlp-sender-strip, ${namespaces.map((x) => x[0]).join(', ')}, transform/otlp-sender-identity, batch`) out.push(`collector: metrics の pipeline の順が違う（${pipeline}）`);
+  const text = String(cm ? cm.data['config.yaml'] : '');
+  if (!/- context: resource\n\s+statements:\n\s+- delete_matching_keys\(attributes, "\^k8s\."\)/.test(text)) out.push('collector: 送り手が付けた k8s.* の属性を消さない');
+  if (!/- context: datapoint\n\s+statements:\n\s+- delete_matching_keys\(attributes, "\^otlp\.sender\."\)/.test(text)) out.push('collector: 送り手が付けた otlp_sender の属性を消さない');
+  const k8sProcs = Object.keys(procs).filter((k) => /^k8sattributes/.test(k)).sort();
+  if (JSON.stringify(k8sProcs) !== JSON.stringify(namespaces.map((x) => x[0]).sort())) out.push(`collector: k8sattributes が ${namespaces.map((x) => x[0]).join(', ')} だけでない（${k8sProcs.join(', ')}）`);
+  for (const [name, ns] of namespaces) {
+    const k = procs[name] || {};
+    const assoc = JSON.stringify(k.pod_association || []);
+    if (!(k.filter && k.filter.namespace === ns)) out.push(`collector: ${name} の名前空間が ${ns} でない`);
+    if (String(k.passthrough) !== 'false') out.push(`collector: ${name} が passthrough でないと書かない`);
+    if (assoc !== JSON.stringify([{ sources: [{ from: 'connection' }] }])) out.push(`collector: ${name} が送り元を接続だけから引かない（${assoc}）`);
+  }
+  for (const want of ['set(attributes["otlp_sender_namespace"], resource.attributes["k8s.namespace.name"])', 'set(attributes["otlp_sender_app"], resource.attributes["k8s.pod.label.app"])']) if (!text.includes(want)) out.push(`collector: 印を各点へ写さない（${want}）`);
+  // 権限
+  const rbac = docs.filter((d) => /^(Cluster)?Role(Binding)?$/.test(d.kind) && JSON.stringify(d).includes('otel-collector'));
+  if (rbac.some((d) => /^Cluster/.test(d.kind))) out.push('collector に ClusterRole・ClusterRoleBinding がある（名前空間ごとの Role にする）');
+  const roles = rbac.filter((d) => d.kind === 'Role');
+  const nss = roles.map((d) => d.metadata.namespace).sort();
+  if (JSON.stringify(nss) !== JSON.stringify(namespaces.map((x) => x[1]).sort())) out.push(`collector の Role の名前空間が ${namespaces.map((x) => x[1]).join(', ')} でない（${nss.join(', ')}）`);
+  for (const r of roles) if (JSON.stringify(r.rules) !== JSON.stringify([{ apiGroups: [''], resources: ['pods'], verbs: ['get', 'list', 'watch'] }])) out.push(`collector の Role ${r.metadata.namespace} が Pod の読みの外を許す`);
+  for (const b of rbac.filter((d) => d.kind === 'RoleBinding')) if (JSON.stringify(b.subjects) !== JSON.stringify([{ kind: 'ServiceAccount', name: 'otel-collector', namespace: 'platform-infra' }])) out.push(`collector の RoleBinding ${b.metadata.namespace} の相手が違う`);
+  if (!withAst && docs.some((d) => d.metadata && d.metadata.namespace === 'ai-stock-trading')) out.push('deploy/cloud が ai-stock-trading の資源を描く（取引ユニットの名前空間が在る前に当てると落ちる）');
+  // 警報
+  const prom = find(docs, 'ConfigMap', 'prometheus-cloud-config', 'platform-infra');
+  const rules = String(prom ? prom.data['platform-rules.yml'] : '');
+  const block = (a) => (new RegExp(`- alert: ${a}\\n\\s+expr: ([\\s\\S]*?)\\n\\s+(?:for|labels):`).exec(rules) || [])[1] || '';
+  for (const [a, metrics] of [['LlmMonthlyBudgetPaceExceeded', ['llm_cost_total', 'llm_budget_monthly_limit']], ['LlmGatewayRestartLoop', ['llm_gateway_start_time_seconds']], ['LlmCostStateUnavailable', ['llm_call_limit_exceeded_total']]]) {
+    const e = block(a);
+    if (!e) { out.push(`警報 ${a} の式が読めない`); continue; }
+    for (const m of metrics) {
+      const uses = [...e.matchAll(new RegExp(`${m}(\\{[^}]*\\})?`, 'g'))];
+      if (!uses.length) out.push(`警報 ${a} が ${m} を見ない（陽性対照）`);
+      for (const u of uses) if (!(u[1] || '').includes(LLM_SENDER_SELECTOR)) out.push(`警報 ${a} の ${m} が送り元の印で絞らない`);
+    }
+  }
+  if (!/count by \(k8s_namespace_name, k8s_pod_label_app\) \(last_over_time\(target_info\{k8s_pod_label_app!=""\}\[10m\]\)\)/.test(block('OtlpSendersMissing'))) out.push('警報 OtlpSendersMissing が送り元の印で数えない');
+  if (block('OtlpSenderUnverified') !== 'count(last_over_time(target_info{k8s_pod_label_app=""}[10m])) > 0') out.push('警報 OtlpSenderUnverified が無い・形が違う');
+  return out;
+}
+
+/**
+ * IADR-0709: 送り元ごとの表へ移したとき、移す前の全体の表（IADR-0705 の宣言・オーナーの表の heartbeat・バックアップの保管先）で通っていた宛先が、
+ * それを使う送り元の行から落ちていない。母集合は移す前の全体の表で、どの送り元の行にも載せない宛先は理由つきで名指す。
+ *   heartbeat の宛先は値が Secret の中にあり宣言に無いので、手順書 1-1 のオーナーの表の例が、使う 2 つの送り元
+ *   （Alertmanager の check A・B、バックアップの回の生存の確かめ）の行を持つことを見る。
+ */
+const PRE_PER_SOURCE_UNION = [
+  // [移す前の宛先, それを使う送り元（null は載せない）, 理由]
+  ['api.anthropic.com', 'llmgateway', 'LLM の提供元'],
+  ['api.voyageai.com', null, 'クラウドは埋め込みを使わない（鍵を置かない）'],
+  ['discord.com', 'alertmanager', 'Discord の受信先'],
+  ['discordapp.com', 'alertmanager', 'Discord の受信先'],
+];
+const HEARTBEAT_SENDERS = ['alertmanager', 'backup'];
+function migrationCoverageProblems(docs, runbook) {
+  const out = [];
+  const cm = find(docs, 'ConfigMap', 'egress-proxy-hosts', 'platform-infra');
+  const { parseSourceHosts } = require('../deploy/cloud/egress/proxy.js');
+  const table = parseSourceHosts(cm ? cm.data.hosts : '');
+  const has = (src, h) => (table.get(src) || new Set()).has(`${h}:443`);
+  for (const [h, src, why] of PRE_PER_SOURCE_UNION) {
+    if (src && !has(src, h)) out.push(`移す前に通っていた ${h}（${why}）が送り元 ${src} の行に無い`);
+    if (!src && [...table.values()].some((x) => x.has(`${h}:443`))) out.push(`載せないと決めた ${h}（${why}）がある`);
+  }
+  // バックアップの保管先は送り元 backup（中継が ConfigMap platform-backup-s3-target から読む）
+  const dep = find(docs, 'Deployment', 'egress-proxy', 'platform-infra');
+  if (!(dep && dep.spec.template.spec.volumes.some((v) => v.configMap && v.configMap.name === 'platform-backup-s3-target'))) out.push('移す前に通っていたバックアップの保管先を中継が読まない');
+  // heartbeat: 手順書 1-1 のオーナーの表の例が、使う送り元の行を全部持つ
+  const sec = (/### 1-1\. [^\n]*\n([\s\S]*?)\n## 2\./.exec(runbook) || [])[1] || '';
+  const example = (/--from-literal=hosts="\$\(printf '%s\\n' ([^)]*)\)"/.exec(sec) || [])[1] || '';
+  if (!example) out.push('陽性対照: 手順書 1-1 のオーナーの表の例を読めない');
+  for (const src of HEARTBEAT_SENDERS) if (!example.includes(`'${src} <heartbeat の宛先の名前>'`)) out.push(`手順書 1-1 のオーナーの表の例に、heartbeat の宛先の送り元 ${src} の行が無い`);
+  // バックアップが heartbeat の宛先へ送るなら（URL を Pod に載せるなら）、HEARTBEAT_SENDERS に backup が在る（試験の側の追随の確かめ）
+  const cj = find(docs, 'CronJob', 'platform-backup-postgres', 'platform-infra');
+  const sendsHeartbeat = cj && JSON.stringify(dc.podSpec(cj)).includes('alertmanager-heartbeat');
+  if (sendsHeartbeat && !HEARTBEAT_SENDERS.includes('backup')) out.push('バックアップが heartbeat の宛先へ送るのに、試験の送り元に backup が無い');
+  return out;
+}
+
+/**
+ * IADR-0709 決定 5: 取引ユニットの分の重ねは、基盤に対して次だけを変える（ほかは基盤の描画と同じ）:
+ *   ConfigMap otel-collector-config（k8sattributes/ast と経路の 1 語の他は基盤の設定と同じ）・Deployment otel-collector（Pod の注釈だけ）・
+ *   ai-stock-trading の Role と RoleBinding の追加。
+ */
+const AST_K8SATTR_BLOCK = /\n( +)k8sattributes\/ast:\n(?:\1 +[^\n]*\n)+?(?=\1k8sattributes\/msp:)/;
+function astOverlayProblems(cloudDocs, overlayDocs) {
+  const out = [];
+  const key = (d) => `${d.kind}/${d.metadata.namespace || ''}/${d.metadata.name}`;
+  const base = new Map(cloudDocs.map((d) => [key(d), JSON.stringify(d)]));
+  const changed = overlayDocs.filter((d) => base.get(key(d)) !== JSON.stringify(d)).map(key).sort();
+  const want = ['ConfigMap/platform-infra/otel-collector-config', 'Deployment/platform-infra/otel-collector', 'Role/ai-stock-trading/otel-collector-pod-reader', 'RoleBinding/ai-stock-trading/otel-collector-pod-reader'];
+  if (JSON.stringify(changed) !== JSON.stringify(want)) out.push(`取引ユニットの分の重ねが変える資源が違う（${changed.join(', ')}）`);
+  if (overlayDocs.length !== cloudDocs.length + 2) out.push('取引ユニットの分の重ねが基盤の資源を落とす・足しすぎる');
+  const strip = (t) => String(t).replace(/\n *#[^\n]*/g, '').replace(AST_K8SATTR_BLOCK, '\n').replace('k8sattributes/ast, ', '');
+  const cfg = (docs) => (find(docs, 'ConfigMap', 'otel-collector-config', 'platform-infra') || { data: {} }).data['config.yaml'];
+  if (!AST_K8SATTR_BLOCK.test(String(cfg(overlayDocs)))) out.push('取引ユニットの分の重ねの設定に k8sattributes/ast が無い（陽性対照）');
+  if (strip(cfg(overlayDocs)) !== strip(cfg(cloudDocs))) out.push('取引ユニットの分の重ねの collector の設定が、k8sattributes/ast の他でも基盤と違う（片側だけ直した）');
+  const dep = (docs) => clone(find(docs, 'Deployment', 'otel-collector', 'platform-infra') || {});
+  const o = dep(overlayDocs);
+  const ann = ((o.spec || {}).template || {}).metadata.annotations || {};
+  if (ann['microservices-platform/otlp-sender-identity'] !== 'ast') out.push('取引ユニットの分の重ねが collector の Pod を作り直さない（注釈が無い）');
+  if (o.spec) delete o.spec.template.metadata.annotations;
+  if (JSON.stringify(o) !== JSON.stringify(dep(cloudDocs))) out.push('取引ユニットの分の重ねが collector の Deployment の注釈の他を変える');
+  return out;
+}
+const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // ---------------------------------------------------------------- N
 function esoNamespaceProblems(docs) {
@@ -186,7 +433,8 @@ function esoNamespaceProblems(docs) {
       const p = JSON.stringify(portsOf(r));
       const dns = to.length === 1 && nsOf(to[0].namespaceSelector) === 'kube-system' && to[0].podSelector && to[0].podSelector.matchLabels['k8s-app'] === 'kube-dns' && p === '["TCP/53","UDP/53"]';
       const bao = to.length === 1 && nsOf(to[0].namespaceSelector) === 'openbao' && appOf(to[0].podSelector) === 'openbao' && p === '["TCP/8443"]';
-      const api = to.length === 0 && p === '["TCP/443","TCP/6443"]';
+      // 宛先を問わない API サーバーのポートは段 1 の別の宣言だけ（IADR-0709 決定 4）。番地の名指しはどの宣言でもよい
+      const api = (to.length === 0 && p === '["TCP/443","TCP/6443"]' && d.metadata.name === 'eso-egress-apiserver-ports-only-stage1') || isApiServerPin(r);
       if (!(dns || bao || api)) out.push(`external-secrets の出に名前解決・OpenBao の 8443・API サーバーのポートの外がある（${d.metadata.name}: ${JSON.stringify(r)}）`);
     }
     for (const r of d.spec.ingress || []) {
@@ -332,7 +580,7 @@ function writeRulesWithoutAnnotations(rulesText, file) {
   fs.writeFileSync(file, kept.join('\n'));
 }
 
-const REPORT_MODE_EXPR = 'max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400 or on() absent(egress_proxy_report_since_timestamp_seconds))';
+const REPORT_MODE_EXPR = '(max(egress_proxy_enforcing) == 0 or on() max(egress_proxy_source_enforcing) == 0) and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400 or on() absent(egress_proxy_report_since_timestamp_seconds))';
 
 /**
  * promtool の単体試験: EgressProxyReportMode は report の段に入った日時から 14 日で鳴る。Prometheus の再起動（系列の途切れ）の後でも鳴る。
@@ -356,6 +604,11 @@ function promtoolReportModeRun(rulesText) {
       group([['egress_proxy_enforcing', '0x150']], '2h', true),
       // enforce の段なら、古い日時が残っていても鳴らない
       group([['egress_proxy_enforcing', '1x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 30 * day}x150`]], '2h', false),
+      group([['egress_proxy_enforcing', '1x150'], ['egress_proxy_source_enforcing', '1x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 30 * day}x150`]], '2h', false),
+      // IADR-0709: 全体の段は enforce でも、送り元ごとの段が report のまま 14 日を越えたら鳴る（日時が無くても鳴る）
+      group([['egress_proxy_enforcing', '1x150'], ['egress_proxy_source_enforcing', '0x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 15 * day}x150`]], '2h', true),
+      group([['egress_proxy_enforcing', '1x150'], ['egress_proxy_source_enforcing', '0x150']], '2h', true),
+      group([['egress_proxy_enforcing', '1x150'], ['egress_proxy_source_enforcing', '0x150'], ['egress_proxy_report_since_timestamp_seconds', `${at - 13 * day}x150`]], '2h', false),
       // Prometheus の再起動（80 分より前の系列が無い）の後でも、日時から数えるので 1 時間で鳴る
       group([['egress_proxy_enforcing', '_x80 0x70'], ['egress_proxy_report_since_timestamp_seconds', `_x80 ${150 * 60 - 20 * day}x70`]], '150m', true),
     ];
@@ -414,7 +667,54 @@ function promtoolCertAlertTest(cloudDocs) {
   }
 }
 
-module.exports = { keycloakBootstrapProblems, directEgressProblems, portsOnlyEgress, externalClientProblems, proxyProblems, allowlistProblems, esoNamespaceProblems, restrictedPodProblems, auditProblems, probeTargetProblems, certAlertProblems };
+/**
+ * IADR-0710 決定 3: オーナー用の secret_id の期限の警報（cloud-credential-expiry）を promtool で固定する —— 残り 30 日・7 日の境で鳴る・鳴らない、
+ * 記録が無いとき（測りが動いている間）に鳴る。期限（lib.sh の時間）は危急の閾値より長い（平時に鳴らない）。戻り値は問題の一覧。
+ */
+function credentialAlertProblems(cloudDocs, libSh) {
+  const out = [];
+  const { rules, rulesText } = PLATFORM_RULES(cloudDocs);
+  const group = (rules.groups || []).find((g) => g.name === 'cloud-credential-expiry');
+  const alerts = Object.fromEntries(((group && group.rules) || []).map((r) => [r.alert, r]));
+  for (const a of ['OpenBaoOperatorSecretIdExpiringSoon', 'OpenBaoOperatorSecretIdExpiryCritical', 'OpenBaoOperatorSecretIdExpiryUnknown']) if (!alerts[a]) out.push(`警報 ${a} が無い`);
+  const ttlH = Number((/^OB_OPERATOR_SECRET_ID_TTL_HOURS=(\d+)$/m.exec(libSh) || [])[1]);
+  const days = (a) => Number((/< (\d+) \* 86400/.exec(String((alerts[a] || {}).expr)) || [])[1]);
+  const warn = days('OpenBaoOperatorSecretIdExpiringSoon');
+  const crit = days('OpenBaoOperatorSecretIdExpiryCritical');
+  if (!(ttlH > 0 && warn > crit && crit > 0 && warn * 24 < ttlH)) out.push(`期限（${ttlH}h）と警報の閾値（${warn} 日・${crit} 日）が合わない`);
+  if (out.length) return out;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'credential-alerts-'));
+  try {
+    const rf = path.join(dir, 'rules.yml');
+    writeRulesWithoutAnnotations(rulesText, rf);
+    const day = 86400;
+    const at = 7 * 3600;
+    const cred = (remain) => `      - series: 'credential_not_after_seconds{credential="openbao-operator-secret-id"}'\n        values: '${at + remain * day}x500'\n`;
+    const up = "      - series: 'tls_probe_up{target=\"postgres\"}'\n        values: '1x500'\n";
+    const t = (series, name, exp) => `  - interval: 1m\n    input_series:\n${series}    alert_rule_test:\n      - eval_time: 7h\n        alertname: ${name}\n        exp_alerts:${exp ? `\n          - exp_labels: { severity: ${exp} }\n` : ' []\n'}`;
+    const cases = [
+      t(cred(warn + 5) + up, 'OpenBaoOperatorSecretIdExpiringSoon', null),
+      t(cred(warn - 1) + up, 'OpenBaoOperatorSecretIdExpiringSoon', 'warning'),
+      t(cred(warn - 1) + up, 'OpenBaoOperatorSecretIdExpiryCritical', null),
+      t(cred(crit - 1) + up, 'OpenBaoOperatorSecretIdExpiryCritical', 'critical'),
+      t(cred(warn + 5) + up, 'OpenBaoOperatorSecretIdExpiryUnknown', null),
+      // absent() は照合の名札（credential）を結果に残す
+      t(up, 'OpenBaoOperatorSecretIdExpiryUnknown', 'warning, credential: openbao-operator-secret-id'),
+      // 測りが止まっている間は「記録が無い」と言わない（TlsServerCertProbeMissing が知らせる）
+      t("      - series: 'other'\n        values: '1x500'\n", 'OpenBaoOperatorSecretIdExpiryUnknown', null),
+    ];
+    const tf = path.join(dir, 'test.yml');
+    fs.writeFileSync(tf, `rule_files:\n  - ${rf}\nevaluation_interval: 1m\ntests:\n${cases.join('')}`);
+    const r = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
+    if (r.error) throw new Error('promtool が PATH に無い');
+    if (r.status !== 0) out.push(`promtool の単体試験が落ちた:\n${r.stdout}${r.stderr}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  return out;
+}
+
+module.exports = { keycloakBootstrapProblems, directEgressProblems, portsOnlyEgress, externalClientProblems, proxyProblems, allowlistProblems, esoNamespaceProblems, restrictedPodProblems, auditProblems, probeTargetProblems, certAlertProblems, credentialAlertProblems };
 
 if (require.main === module) {
   let failed = 0;
@@ -431,7 +731,6 @@ if (require.main === module) {
     const t = spawnSync(process.execPath, [path.join(ROOT, rel)], { encoding: 'utf8' });
     assert.strictEqual(t.status, 0, `${rel} が落ちた:\n${t.stdout}${t.stderr}`);
   };
-  const clone = (x) => JSON.parse(JSON.stringify(x));
   const cloud = kustomize('deploy/cloud');
   const infra = kustomize('deploy/cloud/infra');
   const chart = renderChart();
@@ -481,7 +780,18 @@ if (require.main === module) {
     assert.deepStrictEqual(directEgressProblems(esoNs, 'external-secrets'), []);
     // ipBlock の検査が見ない範囲（宛先を問わない出）を名指して固定する（IADR-0705 残余 5）
     const portsOnly = [...new Set([cloud, chart, vault, esoNs].flatMap(portsOnlyEgress))].sort();
-    assert.deepStrictEqual(portsOnly, ['external-secrets/eso-egress-dns-openbao-apiserver TCP/443,TCP/6443', 'openbao/openbao-egress-dns-and-apiserver TCP/443,TCP/6443'].sort(), `宛先を問わない出が想定の 2 つと違う:\n${portsOnly.join('\n')}`);
+    // IADR-0709 決定 4: 宛先を問わない出は、段 1 の別の宣言（名前に stage1）の 2 つだけ。名指した番地は ESO・OpenBao・collector が持つ
+    assert.deepStrictEqual(portsOnly, ['external-secrets/eso-egress-apiserver-ports-only-stage1 TCP/443,TCP/6443', 'openbao/openbao-egress-apiserver-ports-only-stage1 TCP/443,TCP/6443'].sort(), `宛先を問わない出が想定の 2 つと違う:\n${portsOnly.join('\n')}`);
+    const pinned = (docs, ns, name) => { const d = find(docs, 'NetworkPolicy', name, ns); return d ? API_SERVER_PINS.filter(([cidr, port]) => (d.spec.egress || []).some((r) => isApiServerPin(r) && r.to[0].ipBlock.cidr === cidr && portsOf(r)[0] === port)).length : 0; };
+    assert.strictEqual(pinned(esoNs, 'external-secrets', 'eso-egress-dns-openbao-apiserver'), 2, 'ESO の出が API サーバーの番地を 2 つとも名指さない');
+    assert.strictEqual(pinned(vault, 'openbao', 'openbao-egress-dns-and-apiserver'), 2, 'OpenBao の出が API サーバーの番地を 2 つとも名指さない');
+    assert.strictEqual(pinned(cloud, 'platform-infra', 'otel-collector-egress-apiserver'), 2, 'collector の出が API サーバーの番地を 2 つとも名指さない');
+    // 陰性対照: 番地の名指しを他の Pod へ足す・名指しに広い範囲を混ぜると赤
+    const wider = clone(cloud);
+    find(wider, 'NetworkPolicy', 'platform-backup-egress').spec.egress.push({ to: [{ ipBlock: { cidr: '127.0.0.1/32' } }], ports: [{ protocol: 'TCP', port: 6443 }] });
+    find(wider, 'NetworkPolicy', 'otel-collector-egress-apiserver').spec.egress[0].to[0].ipBlock.cidr = '10.43.0.0/16';
+    const wp = directEgressProblems(wider, 'x');
+    for (const want of [/platform-backup-egress が API サーバーの番地へ出る/, /otel-collector-egress-apiserver がクラスタの外の範囲へ直に出る/]) assert.ok(wp.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${wp.join('\n')}`);
     const extra = clone(cloud);
     find(extra, 'NetworkPolicy', 'platform-backup-egress').spec.egress.push({ ports: [{ protocol: 'TCP', port: 443 }] });
     assert.ok(portsOnlyEgress(extra).some((x) => /platform-backup-egress/.test(x)), '陰性対照: ポートだけの出の追加を拾わない');
@@ -490,7 +800,7 @@ if (require.main === module) {
     find(bad, 'NetworkPolicy', 'platform-backup-egress').spec.egress.push({ to: [{ ipBlock: { cidr: '0.0.0.0/0' } }], ports: [{ protocol: 'TCP', port: 443 }] });
     assert.ok(directEgressProblems(bad, 'x').some((p) => /platform-backup-egress/.test(p)), '陰性対照: バックアップの直の 443 を検出しない');
   });
-  ok('E2: 外の 443 を使う 3 つは中継の 3128 へ出て、中継を使う設定を持つ', () => {
+  ok('E2: 外の 443 を使う 3 つは中継の自分の受け口（と移す間の 3128）へ出て、自分の受け口を使う設定を持つ', () => {
     assert.deepStrictEqual(externalClientProblems(cloud, chart), []);
     const bad = clone(cloud);
     const am = find(bad, 'ConfigMap', 'alertmanager-cloud-config');
@@ -498,7 +808,12 @@ if (require.main === module) {
     const cj = bad.find((d) => d.kind === 'CronJob');
     dc.podSpec(cj).containers[0].env = dc.podSpec(cj).containers[0].env.filter((e) => e.name !== 'HTTPS_PROXY');
     const p = externalClientProblems(bad, chart);
-    for (const want of [/Alertmanager の global\.http_config\.proxy_url/, /バックアップに外向きの中継の HTTPS_PROXY が無い/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    for (const want of [/Alertmanager の global\.http_config\.proxy_url/, /バックアップに外向きの中継の自分の受け口の HTTPS_PROXY が無い/]) assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
+    // 陰性対照: 従来の口（3128）へ戻すと、自分の受け口でないので赤
+    const legacy = clone(cloud);
+    const lam = find(legacy, 'ConfigMap', 'alertmanager-cloud-config');
+    lam.data['alertmanager.yml.tmpl'] = lam.data['alertmanager.yml.tmpl'].replace('http://egress-proxy:3133', 'http://egress-proxy:3128');
+    assert.ok(externalClientProblems(legacy, chart).some((x) => /proxy_url が外向きの中継の自分の受け口でない/.test(x)), '陰性対照: 従来の口へ戻したのを検出しない');
   });
   ok('E3: 中継は最終の段で enforce。移す間の重ねは report で、3 つの直の 443 を戻し、最終の段の判定では落ちる', () => {
     assert.deepStrictEqual(proxyProblems(cloud, { mode: 'enforce' }), []);
@@ -512,15 +827,37 @@ if (require.main === module) {
     const changed = report.filter((d) => base.get(key(d)) !== JSON.stringify(d)).map(key).sort();
     assert.deepStrictEqual(changed, ['Deployment/platform-infra/egress-proxy', 'NetworkPolicy/microservices-platform/llmgateway-egress-direct-https-transition', 'NetworkPolicy/platform-infra/alertmanager-egress-direct-https-transition', 'NetworkPolicy/platform-infra/platform-backup-egress-direct-https-transition']);
   });
-  ok('E4: 許可表は設定に在る宛先を全部持ち、中継の入りは 3 つの呼び手と Prometheus だけ', () => {
+  ok('E4: 許可表は送り元ごとに設定に在る宛先を持ち、使わない宛先・他の送り元の宛先を持たない。受け口ごとに届く Pod は 1 つ', () => {
     assert.deepStrictEqual(allowlistProblems(cloud), []);
     const bad = clone(cloud);
     const cm = find(bad, 'ConfigMap', 'egress-proxy-hosts');
-    cm.data.hosts = cm.data.hosts.replace('api.voyageai.com\n', '');
-    find(bad, 'NetworkPolicy', 'egress-proxy').spec.ingress[0].from.push({ podSelector: { matchLabels: { app: 'keycloak' } } });
-    assert.ok(allowlistProblems(bad).some((p) => /api\.voyageai\.com/.test(p)), '陰性対照: 提供元の欠けを検出しない');
-    assert.ok(proxyProblems(bad, { mode: 'enforce' }).some((p) => /送り元が 3 つの呼び手だけでない/.test(p)), '陰性対照: 送り元の追加を検出しない');
+    cm.data.hosts = cm.data.hosts.replace('llmgateway api.anthropic.com\n', 'llmgateway api.voyageai.com\nalertmanager api.anthropic.com\nllmgateway discord.com\nnobody x.example.com\nast-report *.example.com\n');
+    const p = allowlistProblems(bad);
+    for (const want of [/llmgateway の表に LLM の提供元 api\.anthropic\.com/, /クラウドで使わない api\.voyageai\.com/, /送り元 alertmanager の表に LLM の提供元/, /送り元 llmgateway の表に Discord/, /送り元 nobody に受け口が無い/, /1 段下を許す行が/]) assert.ok(p.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${p.join('\n')}`);
+    // 受け口へ届く Pod の追加・名前空間だけの要素（名乗りを 1 つに絞れない）・legacy の送り元の追加
+    const np = find(bad, 'NetworkPolicy', 'egress-proxy').spec.ingress;
+    np[0].from.push({ podSelector: { matchLabels: { app: 'keycloak' } } });
+    np.find((r) => r.ports.some((x) => Number(x.port) === 3131)).from.push({ namespaceSelector: { matchLabels: { 'kubernetes.io/metadata.name': 'ai-stock-trading' } } });
+    np.find((r) => r.ports.some((x) => Number(x.port) === 3144)).from[0].podSelector.matchLabels.app = 'audit-service';
+    const pp = proxyProblems(bad, { mode: 'enforce' });
+    for (const want of [/3128 の送り元が 3 つの呼び手だけでない/, /受け口 3131（送り元 llmgateway）へ届くのが/, /受け口 3144（送り元 ast-report）へ届くのが/]) assert.ok(pp.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${pp.join('\n')}`);
+    // 受け口の一覧とポートの食い違い
+    const bad2 = clone(cloud);
+    const e = find(bad2, 'Deployment', 'egress-proxy').spec.template.spec.containers[0].env.find((x) => x.name === 'EGRESS_PROXY_SOURCES');
+    e.value = e.value.replace('ast-report:3144', 'ast-report:3150');
+    assert.ok(proxyProblems(bad2, { mode: 'enforce' }).some((x) => /送り元と受け口が表と違う/.test(x)), '陰性対照: 受け口の食い違いを検出しない');
+    assert.ok(proxyProblems(cloud, { mode: 'enforce', sourceMode: 'enforce' }).some((x) => /送り元ごとの段が enforce でない/.test(x)), '陰性対照: 送り元ごとの段を見ていない');
   });
+  ok('E7: 送り元ごとの表へ移しても、移す前の全体の表で通っていた宛先は使う送り元の行に在る（heartbeat はバックアップと Alertmanager の両方）', () => {
+    const runbook = read('docs/operations/cloud-egress-proxy-runbook.md');
+    assert.deepStrictEqual(migrationCoverageProblems(cloud, runbook), []);
+    const bad = clone(cloud);
+    const cm = find(bad, 'ConfigMap', 'egress-proxy-hosts');
+    cm.data.hosts = cm.data.hosts.replace('alertmanager discordapp.com\n', '').replace('llmgateway api.anthropic.com\n', 'llmgateway api.anthropic.com\nllmgateway api.voyageai.com\n');
+    const p = migrationCoverageProblems(bad, runbook.replace(" 'backup <heartbeat の宛先の名前>'", ''));
+    for (const want of [/discordapp\.com.*alertmanager の行に無い/, /api\.voyageai\.com/, /送り元 backup の行が無い/]) assert.ok(p.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${p.join('\n')}`);
+  });
+
   ok('E5: 中継の手順の試験', () => child('deploy/cloud/egress/proxy.test.js'));
   ok('E6: report の段の警報は入った日時から 14 日で鳴る（Prometheus・中継の再起動で数え直さない。日時が無ければ鳴る。promtool の単体試験）', () => {
     const { rulesText } = PLATFORM_RULES(cloud);
@@ -534,11 +871,56 @@ if (require.main === module) {
     // 陰性対照 2: 日時が無いときの枝（absent）を外すと、日時が無い場合で鳴らずに赤
     const noAbsent = rulesText.replace(REPORT_MODE_EXPR, 'max(egress_proxy_enforcing) == 0 and on() ((time() - max(egress_proxy_report_since_timestamp_seconds)) > 14 * 86400)');
     assert.notStrictEqual(promtoolReportModeRun(noAbsent).status, 0, '日時が無いときに鳴らない形でも通る');
+    // 陰性対照 3（IADR-0709）: 送り元ごとの段の枝を外すと、送り元ごとの段が report のまま残る場合で鳴らずに赤
+    const noSource = rulesText.replace(REPORT_MODE_EXPR, REPORT_MODE_EXPR.replace('(max(egress_proxy_enforcing) == 0 or on() max(egress_proxy_source_enforcing) == 0)', 'max(egress_proxy_enforcing) == 0'));
+    assert.notStrictEqual(noSource, rulesText);
+    assert.notStrictEqual(promtoolReportModeRun(noSource).status, 0, '送り元ごとの段を見ない形でも通る');
     // 中継は日時を ConfigMap egress-proxy-report-since（optional・kustomize の外）から読む
     const vols = find(cloud, 'Deployment', 'egress-proxy', 'platform-infra').spec.template.spec.volumes;
     const v = vols.find((x) => x.configMap && x.configMap.name === 'egress-proxy-report-since');
     assert.ok(v && String(v.configMap.optional) === 'true' && JSON.stringify(v.configMap.items) === JSON.stringify([{ key: 'since', path: 'since' }]), '中継が report の段の日時を optional の ConfigMap から読まない');
     assert.ok(!cloud.concat(report).some((d) => d.kind === 'ConfigMap' && d.metadata.name === 'egress-proxy-report-since'), '日時の ConfigMap を宣言に置いている（当て直しで日時が変わる）');
+  });
+
+  ok('A1: 名指した API サーバーの番地は k3s の起動の旗と確かめの手順の値と同じ。確かめの手順は一致で 0・違いで 1（読むだけ）', () => {
+    const checkSh = read('deploy/cloud/apiserver-egress-check.sh');
+    assert.deepStrictEqual(apiServerPinProblems(readme, checkSh), []);
+    const p = apiServerPinProblems(readme.replace('--advertise-address 127.0.0.1', '--advertise-address 10.0.0.2'), checkSh.replace('PINNED_SERVICE="10.43.0.1:443"', 'PINNED_SERVICE="10.43.0.10:443"'));
+    for (const want of [/advertise-address/, /PINNED_SERVICE/]) assert.ok(p.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${p.join('\n')}`);
+    const good = runApiServerCheck({ svc: '10.43.0.1:443', eps: '127.0.0.1', port: '6443' });
+    assert.strictEqual(good.status, 0, good.stdout + good.stderr);
+    for (const bad of [{ svc: '10.43.0.1:443', eps: '10.0.0.2', port: '6443' }, { svc: '10.43.0.1:443', eps: '127.0.0.1 10.0.0.2', port: '6443' }, { svc: '10.43.0.10:443', eps: '127.0.0.1', port: '6443' }, { svc: '', eps: '', port: '' }]) {
+      const r = runApiServerCheck(bad);
+      assert.strictEqual(r.status, 1, `違う番地（${JSON.stringify(bad)}）で 1 にならない:\n${r.stdout}${r.stderr}`);
+    }
+    assert.ok(!/\b(apply|delete|patch|create|edit|label|annotate|scale|set|rollout|exec)\b/.test(checkSh.split('\n').filter((l) => /^\s*[^#].*kubectl /.test(l)).join('\n')), '確かめの手順が書き込みの kubectl を持つ');
+  });
+  ok('O1: collector は送り元の Pod から印を付け（名前空間ごとの読みだけの Role）、LLM ゲートウェイの警報と送り手の数を印で見る。取引ユニットの分は重ねだけが足す', () => {
+    const ast = kustomize('deploy/cloud-otlp-sender-identity-ast');
+    assert.deepStrictEqual(senderIdentityProblems(cloud, { withAst: false }), []);
+    assert.deepStrictEqual(senderIdentityProblems(ast, { withAst: true }), []);
+    assert.deepStrictEqual(astOverlayProblems(cloud, ast), []);
+    assert.deepStrictEqual(senderIdentityProblems(infra.concat(find(cloud, 'ConfigMap', 'prometheus-cloud-config') ? [find(cloud, 'ConfigMap', 'prometheus-cloud-config')] : []), { withAst: false }), [], '#2401 の infra 単独の描画でも同じ処理を持たない');
+    // 陰性対照: 基盤に取引ユニットの分を置く（当てる順に依る形へ戻す）と赤
+    const early = clone(cloud);
+    find(early, 'ConfigMap', 'otel-collector-config').data['config.yaml'] = find(ast, 'ConfigMap', 'otel-collector-config').data['config.yaml'];
+    assert.ok(senderIdentityProblems(early, { withAst: false }).some((x) => /pipeline の順が違う|k8sattributes が/.test(x)), '陰性対照: 基盤の取引ユニットの分を検出しない');
+    // 陰性対照: 重ねの設定を片側だけ直す・注釈を外すと赤
+    const drift = clone(ast);
+    const dcm = find(drift, 'ConfigMap', 'otel-collector-config');
+    dcm.data['config.yaml'] = dcm.data['config.yaml'].replace('limit_mib: 128', 'limit_mib: 256');
+    delete find(drift, 'Deployment', 'otel-collector').spec.template.metadata.annotations;
+    const dp = astOverlayProblems(cloud, drift);
+    for (const want of [/基盤と違う/, /作り直さない/]) assert.ok(dp.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${dp.join('\n')}`);
+    const bad = clone(ast);
+    const cm = find(bad, 'ConfigMap', 'otel-collector-config');
+    cm.data['config.yaml'] = cm.data['config.yaml'].replace('processors: [memory_limiter, transform/otlp-sender-strip, k8sattributes/ast, k8sattributes/msp, transform/otlp-sender-identity, batch]', 'processors: [memory_limiter, batch]').replace(/- from: connection\n/, '- from: resource_attribute\n').replace('delete_matching_keys(attributes, "^k8s.")', 'set(attributes["x"], "y")');
+    const prom = find(bad, 'ConfigMap', 'prometheus-cloud-config');
+    prom.data['platform-rules.yml'] = prom.data['platform-rules.yml'].replace(`changes(max(llm_gateway_start_time_seconds{${LLM_SENDER_SELECTOR}})`, 'changes(max(llm_gateway_start_time_seconds)').replace('count by (k8s_namespace_name, k8s_pod_label_app)', 'count by (job)');
+    find(bad, 'Role', 'otel-collector-pod-reader', 'microservices-platform').rules[0].resources.push('secrets');
+    bad.push({ kind: 'ClusterRoleBinding', metadata: { name: 'x' }, subjects: [{ kind: 'ServiceAccount', name: 'otel-collector', namespace: 'platform-infra' }] });
+    const p = senderIdentityProblems(bad, { withAst: true });
+    for (const want of [/pipeline の順が違う/, /送り元を接続だけから引かない/, /k8s\.\* の属性を消さない/, /LlmGatewayRestartLoop の llm_gateway_start_time_seconds が送り元の印で絞らない/, /OtlpSendersMissing が送り元の印で数えない/, /Pod の読みの外を許す/, /ClusterRole/]) assert.ok(p.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${p.join('\n')}`);
   });
 
   ok('N1: external-secrets の名前空間は PSA restricted・既定で拒否・出は名前解決と OpenBao の 8443 と API サーバーのポートだけ・入りは webhook だけ', () => {
@@ -603,6 +985,16 @@ if (require.main === module) {
     promtoolCertAlertTest(cloud);
   });
   ok('C3: 測りの手順の試験', () => child('deploy/cloud/tls-cert-probe/probe.test.js'));
+  ok('C4: オーナー用の secret_id の期限の警報（30 日・7 日・記録なし）が鳴る・鳴らない（promtool の単体試験。IADR-0710）', () => {
+    const libSh = read('deploy/cloud/vault/lib.sh');
+    assert.deepStrictEqual(credentialAlertProblems(cloud, libSh), []);
+    // 陰性対照: 期限を閾値より短くすると検出する。警報の閾値をずらすと promtool の試験が落ちる。
+    assert.ok(credentialAlertProblems(cloud, libSh.replace(/^OB_OPERATOR_SECRET_ID_TTL_HOURS=\d+$/m, 'OB_OPERATOR_SECRET_ID_TTL_HOURS=480')).some((x) => /合わない/.test(x)), '陰性対照: 期限と閾値の不整合を検出しない');
+    const bad = clone(cloud);
+    const cm = find(bad, 'ConfigMap', 'prometheus-cloud-config', 'platform-infra');
+    cm.data['platform-rules.yml'] = cm.data['platform-rules.yml'].replace('absent(credential_not_after_seconds{credential="openbao-operator-secret-id"}) and on() (count(tls_probe_up) > 0)', 'absent(credential_not_after_seconds{credential="openbao-operator-secret-id"})');
+    assert.ok(credentialAlertProblems(bad, libSh).some((x) => /promtool/.test(x)), '陰性対照: 測りの止まりでも「記録なし」が鳴る形を検出しない');
+  });
 
   if (failed) {
     console.error(`✗ ${failed} 件が失敗した`);

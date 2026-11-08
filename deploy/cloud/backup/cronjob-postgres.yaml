@@ -75,8 +75,9 @@ spec:
                       optional: true
                 # NFR-18, IADR-0705: オブジェクトストレージへは外向きの中継（名前の許可表。保管先の名前は ConfigMap platform-backup-s3-target の
                 #   endpoint から中継が読む）を経る。rclone は HTTPS_PROXY に従う。Postgres（libpq）は中継を使わない。
+                # IADR-0709 決定 1: 送り元 backup の受け口（3132）。中継はこの受け口に来た要求を、送り元 backup の表（保管先と、egress-proxy-extra-hosts の backup の行〔外の生存の確かめの宛先。IADR-0710〕）で判定する。
                 - name: HTTPS_PROXY
-                  value: http://egress-proxy:3128
+                  value: http://egress-proxy:3132
                 - name: NO_PROXY
                   value: localhost,127.0.0.1,postgres,.svc,.cluster.local
                 - name: RCLONE_CONFIG_OBJSTORE_TYPE
@@ -88,6 +89,14 @@ spec:
                 # バケットの作成を試みない（資格情報にその権限を要らなくする）。
                 - name: RCLONE_CONFIG_OBJSTORE_NO_CHECK_BUCKET
                   value: "true"
+                # IADR-0709 決定 2: 仮想ホスト形式（<バケット>.<endpoint の名前>）で書くかの切り替え。キーが無ければ rclone の既定（パス形式）。
+                #   オーナーが false を書くと、中継の表も "<バケット>.<名前>" だけになる（同じ ConfigMap を読む。手順書）。
+                - name: RCLONE_CONFIG_OBJSTORE_FORCE_PATH_STYLE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: platform-backup-s3-target
+                      key: force_path_style
+                      optional: true
                 - name: RCLONE_CONFIG_OBJSTORE_ENDPOINT
                   valueFrom:
                     configMapKeyRef:
@@ -125,6 +134,13 @@ spec:
                   value: verify-full
                 - name: PGSSLROOTCERT
                   value: /etc/platform-infra-ca/ca.crt
+                # NFR-21, NFR-18, IADR-0710 決定 1: 回の結果を外の生存の確かめ（Healthchecks.io の check C。Period 1 日）へ送る。
+                #   成功は URL へ、失敗は URL/fail へ。走らなかった日・止まった回は送られず、check C が期限で下がって外からオーナーへ届く。
+                #   URL は Secret alertmanager-heartbeat のキー backup-ping-url（OpenBao の cloud/platform/alertmanager-heartbeat。ESO が写す）。
+                #   🔴 キーが無ければ警告して送らない（段: オーナーが check C と URL を用意するまで。回の結果は変えない）。宛先は heartbeat と同じ名前
+                #   だが、許可表 egress-proxy-extra-hosts は送り元ごとの行なので、送り元 backup の行が要る（docs/operations/cloud-egress-proxy-runbook.md 1-1）。
+                - name: BACKUP_HEARTBEAT_URL_FILE
+                  value: /etc/platform-backup/heartbeat/backup-ping-url
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
@@ -142,6 +158,9 @@ spec:
                   mountPath: /staging
                 - name: platform-infra-ca
                   mountPath: /etc/platform-infra-ca
+                  readOnly: true
+                - name: heartbeat
+                  mountPath: /etc/platform-backup/heartbeat
                   readOnly: true
               resources:
                 requests: { cpu: 50m, memory: 128Mi }
@@ -162,6 +181,15 @@ spec:
                 items:
                   - key: ca.crt
                     path: ca.crt
+            # IADR-0710 決定 1: 外の生存の確かめの URL（backup-ping-url だけを写す。ほかの heartbeat の URL はこの Pod に置かない）。
+            #   optional（キーが無ければ空のマウントで起き、スクリプトが警告して送らない）。権限は既定（uid 70 の本体が読む。Pod の外へは出ない）。
+            - name: heartbeat
+              secret:
+                secretName: alertmanager-heartbeat
+                optional: true
+                items:
+                  - key: backup-ping-url
+                    path: backup-ping-url
             # 暗号化済みの成果物と、送った回の読み戻し（暗号文）だけを置く。
             - name: staging
               emptyDir:

@@ -29,11 +29,13 @@ spec:
         - { protocol: UDP, port: 53 }
         - { protocol: TCP, port: 53 }
     # IADR-0705: クラスタの外の HTTPS は外向きの中継（egress-proxy。名前の許可表で宛先を絞る）を経る。外の 443 へ直には出さない。
+    #   IADR-0709: 送り元 alertmanager の受け口（3133）。従来の口（3128）は移す間と切り戻しのため（送り元ごとの段が enforce なら中継が何も通さない）。
     - to:
         - podSelector:
             matchLabels: { app: egress-proxy }
       ports:
         - { protocol: TCP, port: 3128 }
+        - { protocol: TCP, port: 3133 }
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

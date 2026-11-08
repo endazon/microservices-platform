@@ -4,8 +4,8 @@
 #   - Pod Security Admission は enforce・warn・audit とも restricted（chart 2.8.0 の 3 つの Pod は root でなく、capability を全部落とし、
 #     権限の昇格を許さず、seccomp は RuntimeDefault。scripts/deploy-cloud-egress-audit.test.js が chart の描画で確かめる）。
 #   - 入り・出とも既定で拒否する。
-#       出: 名前解決・OpenBao の受け口（TLS の 8443）・API サーバー（443・6443。API サーバーはノードのループバックで宛先の IP を名指せないので
-#           ポートだけで絞る。OpenBao の出と同じ形。IADR-0689 残余 2）。
+#       出: 名前解決・OpenBao の受け口（TLS の 8443）・API サーバー（10.43.0.1:443 と 127.0.0.1:6443 を名指す。IADR-0709 決定 4。
+#           宛先を問わない 443・6443 は段 1 の別の宣言 eso-egress-apiserver-ports-only-stage1 にだけ残す）。
 #       入り: webhook（10250）だけ。呼ぶのは API サーバー（ノード）で、送り元を Pod として名指せないので送り元を絞らない（受けるのは検証の要求だけ）。
 apiVersion: v1
 kind: Namespace
@@ -46,7 +46,31 @@ spec:
           podSelector: { matchLabels: { app: openbao } }
       ports:
         - { protocol: TCP, port: 8443 }
-    # API サーバー（ポートだけ。上の注記）。🔴 宛先を問わず 443・6443 へ出られる（IADR-0705 残余 5。宛先で絞るのは移行の門で測ってから）。
+    # IADR-0709 決定 4: API サーバーの番地を名指す。k3s は --advertise-address 127.0.0.1（README §1-4）で、Service kubernetes の ClusterIP は
+    #   既定の範囲（--service-cidr を渡さない）の 10.43.0.1。Pod からの要求は 10.43.0.1:443 を宛先に出て、ノードで 127.0.0.1:6443 へ
+    #   書き換わる。どちらの段で NetworkPolicy が当たっても通るよう、両方を名指す（宛先を問わない 443・6443 は段 1 の下の別の宣言だけ）。
+    #   実際の番地は deploy/cloud/apiserver-egress-check.sh --live で確かめる（読むだけ。手順書 cloud-egress-proxy-runbook §7）。
+    - to:
+        - ipBlock: { cidr: 10.43.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 443 }
+    - to:
+        - ipBlock: { cidr: 127.0.0.1/32 }
+      ports:
+        - { protocol: TCP, port: 6443 }
+---
+# IADR-0709 決定 4 の段 1: 宛先を問わない API サーバーのポート（IADR-0705 残余 5 の形）を、名指した番地と別の宣言に分けて残す。
+#   NetworkPolicy は和で効くので、これが在る間は上の名指しは狭めない。apiserver-egress-check.sh --live で番地が合うことを確かめ、
+#   この宣言を名指しで消して ESO の同期が続くことを確かめたら、宣言から外す（段 2。手順書 cloud-egress-proxy-runbook §7）。
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: eso-egress-apiserver-ports-only-stage1
+  namespace: external-secrets
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
     - ports:
         - { protocol: TCP, port: 443 }
         - { protocol: TCP, port: 6443 }
