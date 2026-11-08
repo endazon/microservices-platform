@@ -42,3 +42,21 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+
+  # NFR, IADR-0708: クラウドで配備する第三者のイメージ（deploy/cloud の k8s マニフェスト・helm values の `image:`。
+  # `<repo>:<tag>@sha256:<digest>` で固定）の更新の通知。Dependabot の docker は k8s マニフェストの `image:` を読む。
+  # - 1 本の PR にまとめる（groups）。同じイメージは deploy/local・deploy/docker-compose.yml にも在り、
+  #   片側だけの更新は scripts/check-image-digests.js の [digest-mismatch] が止める。残りは手で揃える
+  #   （docs/operations/third-party-image-scan-runbook.md §更新の PR を仕上げる）。
+  # - 既知の脆弱性の走査は .github/workflows/third-party-image-scan.yml（週次）。
+  # 既定は自動マージしない（人手レビュー必須）。
+  - package-ecosystem: "docker"
+    directories:
+      - "/deploy/cloud/**"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      cloud-third-party-images:
+        patterns:
+          - "*"

@@ -67,7 +67,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-      id-token: write
+      # NFR, IADR-0708: id-token: write は持たない（claude-code-review.yml と同じ理由。github_token を渡すとアクションは OIDC を求めない）。
       # claude-code-review.example.yml と同じ理由（mcp__github_ci__* サーバーの導入条件）。
       # 実装セッションでは、自分が出した PR の CI 失敗を自分で読んで直すために要る。
       # 注: ツール許可に additional_permissions は使わない（あれはアプリトークンのスコープ用）。
