@@ -4,6 +4,7 @@
 
 ### 新機能
 
+- **NFR-05**: 取引ユニットのサービス間の TLS の受け側の証明書の PKI の role（11 個）と、policy ast-eso の名指しの発行の許可（update）を足す (#2528) (283faab3)
 - **NFR-05**: クラウドの外から持ち込む値を OpenBao から写し（put-external-secret.sh）、クラウドの段 2 の切り替えを強制にする（#2471） (#2478) (c00aa579)
 - **NFR-05**: クラウドの最小構成に秘匿管理（OpenBao）と ESO を持ち込み、クラスタの中の資格情報と TLS の鍵を OpenBao から供給する（#2471） (#2474) (e9e01524)
 - **NFR-09**: 取引ユニットの Discord ボットの機密クライアントに専用のロール trading-bot を足し、AST の submodule を写しと同時に c322b26d へ進める（#2441） (#2464) (ee770135)
@@ -339,6 +340,10 @@
 
 ### 不具合修正
 
+- **NFR-18**: Dependabot の docker は大版を出さず 1 イメージ 1 本の PR にし、collector を止め、OpenBao を 2.7.2 へ上げる（IADR-0711） (#2524) (f94f9c8a)
+- **NFR**: cloud-ops.test.js の promtool の単体試験の不安定さを、一時の置き場の分離・失敗理由の表示・陰性対照の厳密化で直す (#2527) (1e237046)
+- **NFR-18**: クラウドのバックアップの回の結果を外の check へ送り、手で打つ配備の段を宛先のクラスタへ固定し、監査の記録の目録をノードの外へ送り、オーナー用の資格に期限を付け、LLM ゲートウェイの OpenAPI の文書を本番で出さない（IADR-0710） (#2518) (6f7da855)
+- **NFR**: クラウドの外向きの中継の許可表を送り元ごとにし、API サーバーへの出の番地を名指し、collector が OTLP の送り手を送り元の Pod で確かめる（IADR-0709） (#2517) (2a8f7514)
 - **NFR-18**: AI のジョブから id-token を外し、bot の PR では AI レビューを走らせない。配備する第三者のイメージを週次で走査し、更新を Dependabot で知らせる（IADR-0708） (#2516) (59a542f5)
 - **NFR**: 検証の下限の検査器が、レビュー本文の引用（引用ブロック・語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文を、下限の自己申告と読み違えないようにする（IADR-0707） (#2513) (3ba6611f)
 - **NFR-18**: クラウドの Postgres の超利用者の TCP を既定で拒み、バックアップを専用の利用者にし、ブローカの平文と管理の口を閉じ、資格の作り直しを消費側へ反映する（IADR-0706） (#2510) (c3d5a6ef)
@@ -805,6 +810,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2519) (19c246f1)
 - **NFR**: CHANGELOG を自動更新 (#2515) (91a28a06)
 - **NFR**: CHANGELOG を自動更新 (#2507) (f29b4026)
 - **NFR**: CHANGELOG を自動更新 (#2497) (376638f0)
@@ -1013,6 +1019,7 @@
 
 ### テスト
 
+- **NFR**: QdrantGrpcReadyTests の最初の呼び出しの期待を接続の失敗の集合（Unavailable・Internal）へ合わせ、各要素と待機の読みを決定的に固定する (#2526) (afbf3bd0)
 - **NFR**: check-nul-bytes の変異試験を、作業ツリーを書き換えない一時のリポジトリで行う (#2488) (8a8989ca)
 - **NFR**: k8s-local-up.test.js のコマンド列の比較で、ノードの Ready 待ちの残り時間を伏せる（#2442） (#2443) (77d9a135)
 - **NFR**: backup.test.sh の保持の判定を here-string にし、source で受け継ぐ pipefail の下の「| grep -q」も検査する（#2436） (#2437) (00fa8b26)
@@ -1214,6 +1221,9 @@
 
 ### その他
 
+- **deps**: bump anthropics/claude-code-action from 1.0.267 to 1.0.268 (#2522) (472a45ce)
+- **deps**: bump softprops/action-gh-release from 3.0.3 to 3.0.4 (#2521) (969c2674)
+- **deps**: bump the codeql-action group with 3 updates (#2520) (93c4e4fd)
 - **NFR**: AST の submodule を f55ee1c8 へ進め、AST の依存の宣言に合わせて @tanstack/react-query を 5.105.3・@playwright/test を 1.64.1 へ上げる (#2514) (85102377)
 - **NFR**: dependabot の 3 本（@storybook/react-vite・sonner・tailwind-merge）を 1 本にまとめ、@babel/types を 1 版にそろえ、初期ロードの床を実測で上げる (#2511) (6ad8b441)
 - **deps**: bump @hookform/resolvers from 7.0.1 to 7.0.2 in /src (#2487) (44facea0)
