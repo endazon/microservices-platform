@@ -340,6 +340,7 @@
 
 ### 不具合修正
 
+- **NFR**: deploy-cloud-egress-audit.test.js の promtool の呼び出しも共通器（scripts/lib/promtool.js）へ移し、一時の置き場の分離・失敗理由の表示・陰性対照の厳密化を当てる (#2530) (95b7995d)
 - **NFR-18**: Dependabot の docker は大版を出さず 1 イメージ 1 本の PR にし、collector を止め、OpenBao を 2.7.2 へ上げる（IADR-0711） (#2524) (f94f9c8a)
 - **NFR**: cloud-ops.test.js の promtool の単体試験の不安定さを、一時の置き場の分離・失敗理由の表示・陰性対照の厳密化で直す (#2527) (1e237046)
 - **NFR-18**: クラウドのバックアップの回の結果を外の check へ送り、手で打つ配備の段を宛先のクラスタへ固定し、監査の記録の目録をノードの外へ送り、オーナー用の資格に期限を付け、LLM ゲートウェイの OpenAPI の文書を本番で出さない（IADR-0710） (#2518) (6f7da855)
@@ -810,6 +811,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2525) (3086b127)
 - **NFR**: CHANGELOG を自動更新 (#2519) (19c246f1)
 - **NFR**: CHANGELOG を自動更新 (#2515) (91a28a06)
 - **NFR**: CHANGELOG を自動更新 (#2507) (f29b4026)
