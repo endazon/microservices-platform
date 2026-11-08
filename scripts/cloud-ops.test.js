@@ -788,11 +788,13 @@ t('T-2402-48 プラットフォームの規則と Prometheus の設定を promto
 });
 // NFR-21, IADR-0692: クラウドの LLM 費用の月次予算の進みの警報。窓は保持（7 日）に合わせ、月次予算を 7/30 に按分して比べる。
 // IADR-0709 決定 5: 元の系列は collector が送り元の Pod から付けた印が LLM ゲートウェイのものだけ。
+// LLM_SENDER は系列に付く印（LLM ゲートウェイの Pod から届いた系列）。LLM_SEL は警報の式の絞り（その印か、印の無い系列）。
 const LLM_SENDER = 'otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"';
+const LLM_SEL = 'otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"';
 // 規則のファイルは式を JSON の文字列（JSON.stringify）で書く。その中の字面を探す・置き換えるときは、同じ JSON の文字列の escape
 // （バックスラッシュも含めて全部）を掛けた形で引く（手で " だけを escape しない）。
 const jsonInner = (text) => JSON.stringify(String(text)).slice(1, -1);
-const LLM_PACE_EXPR = `sum by (llm_purpose, llm_currency) (increase(llm_cost_total{${LLM_SENDER}}[7d]))\n  > on (llm_purpose, llm_currency)\nmax by (llm_purpose, llm_currency) (llm_budget_monthly_limit{${LLM_SENDER}}) * 7 / 30\n`;
+const LLM_PACE_EXPR = `sum by (llm_purpose, llm_currency) (increase(llm_cost_total{${LLM_SEL}}[7d]))\n  > on (llm_purpose, llm_currency)\nmax by (llm_purpose, llm_currency) (llm_budget_monthly_limit{${LLM_SEL}}) * 7 / 30\n`;
 t('IADR-0692 LLM の月次予算の進みの警報が、ゲートウェイのゲージを直近 7 日（保持と同じ）で見る', () => {
   const r = ruleOf('LlmMonthlyBudgetPaceExceeded');
   assert.strictEqual(r.expr, LLM_PACE_EXPR);
@@ -809,10 +811,12 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   assert.ok(r.expr && r.for, '警報の式か for が読めない');
   const f = path.join(sandbox, 'llm-pace-rules.yml');
   fs.writeFileSync(f, `groups:\n  - name: llm-cost-budget\n    rules:\n      - alert: LlmMonthlyBudgetPaceExceeded\n        expr: ${JSON.stringify(r.expr)}\n        for: ${r.for}\n        labels: { severity: warning }\n`);
+  const rulesFile = fs.readFileSync(f, 'utf8');
   // 5 分ごとに 8 日分。trade-decision は月次 135 → 7 日の按分 31.5。5 分あたり 0.02 → 7 日で 40.32（超える）。
   // report-daily は月次 30 → 按分 7。5 分あたり 0.0025 → 7 日で 5.04（超えない）。other はゲージが無い（鳴らない）。
-  const series = (purpose, step, sender = LLM_SENDER) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD", ${sender}}'\n        values: '0+${step}x2304'\n`;
-  const gauge = (purpose, v, sender = LLM_SENDER) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD", ${sender}}'\n        values: '${v}x2304'\n`;
+  const lab = (sender) => (sender ? `, ${sender}` : '');
+  const series = (purpose, step, sender = LLM_SENDER) => `      - series: 'llm_cost_total{llm_purpose="${purpose}", llm_currency="USD"${lab(sender)}}'\n        values: '0+${step}x2304'\n`;
+  const gauge = (purpose, v, sender = LLM_SENDER) => `      - series: 'llm_budget_monthly_limit{llm_purpose="${purpose}", llm_currency="USD"${lab(sender)}}'\n        values: '${v}x2304'\n`;
   // IADR-0709 決定 5: 他の送り手（取引ユニットの Pod）が LLM ゲートウェイの名で書いた費用・上限の系列は式に入らない（report-daily を押し上げても鳴らない）。
   const forged = 'otlp_sender_namespace="ai-stock-trading", otlp_sender_app="report-service"';
   const test = `rule_files:\n  - ${f}\nevaluation_interval: 5m\ntests:\n  - interval: 5m\n    input_series:\n`
@@ -820,7 +824,9 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
     + series('report-daily', 0.0025) + gauge('report-daily', 30)
     + series('report-daily', 1, forged) + gauge('report-daily', 1, forged)
     + series('other', 1)
-    + `    alert_rule_test:\n      - eval_time: 8d\n        alertname: LlmMonthlyBudgetPaceExceeded\n        exp_alerts:\n          - exp_labels: { severity: warning, llm_purpose: trade-decision, llm_currency: USD }\n`;
+    // IADR-0709 決定 5: 印の無い系列（collector が送り元の Pod を引けない間）も式に入り、按分を超えれば鳴る（費用の上限の警報を黙らせない）。
+    + series('unverified', 0.02, '') + gauge('unverified', 135, '')
+    + `    alert_rule_test:\n      - eval_time: 8d\n        alertname: LlmMonthlyBudgetPaceExceeded\n        exp_alerts:\n          - exp_labels: { severity: warning, llm_purpose: trade-decision, llm_currency: USD }\n          - exp_labels: { severity: warning, llm_purpose: unverified, llm_currency: USD }\n`;
   const tf = path.join(sandbox, 'llm-pace.test.yml');
   fs.writeFileSync(tf, test);
   const ok = run('promtool', ['test', 'rules', tf]);
@@ -831,14 +837,20 @@ t('IADR-0692 LLM の月次予算の進みの警報: promtool の単体試験（�
   assert.notStrictEqual(ng.status, 0, '鳴るはずの警報が鳴らなくても promtool が通る');
   // 陰性対照（IADR-0709）: 送り元の印で絞らない式では、他の送り手が書いた report-daily の系列で鳴り、promtool が落ちる。
   fs.writeFileSync(tf, test);
-  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`{${LLM_SENDER}}`).join('').split(`{${jsonInner(LLM_SENDER)}}`).join(''));
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').split(`{${LLM_SEL}}`).join('').split(`{${jsonInner(LLM_SEL)}}`).join(''));
   assert.ok(!fs.readFileSync(f, 'utf8').includes('otlp_sender_app'), '陰性対照の置換が効いていない');
   const ng2 = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng2.status, 0, '送り元の印で絞らなくても promtool が通る（他の送り手の系列を見分けていない）');
+  // 陰性対照（IADR-0709 決定 5）: 印の無い系列を外す形（印が LLM ゲートウェイのものだけ）では、印の無い系列の群で鳴らず、promtool が落ちる。
+  const strict = rulesFile.split(LLM_SEL).join(LLM_SENDER).split(jsonInner(LLM_SEL)).join(jsonInner(LLM_SENDER));
+  assert.notStrictEqual(strict, rulesFile, '陰性対照の置換元が無い');
+  fs.writeFileSync(f, strict);
+  const ng3 = run('promtool', ['test', 'rules', tf]);
+  assert.notStrictEqual(ng3.status, 0, '印の無い系列を外しても promtool が通る（印が付かない間に費用の警報が黙る形を見分けていない）');
 });
 // NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動の繰り返しと、当日の費用の枠の置き場の障害の警報。
-const LLM_RESTART_EXPR = `changes(max(llm_gateway_start_time_seconds{${LLM_SENDER}})[30m:1m]) >= 3`;
-const LLM_COST_STATE_EXPR = `(sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}} offset 10m) > 0)`;
+const LLM_RESTART_EXPR = `changes(max(llm_gateway_start_time_seconds{${LLM_SEL}})[30m:1m]) >= 3`;
+const LLM_COST_STATE_EXPR = `(sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SEL}}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SEL}} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SEL}} offset 10m) > 0)`;
 t('IADR-0698 LLM ゲートウェイの再起動の繰り返し（起動の時刻のゲージの変わった回数）と、当日の費用の枠の置き場の障害の警報がある', () => {
   assert.strictEqual(ruleOf('LlmGatewayRestartLoop').expr, LLM_RESTART_EXPR);
   assert.match(rules, /alert: LlmGatewayRestartLoop[\s\S]{0,200}labels: \{ severity: warning \}/, '再起動の繰り返しの重大度が warning でない');
@@ -896,7 +908,7 @@ t('IADR-0698 LLM ゲートウェイの警報: promtool の単体試験（30 分�
   const ng = run('promtool', ['test', 'rules', tf]);
   assert.notStrictEqual(ng.status, 0, '閾値を下げても promtool が通る');
   // 陰性対照: 初回を拾う右の項を外した式（increase だけ）では、最初の 1 件の群が落ちる。
-  const increaseOnly = jsonInner(`sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SENDER}}[10m])) > 0`);
+  const increaseOnly = jsonInner(`sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", ${LLM_SEL}}[10m])) > 0`);
   const swapped = rulesText.replace(JSON.stringify(ruleOf('LlmCostStateUnavailable').expr).slice(1, -1), increaseOnly);
   assert.notStrictEqual(swapped, rulesText, '陰性対照の置換元が無い');
   fs.writeFileSync(f, swapped);

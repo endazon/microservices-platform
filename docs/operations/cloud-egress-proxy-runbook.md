@@ -205,4 +205,7 @@ API サーバーへ届く宛先は、k3s の起動の旗（`--advertise-address 
 3. OpenBao の段 1 の宣言を名指しで消し、ESO から OpenBao への認証が続くことを確かめる（2 と同じ確かめ）:
    `kubectl -n openbao delete networkpolicy openbao-egress-apiserver-ports-only-stage1`。止まったら `kubectl apply -k deploy/cloud/vault` で戻す。
 4. 2・3 が通ったら、2 つの段 1 の宣言をリポジトリから外す変更を入れる（外すまでは、`kubectl apply -k` のたびに段 1 の宣言が作り直される）。
-5. collector は段 1 を持たない。届かなければ送り元の印が付かず、警報 `OtlpSenderUnverified` が鳴る（系列は止まらない）。
+5. collector は段 1 を持たない（宛先を問わない出を collector に足さない）。届かなければ送り元の印が付かず、警報 `OtlpSenderUnverified` が鳴る
+   （系列は止まらない。LLM ゲートウェイの費用・上限・再起動・置き場の警報は印の無い系列も見るので、その間も黙らない）。
+   1 の確かめが `OK` でも、collector を当てた後に `OtlpSenderUnverified` が鳴り続けるなら、名指した番地が CNI で効いていない。
+   [警報の手順書](cloud-backup-alerts-heartbeat-runbook.md) §7 の 4 で確かめ、結果を報告する。

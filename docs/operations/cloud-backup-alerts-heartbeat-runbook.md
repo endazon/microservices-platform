@@ -254,6 +254,8 @@ kubectl -n platform-infra create job --from=cronjob/platform-backup-postgres bac
 collector は、メトリクスの送り手が名乗る名前（`job`）とは別に、接続の送り元の Pod から名前空間とラベル `app` を引いて系列に付ける
 （`target_info` の `k8s_namespace_name`・`k8s_pod_label_app`、各系列の `otlp_sender_namespace`・`otlp_sender_app`）。
 LLM ゲートウェイの費用・上限・再起動・費用の枠の置き場の警報と、送り手の数の警報 `OtlpSendersMissing` は、この印で見る（他の送り手が同じ名を名乗っても入らない）。
+費用・上限・再起動・置き場の警報は、印の無い系列も見る（collector が API サーバーへ届かない・権限が無いなどで印が付かない間も黙らない。
+その間は `OtlpSenderUnverified` が鳴るので、下の 4 の確かめで原因を直す）。
 
 基盤の既定（`deploy/cloud`）は、基盤の名前空間（`microservices-platform`）の送り手だけを引く。取引ユニットの名前空間の送り手を引く設定と Role は、
 その名前空間が在ってから `deploy/cloud` の**代わりに**当てる重ね（`deploy/cloud-otlp-sender-identity-ast`）だけが足す。当てる順に依らず collector は起きる。

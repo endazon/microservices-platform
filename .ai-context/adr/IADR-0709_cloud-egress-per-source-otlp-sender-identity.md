@@ -92,7 +92,12 @@ related_specs:
   collector が取引ユニットの Pod を引きに行かない＝当てる順に依らず collector が起きる。実物の collector で Role の無いときの振る舞いを確かめられないため）。
   重ねの設定は基盤の設定の写しで、試験が `k8sattributes/ast` の他は同じであることを突き合わせる。重ねは collector の Pod の注釈を足し、当て替えで作り直させる。collector は期限 1 時間の明示のトークンを読み取り専用で載せる。
 - 警報: LLM ゲートウェイの費用・上限（`LlmMonthlyBudgetPaceExceeded`）・再起動（`LlmGatewayRestartLoop`）・費用の枠の置き場（`LlmCostStateUnavailable`）は
-  `otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"` の系列だけを見る。`OtlpSendersMissing` は
+  `otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"` の系列を見る（LLM ゲートウェイの印か、**印の無い**系列）。
+  ［2026-11-08 追記］印の無い系列も入れる。collector が API サーバーへ届かない（`127.0.0.1/32` の名指しが CNI で効かない等）・Role が無い間は
+  印が付かず、印だけで絞ると費用の上限（所有者の裁定の 1 日の上限に関わる）を含む 3 つの警報が黙るため。collector には API サーバーへの出の段 1
+  （宛先を問わない出）を置かない（置くと collector が外の任意の 443 へ出られる）。偽装の判定は、他の送り手の印を持つ系列を外すことと、
+  印の無い送り手を知らせる `OtlpSenderUnverified` に任せる（他の送り手の Pod から届いた系列は必ず自分の印を持つので、印の無い形で偽れない）。
+  `OtlpSendersMissing` は
   `target_info` を `(k8s_namespace_name, k8s_pod_label_app)` で数える。印の無い送り手は `OtlpSenderUnverified` が知らせる。
 - 取引ユニットの規則（AST の PrometheusRule）が自分の系列を印で絞るのは取引ユニットの側の判断である（印は全系列に付く）。
 

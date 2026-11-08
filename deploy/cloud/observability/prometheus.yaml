@@ -148,8 +148,9 @@ data:
       # FR-11, NFR-21, IADR-0466, IADR-0692: LLM 費用の月次予算（用途別）の**進み**の超過（クラウド版）。
       # 注: この ConfigMap の値の中に絵文字を書かない（kustomize が値を引用符の 1 行へ書き換え、試験の読み手が読めなくなる）。
       # 金額も単価も式に無い。上限はゲートウェイのゲージ llm_budget_monthly_limit（Llm:Budget:MonthlyLimits。appsettings.json）。
-      # IADR-0709 決定 5: 元の系列は、collector が送り元の Pod から付けた印（otlp_sender_namespace・otlp_sender_app）が LLM ゲートウェイのものだけ
-      #   （他の送り手が同じ名の系列を書いても、式に入らない）。
+      # IADR-0709 決定 5: 元の系列は、collector が送り元の Pod から付けた印（otlp_sender_namespace・otlp_sender_app）が LLM ゲートウェイのもの**か、
+      #   印の無いもの**（他の送り手の印を持つ系列は式に入らない）。印の無い系列も入れるのは、collector が API サーバーへ届かない・権限が無いなどで
+      #   印が付かない間も、費用・再起動・置き場の警報を黙らせないため（印の無い送り手は OtlpSenderUnverified が別に知らせる）。
       # 窓は直近 7 日である（30 日ではない）。この Prometheus の保持は 7 日・データは emptyDir なので、30 日の窓は
       #   いつも過小になる（7 日分しか無い）。7 日の費用を、月次予算を 7/30 に按分した値と比べる（月次予算を超える速さで使っている）。
       #   compose・経路 B の LlmMonthlyBudgetExceeded（直近 30 日）とは窓が違うので、名前を分けた。
@@ -159,9 +160,9 @@ data:
         rules:
           - alert: LlmMonthlyBudgetPaceExceeded
             expr: |
-              sum by (llm_purpose, llm_currency) (increase(llm_cost_total{otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"}[7d]))
+              sum by (llm_purpose, llm_currency) (increase(llm_cost_total{otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"}[7d]))
                 > on (llm_purpose, llm_currency)
-              max by (llm_purpose, llm_currency) (llm_budget_monthly_limit{otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"}) * 7 / 30
+              max by (llm_purpose, llm_currency) (llm_budget_monthly_limit{otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"}) * 7 / 30
             for: 5m
             labels: { severity: warning }
             annotations:
@@ -170,11 +171,11 @@ data:
       # NFR-18, NFR-21, IADR-0698: LLM ゲートウェイの再起動と、当日の費用の枠の置き場の障害。
       # 当日の費用の枠は PVC に残る（再起動で 0 に戻らない）。短い間の再起動の繰り返しは、それでも原因を見る（要求数の窓はプロセス内で戻る）。
       # 起動の回数は起動の時刻のゲージ llm_gateway_start_time_seconds の変わった回数で数える（プロセスごとに大きくなる。ラベルが変わっても max で 1 本になる）。
-      # 元の系列は LLM ゲートウェイの Pod から届いたものだけ（IADR-0709 決定 5。上の費用の警報と同じ印）。
+      # 元の系列は LLM ゲートウェイの印か印の無いものだけ（IADR-0709 決定 5。上の費用の警報と同じ絞り）。
       - name: llm-gateway-state
         rules:
           - alert: LlmGatewayRestartLoop
-            expr: changes(max(llm_gateway_start_time_seconds{otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"})[30m:1m]) >= 3
+            expr: changes(max(llm_gateway_start_time_seconds{otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"})[30m:1m]) >= 3
             labels: { severity: warning }
             annotations:
               summary: "LLM ゲートウェイが短い間に再起動を繰り返している（直近 30 分に 3 回以上）"
@@ -182,7 +183,7 @@ data:
           # 置き場を読めない・書けない間、段 2 は費用の上限を持つ呼び手の呼び出しを送らない（fail-closed）。取引ユニットの LLM の判断が止まる。
           # 右の項は、10 分前に無かった系列（起動の直後の最初の 1 件。0 から現れずに 1 で現れる）を拾う（increase は新しい系列の初回を数えない）。
           - alert: LlmCostStateUnavailable
-            expr: (sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"} offset 10m) > 0)
+            expr: (sum(increase(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"}[10m])) > 0) or (count(llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"} unless llm_call_limit_exceeded_total{llm_limit_kind="cost_state", otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"} offset 10m) > 0)
             labels: { severity: critical }
             annotations:
               summary: "LLM ゲートウェイが当日の費用の枠の置き場を扱えず、呼び出しを送っていない"

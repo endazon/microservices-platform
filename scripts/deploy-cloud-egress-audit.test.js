@@ -300,7 +300,8 @@ esac
  *   - 権限は名前空間ごとの Role（Pod の get・list・watch だけ）。ClusterRole は使わない。
  *   - LLM ゲートウェイの費用・上限・再起動・置き場の警報は、印（microservices-platform / llmgateway-service）で絞る。送り手の数は印で数える。
  */
-const LLM_SENDER_SELECTOR = 'otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"';
+// IADR-0709 決定 5: LLM ゲートウェイの印か、印の無い系列（印が付かない間も費用の警報を黙らせない）。
+const LLM_SENDER_SELECTOR = 'otlp_sender_namespace=~"microservices-platform|", otlp_sender_app=~"llmgateway-service|"';
 function senderIdentityProblems(docs, { withAst }) {
   const out = [];
   const namespaces = withAst ? [['k8sattributes/ast', 'ai-stock-trading'], ['k8sattributes/msp', 'microservices-platform']] : [['k8sattributes/msp', 'microservices-platform']];

@@ -61,6 +61,7 @@ related_specs:
 | AC7 | collector の metrics の pipeline が「消す→名前空間ごとに引く→写す→batch」の順、接続から引く、Role は Pod の読みだけ・ClusterRole なし。LLM の 3 つの警報は印で絞り、送り手の数は印で数え、`OtlpSenderUnverified` がある | O1・`cloud-ops.test.js`（promtool。他の送り手の系列で鳴らない） |
 | AC8 | 陰性対照: 上の各直しを外すと赤 | 各試験の中の陰性対照 |
 | AC10 | 基盤の既定の collector は取引ユニットの分（`k8sattributes/ast`・Role）を持たず、重ねだけが足す。重ねの設定は基盤と `k8sattributes/ast` の他で同じ・Pod の注釈で作り直す。送り元の口は従来の口・件数の口のポートと重ならない | O1・E9 |
+| AC11 | LLM ゲートウェイの 3 つの警報は、印の無い系列も見る（印が付かない間も黙らない）。他の送り手の印の系列は入らない。陰性対照: 印だけで絞る形では印の無い系列の群で鳴らない | `cloud-ops.test.js`（promtool）・O1 |
 | AC9 | 移す前の全体の表の宛先は、使う送り元の行に在る（載せないものは理由つき）。heartbeat の宛先は alertmanager と backup の 2 行（片方だけなら enforce で拒まれる） | E7（egress audit）・E10（proxy） |
 
 ## 確かめられないこと
