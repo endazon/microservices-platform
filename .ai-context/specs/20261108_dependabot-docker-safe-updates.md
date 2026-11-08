@@ -12,7 +12,7 @@ related_specs:
 
 # 作業仕様書 — Dependabot の docker の安全な更新
 
-> 着手 2026-11-08（develop `59a542f53`＝MSP#2516 のマージ）。判断の記録は IADR-0711（仮の番号。0709・0710 は open な PR #2517・#2518 が使う）。
+> 着手 2026-11-08（develop `59a542f53`＝MSP#2516 のマージ）。判断の記録は IADR-0711。
 > 起点: Dependabot の最初の docker の PR（MSP#2523）をオーケストレーターが閉じたコメントの「直し方」。
 
 ## 閉じた理由（MSP#2523 のコメント）と本 PR の対応
@@ -85,7 +85,7 @@ related_specs:
 | `src/` の Testcontainers・Dockerfile | 出現なし（OpenBao は `src/` に無い） |
 
 - Keycloak は上げないので写しは触らない（`git grep "26\.7\.4\|82a77884"` の出現は 60 件超。上げる PR で同じ走査が要る）。
-- `anthropics/claude-code-action` の行末のコメント（v1.0.267）: #2522 は open（2026-11-08 時点。merged=false）。**直さない**。
+- `anthropics/claude-code-action` の行末のコメント（v1.0.267）: 着手の時点では #2522 が open だったので直さなかった。#2522 のマージ（develop `472a45ceb`）を取り込んだ後に、2 つのワークフロー（`claude-code-review.yml`・`claude-coding.yml`）の注記を v1.0.268 へ直した。
 
 ## 方式
 
@@ -93,6 +93,7 @@ related_specs:
 2. OpenBao の写しを 2.7.2 へ（決定 6）。
 3. 手順書 `docs/operations/third-party-image-scan-runbook.md` に §Dependabot が出さない更新・§大版の移行（Prometheus・Alertmanager・collector・ESO・node・Keycloak の確かめる項目）。
 4. `scripts.repo.test.js` に IADR-0711 の言明と陰性対照。
+5. #2522 のマージ後に develop を取り込み、`claude-code-action` の行末の注記を v1.0.268 へ直す（SHA は #2522 が上げた `c0949c50` のまま）。
 
 ## 受け入れ基準
 

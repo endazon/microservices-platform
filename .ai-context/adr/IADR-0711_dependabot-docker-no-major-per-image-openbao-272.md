@@ -13,7 +13,6 @@ related_specs:
 # IADR-0711: Dependabot の docker を切り分けられる形にし、互換の明らかな修正版だけを上げる
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
-> 番号は仮（open な PR が 0709・0710 を使っている）。マージの順に合わせて改番を受ける。
 
 - 状態: Accepted
 - 日付: 2026-11-08
