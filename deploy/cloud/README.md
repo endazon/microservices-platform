@@ -295,6 +295,7 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
 | 取引ユニットの DB の利用者・ブローカの 11 ユーザー・10 の機密クライアント（宣言の 3 つとサービスごとの 7 つ）の secret | 同上 | `cloud/shared/ast-db`・`ast-rabbitmq-users`・`ast-client-secrets` | `platform-infra` の `ast-db`・`rabbitmq-users`・`keycloak-realm-import`（雛形に差し込む）。取引ユニットの側も同じパスを読む |
 | 取引ユニットの DB のサービスごとの利用者（7 組。共有の `ast-db` は移行の後に外す） | 同上（利用者名は `ast_<サービス>_<乱数>`） | `cloud/shared/ast-db-<サービス>` | `platform-infra` の `ast-db-<サービス>`（利用者を作る Job が読む）。取引ユニットの側も同じパスを読む |
 | サーバ証明書と鍵（Postgres・RabbitMQ・Keycloak・LLM ゲートウェイ） | OpenBao の PKI（`pki_cloud`。CA の鍵は OpenBao の外へ出ない。role の一覧は `vault/lib.sh` の `OB_PKI_ROLES`） | — | `postgres-tls`・`rabbitmq-tls`・`keycloak-tls`・`llmgateway-tls`（ESO の `VaultDynamicSecret`） |
+| 取引ユニットのサービス間の TLS の受け側の証明書と鍵（11 のサービス） | OpenBao の PKI（`pki_cloud` の role `<サービス>-service`。発行を許すのは policy `ast-eso` の名指しの 11 個だけ） | — | 取引ユニットの名前空間の `ast-<サービス>-service-tls`（取引ユニットの chart の VaultDynamicSecret。段が `"Off"` の間は発行しない。稼働中の構成へは `root-token.sh apply-pki-roles`・`apply-policies`。[手順書](../../docs/operations/cloud-openbao-init-unseal-runbook.md) §6） |
 | CA の証明書（公開してよい） | `configure.sh` | `cloud/shared/platform-infra-ca` | ConfigMap `platform-infra-ca`（両方の名前空間） |
 | OpenBao 自身の受け口の証明書と鍵 | `vault/tls-cert.sh`（オーナーの手元。OpenBao を開ける側の値なので OpenBao の外。CA の鍵は署名の後に捨てる） | — | Secret `openbao/openbao-tls`。CA の証明書（公開してよい）は ConfigMap `openbao-ca`（基盤の 2 つと取引ユニットの名前空間。ESO のストアが検証に使う） |
 

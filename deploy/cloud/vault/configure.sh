@@ -9,7 +9,8 @@
 # 設定するもの（どれも在れば作り直さない）:
 #   - KV v2 `cloud/`（値の置き場。パスの規則は IADR-0689 決定 6）
 #   - PKI `pki_cloud/`（基盤との通信の CA。**CA の鍵は OpenBao の外へ出さない**〔internal〕）と、サーバ証明書の role
-#     （lib.sh の OB_PKI_ROLES: postgres・rabbitmq・keycloak・llmgateway-service。SAN は名指しの 4 つだけ・発行した証明書を保存しない。
+#     （lib.sh の OB_PKI_ROLES: postgres・rabbitmq・keycloak・llmgateway-service と、取引ユニットの 11 のサービス〔<サービス>-service〕。
+#     SAN は名指しの 4 つの形だけ・発行した証明書を保存しない。
 #     稼働中の構成へ role を足すときは root-token.sh apply-pki-roles。IADR-0693）
 #   - policy（deploy/cloud/vault/policies/*.hcl）と kubernetes 認証の role（ESO の 3 つの ServiceAccount）
 #   - オーナー用の AppRole `cloud-operator`（ループバックからだけ入れる。トークンは 15 分。secret_id は期限つき〔IADR-0710〕で、
