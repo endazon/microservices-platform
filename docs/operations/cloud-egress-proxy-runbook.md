@@ -172,7 +172,7 @@ kubectl -n platform-infra create configmap egress-proxy-extra-hosts \
    `kubectl -n platform-infra create configmap egress-proxy-report-since --from-literal=since="$(date -u +%Y-%m-%dT%H:%M:%SZ)" --dry-run=client -o yaml | kubectl apply -f -`
    （§3 で書いた日時が残っていれば書き直さない）。
 2. 1-1 の表を送り元つきの形へ書き直す。
-3. `kubectl apply -k deploy/cloud` と、LLM ゲートウェイの values の当て直し。3 つの Pod が自分の受け口を使っていることを
+3. `kubectl apply -k deploy/cloud`（取引ユニットの名前空間が在るなら、代わりに `deploy/cloud-otlp-sender-identity-ast`。[警報の手順書](cloud-backup-alerts-heartbeat-runbook.md) §7）と、LLM ゲートウェイの values の当て直し。3 つの Pod が自分の受け口を使っていることを
    `kubectl -n platform-infra logs deploy/egress-proxy | grep -E '^(allow|report): \[(llmgateway|backup|alertmanager)\]'` で確かめる。
 4. 7 日続けて、`egress_proxy_source_mismatch_total` が増えないことと、**`[legacy]` の行が 1 行も出ないこと**を確かめる。
    🔴 **後者は enforce へ移る前の必須の確認である。** 従来の口（3128）は、report の間は送り元の判定を受けない（全体の表で通る）ので、

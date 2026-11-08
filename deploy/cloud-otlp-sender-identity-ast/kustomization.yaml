@@ -1,0 +1,24 @@
+# NFR-21, IADR-0709 決定 5: 取引ユニットの名前空間（ai-stock-trading）が在ってから、deploy/cloud の**代わりに**当てる重ね。
+#   kubectl apply -k deploy/cloud-otlp-sender-identity-ast
+# deploy/cloud に次だけを足す（deploy/cloud の下に置くと kustomize が循環として拒むので、隣に置く）:
+#   - collector が取引ユニットの名前空間の Pod（名前空間とラベル app）を読む Role・RoleBinding（読みだけ。ai-stock-trading の中だけ）。
+#   - collector の設定に k8sattributes/ast と、それを使う経路を足す（基盤の既定には置かない。名前空間・Role が無いうちに collector が
+#     取引ユニットの Pod を引きに行かないように＝当てる順に依らず collector が起きる）。
+#   - collector の Pod の注釈（設定が替わったことで作り直す。ConfigMap の名前は替わらないため）。
+# 当てるまで（と、deploy/cloud だけを当て直した後）は、取引ユニットの送り手の系列は印を持たず、警報 OtlpSenderUnverified・OtlpSendersMissing が鳴る。
+# 手順: docs/operations/cloud-backup-alerts-heartbeat-runbook.md §7。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../cloud
+  - rbac.yaml
+
+patches:
+  - path: otel-collector-config.yaml
+  - target: { kind: Deployment, name: otel-collector, namespace: platform-infra }
+    patch: |-
+      - op: add
+        path: /spec/template/metadata/annotations
+        value:
+          microservices-platform/otlp-sender-identity: ast

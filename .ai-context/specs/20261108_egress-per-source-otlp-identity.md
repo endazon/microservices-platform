@@ -60,6 +60,7 @@ related_specs:
 | AC6 | ESO・OpenBao・collector の API サーバーへの出は 2 つの番地を名指し、宛先を問わない出は段 1 の 2 つの宣言だけ。番地は README の k3s の旗・確かめの手順の値と同じ。確かめの手順は一致で 0・違いで 1・宛先が違えば 4 | E1・A1・`cluster-target.test.sh` |
 | AC7 | collector の metrics の pipeline が「消す→名前空間ごとに引く→写す→batch」の順、接続から引く、Role は Pod の読みだけ・ClusterRole なし。LLM の 3 つの警報は印で絞り、送り手の数は印で数え、`OtlpSenderUnverified` がある | O1・`cloud-ops.test.js`（promtool。他の送り手の系列で鳴らない） |
 | AC8 | 陰性対照: 上の各直しを外すと赤 | 各試験の中の陰性対照 |
+| AC10 | 基盤の既定の collector は取引ユニットの分（`k8sattributes/ast`・Role）を持たず、重ねだけが足す。重ねの設定は基盤と `k8sattributes/ast` の他で同じ・Pod の注釈で作り直す。送り元の口は従来の口・件数の口のポートと重ならない | O1・E9 |
 | AC9 | 移す前の全体の表の宛先は、使う送り元の行に在る（載せないものは理由つき）。heartbeat の宛先は alertmanager と backup の 2 行（片方だけなら enforce で拒まれる） | E7（egress audit）・E10（proxy） |
 
 ## 確かめられないこと

@@ -86,8 +86,11 @@ function parseSourceHosts(text) {
   return out;
 }
 
-/** 受け口の一覧（"<送り元>:<ポート>" の空白区切り）。送り元の名前・ポートの重なりは起動を止める（取り違えて表を当てない）。 */
-function parseListeners(text) {
+/**
+ * 受け口の一覧（"<送り元>:<ポート>" の空白区切り）。送り元の名前・ポートの重なりは起動を止める（取り違えて表を当てない）。
+ * reserved: 他の口（従来の口 3128・件数の口）のポート。送り元の口と重なれば起動を止める（同じポートを 2 つの口が取り合わない）。
+ */
+function parseListeners(text, reserved = []) {
   const out = [];
   for (const w of String(text || '').trim().split(/\s+/).filter(Boolean)) {
     const m = /^([a-z0-9-]+):(\d{1,5})$/.exec(w);
@@ -95,6 +98,7 @@ function parseListeners(text) {
     const port = Number(m[2]);
     if (!(port >= 1024 && port <= 65535)) throw new Error(`EGRESS_PROXY_SOURCES の「${w}」のポートが範囲の外`);
     if (out.some((x) => x.source === m[1] || x.port === port)) throw new Error(`EGRESS_PROXY_SOURCES の「${w}」が重なる`);
+    if (reserved.includes(port)) throw new Error(`EGRESS_PROXY_SOURCES の「${w}」のポートが従来の口・件数の口と重なる`);
     out.push({ source: m[1], port });
   }
   return out;
@@ -364,7 +368,9 @@ function main(env = process.env) {
     process.exit(2);
   }
   let listeners;
-  try { listeners = parseListeners(env.EGRESS_PROXY_SOURCES); } catch (e) { console.log(`ERROR: ${e.message}`); process.exit(2); }
+  const legacyPort = Number(env.EGRESS_PROXY_PORT || 3128);
+  const metricsPort = Number(env.EGRESS_PROXY_METRICS_PORT || 9464);
+  try { listeners = parseListeners(env.EGRESS_PROXY_SOURCES, [legacyPort, metricsPort]); } catch (e) { console.log(`ERROR: ${e.message}`); process.exit(2); }
   let tables = readTables(files);
   let readAt = Date.now();
   const current = () => {
@@ -373,7 +379,7 @@ function main(env = process.env) {
   };
   const sinceFile = env.EGRESS_PROXY_REPORT_SINCE || '/etc/egress-proxy/report-since/since';
   const reportSince = () => readReportSince(sinceFile);
-  const all = [{ source: 'legacy', port: Number(env.EGRESS_PROXY_PORT || 3128) }, ...listeners].map(({ source, port }) => {
+  const all = [{ source: 'legacy', port: legacyPort }, ...listeners].map(({ source, port }) => {
     const prox = createProxy({
       mode,
       source,
@@ -396,7 +402,7 @@ function main(env = process.env) {
     }
     if (req.url === '/healthz') { res.writeHead(200); res.end('ok\n'); return; }
     res.writeHead(404); res.end();
-  }).listen(Number(env.EGRESS_PROXY_METRICS_PORT || 9464));
+  }).listen(metricsPort);
 }
 
 module.exports = { parseHosts, backupHosts, parseSourceHosts, parseListeners, entryKey, hostOfEndpoint, isPrivateAddress, parseTarget, decide, readAllowFiles, readTables, readReportSince, createProxy, renderMetrics };

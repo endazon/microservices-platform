@@ -86,8 +86,11 @@ related_specs:
 - metrics の pipeline: `memory_limiter` → 送り手が付けた `k8s.*`（resource）と `otlp*sender*`（各点）の属性を消す → `k8sattributes` を名前空間ごとに 2 つ
   （`ai-stock-trading`・`microservices-platform`。接続の送り元の IP だけで引く。`passthrough: false`）で `k8s.namespace.name` とラベル `app` を付ける →
   各点へ `otlp_sender_namespace`・`otlp_sender_app` として写す → `batch`。Pod を引けなければ何も付けない。系列は落とさない（送り手を止めない）。
-- 権限は名前空間ごとの Role（Pod の get・list・watch）だけ。ClusterRole は使わない。`ai-stock-trading` の Role は、その名前空間が在ってから当てる
-  別の kustomization（`deploy/cloud/otlp-sender-identity-ast`）に置く。collector は期限 1 時間の明示のトークンを読み取り専用で載せる。
+- 権限は名前空間ごとの Role（Pod の get・list・watch）だけ。ClusterRole は使わない。
+- 基盤の既定（`deploy/cloud`）の collector は `k8sattributes/msp` だけを持つ。`ai-stock-trading` の Role と、`k8sattributes/ast` とそれを使う経路は、
+  その名前空間が在ってから `deploy/cloud` の代わりに当てる重ね（`deploy/cloud-otlp-sender-identity-ast`）だけが足す（Role・名前空間が無いうちに
+  collector が取引ユニットの Pod を引きに行かない＝当てる順に依らず collector が起きる。実物の collector で Role の無いときの振る舞いを確かめられないため）。
+  重ねの設定は基盤の設定の写しで、試験が `k8sattributes/ast` の他は同じであることを突き合わせる。重ねは collector の Pod の注釈を足し、当て替えで作り直させる。collector は期限 1 時間の明示のトークンを読み取り専用で載せる。
 - 警報: LLM ゲートウェイの費用・上限（`LlmMonthlyBudgetPaceExceeded`）・再起動（`LlmGatewayRestartLoop`）・費用の枠の置き場（`LlmCostStateUnavailable`）は
   `otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"` の系列だけを見る。`OtlpSendersMissing` は
   `target_info` を `(k8s_namespace_name, k8s_pod_label_app)` で数える。印の無い送り手は `OtlpSenderUnverified` が知らせる。

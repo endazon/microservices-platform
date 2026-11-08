@@ -295,22 +295,27 @@ esac
 /**
  * IADR-0709 決定 5: collector が送り手の名乗りの外で送り元の Pod から印を付け、LLM ゲートウェイの警報の元の系列をその印で絞る。
  *   - metrics の pipeline: memory_limiter → 送り手の付けた同じ名の属性を消す → 名前空間ごとの k8sattributes（接続の送り元から）→ 各点へ写す → batch。
+ *     基盤（deploy/cloud）は microservices-platform の分だけ。取引ユニットの分（k8sattributes/ast）と Role は、名前空間が在ってから当てる重ね
+ *     （deploy/cloud-otlp-sender-identity-ast）だけが足す（当てる順に依らず collector が起きる）。withAst でどちらの形かを選ぶ。
  *   - 権限は名前空間ごとの Role（Pod の get・list・watch だけ）。ClusterRole は使わない。
  *   - LLM ゲートウェイの費用・上限・再起動・置き場の警報は、印（microservices-platform / llmgateway-service）で絞る。送り手の数は印で数える。
  */
 const LLM_SENDER_SELECTOR = 'otlp_sender_namespace="microservices-platform", otlp_sender_app="llmgateway-service"';
-function senderIdentityProblems(docs, astDocs) {
+function senderIdentityProblems(docs, { withAst }) {
   const out = [];
+  const namespaces = withAst ? [['k8sattributes/ast', 'ai-stock-trading'], ['k8sattributes/msp', 'microservices-platform']] : [['k8sattributes/msp', 'microservices-platform']];
   const cm = find(docs, 'ConfigMap', 'otel-collector-config', 'platform-infra');
   const cfg = cm ? docsOf(`kind: X\n${cm.data['config.yaml']}`)[0] : {};
   const procs = (cfg.processors || {});
   const pl = (((cfg.service || {}).pipelines || {}).metrics || {}).processors || '';
   const pipeline = Array.isArray(pl) ? pl.join(', ') : String(pl).replace(/^\[|\]$/g, '');
-  if (pipeline !== 'memory_limiter, transform/otlp-sender-strip, k8sattributes/ast, k8sattributes/msp, transform/otlp-sender-identity, batch') out.push(`collector: metrics の pipeline の順が違う（${pipeline}）`);
+  if (pipeline !== `memory_limiter, transform/otlp-sender-strip, ${namespaces.map((x) => x[0]).join(', ')}, transform/otlp-sender-identity, batch`) out.push(`collector: metrics の pipeline の順が違う（${pipeline}）`);
   const text = String(cm ? cm.data['config.yaml'] : '');
   if (!/- context: resource\n\s+statements:\n\s+- delete_matching_keys\(attributes, "\^k8s\."\)/.test(text)) out.push('collector: 送り手が付けた k8s.* の属性を消さない');
   if (!/- context: datapoint\n\s+statements:\n\s+- delete_matching_keys\(attributes, "\^otlp\.sender\."\)/.test(text)) out.push('collector: 送り手が付けた otlp_sender の属性を消さない');
-  for (const [name, ns] of [['k8sattributes/ast', 'ai-stock-trading'], ['k8sattributes/msp', 'microservices-platform']]) {
+  const k8sProcs = Object.keys(procs).filter((k) => /^k8sattributes/.test(k)).sort();
+  if (JSON.stringify(k8sProcs) !== JSON.stringify(namespaces.map((x) => x[0]).sort())) out.push(`collector: k8sattributes が ${namespaces.map((x) => x[0]).join(', ')} だけでない（${k8sProcs.join(', ')}）`);
+  for (const [name, ns] of namespaces) {
     const k = procs[name] || {};
     const assoc = JSON.stringify(k.pod_association || []);
     if (!(k.filter && k.filter.namespace === ns)) out.push(`collector: ${name} の名前空間が ${ns} でない`);
@@ -319,15 +324,14 @@ function senderIdentityProblems(docs, astDocs) {
   }
   for (const want of ['set(attributes["otlp_sender_namespace"], resource.attributes["k8s.namespace.name"])', 'set(attributes["otlp_sender_app"], resource.attributes["k8s.pod.label.app"])']) if (!text.includes(want)) out.push(`collector: 印を各点へ写さない（${want}）`);
   // 権限
-  const rbac = [...docs, ...astDocs].filter((d) => /^(Cluster)?Role(Binding)?$/.test(d.kind) && JSON.stringify(d).includes('otel-collector'));
+  const rbac = docs.filter((d) => /^(Cluster)?Role(Binding)?$/.test(d.kind) && JSON.stringify(d).includes('otel-collector'));
   if (rbac.some((d) => /^Cluster/.test(d.kind))) out.push('collector に ClusterRole・ClusterRoleBinding がある（名前空間ごとの Role にする）');
   const roles = rbac.filter((d) => d.kind === 'Role');
   const nss = roles.map((d) => d.metadata.namespace).sort();
-  if (JSON.stringify(nss) !== JSON.stringify(['ai-stock-trading', 'microservices-platform'])) out.push(`collector の Role の名前空間が 2 つでない（${nss.join(', ')}）`);
+  if (JSON.stringify(nss) !== JSON.stringify(namespaces.map((x) => x[1]).sort())) out.push(`collector の Role の名前空間が ${namespaces.map((x) => x[1]).join(', ')} でない（${nss.join(', ')}）`);
   for (const r of roles) if (JSON.stringify(r.rules) !== JSON.stringify([{ apiGroups: [''], resources: ['pods'], verbs: ['get', 'list', 'watch'] }])) out.push(`collector の Role ${r.metadata.namespace} が Pod の読みの外を許す`);
   for (const b of rbac.filter((d) => d.kind === 'RoleBinding')) if (JSON.stringify(b.subjects) !== JSON.stringify([{ kind: 'ServiceAccount', name: 'otel-collector', namespace: 'platform-infra' }])) out.push(`collector の RoleBinding ${b.metadata.namespace} の相手が違う`);
-  if (astDocs.some((d) => d.metadata.namespace !== 'ai-stock-trading')) out.push('otlp-sender-identity-ast が ai-stock-trading の外を描く');
-  if (docs.some((d) => d.metadata && d.metadata.namespace === 'ai-stock-trading')) out.push('deploy/cloud が ai-stock-trading の資源を描く（取引ユニットの名前空間が在る前に当てると落ちる）');
+  if (!withAst && docs.some((d) => d.metadata && d.metadata.namespace === 'ai-stock-trading')) out.push('deploy/cloud が ai-stock-trading の資源を描く（取引ユニットの名前空間が在る前に当てると落ちる）');
   // 警報
   const prom = find(docs, 'ConfigMap', 'prometheus-cloud-config', 'platform-infra');
   const rules = String(prom ? prom.data['platform-rules.yml'] : '');
@@ -384,6 +388,34 @@ function migrationCoverageProblems(docs, runbook) {
   if (sendsHeartbeat && !HEARTBEAT_SENDERS.includes('backup')) out.push('バックアップが heartbeat の宛先へ送るのに、試験の送り元に backup が無い');
   return out;
 }
+
+/**
+ * IADR-0709 決定 5: 取引ユニットの分の重ねは、基盤に対して次だけを変える（ほかは基盤の描画と同じ）:
+ *   ConfigMap otel-collector-config（k8sattributes/ast と経路の 1 語の他は基盤の設定と同じ）・Deployment otel-collector（Pod の注釈だけ）・
+ *   ai-stock-trading の Role と RoleBinding の追加。
+ */
+const AST_K8SATTR_BLOCK = /\n( +)k8sattributes\/ast:\n(?:\1 +[^\n]*\n)+?(?=\1k8sattributes\/msp:)/;
+function astOverlayProblems(cloudDocs, overlayDocs) {
+  const out = [];
+  const key = (d) => `${d.kind}/${d.metadata.namespace || ''}/${d.metadata.name}`;
+  const base = new Map(cloudDocs.map((d) => [key(d), JSON.stringify(d)]));
+  const changed = overlayDocs.filter((d) => base.get(key(d)) !== JSON.stringify(d)).map(key).sort();
+  const want = ['ConfigMap/platform-infra/otel-collector-config', 'Deployment/platform-infra/otel-collector', 'Role/ai-stock-trading/otel-collector-pod-reader', 'RoleBinding/ai-stock-trading/otel-collector-pod-reader'];
+  if (JSON.stringify(changed) !== JSON.stringify(want)) out.push(`取引ユニットの分の重ねが変える資源が違う（${changed.join(', ')}）`);
+  if (overlayDocs.length !== cloudDocs.length + 2) out.push('取引ユニットの分の重ねが基盤の資源を落とす・足しすぎる');
+  const strip = (t) => String(t).replace(/\n *#[^\n]*/g, '').replace(AST_K8SATTR_BLOCK, '\n').replace('k8sattributes/ast, ', '');
+  const cfg = (docs) => (find(docs, 'ConfigMap', 'otel-collector-config', 'platform-infra') || { data: {} }).data['config.yaml'];
+  if (!AST_K8SATTR_BLOCK.test(String(cfg(overlayDocs)))) out.push('取引ユニットの分の重ねの設定に k8sattributes/ast が無い（陽性対照）');
+  if (strip(cfg(overlayDocs)) !== strip(cfg(cloudDocs))) out.push('取引ユニットの分の重ねの collector の設定が、k8sattributes/ast の他でも基盤と違う（片側だけ直した）');
+  const dep = (docs) => clone(find(docs, 'Deployment', 'otel-collector', 'platform-infra') || {});
+  const o = dep(overlayDocs);
+  const ann = ((o.spec || {}).template || {}).metadata.annotations || {};
+  if (ann['microservices-platform/otlp-sender-identity'] !== 'ast') out.push('取引ユニットの分の重ねが collector の Pod を作り直さない（注釈が無い）');
+  if (o.spec) delete o.spec.template.metadata.annotations;
+  if (JSON.stringify(o) !== JSON.stringify(dep(cloudDocs))) out.push('取引ユニットの分の重ねが collector の Deployment の注釈の他を変える');
+  return out;
+}
+const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // ---------------------------------------------------------------- N
 function esoNamespaceProblems(docs) {
@@ -651,7 +683,6 @@ if (require.main === module) {
     const t = spawnSync(process.execPath, [path.join(ROOT, rel)], { encoding: 'utf8' });
     assert.strictEqual(t.status, 0, `${rel} が落ちた:\n${t.stdout}${t.stderr}`);
   };
-  const clone = (x) => JSON.parse(JSON.stringify(x));
   const cloud = kustomize('deploy/cloud');
   const infra = kustomize('deploy/cloud/infra');
   const chart = renderChart();
@@ -816,20 +847,31 @@ if (require.main === module) {
     }
     assert.ok(!/\b(apply|delete|patch|create|edit|label|annotate|scale|set|rollout|exec)\b/.test(checkSh.split('\n').filter((l) => /^\s*[^#].*kubectl /.test(l)).join('\n')), '確かめの手順が書き込みの kubectl を持つ');
   });
-  ok('O1: collector は送り元の Pod から印を付け（名前空間ごとの読みだけの Role）、LLM ゲートウェイの警報と送り手の数を印で見る', () => {
-    const ast = kustomize('deploy/cloud/otlp-sender-identity-ast');
-    assert.deepStrictEqual(senderIdentityProblems(cloud, ast), []);
-    assert.deepStrictEqual(senderIdentityProblems(infra.concat(find(cloud, 'ConfigMap', 'prometheus-cloud-config') ? [find(cloud, 'ConfigMap', 'prometheus-cloud-config')] : []), ast).filter((x) => !/RoleBinding|Role の/.test(x)), [], '#2401 の infra 単独の描画でも同じ処理を持たない');
-    const bad = clone(cloud);
+  ok('O1: collector は送り元の Pod から印を付け（名前空間ごとの読みだけの Role）、LLM ゲートウェイの警報と送り手の数を印で見る。取引ユニットの分は重ねだけが足す', () => {
+    const ast = kustomize('deploy/cloud-otlp-sender-identity-ast');
+    assert.deepStrictEqual(senderIdentityProblems(cloud, { withAst: false }), []);
+    assert.deepStrictEqual(senderIdentityProblems(ast, { withAst: true }), []);
+    assert.deepStrictEqual(astOverlayProblems(cloud, ast), []);
+    assert.deepStrictEqual(senderIdentityProblems(infra.concat(find(cloud, 'ConfigMap', 'prometheus-cloud-config') ? [find(cloud, 'ConfigMap', 'prometheus-cloud-config')] : []), { withAst: false }), [], '#2401 の infra 単独の描画でも同じ処理を持たない');
+    // 陰性対照: 基盤に取引ユニットの分を置く（当てる順に依る形へ戻す）と赤
+    const early = clone(cloud);
+    find(early, 'ConfigMap', 'otel-collector-config').data['config.yaml'] = find(ast, 'ConfigMap', 'otel-collector-config').data['config.yaml'];
+    assert.ok(senderIdentityProblems(early, { withAst: false }).some((x) => /pipeline の順が違う|k8sattributes が/.test(x)), '陰性対照: 基盤の取引ユニットの分を検出しない');
+    // 陰性対照: 重ねの設定を片側だけ直す・注釈を外すと赤
+    const drift = clone(ast);
+    const dcm = find(drift, 'ConfigMap', 'otel-collector-config');
+    dcm.data['config.yaml'] = dcm.data['config.yaml'].replace('limit_mib: 128', 'limit_mib: 256');
+    delete find(drift, 'Deployment', 'otel-collector').spec.template.metadata.annotations;
+    const dp = astOverlayProblems(cloud, drift);
+    for (const want of [/基盤と違う/, /作り直さない/]) assert.ok(dp.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${dp.join('\n')}`);
+    const bad = clone(ast);
     const cm = find(bad, 'ConfigMap', 'otel-collector-config');
     cm.data['config.yaml'] = cm.data['config.yaml'].replace('processors: [memory_limiter, transform/otlp-sender-strip, k8sattributes/ast, k8sattributes/msp, transform/otlp-sender-identity, batch]', 'processors: [memory_limiter, batch]').replace(/- from: connection\n/, '- from: resource_attribute\n').replace('delete_matching_keys(attributes, "^k8s.")', 'set(attributes["x"], "y")');
     const prom = find(bad, 'ConfigMap', 'prometheus-cloud-config');
     prom.data['platform-rules.yml'] = prom.data['platform-rules.yml'].replace(`changes(max(llm_gateway_start_time_seconds{${LLM_SENDER_SELECTOR}})`, 'changes(max(llm_gateway_start_time_seconds)').replace('count by (k8s_namespace_name, k8s_pod_label_app)', 'count by (job)');
-    const role = find(bad, 'Role', 'otel-collector-pod-reader', 'microservices-platform');
-    role.rules[0].resources.push('secrets');
-    const badAst = clone(ast);
-    badAst.push({ kind: 'ClusterRoleBinding', metadata: { name: 'x' }, subjects: [{ kind: 'ServiceAccount', name: 'otel-collector', namespace: 'platform-infra' }] });
-    const p = senderIdentityProblems(bad, badAst);
+    find(bad, 'Role', 'otel-collector-pod-reader', 'microservices-platform').rules[0].resources.push('secrets');
+    bad.push({ kind: 'ClusterRoleBinding', metadata: { name: 'x' }, subjects: [{ kind: 'ServiceAccount', name: 'otel-collector', namespace: 'platform-infra' }] });
+    const p = senderIdentityProblems(bad, { withAst: true });
     for (const want of [/pipeline の順が違う/, /送り元を接続だけから引かない/, /k8s\.\* の属性を消さない/, /LlmGatewayRestartLoop の llm_gateway_start_time_seconds が送り元の印で絞らない/, /OtlpSendersMissing が送り元の印で数えない/, /Pod の読みの外を許す/, /ClusterRole/]) assert.ok(p.some((x) => want.test(x)), `陰性対照: ${want} を検出しない:\n${p.join('\n')}`);
   });
 

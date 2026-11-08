@@ -304,6 +304,9 @@ ok('E9 送り元つきの表と受け口の一覧の読み方', () => {
   for (const no of ['discord.gg:443', 'a.b.discord.gg:443', 'evil-discord.gg:443', 'gateway.discord.gg.evil.example:443', 'gateway.discord.gg:8443']) assert.ok(!has(no), `${no} に当たった`);
   assert.deepStrictEqual(p.parseListeners('llmgateway:3131 backup:3132'), [{ source: 'llmgateway', port: 3131 }, { source: 'backup', port: 3132 }]);
   for (const bad of ['legacy:3131', 'a:3131 a:3132', 'a:3131 b:3131', 'a:80', 'A:3131', 'a3131']) assert.throws(() => p.parseListeners(bad), undefined, `「${bad}」を受けた`);
+  // 従来の口・件数の口と重なる送り元の口は起動を止める（陰性対照: 重ならなければ通る）
+  for (const bad of ['a:3128', 'a:3131 b:9464']) assert.throws(() => p.parseListeners(bad, [3128, 9464]), /重なる/, `「${bad}」を受けた`);
+  assert.deepStrictEqual(p.parseListeners('a:3131', [3128, 9464]), [{ source: 'a', port: 3131 }]);
   // 表のファイル: 送り元つき・名前だけ・バックアップの endpoint（送り元 backup）
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'egress-src-'));
   try {

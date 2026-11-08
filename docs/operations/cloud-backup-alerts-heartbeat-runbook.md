@@ -255,9 +255,15 @@ collector は、メトリクスの送り手が名乗る名前（`job`）とは�
 （`target_info` の `k8s_namespace_name`・`k8s_pod_label_app`、各系列の `otlp_sender_namespace`・`otlp_sender_app`）。
 LLM ゲートウェイの費用・上限・再起動・費用の枠の置き場の警報と、送り手の数の警報 `OtlpSendersMissing` は、この印で見る（他の送り手が同じ名を名乗っても入らない）。
 
-1. `kubectl apply -k deploy/cloud`（collector の ServiceAccount と、名前空間 `microservices-platform` の Pod を読む Role）。
-2. 取引ユニットの名前空間（`ai-stock-trading`）が在ってから: `kubectl apply -k deploy/cloud/otlp-sender-identity-ast`（その名前空間の Pod を読む Role）。
-3. 🔴 **1 の直後（5 分以内）に**、collector が起きていて印が付いていることを確かめる（collector の新しい設定は、実物の collector で読ませる前に入れている）:
+基盤の既定（`deploy/cloud`）は、基盤の名前空間（`microservices-platform`）の送り手だけを引く。取引ユニットの名前空間の送り手を引く設定と Role は、
+その名前空間が在ってから `deploy/cloud` の**代わりに**当てる重ね（`deploy/cloud-otlp-sender-identity-ast`）だけが足す。当てる順に依らず collector は起きる。
+
+1. `kubectl apply -k deploy/cloud`（collector の ServiceAccount と、名前空間 `microservices-platform` の Pod を読む Role）。取引ユニットの送り手の系列は
+   この段では印を持たず、`OtlpSenderUnverified`・`OtlpSendersMissing` が鳴る（意図どおり。系列そのものは届く）。
+2. 🔴 **1 の直後（5 分以内）に**、下の 4 の確かめを行う（件数は LLM ゲートウェイの 1 つ以上）。
+3. 取引ユニットの名前空間（`ai-stock-trading`）が在ってから: `kubectl apply -k deploy/cloud-otlp-sender-identity-ast`。以後は `deploy/cloud` ではなく
+   **この重ねを当てる**（`deploy/cloud` だけを当て直すと、取引ユニットの分が外れて 1 の状態へ戻る。collector は注釈の差で作り直される）。
+4. 🔴 **1 と 3 の直後（5 分以内）に**、collector が起きていて印が付いていることを確かめる（collector の新しい設定は、実物の collector で読ませる前に入れている）:
    ```sh
    kubectl -n platform-infra rollout status deploy/otel-collector --timeout=120s
    kubectl -n platform-infra logs deploy/otel-collector --since=5m | grep -i -E 'error|k8sattributes' | head
@@ -267,10 +273,10 @@ LLM ゲートウェイの費用・上限・再起動・費用の枠の置き場�
    - collector が起きない（`rollout status` が通らない・`CrashLoopBackOff`）か、件数が 0（`"result":[]`）なら**切り戻す**:
      前の版の `deploy/cloud` を当てる（`git checkout <前の版> -- deploy/cloud && kubectl apply -k deploy/cloud`）。collector の設定が戻れば系列は従来の名乗りのまま届く
      （LLM ゲートウェイの警報も前の式に戻る）。切り戻した後で、collector のログの誤りを報告する。
-   - 件数が 1 以上なら次へ進む（2 を当てる前は、LLM ゲートウェイの 1 つだけでもよい）。
-4. 15 分後に、警報 `OtlpSenderUnverified` が出ていないこと、`count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info[10m]))` が 12 であることを確かめる。
+   - 件数が 1 以上なら次へ進む（3 を当てる前は、LLM ゲートウェイの 1 つだけでもよい）。3 の後に 0 へ落ちたら、`kubectl apply -k deploy/cloud` で 1 の形へ戻す。
+5. 3 の 15 分後に、警報 `OtlpSenderUnverified` が出ていないこと、`count by (k8s_namespace_name, k8s_pod_label_app) (last_over_time(target_info[10m]))` が 12 であることを確かめる。
 
-- 2 を当てるまでは、取引ユニットの送り手の系列は印を持たず、`OtlpSenderUnverified` と `OtlpSendersMissing` が鳴る（系列そのものは止まらない）。
+- 3 を当てるまでは、取引ユニットの送り手の系列は印を持たず、`OtlpSenderUnverified` と `OtlpSendersMissing` が鳴る（系列そのものは止まらない）。
 - `OtlpSenderUnverified` が鳴り続けるときは、collector のログ（`k8sattributes`）、Role（`kubectl auth can-i list pods -n ai-stock-trading --as=system:serviceaccount:platform-infra:otel-collector`）、
   API サーバーへの出（[外向きの中継の手順書](cloud-egress-proxy-runbook.md) §7 の確かめ）を見る。
 

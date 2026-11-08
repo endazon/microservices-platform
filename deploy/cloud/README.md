@@ -261,8 +261,9 @@ helm upgrade --install msp deploy/helm/microservices-platform -n microservices-p
   当てると Postgres・RabbitMQ・Keycloak・Prometheus は作り直される（Recreate。取引ユニットは繋ぎ直すまで止まる。Prometheus の保持の値は消える）。
   米国の場の時間外に当て、`rollout status`（上）と、RabbitMQ の起動の直後の復元の行（`kubectl -n platform-infra logs deploy/rabbitmq | grep rabbitmq-boot`）を確かめる。
   15 分の後に警報 `OtlpSendersMissing` が出ていなければ、取引ユニットの 11 のサービスと LLM ゲートウェイの系列が届いている。
-  取引ユニットの名前空間が在ってから `kubectl apply -k deploy/cloud/otlp-sender-identity-ast` を当てる（collector が送り元の Pod を引く読みの Role。
-  [IADR-0709](../../.ai-context/adr/IADR-0709_cloud-egress-per-source-otlp-sender-identity.md) 決定 5。当てるまでは `OtlpSenderUnverified` が鳴る）。
+  取引ユニットの名前空間が在ってから、`deploy/cloud` の**代わりに** `kubectl apply -k deploy/cloud-otlp-sender-identity-ast` を当てる（collector が
+  取引ユニットの送り元の Pod を引く設定と読みの Role。[IADR-0709](../../.ai-context/adr/IADR-0709_cloud-egress-per-source-otlp-sender-identity.md) 決定 5。
+  当てるまでは `OtlpSenderUnverified` が鳴る。以後はこの重ねを当てる）。
   戻すときは前の版の `deploy/cloud` を当てる（名前空間の Pod Security も baseline へ戻る）。
   バックアップの保管先・Discord・heartbeat の資格情報は、[運用手順書](../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md)の準備で作る（作るまで Alertmanager は起動しない）。
 - **初回の適用では、Keycloak の Pod が Ready になるまで見る。** realm の取り込みに失敗すると Ready にならない（`kubectl -n platform-infra logs deploy/keycloak` で理由を読む）。
