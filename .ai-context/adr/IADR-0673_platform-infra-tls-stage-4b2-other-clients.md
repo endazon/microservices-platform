@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-16, NFR-18, ADR-0005, ADR-0023, IADR-0591, IADR-0471]
 author: claude
 created: 2026-11-05
-updated: 2026-11-05
+updated: 2026-11-08
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービス間通信の暗号化を徹底する）
@@ -62,7 +62,7 @@ related_specs:
 | Keycloak の DB | 本 IADR（決定 2。compose だけ） |
 | Wiki.js | 本 IADR（決定 3。helm は opt-in、経路B は有効） |
 | バックアップの CronJob | 本 IADR（決定 4） |
-| AST の chart の接続・AST の Wolverine の名前の照合 | 後続（AST リポジトリ） |
+| AST の chart の接続・AST の Wolverine の名前の照合 | 後続（AST リポジトリ）。［2026-11-08 追記 / #2438］AST#1549（`8568ba21`、AST の IADR-0621）で実装済み。詳細は IADR-0591 の 2026-11-08 の追記 |
 
 4b-3（平文を閉じる）の前提は「4b-2 の切り替えを門で確かめた後」のままである。AST の chart の切り替えが済むまで 4b-3 には進めない。
 

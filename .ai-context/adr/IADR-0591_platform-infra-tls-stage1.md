@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR-16, NFR-18, ADR-0005, ADR-0023, ADR-0047, IADR-0206, IADR-0573, IADR-0577, IADR-0589, IADR-0590]
 author: claude
 created: 2026-10-23
-updated: 2026-11-07
+updated: 2026-11-08
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md（NFR-16 通信暗号化）
   - planning:projects/microservices-platform/07_adr/ADR-0005（サービス間通信を mTLS で徹底する）
@@ -65,7 +65,7 @@ related_specs:
 | 段 | 内容 | 前提 | 状態 |
 | --- | --- | --- | --- |
 | 4b-1 | 決定 1〜9 | — | 本 IADR |
-| 4b-2 | AST の chart の接続を VerifyFull / amqps（＋ AST の Wolverine の呼び出しにも決定 5 と同じ名前の照合）へ。MSP の compose の AST の 3 サービス。Keycloak の DB・Wiki.js・バックアップの CronJob の接続 | 4b-1 の配備（CA の ConfigMap が AST の名前空間に在る） | 後続（AST は AST リポジトリ） |
+| 4b-2 | AST の chart の接続を VerifyFull / amqps（＋ AST の Wolverine の呼び出しにも決定 5 と同じ名前の照合）へ。MSP の compose の AST の 3 サービス。Keycloak の DB・Wiki.js・バックアップの CronJob の接続 | 4b-1 の配備（CA の ConfigMap が AST の名前空間に在る） | 後続（AST は AST リポジトリ）。［2026-11-08 追記 / #2438］AST 側は AST#1549 で実装済み（下の追記） |
 | 4b-3 | 平文を閉じる（`hostssl` だけ・`hostnossl` 拒否、`listeners.tcp = none`、NetworkPolicy から 5672 を外す） | 4b-2 の切り替えを門で確かめた後 | 後続 |
 | 4b-4 | valkey・qdrant・otel-collector・keycloak（HTTP）の TLS | — | 後続 |
 
@@ -102,3 +102,13 @@ related_specs:
 - 4b-2 の残りは AST の chart の接続と AST の Wolverine の名前の照合（AST リポジトリ）。4b-3 の前提は変わらない。
 
 ［2026-11-07 追記 / #2479］利用者裁定により、非公開の指摘の識別子を中立表記へ置換（決定内容は不変）
+
+## ［2026-11-08 追記 / #2438］段 4b-2 の AST の分
+
+- 段の表の 4b-2 のうち AST リポジトリにある部分（AST の chart の接続と、AST の Wolverine の名前の照合）は AST#1549（AST#1535。develop へのマージは `8568ba21`）で実装された。AST 側の実装 ADR は AST の IADR-0621（起票時の番号 IADR-0615 は AST 側の採番の衝突で改番。AST の IADR-0615 は別の決定を指す）。
+- 中身の要約:
+  - DB は `SSL Mode=VerifyFull;Root Certificate=…` で繋ぐ。
+  - ブローカは amqps:5671 で繋ぎ、名前の不一致を受け入れない（基盤の `UsePlatformRabbitMq` と同じ扱い）。
+  - CA は ConfigMap `platform-infra-ca` を非 optional でマウントし、`SSL_CERT_DIR` に足す。
+  - 有効なのは経路 B の values-local とクラウドの values-cloud で、既定は平文のまま。クラウドの構成では LLM ゲートウェイを https にし、基盤の CA で検証する。
+- 4b-3（平文を閉じる）の前提は変わらない。進めるかは、取引ユニットの経路 B の配備が切り替わったことを確かめてから判断する（AST の手順書 `docs/operations/platform-infra-tls-cutover-runbook.md`）。
