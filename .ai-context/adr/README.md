@@ -787,3 +787,4 @@
 | [IADR-0707](./IADR-0707_review-verdict-ignore-quotes-and-output-object.md) | 検証の下限の検査器は、レビュー本文の引用（引用ブロック・語句を紹介する括弧）と、コマンドの出力そのものを読んでいないと書いた文を、下限の自己申告として数えない（狭く外し、下限は緩めない） | Accepted |
 | [IADR-0708](./IADR-0708_ai-job-scopes-bot-pr-and-third-party-image-scan.md) | AI のジョブは id-token を持たず、AI レビューは作成者か起動した者が bot の PR では走らせない（check は skipped）。配備する第三者のイメージは週次で走査して結果を Security タブだけに上げ（issue・ログ・ジョブの成否に出さない）、更新は Dependabot の docker で知らせる | Accepted |
 | [IADR-0709](./IADR-0709_cloud-egress-per-source-otlp-sender-identity.md) | クラウドの外向きの中継の許可表を送り元ごと（受け口のポートで名乗る）にし、API サーバーへの出の番地を名指し、collector が OTLP の送り手を送り元の Pod で確かめる | Accepted |
+| [IADR-0710](./IADR-0710_cloud-backup-heartbeat-pinned-shell-audit-manifest-operator-ttl-openapi.md) | クラウドのバックアップの回の結果を外の check へ送る。手で打つ配備の段はシェルごと宛先のクラスタへ固定する。オーナー用の secret_id を期限つきにし期限を警報で見る。平文の age の識別子の既定を enforce にする。監査の記録の目録を日次でノードの外へ送る。LLM ゲートウェイの OpenAPI の文書は開発の環境でだけ出す | Accepted |

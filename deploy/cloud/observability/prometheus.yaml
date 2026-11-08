@@ -247,6 +247,33 @@ data:
             annotations:
               summary: "CA の証明書（ConfigMap platform-infra-ca・openbao-ca）の期限を読めない"
               description: "測りの Pod が CA の ConfigMap を読めないか、止まっている。CA と OpenBao の受け口の期限の警報が黙り得る。"
+      # NFR-05, NFR-18, IADR-0710 決定 3: オーナー用の AppRole（cloud-operator）の secret_id の期限。記録（ConfigMap openbao-operator-credential の
+      #   not-after。configure.sh・root-token.sh rotate-operator が置く）を tls-cert-probe が credential_not_after_seconds に出す。
+      #   期限は 90 日（vault/lib.sh の OB_OPERATOR_SECRET_ID_TTL_HOURS）。切れるとオーナー用の資格で入れない（root の作り直しも入れない）ので、
+      #   30 日前と 7 日前に知らせる。記録が無い（期限なしの古い secret_id のまま・置けなかった）ときも知らせる（測りが動いている間だけ）。
+      - name: cloud-credential-expiry
+        rules:
+          - alert: OpenBaoOperatorSecretIdExpiringSoon
+            expr: (min(credential_not_after_seconds{credential="openbao-operator-secret-id"}) - time()) < 30 * 86400
+            for: 1h
+            labels: { severity: warning }
+            annotations:
+              summary: "オーナー用の OpenBao の資格（secret_id）の残りが 30 日を切った"
+              description: "残りは {{ $value | humanizeDuration }}。切れる前に root-token.sh の rotate-operator で作り直す（手順書 cloud-openbao-init-unseal-runbook §6）。"
+          - alert: OpenBaoOperatorSecretIdExpiryCritical
+            expr: (min(credential_not_after_seconds{credential="openbao-operator-secret-id"}) - time()) < 7 * 86400
+            for: 1h
+            labels: { severity: critical }
+            annotations:
+              summary: "オーナー用の OpenBao の資格（secret_id）の残りが 7 日を切った"
+              description: "残りは {{ $value | humanizeDuration }}。切れるとオーナー用の資格で入れず、root の作り直しもできない。すぐに rotate-operator を流す。"
+          - alert: OpenBaoOperatorSecretIdExpiryUnknown
+            expr: absent(credential_not_after_seconds{credential="openbao-operator-secret-id"}) and on() (count(tls_probe_up) > 0)
+            for: 6h
+            labels: { severity: warning }
+            annotations:
+              summary: "オーナー用の OpenBao の資格（secret_id）の期限の記録が無い"
+              description: "ConfigMap platform-infra/openbao-operator-credential の not-after が無いか形が違う。期限なしの古い secret_id のままなら、rotate-operator を 1 回流して期限つきへ替える（期限を記録する）。"
       # NFR-18, IADR-0705: 外向きの中継（deploy/cloud/egress）。enforce の段で表に無い宛先を拒んだ（宛先の追加漏れか、想定外の持ち出し）。
       - name: cloud-egress
         rules:

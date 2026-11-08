@@ -50,3 +50,33 @@ ct_require_target() {
   kubectl() { command kubectl --context "$CT_CONTEXT" "$@"; }
   echo "==> 宛先: context ${CT_CONTEXT}（${CT_SERVER}・クラスタの印は記録と一致）" >&2
 }
+
+# NFR-18, IADR-0710 決定 2: ct_pin_shell <手順の名前> —— オーナーが**手で打つ**段（README §3 の kubectl・helm）のための、対話のシェルの固定。
+#
+#   . deploy/cloud/lib/target-cluster.sh && ct_pin_shell readme
+#
+# - 確かめ（ct_require_target と同じ 3 つ）は子のシェルで行う（違っても、対話のシェルを exit で閉じない）。
+# - 合えば、このシェルの kubectl と helm を、確かめた context に固定する関数に替える（kubectl --context <確かめた context>・
+#   helm --kube-context <確かめた context>）。シェルの関数なので、パイプ・$(…)・source した関数（recreate-strategy.sh の
+#   reconcile_recreate_strategy など）の中の kubectl にも効く。確かめた context は CT_CONTEXT に入る。
+# - 違えば 4 を返し、このシェルの kubectl と helm を**拒む**関数に替える（貼り付けた残りの段が、別のクラスタへ流れない）。
+#   直してから ct_pin_shell を流し直せば固定に替わる。外すときは新しいシェルを開く。
+# 🔴 固定はこのシェルだけに効く。新しいシェル・別の端末では最初からやり直す。bash deploy/cloud/... の手順は自分で確かめる（これまでどおり）。
+ct_pin_shell() {
+  local name="${1:-readme}" ctx rc=0
+  ctx="$(ct_require_target "$name" && printf '%s' "$CT_CONTEXT")" || rc=$?
+  if [ "$rc" -ne 0 ] || [ -z "$ctx" ]; then
+    # shellcheck disable=SC2329
+    kubectl() { echo "ERROR: [ct_pin_shell] 宛先のクラスタを確かめられていない。kubectl を流さない（直してから ct_pin_shell を流し直す）" >&2; return "$CT_EXIT"; }
+    # shellcheck disable=SC2329
+    helm() { echo "ERROR: [ct_pin_shell] 宛先のクラスタを確かめられていない。helm を流さない（直してから ct_pin_shell を流し直す）" >&2; return "$CT_EXIT"; }
+    unset CT_CONTEXT
+    return "$CT_EXIT"
+  fi
+  CT_CONTEXT="$ctx"
+  # shellcheck disable=SC2329
+  kubectl() { command kubectl --context "$CT_CONTEXT" "$@"; }
+  # shellcheck disable=SC2329
+  helm() { command helm --kube-context "$CT_CONTEXT" "$@"; }
+  echo "==> このシェルの kubectl と helm を context ${CT_CONTEXT} に固定した（新しいシェルでは流し直す）" >&2
+}

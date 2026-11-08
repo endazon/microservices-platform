@@ -1,0 +1,12 @@
+# NFR-18, IADR-0710 決定 5: 日次（UTC 05:00 ＝ JST 14:00。米国の場の時間外・バックアップの回〔JST 12:00〕の後）。
+# 止まっていた間の回は起動の後に 1 回だけ流す（Persistent）。check D は Period 1 日・Grace 6 時間。
+[Unit]
+Description=Daily audit log manifest off the node (msp)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00 UTC
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

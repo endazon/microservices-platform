@@ -667,7 +667,54 @@ function promtoolCertAlertTest(cloudDocs) {
   }
 }
 
-module.exports = { keycloakBootstrapProblems, directEgressProblems, portsOnlyEgress, externalClientProblems, proxyProblems, allowlistProblems, esoNamespaceProblems, restrictedPodProblems, auditProblems, probeTargetProblems, certAlertProblems };
+/**
+ * IADR-0710 決定 3: オーナー用の secret_id の期限の警報（cloud-credential-expiry）を promtool で固定する —— 残り 30 日・7 日の境で鳴る・鳴らない、
+ * 記録が無いとき（測りが動いている間）に鳴る。期限（lib.sh の時間）は危急の閾値より長い（平時に鳴らない）。戻り値は問題の一覧。
+ */
+function credentialAlertProblems(cloudDocs, libSh) {
+  const out = [];
+  const { rules, rulesText } = PLATFORM_RULES(cloudDocs);
+  const group = (rules.groups || []).find((g) => g.name === 'cloud-credential-expiry');
+  const alerts = Object.fromEntries(((group && group.rules) || []).map((r) => [r.alert, r]));
+  for (const a of ['OpenBaoOperatorSecretIdExpiringSoon', 'OpenBaoOperatorSecretIdExpiryCritical', 'OpenBaoOperatorSecretIdExpiryUnknown']) if (!alerts[a]) out.push(`警報 ${a} が無い`);
+  const ttlH = Number((/^OB_OPERATOR_SECRET_ID_TTL_HOURS=(\d+)$/m.exec(libSh) || [])[1]);
+  const days = (a) => Number((/< (\d+) \* 86400/.exec(String((alerts[a] || {}).expr)) || [])[1]);
+  const warn = days('OpenBaoOperatorSecretIdExpiringSoon');
+  const crit = days('OpenBaoOperatorSecretIdExpiryCritical');
+  if (!(ttlH > 0 && warn > crit && crit > 0 && warn * 24 < ttlH)) out.push(`期限（${ttlH}h）と警報の閾値（${warn} 日・${crit} 日）が合わない`);
+  if (out.length) return out;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'credential-alerts-'));
+  try {
+    const rf = path.join(dir, 'rules.yml');
+    writeRulesWithoutAnnotations(rulesText, rf);
+    const day = 86400;
+    const at = 7 * 3600;
+    const cred = (remain) => `      - series: 'credential_not_after_seconds{credential="openbao-operator-secret-id"}'\n        values: '${at + remain * day}x500'\n`;
+    const up = "      - series: 'tls_probe_up{target=\"postgres\"}'\n        values: '1x500'\n";
+    const t = (series, name, exp) => `  - interval: 1m\n    input_series:\n${series}    alert_rule_test:\n      - eval_time: 7h\n        alertname: ${name}\n        exp_alerts:${exp ? `\n          - exp_labels: { severity: ${exp} }\n` : ' []\n'}`;
+    const cases = [
+      t(cred(warn + 5) + up, 'OpenBaoOperatorSecretIdExpiringSoon', null),
+      t(cred(warn - 1) + up, 'OpenBaoOperatorSecretIdExpiringSoon', 'warning'),
+      t(cred(warn - 1) + up, 'OpenBaoOperatorSecretIdExpiryCritical', null),
+      t(cred(crit - 1) + up, 'OpenBaoOperatorSecretIdExpiryCritical', 'critical'),
+      t(cred(warn + 5) + up, 'OpenBaoOperatorSecretIdExpiryUnknown', null),
+      // absent() は照合の名札（credential）を結果に残す
+      t(up, 'OpenBaoOperatorSecretIdExpiryUnknown', 'warning, credential: openbao-operator-secret-id'),
+      // 測りが止まっている間は「記録が無い」と言わない（TlsServerCertProbeMissing が知らせる）
+      t("      - series: 'other'\n        values: '1x500'\n", 'OpenBaoOperatorSecretIdExpiryUnknown', null),
+    ];
+    const tf = path.join(dir, 'test.yml');
+    fs.writeFileSync(tf, `rule_files:\n  - ${rf}\nevaluation_interval: 1m\ntests:\n${cases.join('')}`);
+    const r = spawnSync('promtool', ['test', 'rules', tf], { encoding: 'utf8' });
+    if (r.error) throw new Error('promtool が PATH に無い');
+    if (r.status !== 0) out.push(`promtool の単体試験が落ちた:\n${r.stdout}${r.stderr}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  return out;
+}
+
+module.exports = { keycloakBootstrapProblems, directEgressProblems, portsOnlyEgress, externalClientProblems, proxyProblems, allowlistProblems, esoNamespaceProblems, restrictedPodProblems, auditProblems, probeTargetProblems, certAlertProblems, credentialAlertProblems };
 
 if (require.main === module) {
   let failed = 0;
@@ -938,6 +985,16 @@ if (require.main === module) {
     promtoolCertAlertTest(cloud);
   });
   ok('C3: 測りの手順の試験', () => child('deploy/cloud/tls-cert-probe/probe.test.js'));
+  ok('C4: オーナー用の secret_id の期限の警報（30 日・7 日・記録なし）が鳴る・鳴らない（promtool の単体試験。IADR-0710）', () => {
+    const libSh = read('deploy/cloud/vault/lib.sh');
+    assert.deepStrictEqual(credentialAlertProblems(cloud, libSh), []);
+    // 陰性対照: 期限を閾値より短くすると検出する。警報の閾値をずらすと promtool の試験が落ちる。
+    assert.ok(credentialAlertProblems(cloud, libSh.replace(/^OB_OPERATOR_SECRET_ID_TTL_HOURS=\d+$/m, 'OB_OPERATOR_SECRET_ID_TTL_HOURS=480')).some((x) => /合わない/.test(x)), '陰性対照: 期限と閾値の不整合を検出しない');
+    const bad = clone(cloud);
+    const cm = find(bad, 'ConfigMap', 'prometheus-cloud-config', 'platform-infra');
+    cm.data['platform-rules.yml'] = cm.data['platform-rules.yml'].replace('absent(credential_not_after_seconds{credential="openbao-operator-secret-id"}) and on() (count(tls_probe_up) > 0)', 'absent(credential_not_after_seconds{credential="openbao-operator-secret-id"})');
+    assert.ok(credentialAlertProblems(bad, libSh).some((x) => /promtool/.test(x)), '陰性対照: 測りの止まりでも「記録なし」が鳴る形を検出しない');
+  });
 
   if (failed) {
     console.error(`✗ ${failed} 件が失敗した`);

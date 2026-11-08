@@ -203,9 +203,14 @@ ssh <ノード> "k3s ctr images ls name==cloud-local/microservices-platform/llm-
 スクリプトはどれも `--live` が無ければ何もしない。**秘密の値を引数・環境変数・ディスクに置かない**（age の復号はパイプで Pod の標準入力へだけ流す）。
 スクリプトはどれも、流す前に**宛先のクラスタを確かめる**（API の宛先がノードへの SSH のトンネルで、クラスタの印が手元の記録と同じか。
 違えば何もせずに 4 で終わる）。印は最初に 1 度だけ記録する（[手順書](../../docs/operations/cloud-owner-target-cluster-runbook.md)）。
+**手で打つ `kubectl`・`helm` も同じ確かめの内側で打つ**: 最初に同じシェルで `ct_pin_shell` を流すと、そのシェルの `kubectl`・`helm` は
+確かめた context へ固定される（`kubectl --context <確かめた context>`・`helm --kube-context <確かめた context>`。パイプの先と、
+source した関数〔`reconcile_recreate_strategy`〕の中にも効く）。宛先が違えば 4 を返し、そのシェルの `kubectl`・`helm` は流れずに止まる
+（シェルは閉じない。直して `ct_pin_shell` を流し直す）。**固定はそのシェルだけに効く**ので、新しいシェル・別の端末では最初の行から流し直す。
 
 ```sh
 bash deploy/cloud/cluster-mark.sh --live record                       # 一度だけ（クラスタの印を手元に記録する。ノードで照らす）
+. deploy/cloud/lib/target-cluster.sh && ct_pin_shell readme          # 以下の手で打つ kubectl・helm を、確かめた context に固定する（違えば 4 で止める）
 kubectl apply -f deploy/cloud/infra/namespaces.yaml
 kubectl apply -k deploy/cloud/vault                                   # OpenBao（受け口の証明書の Secret を待つ）
 bash deploy/cloud/vault/tls-cert.sh --live issue                      # 受け口（TLS の 8443）の証明書と CA の ConfigMap → OpenBao が封印された状態で起きる（Ready にならないのが正しい）

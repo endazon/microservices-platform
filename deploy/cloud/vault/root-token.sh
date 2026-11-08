@@ -9,7 +9,8 @@
 #         在る role は同じ値で上書きされるだけ。CA と発行済みの証明書は変えない）
 #   bash deploy/cloud/vault/root-token.sh --live --init-file … --operator-file … --identity … \
 #     rotate-operator --recipients <age の受取人のファイル> --operator-out <新しいファイル>.age
-#       → オーナー用の AppRole の secret_id を作り直し、古いものを全部消す（資格のファイルを失った・漏れた疑いのとき）
+#       → オーナー用の AppRole の secret_id を作り直し、古いものを全部消す（資格のファイルを失った・漏れた疑いのとき。
+#         期限〔lib.sh の OB_OPERATOR_SECRET_ID_TTL_HOURS〕の前の定期の作り直し。IADR-0710）
 #
 # OpenBao 2.x の root の作り直し（generate-root）は認証が要る（認証の要らない旧の口は既定で閉じている）。オーナー用の資格で入り、
 # unseal の鍵を加えて作る（IADR-0689 決定 2）。作り直しの OTP と符号化した root は Pod の中だけにあり、手元へ返さない。
@@ -86,18 +87,10 @@ case "$CMD" in
       | ob_exec "${OB_POD_LOGIN}${POD_ROOT}${OP}"
     ;;
   rotate-operator)
-    # shellcheck disable=SC2016
-    OP='
-# 一覧は JSON の配列（無ければ「{}」）。accessor の形のものだけを拾う。
-for a in $(r list -format=json auth/approle/role/cloud-operator/secret-id 2>/dev/null | tr -d "[]\", " | grep -E "^[0-9a-f-]{36}$" || true); do
-  printf "{\"secret_id_accessor\":\"%s\"}" "$a" | r write auth/approle/role/cloud-operator/secret-id-accessor/destroy - >/dev/null
-done
-rid="$(r read -field=role_id auth/approle/role/cloud-operator/role-id)"
-sid="$(r write -f -field=secret_id auth/approle/role/cloud-operator/secret-id)"
-printf "{\"role_id\":\"%s\",\"secret_id\":\"%s\"}\n" "$rid" "$sid" >&3
-unset rid sid
-echo "    作り直した: オーナー用の secret_id（古いものは消した）"
-'
+    # IADR-0710 決定 3: role の設定（secret_id の期限）を書き直してから作る（稼働中の構成の期限なしの secret_id も、ここで期限つきへ替わる）。
+    OP="$(ob_operator_issue r)
+echo \"    作り直した: オーナー用の secret_id（古いものは消した。期限つき）\""
+    issued_from="$(date +%s)"
     if ! ( umask 077
            { ob_decrypt_lines "$OPERATOR_FILE" "$IDENTITY" role_id secret_id; ob_decrypt_lines "$INIT_FILE" "$IDENTITY" unseal_keys_b64; } \
              | ob_exec "${OB_POD_LOGIN}${POD_ROOT}${OP}" | age -R "$RECIPIENTS" -o "$OUT" ); then
@@ -107,6 +100,7 @@ echo "    作り直した: オーナー用の secret_id（古いものは消し�
     fi
     chmod 600 "$OUT"
     echo "    新しい資格を ${OUT} に書いた。古いファイルは使えない（2 か所の保管を差し替える）"
+    ob_operator_record_expiry "$issued_from"
     ;;
 esac
 echo "OK: ${CMD} を終えた（値は表示しない）"

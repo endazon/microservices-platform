@@ -851,6 +851,13 @@ case "$cmd" in
     if is_remote "${args[2]}" && [ -f "$STATE/s3-upload-fail" ]; then exit 1; fi
     mkdir -p "$(dirname "$dst")" && cp "$src" "$dst" || exit 1
     ;;
+  # IADR-0710 決定 1: 外の生存の確かめへの送信（copyurl --stdout <URL>）。送った URL を $STATE/heartbeat-sent へ足す。
+  #   $STATE/heartbeat-fail があれば送れない（1）。標準エラーに URL を出す（本物の rclone が誤りの文に URL を含め得る形。backup.sh が捨てること）。
+  copyurl)
+    printf '%s\n' "${args[1]}" >> "$STATE/heartbeat-sent"
+    [ -f "$STATE/heartbeat-fail" ] && { echo "stub rclone: GET ${args[1]} failed" >&2; exit 1; }
+    printf 'OK'
+    ;;
   *) echo "stub rclone: 未対応の操作: $cmd" >&2; exit 1 ;;
 esac
 STUB
@@ -1017,6 +1024,72 @@ run_backup
 assert_eq 'T-2402-11 hostPath と S3 の両方: 成功で終わる' "$RC" "0"
 assert_file 'T-2402-11 hostPath と S3 の両方: C に書く' "$R/c/postgres/2026-11-01T030000Z/SHA256SUMS"
 assert_file 'T-2402-11 hostPath と S3 の両方: S3 に書く' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+# ---- IADR-0710 決定 1: 外の生存の確かめ（Healthchecks.io の check C）へ回の結果を送る ----
+HB_URL="https://hc-ping.example/stub-uuid-DO-NOT-LEAK"
+hb_sent() { cat "$STATE/heartbeat-sent" 2>/dev/null || true; }
+# 成功の回は URL へ 1 回だけ送る。URL はログに出さない。
+new_s3_env
+printf '%s' "$HB_URL" > "$R/hb-url"
+export BACKUP_HEARTBEAT_URL_FILE="$R/hb-url"
+run_backup
+assert_eq 'T-0710-01 heartbeat: 成功の回は成功で終わる' "$RC" "0"
+assert_eq 'T-0710-01 heartbeat: 成功の回は URL へ 1 回だけ送る（/fail へは送らない）' "$(hb_sent)" "$HB_URL"
+assert_contains 'T-0710-01 heartbeat: 送ったことをログに出す' "$OUT" '外の生存の確かめへ送った（成功）'
+assert_missing 'T-0710-01 heartbeat: URL をログに出さない' "$OUT" 'stub-uuid-DO-NOT-LEAK'
+# COMPLETE を置いた後に送る（送った時点で daily の回は完了している）。
+assert_file 'T-0710-01 heartbeat: 送る前に COMPLETE が置かれている' "$(S3D daily 2026-11-01T030000Z)/COMPLETE"
+# 失敗の回（保管先へ送れない）は URL/fail へ送り、回の終了コードは失敗のまま。
+new_s3_env
+printf '%s\n' "$HB_URL" > "$R/hb-url"
+export BACKUP_HEARTBEAT_URL_FILE="$R/hb-url"
+: > "$STATE/s3-upload-fail"
+run_backup
+assert_ne 'T-0710-02 heartbeat: 保管先へ送れない回は失敗で終わる' "$RC" "0"
+assert_eq 'T-0710-02 heartbeat: 失敗の回は URL/fail へだけ送る' "$(hb_sent)" "$HB_URL/fail"
+assert_missing 'T-0710-02 heartbeat: 失敗の回も URL をログに出さない' "$OUT" 'stub-uuid-DO-NOT-LEAK'
+# 構成の誤り（受取人が無い）で何も作らずに止まった回も /fail へ送る。
+new_s3_env
+printf '%s' "$HB_URL" > "$R/hb-url"
+export BACKUP_HEARTBEAT_URL_FILE="$R/hb-url"
+rm -f "$R/recipients.txt"
+run_backup
+assert_ne 'T-0710-03 heartbeat: 受取人が無い回は失敗で終わる' "$RC" "0"
+assert_eq 'T-0710-03 heartbeat: 何も作らずに止まった回も /fail へ送る' "$(hb_sent)" "$HB_URL/fail"
+# 送れなくても回の終了コードは変えない。送る道具の誤りの文（URL を含み得る）も捨てる。
+new_s3_env
+printf '%s' "$HB_URL" > "$R/hb-url"
+export BACKUP_HEARTBEAT_URL_FILE="$R/hb-url"
+: > "$STATE/heartbeat-fail"
+run_backup
+assert_eq 'T-0710-04 heartbeat: 送れなくても成功の回は成功で終わる' "$RC" "0"
+assert_contains 'T-0710-04 heartbeat: 送れないことを警告する' "$OUT" '外の生存の確かめへ送れない（成功'
+assert_missing 'T-0710-04 heartbeat: 送る道具の誤りの文（URL）をログに出さない' "$OUT" 'stub-uuid-DO-NOT-LEAK'
+# 段: URL のファイルを与えたのに無い・空・形が違うなら、警告して送らない（回は成功のまま）。
+for variant in missing empty http; do
+	new_s3_env
+	case "$variant" in
+		missing) ;;
+		empty) : > "$R/hb-url" ;;
+		http) printf 'http://hc-ping.example/stub-uuid-DO-NOT-LEAK' > "$R/hb-url" ;;
+	esac
+	export BACKUP_HEARTBEAT_URL_FILE="$R/hb-url"
+	run_backup
+	assert_eq "T-0710-05 heartbeat: URL が $variant でも回は成功で終わる" "$RC" "0"
+	assert_eq "T-0710-05 heartbeat: URL が $variant なら送らない" "$(hb_sent)" ""
+	assert_contains "T-0710-05 heartbeat: URL が $variant なら警告する" "$OUT" 'WARN: 外の生存の確かめの URL'
+	assert_missing "T-0710-05 heartbeat: URL が $variant でも値を出さない" "$OUT" 'stub-uuid-DO-NOT-LEAK'
+done
+# 与えなければ（ローカルの構成）何もしない。
+unset BACKUP_HEARTBEAT_URL_FILE
+new_s3_env
+run_backup
+assert_eq 'T-0710-06 heartbeat: URL のファイルを与えなければ送らない' "$(hb_sent)" ""
+assert_missing 'T-0710-06 heartbeat: URL のファイルを与えなければ警告もしない' "$OUT" '外の生存の確かめ'
+# クラウドの CronJob: Secret alertmanager-heartbeat のキー backup-ping-url だけを optional でマウントし、そのパスを渡す。
+CLOUD_CJ_HB="$HERE/../../../cloud/backup/cronjob-postgres.yaml"
+assert_contains 'T-0710-07 クラウドの CronJob は URL のファイルのパスを渡す' "$(cat "$CLOUD_CJ_HB")" 'value: /etc/platform-backup/heartbeat/backup-ping-url'
+assert_contains 'T-0710-07 クラウドの CronJob は Secret のキー backup-ping-url だけを optional でマウントする' "$(tr -s ' \n' ' ' < "$CLOUD_CJ_HB")" 'secretName: alertmanager-heartbeat optional: true items: - key: backup-ping-url path: backup-ping-url'
+
 unset BACKUP_S3_DEST RCLONE_CONFIG_OBJSTORE_SECRET_ACCESS_KEY RCLONE_CONFIG_OBJSTORE_ACCESS_KEY_ID STUB_S3_ROOT
 
 # ローカルの既定（hostPath）は変わらない: 既定の保管先は 2 本のまま、S3 の宛先が無ければ rclone を呼ばない。
@@ -1035,11 +1108,13 @@ done
 CLOUD_CJ="$HERE/../../../cloud/backup/cronjob-postgres.yaml"
 S3_CALL="$(default_of BACKUP_S3_CALL_TIMEOUT)"
 MCHECK="$(default_of BACKUP_S3_MONTHLY_CHECK_MAX)"
+# IADR-0710 決定 1: 回の後の外の生存の確かめ（1 回・上限 BACKUP_HEARTBEAT_TIMEOUT 秒）も最悪の合計に入れる。
+HB_TIMEOUT="$(default_of BACKUP_HEARTBEAT_TIMEOUT)"
 CADL="$(sed -n 's/^ *activeDeadlineSeconds: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
 CBOL="$(sed -n 's/^ *backoffLimit: *\([0-9]*\).*/\1/p' "$CLOUD_CJ" 2>/dev/null | head -n 1)"
 assert_eq 'T-2402-12 クラウドの CronJob は再試行しない（backoffLimit: 0）' "$CBOL" "0"
-if [[ "$CADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL" =~ ^[0-9]+$ ]] && [[ "$MCHECK" =~ ^[1-9][0-9]*$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
-	CWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + MCHECK) * S3_CALL + 300))
+if [[ "$CADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL" =~ ^[0-9]+$ ]] && [[ "$HB_TIMEOUT" =~ ^[0-9]+$ ]] && [[ "$MCHECK" =~ ^[1-9][0-9]*$ ]] && [[ "$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
+	CWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + MCHECK) * S3_CALL + HB_TIMEOUT + 300))
 	if [ "$CWORST" -lt "$CADL" ]; then
 		ok "T-2402-12 クラウド: 最悪の合計 $CWORST 秒が activeDeadlineSeconds $CADL 秒より小さい"
 	else
@@ -1054,8 +1129,8 @@ fi
 RUNBOOK_MD="$HERE/../../../../docs/operations/cloud-backup-alerts-heartbeat-runbook.md"
 RK="$(sed -n 's/.*BACKUP_S3_MONTHLY_CHECK_MAX=\([0-9][0-9]*\).*/\1/p' "$RUNBOOK_MD" 2>/dev/null | head -n 1)"
 RADL="$(sed -n 's/.*"activeDeadlineSeconds":\([0-9][0-9]*\).*/\1/p' "$RUNBOOK_MD" 2>/dev/null | head -n 1)"
-if [[ "$RK" =~ ^[0-9]+$ ]] && [[ "$RADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]]; then
-	RWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + RK) * S3_CALL + 300))
+if [[ "$RK" =~ ^[0-9]+$ ]] && [[ "$RADL" =~ ^[0-9]+$ ]] && [[ "$S3_CALL$DEPS_WAIT$PROBE$INTERVAL" =~ ^[0-9]+$ ]] && [[ "$HB_TIMEOUT" =~ ^[0-9]+$ ]]; then
+	RWORST=$((DEPS_WAIT + PROBE + INTERVAL + (9 + RK) * S3_CALL + HB_TIMEOUT + 300))
 	if [ "$RWORST" -lt "$RADL" ]; then
 		ok "T-2402-16 runbook: 上限を上げた 1 回（K=$RK）の最悪の合計 $RWORST 秒が、同じ手順で上げる activeDeadlineSeconds $RADL 秒より小さい"
 	else
