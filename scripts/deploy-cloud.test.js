@@ -881,7 +881,7 @@ function keycloakPkiProblems(esoDocs, texts) {
 /**
  * NFR-18, NFR-05, AST の IADR-0646: 取引ユニットのサービス間の TLS の受け側の証明書の PKI の role と発行の許可。
  *   - lib.sh の OB_PKI_ROLES の名前空間 ai-stock-trading の role が、取引ユニットの chart の 11 のサービス（<サービス>-service）とちょうど同じ。
- *   - policy ast-eso の pki_cloud の path は、その 11 個の pki_cloud/issue/<サービス>-service だけで、許可は create・update だけ（ワイルドカード・ほかの口なし）。
+ *   - policy ast-eso の pki_cloud の path は、その 11 個の pki_cloud/issue/<サービス>-service だけで、許可は update だけ（POST。ワイルドカード・ほかの口なし）。
  *   - 基盤の側・MSP の側の policy は、その 11 個を発行できない。
  * texts は { lib, platformInfraEso, mspEso, astEso }。
  */
@@ -902,7 +902,7 @@ function astServiceTlsPkiProblems(texts) {
     if (!m) { out.push(`vault: ast-eso の PKI の行の形が違う（${l.trim()}）`); continue; }
     issued.push(m[1]);
     const caps = m[2].split(',').map((c) => c.trim().replace(/"/g, '')).sort();
-    if (JSON.stringify(caps) !== '["create","update"]') out.push(`vault: ast-eso の ${m[1]} の許可が create・update だけでない（${caps.join(', ')}）`);
+    if (JSON.stringify(caps) !== '["update"]') out.push(`vault: ast-eso の ${m[1]} の許可が update だけでない（${caps.join(', ')}）`);
   }
   if (JSON.stringify(issued.sort()) !== JSON.stringify(want)) out.push(`vault: ast-eso の発行の範囲が 11 のサービスと違う（${issued.join(', ')}）`);
   for (const [who, t] of [['基盤の側', texts.platformInfraEso], ['MSP の側', texts.mspEso]]) {
@@ -1743,7 +1743,7 @@ if (require.main === module) {
       assert.ok(p.some((x) => want.test(x)), `${want} を検出しない:\n${p.join('\n')}`);
     }
   });
-  ok('AST の IADR-0646: 取引ユニットの 11 のサービスの PKI の role と、ast-eso の発行の許可（名指し・create と update だけ）が同じ集合である', () => {
+  ok('AST の IADR-0646: 取引ユニットの 11 のサービスの PKI の role と、ast-eso の発行の許可（名指し・update だけ）が同じ集合である', () => {
     const t = pkiTexts();
     assert.deepStrictEqual(astServiceTlsPkiProblems(t), []);
     // 陰性対照: role の欠け・余り、policy の欠け・ワイルドカード・許可の広げ・ほかの口、基盤の側への漏れを検出する。
@@ -1751,8 +1751,9 @@ if (require.main === module) {
       [{ lib: t.lib.replace(' report-service:ai-stock-trading', '') }, /OB_PKI_ROLES の取引ユニットの role が 11/],
       [{ lib: t.lib.replace('trade-decision-service:ai-stock-trading"', 'trade-decision-service:ai-stock-trading extra-service:ai-stock-trading"') }, /OB_PKI_ROLES の取引ユニットの role が 11/],
       [{ astEso: t.astEso.replace(/^path "pki_cloud\/issue\/audit-service".*$/m, '') }, /ast-eso の発行の範囲が 11/],
-      [{ astEso: `${t.astEso}\npath "pki_cloud/issue/*" { capabilities = ["create", "update"] }\n` }, /PKI の行の形が違う/],
-      [{ astEso: t.astEso.replace(/("pki_cloud\/issue\/report-service"\s+\{ capabilities = \[)"create", "update"/, '$1"create", "read", "update"') }, /report-service の許可が create・update だけでない/],
+      [{ astEso: `${t.astEso}\npath "pki_cloud/issue/*" { capabilities = ["update"] }\n` }, /PKI の行の形が違う/],
+      [{ astEso: t.astEso.replace(/("pki_cloud\/issue\/report-service"\s+\{ capabilities = \[)"update"/, '$1"read", "update"') }, /report-service の許可が update だけでない/],
+      [{ astEso: t.astEso.replace(/("pki_cloud\/issue\/audit-service"\s+\{ capabilities = \[)"update"/, '$1"create", "update"') }, /audit-service の許可が update だけでない/],
       [{ astEso: `${t.astEso}\npath "pki_cloud/sign/report-service" { capabilities = ["update"] }\n` }, /PKI の行の形が違う/],
       [{ mspEso: `${t.mspEso}\npath "pki_cloud/issue/report-service" { capabilities = ["update"] }\n` }, /MSP の側が取引ユニットのサービス証明書を発行できる/],
     ];

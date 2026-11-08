@@ -186,7 +186,7 @@ bash deploy/cloud/vault/root-token.sh --live --init-file <init>.age --operator-f
   role を足したら、発行を許す policy も `apply-policies` で当て直す（例: [認可サーバーの TLS の手順書](cloud-keycloak-tls-runbook.md)の段 0）。
 - **取引ユニットのサービス間の TLS の前提（稼働中の構成へ足す）**: 取引ユニットの 11 のサービス（`audit`・`backtest`・`configuration`・`cost-control`・
   `information-collection`・`market-monitor`・`notification`・`order-execution`・`report`・`risk-management`・`trade-decision`。それぞれ `-service` を付ける）の
-  受け側の証明書の role（名前空間 `ai-stock-trading`）と、取引ユニットの側の policy `ast-eso` の発行の許可（名指しの 11 個・create と update だけ）は、
+  受け側の証明書の role（名前空間 `ai-stock-trading`）と、取引ユニットの側の policy `ast-eso` の発行の許可（名指しの 11 個・update だけ）は、
   リポジトリの宣言に入っている。稼働中の OpenBao へは、オーナーが次の順で書く（米国の場の時間外。稼働中の通信は変わらない —— 取引ユニットの側の段が
   `"Off"` の間は、誰も発行しない）:
   1. `apply-pki-roles`（上の 2 行目）。出力に `書いた: PKI の role <サービス>-service` が 11 行（と従来の 4 行）出ることを見る。

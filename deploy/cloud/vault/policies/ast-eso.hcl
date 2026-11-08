@@ -14,15 +14,15 @@ path "cloud/data/shared/ast-rabbitmq-users" { capabilities = ["read"] }
 path "cloud/data/shared/ast-client-secrets" { capabilities = ["read"] }
 path "cloud/data/shared/platform-infra-ca"  { capabilities = ["read"] }
 # ［2026-11-08 / AST の IADR-0646］取引ユニットのサービス間の TLS の受け側の証明書の発行（名指しの 11 個。ワイルドカードにしない）。
-#   ESO の VaultDynamicSecret（取引ユニットの chart）が POST する。role は vault/lib.sh の OB_PKI_ROLES の名前空間 ai-stock-trading の 11 個と同じ。
-path "pki_cloud/issue/audit-service"                  { capabilities = ["create", "update"] }
-path "pki_cloud/issue/backtest-service"               { capabilities = ["create", "update"] }
-path "pki_cloud/issue/configuration-service"          { capabilities = ["create", "update"] }
-path "pki_cloud/issue/cost-control-service"           { capabilities = ["create", "update"] }
-path "pki_cloud/issue/information-collection-service" { capabilities = ["create", "update"] }
-path "pki_cloud/issue/market-monitor-service"         { capabilities = ["create", "update"] }
-path "pki_cloud/issue/notification-service"           { capabilities = ["create", "update"] }
-path "pki_cloud/issue/order-execution-service"        { capabilities = ["create", "update"] }
-path "pki_cloud/issue/report-service"                 { capabilities = ["create", "update"] }
-path "pki_cloud/issue/risk-management-service"        { capabilities = ["create", "update"] }
-path "pki_cloud/issue/trade-decision-service"         { capabilities = ["create", "update"] }
+#   ESO の VaultDynamicSecret（取引ユニットの chart）が POST する（要る capability は update だけ。基盤の側・MSP の側の発行と同じ）。role は vault/lib.sh の OB_PKI_ROLES の名前空間 ai-stock-trading の 11 個と同じ。
+path "pki_cloud/issue/audit-service"                  { capabilities = ["update"] }
+path "pki_cloud/issue/backtest-service"               { capabilities = ["update"] }
+path "pki_cloud/issue/configuration-service"          { capabilities = ["update"] }
+path "pki_cloud/issue/cost-control-service"           { capabilities = ["update"] }
+path "pki_cloud/issue/information-collection-service" { capabilities = ["update"] }
+path "pki_cloud/issue/market-monitor-service"         { capabilities = ["update"] }
+path "pki_cloud/issue/notification-service"           { capabilities = ["update"] }
+path "pki_cloud/issue/order-execution-service"        { capabilities = ["update"] }
+path "pki_cloud/issue/report-service"                 { capabilities = ["update"] }
+path "pki_cloud/issue/risk-management-service"        { capabilities = ["update"] }
+path "pki_cloud/issue/trade-decision-service"         { capabilities = ["update"] }

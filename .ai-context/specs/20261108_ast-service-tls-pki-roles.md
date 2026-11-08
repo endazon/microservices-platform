@@ -23,6 +23,7 @@ related_specs:
 - `"Off"` から上げる前提は基盤の側の 2 つ（AST の `docs/operations/cloud-service-tls-runbook.md`「前提」）:
   1. `deploy/cloud/vault/lib.sh` の `OB_PKI_ROLES` に、11 個の `<サービス>-service:ai-stock-trading` を足す。
   2. `deploy/cloud/vault/policies/ast-eso.hcl` に、その 11 個の `pki_cloud/issue/<サービス>-service` への create・update を足す（ワイルドカードにしない。ほかの口は足さない）。
+     ［2026-11-08 追記］許可は **update だけ**にした（発行は POST なので要る capability は update だけ。最小権限で、基盤の側・MSP の側の発行の許可とも揃う。オーケストレーターの裁定）。
 
 ## サービスの一覧（記憶で書かず、取引ユニットの正から引いた）
 
@@ -46,9 +47,9 @@ related_specs:
 | # | 受け入れ基準 | 試験（陰性対照） |
 | --- | --- | --- |
 | AC1 | `OB_PKI_ROLES` の名前空間 `ai-stock-trading` の role が 11 のサービスとちょうど同じ | `deploy-cloud.test.js`「AST の IADR-0646」（1 つ欠く・余りを足すと赤） |
-| AC2 | `ast-eso` の PKI の path は 11 個の `pki_cloud/issue/<サービス>-service` だけで、許可は create・update だけ | 同上（1 つ欠く・ワイルドカード・read を足す・sign の口を足すと赤） |
+| AC2 | `ast-eso` の PKI の path は 11 個の `pki_cloud/issue/<サービス>-service` だけで、許可は update だけ（発行は POST なので update で足りる。基盤の側・MSP の側と同じ） | 同上（1 つ欠く・ワイルドカード・read を足す・create を足す・sign の口を足すと赤） |
 | AC3 | 基盤の側・MSP の側の policy はその 11 個を発行できない | 同上（MSP の側へ足すと赤）・`openbao-scripts.test.sh`（実物の OpenBao で deny） |
-| AC4 | 実物の OpenBao で、取引ユニットの側のトークンが 11 個に `create, update` を持ち、名指しの外・ほかの口は deny。chart と同じ名前で発行でき（基盤の CA で検証できる）、名指しの外の名前は拒まれる | `openbao-scripts.test.sh`（policy を develop の形へ戻すと赤） |
+| AC4 | 実物の OpenBao で、取引ユニットの側のトークンが 11 個に `update` だけを持ち、名指しの外・ほかの口は deny。chart と同じ名前で発行でき（基盤の CA で検証できる）、名指しの外の名前は拒まれる | `openbao-scripts.test.sh`（policy を develop の形へ戻すと赤） |
 | AC5 | 測りの宛先は従来の 4 つのまま。KT6 の「取引ユニットの側が PKI に触れない」は、11 個の発行のほかを引き続き拒む | `deploy-cloud-egress-audit.test.js` C1・`deploy-cloud.test.js`（CA の口を足すと赤） |
 
 ## 利用者の作業

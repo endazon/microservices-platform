@@ -455,7 +455,7 @@ ok "PKI: role は名指しの名前だけを発行し、CA の鍵は OpenBao の
 # AST の IADR-0646: 取引ユニットの 11 のサービスの受け側の証明書は、取引ユニットの側（ast-eso）だけが名指しで発行できる。
 AST_TLS_SVCS="audit backtest configuration cost-control information-collection market-monitor notification order-execution report risk-management trade-decision"
 for s in $AST_TLS_SVCS; do
-  [ "$(cap "$TA" "pki_cloud/issue/$s-service")" = "create, update" ] || ng "取引ユニットの側が $s-service の証明書を create・update で発行できない（$(cap "$TA" "pki_cloud/issue/$s-service")）"
+  [ "$(cap "$TA" "pki_cloud/issue/$s-service")" = update ] || ng "取引ユニットの側の $s-service の発行の許可が update だけでない（$(cap "$TA" "pki_cloud/issue/$s-service")）"
   [ "$(cap "$TP" "pki_cloud/issue/$s-service")" = deny ] && [ "$(cap "$TM" "pki_cloud/issue/$s-service")" = deny ] || ng "取引ユニットの外の側が $s-service の証明書を発行できる"
 done
 for x in postgres keycloak llmgateway-service other-service; do [ "$(cap "$TA" "pki_cloud/issue/$x")" = deny ] || ng "取引ユニットの側が名指しの外の $x を発行できる"; done
@@ -473,7 +473,7 @@ for bad in "common_name=postgres" "common_name=$n alt_names=$n.platform-infra" "
   set +e; BAO_TOKEN="$TA" B write "pki_cloud/issue/$n" $bad >/dev/null 2>&1; rc=$?; set -e
   [ "$rc" -ne 0 ] || ng "$n の role が名指しの外の名前（$bad）を発行した"
 done
-ok "PKI（取引ユニット）: 11 のサービスの role を、取引ユニットの側だけが名指しで create・update で発行でき（基盤・MSP の側は拒む）、名前は 4 つの形だけ"
+ok "PKI（取引ユニット）: 11 のサービスの role を、取引ユニットの側だけが名指しで update だけで発行でき（POST が通る）（基盤・MSP の側は拒む）、名前は 4 つの形だけ"
 BAO_TOKEN="$R1" B token revoke -self >/dev/null
 
 # --- root-token.sh: 作り直して操作し、失効させる ---
