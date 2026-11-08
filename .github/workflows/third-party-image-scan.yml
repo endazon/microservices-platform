@@ -73,9 +73,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # code scanning の category は、参照から digest を落とし、英数字と `. _ / -` だけにした短い名前にする
+      # （`:` `@` と 64 桁の digest を入れない。同じ repo:tag が別の digest で並ぶことは check-image-digests.js の [digest-mismatch] が止める）。
+      - name: Category
+        id: cat
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          name="$(printf '%s' "${IMAGE%%@sha256:*}" | sed 's/[^A-Za-z0-9._/-]/-/g')"
+          echo "category=third-party-image/${name}" >> "$GITHUB_OUTPUT"
       - name: Scan image (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # 本アクションの版の既定と同じ値を明示する。YAML の ignore ファイルはアクションがそのまま TRIVY_IGNOREFILE に渡し、
+          # Trivy がこの版で拡張子から YAML として読む（expired_at を過ぎた項目は外し、statement を無視の理由に残す）。
+          version: v0.70.0
           image-ref: ${{ matrix.image }}
           scanners: vuln
           severity: CRITICAL,HIGH
@@ -91,7 +104,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
         with:
           sarif_file: trivy.sarif
-          category: third-party-image/${{ matrix.image }}
+          category: ${{ steps.cat.outputs.category }}
       # 件数だけを出す（詳細は Security タブ）。走査の結果が無いのは合格ではないので落とす。
       - name: Judge
         env:

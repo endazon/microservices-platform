@@ -42,6 +42,7 @@ related_specs:
    - 週次・dispatch: 1 件でもあれば脚を落とし、`ci-failure-issue.yml` が起票する。
    - PR（`deploy/**` 等の paths）: 注記だけで落とさない。必須チェックにしない。
    - 受け入れ: `.github/image-scan.trivyignore.yaml`（id・statement・90 日以内の expired_at）。
+   - ［2026-11-08 追記 / #2516 のレビュー］ignore の YAML がアクション・Trivy の固定の版で読まれることをソースで確かめた（IADR-0708 決定 3）。Trivy の版を明示し、code scanning の category は digest を落として記号を `-` にした名前にした。
 4. `dependabot.yml` に docker（`/deploy/cloud/**`・1 本の PR へまとめる）を足す。片側の更新は `[digest-mismatch]` が止めるので、手順書で残りを揃える。
 5. 手順書 `docs/operations/third-party-image-scan-runbook.md`（赤の扱い・受け入れ・更新の PR の仕上げ）。
 

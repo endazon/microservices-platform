@@ -28,7 +28,7 @@ specs: [20261108_ci-review-perms-image-scan]
 | 同上（pull_request） | `deploy/**`・対象の選び方・本ワークフロー・受け入れのファイルを触る PR | 件数を注記するだけで落とさない（既存の古い版で関係の無い PR を赤くしない）。**必須チェックではない** | 注記が出たら、その PR が上げた版で増えていないかを見る |
 | Dependabot（`.github/dependabot.yml` の `docker`） | 週次 | `deploy/cloud/**` の `image:` の新しい版を 1 本の PR にまとめて出す | 下の §更新の PR を仕上げる |
 
-- ログには件数だけを出す。脆弱性の一覧は Security タブ → Code scanning（カテゴリ `third-party-image/<イメージ>`）で見る。
+- ログには件数だけを出す。脆弱性の一覧は Security タブ → Code scanning（カテゴリ `third-party-image/<イメージ名-tag>`）で見る。
   見られるのは書き込みの権限を持つ人だけである。
 - 走査の対象は `deploy/` の参照だけ（`src/` の基底イメージ・Testcontainers は対象外）。対象の一覧は手元で
   `node scripts/check-image-digests.js --scan-targets` で出せる。

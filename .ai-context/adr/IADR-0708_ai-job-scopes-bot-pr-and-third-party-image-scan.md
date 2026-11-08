@@ -49,6 +49,11 @@ related_specs:
    - Trivy（`images.yml` と同じ固定の版）で CRITICAL / HIGH・修正版ありを数える。SARIF を code scanning へ上げ（詳細は書き込みの権限を持つ人だけが見る）、ログには件数だけを出す。
    - **週次・手動では 1 件でもあれば落とし、`ci-failure-issue.yml` で起票する。PR では注記だけで落とさない**（既存の古い版で関係の無い PR を赤くしない）。必須チェックにしない。
    - 受け入れは `.github/image-scan.trivyignore.yaml` に、公開の CVE・理由・90 日以内の期限で 1 件ずつ書く（期限が来ると再び赤になる。書式は試験が固定する）。
+     固定の版のアクション（v0.36.0）は YAML の ignore ファイルを 1 つだけ受け付け、連結せずにそのまま `TRIVY_IGNOREFILE` へ渡す（`entrypoint.sh` の YAML の分岐）。
+     その既定の Trivy（v0.70.0。ワークフローに明示する）は拡張子で YAML と判じ、`expired_at` を過ぎた項目を外し（`pkg/result/ignore.go` の `Prune`）、
+     `statement` を無視の理由として結果に残す（`pkg/result/filter.go`）。
+   - code scanning の category は、参照から digest を落とし英数字と `. _ / -` だけにした名前（`third-party-image/<repo>-<tag>`）。
+     `:` `@` と 64 桁の digest を入れない。対象の間で重ならないこと・文字種と 100 字以内を試験が固定する。
 4. 更新の通知は Dependabot の docker（`/deploy/cloud/**`・1 本の PR へまとめる）。棲み分け（IADR-0203 / IADR-0581）の「Dependabot が持つ生態系」に docker を足す。
    同じイメージの他の参照（`deploy/local/`・compose・helm values）は手順書で揃え、片側だけの更新は `[digest-mismatch]` が止める。
 5. 手順書は `docs/operations/third-party-image-scan-runbook.md`。

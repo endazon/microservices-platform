@@ -21393,6 +21393,9 @@ esac
       if (!code.includes('node scripts/check-image-digests.js --scan-targets')) out.push('対象を check-image-digests.js --scan-targets から引いていない');
       if (!/severity: CRITICAL,HIGH/.test(code) || !/ignore-unfixed: true/.test(code) || !/limit-severities-for-sarif: true/.test(code)) out.push('重大度・修正版・SARIF の絞りが無い');
       if (!/trivyignores: \.github\/image-scan\.trivyignore\.yaml/.test(code)) out.push('受け入れの ignore ファイルを渡していない');
+      if (!/^ +version: v\d+\.\d+\.\d+\s*$/m.test(code)) out.push('Trivy の版を明示していない');
+      if (/category: [^\n]*matrix\.image/.test(code) || !/category: \$\{\{ steps\.cat\.outputs\.category \}\}/.test(code)) out.push('code scanning の category に参照をそのまま入れている');
+      if (!code.includes("${IMAGE%%@sha256:*}") || !code.includes("sed 's/[^A-Za-z0-9._/-]/-/g'")) out.push('category の名前から digest と記号を落としていない');
       if (!/if \[ "\$EVENT_NAME" = "pull_request" \]; then[\s\S]*?exit 0[\s\S]*?exit 1/.test(code)) out.push('PR では落とさず、それ以外では落とす判定になっていない');
       if (!/uses: \.\/\.github\/workflows\/ci-failure-issue\.yml/.test(code)) out.push('失敗の起票（ci-failure-issue.yml）を呼んでいない');
       if (!/if: always\(\) && github\.event_name != 'pull_request' && contains\(needs\.\*\.result, 'failure'\)/.test(code)) out.push('起票の条件が PR を除いていない');
@@ -21409,6 +21412,8 @@ esac
       assert.ok(scanIssues(t.replace(pr, 'if false; then')).length > 0);
       assert.ok(scanIssues(t.replace('limit-severities-for-sarif: true', 'limit-severities-for-sarif: false')).length > 0);
       assert.ok(scanIssues(t.replace('uses: ./.github/workflows/ci-failure-issue.yml', 'uses: ./.github/workflows/nope.yml')).length > 0);
+      assert.ok(scanIssues(t.replace('category: ${{ steps.cat.outputs.category }}', 'category: third-party-image/${{ matrix.image }}')).includes('code scanning の category に参照をそのまま入れている'));
+      assert.ok(scanIssues(t.replace(/^ +version: v\d+\.\d+\.\d+\n/m, '')).includes('Trivy の版を明示していない'));
     });
 
     const ignoreIssues = (text, today) => {
@@ -21460,6 +21465,10 @@ esac
         assert.ok(refs.some((r) => r.startsWith(p)), `走査の対象に ${p} が無い`);
       }
       assert.ok(refs.every((r) => /@sha256:[0-9a-f]{64}$/.test(r)), 'digest で固定していない参照が混じっている');
+      // category（digest を落として記号を - にした名前）が対象の間で重ならない（code scanning の結果を上書きし合わない）
+      const cats = refs.map((r) => r.replace(/@sha256:.*$/, '').replace(/[^A-Za-z0-9._/-]/g, '-'));
+      assert.strictEqual(new Set(cats).size, cats.length, 'category が重なる');
+      assert.ok(cats.every((c) => /^[A-Za-z0-9._/-]+$/.test(c) && c.length <= 100), 'category の文字種か長さが想定の外');
     });
   }
 
