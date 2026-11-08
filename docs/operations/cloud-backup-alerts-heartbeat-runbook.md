@@ -182,7 +182,9 @@ S3 の鍵は**2 組**作り、役割を分ける。どちらも手元では age 
    read -rs c; printf '%s' "$c" | $P cloud/platform/alertmanager-heartbeat backup-ping-url; unset c   # check C の ping の URL（/fail は付けない）
    ```
    **段**: キーを書くまで、バックアップは外へ送らず、Job のログに「外の生存の確かめの URL が無い」の警告を出す（回の結果は変えない）。
-   宛先の名前は check A・B と同じ（外向きの中継の許可表 `egress-proxy-extra-hosts` に在る名前）なので、許可表を足す必要は無い。
+   宛先の名前は check A・B と同じだが、外向きの中継の許可表 `egress-proxy-extra-hosts` は**送り元ごとの行**（`<送り元> <名前>`）なので、
+   送り元 `alertmanager` の行とは別に、**送り元 `backup` の行（`backup <heartbeat の宛先の名前>`）が要る**。作り方は
+   [外向きの中継の手順書](cloud-egress-proxy-runbook.md) 1-1 に従う（行が無いと、enforce の段で中継が拒み、check C は期限で下がる）。
    2 つの URL が同じ（check を分けていない）・`discord-fail-url` が「`discord-ping-url`/fail」でないときは、Alertmanager は起動しない。
    この Secret が無いと Alertmanager の Pod は起動しない（ping が始まらず、外の監視が「一度も来ていない」と見せる）。
 3. AST の警報の規則（ConfigMap `ast-prometheus-rules`。AST の `PrometheusRule` の YAML をそのまま入れる）:

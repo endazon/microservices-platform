@@ -41,7 +41,7 @@ related_specs:
 
 - 1: `git grep -n 'COMPLETE\|heartbeat' -- deploy/cloud deploy/local/platform-backup docs/operations` → バックアップの本体は `deploy/local/platform-backup/script/backup.sh`
   （ローカルと共有）、クラウドの CronJob は `cloud/backup/cronjob-postgres.yaml` の 1 つ。heartbeat の URL は Secret `alertmanager-heartbeat`（ESO の `dataFrom.extract`。
-  在るキーを全部写す）。宛先の名前は外向きの中継の許可表 `egress-proxy-extra-hosts` に在る（新しい宛先は要らない）。
+  在るキーを全部写す）。宛先の名前は外向きの中継の許可表 `egress-proxy-extra-hosts` に在る。［2026-11-08 追記］表は送り元ごとの行なので、送り元 `backup` の行が要る（`cloud-egress-proxy-runbook.md` 1-1）。
 - 2: `git grep -n '^kubectl\|^helm\|reconcile_recreate_strategy' -- deploy/cloud/README.md docs/operations` → README §3 の段と、PSA の確かめの 2 行。
   `reconcile_recreate_strategy` の呼び手は README §3 と `scripts/k8s-local-up.sh`（ローカル。変えない）。
 - 3: `git grep -n 'audit-log-path\|audit "file"' -- deploy/cloud` → 上の 2 つだけ。
@@ -90,4 +90,4 @@ related_specs:
 
 - 監査の記録そのものの写しはノードの外に置かない（目録だけ）。中身の写し（バックアップと同じ age の暗号化・Object Lock の保管先）は、ノードに保管先の資格を置くことになるので、
   本作業では採らない（IADR-0710 の残る制約）。
-- 外向きの中継の許可表を送り元ごとに分ける作業（別の組）では、バックアップの Pod の送り元にも heartbeat の宛先の名前を許す必要がある。
+- 外向きの中継の許可表は送り元ごとの行なので、送り元 `backup` に heartbeat の宛先の名前を許す行を、オーナーが表に足す（利用者の作業。`cloud-egress-proxy-runbook.md` 1-1）。
