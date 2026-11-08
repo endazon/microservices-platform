@@ -7,7 +7,7 @@ created: 2026-11-08
 updated: 2026-11-08
 ---
 <!-- trace:
-ids: [NFR-18, SC-12]
+ids: [NFR-18]
 adrs: [ADR-0107]
 iadrs: [IADR-0708, IADR-0711, IADR-0514, IADR-0584, IADR-0232]
 specs: [20261108_ci-review-perms-image-scan, 20261108_dependabot-docker-safe-updates]
