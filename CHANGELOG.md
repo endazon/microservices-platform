@@ -811,6 +811,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2533) (51834941)
 - **NFR-18**: IADR-0591・IADR-0673 の段 4b-2 の表に、取引ユニット側の実装（AST#1549）を日付つきで記録する (#2532) (063a90f5)
 - **NFR**: CHANGELOG を自動更新 (#2531) (32c7adbf)
 - **NFR**: CHANGELOG を自動更新 (#2525) (3086b127)
@@ -1225,6 +1226,13 @@
 
 ### その他
 
+- **deps-dev**: bump orval from 8.23.0 to 8.47.0 in /src (#2540) (4511adab)
+- **deps-dev**: bump @storybook/react-vite from 10.6.5 to 10.6.6 in /src (#2538) (18304125)
+- **deps**: bump peter-evans/create-pull-request from 8.1.1 to 8.1.3 (#2535) (9968bb16)
+- **deps**: bump anthropics/claude-code-action from 1.0.268 to 1.0.271 (#2537) (f7f0de15)
+- **deps-dev**: bump knip from 6.44.1 to 6.44.2 in /src (#2539) (312bb0c4)
+- **deps**: bump azure/setup-helm from 5.0.1 to 5.1.0 (#2536) (5411ea58)
+- **deps**: bump src/ai-stock-trading from `f55ee1c` to `d4ebaeb` (#2534) (ecc18ab6)
 - **deps**: bump anthropics/claude-code-action from 1.0.267 to 1.0.268 (#2522) (472a45ce)
 - **deps**: bump softprops/action-gh-release from 3.0.3 to 3.0.4 (#2521) (969c2674)
 - **deps**: bump the codeql-action group with 3 updates (#2520) (93c4e4fd)
