@@ -811,6 +811,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#2543) (6289fb7f)
 - **NFR**: CHANGELOG を自動更新 (#2533) (51834941)
 - **NFR-18**: IADR-0591・IADR-0673 の段 4b-2 の表に、取引ユニット側の実装（AST#1549）を日付つきで記録する (#2532) (063a90f5)
 - **NFR**: CHANGELOG を自動更新 (#2531) (32c7adbf)
@@ -1226,6 +1227,8 @@
 
 ### その他
 
+- **deps**: bump @tanstack/react-table from 9.1.2 to 9.3.1 in /src (#2542) (e1d5057b)
+- **deps-dev**: bump eslint-plugin-storybook from 10.6.4 to 10.6.6 in /src (#2541) (73ccca8e)
 - **deps-dev**: bump orval from 8.23.0 to 8.47.0 in /src (#2540) (4511adab)
 - **deps-dev**: bump @storybook/react-vite from 10.6.5 to 10.6.6 in /src (#2538) (18304125)
 - **deps**: bump peter-evans/create-pull-request from 8.1.1 to 8.1.3 (#2535) (9968bb16)
