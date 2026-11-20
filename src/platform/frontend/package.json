@@ -22,7 +22,7 @@
     "@tanstack/react-router": "^1.170.18",
     "dayjs": "^1.11.23",
     "dompurify": "^3.4.17",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.73.0",
     "marked": "^18.0.12",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
