@@ -37,7 +37,7 @@
     "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.0.0",
     "@tanstack/router-core": "^1.171.15",
-    "@types/node": "^22.7.4",
+    "@types/node": "^26.6.6",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.3.2",
